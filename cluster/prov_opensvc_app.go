@@ -1514,6 +1514,13 @@ func normalizeRouteCNAME(cname string) string {
 // all host routes sharing the same destination port.  Multiple CNAMEs produce
 // multiple use_backend rules in the shared 'frontend https' block.  All CNAMEs
 // are normalized before being emitted.
+//
+// A host route is always served over https by the gateway, so its backend tells the
+// app with X-Forwarded-Proto (set, never added: a client cannot inject its own). An
+// app that rebuilds its URL from the request otherwise believes it is plain http:
+// Mattermost sent an http redirect_uri to its OAuth provider at the code exchange
+// and every GitLab sign-in failed with invalid_grant (#2252). The gateway's head
+// template may set it too; the backend does not depend on it.
 func buildGroupedHostRouteFragment(routes []config.Route, opensvcDNS string, numBE int) (fragmentKey, haproxyfragment string, err error) {
 	if len(routes) == 0 {
 		return "", "", errors.New("buildGroupedHostRouteFragment: no routes provided")
@@ -1536,6 +1543,7 @@ backend %s
     balance roundrobin
     dynamic-cookie-key mysecretphrase
     option http-server-close
+    http-request set-header X-Forwarded-Proto https
     timeout connect 10s
     timeout server 5m
     timeout tunnel 1h
