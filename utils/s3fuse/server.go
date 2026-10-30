@@ -15,6 +15,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"runtime"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -167,6 +168,9 @@ func startServer(ctx context.Context, o Options) (*server, error) {
 	logsDone := make(chan struct{})
 	go func() {
 		readLines(logR, logLineMax, func(line string) {
+			if strings.TrimSpace(line) == "" {
+				return // GeeseFS prints empty lines
+			}
 			last.set(line)
 			if o.OnLog != nil {
 				o.OnLog(line)
