@@ -9,10 +9,12 @@ package cluster
 
 import (
 	"crypto/hmac"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -211,6 +213,7 @@ func (server *ServerMonitor) OpenJobBody(raw []byte, now time.Time) ([]byte, str
 	}
 	if mode == JobKeyLegacy {
 		atomic.StoreInt64(&server.legacyJobLoginAt, now.Unix())
+		server.jobStream.Store(jobStreamAuth{})
 		return data, mode, 200, nil
 	}
 	var fresh struct {
@@ -236,6 +239,7 @@ func (server *ServerMonitor) OpenJobBody(raw []byte, now time.Time) ([]byte, str
 	if !ok {
 		return nil, mode, 401, fmt.Errorf("Job body already used (replay)")
 	}
+	server.jobStream.Store(jobStreamAuth{Key: mode, Name: fresh.Server})
 	return data, mode, 200, nil
 }
 
@@ -276,4 +280,72 @@ func (cluster *Cluster) CheckSecretLoginLegacy() {
 	}
 	cluster.SecurityStateMachine.AddState("WARN0272", state.State{ErrType: "WARNING", ErrKey: "WARN0272", ErrFrom: "SECURITY",
 		ErrDesc: fmt.Sprintf(clusterError["WARN0272"], strings.Join(urls, ", "))})
+}
+
+// The job stream header: the first line of every stream replication-manager sends to a
+// database's jobs listener (SST_RECEIVER_PORT: a backup to restore, the jobs script of a jobs
+// upgrade, a config), so the script takes the stream from replication-manager only, not from
+// whoever connects to the port first:
+//
+//	MRMSTREAM1 <ts> <nonce> <hex HMAC-SHA256(SHA256(secret), "stream:<server>:<ts>:<nonce>")>\n
+//
+// The secret is the one the server's script signs its job bodies with: the cluster's jobs key,
+// else the server's password. The script refuses a stream without a valid header, outside
+// jobStreamWindow of its timestamp, or with a nonce it already took. A script posting legacy
+// bodies (older, it does not read a header) gets none.
+
+// jobStreamTag opens a job stream header.
+const jobStreamTag = "MRMSTREAM1"
+
+// jobStreamAuth is how a server's jobs script checks the streams sent to it, learnt from its
+// last accepted job body: its key (JobKeyJobs or JobKeyDB) and the name it gives its server.
+// Key empty: no header (a legacy body, or none seen since start).
+type jobStreamAuth struct {
+	Key  string
+	Name string
+}
+
+// JobStreamHeader is the header to send first on a stream to the server's jobs listener, nil
+// when its script does not check one.
+func (server *ServerMonitor) JobStreamHeader(now time.Time) ([]byte, error) {
+	auth, _ := server.jobStream.Load().(jobStreamAuth)
+	var secret string
+	switch auth.Key {
+	case JobKeyJobs:
+		secret = server.ClusterGroup.GetJobsKey()
+	case JobKeyDB:
+		secret = server.Pass
+	default:
+		return nil, nil
+	}
+	if secret == "" || auth.Name == "" {
+		return nil, fmt.Errorf("No secret to sign the stream to %s", server.URL)
+	}
+	n := make([]byte, 16)
+	if _, err := rand.Read(n); err != nil {
+		return nil, err
+	}
+	nonce := hex.EncodeToString(n)
+	ts := now.Unix()
+	return []byte(fmt.Sprintf("%s %d %s %s\n", jobStreamTag, ts, nonce, jobStreamMAC(secret, auth.Name, ts, nonce))), nil
+}
+
+// jobStreamMAC is the header's MAC, keyed with SHA-256 of the secret as the script derives it
+// (derive_key).
+func jobStreamMAC(secret, name string, ts int64, nonce string) string {
+	key := sha256.Sum256([]byte(secret))
+	mac := hmac.New(sha256.New, key[:])
+	fmt.Fprintf(mac, "stream:%s:%d:%s", name, ts, nonce)
+	return hex.EncodeToString(mac.Sum(nil))
+}
+
+// writeJobStreamHeader writes the header, when the server's script checks one, first on a
+// stream to its jobs listener.
+func (server *ServerMonitor) writeJobStreamHeader(w io.Writer) error {
+	h, err := server.JobStreamHeader(time.Now())
+	if err != nil || h == nil {
+		return err
+	}
+	_, err = w.Write(h)
+	return err
 }

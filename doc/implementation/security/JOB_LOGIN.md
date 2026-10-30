@@ -113,6 +113,39 @@ On OpenSVC clusters, a replication-manager start flags every server for a jobs u
 (WARN0155, `SetRollingJobsUpgradeState`), so the scripts move to the one-time format at the
 first start of the new release.
 
+## Streams to the jobs listener
+
+replication-manager sends three things to the jobs listener (`SST_RECEIVER_PORT`, socat on the
+database side): a backup to restore (reseed, flashback), the jobs script (jobs upgrade) and a
+config. The listener used to take the first connection, whoever made it: a stream sent there in
+time was restored, or installed and run as the new jobs script. The database password is not in
+the config, so neither side had a secret to check the stream with; the jobs key is that secret.
+
+Every stream now starts with a header line (`ServerMonitor.JobStreamHeader`, written by the four
+senders of `cluster_sst.go` before any data):
+
+    MRMSTREAM1 <ts> <nonce> <hex HMAC-SHA256(SHA256(secret), "stream:<server>:<ts>:<nonce>")>
+
+- **Secret:** the key of the server's last accepted job body (`OpenJobBody` records it with the
+  name the script gives its server): the jobs key, else the server's password.
+- **Script:** `job_stream_open` sits between socat and whatever takes the stream (the unpack tool,
+  the script file, the config file). It reads the header and copies the rest only when the MAC
+  matches, its timestamp is within 300 seconds (`JOB_STREAM_WINDOW`) and its nonce was not taken
+  before (`<jobs dir>/.stream_nonces`, the nonces of twice the window: bounded). Otherwise nothing
+  is written, the reason goes to the job's log, and the job fails: a restore is aborted before
+  anything is unpacked, a new script is not installed, a config is not extracted.
+- **Older scripts:** a server whose script posts legacy bodies gets no header (it would take it
+  as data), and none either before its first body since replication-manager started (every run
+  logs in first). The first jobs upgrade from an older script therefore still goes over the
+  unchecked listener: it is the last one. Once WARN0272 is gone and `api-secret-login-legacy`
+  is off, every stream is checked.
+- **What it does not do:** it authenticates the stream, it does not encrypt it (that is
+  `scheduler-receiver-use-ssl`). Someone connecting first still makes that transfer fail; the
+  job reports why.
+
+The streams the database sends to replication-manager (backups, logs, the jobs check) go the
+other way, to a port replication-manager opens for the transfer, and are not covered yet.
+
 ## Not covered here
 
 - **Certificate check.** The script talks TLS to `api-port` with `verify=0`: without

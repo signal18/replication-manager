@@ -319,6 +319,58 @@ job_body() {
     echo "{\"data\":\"$encrypted\",\"iv\":\"$iv\",\"key\":\"$keyname\"}"
 }
 
+# A stream replication-manager sends to the jobs listener (SST_RECEIVER_PORT: a backup to
+# restore, a new jobs script, a config) starts with a header line signed with the key of the
+# job bodies (the jobs key, else the database password):
+#   MRMSTREAM1 <ts> <nonce> <hex HMAC-SHA256(derive_key(secret), "stream:<server>:<ts>:<nonce>")>
+# job_stream_open reads it from stdin and copies the rest of the stream to stdout only when it is
+# valid: within JOB_STREAM_WINDOW seconds of its timestamp, with a nonce not taken before. Else
+# it writes why in $LOG_DIR/stream.refused and returns 1 with nothing written, so a stream from
+# whoever connects to the port first is never restored, installed or run.
+# Usage: socat -u TCP-LISTEN:... STDOUT | job_stream_open | ...
+readonly JOB_STREAM_WINDOW=300
+job_stream_open() {
+    local line tag ts nonce mac secret want now store="$LOG_DIR/.stream_nonces"
+    rm -f "$LOG_DIR/stream.refused"
+    # bash reads a pipe a byte at a time: the stream after the newline stays for cat. No read
+    # timeout: the listener's own (accept-timeout, timeout) bounds the wait for the sender.
+    if ! IFS= read -r -n 200 line; then
+        echo "no stream header" >"$LOG_DIR/stream.refused"
+        return 1
+    fi
+    read -r tag ts nonce mac <<<"$line"
+    now=$(date +%s)
+    if [[ "$tag" != "MRMSTREAM1" || ! "$ts" =~ ^[0-9]+$ || ! "$nonce" =~ ^[0-9a-f]{32}$ || ! "$mac" =~ ^[0-9a-f]{64}$ ]]; then
+        echo "no stream header" >"$LOG_DIR/stream.refused"
+        return 1
+    fi
+    if (( ts < now - JOB_STREAM_WINDOW || ts > now + JOB_STREAM_WINDOW )); then
+        echo "stream header outside the ${JOB_STREAM_WINDOW}s window (clock skew or replay)" >"$LOG_DIR/stream.refused"
+        return 1
+    fi
+    secret=$(jobs_key)
+    [[ -n "$secret" ]] || secret="$MYSQL_ROOT_PASSWORD"
+    want=$(printf "stream:%s:%s:%s" "$MYSQL_SERVER:$MYSQL_PORT" "$ts" "$nonce" |
+        openssl dgst -sha256 -mac HMAC -macopt hexkey:"$(derive_key "$secret")" | awk '{print $NF}')
+    if [[ "$want" != "$mac" ]]; then
+        echo "stream header not signed by replication-manager" >"$LOG_DIR/stream.refused"
+        return 1
+    fi
+    # the nonces taken within twice the window (bounded by it)
+    touch "$store" && chmod 600 "$store"
+    if grep -q " $nonce\$" "$store"; then
+        echo "stream header already used (replay)" >"$LOG_DIR/stream.refused"
+        return 1
+    fi
+    { awk -v min=$((now - 2 * JOB_STREAM_WINDOW)) '$1 >= min' "$store"; echo "$now $nonce"; } >"$store.$$" && mv -f "$store.$$" "$store"
+    exec cat
+}
+
+# job_stream_refused prints why the last stream was refused, nothing when it was not.
+job_stream_refused() {
+    cat "$LOG_DIR/stream.refused" 2>/dev/null
+}
+
 ########################
 # HTTP Helper Functions #
 ########################
@@ -977,7 +1029,7 @@ fetch_and_extract_config() {
     fi
 
     # Start listener in background and capture PID
-    timeout "$listener_timeout" socat -u "TCP-LISTEN:$sst_port,reuseaddr" "OPEN:$config_file,creat,trunc" > "$LOG_DIR/socat_listener.log" 2>&1 &
+    (set -o pipefail; timeout "$listener_timeout" socat -u "TCP-LISTEN:$sst_port,reuseaddr" STDOUT 2>"$LOG_DIR/socat_listener.log" | job_stream_open > "$config_file") &
     local socat_pid=$!
 
     send_lines_to_api "Listener started (PID: $socat_pid), waiting for config delivery (timeout: ${listener_timeout}s)..." "print-defaults" "$LVL_DEBUG"
@@ -986,7 +1038,11 @@ fetch_and_extract_config() {
     wait $socat_pid
     local socat_exit=$?
 
-    if [[ $socat_exit -eq 124 ]]; then
+    if [[ -n "$(job_stream_refused)" ]]; then
+        send_lines_to_api "ERROR: Config stream refused: $(job_stream_refused)" "print-defaults" "$LVL_ERROR"
+        rm -f "$config_file"
+        return 1
+    elif [[ $socat_exit -eq 124 ]]; then
         send_lines_to_api "ERROR: Timeout waiting for config delivery after ${listener_timeout}s" "print-defaults" "$LVL_ERROR"
         return 1
     elif [[ $socat_exit -ne 0 ]]; then
@@ -1857,7 +1913,7 @@ receiveBackup() {
         return 1
     fi
     rm -f "$count"
-    (socat -u TCP-LISTEN:$SST_RECEIVER_PORT,reuseaddr,accept-timeout=600,bind=$SOCAT_BIND STDOUT |
+    (socat -u TCP-LISTEN:$SST_RECEIVER_PORT,reuseaddr,accept-timeout=600,bind=$SOCAT_BIND STDOUT | job_stream_open |
         head -c "$budget" | tee >(wc -c >"$count") | $unpack -x -C "$BACKUPDIR") &
     sub=$!
     while kill -0 "$sub" 2>/dev/null; do
@@ -1880,6 +1936,10 @@ receiveBackup() {
     done
     got=$(cat "$count" 2>/dev/null)
     rm -f "$count"
+    if [[ -n "$(job_stream_refused)" ]]; then
+        receiveBackupAbort "Backup transfer refused: $(job_stream_refused). Nothing was received; no database or table was changed."
+        return 1
+    fi
     if [[ "${got:-0}" -ge "$budget" ]]; then
         # The numbers of the last poll can be old: report the current ones.
         read -r total avail < <(df -P -B1 "$DATADIR" 2>/dev/null | awk 'NR==2{print $2, $4}')
@@ -3125,7 +3185,7 @@ jobsUpgrade() {
 
     # Open receiver port to get the new script to a temporary file
     TEMP_FILE="${BASH_SOURCE[0]}.tmp"
-    timeout 120 socat -u TCP-LISTEN:$SST_RECEIVER_PORT,reuseaddr,bind=$SOCAT_BIND - > "$TEMP_FILE" 2>>"$LOG_DIR/jobs-upgrade.process.out" &
+    (set -o pipefail; timeout 120 socat -u TCP-LISTEN:$SST_RECEIVER_PORT,reuseaddr,bind=$SOCAT_BIND - 2>>"$LOG_DIR/jobs-upgrade.process.out" | job_stream_open > "$TEMP_FILE") &
     SOCAT_PID=$!
 
     # Request the upgrade
@@ -3154,6 +3214,9 @@ jobsUpgrade() {
             # Re-execute with the new version
             exec bash "${BASH_SOURCE[0]}" "$@"
         fi
+    elif [ -n "$(job_stream_refused)" ]; then
+        send_lines_to_api "New script refused: $(job_stream_refused)." "jobs-upgrade" "$LVL_ERROR"
+        rm -f "$TEMP_FILE"
     else
         send_lines_to_api "Failed to receive the new script via socat." "jobs-upgrade" "$LVL_ERROR"
         rm -f "$TEMP_FILE"

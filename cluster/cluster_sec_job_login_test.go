@@ -268,3 +268,77 @@ func TestJobsPrincipalGrants(t *testing.T) {
 		t.Error("the jobs principal is no user: a password check refuses it")
 	}
 }
+
+// scriptStreamOpen runs the jobs script's job_stream_open on stream, as the jobs listener of
+// db1:3306 does, and returns what it lets through and why it refused (empty when it did not).
+func scriptStreamOpen(t *testing.T, logDir string, stream []byte, password, jobsKey string) (string, string) {
+	t.Helper()
+	fns := `src=../share/scripts/dbjobs_new.sh
+eval "$(sed -n '/^derive_key() {/,/^}/p; /^jobs_key() {/,/^}/p; /^readonly JOB_STREAM_WINDOW=/p; /^job_stream_open() {/,/^}/p; /^job_stream_refused() {/,/^}/p' "$src")"
+job_stream_open
+job_stream_refused >&2`
+	cmd := exec.Command("bash", "-c", fns)
+	cmd.Env = append(cmd.Environ(), "JOBS_API_KEY="+jobsKey, "MYSQL_ROOT_PASSWORD="+password, "MYSQL_SERVER=db1", "MYSQL_PORT=3306", "LOG_DIR="+logDir)
+	cmd.Stdin = bytes.NewReader(stream)
+	var out, refused bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &out, &refused
+	cmd.Run()
+	return out.String(), strings.TrimSpace(refused.String())
+}
+
+// A stream to the jobs listener is taken only with the header replication-manager signs with
+// the key of the server's job bodies: once, within the window; a stream without it (whoever
+// connects to the port first), replayed or signed with another key is refused with nothing
+// written. A server whose script posts legacy bodies gets no header.
+func TestJobStreamHeader(t *testing.T) {
+	s := jobLoginServer(true)
+	c := s.ClusterGroup
+	c.Conf.SecretKey = []byte("0123456789abcdef0123456789abcdef")
+	jk := c.GetJobsKey()
+	payload := "#!/bin/bash\necho new script\n# EOF\n"
+
+	if h, err := s.JobStreamHeader(time.Now()); h != nil || err != nil {
+		t.Fatalf("no job body seen yet: no header, got %q %v", h, err)
+	}
+	if _, _, code, err := s.OpenJobBody(scriptJobBodyKey(t, `{"server":"db1:3306"}`, s.Pass, jk), time.Now()); code != 200 {
+		t.Fatalf("jobs key body: %d %v", code, err)
+	}
+	h, err := s.JobStreamHeader(time.Now())
+	if err != nil || h == nil {
+		t.Fatalf("header: %q %v", h, err)
+	}
+	dir := t.TempDir()
+	if got, why := scriptStreamOpen(t, dir, append(append([]byte{}, h...), payload...), s.Pass, jk); got != payload || why != "" {
+		t.Fatalf("signed stream: got %q, refused %q", got, why)
+	}
+	if got, why := scriptStreamOpen(t, dir, append(append([]byte{}, h...), payload...), s.Pass, jk); got != "" || !strings.Contains(why, "replay") {
+		t.Fatalf("replayed header: got %q, refused %q", got, why)
+	}
+	if got, why := scriptStreamOpen(t, dir, []byte(payload), s.Pass, jk); got != "" || why == "" {
+		t.Fatalf("no header (first to connect): got %q, refused %q", got, why)
+	}
+	forged := []byte(fmt.Sprintf("MRMSTREAM1 %d %s %s\n", time.Now().Unix(), strings.Repeat("ab", 16), jobStreamMAC("guess", "db1:3306", time.Now().Unix(), strings.Repeat("ab", 16))))
+	if got, why := scriptStreamOpen(t, dir, append(forged, payload...), s.Pass, jk); got != "" || !strings.Contains(why, "not signed") {
+		t.Fatalf("forged header: got %q, refused %q", got, why)
+	}
+	old, _ := s.JobStreamHeader(time.Now().Add(-time.Hour))
+	if got, why := scriptStreamOpen(t, dir, append(old, payload...), s.Pass, jk); got != "" || !strings.Contains(why, "window") {
+		t.Fatalf("old header: got %q, refused %q", got, why)
+	}
+
+	// without a jobs key the script signs with the database password, and so does the header
+	if _, _, code, err := s.OpenJobBody(scriptJobBody(t, `{"server":"db1:3306"}`, s.Pass), time.Now()); code != 200 {
+		t.Fatalf("db key body: %d %v", code, err)
+	}
+	h, _ = s.JobStreamHeader(time.Now())
+	if got, why := scriptStreamOpen(t, dir, append(h, payload...), s.Pass, ""); got != payload || why != "" {
+		t.Fatalf("db key stream: got %q, refused %q", got, why)
+	}
+
+	if _, _, code, _ := s.OpenJobBody(legacyJobBody(t, `{"server":"db1:3306"}`, s.Pass), time.Now()); code != 200 {
+		t.Fatalf("legacy body: %d", code)
+	}
+	if h, err := s.JobStreamHeader(time.Now()); h != nil || err != nil {
+		t.Fatalf("an older script reads no header: got %q %v", h, err)
+	}
+}
