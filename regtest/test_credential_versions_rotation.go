@@ -17,7 +17,8 @@ import (
 
 // TestCredentialVersionsRotation is the real-cluster regtest of the versioned credential
 // stores (#2227 rules 1, 1b, 2, T13), through repman's own API: on a MariaDB or MySQL cluster
-// provisioned with its starting credential (pass1), a rotation (pass2), a config reload, a
+// whose config holds its starting credential (pass1), running on pass1 or on an earlier
+// run's rotation, a rotation (pass2), a config reload, a
 // database tag added then dropped, and a start from the files on disk each leave every
 // server monitored with no access denied and logged in with pass2, while the config still
 // holds pass1 and the local versioned file holds both versions.
@@ -85,8 +86,14 @@ func (regtest *RegTest) credentialVersionsRotation(cl *cluster.Cluster, withVaul
 		startingRaw, _ = cl.Conf.GetImmuableFlag(key)
 	}
 	pass1 := cl.Conf.DecryptSecretValue(key, fmt.Sprintf("%v", startingRaw))
-	if pass1 == "" || cl.Conf.GetDecryptedValue(key) != pass1 {
-		return fail("the cluster does not run on its starting credential: rotate on a freshly provisioned cluster")
+	if pass1 == "" {
+		return fail("the config holds no starting value for %s", key)
+	}
+	// the credential the cluster runs on: the starting value, or the last rotation's when the
+	// test runs again on the same cluster
+	current := cl.Conf.GetDecryptedValue(key)
+	if current == "" {
+		return fail("repman holds no current value for %s", key)
 	}
 
 	// check runs after each step: every server answers pass2, the config keeps pass1, the file
@@ -173,7 +180,7 @@ func (regtest *RegTest) credentialVersionsRotation(cl *cluster.Cluster, withVaul
 		return fail("the rotation was refused (%d): %s", code, body)
 	}
 	deadline := time.Now().Add(120 * time.Second)
-	for cl.Conf.GetDecryptedValue(key) == pass1 {
+	for cl.Conf.GetDecryptedValue(key) == current {
 		if time.Now().After(deadline) {
 			return fail("the rotation did not change %s", key)
 		}
