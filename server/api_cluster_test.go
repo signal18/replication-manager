@@ -699,6 +699,8 @@ func TestSetClusterSetting_HaproxyPassword(t *testing.T) {
 	cl := newTestClusterForAPI(t)
 	cl.Conf.Secrets = config.NewSecrets(nil)
 	cl.ConfigManager = newConfigManagerForTest()
+	// the default (#2227): versioning on, the change is a version
+	cl.Conf.MonitoringSecretVersioning = true
 	repman := newTestRepmanWithCluster(t, cl.Name, cl)
 
 	encoded := base64.StdEncoding.EncodeToString([]byte("s3cr3t"))

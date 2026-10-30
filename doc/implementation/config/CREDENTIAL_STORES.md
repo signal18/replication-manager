@@ -81,7 +81,9 @@ settings (secrets encrypted, F9), on/off, forms drawn from the manifest.
    or typed by an operator (`root:pass1`). A rotation or a change never writes the config:
    the current value and its versions live only in the active stores. When no active store
    keeps versions (versioning off, no vault), a change is refused as a rotation is (rule 9),
-   so the config never holds anything else. Provisioning, a reprovision and the regtests
+   so the config never holds anything else. `monitoring-secret-versioning` is on by default,
+   so a default install keeps versions locally and takes changes; turning it off without a
+   vault entry makes every credential change and rotation refused. Provisioning, a reprovision and the regtests
    read the current version, never the starting value; the GUI shows it as the initial
    value.
 1b. **Every reload restores the last value**: a restart, a config reload, a tag change, a
@@ -326,7 +328,7 @@ last, because it is the starting value.
 |---|---|---|---|
 | **Vault**: `VaultKV` or `VaultDbEngine` → `DynamicConfig` → `PinnedConfig` | from Vault, at the path the config gives, pinned or not | KV: a new Vault version. Database engine: refused | KV: repman writes a new version. Database engine: Vault rotates |
 | **Local**: `LocalSecretStore` → `DynamicConfig` → `PinnedConfig` | the store's latest version, else the config | a new version in the store, pinned or not | allowed (versioned) |
-| **No store, not pinned**: `DynamicConfig` → `PinnedConfig` | `<cluster>.toml` | saved to `<cluster>.toml` | refused (no history) |
+| **No store, not pinned**: `DynamicConfig` → `PinnedConfig` | `<cluster>.toml` | refused (rule 1: the config keeps the starting value) | refused (no history) |
 | **No store, pinned**: `PinnedConfig` | the file | refused: the file wins at restart | refused |
 
 So:
