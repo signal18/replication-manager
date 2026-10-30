@@ -644,6 +644,16 @@ func (cluster *Cluster) writeSecretVersionFile() error {
 	if !changed {
 		return nil
 	}
+	// F9 whatever the order of events: a version kept in memory without the key (versioning
+	// turned on at runtime, the key still missing) never reaches the file
+	for key, versions := range file {
+		for _, v := range versions {
+			if v.HashValue != "" && !containsHashPrefixToken(v.HashValue) {
+				vs.MarkDirty()
+				return fmt.Errorf("version %d of %s is not encrypted (no encryption key, monitoring-key-path): the file is not written", v.Version, key)
+			}
+		}
+	}
 	if err := writeSecretVersionStoreAtomic(path, file); err != nil {
 		vs.MarkDirty()
 		return err

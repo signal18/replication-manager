@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/config/credstore"
 )
 
 func TestReconcileSecretVersionStoreBootstrapReconcileAndDedupe(t *testing.T) {
@@ -801,5 +802,29 @@ func TestPruneSecretVersionStoreKeepsConfigFileValue(t *testing.T) {
 	}
 	if _, _, again := pruneSecretVersionStore(pruned, 2); again != 0 {
 		t.Fatalf("a second prune removed %d", again)
+	}
+}
+
+// F9: a version kept in memory without the key (versioning off, then turned on at runtime with
+// the key still missing) is never written to the file
+func TestWriteSecretVersionFileRefusesUnencryptedVersion(t *testing.T) {
+	root := t.TempDir()
+	cl := &Cluster{
+		Name:       "cluster-f9",
+		WorkingDir: filepath.Join(root, "cluster-f9"),
+		Conf:       &config.Config{WorkingDir: root, MonitoringKeyPath: filepath.Join(root, "no.key")},
+	}
+	// versioning off, a vault entry: its read is kept in memory as it is, there is no key
+	vs := cl.versionStore()
+	vs.Insert("replication-credential", credstore.Version{Value: "repl:cleartext", At: time.Now()})
+	if vs.Count("replication-credential") != 1 {
+		t.Fatal("the vault read was not kept in memory")
+	}
+	cl.Conf.MonitoringSecretVersioning = true
+	if err := cl.writeSecretVersionFile(); err == nil {
+		t.Fatal("a version without encryption was written")
+	}
+	if _, err := os.Stat(SecretVersionStorePath(root, cl.Name)); !os.IsNotExist(err) {
+		t.Fatalf("the file exists: %v", err)
 	}
 }
