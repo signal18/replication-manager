@@ -105,6 +105,9 @@ func (cluster *Cluster) OpenSVCProvisionDatabaseV2(s *ServerMonitor, svc opensvc
 	if err != nil {
 		return err
 	}
+	if err := cluster.openSVCPublishJobsKey(svc); err != nil {
+		return err
+	}
 	res, err := s.GenerateDBTemplateV2()
 	if err != nil {
 		return err
@@ -122,6 +125,9 @@ func (cluster *Cluster) OpenSVCProvisionDatabaseV2(s *ServerMonitor, svc opensvc
 func (cluster *Cluster) OpenSVCProvisionDatabaseV3(s *ServerMonitor, svc opensvc.Collector, agent opensvc.Host) error {
 	err := cluster.OpenSVCCreateMaps(s.Agent)
 	if err != nil {
+		return err
+	}
+	if err := cluster.openSVCPublishJobsKey(svc); err != nil {
 		return err
 	}
 	res, err := s.GenerateDBTemplateV3()
@@ -158,6 +164,11 @@ func (cluster *Cluster) OpenSVCUpdateDatabaseTemplate(s *ServerMonitor) error {
 	// the refreshed definition maps the sensor keys; a namespace provisioned before
 	// the sensor existed has none of them (#1944)
 	cluster.openSVCEnsureSensorPrerequisitesLogged(svc, s.ServiceName)
+	// the refreshed jobs volume maps JOBS_API_KEY: published before, never a definition
+	// naming a key the secret does not hold
+	if err := cluster.openSVCPublishJobsKey(svc); err != nil {
+		return err
+	}
 	var res []byte
 	var err error
 	if app := cluster.engineAppOfServer(s); app != nil {
@@ -1250,12 +1261,34 @@ func (cluster *Cluster) openSVCGetColumnstoreShmSection() map[string]string {
 	}
 }
 
+// openSVCPublishJobsKey publishes the cluster's jobs key (GetJobsKey) as env/JOBS_API_KEY,
+// which the jobs volume maps; nothing without a persistent key (the volume then maps the
+// database password only).
+func (cluster *Cluster) openSVCPublishJobsKey(svc opensvc.Collector) error {
+	k := cluster.GetJobsKey()
+	if k == "" {
+		return nil
+	}
+	if err := cluster.openSVCPublishEnvSecret(svc, "JOBS_API_KEY", k); err != nil {
+		return fmt.Errorf("publish the jobs key: %w", err)
+	}
+	return nil
+}
+
+// OpenSVCGetJobsVolumeSecret is the jobs container's shm secret volume, mounted at
+// /credentials: the database password, and the jobs key the job bodies are encrypted with
+// (JOBS_API_KEY, when replication-manager has a persistent key; published by
+// openSVCPublishJobsKey before any definition maps it). A file, read at use time by the
+// script: not an environment variable, frozen at container start and shown by inspect.
 func (cluster *Cluster) OpenSVCGetJobsVolumeSecret() map[string]string {
 	svcvol := make(map[string]string)
 	svcvol["name"] = "{name}-sec"
 	svcvol["type"] = "shm"
 	svcvol["size"] = "1m"
 	svcvol["secrets"] = "env/MYSQL_ROOT_PASSWORD:/"
+	if cluster.GetJobsKey() != "" {
+		svcvol["secrets"] += " env/JOBS_API_KEY:/"
+	}
 	svcvol["user"] = "99"
 	svcvol["perm"] = "600"
 	svcvol["dirperm"] = "700"

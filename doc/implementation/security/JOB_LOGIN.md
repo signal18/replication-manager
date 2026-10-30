@@ -4,11 +4,42 @@ The database jobs script (`share/scripts/dbjobs_new.sh`, served by replication-m
 database server) talks to the API in two ways:
 
 - **Job bodies:** `secret-login`, job state, tasks, config receiver, jobs upgrade, `write-log`.
-  The body is `{"data": <base64>, "iv": <hex>}`: a JSON object encrypted with AES-256-CBC, the
-  key being SHA-256 of the server's password. replication-manager decrypts it with the password
-  it monitors the server with (`ServerMonitor.OpenJobBody`, `cluster/cluster_sec_job_login.go`).
+  The body is `{"data": <base64>, "iv": <hex>, "key": "jobs"|"db"}`: a JSON object encrypted
+  with AES-256-CBC, the AES key being SHA-256 of the cluster's **jobs key**, or of the server's
+  password when the script has no jobs key (`ServerMonitor.OpenJobBody`,
+  `cluster/cluster_sec_job_login.go`).
 - **Bearer token:** the token `secret-login` returns, for the other calls (DBU sensor, config
   fetch, ...).
+
+## The jobs key
+
+The login and the job bodies do not depend on the database password: they use the cluster's
+jobs key, `GetJobsKey` = hex(HMAC-SHA256(SecretKey, "jobs:" + cluster)), derived from
+replication-manager's persistent key (`monitoring-key-path`), never stored.
+
+- **Per cluster**, unlike the `system` key the app and proxy sensors log in with
+  (`GetSystemAPIKey`, the same for the whole replication-manager): on a shared
+  replication-manager, a database container of one cluster cannot write the job bodies of
+  another cluster's servers. Within a cluster, the clear object names its server (`server`,
+  its URL, host:port or ip:port) and a body naming another server is refused.
+- **Delivery, OpenSVC:** published as `env/JOBS_API_KEY` in the namespace's `env` secret
+  (`openSVCPublishJobsKey`, at provision and before each definition refresh, so no definition
+  ever maps a key the secret does not hold), and mapped into the jobs container's shm secret
+  volume `{name}-sec` (`/credentials/JOBS_API_KEY`, mode 600, user 99) next to the database
+  password. A file read at use time, not an environment variable (frozen at container start,
+  shown by `docker inspect`).
+- **Delivery, on-premise (ssh):** exported in the ssh environment (`GetSshEnv`,
+  `JOBS_API_KEY`) that precedes the script at each run; nothing is written on the host.
+- **Script:** `jobs_key` reads `$JOBS_API_KEY`, else `/credentials/JOBS_API_KEY`. With a key,
+  the bodies carry no `secret` (`job_secret`) and `secret-login` accepts them without it: the
+  database password never travels, and rotating it does not touch the login. Without a key
+  (no persistent key, or a service not refreshed yet), the bodies use the database password and
+  carry it (`"key": "db"`).
+- **Rotation:** the key changes when replication-manager's key rotates. No previous version is
+  accepted yet and the script does not fall back on the database password: until a container
+  gets the new key (OpenSVC refreshes the shm volume from the secret; on-premise it comes with
+  the next run), its bodies are refused. Accepting the previous key for a while belongs to key
+  rotation (#2232).
 
 ## One-time format
 

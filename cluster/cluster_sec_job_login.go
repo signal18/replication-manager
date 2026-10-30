@@ -8,6 +8,8 @@
 package cluster
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -36,7 +38,15 @@ import (
 type jobBody struct {
 	Data string `json:"data"`
 	IV   string `json:"iv"`
+	Key  string `json:"key"` // "jobs": encrypted with the cluster's jobs key; else the server's password
 }
+
+// Job body keys, as OpenJobBody reports them.
+const (
+	JobKeyLegacy = "legacy" // the server's password, fixed IV: replayable
+	JobKeyDB     = "db"     // the server's password, one-time
+	JobKeyJobs   = "jobs"   // the cluster's jobs key, one-time: no database password involved
+)
 
 // jobNonceMax bounds the nonces kept (F4): a nonce is kept twice the window, a database server
 // posts a few bodies a minute.
@@ -77,6 +87,24 @@ func useJobNonce(nonce string, now, keep time.Time) (bool, error) {
 	return true, nil
 }
 
+// GetJobsKey is the key a cluster's database jobs encrypt their job bodies with:
+// hex(HMAC-SHA256(SecretKey, "jobs:"+cluster)), derived from replication-manager's persistent
+// key (monitoring-key-path), never stored, never a database password. Per cluster, unlike the
+// `system` key (GetSystemAPIKey): a database container of one cluster cannot write the job
+// bodies of another's servers on a shared replication-manager. Delivered to the jobs container
+// in its shm secret volume (OpenSVC, /credentials/JOBS_API_KEY) or in the ssh environment
+// (on-premise, GetSshEnv); it changes when the key rotates. Empty without a persistent key:
+// the jobs then use the database password.
+func (cluster *Cluster) GetJobsKey() string {
+	key := cluster.Conf.SecretKey
+	if len(key) == 0 {
+		return ""
+	}
+	mac := hmac.New(sha256.New, key)
+	mac.Write([]byte("jobs:" + cluster.Name))
+	return hex.EncodeToString(mac.Sum(nil))
+}
+
 // secretLoginWindow is the accepted distance to a body's timestamp.
 func (cluster *Cluster) secretLoginWindow() time.Duration {
 	if cluster.Conf.APISecretLoginWindow <= 0 {
@@ -85,55 +113,77 @@ func (cluster *Cluster) secretLoginWindow() time.Duration {
 	return time.Duration(cluster.Conf.APISecretLoginWindow) * time.Second
 }
 
-// OpenJobBody decrypts a job body posted for this server and returns its clear JSON, whether it
-// was a one-time body, and the HTTP code of a refusal. A one-time body outside the window or
-// with a nonce already seen is refused (401); a legacy body is refused when
-// api-secret-login-legacy is off, else accepted and noted for WARN0272.
-func (server *ServerMonitor) OpenJobBody(raw []byte, now time.Time) ([]byte, bool, int, error) {
+// OpenJobBody decrypts a job body posted for this server and returns its clear JSON, the key it
+// was encrypted with (JobKeyJobs, JobKeyDB, JobKeyLegacy), and the HTTP code of a refusal.
+//   - jobs key: the clear object must name this server ("server" = its URL), the key being
+//     shared by the cluster's servers;
+//   - one-time (jobs or db key): refused outside the window of its timestamp or with a nonce
+//     already seen (401);
+//   - legacy: refused when api-secret-login-legacy is off, else accepted and noted for WARN0272.
+func (server *ServerMonitor) OpenJobBody(raw []byte, now time.Time) ([]byte, string, int, error) {
 	cluster := server.ClusterGroup
 	var b jobBody
 	if err := json.Unmarshal(raw, &b); err != nil {
-		return nil, false, 400, fmt.Errorf("Decode body: %s", err.Error())
+		return nil, "", 400, fmt.Errorf("Decode body: %s", err.Error())
 	}
+	mode := JobKeyLegacy
 	key := crypto.GetSHA256Hash(server.Pass)
-	oneTime := b.IV != ""
 	iv := crypto.GetMD5Hash(server.Pass)
-	if oneTime {
+	if b.IV != "" {
 		if v, err := hex.DecodeString(b.IV); err != nil || len(v) != 16 {
-			return nil, true, 400, fmt.Errorf("Decode body: iv is not 16 bytes of hex")
+			return nil, "", 400, fmt.Errorf("Decode body: iv is not 16 bytes of hex")
 		}
 		iv = strings.ToLower(b.IV)
+		mode = JobKeyDB
+		if b.Key == JobKeyJobs {
+			jobsKey := cluster.GetJobsKey()
+			if jobsKey == "" {
+				return nil, JobKeyJobs, 401, fmt.Errorf("Job body with the jobs key, but no persistent key to derive it (monitoring-key-path)")
+			}
+			key = crypto.GetSHA256Hash(jobsKey)
+			mode = JobKeyJobs
+		}
 	} else if !cluster.Conf.APISecretLoginLegacy {
-		return nil, false, 401, fmt.Errorf("Legacy job body refused (api-secret-login-legacy off): upgrade the jobs script")
+		return nil, JobKeyLegacy, 401, fmt.Errorf("Legacy job body refused (api-secret-login-legacy off): upgrade the jobs script")
 	}
 	data, err := server.DecryptAES256(b.Data, key, iv)
 	if err != nil {
-		return nil, oneTime, 500, fmt.Errorf("Error decrypting data : %s", err.Error())
+		return nil, mode, 500, fmt.Errorf("Error decrypting data : %s", err.Error())
 	}
-	if !oneTime {
+	if mode == JobKeyLegacy {
 		atomic.StoreInt64(&server.legacyJobLoginAt, now.Unix())
-		return data, false, 200, nil
+		return data, mode, 200, nil
 	}
 	var fresh struct {
-		Ts    int64  `json:"ts"`
-		Nonce string `json:"nonce"`
+		Ts     int64  `json:"ts"`
+		Nonce  string `json:"nonce"`
+		Server string `json:"server"`
 	}
 	if err := json.Unmarshal(jobJSONObject(data), &fresh); err != nil || fresh.Ts == 0 || len(fresh.Nonce) < 16 {
-		return nil, true, 401, fmt.Errorf("One-time job body without timestamp or nonce")
+		return nil, mode, 401, fmt.Errorf("One-time job body without timestamp or nonce")
+	}
+	if mode == JobKeyJobs && !server.namedBy(fresh.Server) {
+		return nil, mode, 401, fmt.Errorf("Job body for %q posted for %s", fresh.Server, server.URL)
 	}
 	window := cluster.secretLoginWindow()
 	ts := time.Unix(fresh.Ts, 0)
 	if ts.Before(now.Add(-window)) || ts.After(now.Add(window)) {
-		return nil, true, 401, fmt.Errorf("Job body outside the %s window (clock skew or replay)", window)
+		return nil, mode, 401, fmt.Errorf("Job body outside the %s window (clock skew or replay)", window)
 	}
 	ok, err := useJobNonce(fresh.Nonce, now, now.Add(2*window))
 	if err != nil {
-		return nil, true, 503, err
+		return nil, mode, 503, err
 	}
 	if !ok {
-		return nil, true, 401, fmt.Errorf("Job body already used (replay)")
+		return nil, mode, 401, fmt.Errorf("Job body already used (replay)")
 	}
-	return data, true, 200, nil
+	return data, mode, 200, nil
+}
+
+// namedBy: name is how a job body names this server, its URL or the host:port and ip:port its
+// requests are routed by (GetServerFromURL).
+func (server *ServerMonitor) namedBy(name string) bool {
+	return name != "" && (name == server.URL || name == server.Host+":"+server.Port || (server.IP != "" && name == server.IP+":"+server.Port))
 }
 
 // jobJSONObject is the JSON object inside a decrypted body: from its first '{' to its last

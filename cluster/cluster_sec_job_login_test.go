@@ -11,6 +11,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os/exec"
 	"strings"
 	"sync/atomic"
@@ -26,15 +27,23 @@ import (
 // helpers it calls), so the test covers what a database server really posts.
 func scriptJobBody(t *testing.T, payload, password string) []byte {
 	t.Helper()
+	return scriptJobBodyKey(t, payload, password, "")
+}
+
+// scriptJobBodyKey is scriptJobBody with JOBS_API_KEY set as the ssh environment sets it.
+func scriptJobBodyKey(t *testing.T, payload, password, jobsKey string) []byte {
+	t.Helper()
 	for _, bin := range []string{"bash", "openssl", "sha256sum"} {
 		if _, err := exec.LookPath(bin); err != nil {
 			t.Skipf("%s not found", bin)
 		}
 	}
 	fns := `src=../share/scripts/dbjobs_new.sh
-eval "$(sed -n '/^pad_pkcs7() {/,/^}/p; /^derive_key() {/,/^}/p; /^job_body() {/,/^}/p' "$src")"
+eval "$(sed -n '/^pad_pkcs7() {/,/^}/p; /^derive_key() {/,/^}/p; /^jobs_key() {/,/^}/p; /^job_body() {/,/^}/p' "$src")"
 job_body "$1" "$2"`
-	out, err := exec.Command("bash", "-c", fns, "job_body", payload, password).Output()
+	cmd := exec.Command("bash", "-c", fns, "job_body", payload, password)
+	cmd.Env = append(cmd.Environ(), "JOBS_API_KEY="+jobsKey)
+	out, err := cmd.Output()
 	if err != nil {
 		t.Fatalf("job_body: %v", err)
 	}
@@ -59,7 +68,7 @@ func jobLoginServer(legacy bool) *ServerMonitor {
 	c := &Cluster{Name: "c1", Conf: &config.Config{APISecretLoginLegacy: legacy, APISecretLoginWindow: 300}}
 	c.SecurityStateMachine = new(state.StateMachine)
 	c.SecurityStateMachine.Init()
-	s := &ServerMonitor{URL: "db1:3306", Pass: "s3cr3t", ClusterGroup: c}
+	s := &ServerMonitor{URL: "db1:3306", Host: "db1", Port: "3306", Pass: "s3cr3t", ClusterGroup: c}
 	c.Servers = []*ServerMonitor{s}
 	return s
 }
@@ -71,9 +80,9 @@ func TestOpenJobBodyOneTime(t *testing.T) {
 	body := scriptJobBody(t, `{"server":"db1:3306", "secret":"pw"}`, s.Pass)
 	now := time.Now()
 
-	data, oneTime, code, err := s.OpenJobBody(body, now)
-	if err != nil || code != 200 || !oneTime {
-		t.Fatalf("first use: code %d, one-time %v, err %v", code, oneTime, err)
+	data, mode, code, err := s.OpenJobBody(body, now)
+	if err != nil || code != 200 || mode != JobKeyDB {
+		t.Fatalf("first use: code %d, mode %s, err %v", code, mode, err)
 	}
 	secret, payload, err := s.DecodeSecret(data)
 	if err != nil || secret != "pw" || !secretPayloadHas(payload, "nonce") {
@@ -99,8 +108,8 @@ func TestOpenJobBodyLegacy(t *testing.T) {
 	s := jobLoginServer(true)
 	body := legacyJobBody(t, `{"server":"db1:3306","secret":"pw"}`, s.Pass)
 	for i := 0; i < 2; i++ { // replayable by nature: accepted each time while legacy is on
-		if _, oneTime, code, err := s.OpenJobBody(body, time.Now()); code != 200 || oneTime || err != nil {
-			t.Fatalf("legacy on: code %d, one-time %v, err %v", code, oneTime, err)
+		if _, mode, code, err := s.OpenJobBody(body, time.Now()); code != 200 || mode != JobKeyLegacy || err != nil {
+			t.Fatalf("legacy on: code %d, mode %s, err %v", code, mode, err)
 		}
 	}
 	if atomic.LoadInt64(&s.legacyJobLoginAt) == 0 {
@@ -152,4 +161,62 @@ func secretPayloadHas(payload, field string) bool {
 	}
 	_, ok := m[field]
 	return ok
+}
+
+// With the cluster's jobs key, the body carries no database password: accepted for the server
+// it names, refused for another server of the cluster, refused when the key cannot be derived;
+// SecretLoginCheck lets it in without "secret".
+func TestOpenJobBodyJobsKey(t *testing.T) {
+	s := jobLoginServer(false)
+	c := s.ClusterGroup
+	c.Conf.SecretKey = []byte("0123456789abcdef0123456789abcdef")
+	other := &ServerMonitor{URL: "db2:3306", Host: "db2", Port: "3306", Pass: "other", ClusterGroup: c}
+	c.Servers = append(c.Servers, other)
+	jk := c.GetJobsKey()
+	if jk == "" || jk == c.GetSystemAPIKey() {
+		t.Fatalf("the jobs key is derived per cluster, apart from the system key: %q", jk)
+	}
+
+	body := scriptJobBodyKey(t, `{"server":"db1:3306"}`, s.Pass, jk)
+	if !strings.Contains(string(body), `"key":"jobs"`) {
+		t.Fatalf("the script must name the jobs key: %s", body)
+	}
+	data, mode, code, err := s.OpenJobBody(body, time.Now())
+	if code != 200 || mode != JobKeyJobs || err != nil || strings.Contains(string(data), "secret") {
+		t.Fatalf("jobs key: code %d, mode %s, err %v, data %s", code, mode, err, data)
+	}
+
+	stolen := scriptJobBodyKey(t, `{"server":"db1:3306"}`, s.Pass, jk)
+	if _, _, code, _ := other.OpenJobBody(stolen, time.Now()); code != 401 {
+		t.Fatalf("a body naming db1 posted for db2 must be refused, got %d", code)
+	}
+
+	login := scriptJobBodyKey(t, `{"server":"db1:3306"}`, s.Pass, jk)
+	if node, _, code, err := c.SecretLoginCheck(map[string]string{"serverName": "db1", "serverPort": "3306"}, io.NopCloser(bytes.NewReader(login))); code != 200 || node != s {
+		t.Fatalf("secret-login with the jobs key and no secret: code %d, err %v", code, err)
+	}
+
+	c.Conf.SecretKey = nil
+	late := scriptJobBodyKey(t, `{"server":"db1:3306"}`, s.Pass, jk)
+	if _, _, code, _ := s.OpenJobBody(late, time.Now()); code != 401 {
+		t.Fatalf("no persistent key: a jobs-key body must be refused, got %d", code)
+	}
+}
+
+// The jobs volume maps the jobs key next to the database password when it can be derived, and
+// the database password only without a persistent key; the ssh environment carries it.
+func TestJobsKeyDelivery(t *testing.T) {
+	c := &Cluster{Name: "c1", Conf: &config.Config{}}
+	if got := c.OpenSVCGetJobsVolumeSecret()["secrets"]; got != "env/MYSQL_ROOT_PASSWORD:/" {
+		t.Fatalf("without a persistent key: %q", got)
+	}
+	c.Conf.SecretKey = []byte("0123456789abcdef0123456789abcdef")
+	if got := c.OpenSVCGetJobsVolumeSecret()["secrets"]; got != "env/MYSQL_ROOT_PASSWORD:/ env/JOBS_API_KEY:/" {
+		t.Fatalf("with a persistent key: %q", got)
+	}
+	s := &ServerMonitor{URL: "db1:3306", Host: "db1", Port: "3306", ClusterGroup: c}
+	c.Servers = []*ServerMonitor{s}
+	if env := s.GetSshEnv(); !strings.Contains(env, "JOBS_API_KEY="+c.GetJobsKey()) && !strings.Contains(env, "JOBS_API_KEY='"+c.GetJobsKey()+"'") {
+		t.Fatalf("the ssh environment must export the jobs key")
+	}
 }

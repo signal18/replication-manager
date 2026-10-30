@@ -670,24 +670,30 @@ func (cluster *Cluster) openSVCEnsureSensorPrerequisites(svc opensvc.Collector) 
 		return nil
 	}
 	if k := cluster.GetSystemAPIKey(); k != "" {
-		// V3: create-or-update, but only when the key differs: the daemon restarts every
-		// service that reads a rewritten key, everywhere, even on an identical value (live
-		// status app 2026-10-28: each definition refresh restarted all its flex instances).
-		// V2: an existing key is fine. The value is never logged.
-		// A failed read (missing key or not) falls through to the write: converging on the
-		// right value beats skipping it, at the cost of one restart of the readers.
-		published := false
-		if svc.IsV3() {
-			cur, err := svc.GetSecretKeyValueV3(cluster.Name, "env", "SENSOR_API_KEY")
-			published = err == nil && string(cur) == k
-		}
-		if !published {
-			if err := svc.CreateSecretKeyValue(cluster.Name, "env", "SENSOR_API_KEY", k); err != nil && !isOpenSVCAlreadyExists(err) {
-				return fmt.Errorf("publish sensor credential key: %w", err)
-			}
+		if err := cluster.openSVCPublishEnvSecret(svc, "SENSOR_API_KEY", k); err != nil {
+			return fmt.Errorf("publish sensor credential key: %w", err)
 		}
 	}
 	return cluster.openSVCPublishAppJobScript(svc)
+}
+
+// openSVCPublishEnvSecret writes key=value in the namespace's `env` SECRET when it is not there
+// with that value. V3: create-or-update, but only when the key differs: the daemon restarts
+// every service that reads a rewritten key, everywhere, even on an identical value (live
+// status app 2026-10-28: each definition refresh restarted all its flex instances). V2: an
+// existing key is fine. The value is never logged. A failed read (missing key or not) falls
+// through to the write: converging on the right value beats skipping it, at the cost of one
+// restart of the readers.
+func (cluster *Cluster) openSVCPublishEnvSecret(svc opensvc.Collector, key, value string) error {
+	if svc.IsV3() {
+		if cur, err := svc.GetSecretKeyValueV3(cluster.Name, "env", key); err == nil && string(cur) == value {
+			return nil
+		}
+	}
+	if err := svc.CreateSecretKeyValue(cluster.Name, "env", key, value); err != nil && !isOpenSVCAlreadyExists(err) {
+		return err
+	}
+	return nil
 }
 
 // openSVCEnsureSensorPrerequisitesLogged runs openSVCEnsureSensorPrerequisites before a

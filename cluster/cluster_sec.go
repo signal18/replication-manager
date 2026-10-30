@@ -723,7 +723,7 @@ func (cluster *Cluster) SecretLoginCheck(vars map[string]string, rbody io.ReadCl
 	if node == nil {
 		return nil, "", 500, fmt.Errorf("No server")
 	}
-	data, _, code, err := node.OpenJobBody(body, time.Now())
+	data, mode, code, err := node.OpenJobBody(body, time.Now())
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Job body of %s refused: %s", node.URL, err.Error())
 		return nil, "", code, err
@@ -733,7 +733,9 @@ func (cluster *Cluster) SecretLoginCheck(vars map[string]string, rbody io.ReadCl
 		return nil, "", 500, fmt.Errorf("Error decrypting data : %s", err.Error())
 	}
 
-	if secret != cluster.GetDbPass() {
+	// a body under the jobs key proved itself by decrypting (OpenJobBody checked its server);
+	// under the server's password, it carries the database password
+	if mode != JobKeyJobs && secret != cluster.GetDbPass() {
 		return nil, "", 401, fmt.Errorf("Invalid secret")
 	}
 

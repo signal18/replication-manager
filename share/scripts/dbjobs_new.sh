@@ -273,14 +273,40 @@ derive_key() {
     echo "$key"
 }
 
-# Job body: the JSON a job request posts, {"data":"<base64>","iv":"<hex>"}. The clear JSON
-# object is stamped with "ts" (unix seconds) and a random "nonce", and encrypted with
-# AES-256-CBC under a random IV: replication-manager accepts it once, within its window
-# around ts (api-secret-login-window), so a captured body cannot be replayed.
+# Jobs key: the cluster's key the job bodies are encrypted with (replication-manager's
+# GetJobsKey), never a database password. On-premise it comes in the ssh environment
+# (JOBS_API_KEY), on OpenSVC from the shm secret volume, read at use time so a new key is
+# picked up without a restart. Empty when replication-manager has no persistent key: the job
+# bodies then use the database password and carry it ("secret").
+jobs_key() {
+    if [[ -n "${JOBS_API_KEY:-}" ]]; then
+        printf "%s" "$JOBS_API_KEY"
+    elif [[ -s /credentials/JOBS_API_KEY ]]; then
+        tr -d '\n' < /credentials/JOBS_API_KEY
+    fi
+}
+
+# The "secret" member of a job body: the database password, only when there is no jobs key.
+# Usage: "{\"server\":\"h:p\"$(job_secret)}"
+job_secret() {
+    [[ -n "$(jobs_key)" ]] || printf ',"secret":"%s"' "$MYSQL_ROOT_PASSWORD"
+}
+
+# Job body: the JSON a job request posts, {"data":"<base64>","iv":"<hex>","key":"jobs"|"db"}.
+# The clear JSON object is stamped with "ts" (unix seconds) and a random "nonce", and
+# encrypted with AES-256-CBC under a random IV, with the jobs key (jobs_key) or, without one,
+# the database password: replication-manager accepts it once, within its window around ts
+# (api-secret-login-window), so a captured body cannot be replayed.
 # Usage: job_body "json_object" ["password"]
 job_body() {
     local data="$1"
     local password="${2:-$MYSQL_ROOT_PASSWORD}"
+    local keyname="db"
+    local jk=$(jobs_key)
+    if [[ -n "$jk" ]]; then
+        password="$jk"
+        keyname="jobs"
+    fi
     local key=$(derive_key "$password")
     local iv=$(openssl rand -hex 16)
     local nonce=$(openssl rand -hex 16)
@@ -290,7 +316,7 @@ job_body() {
     local stamped="{\"ts\":$(date +%s),\"nonce\":\"$nonce\"${sep}${rest}"
     local padded=$(pad_pkcs7 "$stamped")
     local encrypted=$(echo -n "$padded" | openssl aes-256-cbc -a -nosalt -K "$key" -iv "$iv" | tr -d '\n')
-    echo "{\"data\":\"$encrypted\",\"iv\":\"$iv\"}"
+    echo "{\"data\":\"$encrypted\",\"iv\":\"$iv\",\"key\":\"$keyname\"}"
 }
 
 ########################
@@ -506,7 +532,7 @@ send_lines_to_api() {
 
     check_log_level "$CLUSTER_NAME" "$job" "$level" || return 0
 
-    local data="{\"server\":\"$MYSQL_SERVER:$MYSQL_PORT\",\"secret\":\"$MYSQL_ROOT_PASSWORD\",\"log\":\"$lines\",\"level\":\"$level\"}"
+    local data="{\"server\":\"$MYSQL_SERVER:$MYSQL_PORT\"$(job_secret),\"log\":\"$lines\",\"level\":\"$level\"}"
     local api_endpoint="/api/clusters/$CLUSTER_NAME/servers/$MYSQL_SERVER/$MYSQL_PORT/write-log/$job"
 
     send_to_api_with_retry "$api_host" "$api_port" "$api_endpoint" "$data" "$MAX_RETRIES"
@@ -524,7 +550,7 @@ check_task_needs() {
     local api_port="$REPLICATION_MANAGER_PORT"
 
     local endpoint="/api/clusters/${cluster}/servers/${server}/${port}/needs/${taskname}"
-    local response=$(send_encrypted_api_request "$api_host" "$api_port" "$endpoint" "{\"server\":\"$server:$port\",\"secret\":\"$MYSQL_ROOT_PASSWORD\"}")
+    local response=$(send_encrypted_api_request "$api_host" "$api_port" "$endpoint" "{\"server\":\"$server:$port\"$(job_secret)}")
 
     local http_code=$(extract_http_code "$response")
     local body=$(extract_http_body "$response" | tr -d '\n')
@@ -550,7 +576,7 @@ get_task_receiver() {
     local api_port="$REPLICATION_MANAGER_PORT"
 
     local endpoint="/api/clusters/${cluster}/servers/${server}/${port}/actions/receive-task/${taskname}"
-    local response=$(send_encrypted_api_request "$api_host" "$api_port" "$endpoint" "{\"server\":\"$server:$port\",\"secret\":\"$MYSQL_ROOT_PASSWORD\"}")
+    local response=$(send_encrypted_api_request "$api_host" "$api_port" "$endpoint" "{\"server\":\"$server:$port\"$(job_secret)}")
 
     local http_code=$(extract_http_code "$response")
     local body=$(extract_http_body "$response" | tr -d '\n')
@@ -600,7 +626,7 @@ report_job_state() {
     local api_host="$REPLICATION_MANAGER_HOST"
     local api_port="$REPLICATION_MANAGER_PORT"
     local endpoint="/api/clusters/${CLUSTER_NAME}/servers/${MYSQL_SERVER}/${MYSQL_PORT}/actions/job-state/${taskname}/${jobstate}"
-    local data="{\"server\":\"$MYSQL_SERVER:$MYSQL_PORT\",\"secret\":\"$MYSQL_ROOT_PASSWORD\""
+    local data="{\"server\":\"$MYSQL_SERVER:$MYSQL_PORT\"$(job_secret)"
     if [[ -n "$restore_json" ]]; then
         data="${data},\"restore\":${restore_json}"
     fi
@@ -670,7 +696,7 @@ secret_login() {
     local endpoint="/api/clusters/${cluster}/servers/${server}/${port}/secret-login"
 
     # Prepare JSON payload: a one-time job body
-    local json_data=$(job_body "{\"server\":\"$server:$port\", \"secret\":\"$MYSQL_ROOT_PASSWORD\"}")
+    local json_data=$(job_body "{\"server\":\"$server:$port\"$(job_secret)}")
 
     # Send request
     local response=$(send_http_request "POST" "$api_host" "$api_port" "$endpoint" "$json_data")
@@ -1274,7 +1300,7 @@ check_jobs_receiver() {
     local api_port="$REPLICATION_MANAGER_PORT"
 
     local endpoint="/api/clusters/${cluster}/servers/${server}/${port}/actions/receive-jobs-check"
-    local response=$(send_encrypted_api_request "$api_host" "$api_port" "$endpoint" "{\"server\":\"$server:$port\",\"secret\":\"$MYSQL_ROOT_PASSWORD\"}")
+    local response=$(send_encrypted_api_request "$api_host" "$api_port" "$endpoint" "{\"server\":\"$server:$port\"$(job_secret)}")
 
     local http_code=$(extract_http_code "$response")
     local body=$(extract_http_body "$response")
@@ -1305,7 +1331,7 @@ request_jobs_upgrade() {
     local api_host="$REPLICATION_MANAGER_HOST"
     local api_port="$REPLICATION_MANAGER_PORT"
     local endpoint="/api/clusters/${cluster}/servers/${server}/${port}/actions/send-jobs-upgrade"
-    local response=$(send_encrypted_api_request "$api_host" "$api_port" "$endpoint" "{\"server\":\"$server:$port\",\"secret\":\"$MYSQL_ROOT_PASSWORD\"}")
+    local response=$(send_encrypted_api_request "$api_host" "$api_port" "$endpoint" "{\"server\":\"$server:$port\"$(job_secret)}")
 
     local http_code=$(extract_http_code "$response")
     [[ "$http_code" == "200" ]]

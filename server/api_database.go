@@ -3753,7 +3753,8 @@ func (repman *ReplicationManager) handlerMuxServersPortRegenerateConfig(w http.R
 
 type DecodedData struct {
 	Data string `json:"data"`
-	IV   string `json:"iv,omitempty"` // a job body's random IV (one-time format, cluster.OpenJobBody)
+	IV   string `json:"iv,omitempty"`  // a job body's random IV (one-time format, cluster.OpenJobBody)
+	Key  string `json:"key,omitempty"` // a job body's key: "jobs" (the cluster's jobs key) or "db" (the server's password)
 }
 
 // handlerMuxServersWriteLog handles the HTTP request to write logs for a specific server within a cluster.
