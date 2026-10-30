@@ -357,12 +357,11 @@ job_stream_open() {
         return 1
     fi
     # the nonces taken within twice the window (bounded by it)
-    touch "$store" && chmod 600 "$store"
-    if grep -q " $nonce\$" "$store"; then
+    if grep -qs " $nonce\$" "$store"; then
         echo "stream header already used (replay)" >"$LOG_DIR/stream.refused"
         return 1
     fi
-    { awk -v min=$((now - 2 * JOB_STREAM_WINDOW)) '$1 >= min' "$store"; echo "$now $nonce"; } >"$store.$$" && mv -f "$store.$$" "$store"
+    (umask 077 && { awk -v min=$((now - 2 * JOB_STREAM_WINDOW)) '$1 >= min' "$store" 2>/dev/null; echo "$now $nonce"; } >"$store.$$") && mv -f "$store.$$" "$store"
     exec cat
 }
 
