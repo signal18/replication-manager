@@ -835,7 +835,7 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 	// the matching userInfo struct, or (nil, false) on failure.
 	tryLocalAuth := func() (interface{}, bool) {
 		for _, cl := range repman.Clusters {
-			if cl.IsValidACL(user.Username, user.Password, r.URL.Path, "password") {
+			if cl.IsValidACL(user.Username, user.Password, r.URL.Path, cluster.AuthMethodSubmittedPassword) {
 				ui := struct {
 					Name     string
 					Role     string
