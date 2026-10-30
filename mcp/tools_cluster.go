@@ -7,6 +7,7 @@ package repmanmcp
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 
@@ -102,7 +103,12 @@ func (s *MCPServer) registerClusterReadTools() {
 			if errResult != nil {
 				return errResult, nil
 			}
-			return mcp.NewToolResultText(toJSON(cl.Conf)), nil
+			// the masked wire snapshot, as REST sends it: the raw Conf holds api-credentials in clear
+			doc, err := cl.GetConfigJSONForWire()
+			if err != nil {
+				return mcp.NewToolResultErrorf("cluster settings: %v", err), nil
+			}
+			return mcp.NewToolResultText(toJSON(json.RawMessage(doc))), nil
 		},
 	)
 

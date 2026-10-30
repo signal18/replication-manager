@@ -69,6 +69,11 @@ func (cluster *Cluster) OpenSVCUnprovisionAppService(app *App) error {
 			opErr = errors.Join(opErr, err)
 		}
 		for _, volumename := range app.GetVolumes(true) {
+			if verr := config.ValidateVolumeName(volumename); verr != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Not unprovisioning app volume: %s", verr)
+				opErr = errors.Join(opErr, verr)
+				continue
+			}
 			err = svc.PurgeServiceV3(cluster.Name, cluster.Name+"/vol/"+volumename)
 			if err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not unprovision app volume:  %s ", err)
@@ -82,6 +87,11 @@ func (cluster *Cluster) OpenSVCUnprovisionAppService(app *App) error {
 			opErr = errors.Join(opErr, err)
 		}
 		for _, volumename := range app.GetVolumes(true) {
+			if verr := config.ValidateVolumeName(volumename); verr != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Not unprovisioning app volume: %s", verr)
+				opErr = errors.Join(opErr, verr)
+				continue
+			}
 			err = svc.PurgeServiceV2(cluster.Name, cluster.Name+"/vol/"+volumename, app.GetAgent())
 			if err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not unprovision app volume:  %s ", err)
@@ -1124,7 +1134,11 @@ func (cluster *Cluster) OpenSVCGetAppS3MountContainerSection(app *App, s3m *conf
 		svccontainer["secrets_environment"] = appSecretsEnvironment(app)
 		svccontainer["configs_environment"] = app.GetOpenSVCDeploymentAppEnv(config.VariableTypeEnv)
 		diskname := s3m.GetSourceVolumeName()
-		svccontainer["volume_mounts"] = fmt.Sprintf("%s:/mnt:rw,rshared", filepath.Join(diskname, s3m.VolumeDir))
+		if src, err := config.VolumeSource(diskname, s3m.VolumeDir); err == nil {
+			svccontainer["volume_mounts"] = src + ":/mnt:rw,rshared"
+		} else {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlErr, "App %s: refusing S3 mount: %v", app.Name, err)
+		}
 		svccontainer["run_command"] = "-o allow_other -o nonempty --use-content-type --uid " + s3m.MountUid() + " --gid " + s3m.MountGid() + " -f"
 		svccontainer["blocking_post_provision"] = "sleep 3"
 		svccontainer["blocking_post_start"] = "sleep 3"
@@ -1237,7 +1251,13 @@ func (cluster *Cluster) GetOpenSVCDeploymentPathMapping(app *App) string {
 			continue
 		}
 
-		results = append(results, path.GetDockerMapping(vol.Name))
+		mapping, err := path.SafeDockerMapping(vol.Name)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlErr,
+				"App %s: refusing deployment path mapping dockerpath=%q: %v", app.Name, path.DockerPath, err)
+			continue
+		}
+		results = append(results, mapping)
 	}
 
 	return strings.Join(results, " ")
@@ -1526,6 +1546,13 @@ func normalizeRouteCNAME(cname string) string {
 // all host routes sharing the same destination port.  Multiple CNAMEs produce
 // multiple use_backend rules in the shared 'frontend https' block.  All CNAMEs
 // are normalized before being emitted.
+//
+// A host route is always served over https by the gateway, so its backend tells the
+// app with X-Forwarded-Proto (set, never added: a client cannot inject its own). An
+// app that rebuilds its URL from the request otherwise believes it is plain http:
+// Mattermost sent an http redirect_uri to its OAuth provider at the code exchange
+// and every GitLab sign-in failed with invalid_grant (#2252). The gateway's head
+// template may set it too; the backend does not depend on it.
 func buildGroupedHostRouteFragment(routes []config.Route, opensvcDNS string, numBE int) (fragmentKey, haproxyfragment string, err error) {
 	if len(routes) == 0 {
 		return "", "", errors.New("buildGroupedHostRouteFragment: no routes provided")
@@ -1548,6 +1575,7 @@ backend %s
     balance roundrobin
     dynamic-cookie-key mysecretphrase
     option http-server-close
+    http-request set-header X-Forwarded-Proto https
     timeout connect 10s
     timeout server 5m
     timeout tunnel 1h

@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -28,7 +29,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/iancoleman/strcase"
 	"github.com/sirupsen/logrus"
 	log "github.com/sirupsen/logrus"
 	"github.com/tidwall/sjson"
@@ -835,7 +835,7 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 	// the matching userInfo struct, or (nil, false) on failure.
 	tryLocalAuth := func() (interface{}, bool) {
 		for _, cl := range repman.Clusters {
-			if cl.IsValidACL(user.Username, user.Password, r.URL.Path, "password") {
+			if cl.IsValidACL(user.Username, user.Password, r.URL.Path, cluster.AuthMethodSubmittedPassword) {
 				ui := struct {
 					Name     string
 					Role     string
@@ -1037,6 +1037,11 @@ func (repman *ReplicationManager) autologinHandler(w http.ResponseWriter, r *htt
 		http.Error(w, "Auto-login not enabled", http.StatusNotFound)
 		return
 	}
+	if !repman.fromTrustedNetwork(r) {
+		repman.logSecurityEvent("api_autologin_denied", "", r.RemoteAddr, "auto-login refused: caller outside api-trusted-networks")
+		http.Error(w, "Auto-login is not available from this address", http.StatusForbidden)
+		return
+	}
 
 	username := repman.Conf.APIAutologinUser
 	if username == "" {
@@ -1083,12 +1088,39 @@ func (repman *ReplicationManager) autologinHandler(w http.ResponseWriter, r *htt
 
 // dashboardTokenHandler issues a read-only JWT for the /dashboard public endpoint.
 // Active whenever api-dashboard-user is set — no separate enable flag needed.
+// fromTrustedNetwork reports whether the direct caller of r (the TCP peer, never a
+// forwarded header a client can write) is in api-trusted-networks. A gateway relaying the
+// public is the peer of every request it forwards: listing it opens the endpoint to all.
+func (repman *ReplicationManager) fromTrustedNetwork(r *http.Request) bool {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = r.RemoteAddr
+	}
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return false
+	}
+	for _, c := range strings.Split(repman.Conf.APITrustedNetworks, ",") {
+		_, n, err := net.ParseCIDR(strings.TrimSpace(c))
+		if err == nil && n.Contains(ip) {
+			return true
+		}
+	}
+	return false
+}
+
 func (repman *ReplicationManager) dashboardTokenHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	username := repman.Conf.APIDashboardUser
 	if username == "" {
 		http.Error(w, "Dashboard endpoint not configured", http.StatusNotFound)
+		return
+	}
+	// a session without credentials: only for a screen on a trusted network, never the public
+	if !repman.fromTrustedNetwork(r) {
+		repman.logSecurityEvent("api_dashboard_token_denied", username, r.RemoteAddr, "dashboard token refused: caller outside api-trusted-networks")
+		http.Error(w, "The dashboard is not available from this address", http.StatusForbidden)
 		return
 	}
 
@@ -1179,8 +1211,8 @@ func (repman *ReplicationManager) handlerMuxReplicationManager(w http.ResponseWr
 
 	res, err = sjson.SetBytes(res, "clusters", cl)
 
-	for crkey := range repman.Conf.Secrets.Snapshot() {
-		res, err = sjson.SetBytes(res, "config."+strcase.ToLowerCamel(crkey), "*:*")
+	if err == nil {
+		res, err = repman.Conf.MaskSecretsJSON(res, "config.")
 	}
 
 	if err != nil {

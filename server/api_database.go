@@ -3652,7 +3652,7 @@ func (repman *ReplicationManager) handlerMuxServersPortConfig(w http.ResponseWri
 				// wget in cluster/prov_k8s_db.go) has no JWT to send, only
 				// the HTTP Basic Auth it sends as an Authorization header.
 				if u, p, ok := r.BasicAuth(); ok {
-					valid = mycluster.IsValidACL(u, p, r.URL.Path, "password")
+					valid = mycluster.IsValidACL(u, p, r.URL.Path, cluster.AuthMethodSubmittedPassword)
 				}
 			}
 			if !valid {
