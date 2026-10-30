@@ -126,7 +126,7 @@ var toolACLPaths = map[string]string{
 	"get-cluster-health":                "",
 	"get-cluster-tools":                 "/tools",
 	"get-cluster-topology":              "",
-	"get-cluster-settings":              "",
+	"get-cluster-settings":              "/settings", // the REST settings rule; the config it sends is masked
 	"get-cluster-price":                 "/price",
 	"get-cluster-alerts":                "",
 	"list-cluster-logs":                 "",

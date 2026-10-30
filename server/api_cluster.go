@@ -26,7 +26,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/codegangsta/negroni"
-	"github.com/iancoleman/strcase"
 	log "github.com/sirupsen/logrus"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
@@ -7612,11 +7611,9 @@ func buildClusterAPIPayload(mycluster *cluster.Cluster) ([]byte, error) {
 		return nil, fmt.Errorf("marshal cluster: %w", err)
 	}
 
-	for crkey := range mycluster.Conf.Secrets.Snapshot() {
-		cl, err = sjson.SetBytes(cl, "config."+strcase.ToLowerCamel(crkey), "*:*")
-		if err != nil {
-			return nil, fmt.Errorf("mask secret %s: %w", crkey, err)
-		}
+	cl, err = mycluster.Conf.MaskSecretsJSON(cl, "config.")
+	if err != nil {
+		return nil, fmt.Errorf("mask secrets: %w", err)
 	}
 
 	// Reduce the content of the cluster object. "apps" is the harmless

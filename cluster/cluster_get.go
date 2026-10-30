@@ -23,7 +23,6 @@ import (
 
 	vault "github.com/hashicorp/vault/api"
 	auth "github.com/hashicorp/vault/api/auth/approle"
-	"github.com/iancoleman/strcase"
 	"github.com/siddontang/go/log"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/opensvc"
@@ -598,6 +597,20 @@ func (cluster *Cluster) GetConfigSnapshotForWire() *config.Config {
 	confCopy := *cluster.Conf
 	confCopy.Apps = nil
 	return &confCopy
+}
+
+// GetConfigJSONForWire is the cluster's configuration as an API sends it: the wire
+// snapshot with every secret masked.
+func (cluster *Cluster) GetConfigJSONForWire() ([]byte, error) {
+	conf := cluster.GetConfigSnapshotForWire()
+	if conf == nil {
+		return nil, fmt.Errorf("cluster %s has no configuration", cluster.Name)
+	}
+	doc, err := json.Marshal(conf)
+	if err != nil {
+		return nil, err
+	}
+	return conf.MaskSecretsJSON(doc, "")
 }
 
 func (cluster *Cluster) GetWaitTrx() int64 {
@@ -1963,11 +1976,9 @@ func (cluster *Cluster) GetCompactJson() ([]byte, error) {
 		return nil, err
 	}
 
-	for crkey := range cluster.Conf.Secrets.Snapshot() {
-		result, err = sjson.SetBytes(result, fmt.Sprintf("config.%s", strcase.ToLowerCamel(crkey)), "*:*")
-		if err != nil {
-			return nil, err
-		}
+	result, err = cluster.Conf.MaskSecretsJSON(result, "config.")
+	if err != nil {
+		return nil, err
 	}
 
 	// Overwrite clusterS3Providers with a safe snapshot acquired under the mutex

@@ -152,7 +152,7 @@ func TestACLURLBuilding(t *testing.T) {
 		"get-database-variables":           "/api/clusters/c1/servers/db1/variables",
 		"cluster-set-setting":              "/api/clusters/c1/settings/actions/set/failover-mode/manual",
 		"cluster-archive-purge":            "/api/clusters/c1/restic/purge/abc",
-		"get-cluster-settings":             "/api/clusters/c1",
+		"get-cluster-settings":             "/api/clusters/c1/settings",
 		"get-cluster-topology":             "/api/clusters/c1",
 		"database-restore-physical-backup": "/api/clusters/c1/servers/db1/actions/reseed/physicalbackup",
 	}

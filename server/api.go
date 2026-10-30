@@ -28,7 +28,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/iancoleman/strcase"
 	"github.com/sirupsen/logrus"
 	log "github.com/sirupsen/logrus"
 	"github.com/tidwall/sjson"
@@ -1179,8 +1178,8 @@ func (repman *ReplicationManager) handlerMuxReplicationManager(w http.ResponseWr
 
 	res, err = sjson.SetBytes(res, "clusters", cl)
 
-	for crkey := range repman.Conf.Secrets.Snapshot() {
-		res, err = sjson.SetBytes(res, "config."+strcase.ToLowerCamel(crkey), "*:*")
+	if err == nil {
+		res, err = repman.Conf.MaskSecretsJSON(res, "config.")
 	}
 
 	if err != nil {
