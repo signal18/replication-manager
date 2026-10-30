@@ -210,9 +210,10 @@ func TestAppendRolesNeverAddsVisitorNextToRealRole(t *testing.T) {
 	}
 }
 
-// A `system` created by secret-login with only "db proxy" (#1967) is repaired on
-// the next EnsureSystemServiceUser: the sensor grant is added, the others are kept.
-func TestEnsureSystemServiceUserAddsSensorToExisting(t *testing.T) {
+// A `system` created by secret-login with "db proxy" (#1967) holds its grants exactly from the
+// load on (in memory), and the next EnsureSystemServiceUser saves them: the sensors, the tasks
+// and their results, the config, nothing else; its entry and roles are kept.
+func TestEnsureSystemServiceUserSetsItsGrants(t *testing.T) {
 	c := newTestClusterForUsers(t)
 	c.Conf.SecretKey = []byte("0123456789abcdef0123456789abcdef")
 	cm := manager.NewConfigManager(config.NewLogrusWrapper(c.Conf, logrus.New()))
@@ -221,24 +222,34 @@ func TestEnsureSystemServiceUserAddsSensorToExisting(t *testing.T) {
 	c.Conf.Secrets.Set("api-credentials-external", config.Secret{Value: "system:pw"})
 	c.Conf.APIUsersACLAllowExternal = "system:db proxy:c1:dbops"
 	c.LoadAPIUsers()
-	if c.APIUsers["system"].Grants[config.GrantClusterResourceSensor] {
-		t.Fatal("fixture: system starts without the sensor grant")
+	check := func(when string) {
+		s := c.APIUsers["system"]
+		for _, g := range []string{config.GrantClusterResourceSensor, config.GrantDBJobs, config.GrantDBConfigFlag} {
+			if !s.Grants[g] {
+				t.Fatalf("%s: system must hold %s", when, g)
+			}
+		}
+		for _, g := range []string{config.GrantDBShowVariables, config.GrantDBBackup, config.GrantDBRestore, config.GrantProxyConfigCreate, config.GrantTokenCreate} {
+			if s.Grants[g] {
+				t.Fatalf("%s: system must not hold %s", when, g)
+			}
+		}
+		if !s.Roles[config.RoleDBOps] {
+			t.Fatalf("%s: system must keep its roles", when)
+		}
 	}
+	check("after the load")
 
 	c.EnsureSystemServiceUser()
+	if strings.Count(c.Conf.APIUsersACLAllowExternal, "system:") != 1 || strings.Contains(c.Conf.APIUsersACLAllowExternal, "system:db proxy") {
+		t.Fatalf("the saved entry must hold the system grants only, once: %q", c.Conf.APIUsersACLAllowExternal)
+	}
 	c.LoadAPIUsers()
-	s := c.APIUsers["system"]
-	if !s.Grants[config.GrantClusterResourceSensor] {
-		t.Fatalf("system must get cluster-resource-sensor: %q", c.Conf.APIUsersACLAllowExternal)
-	}
-	if !s.Grants[config.GrantDBShowVariables] || !s.Grants[config.GrantProxyConfigCreate] {
-		t.Fatal("system must keep its db and proxy grants")
-	}
-	if strings.Count(c.Conf.APIUsersACLAllowExternal, "system:") != 1 {
-		t.Fatalf("system must keep a single entry: %q", c.Conf.APIUsersACLAllowExternal)
-	}
-	if !s.Roles[config.RoleDBOps] {
-		t.Fatalf("system must keep its roles: %q", c.Conf.APIUsersACLAllowExternal)
+	check("after a reload")
+	before := c.Conf.APIUsersACLAllowExternal
+	c.EnsureSystemServiceUser()
+	if c.Conf.APIUsersACLAllowExternal != before {
+		t.Fatalf("a saved entry already right is not rewritten: %q -> %q", before, c.Conf.APIUsersACLAllowExternal)
 	}
 }
 

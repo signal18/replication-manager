@@ -117,6 +117,36 @@ const jobsPrincipalID = "jobs"
 // settings, whatever the `system` account holds.
 var jobsGrants = []string{config.GrantDBJobs, config.GrantDBConfigFlag, config.GrantClusterResourceSensor}
 
+// SystemServiceGrants are the grants of the `system` service account, exactly: what the
+// machine callers do with it and nothing more, the jobs grants (sensors, get the tasks to do and
+// report their results, get the config). Never db or proxy actions, never tokens.
+func SystemServiceGrants() string {
+	return strings.Join(jobsGrants, " ")
+}
+
+// systemServiceGrantMap is SystemServiceGrants expanded over the cluster's grant catalogue.
+func (cluster *Cluster) systemServiceGrantMap() map[string]bool {
+	u := APIUser{Grants: map[string]bool{}}
+	cluster.SetUserGrants(&u, SystemServiceGrants())
+	return u.Grants
+}
+
+// hasSystemServiceGrants: u holds exactly the system grants, no more, no fewer.
+func (cluster *Cluster) hasSystemServiceGrants(u APIUser) bool {
+	want := cluster.systemServiceGrantMap()
+	for g, v := range u.Grants {
+		if v != want[g] {
+			return false
+		}
+	}
+	for g, v := range want {
+		if v && !u.Grants[g] {
+			return false
+		}
+	}
+	return true
+}
+
 // EnsureJobsPrincipal registers the cluster's jobs token principal: the jobs grants, on this
 // cluster only, intersected with the `system` account's at each check (GetACLUser). Registered
 // at cluster start and at each secret-login, so a restart or a reload never leaves a valid

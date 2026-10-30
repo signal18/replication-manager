@@ -782,35 +782,43 @@ func (cluster *Cluster) EnsureSystemServiceUser() {
 		return // no persistent key -> cannot derive; app/proxy sensor auth stays unavailable
 	}
 	if u, ok := cluster.APIUsers["system"]; ok {
-		// An existing `system` may predate the sensor grant (secret-login used to create
-		// it with only "db proxy", #1967): add the grant, keep the others.
-		if u.Grants[config.GrantClusterResourceSensor] {
+		// An existing `system` may hold more (secret-login created it with "db proxy", #1967;
+		// an ACL string or the GUI may have added some): its saved entry is set to its grants
+		// exactly. The saved entry, not the in-memory account, which every load already
+		// narrows (reconcileSystemServiceGrants).
+		saved := APIUser{Grants: map[string]bool{}}
+		if e, ok := cluster.GetClusterUserAllowACLs(cluster.Conf.APIUsersACLAllowExternal)["system"]; ok {
+			cluster.SetUserGrants(&saved, e.ACLs)
+		} else {
+			saved = u
+		}
+		if cluster.hasSystemServiceGrants(saved) {
 			return
 		}
 		// The main config ACL is applied last with a strict override: a cluster entry
-		// cannot change what it says, so rewriting it would repeat on every start.
+		// cannot change what it says, so rewriting it would repeat on every start. The grants
+		// are still enforced in memory at each load (reconcileSystemServiceGrants).
 		if _, ok := cluster.GetClusterUserAllowACLs(cluster.Conf.APIUsersACLAllow)["system"]; ok {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
-				"`system` is defined in api-credentials-acl-allow without %s: add the grant there, the cluster ACL cannot override it", config.GrantClusterResourceSensor)
+				"`system` is defined in api-credentials-acl-allow: set its grants there to %q, the cluster ACL cannot override it", SystemServiceGrants())
 			return
 		}
-		allow, _ := config.GetCompactGrants(u.Grants)
 		// Keep the roles of the entry; visitor is the default and comes back on reload.
 		roles := strings.Fields(cluster.SaveUserRoles("system"))
 		roles = slices.DeleteFunc(roles, func(r string) bool { return r == config.RoleVisitor })
 		if err := cluster.UpdateUser(UserForm{
 			Username: "system",
-			Grants:   strings.Join(append(allow, config.GrantClusterResourceSensor), " "),
+			Grants:   SystemServiceGrants(),
 			Roles:    strings.Join(roles, " "),
 		}, "admin", true); err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
-				"Adding %s to the `system` service account failed: %s", config.GrantClusterResourceSensor, err)
+				"Setting the `system` service account to its grants failed: %s", err)
 		}
 		return
 	}
 	cluster.AddUser(UserForm{
 		Username: "system",
-		Grants:   "db proxy " + config.GrantClusterResourceSensor,
+		Grants:   SystemServiceGrants(),
 		Password: apikey,
 	}, "admin", true)
 }

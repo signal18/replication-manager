@@ -86,6 +86,15 @@ global ACL and the MCP authentication look the name up as a user and refuse it: 
 reaches nothing outside its cluster's job endpoints. This holds for legacy bodies too: an older
 script calls the same endpoints.
 
+## The `system` account: its grants exactly
+
+The `system` service account itself holds only what the machine callers do with it
+(`SystemServiceGrants`): `cluster-resource-sensor` (the app, proxy and database sensors),
+`db-jobs` (get the tasks to do, report their results) and `db-config-flag` (get the config).
+Every load sets it to exactly that in memory (`reconcileSystemServiceGrants`, which also keeps
+it from ever holding a token grant), and `EnsureSystemServiceUser` saves it in the cluster ACL
+entry. An older secret-login created it with `db proxy`: every db and proxy action.
+
 ## Legacy format
 
 `{"data": <base64>}`: the IV derived from the password (MD5), no timestamp, no nonce. The body
