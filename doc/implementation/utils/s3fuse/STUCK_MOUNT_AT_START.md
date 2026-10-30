@@ -26,8 +26,9 @@ fusectl is mounted in replication-manager's own mount namespace for the check, t
 (CAP_SYS_ADMIN, which the in-process FUSE mount needs anyway; checked on dev3's container: the
 connections are listed and `abort` is writable). Without that right (a rootless image) the error
 says so in the log and the start goes on (and fails to bind, as before): the abort is then
-needed from the host. Serving the mount from a
-second process of the replication-manager binary would cover every case (follow-up).
+needed from the host. Since #2246 the mount is served by a child process of the
+replication-manager binary (MOUNT_SERVER_PROCESS.md): a crash of the file system no longer takes
+the monitor with it, and this cleanup stays as a second safety net.
 
 ## At the stop (#2142)
 The start cannot see every stuck mount: when the stop's unmount is refused (busy), `Unmount` shuts
