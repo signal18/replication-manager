@@ -471,6 +471,7 @@ func TestTakeConfigFileValue(t *testing.T) {
 // refuses a change and adds no version, so no cleartext reaches the file the config push sends
 func TestVersionStoreWithoutKeyStoresNothing(t *testing.T) {
 	conf := testConf()
+	conf.MonitoringSecretVersioning = true // the local file is in use
 	conf.SecretKey = nil
 	conf.MonitoringKeyPath = filepath.Join(t.TempDir(), "no.key")
 	vs := NewVersionStore(func() *config.Config { return conf }, func(k string) bool { return k == "replication-credential" }, nil, nil)
@@ -488,5 +489,12 @@ func TestVersionStoreWithoutKeyStoresNothing(t *testing.T) {
 	vs.Insert("replication-credential", Version{Value: "repl:vault", At: time.Now()})
 	if n := vs.Count("replication-credential"); n != 0 {
 		t.Fatalf("%d versions stored without a key", n)
+	}
+
+	// versioning off: the file is not written, a vault entry keeps its values server side, no
+	// key is needed
+	conf.MonitoringSecretVersioning = false
+	if err := vs.CanSet("replication-credential"); err != nil {
+		t.Fatalf("versioning off, no key: %v, want no refusal", err)
 	}
 }

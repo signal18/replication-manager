@@ -104,12 +104,17 @@ func (s *VersionStore) CanSet(key string) error {
 	return nil
 }
 
-// ErrNoEncryptionKey refuses a version that could not be stored encrypted: without the key,
-// EncryptSecretValue returns the value as it is, and the file goes to the config repo (F9).
-var ErrNoEncryptionKey = errors.New("no encryption key: a credential version is kept encrypted only, the new value cannot be stored; create the key (monitoring-key-path)")
+// ErrNoEncryptionKey refuses a version the local file could not keep encrypted: without the
+// key, EncryptSecretValue returns the value as it is, and the file goes to the config repo (F9).
+var ErrNoEncryptionKey = errors.New("no encryption key: the local versioned file (monitoring-secret-versioning) keeps a credential encrypted only, the new value cannot be stored; create the key (monitoring-key-path)")
 
-// canEncrypt: the key is loaded, or loads now, as GetEncryptedString loads it.
+// canEncrypt: the versions can be kept encrypted. Only the local file needs the key: with
+// versioning off nothing is written to it, and a vault entry keeps its values server side.
+// The key is loaded, or loads now, as GetEncryptedString loads it.
 func canEncrypt(conf *config.Config) bool {
+	if !conf.IsMonitoringSecretVersioningEnabled() {
+		return true
+	}
 	if conf.SecretKey == nil {
 		conf.LoadEncrytionKey()
 	}

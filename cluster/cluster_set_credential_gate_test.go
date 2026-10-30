@@ -39,6 +39,12 @@ func TestCanSetCredential(t *testing.T) {
 		}, ""},
 		// F9: a version is kept encrypted, never in cleartext in a file the config push sends
 		{"no encryption key", "replication-credential", func(c *Cluster) { c.Conf.SecretKey = nil }, "no encryption key"},
+		// the key is the local file's: versioning off, a vault entry takes the change without it
+		{"no encryption key, versioning off, a vault entry", "replication-credential", func(c *Cluster) {
+			c.Conf.SecretKey = nil
+			c.Conf.MonitoringSecretVersioning = false
+			c.Conf.SecretKvs = []config.SecretKvConfig{{Name: "vault-a", Plugin: config.ConstSecretKvPluginVault, Enabled: true}}
+		}, ""},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

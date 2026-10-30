@@ -84,10 +84,11 @@ settings (secrets encrypted, F9), on/off, forms drawn from the manifest.
    so the config never holds anything else. `monitoring-secret-versioning` is on by default,
    so a default install keeps versions locally and takes changes; turning it off without a
    vault entry makes every credential change and rotation refused. A version is kept
-   encrypted only (F9: the file is in the config push): without the encryption key the
-   version store refuses a change (`ErrNoEncryptionKey`, before any write) and adds no
-   version from a config file or a vault read, never a cleartext value; the GUI shows the
-   refusal on each credential. Provisioning, a reprovision and the regtests
+   encrypted only (F9: the file is in the config push): with versioning on and no encryption
+   key, the version store refuses a change (`ErrNoEncryptionKey`, before any write) and adds
+   no version from a config file or a vault read, never a cleartext value; the GUI shows the
+   refusal on each credential. Versioning off, the file is not written and a vault entry
+   keeps its values server side: no key is needed. Provisioning, a reprovision and the regtests
    read the current version, never the starting value; the GUI shows it as the initial
    value.
 1b. **Every reload restores the last value**: a restart, a config reload, a tag change, a
