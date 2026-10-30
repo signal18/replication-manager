@@ -18,6 +18,7 @@ func TestTagChangeKeepsRuntimeCredentials(t *testing.T) {
 	cl.ConfigManager = &manager.ConfigManager{} // a save is an event, no I/O
 	// a runtime change is a version in a versioned store (#2227 rule 1)
 	cl.Conf.MonitoringSecretVersioning = true
+	cl.Conf.SecretKey = []byte("0123456789abcdef") // a version is kept encrypted (F9)
 	cl.Conf.DynamicFlagMap = map[string]interface{}{
 		"replication-credential":         "repl:loaded-at-start",
 		"backup-verification-credential": "verif:loaded-at-start",

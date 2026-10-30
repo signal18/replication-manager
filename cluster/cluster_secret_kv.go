@@ -542,7 +542,7 @@ func (cluster *Cluster) activeStoreKeepsVersions() bool {
 
 // errNoVersionedStore is the refusal of a change or a rotation when no active store keeps
 // the versions (rules 1 and 9): the config keeps the starting value, nothing else.
-var errNoVersionedStore = errors.New("no credential store keeps versions: monitoring-secret-versioning is off and no vault entry (secret-kv) is enabled, the new value would live only in memory and a restart would lose it; turn versioning on or enable a vault entry")
+var errNoVersionedStore = errors.New("no credential store keeps versions: monitoring-secret-versioning is off (it is on by default: it was turned off) and no vault entry (secret-kv) is enabled, the new value would live only in memory and a restart would lose it; turn versioning on or enable a vault entry")
 
 // versionsKeepError is nil when an active store keeps the versions.
 func (cluster *Cluster) versionsKeepError() error {

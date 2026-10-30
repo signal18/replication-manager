@@ -37,10 +37,12 @@ func TestCanSetCredential(t *testing.T) {
 			c.Conf.MonitoringSecretVersioning = false
 			c.Conf.SecretKvs = []config.SecretKvConfig{{Name: "vault-a", Plugin: config.ConstSecretKvPluginVault, Enabled: true}}
 		}, ""},
+		// F9: a version is kept encrypted, never in cleartext in a file the config push sends
+		{"no encryption key", "replication-credential", func(c *Cluster) { c.Conf.SecretKey = nil }, "no encryption key"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			c := &Cluster{Conf: &config.Config{ConfRewrite: true, MonitoringSecretVersioning: true, ImmuableFlagMap: map[string]interface{}{}}}
+			c := &Cluster{Conf: &config.Config{ConfRewrite: true, MonitoringSecretVersioning: true, SecretKey: []byte("0123456789abcdef"), ImmuableFlagMap: map[string]interface{}{}}}
 			tc.change(c)
 			err := c.CanSetCredential(tc.key)
 			if tc.want == "" {
@@ -64,6 +66,7 @@ func TestGetCredentialsInfo(t *testing.T) {
 	c := &Cluster{Conf: &config.Config{
 		ConfRewrite:                true,
 		MonitoringSecretVersioning: true,
+		SecretKey:                  []byte("0123456789abcdef"),
 		ImmuableFlagMap:            map[string]interface{}{"replication-credential": "repl:x"},
 		Secrets: config.NewSecrets(map[string]config.Secret{
 			"db-servers-credential":  {Value: "monitor:secret-db"},

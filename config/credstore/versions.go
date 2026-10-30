@@ -98,7 +98,22 @@ func (s *VersionStore) CanSet(key string) error {
 			return &heldRefusal{err}
 		}
 	}
+	if !canEncrypt(s.conf()) {
+		return &heldRefusal{ErrNoEncryptionKey}
+	}
 	return nil
+}
+
+// ErrNoEncryptionKey refuses a version that could not be stored encrypted: without the key,
+// EncryptSecretValue returns the value as it is, and the file goes to the config repo (F9).
+var ErrNoEncryptionKey = errors.New("no encryption key: a credential version is kept encrypted only, the new value cannot be stored; create the key (monitoring-key-path)")
+
+// canEncrypt: the key is loaded, or loads now, as GetEncryptedString loads it.
+func canEncrypt(conf *config.Config) bool {
+	if conf.SecretKey == nil {
+		conf.LoadEncrytionKey()
+	}
+	return conf.SecretKey != nil
 }
 
 // Set makes a new version of key, now, by this instance.
@@ -130,10 +145,10 @@ func (s *VersionStore) add(key, stored string, at time.Time, by int) {
 // Seen for the first time while versions exist, it is kept as seen before them, not made
 // current. True when the file's value became the current one.
 func (s *VersionStore) TakeConfigFileValue(key, plain string) bool {
-	if !s.Holds(key) || plain == "" {
+	conf := s.conf()
+	if !s.Holds(key) || plain == "" || !canEncrypt(conf) {
 		return false
 	}
-	conf := s.conf()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	vs := s.versions[key]
@@ -170,7 +185,11 @@ func (s *VersionStore) TakeConfigFileValue(key, plain string) bool {
 
 // Insert adds a version read from another store, with its own time and writer: a newer
 // value becomes the current one here without a new version of it (rule 3).
+// Without the key nothing is added: the value stays where it was read.
 func (s *VersionStore) Insert(key string, v Version) {
+	if !canEncrypt(s.conf()) {
+		return
+	}
 	s.add(key, s.conf().EncryptSecretValue(v.Value), v.At, v.By)
 }
 

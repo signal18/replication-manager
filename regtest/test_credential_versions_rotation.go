@@ -149,7 +149,11 @@ func (regtest *RegTest) credentialVersionsRotation(cl *cluster.Cluster, withVaul
 				break
 			}
 			if time.Now().After(deadline) {
-				return fail("%s: the local file does not hold the starting and the rotated versions (%d versions, %v)", step, len(versions), err)
+				hint := ""
+				if cl.Conf.MonitoringSecretVersioningAutoPrune && cl.Conf.MonitoringSecretVersioningKeepLast > 0 {
+					hint = fmt.Sprintf("; monitoring-secret-versioning-auto-prune keeps the last %d versions only, the starting one may be pruned", cl.Conf.MonitoringSecretVersioningKeepLast)
+				}
+				return fail("%s: the local file does not hold the starting and the rotated versions (%d versions, %v)%s", step, len(versions), err, hint)
 			}
 			time.Sleep(2 * time.Second)
 		}

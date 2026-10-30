@@ -7,6 +7,7 @@ package credstore
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -463,5 +464,29 @@ func TestTakeConfigFileValue(t *testing.T) {
 	file, _ := legacy.Export()
 	if !file["replication-credential"][0].FromConfigFile || file["replication-credential"][0].Version != 1 {
 		t.Fatalf("the seen value goes first: %+v", file["replication-credential"][0])
+	}
+}
+
+// F9: without the encryption key, EncryptSecretValue returns the value as it is: the store
+// refuses a change and adds no version, so no cleartext reaches the file the config push sends
+func TestVersionStoreWithoutKeyStoresNothing(t *testing.T) {
+	conf := testConf()
+	conf.SecretKey = nil
+	conf.MonitoringKeyPath = filepath.Join(t.TempDir(), "no.key")
+	vs := NewVersionStore(func() *config.Config { return conf }, func(k string) bool { return k == "replication-credential" }, nil, nil)
+
+	err := vs.CanSet("replication-credential")
+	if !errors.Is(err, ErrNoEncryptionKey) {
+		t.Fatalf("CanSet without a key: %v, want ErrNoEncryptionKey", err)
+	}
+	if err := vs.Set("replication-credential", "repl:new"); !errors.Is(err, ErrNoEncryptionKey) {
+		t.Fatalf("Set without a key: %v", err)
+	}
+	if vs.TakeConfigFileValue("replication-credential", "repl:file") {
+		t.Fatal("a config file value became a version without a key")
+	}
+	vs.Insert("replication-credential", Version{Value: "repl:vault", At: time.Now()})
+	if n := vs.Count("replication-credential"); n != 0 {
+		t.Fatalf("%d versions stored without a key", n)
 	}
 }
