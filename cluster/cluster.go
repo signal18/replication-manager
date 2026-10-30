@@ -884,6 +884,7 @@ func (cluster *Cluster) InitFromConf() {
 	cluster.SetClusterCredentialsFromConfig()
 	cluster.LoadAPIUsers()
 	cluster.EnsureSystemServiceUser() // `system` API-key service account (derived key) for the app/proxy compute sensor
+	cluster.EnsureJobsPrincipal()     // the narrowed identity of the jobs script's tokens (secret-login)
 	cluster.SaveAcls()
 	cluster.InitMailer()
 	cluster.GetPersistentState()

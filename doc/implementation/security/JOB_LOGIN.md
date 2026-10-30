@@ -66,6 +66,26 @@ tasks share it, and logs in again once it is older than 10 minutes (`job_token`)
 (a backup) always posts with a valid token. Each run starts with a fresh login
 (`job_token refresh`); a failed login stops the run.
 
+## The jobs token: the jobs grants only
+
+The token `secret-login` returns does not name the `system` account (which holds `db proxy` and
+the sensor grant: every db-* grant, backups, restores, maintenance included). It names the
+cluster's **jobs principal**, `token:jobs:system` (`EnsureJobsPrincipal`), the API-token
+mechanism of #1835 without a stored token:
+
+- grants: `db-jobs` (needs, write-log, receive-task, job-state, jobs check and upgrade),
+  `db-config-flag` (config-receiver, config-dummy-sender) and `cluster-resource-sensor` (dbu),
+  intersected with what `system` holds at each check (`GetACLUser`);
+- scope: its cluster only;
+- registered at cluster start and at each secret-login: one per cluster, in memory, so a restart
+  or a reload never leaves a valid token without its principal;
+- the JWT carries no password (it used to carry the `system` password, encrypted).
+
+`IsValidClusterACL` runs a JWT naming a token principal as a token (grants, cluster scope). The
+global ACL and the MCP authentication look the name up as a user and refuse it: a jobs token
+reaches nothing outside its cluster's job endpoints. This holds for legacy bodies too: an older
+script calls the same endpoints.
+
 ## Legacy format
 
 `{"data": <base64>}`: the IV derived from the password (MD5), no timestamp, no nonce. The body

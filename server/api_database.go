@@ -5114,11 +5114,14 @@ func (repman *ReplicationManager) secretLoginHandler(w http.ResponseWriter, r *h
 		user = mycluster.APIUsers["system"]
 	}
 
+	// The token names the cluster's jobs principal, not `system`: the jobs grants only, on this
+	// cluster (cluster.EnsureJobsPrincipal), and no password.
+	mycluster.EnsureJobsPrincipal()
 	userInfo := struct {
 		Name     string
 		Role     string
 		Password string
-	}{user.User, "Member", repman.Conf.GetEncryptedString(user.Password)}
+	}{mycluster.JobsPrincipalName(), "Member", ""}
 
 	signer := jwt.New(jwt.SigningMethodRS256)
 	claims := signer.Claims.(jwt.MapClaims)

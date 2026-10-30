@@ -18,6 +18,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/crypto"
 	"github.com/signal18/replication-manager/utils/state"
 )
@@ -103,6 +104,34 @@ func (cluster *Cluster) GetJobsKey() string {
 	mac := hmac.New(sha256.New, key)
 	mac.Write([]byte("jobs:" + cluster.Name))
 	return hex.EncodeToString(mac.Sum(nil))
+}
+
+// jobsPrincipalID names the jobs token principal of a cluster: the identity a secret-login
+// token carries (token:jobs:system). Not an API token id (those are random hex): never stored.
+const jobsPrincipalID = "jobs"
+
+// jobsGrants are the only grants a jobs token carries, what the jobs script calls: the job
+// dispatch endpoints (needs, write-log, receive-task, job-state, jobs check and upgrade:
+// db-jobs), its config fetch (config-receiver, config-dummy-sender: db-config-flag) and the
+// usage push (dbu: cluster-resource-sensor). Never backups, restores, maintenance, topology or
+// settings, whatever the `system` account holds.
+var jobsGrants = []string{config.GrantDBJobs, config.GrantDBConfigFlag, config.GrantClusterResourceSensor}
+
+// EnsureJobsPrincipal registers the cluster's jobs token principal: the jobs grants, on this
+// cluster only, intersected with the `system` account's at each check (GetACLUser). Registered
+// at cluster start and at each secret-login, so a restart or a reload never leaves a valid
+// token without its principal. One per cluster: bounded.
+func (cluster *Cluster) EnsureJobsPrincipal() {
+	grants := make(map[string]bool, len(jobsGrants))
+	for _, g := range jobsGrants {
+		grants[g] = true
+	}
+	cluster.SetTokenPrincipal(TokenPrincipal{ID: jobsPrincipalID, User: "system", Grants: grants, Clusters: []string{cluster.Name}})
+}
+
+// JobsPrincipalName is the identity a secret-login token names: token:jobs:system.
+func (cluster *Cluster) JobsPrincipalName() string {
+	return TokenPrincipalName(jobsPrincipalID, "system")
 }
 
 // secretLoginWindow is the accepted distance to a body's timestamp.

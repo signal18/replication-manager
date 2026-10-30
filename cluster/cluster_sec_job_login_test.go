@@ -220,3 +220,51 @@ func TestJobsKeyDelivery(t *testing.T) {
 		t.Fatalf("the ssh environment must export the jobs key")
 	}
 }
+
+// A jobs token (secret-login) reaches the jobs script's endpoints of its own cluster and
+// nothing else, whatever the `system` account holds.
+func TestJobsPrincipalGrants(t *testing.T) {
+	c := newTokenTestCluster("c1")
+	sys := APIUser{User: "system", Password: "x", Roles: map[string]bool{}}
+	c.SetUserGrants(&sys, "db proxy "+config.GrantClusterResourceSensor)
+	c.APIUsers["system"] = sys
+	c.EnsureJobsPrincipal()
+	p := c.JobsPrincipalName()
+	srv := "/api/clusters/c1/servers/db1/3306"
+
+	for _, url := range []string{
+		srv + "/needs/backup",
+		srv + "/write-log/main",
+		srv + "/actions/receive-task/backup",
+		srv + "/actions/job-state/backup/done",
+		srv + "/actions/receive-jobs-check",
+		srv + "/actions/send-jobs-upgrade",
+		srv + "/config-receiver",
+		srv + "/config-dummy-sender",
+	} {
+		if !c.IsValidACL(p, "", url, "token") {
+			t.Errorf("a jobs token must reach %s", url)
+		}
+	}
+	for _, url := range []string{
+		srv + "/actions/backup-physical",
+		srv + "/actions/reseed/mariabackup",
+		srv + "/actions/maintenance",
+		srv + "/actions/stop",
+		srv + "/variables",
+		"/api/clusters/c1/actions/switchover",
+		"/api/clusters/c1/settings/actions/switch/failover-mode",
+	} {
+		if c.IsValidACL(p, "", url, "token") {
+			t.Errorf("a jobs token must not reach %s", url)
+		}
+	}
+	other := newTokenTestCluster("c2")
+	other.APIUsers["system"] = sys
+	if other.IsValidACL(p, "", "/api/clusters/c2/servers/db1/3306/needs/backup", "token") {
+		t.Error("a jobs token of c1 has no principal on c2")
+	}
+	if c.IsValidACL(p, "", srv+"/needs/backup", "password") {
+		t.Error("the jobs principal is no user: a password check refuses it")
+	}
+}

@@ -563,6 +563,10 @@ func (repman *ReplicationManager) isValidRequest(r *http.Request) (bool, error) 
 	return false, err
 }
 
+// isTokenPrincipal: a JWT naming a token principal is a jobs token (secret-login); the
+// package name is shadowed in IsValidClusterACL.
+var isTokenPrincipal = cluster.IsTokenPrincipal
+
 func (repman *ReplicationManager) IsValidClusterACL(r *http.Request, cluster *cluster.Cluster) (bool, string) {
 	// A user-issued API token (api_token.go): no password, the ACL runs under the
 	// token principal so the grants are the token's ∩ the owner's, and the cluster
@@ -599,6 +603,10 @@ func (repman *ReplicationManager) IsValidClusterACL(r *http.Request, cluster *cl
 				meuser = mycutinfo["email"].(string)
 				return cluster.IsValidACL(meuser, mepwd, r.URL.Path, "oidc"), meuser
 			}
+		}
+		// a jobs token (secret-login): the jobs principal, its grants only, on its cluster
+		if isTokenPrincipal(meuser) {
+			return cluster.IsValidACL(meuser, "", r.URL.Path, "token"), meuser
 		}
 		return cluster.IsValidACL(meuser, mepwd, r.URL.Path, "password"), meuser
 	}
@@ -1897,6 +1905,7 @@ func (repman *ReplicationManager) createCluster(name string, cForm cluster.Clust
 	// Without it, the first dbjob secret-login re-created `system` with a
 	// random password and without cluster-resource-sensor.
 	cl.EnsureSystemServiceUser()
+	cl.EnsureJobsPrincipal()
 
 	cl.LoadAPIUsers()
 	cl.SaveAcls()
