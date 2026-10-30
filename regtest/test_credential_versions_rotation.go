@@ -133,7 +133,9 @@ func (regtest *RegTest) credentialVersionsRotation(cl *cluster.Cluster, withVaul
 			return fail("%s: the config does not hold the starting value any more", step)
 		}
 		cl.Save()
-		deadline = time.Now().Add(60 * time.Second)
+		// the file is written by the config-sync gate, every 60 ticks; a cycle still busy
+		// skips one gate, so two periods
+		deadline = time.Now().Add(2 * 60 * time.Duration(cl.Conf.MonitoringTicker) * time.Second)
 		for {
 			versions, err := cl.SecretVersionsInFile(key)
 			if err == nil && len(versions) >= 2 && versions[0] == pass1 && versions[len(versions)-1] == pass2 {
