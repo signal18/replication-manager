@@ -42,6 +42,10 @@ const serverExitTimeout = 30 * time.Second
 // the last file is closed, at most that long; its exit then fails what still waits (ENOTCONN)
 const serverBusyBound = lateGrace
 
+// readersGrace bounds the wait for the server's output once it exited: a process it left
+// holding a pipe (a helper) would keep the readers, and its end unnoticed, forever
+const readersGrace = 5 * time.Second
+
 // logLineMax bounds each line of the server's output passed on (F4)
 const logLineMax = 2000
 
@@ -52,7 +56,7 @@ const eventLineMax = 64 << 10
 // serverEnv are the variables of the environment the server keeps: what it runs (fusermount)
 // and how it reaches S3; nothing else of replication-manager's environment, secrets included
 // (F10)
-var serverEnv = []string{"PATH", "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "no_proxy", "SSL_CERT_FILE", "SSL_CERT_DIR", "TMPDIR"}
+var serverEnv = []string{"PATH", "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "no_proxy", "SSL_CERT_FILE", "SSL_CERT_DIR", "AWS_CA_BUNDLE", "TMPDIR"}
 
 type mountRequest struct {
 	MountPoint  string        `json:"mountPoint"`
@@ -69,7 +73,7 @@ type credentialsMessage struct {
 	AccessKeyID     string    `json:"accessKeyId"`
 	SecretAccessKey string    `json:"secretAccessKey"`
 	SessionToken    string    `json:"sessionToken,omitempty"`
-	Expires         time.Time `json:"expires,omitempty"`
+	Expires         time.Time `json:"expires,omitzero"`
 }
 
 // request is a message from the parent: one of its fields set
@@ -205,8 +209,16 @@ func startServer(ctx context.Context, o Options) (*server, error) {
 	}()
 	go func() {
 		err := <-waited
-		<-eventsDone
-		<-logsDone
+		grace := time.After(readersGrace)
+		for _, done := range []chan struct{}{eventsDone, logsDone} {
+			select {
+			case <-done:
+			case <-grace:
+				evR.Close() // the readers end at once
+				logR.Close()
+				<-done
+			}
+		}
 		if err != nil {
 			s.exitErr = fmt.Errorf("the mount's server ended: %v; its last output: %s", err, last.get())
 		} else {
@@ -225,7 +237,9 @@ func startServer(ctx context.Context, o Options) (*server, error) {
 		case <-s.exited:
 			return nil
 		case <-time.After(backupUnmountTimeout):
-			return fmt.Errorf("the mount's server did not unmount within %s", backupUnmountTimeout)
+			// never left running past its bound: what waits on the mount gets ENOTCONN
+			cmd.Process.Kill()
+			return fmt.Errorf("the mount's server did not unmount within %s, killed", backupUnmountTimeout)
 		}
 		select {
 		case <-s.exited:
@@ -260,6 +274,14 @@ func startServer(ctx context.Context, o Options) (*server, error) {
 			return fail(err)
 		}
 	case <-s.exited:
+		// a failed mount ends the server: its own error, when it said it, is the one
+		select {
+		case err := <-mountedCh:
+			if err != nil {
+				return nil, err
+			}
+		default:
+		}
 		return nil, s.exitErr
 	case <-ctx.Done():
 		return fail(ctx.Err())

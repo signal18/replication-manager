@@ -310,9 +310,10 @@ const (
 )
 
 // failedLocked: the mount of sig failed or ended; the next attempt waits, the delay doubling
-// with each failure in a row, so a server crashing at once costs the monitor nothing; bm.mu held.
+// with each failure in a row of the same settings, so a server crashing at once costs the monitor
+// nothing; bm.mu held.
 func (bm *backupMount) failedLocked(sig string) {
-	if !bm.upAt.IsZero() && time.Since(bm.upAt) >= backupMountRetryMax {
+	if sig != bm.retrySignature || (!bm.upAt.IsZero() && time.Since(bm.upAt) >= backupMountRetryMax) {
 		bm.failures = 0
 	}
 	bm.upAt = time.Time{}

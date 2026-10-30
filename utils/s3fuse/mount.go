@@ -207,7 +207,7 @@ func New(ctx context.Context, o Options) (*Mount, error) {
 func (m *Mount) Join(ctx context.Context) error {
 	select {
 	case <-m.server.exited:
-		mounted.Delete(m.point)
+		mounted.CompareAndDelete(m.point, m) // never a newer mount of the same point
 		return m.server.exitErr
 	case <-ctx.Done():
 		return ctx.Err()
@@ -219,7 +219,7 @@ func (m *Mount) Join(ctx context.Context) error {
 // answer, until the mount, detached by the caller, is released or the server's bound ends
 // (#2142).
 func (m *Mount) Unmount() error {
-	mounted.Delete(m.point)
+	mounted.CompareAndDelete(m.point, m)
 	return m.server.unmount()
 }
 
