@@ -168,7 +168,7 @@ func startServer(ctx context.Context, o Options) (*server, error) {
 	logsDone := make(chan struct{})
 	go func() {
 		readLines(logR, logLineMax, func(line string) {
-			if strings.TrimSpace(line) == "" {
+			if blankLine(line) {
 				return // GeeseFS prints empty lines
 			}
 			last.set(line)
@@ -201,10 +201,13 @@ func startServer(ctx context.Context, o Options) (*server, error) {
 					o.OnPanic(e.Op, e.Error, nil) // the stack is in the server's output
 				}
 			case eventUnmounted:
+				var err error
 				if e.Error != "" {
-					s.unmounted <- errors.New(e.Error)
-				} else {
-					s.unmounted <- nil
+					err = errors.New(e.Error)
+				}
+				select { // one answer is awaited: an unexpected second never blocks the reader
+				case s.unmounted <- err:
+				default:
 				}
 			}
 		})
@@ -241,7 +244,8 @@ func startServer(ctx context.Context, o Options) (*server, error) {
 		case <-s.exited:
 			return nil
 		case <-time.After(backupUnmountTimeout):
-			// never left running past its bound: what waits on the mount gets ENOTCONN
+			// never left running past its bound: what waits on the mount gets ENOTCONN; exited
+			// follows the kill within readersGrace, and Join then returns
 			cmd.Process.Kill()
 			return fmt.Errorf("the mount's server did not unmount within %s, killed", backupUnmountTimeout)
 		}
@@ -347,6 +351,9 @@ func credentialsOf(v credentials.Value, creds *credentials.Credentials) *credent
 	}
 	return m
 }
+
+// blankLine: a line of the server's output with nothing to log.
+func blankLine(line string) bool { return strings.TrimSpace(line) == "" }
 
 // lastLine keeps the server's last line of output, for the error of its end.
 type lastLine struct {

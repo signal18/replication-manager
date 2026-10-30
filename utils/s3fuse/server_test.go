@@ -73,3 +73,12 @@ func TestRequestRoundTrip(t *testing.T) {
 		t.Fatalf("credentials: %+v", c)
 	}
 }
+
+// The server's empty output lines are never logged nor kept as its last line (#2246).
+func TestBlankLine(t *testing.T) {
+	for line, want := range map[string]bool{"": true, "  ": true, "\t": true, " \t ": true, "s3.WARNING code=RequestError": false, " x ": false} {
+		if got := blankLine(line); got != want {
+			t.Errorf("%q: %v, want %v", line, got, want)
+		}
+	}
+}
