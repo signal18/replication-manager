@@ -191,7 +191,8 @@ func (s *VersionStore) TakeConfigFileValue(key, plain string) bool {
 // EncryptKeptAsRead encrypts, once the key is there, the versions kept as they were read
 // without it (a vault read with versioning off, versioning then turned on). encrypted says
 // whether a stored value is already encrypted. False when such a version remains and the key
-// is still missing: the file must not be written (F9).
+// is still missing: the file must not be written (F9). Called by the file's writer only, with
+// versioning on: off, canEncrypt asks for no key and a version would stay as it was read.
 func (s *VersionStore) EncryptKeptAsRead(encrypted func(string) bool) bool {
 	conf := s.conf()
 	s.mu.Lock()

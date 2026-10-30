@@ -501,3 +501,33 @@ func TestMarketplaceVaultEntryManaged(t *testing.T) {
 		t.Fatalf("saved %s %v", out, err)
 	}
 }
+
+// F10: the configuration an API sends (REST settings, MCP get-cluster-settings) never carries
+// a vault entry's secret, clear or encrypted: only its name, in secretsSet
+func TestConfigJSONForWireHidesSecretKvSecrets(t *testing.T) {
+	conf := &config.Config{SecretKey: []byte("0123456789abcdef")}
+	encrypted := conf.GetEncryptedString("approle-secret-in-clear")
+	conf.SecretKvs = []config.SecretKvConfig{
+		{Name: "vault-a", Plugin: config.ConstSecretKvPluginVault, Enabled: true, Settings: map[string]interface{}{
+			config.ConstSecretKvVaultAddress:  "https://vault.example:8200",
+			config.ConstSecretKvVaultAuth:     config.ConstVaultAuthAppRole,
+			config.ConstSecretKvVaultRoleID:   "role-1",
+			config.ConstSecretKvVaultSecretID: encrypted,
+		}},
+		{Name: "vault-b", Plugin: config.ConstSecretKvPluginVault, Enabled: true, Settings: map[string]interface{}{
+			config.ConstSecretKvVaultSecretID: "approle-secret-in-clear",
+		}},
+	}
+	cl := &Cluster{Name: "c1", Conf: conf}
+	doc, err := cl.GetConfigJSONForWire()
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(doc)
+	if strings.Contains(s, "approle-secret-in-clear") || strings.Contains(s, encrypted) {
+		t.Fatalf("a secret-kv secret is in the wire configuration: %s", s)
+	}
+	if !strings.Contains(s, `"secretsSet":["secret-id"]`) || !strings.Contains(s, "role-1") {
+		t.Fatalf("the entry is not sent with its settings and secretsSet: %s", s)
+	}
+}
