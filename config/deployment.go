@@ -1179,6 +1179,39 @@ func (p PathMapping) GetDockerMapping(volname string) string {
 	return filepath.Join(volname, p.SourcePath) + ":" + p.DockerPath
 }
 
+var volumeNameRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$`)
+
+// ValidateVolumeName: an orchestrator volume object name, never a host path. A volume
+// mount source "<name>/<path>" with a name such as "/" or ".." is a path on the host.
+func ValidateVolumeName(name string) error {
+	if !volumeNameRe.MatchString(name) || strings.Contains(name, "..") {
+		return fmt.Errorf("volume name %q: letters, digits, '.', '_' and '-' only, no '..', 63 characters at most", name)
+	}
+	return nil
+}
+
+// VolumeSource is the mount source of srcpath in volume volname, cleaned, or an error when
+// the volume name is not a valid object name or srcpath leaves the volume.
+func VolumeSource(volname, srcpath string) (string, error) {
+	if err := ValidateVolumeName(volname); err != nil {
+		return "", err
+	}
+	src := filepath.Clean(filepath.Join(volname, srcpath))
+	if src != volname && !strings.HasPrefix(src, volname+"/") {
+		return "", fmt.Errorf("path %q leaves volume %s", srcpath, volname)
+	}
+	return src, nil
+}
+
+// SafeDockerMapping is GetDockerMapping for a source that stays inside its volume.
+func (p PathMapping) SafeDockerMapping(volname string) (string, error) {
+	src, err := VolumeSource(volname, p.SourcePath)
+	if err != nil {
+		return "", err
+	}
+	return src + ":" + p.DockerPath, nil
+}
+
 func (pm *PathMapping) ResolvePointers(volumes Volumes, gits GitClones, s3s S3Mounts, parents PathMaps) error {
 	// Clear any previously resolved pointers before re-resolving. Path mappings
 	// are mutated in place across API edits, so stale Parent/Source pointers must

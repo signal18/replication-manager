@@ -69,6 +69,11 @@ func (cluster *Cluster) OpenSVCUnprovisionAppService(app *App) error {
 			opErr = errors.Join(opErr, err)
 		}
 		for _, volumename := range app.GetVolumes(true) {
+			if verr := config.ValidateVolumeName(volumename); verr != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Not unprovisioning app volume: %s", verr)
+				opErr = errors.Join(opErr, verr)
+				continue
+			}
 			err = svc.PurgeServiceV3(cluster.Name, cluster.Name+"/vol/"+volumename)
 			if err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not unprovision app volume:  %s ", err)
@@ -82,6 +87,11 @@ func (cluster *Cluster) OpenSVCUnprovisionAppService(app *App) error {
 			opErr = errors.Join(opErr, err)
 		}
 		for _, volumename := range app.GetVolumes(true) {
+			if verr := config.ValidateVolumeName(volumename); verr != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Not unprovisioning app volume: %s", verr)
+				opErr = errors.Join(opErr, verr)
+				continue
+			}
 			err = svc.PurgeServiceV2(cluster.Name, cluster.Name+"/vol/"+volumename, app.GetAgent())
 			if err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not unprovision app volume:  %s ", err)
@@ -1124,7 +1134,11 @@ func (cluster *Cluster) OpenSVCGetAppS3MountContainerSection(app *App, s3m *conf
 		svccontainer["secrets_environment"] = appSecretsEnvironment(app)
 		svccontainer["configs_environment"] = app.GetOpenSVCDeploymentAppEnv(config.VariableTypeEnv)
 		diskname := s3m.GetSourceVolumeName()
-		svccontainer["volume_mounts"] = fmt.Sprintf("%s:/mnt:rw,rshared", filepath.Join(diskname, s3m.VolumeDir))
+		if src, err := config.VolumeSource(diskname, s3m.VolumeDir); err == nil {
+			svccontainer["volume_mounts"] = src + ":/mnt:rw,rshared"
+		} else {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlErr, "App %s: refusing S3 mount: %v", app.Name, err)
+		}
 		svccontainer["run_command"] = "-o allow_other -o nonempty --use-content-type --uid " + s3m.MountUid() + " --gid " + s3m.MountGid() + " -f"
 		svccontainer["blocking_post_provision"] = "sleep 3"
 		svccontainer["blocking_post_start"] = "sleep 3"
@@ -1237,7 +1251,13 @@ func (cluster *Cluster) GetOpenSVCDeploymentPathMapping(app *App) string {
 			continue
 		}
 
-		results = append(results, path.GetDockerMapping(vol.Name))
+		mapping, err := path.SafeDockerMapping(vol.Name)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlErr,
+				"App %s: refusing deployment path mapping dockerpath=%q: %v", app.Name, path.DockerPath, err)
+			continue
+		}
+		results = append(results, mapping)
 	}
 
 	return strings.Join(results, " ")
