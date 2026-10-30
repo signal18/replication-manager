@@ -12,7 +12,6 @@ import (
 	"crypto/sha256"
 	"crypto/tls"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -20,12 +19,12 @@ import (
 	"net/smtp"
 	"slices"
 	"strings"
+	"time"
 
 	vault "github.com/hashicorp/vault/api"
 	"github.com/jordan-wright/email"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/config/credstore"
-	"github.com/signal18/replication-manager/utils/crypto"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/sirupsen/logrus"
@@ -701,25 +700,18 @@ func (cluster *Cluster) RevokeDBUserGrants(user string) error {
 	return nil
 }
 
-type DecodedData struct {
-	Data string `json:"data"`
-}
-
 // SecretLoginCheck authenticates a job-callback request and, alongside the
 // resolved node, returns the full decrypted JSON payload -- not just the
 // "secret" field DecodeSecret checks -- so callers that send extra fields in
 // the encrypted body (e.g. handlerMuxServerJobState's "restore" field,
 // server/api_database.go) can parse them without a second decrypt pass.
+//
+// The body is a job body (OpenJobBody): a one-time body is accepted once, within the window
+// of its timestamp; a legacy one while api-secret-login-legacy is on.
 func (cluster *Cluster) SecretLoginCheck(vars map[string]string, rbody io.ReadCloser) (*ServerMonitor, string, int, error) {
-	var decodedData DecodedData
 	body, err := io.ReadAll(rbody)
 	if err != nil {
 		return nil, "", 500, fmt.Errorf("Error reading body: %s", err.Error())
-	}
-
-	err = json.Unmarshal(body, &decodedData)
-	if err != nil {
-		return nil, "", 400, fmt.Errorf("Decode body: %s. Err: %s", string(body), err.Error())
 	}
 
 	var node *ServerMonitor
@@ -731,11 +723,12 @@ func (cluster *Cluster) SecretLoginCheck(vars map[string]string, rbody io.ReadCl
 	if node == nil {
 		return nil, "", 500, fmt.Errorf("No server")
 	}
-	// Decrypt the encrypted data
-	key := crypto.GetSHA256Hash(node.Pass)
-	iv := crypto.GetMD5Hash(node.Pass)
-
-	secret, payload, err := node.DecodeSecret(decodedData.Data, key, iv)
+	data, _, code, err := node.OpenJobBody(body, time.Now())
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Job body of %s refused: %s", node.URL, err.Error())
+		return nil, "", code, err
+	}
+	secret, payload, err := node.DecodeSecret(data)
 	if err != nil {
 		return nil, "", 500, fmt.Errorf("Error decrypting data : %s", err.Error())
 	}

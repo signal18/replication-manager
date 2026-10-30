@@ -1521,6 +1521,7 @@ func (cluster *Cluster) tickBody() {
 		// a failover is evaluated: CheckFailed returns early without a master (#2191)
 		cluster.IsSameWsrepUUID()
 		cluster.CheckReplicationTLS()
+		cluster.CheckSecretLoginLegacy()
 		// Run generic log-tailer plugin checks (errorlog / sqlerrorlog / slowlog 24h)
 		cluster.CheckLogPlugins()
 		// Replication plugins: supervised on the active monitor only (#2015)

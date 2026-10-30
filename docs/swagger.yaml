@@ -2430,6 +2430,12 @@ definitions:
         type: string
       apiPublicUrl:
         type: string
+      apiSecretLoginLegacy:
+        type: boolean
+      apiSecretLoginTokenTimeout:
+        type: integer
+      apiSecretLoginWindow:
+        type: integer
       apiServer:
         type: boolean
       apiSwaggerEnabled:
@@ -5087,6 +5093,9 @@ definitions:
   server.DecodedData:
     properties:
       data:
+        type: string
+      iv:
+        description: a job body's random IV (one-time format, cluster.OpenJobBody)
         type: string
     type: object
   server.DockerRegistryLoginForm:

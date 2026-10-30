@@ -58,6 +58,7 @@ function GlobalSettings({ config }) {
   const hLogHeartbeatLevel = `**Log HeartBeat Level**\n\nVerbosity of the heartbeat log channel.\n\nConfig: \`log-level-heartbeat\``
   const hSwagger = `**Enable API Swagger**\n\nServes the interactive API explorer at \`/api-docs/\`.\n\nConfig: \`api-swagger-enabled\``
   const hLogApiLogin = `**Log API Login**\n\nRecords every API login in the security log.\n\nConfig: \`monitoring-log-api-login\``
+  const hSecretLoginLegacy = `**Accept Legacy Job Login**\n\nAccept the job login of database jobs scripts older than the one-time format. Their login can be replayed: turn this off once no cluster shows WARN0272 (every jobs script upgraded). Off, a server still running an older script cannot log in until its script is upgraded.\n\nConfig: \`api-secret-login-legacy\``
   const hLogApiSilent = `**Log API Login Silent Users**\n\nComma-separated users whose logins are not recorded (health probes, internal accounts).\n\nConfig: \`monitoring-log-api-login-silent-users\``
   const hMcpServer = `**MCP Server**\n\nExpose the clusters to AI assistants through the Model Context Protocol. With the default transport the endpoints live on this API at \`/api/mcp/sse\` and \`/api/mcp/message\`, HTTP and HTTPS alike. Every tool, reads and actions alike, runs under the caller's own ACL (login JWT or API token): read-only or read-write is a property of the account or token, not of the server. Applied live.\n\nConfig: \`mcp-server\``
   const hMcpAuth = `**MCP Authentication**\n\nRequire a bearer (login JWT or API token) on the MCP endpoints and run every tool under that user's cluster ACL. Off = every tool unrestricted, for the stdio transport only. Applied live.\n\nConfig: \`mcp-auth-enabled\``
@@ -372,6 +373,17 @@ function GlobalSettings({ config }) {
           confirmTitle={'Confirm switch global settings for Log API Login?'}
           onChange={(_v, setRefresh) => dispatch(switchGlobalSetting({ setting: 'monitoring-log-api-login', setRefresh }))}
           isChecked={config?.monitoringLogApiLogin}
+        />
+      )
+    },
+    {
+      key: 'Accept Legacy Job Login',
+      help: h(hSecretLoginLegacy, 'Accept Legacy Job Login'),
+      value: (
+        <RMSwitch
+          confirmTitle={'Confirm switch global settings for Accept Legacy Job Login?'}
+          onChange={(_v, setRefresh) => dispatch(switchGlobalSetting({ setting: 'api-secret-login-legacy', setRefresh }))}
+          isChecked={config?.apiSecretLoginLegacy}
         />
       )
     },

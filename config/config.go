@@ -1140,6 +1140,9 @@ type Config struct {
 	OAuthClientSecret                      string                 `mapstructure:"api-oauth-client-secret" toml:"api-oauth-client-secret" json:"apiOAuthClientSecret"`
 	CacheStaticMaxAge                      int                    `mapstructure:"cache-static-max-age" toml:"cache-static-max-age" json:"-"`
 	TokenTimeout                           int                    `scope:"server" mapstructure:"api-token-timeout" toml:"api-token-timeout" json:"apiTokenTimeout"`
+	APISecretLoginLegacy                   bool                   `scope:"server" mapstructure:"api-secret-login-legacy" toml:"api-secret-login-legacy" json:"apiSecretLoginLegacy"`
+	APISecretLoginTokenTimeout             int                    `scope:"server" mapstructure:"api-secret-login-token-timeout" toml:"api-secret-login-token-timeout" json:"apiSecretLoginTokenTimeout"`
+	APISecretLoginWindow                   int                    `scope:"server" mapstructure:"api-secret-login-window" toml:"api-secret-login-window" json:"apiSecretLoginWindow"`
 	JobLogBatchSize                        int                    `mapstructure:"job-log-batch-size" toml:"job-log-batch-size" json:"jobLogBatchSize"`
 	APIUserTokens                          bool                   `scope:"server" mapstructure:"api-user-tokens" toml:"api-user-tokens" json:"apiUserTokens"`
 	APIUserTokensDefaultExpireDays         int                    `scope:"server" mapstructure:"api-user-tokens-default-expire-days" toml:"api-user-tokens-default-expire-days" json:"apiUserTokensDefaultExpireDays"`

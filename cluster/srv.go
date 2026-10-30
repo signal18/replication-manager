@@ -48,6 +48,7 @@ import (
 
 // ServerMonitor defines a server to monitor.
 type ServerMonitor struct {
+	legacyJobLoginAt int64 // unix time of the last legacy job body (OpenJobBody), read atomically; 0 never
 	Id                          string                      `json:"id" groups:"apps"` //Unique name given by cluster & crc64(URL) used by test to provision
 	Name                        string                      `json:"name" groups:"apps"`
 	Domain                      string                      `json:"domain" groups:"apps""` // Use to store orchestrator CNI domain .<cluster_name>.svc.<cluster_name>

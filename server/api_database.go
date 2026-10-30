@@ -28,7 +28,6 @@ import (
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/backupmgr"
-	"github.com/signal18/replication-manager/utils/crypto"
 	"github.com/signal18/replication-manager/utils/state"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
@@ -3754,6 +3753,7 @@ func (repman *ReplicationManager) handlerMuxServersPortRegenerateConfig(w http.R
 
 type DecodedData struct {
 	Data string `json:"data"`
+	IV   string `json:"iv,omitempty"` // a job body's random IV (one-time format, cluster.OpenJobBody)
 }
 
 // handlerMuxServersWriteLog handles the HTTP request to write logs for a specific server within a cluster.
@@ -3795,30 +3795,19 @@ func (repman *ReplicationManager) handlerMuxServersWriteLog(w http.ResponseWrite
 			return
 		}
 
-		var decodedData DecodedData
-
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
 			http.Error(w, fmt.Sprintf("Decode reading body :%s", err.Error()), http.StatusBadRequest)
 			return
 		}
 
-		err = json.Unmarshal(body, &decodedData)
-		if err != nil {
-			http.Error(w, fmt.Sprintf("Decode body :%s. Err: %s", string(body), err.Error()), http.StatusBadRequest)
-			return
-		}
-
 		node := mycluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
 		if node != nil {
-			// Decrypt the encrypted data
-			key := crypto.GetSHA256Hash(node.Pass)
-			iv := crypto.GetMD5Hash(node.Pass)
-
-			decrypted, err := node.DecryptAES256(decodedData.Data, key, iv)
+			// a job body: one-time, or legacy while api-secret-login-legacy is on
+			decrypted, _, code, err := node.OpenJobBody(body, time.Now())
 			if err != nil {
 				node.SetErrState("WARN0158", "WARNING", "JOB", config.ClusterError["WARN0158"], node.URL, err.Error())
-				http.Error(w, "Error decrypting data : "+err.Error(), http.StatusInternalServerError)
+				http.Error(w, err.Error(), code)
 				return
 			}
 
@@ -5097,7 +5086,7 @@ func (repman *ReplicationManager) secretLoginHandler(w http.ResponseWriter, r *h
 		return
 	}
 
-	_, _, errcode, err := mycluster.SecretLoginCheck(vars, r.Body)
+	_, payload, errcode, err := mycluster.SecretLoginCheck(vars, r.Body)
 	if err != nil {
 		http.Error(w, err.Error(), errcode)
 		return
@@ -5135,7 +5124,12 @@ func (repman *ReplicationManager) secretLoginHandler(w http.ResponseWriter, r *h
 	//set claims
 	claims["iss"] = "https://api.replication-manager.signal18.io"
 	claims["iat"] = time.Now().Unix()
+	// a one-time job body gets a short token, the jobs script logs in again before it expires;
+	// a legacy body (an older script) keeps the API token lifetime, its runs re-use one token
 	claims["exp"] = time.Now().Add(time.Hour * time.Duration(repman.Conf.TokenTimeout)).Unix()
+	if secretLoginOneTime(payload) {
+		claims["exp"] = time.Now().Add(time.Minute * time.Duration(secretLoginTokenMinutes(repman.Conf.APISecretLoginTokenTimeout))).Unix()
+	}
 	claims["jti"] = "1"
 	claims["token"] = ""
 	claims["CustomUserInfo"] = userInfo
@@ -6709,4 +6703,21 @@ func parseSnapshotToken(token string) (string, error) {
 		return "", err
 	}
 	return t.UTC().Format(time.RFC3339), nil
+}
+
+// secretLoginOneTime: the job body of a secret-login carried a nonce, it was a one-time body
+// (cluster.OpenJobBody refused it otherwise).
+func secretLoginOneTime(payload string) bool {
+	var p struct {
+		Nonce string `json:"nonce"`
+	}
+	return json.Unmarshal([]byte(payload), &p) == nil && p.Nonce != ""
+}
+
+// secretLoginTokenMinutes is the lifetime of a one-time secret-login's token, 15 when unset.
+func secretLoginTokenMinutes(v int) int {
+	if v <= 0 {
+		return 15
+	}
+	return v
 }

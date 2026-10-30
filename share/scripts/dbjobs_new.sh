@@ -273,21 +273,24 @@ derive_key() {
     echo "$key"
 }
 
-derive_iv() {
-    local password="${1:-$MYSQL_ROOT_PASSWORD}"
-    local iv=$(echo -n "$password" | md5sum | awk '{print $1}')
-    echo "$iv"
-}
-
-# Function to encrypt data using AES-256 in CBC mode
-encrypt_data() {
+# Job body: the JSON a job request posts, {"data":"<base64>","iv":"<hex>"}. The clear JSON
+# object is stamped with "ts" (unix seconds) and a random "nonce", and encrypted with
+# AES-256-CBC under a random IV: replication-manager accepts it once, within its window
+# around ts (api-secret-login-window), so a captured body cannot be replayed.
+# Usage: job_body "json_object" ["password"]
+job_body() {
     local data="$1"
     local password="${2:-$MYSQL_ROOT_PASSWORD}"
     local key=$(derive_key "$password")
-    local iv=$(derive_iv "$password")
-    local padded=$(pad_pkcs7 "$data")
+    local iv=$(openssl rand -hex 16)
+    local nonce=$(openssl rand -hex 16)
+    local rest="${data#\{}"
+    local sep=","
+    [[ "${rest#"${rest%%[![:space:]]*}"}" == \}* ]] && sep=""
+    local stamped="{\"ts\":$(date +%s),\"nonce\":\"$nonce\"${sep}${rest}"
+    local padded=$(pad_pkcs7 "$stamped")
     local encrypted=$(echo -n "$padded" | openssl aes-256-cbc -a -nosalt -K "$key" -iv "$iv" | tr -d '\n')
-    echo "$encrypted"
+    echo "{\"data\":\"$encrypted\",\"iv\":\"$iv\"}"
 }
 
 ########################
@@ -376,7 +379,7 @@ send_http_get() {
     local host="$1"
     local port="$2"
     local endpoint="$3"
-    send_http_request "GET" "$host" "$port" "$endpoint" "" "application/json" "$TOKEN"
+    send_http_request "GET" "$host" "$port" "$endpoint" "" "application/json" "$(job_token)"
 }
 
 # Send authenticated HTTP GET request with Bearer token
@@ -404,14 +407,13 @@ send_encrypted_api_request() {
         port=10005
     fi
 
-    # Encrypt the data if provided
-    local encrypted_data=""
+    # Encrypt the data if provided: a one-time job body
+    local json_data="{\"data\":\"\"}"
     if [[ -n "$raw_data" ]]; then
-        encrypted_data=$(encrypt_data "$raw_data" "$password")
+        json_data=$(job_body "$raw_data" "$password")
     fi
 
-    local json_data="{\"data\":\"$encrypted_data\"}"
-    send_http_request "POST" "$host" "$port" "$api_endpoint" "$json_data" "application/json" "$TOKEN"
+    send_http_request "POST" "$host" "$port" "$api_endpoint" "$json_data" "application/json" "$(job_token)"
 }
 
 # Rotate log file if it exceeds size limit
@@ -628,6 +630,30 @@ report_job_state() {
 # Print Defaults Functions       #
 ##################################
 
+# Current API token of the jobs script: the token secret_login returned, kept in the jobs
+# directory (0600) so background tasks share it, and renewed by a new one-time login once it
+# is older than JOB_TOKEN_RENEW seconds: a one-time login's token lives
+# api-secret-login-token-timeout (15 min by default), a long task (a backup) still posts
+# with a valid one. "refresh" forces a new login.
+# Usage: job_token ["refresh"]
+JOB_TOKEN_RENEW=600
+job_token() {
+    local file="$LOG_DIR/.job_token"
+    if [[ "$1" != "refresh" && -s "$file" ]]; then
+        local age=$(( $(date +%s) - $(date -r "$file" +%s 2>/dev/null || echo 0) ))
+        if (( age < JOB_TOKEN_RENEW )); then
+            cat "$file"
+            return 0
+        fi
+    fi
+    local token
+    token="$(secret_login "$CLUSTER_NAME" "$MYSQL_SERVER" "$MYSQL_PORT")" || token=""
+    if [[ -n "$token" ]]; then
+        (umask 077 && printf "%s" "$token" > "$file.$$" && mv -f "$file.$$" "$file")
+    fi
+    printf "%s" "$token"
+}
+
 # Login using secret
 # Usage: secret_login "cluster" "server" "port" "encrypted_secret"
 # Returns: token on success, empty string on failure
@@ -636,15 +662,15 @@ secret_login() {
     local cluster="$1"
     local server="$2"
     local port="$3"
-    local encrypted_secret="$(encrypt_data "{\"server\":\"$server:$port\", \"secret\":\"$MYSQL_ROOT_PASSWORD\"}")"
+
     local api_host="$REPLICATION_MANAGER_HOST"
     local api_port="$REPLICATION_MANAGER_PORT"
 
     # Build endpoint
     local endpoint="/api/clusters/${cluster}/servers/${server}/${port}/secret-login"
 
-    # Prepare JSON payload
-    local json_data="{\"data\":\"$encrypted_secret\"}"
+    # Prepare JSON payload: a one-time job body
+    local json_data=$(job_body "{\"server\":\"$server:$port\", \"secret\":\"$MYSQL_ROOT_PASSWORD\"}")
 
     # Send request
     local response=$(send_http_request "POST" "$api_host" "$api_port" "$endpoint" "$json_data")
@@ -812,7 +838,7 @@ collect_dbu() {
     wait_json=$(read_cgroup_wait_counters "$cg")
     local data="{\"windowStart\":\"$ws\",\"windowEnd\":\"$we\",\"memMaxBytes\":$mem,\"cpuMaxCores\":$cpu_cores,\"ioMaxIops\":$io_iops,\"diskMaxBytes\":$disk,\"diskFreeBytes\":${disk_free:-0},\"wait\":$wait_json,\"netRxBytes\":${net_rx:-0},\"netTxBytes\":${net_tx:-0}}"
     local endpoint="/api/clusters/$CLUSTER_NAME/servers/$MYSQL_SERVER/$MYSQL_PORT/dbu"
-    send_http_request "POST" "$REPLICATION_MANAGER_HOST" "$REPLICATION_MANAGER_PORT" "$endpoint" "$data" "application/json" "$TOKEN" >/dev/null 2>&1 || true
+    send_http_request "POST" "$REPLICATION_MANAGER_HOST" "$REPLICATION_MANAGER_PORT" "$endpoint" "$data" "application/json" "$(job_token)" >/dev/null 2>&1 || true
 }
 
 # Fetch config receiver information
@@ -822,7 +848,7 @@ fetch_config_receiver() {
 
     # Use authenticated request if TOKEN is available
     if [[ -n "$TOKEN" ]]; then
-        response=$(send_http_get_authenticated "$REPLICATION_MANAGER_HOST" "$REPLICATION_MANAGER_PORT" "$urlpost" "$TOKEN")
+        response=$(send_http_get_authenticated "$REPLICATION_MANAGER_HOST" "$REPLICATION_MANAGER_PORT" "$urlpost" "$(job_token)")
     else
         response=$(send_http_get "$REPLICATION_MANAGER_HOST" "$REPLICATION_MANAGER_PORT" "$urlpost")
     fi
@@ -1165,7 +1191,7 @@ print_defaults_for_fetch() {
     local extract_dir="/bootstrap/dummy"
 
     # Fetch and extract configuration (use global TOKEN if available)
-    if ! fetch_and_extract_config "$extract_dir" "$TOKEN"; then
+    if ! fetch_and_extract_config "$extract_dir" "$(job_token)"; then
         send_lines_to_api "ERROR: Failed to fetch and extract configuration" "print-defaults" "$LVL_ERROR"
         return 1
     fi
@@ -3121,8 +3147,9 @@ ensure_directories || exit 1
 
 select_database_binaries || exit 1
 
-TOKEN="$(secret_login "$CLUSTER_NAME" "$MYSQL_SERVER" "$MYSQL_PORT")"
-if [ "$TOKEN" == "error" ]; then
+# A fresh one-time login at each run (the token is renewed by job_token during the run).
+TOKEN="$(job_token refresh)"
+if [ -z "$TOKEN" ]; then
     echo "Failed to authenticate with the replication manager API."
     exit 1
 fi
