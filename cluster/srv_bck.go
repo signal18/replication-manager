@@ -179,6 +179,13 @@ func (server *ServerMonitor) ReseedPointInTime(meta backupmgr.PointInTimeMeta) e
 		return fmt.Errorf("Backup with id %d not found in BackupMetaMap", meta.Backup)
 	}
 
+	// The binlog replay starts at the backup's position: without one it would start at the
+	// oldest binlog and apply again what the backup already holds. Refused before anything is
+	// restored (#2256).
+	if meta.UseBinlog && backup.BinLogFileName == "" {
+		return fmt.Errorf("PITR on node %s with binary logs refused: backup %d has no recorded binary log position", server.URL, backup.Id)
+	}
+
 	// Needed for updating status
 	if !cluster.Conf.MonitorScheduler {
 		return fmt.Errorf("PITR on node %s can not continue without monitoring scheduler", server.URL)

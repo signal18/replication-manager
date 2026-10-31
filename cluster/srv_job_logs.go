@@ -679,6 +679,16 @@ func (server *ServerMonitor) ErrorLogWatcher() {
 
 var spacesRe = regexp.MustCompile(`\s+`)
 
+// job log patterns read by ParseLogEntries, compiled once
+var (
+	// the GTID is empty on a server without GTID (Galera without wsrep GTID mode): the file
+	// and position are still the backup's position (#2250)
+	binRegex     = regexp.MustCompile(`filename '([^']+)', position '([^']+)', GTID of the last change '([^']*)'`)
+	startRegex   = regexp.MustCompile(`Job [^']+ initiated`)
+	endRegex     = regexp.MustCompile(`Job [^']+ ended with state`)
+	err2002Regex = regexp.MustCompile(`Database query failed`)
+)
+
 // ErrorLogWatcher monitor the tail of the log and populate ring buffer
 func (server *ServerMonitor) AuditLogWatcher() {
 	if server.AuditLogTailer == nil {
@@ -823,13 +833,6 @@ func (server *ServerMonitor) ParseLogEntries(entry config.LogEntry, mod int, tas
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, err.Error())
 		return err
 	}
-
-	// the GTID is empty on a server without GTID (Galera without wsrep GTID mode): the file
-	// and position are still the backup's position (#2250)
-	binRegex := regexp.MustCompile(`filename '([^']+)', position '([^']+)', GTID of the last change '([^']*)'`)
-	startRegex := regexp.MustCompile(`Job [^']+ initiated`)
-	endRegex := regexp.MustCompile(`Job [^']+ ended with state`)
-	err2002Regex := regexp.MustCompile(`Database query failed`)
 
 	lines := strings.Split(strings.ReplaceAll(entry.Log, "\\n", "\n"), "\n")
 	for _, line := range lines {
