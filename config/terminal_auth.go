@@ -30,12 +30,16 @@ const (
 // MCPAuthAllows says whether the MCP takes a login: authMethod is the MCP principal's (password,
 // oidc, token), cloud18 whether its SSO login is a Cloud18 one. Nil when allowed, else why.
 func (conf *Config) MCPAuthAllows(authMethod string, cloud18 bool) error {
-	mode := strings.TrimSpace(conf.MCPServerAuth)
-	if mode == "" || mode == ConstMCPAuthAuto {
+	mode := strings.ToLower(strings.TrimSpace(conf.MCPServerAuth))
+	switch mode {
+	case "", ConstMCPAuthAuto:
 		mode = ConstMCPAuthAny
 		if conf.Cloud18 {
 			mode = ConstMCPAuthCloud18
 		}
+	case ConstMCPAuthAny, ConstMCPAuthCloud18:
+	default:
+		mode = ConstMCPAuthCloud18 // an unknown value (a typo) fails closed, never open
 	}
 	// an API token (scoped, revocable, its grants narrowed) stays valid: only the session of a
 	// local password login is refused

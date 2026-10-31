@@ -50,6 +50,10 @@ func TestMCPAuthAllows(t *testing.T) {
 		{"any", true, "password", false, true},
 		{"cloud18", false, "password", false, false},
 		{"cloud18", false, "oidc", true, true},
+		{"Cloud18", false, "password", false, false},
+		{"cloud-18", false, "password", false, false},
+		{"cloud-18", false, "token", false, true},
+		{" ANY ", true, "password", false, true},
 	} {
 		conf := &Config{MCPServerAuth: c.mode, Cloud18: c.registered}
 		if err := conf.MCPAuthAllows(c.method, c.cloud18); (err == nil) != c.ok {

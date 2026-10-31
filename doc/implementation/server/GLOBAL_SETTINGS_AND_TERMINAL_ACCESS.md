@@ -65,7 +65,7 @@ session, with its second factor when `cloud18-login-acr` asks one) or an API tok
 grants narrowed), never the session of a local password login; `any` = every login of the API; `auto`
 (default) = `cloud18` on an instance registered to Cloud18, `any` otherwise (`config.MCPAuthAllows`,
 checked in `AuthenticateMCP`, refusals in the security log as `mcp_auth_failure`). Local accounts keep
-the API and the admin zone, not the MCP; clients on API tokens (the website assistant) are unchanged.
+the API and the admin zone, not the MCP; clients on API tokens (the website assistant) are unchanged. The value is matched without case or spaces; an unknown value (a typo) acts as `cloud18`: it fails closed, never open. The stdio transport carries no login and starts only with `mcp-auth-enabled=false`, so it is outside this gate by construction.
 
 ## Recovery: the configuration file
 

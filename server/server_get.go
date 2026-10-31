@@ -259,6 +259,9 @@ func (repman *ReplicationManager) AuthenticateMCP(r *http.Request) (*repmanmcp.P
 			p.Cloud18Token = repman.Conf.GetDecryptedPassword("cloud18-token", t)
 		}
 	}
+	// a Cloud18 session = its repman-signed JWT carries the cloud18 or cloud18_token claim, which
+	// only the Cloud18 issuers set (the Sign in form through the realm, Sign in with Cloud18, a
+	// verified realm token): a new issuer setting them changes this gate and the terminal's
 	if err := repman.Conf.MCPAuthAllows(p.AuthMethod, p.Cloud18Login != "" || p.Cloud18Token != ""); err != nil {
 		return nil, err
 	}
