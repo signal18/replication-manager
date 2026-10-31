@@ -58,15 +58,14 @@ memory only (a reload or another tab asks again), until its end (`api-token-time
 every other call keeps the person's own session. The host terminal asks for admin mode before it
 connects. No server state: the gate stays the local admin session.
 
-## The MCP: Cloud18 logins only (`mcp-server-auth`)
+## The MCP: no local password login (`mcp-server-auth`)
 
-`mcp-server-auth` (scope server): `cloud18` = a Cloud18 login only (a realm token or a Sign in with
-Cloud18 session, with its second factor when `cloud18-login-acr` asks one); `any` = every login of the
-API; `auto` (default) = `cloud18` on an instance registered to Cloud18, `any` otherwise
-(`config.MCPAuthAllows`, checked in `AuthenticateMCP`, refusals in the security log as
-`mcp_auth_failure`). Local accounts and API tokens keep the API and the admin zone, not the MCP. A
-client using an API token on a registered instance (the website assistant) needs a Cloud18 identity,
-or `mcp-server-auth = any` on that instance.
+`mcp-server-auth` (scope server): `cloud18` = a Cloud18 login (a realm token or a Sign in with Cloud18
+session, with its second factor when `cloud18-login-acr` asks one) or an API token (scoped, revocable,
+grants narrowed), never the session of a local password login; `any` = every login of the API; `auto`
+(default) = `cloud18` on an instance registered to Cloud18, `any` otherwise (`config.MCPAuthAllows`,
+checked in `AuthenticateMCP`, refusals in the security log as `mcp_auth_failure`). Local accounts keep
+the API and the admin zone, not the MCP; clients on API tokens (the website assistant) are unchanged.
 
 ## Recovery: the configuration file
 

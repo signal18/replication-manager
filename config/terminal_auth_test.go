@@ -31,8 +31,8 @@ func TestTerminalAuthAllows(t *testing.T) {
 	}
 }
 
-// #2262: on an instance registered to Cloud18 the MCP takes a Cloud18 login only by default; any
-// login elsewhere, or when asked; cloud18 is a setting of its own too.
+// #2262: on an instance registered to Cloud18 the MCP takes a Cloud18 login or an API token by
+// default, never a local password login; any login elsewhere, or when asked.
 func TestMCPAuthAllows(t *testing.T) {
 	for _, c := range []struct {
 		mode       string
@@ -43,7 +43,7 @@ func TestMCPAuthAllows(t *testing.T) {
 	}{
 		{"", true, "oidc", true, true},
 		{"", true, "password", false, false},
-		{"", true, "token", false, false},
+		{"", true, "token", false, true},
 		{"", true, "oidc", false, false},
 		{"", false, "password", false, true},
 		{"auto", false, "token", false, true},

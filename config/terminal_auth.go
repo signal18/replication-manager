@@ -23,7 +23,7 @@ const (
 // The logins the MCP accepts (mcp-server-auth, #2262).
 const (
 	ConstMCPAuthAuto    = "auto"    // cloud18 on an instance registered to Cloud18, any otherwise
-	ConstMCPAuthCloud18 = "cloud18" // a Cloud18 login only
+	ConstMCPAuthCloud18 = "cloud18" // a Cloud18 login or an API token, never a local password login
 	ConstMCPAuthAny     = "any"     // every login of the API
 )
 
@@ -37,8 +37,10 @@ func (conf *Config) MCPAuthAllows(authMethod string, cloud18 bool) error {
 			mode = ConstMCPAuthCloud18
 		}
 	}
-	if mode == ConstMCPAuthCloud18 && !(authMethod == "oidc" && cloud18) {
-		return errors.New("this MCP accepts Cloud18 logins only (mcp-server-auth): sign in with Cloud18")
+	// an API token (scoped, revocable, its grants narrowed) stays valid: only the session of a
+	// local password login is refused
+	if mode == ConstMCPAuthCloud18 && authMethod != "token" && !(authMethod == "oidc" && cloud18) {
+		return errors.New("this MCP accepts Cloud18 logins and API tokens only (mcp-server-auth): sign in with Cloud18 or use an API token")
 	}
 	return nil
 }
