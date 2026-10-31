@@ -182,7 +182,8 @@ func (s *ReplicationManager) streamInterceptor(srv interface{}, stream grpc.Serv
 	}
 
 	// handle ACL
-	log.Infof("grpc stream srv: %v", srv)
+	// the method only: srv is the whole ReplicationManager, configuration and secrets included (#2261)
+	log.Infof("grpc stream: %s", info.FullMethod)
 	return handler(srv, stream)
 }
 
@@ -192,7 +193,8 @@ func (s *ReplicationManager) unaryInterceptor(ctx context.Context, req interface
 		return handler(ctx, req)
 	}
 
-	log.Infof("grpc unary req: %v", req)
+	// the method only: a request can carry a setting value or a credential (#2261)
+	log.Infof("grpc unary: %s", info.FullMethod)
 
 	if cMsg, ok := req.(v3.ContainsClusterMessage); ok {
 		// mycluster, err := s.getClusterFromFromRequest(cMsg)
@@ -244,7 +246,6 @@ func (s *ReplicationManager) getClusterAndUser(ctx context.Context, req v3.Conta
 	if !ok {
 		return cluster.APIUser{}, nil, fmt.Errorf("metadata missing")
 	}
-	log.Info("md", md)
 
 	auth := md.Get("authorization")
 	if len(auth) == 0 {
@@ -367,8 +368,12 @@ func (s *ReplicationManager) GetCluster(ctx context.Context, in *v3.Cluster) (*s
 		return nil, err
 	}
 
-	// TODO: note we are not scrubbing the passwords here
-	return marshalToStruct(mycluster)
+	// the REST cluster payload: a locked snapshot with every secret masked (#2261)
+	cl, err := buildClusterAPIPayload(mycluster)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	return jsonToStruct(cl)
 }
 
 // ClusterStatus is a public endpoint so it doesn't need to verify a user
@@ -421,7 +426,12 @@ func (s *ReplicationManager) GetSettingsForCluster(ctx context.Context, in *v3.C
 		return nil, err
 	}
 
-	return marshalToStruct(*mycluster.Conf)
+	// the configuration as every API sends it: a locked snapshot with every secret masked (#2261)
+	conf, err := mycluster.GetConfigJSONForWire()
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	return jsonToStruct(conf)
 }
 
 func (s *ReplicationManager) SetActionForClusterSettings(ctx context.Context, in *v3.ClusterSetting) (*emptypb.Empty, error) {
@@ -435,8 +445,6 @@ func (s *ReplicationManager) SetActionForClusterSettings(ctx context.Context, in
 			return nil, v3.NewErrorResource(codes.InvalidArgument, v3.ErrFieldNotSet, "TagValue", "").Err()
 		}
 	}
-
-	log.Printf("incoming: %v", in)
 
 	// check if we are doing a set or switch
 	if in.Action == v3.ClusterSetting_UNSPECIFIED {
@@ -817,9 +825,13 @@ func marshalToStruct(v interface{}) (*structpb.Struct, error) {
 	if err != nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("could not marshal to json: %v", err))
 	}
+	return jsonToStruct(data)
+}
 
+// jsonToStruct converts a JSON object to google.protobuf.Struct
+func jsonToStruct(data []byte) (*structpb.Struct, error) {
 	out := &structpb.Struct{}
-	if err = protojson.Unmarshal(data, out); err != nil {
+	if err := protojson.Unmarshal(data, out); err != nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("could not unmarshal to protobuf struct: %v", err))
 	}
 
