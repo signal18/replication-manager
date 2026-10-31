@@ -5394,7 +5394,7 @@ func (repman *ReplicationManager) handlerMuxServerJobsCheckReceiver(w http.Respo
 		}
 
 		if node != nil {
-			rcv_port, err := mycluster.SSTRunReceiverToFile(node, filepath.Join(node.Datadir, "dbjobs_new.current"), cluster.ConstJobCreateFile, "jobs-check")
+			rcv_port, err := mycluster.SSTRunJobsCheckReceiver(node, filepath.Join(node.Datadir, "dbjobs_new.current"))
 			if err != nil {
 				http.Error(w, "Error opening receiver ports: "+err.Error(), 500)
 				return

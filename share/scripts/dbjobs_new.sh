@@ -338,7 +338,9 @@ job_stream_open() {
     # bash reads a pipe a byte at a time: the stream after the newline stays for cat. No read
     # timeout: the listener's own (accept-timeout, timeout) bounds the wait for the sender.
     if ! IFS= read -r -n 200 line; then
-        echo "no stream header" >"$LOG_DIR/stream.refused"
+        # nothing at all: the listener timed out or the sender closed before sending, not a
+        # stream refused (job_stream_refused stays empty, the caller reports its own timeout)
+        [[ -n "$line" ]] && echo "no stream header" >"$LOG_DIR/stream.refused"
         return 1
     fi
     read -r tag ts nonce mac <<<"$line"
@@ -356,12 +358,17 @@ job_stream_open() {
         echo "stream header not signed by replication-manager" >"$LOG_DIR/stream.refused"
         return 1
     fi
-    # the nonces taken within twice the window (bounded by it)
-    if grep -qs " $nonce\$" "$store"; then
+    # the nonces taken within twice the window (bounded by it), checked and written under a
+    # lock (flock when the image has it): two streams at once cannot both take one nonce
+    if ! (
+        umask 077
+        command -v flock >/dev/null 2>&1 && flock 9
+        grep -qs " $nonce\$" "$store" && exit 1
+        { awk -v min=$((now - 2 * JOB_STREAM_WINDOW)) '$1 >= min' "$store" 2>/dev/null; echo "$now $nonce"; } >"$store.$BASHPID" && mv -f "$store.$BASHPID" "$store"
+    ) 9>>"$store.lock"; then
         echo "stream header already used (replay)" >"$LOG_DIR/stream.refused"
         return 1
     fi
-    (umask 077 && { awk -v min=$((now - 2 * JOB_STREAM_WINDOW)) '$1 >= min' "$store" 2>/dev/null; echo "$now $nonce"; } >"$store.$$") && mv -f "$store.$$" "$store"
     exec cat
 }
 
@@ -728,16 +735,22 @@ report_job_state() {
 
 # Current API token of the jobs script: the token secret_login returned, kept in the jobs
 # directory (0600) so background tasks share it, and renewed by a new one-time login once it
-# is older than JOB_TOKEN_RENEW seconds: a one-time login's token lives
-# api-secret-login-token-timeout (15 min by default), a long task (a backup) still posts
-# with a valid one. "refresh" forces a new login.
+# ends within JOB_TOKEN_RENEW seconds (its own exp claim: api-secret-login-token-timeout, 15
+# min by default, whatever it is set to), so a long task (a backup) still posts with a valid
+# one. A token whose end cannot be read is renewed after JOB_TOKEN_RENEW. "refresh" forces a
+# new login.
 # Usage: job_token ["refresh"]
-JOB_TOKEN_RENEW=600
+JOB_TOKEN_RENEW=300
 job_token() {
     local file="$LOG_DIR/.job_token"
     if [[ "$1" != "refresh" && -s "$file" ]]; then
-        local age=$(( $(date +%s) - $(date -r "$file" +%s 2>/dev/null || echo 0) ))
-        if (( age < JOB_TOKEN_RENEW )); then
+        local now=$(date +%s)
+        local exp=$(job_token_exp "$(cat "$file")")
+        local age=$(( now - $(date -r "$file" +%s 2>/dev/null || echo 0) ))
+        if [[ -n "$exp" ]] && (( now < exp - JOB_TOKEN_RENEW )); then
+            cat "$file"
+            return 0
+        elif [[ -z "$exp" ]] && (( age < JOB_TOKEN_RENEW )); then
             cat "$file"
             return 0
         fi
@@ -745,9 +758,17 @@ job_token() {
     local token
     token="$(secret_login "$CLUSTER_NAME" "$MYSQL_SERVER" "$MYSQL_PORT")" || token=""
     if [[ -n "$token" ]]; then
-        (umask 077 && printf "%s" "$token" > "$file.$$" && mv -f "$file.$$" "$file")
+        (umask 077 && printf "%s" "$token" > "$file.$BASHPID" && mv -f "$file.$BASHPID" "$file")
     fi
     printf "%s" "$token"
+}
+
+# job_token_exp prints the exp claim (unix seconds) of a JWT, nothing when unreadable.
+job_token_exp() {
+    local payload
+    payload=$(printf "%s" "$1" | cut -d. -f2 | tr '_-' '/+')
+    while (( ${#payload} % 4 )); do payload="$payload="; done
+    printf "%s" "$payload" | base64 -d 2>/dev/null | grep -o '"exp":[0-9]*' | cut -d: -f2
 }
 
 # Login using secret

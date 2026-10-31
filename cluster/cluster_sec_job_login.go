@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -575,4 +576,40 @@ func (cluster *Cluster) CheckJobStreamRefused() {
 	}
 	cluster.SecurityStateMachine.AddState("WARN0277", state.State{ErrType: "WARNING", ErrKey: "WARN0277", ErrFrom: "SECURITY",
 		ErrDesc: fmt.Sprintf(clusterError["WARN0277"], strings.Join(refused, ", "))})
+}
+
+// jobsCheckOpening serializes the opening of jobs check receivers (SSTRunJobsCheckReceiver).
+var jobsCheckOpening sync.Mutex
+
+// errJobsCheckBusy: the server's jobs check receiver is taking a stream; the next check opens one.
+var errJobsCheckBusy = fmt.Errorf("a jobs check of this server is streaming, try again")
+
+// SSTRunJobsCheckReceiver opens the receiver of a server's jobs check (its script, sent back
+// for comparison) into filename: one per server. A receiver no one connected to yet is closed
+// for the new one, so legacy jobs check bodies (replayable, accepted for the script upgrade)
+// open one listener per server however often they are posted, and the genuine script is never
+// refused for a stale one; while one takes a stream, the new check is refused (errJobsCheckBusy).
+func (cluster *Cluster) SSTRunJobsCheckReceiver(server *ServerMonitor, filename string) (string, error) {
+	jobsCheckOpening.Lock() // two checks at once must not both keep a receiver
+	defer jobsCheckOpening.Unlock()
+	SSTs.Lock()
+	old := server.jobsCheckSST.Load()
+	busy := old != nil && old.in != nil
+	SSTs.Unlock()
+	if busy {
+		return "", errJobsCheckBusy
+	}
+	if old != nil {
+		old.tcplistener.Close() // its Accept fails, its cleanup frees the port
+	}
+	port, err := cluster.SSTRunReceiverToFile(server, filename, ConstJobCreateFile, "jobs-check")
+	if err != nil {
+		return "", err
+	}
+	if p, perr := strconv.Atoi(port); perr == nil {
+		SSTs.Lock()
+		server.jobsCheckSST.Store(SSTs.SSTconnections[p])
+		SSTs.Unlock()
+	}
+	return port, nil
 }

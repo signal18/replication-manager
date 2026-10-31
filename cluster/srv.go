@@ -51,6 +51,7 @@ type ServerMonitor struct {
 	legacyJobLoginAt int64        // unix time of the last legacy job body (OpenJobBody), read atomically; 0 never
 	jobStream        atomic.Value // jobStreamAuth: how the server's jobs script signs and checks its streams (OpenJobBody)
 	jobStreamRefused atomic.Value // jobStreamRefusal: the last stream of this server's jobs refused by a receiver (WARN0277)
+	jobsCheckSST     atomic.Pointer[SST] // the server's open jobs check receiver (SSTRunJobsCheckReceiver): one at a time
 	jobLoginRefused  atomic.Value // jobStreamRefusal: the last one-time job body of this server refused once decrypted (ERR00120)
 
 	Id                          string                   `json:"id" groups:"apps"` //Unique name given by cluster & crc64(URL) used by test to provision

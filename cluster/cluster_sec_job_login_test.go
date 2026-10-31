@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"path/filepath"
 	"os/exec"
 	"strings"
 	"sync/atomic"
@@ -610,4 +611,38 @@ func TestOpenJobBodyRefusedIsAState(t *testing.T) {
 	if len(r.ClusterGroup.SecurityStateMachine.GetOpenStates()) != 0 {
 		t.Fatal("a replay is not the script's fault: no state")
 	}
+}
+
+// A jobs check posted again (a replayed legacy body) replaces the receiver no one connected
+// to: one listener per server, however often.
+func TestJobsCheckReceiverOnePerServer(t *testing.T) {
+	s := jobLoginServer()
+	c := s.ClusterGroup
+	c.Conf.BindAddr = "127.0.0.1"
+	c.SstAvailablePorts = map[string]string{}
+	file := filepath.Join(t.TempDir(), "dbjobs_new.current")
+	count := func() int {
+		SSTs.Lock()
+		defer SSTs.Unlock()
+		n := 0
+		for _, sst := range SSTs.SSTconnections {
+			if sst.cluster == c {
+				n++
+			}
+		}
+		return n
+	}
+	for i := 0; i < 5; i++ {
+		if _, err := c.SSTRunJobsCheckReceiver(s, file); err != nil {
+			t.Fatalf("check %d: %v", i, err)
+		}
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for count() > 1 && time.Now().Before(deadline) {
+		time.Sleep(20 * time.Millisecond)
+	}
+	if n := count(); n != 1 {
+		t.Fatalf("one jobs check receiver per server, got %d", n)
+	}
+	s.jobsCheckSST.Load().tcplistener.Close()
 }
