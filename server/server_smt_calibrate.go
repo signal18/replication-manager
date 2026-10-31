@@ -247,6 +247,9 @@ func (repman *ReplicationManager) handlerMuxCalibrateSMTGain(w http.ResponseWrit
 		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
+	if !repman.isGlobalSettingsAdmin(w, r, "resource-manager-smt-gain") {
+		return
+	}
 	valid, user := repman.IsValidClusterACL(r, mycluster)
 	if !valid {
 		http.Error(w, "No valid ACL", http.StatusForbidden)

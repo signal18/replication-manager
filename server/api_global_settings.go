@@ -55,6 +55,31 @@ func (repman *ReplicationManager) writeStandbyPersistenceWarning(w http.Response
 	return true
 }
 
+// isGlobalSettingsAdmin: a global (scope server) setting is changed by the local admin account
+// only (#2262), never by a Cloud18 login, an API token or another local account, whatever their
+// grants: the terminal, the logins, the API and the MCP are global settings. A refusal answers 403
+// and goes to the security log.
+func (repman *ReplicationManager) isGlobalSettingsAdmin(w http.ResponseWriter, r *http.Request, setting string) bool {
+	claims, err := repman.GetJWTClaims(r)
+	if err == nil && claims["User"] == "admin" && claims["AuthType"] == "Local" {
+		return true
+	}
+	repman.logSecurityEvent("global_setting_denied", claims["User"], r.RemoteAddr, "Global setting "+setting+" refused: only the local admin account changes global settings")
+	http.Error(w, "Only the local admin account changes global settings", http.StatusForbidden)
+	return false
+}
+
+// refuseImmutableGlobalSetting answers 403 to a change of an immutable setting, logged in the
+// security log; false for any other outcome.
+func (repman *ReplicationManager) refuseImmutableGlobalSetting(w http.ResponseWriter, r *http.Request, user string, err error) bool {
+	if !errors.Is(err, errImmutableGlobalSetting) {
+		return false
+	}
+	repman.logSecurityEvent("global_setting_denied", user, r.RemoteAddr, "Global setting refused: "+err.Error())
+	http.Error(w, err.Error(), http.StatusForbidden)
+	return true
+}
+
 func (repman *ReplicationManager) handlerMuxSwitchGlobalSettings(w http.ResponseWriter, r *http.Request) {
 	var value string
 	w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -63,6 +88,9 @@ func (repman *ReplicationManager) handlerMuxSwitchGlobalSettings(w http.Response
 	serverScope := config.IsScope(setting, "server")
 	if !serverScope {
 		http.Error(w, "setting is not in global scope", http.StatusNotImplemented)
+		return
+	}
+	if !repman.isGlobalSettingsAdmin(w, r, setting) {
 		return
 	}
 
@@ -91,6 +119,9 @@ func (repman *ReplicationManager) handlerMuxSwitchGlobalSettings(w http.Response
 		if valid {
 			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "API receive switch global setting %s", setting)
 			err := repman.switchServerSetting(user, r.URL.Path, setting, value)
+			if repman.refuseImmutableGlobalSetting(w, r, user, err) {
+				return
+			}
 			if err != nil {
 				http.Error(w, fmt.Sprintf("Failed to set value for %s: %s", setting, err.Error()), http.StatusBadRequest)
 				return
@@ -129,6 +160,9 @@ func (repman *ReplicationManager) handlerMuxSetGlobalSettings(w http.ResponseWri
 		http.Error(w, "Setting Not Found", http.StatusNotImplemented)
 		return
 	}
+	if !repman.isGlobalSettingsAdmin(w, r, setting) {
+		return
+	}
 	value := ""
 	if settingValue, ok := vars["settingValue"]; ok {
 		// The GUI clears a text setting with the literal "{undefined}".
@@ -159,6 +193,9 @@ func (repman *ReplicationManager) handlerMuxSetGlobalSettings(w http.ResponseWri
 			//Set server scope
 			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Option '%s' is a shared values between clusters", setting)
 			err := repman.setServerSetting(user, r.URL.Path, setting, value)
+			if repman.refuseImmutableGlobalSetting(w, r, user, err) {
+				return
+			}
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusNotImplemented)
 				return
@@ -846,7 +883,23 @@ func (repman *ReplicationManager) switchRepmanSetting(name string) error {
 	return nil
 }
 
+// errImmutableGlobalSetting: the setting is set in the configuration file, on the command line or in
+// the environment (#2262). Those are the operator's, on the host: no API call changes them, not even
+// in memory until the next restart (where they would win anyway).
+var errImmutableGlobalSetting = errors.New("set in the configuration file, the command line or the environment (immutable): change it there, not through the API")
+
+// immutableGlobalSetting refuses a change of a setting the immutable configuration sets.
+func (repman *ReplicationManager) immutableGlobalSetting(name string) error {
+	if _, ok := repman.Conf.GetImmuableFlag(name); ok {
+		return fmt.Errorf("%s: %w", name, errImmutableGlobalSetting)
+	}
+	return nil
+}
+
 func (repman *ReplicationManager) setServerSetting(user string, URL string, name string, value string) error {
+	if err := repman.immutableGlobalSetting(name); err != nil {
+		return err
+	}
 	err := repman.setRepmanSetting(name, value)
 	if err != nil {
 		return err
@@ -868,6 +921,9 @@ func (repman *ReplicationManager) setServerSetting(user string, URL string, name
 }
 
 func (repman *ReplicationManager) switchServerSetting(user string, URL string, name string, value string) error {
+	if err := repman.immutableGlobalSetting(name); err != nil {
+		return err
+	}
 	if value == "" {
 
 		err := repman.switchRepmanSetting(name)

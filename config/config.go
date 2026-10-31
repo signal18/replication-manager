@@ -1153,6 +1153,7 @@ type Config struct {
 	TerminalSessionEnabled                 bool                   `scope:"server" mapstructure:"terminal-session-enabled" toml:"terminal-session-enabled" json:"terminalSessionEnabled"`
 	TerminalSessionResume                  bool                   `scope:"server" mapstructure:"terminal-session-resume" toml:"terminal-session-resume" json:"terminalSessionResume"`
 	TerminalSessionManager                 string                 `mapstructure:"terminal-session-manager" toml:"terminal-session-manager" json:"terminalSessionManager"`
+	TerminalSessionAuth                    string                 `scope:"server" mapstructure:"terminal-session-auth" toml:"terminal-session-auth" json:"terminalSessionAuth"`
 	// Cloud18ArchiveOfferRequests: the archive offers of the marketplace catalogue whose access
 	// the cluster asks the back-office for (comma-separated offer names); the BO harvests it and
 	// delivers, in the cluster's inject.toml, the S3 provider (OVH S3) or the archive (a PBS token)

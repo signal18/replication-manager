@@ -1499,6 +1499,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.TerminalSessionResume, "terminal-session-resume", false, "Enable terminal session resume")
 	flags.StringVar(&conf.TerminalSessionManager, "terminal-session-manager", "tmux", "Terminal session manager: tmux|screen")
 	flags.BoolVar(&conf.TerminalSessionEnabled, "terminal-session-enabled", false, "Enable terminal session")
+	flags.StringVar(&conf.TerminalSessionAuth, "terminal-session-auth", config.ConstTerminalAuthLocal, "Logins allowed to open a terminal (comma-separated): local (an account of this repman), cloud18-mfa (a Cloud18 login, only while cloud18-login-acr asks a second factor). A Cloud18 login without it and an API token are refused. Empty: local")
 }
 
 // DicoverClusters from viper merged config send a sperated list of clusters

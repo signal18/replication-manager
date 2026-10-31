@@ -128,6 +128,9 @@ func (repman *ReplicationManager) handlerMuxCalibrateIOPS(w http.ResponseWriter,
 		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
+	if !repman.isGlobalSettingsAdmin(w, r, "resource-manager-infra-iops") {
+		return
+	}
 	valid, user := repman.IsValidClusterACL(r, mycluster)
 	if !valid {
 		http.Error(w, "No valid ACL", http.StatusForbidden)
