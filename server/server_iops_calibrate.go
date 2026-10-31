@@ -123,12 +123,12 @@ func (repman *ReplicationManager) CalibrateIOPS(ctx context.Context, user, url s
 // @Router /api/clusters/settings/actions/calibrate-iops [post]
 func (repman *ReplicationManager) handlerMuxCalibrateIOPS(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
+	if !repman.isGlobalSettingsAdmin(w, r, "resource-manager-infra-iops") {
+		return
+	}
 	var mycluster = repman.firstCluster()
 	if mycluster == nil {
 		http.Error(w, "No cluster", http.StatusInternalServerError)
-		return
-	}
-	if !repman.isGlobalSettingsAdmin(w, r, "resource-manager-infra-iops") {
 		return
 	}
 	valid, user := repman.IsValidClusterACL(r, mycluster)

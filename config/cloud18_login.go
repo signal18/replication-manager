@@ -83,16 +83,21 @@ func (conf *Config) Cloud18Login(email, password string) (*Cloud18Login, error) 
 	l := &Cloud18Login{GitLabToken: token, Web: w.client}
 	if a, err := conf.cloud18LoginToken(w); err != nil {
 		if len(conf.Cloud18LoginACRValues()) > 0 {
-			conf.cloud18Log(LvlWarn, "Cloud18 login of %s refused: no realm token at the level cloud18-login-acr asks: %s", email, err)
-			return nil, ErrCloud18SecondFactor
+			// fails closed (never the password fallback below), with the real cause: an outage or a
+			// missing client is not a second-factor problem
+			conf.cloud18Log(LvlWarn, "Cloud18 login of %q refused: no realm token at the level cloud18-login-acr asks: %s", email, err)
+			if errors.Is(err, ErrCloud18SecondFactor) {
+				return nil, ErrCloud18SecondFactor
+			}
+			return nil, fmt.Errorf("Cloud18 login: no realm token (cloud18-login-acr is set, the password alone is not enough): %w", err)
 		}
-		conf.cloud18Log(LvlWarn, "Cloud18 gave no realm token for the login of %s (the other instances get the password): %s", email, err)
+		conf.cloud18Log(LvlWarn, "Cloud18 gave no realm token for the login of %q (the other instances get the password): %s", email, err)
 	} else {
 		l.Access, l.Refresh = a.AccessToken, a.RefreshToken
 	}
 	if len(conf.Cloud18LoginACRValues()) > 0 {
 		if _, err := conf.VerifyCloud18Token(l.Access); err != nil {
-			conf.cloud18Log(LvlWarn, "Cloud18 login of %s refused: %s", email, err)
+			conf.cloud18Log(LvlWarn, "Cloud18 login of %q refused: %s", email, err)
 			return nil, ErrCloud18SecondFactor
 		}
 	}

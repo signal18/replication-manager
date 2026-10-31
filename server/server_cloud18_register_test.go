@@ -63,6 +63,7 @@ type registerFakes struct {
 	liveRefresh    map[string]bool   // refresh tokens still valid, when rotating
 	acr            string            // the authentication level (acr) of the tokens the realm gives
 	otp            bool              // an authorization asking a level (acr_values) gets the one-time code page
+	otpAtLogin     bool              // the password post itself gets the one-time code page (OTP required for everyone)
 }
 
 type fakeToken struct {
@@ -97,6 +98,8 @@ func newRegisterFakes(t *testing.T) (*registerFakes, string) {
 			switch {
 			case ok && pw == "":
 				fmt.Fprint(w, `<h1 id="kc-page-title">Email verification</h1><div class="kc-feedback-text">You need to verify your email address to activate your account.</div>`)
+			case ok && pw == r.Form.Get("password") && f.otpAtLogin:
+				fmt.Fprintf(w, `<form id="kc-otp-login-form" action="%s/realms/cloud18/login-actions/authenticate?session_code=5" method="post">`, realmURL)
 			case ok && pw == r.Form.Get("password"):
 				f.logins++
 				http.SetCookie(w, &http.Cookie{Name: "KEYCLOAK_IDENTITY", Value: url.QueryEscape(r.Form.Get("username")), Path: "/realms/cloud18/"})

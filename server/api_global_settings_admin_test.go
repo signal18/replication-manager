@@ -94,3 +94,18 @@ func TestImmutableGlobalSettingRefused(t *testing.T) {
 		t.Fatalf("a setting the immutable configuration does not set: %v", err)
 	}
 }
+
+// #2262: the MCP's cluster setting tools never change a global key (they would skip the admin
+// gate and the immutable check); a cluster key goes on as before.
+func TestClusterSettingToolsRefuseGlobalKeys(t *testing.T) {
+	repman := &ReplicationManager{Conf: &config.Config{}}
+	if err := repman.SetClusterSetting(nil, "terminal-session-enabled", "true"); !errors.Is(err, errGlobalSettingThroughCluster) {
+		t.Errorf("set of a global key through a cluster tool: %v", err)
+	}
+	if err := repman.SwitchClusterSetting(nil, "terminal-session-enabled"); !errors.Is(err, errGlobalSettingThroughCluster) {
+		t.Errorf("switch of a global key through a cluster tool: %v", err)
+	}
+	if !config.IsScope("terminal-session-enabled", "server") || config.IsScope("failover-mode", "server") {
+		t.Fatal("scopes changed: the test keys no longer fit")
+	}
+}

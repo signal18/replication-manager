@@ -7,6 +7,7 @@
 package server
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -57,11 +58,23 @@ func (repman *ReplicationManager) GetConf() *config.Config {
 	return repman.Conf
 }
 
+// errGlobalSettingThroughCluster: a global (scope server) key is changed through the global
+// settings routes only, by the local admin (#2262), never through a cluster tool (the MCP).
+var errGlobalSettingThroughCluster = errors.New("a global setting: change it through the global settings with the local admin account")
+
+// SetClusterSetting changes a cluster key for the MCP; a global key is refused.
 func (repman *ReplicationManager) SetClusterSetting(cl *cluster.Cluster, key, value string) error {
+	if config.IsScope(key, "server") {
+		return fmt.Errorf("%s: %w", key, errGlobalSettingThroughCluster)
+	}
 	return repman.setClusterSetting(cl, key, value)
 }
 
+// SwitchClusterSetting switches a cluster key for the MCP; a global key is refused.
 func (repman *ReplicationManager) SwitchClusterSetting(cl *cluster.Cluster, key string) error {
+	if config.IsScope(key, "server") {
+		return fmt.Errorf("%s: %w", key, errGlobalSettingThroughCluster)
+	}
 	return repman.switchClusterSettings(cl, key)
 }
 

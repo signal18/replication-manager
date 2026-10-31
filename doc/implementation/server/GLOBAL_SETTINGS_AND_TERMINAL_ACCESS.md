@@ -15,7 +15,10 @@ through the API. Grants are not enough here: the kind of login decides.
 another local account, a Cloud18 (SSO) login and an API token get a 403, written to the security log
 (`global_setting_denied`). It guards `switch`, `set` and `clear` (both the global routes and the
 cluster routes that hand a server-scope key to them) and the calibrations that write one
-(`calibrate-iops`, `calibrate-smt-gain`). Cluster settings are not concerned: they keep their grants.
+(`calibrate-iops`, `calibrate-smt-gain`, gated before any cluster lookup). Cluster settings are not
+concerned: they keep their grants. The MCP's `cluster-set-setting` / `cluster-switch-setting` call the
+cluster setter directly: they refuse a global key (`errGlobalSettingThroughCluster`), or they would skip
+both checks.
 
 ## Immutable global settings: never through the API
 
@@ -36,7 +39,10 @@ admin included: such a setting is changed on the host, in the file.
 An API token, another SSO login, and a Cloud18 login without the second factor are refused
 (`config.TerminalAuthAllows`, security log `terminal_denied`). The global terminal (the shell on the
 repman host) is for the local `admin` account only: the `cloud18-gitlab-user` exception is removed.
-`terminal-session-enabled` stays the off switch.
+`terminal-session-enabled` stays the off switch. `terminal-session-auth = cloud18-mfa` alone also refuses
+the local accounts (the host shell stays the local admin's either way): keep `local` in the list unless
+that is wanted. Removed behaviour, for the release notes: the Cloud18 service account
+(`cloud18-gitlab-user`) no longer opens the host shell.
 
 ## Tests
 

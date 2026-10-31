@@ -104,6 +104,16 @@ repman decides on each instance which level a Cloud18 login must reach, with the
 - The Sign in form posts a password only and cannot answer the code page: with a level set, it refuses
   the login (`ErrCloud18SecondFactor`, "use Sign in with Cloud18") when the realm shows the code page or
   gives a token below the level, and never falls back to the password for the other instances.
+- With a level set, ANY failure to get the realm token fails the whole login, even though the GitLab
+  part succeeded: a realm outage or a missing login client looks like a total sign-in failure (the
+  error says its real cause, not "second factor"). Without a level the old fallback stays.
+- The code page is found by its Keycloak theme id (`kc-otp-login-form`, also reported by the GitLab
+  walk with no level set). A custom theme or another second factor (WebAuthn, recovery codes) gives
+  a generic message instead; the login still fails closed, the token check refuses it.
+- The `acr` claim is compared literally, as a string, as the Cloud18 Keycloak realm sends it: another
+  provider sending a URN, `0` or an array does not match.
+- Each instance judges with its own `cloud18-login-acr`: in a fleet where peers differ, a realm token
+  accepted by one can be refused by another.
 
 Realm side, once for the realm (no client per repman): in the browser flow, the "Conditional - Level Of
 Authentication" steps (level 1 password, level 2 password and OTP), and on the client

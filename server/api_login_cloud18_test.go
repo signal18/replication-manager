@@ -441,3 +441,59 @@ func TestCloud18LoginACR(t *testing.T) {
 		t.Errorf("no level asked: no acr_values: %s", u)
 	}
 }
+
+// cloud18-login-acr review points: a realm token refreshed (what a session sends to a peer) keeps
+// the level check; the walk reports the code page asked at the password post; an outage or a
+// missing login client is not reported as a second-factor problem, and still fails closed.
+func TestCloud18LoginACRRefreshWalkAndErrors(t *testing.T) {
+	f, issuer := newRegisterFakes(t)
+	repman := loginRepman(t, issuer)
+	repman.Conf.Cloud18LoginACR = "mfa"
+
+	f.mu.Lock()
+	f.acr = "mfa"
+	f.mu.Unlock()
+	sso, err := repman.ssoPasswordLogin("admin@acme.example", "s3cr3t-cloud18")
+	if err != nil {
+		t.Fatalf("a login at the level: %v", err)
+	}
+	config.ForgetCloud18Logins()
+	peer, err := repman.Conf.Cloud18LoginAccess(sso.cloud18.Refresh)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repman.Conf.VerifyCloud18Token(peer); err != nil {
+		t.Fatalf("a refreshed token at the level, as a peer verifies it: %v", err)
+	}
+	f.mu.Lock()
+	f.acr = "1"
+	f.mu.Unlock()
+	config.ForgetCloud18Logins()
+	low, err := repman.Conf.Cloud18LoginAccess(sso.cloud18.Refresh)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repman.Conf.VerifyCloud18Token(low); !errors.Is(err, config.ErrCloud18TokenRefused) {
+		t.Fatalf("a refreshed token below the level must be refused by a peer: %v", err)
+	}
+
+	f.mu.Lock()
+	f.otpAtLogin = true
+	f.mu.Unlock()
+	if _, err := repman.ssoPasswordLogin("admin@acme.example", "s3cr3t-cloud18"); !errors.Is(err, config.ErrCloud18SecondFactor) {
+		t.Fatalf("the code page at the password post: %v", err)
+	}
+	repman.Conf.Cloud18LoginACR = ""
+	if _, err := repman.ssoPasswordLogin("admin@acme.example", "s3cr3t-cloud18"); !errors.Is(err, config.ErrCloud18SecondFactor) {
+		t.Fatalf("the code page with no level set is reported as such too: %v", err)
+	}
+
+	repman.Conf.Cloud18LoginACR = "mfa"
+	f.mu.Lock()
+	f.otpAtLogin, f.noLoginClient, f.acr = false, true, "mfa"
+	f.mu.Unlock()
+	_, err = repman.ssoPasswordLogin("admin@acme.example", "s3cr3t-cloud18")
+	if err == nil || errors.Is(err, config.ErrCloud18SecondFactor) {
+		t.Fatalf("no login client with a level set: refused, with its own cause: %v", err)
+	}
+}

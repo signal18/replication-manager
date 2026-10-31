@@ -36,5 +36,9 @@ func (conf *Config) TerminalAuthAllows(authType string, cloud18 bool) error {
 		}
 		return nil
 	}
-	return errors.New("a " + strings.ToLower(authType) + " login does not open a terminal here (terminal-session-auth: " + strings.Join(allowed, ",") + ")")
+	kind := map[string]string{"Local": "local", "SSO": "single sign-on", "Token": "API token"}[authType]
+	if kind == "" {
+		kind = "unknown"
+	}
+	return errors.New("this login (" + kind + ") does not open a terminal here (terminal-session-auth: " + strings.Join(allowed, ",") + ")")
 }

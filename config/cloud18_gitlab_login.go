@@ -113,9 +113,13 @@ var (
 	kcMessageRe     = regexp.MustCompile(`(?s)(?:input-error|kc-feedback-text|pf-v5-c-alert__title|pf-m-error)[^>]*>(.*?)</`)
 	redirectLinkRe  = regexp.MustCompile(`href="(` + regexp.QuoteMeta(cloud18GitLabOAuthRedirect) + `\?[^"]+)"`)
 	htmlTagRe       = regexp.MustCompile(`<[^>]+>|\s+`)
-	kcOTPFormRe     = regexp.MustCompile(`<form[^>]*id="kc-otp-login-form"`)
 	kcVerifyEmailRe = regexp.MustCompile(`(?i)verify your email|email verification|update password|required action`)
 )
+
+// kcOTPFormRe is the realm's one-time code page, by its Keycloak theme id: a custom theme or another
+// second factor (WebAuthn, recovery codes) does not match, and the login then fails with a generic
+// message, still closed (VerifyCloud18Token refuses a token below the level).
+var kcOTPFormRe = regexp.MustCompile(`<form[^>]*id="kc-otp-login-form"`)
 
 // ErrCloud18PageChanged: a GitLab or realm page no longer has the form repman fills (its layout
 // changed, or a step was added): the registration must be adapted.
