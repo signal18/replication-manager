@@ -41,7 +41,7 @@ func NewConsulProxy(placement int, cluster *Cluster, proxyHost string) *ConsulPr
 	prx.Type = config.ConstProxyConsul
 	prx.Port = conf.ProxysqlAdminPort
 	prx.ReadWritePort, _ = strconv.Atoi(conf.ProxysqlPort)
-	prx.User, prx.Pass = misc.SplitPair(conf.RegistryConsulCredential)
+	prx.User, prx.Pass = misc.SplitPair(conf.GetDecryptedValue("registry-consul-credential"))
 	prx.ReaderHostgroup, _ = strconv.Atoi(conf.ProxysqlReaderHostgroup)
 	prx.WriterHostgroup, _ = strconv.Atoi(conf.ProxysqlWriterHostgroup)
 	prx.WritePort, _ = strconv.Atoi(conf.ProxysqlPort)
@@ -56,8 +56,6 @@ func NewConsulProxy(placement int, cluster *Cluster, proxyHost string) *ConsulPr
 			prx.Host = prx.Host + "." + conf.ClusterHead + ".svc." + conf.ProvOrchestratorCluster
 		}
 	}
-
-	prx.Pass = cluster.Conf.GetDecryptedPassword("registry-consul-credential", prx.Pass)
 
 	return prx
 }

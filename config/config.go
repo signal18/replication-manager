@@ -1997,6 +1997,16 @@ var SecretKeys = []string{
 	"meet-token",
 	"prov-app-template-repo-password",
 	"prov-docker-registry-credentials",
+	// webhook URLs (the URL is the credential), the tunnel and Consul credentials, and
+	// password/token fields with no reader yet
+	"alert-slack-url",
+	"cloud18-alert-slack-url",
+	"alert-teams-url",
+	"alert-teams-proxy-url",
+	"monitoring-tunnel-credential",
+	"registry-consul-credential",
+	"registry-consul-token",
+	"mysqlrouter-pass",
 }
 
 // DecryptSecretsFromConfig rebuilds Conf.Secrets from the config maps: DynamicFlagMap, then
@@ -2314,6 +2324,10 @@ func readAndPrintFile(fileName string) {
 func (conf *Config) IsPath(str string) bool {
 
 	if strings.Contains(str, "=") || strings.Contains(str, "+") {
+		return false
+	}
+	// a URL (a webhook secret) is a value, never a Vault path
+	if strings.Contains(str, "://") {
 		return false
 	}
 	return strings.Contains(str, "/")

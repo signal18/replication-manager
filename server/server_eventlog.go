@@ -280,8 +280,12 @@ func (repman *ReplicationManager) applyPeerConfigEvent(ev cluster.ConfigChangeEv
 		// Seed the ciphertext cache with the peer's exact ciphertext so our
 		// next save writes the identical bytes: both peers' saved configs
 		// converge and the echo subtraction matches on the first save.
+		// The plaintext goes with it: a key applied generically (a webhook
+		// URL, whose setter takes base64) set its field only, and its readers
+		// read the secret.
 		sec := cl.Conf.Secrets.Get(ev.Key)
 		sec.Crypted = ev.Value
+		sec.Value = applyVal
 		cl.Conf.Secrets.Set(ev.Key, sec)
 	}
 

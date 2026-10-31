@@ -4249,7 +4249,7 @@ var base64LogValueSettings = map[string]struct{}{
 
 func GetApiChangeLogFormat(name, value string) (string, []interface{}) {
 	switch name {
-	case "replication-credential", "db-servers-credential", "proxysql-servers-credential", "proxy-servers-backend-max-connections", "proxy-servers-backend-max-replication-lag", "maxscale-servers-credential", "shardproxy-servers-credential", "mail-smtp-password", "mail-smtp-user", "mail-to", "mail-from", "cloud18-gitlab-user", "cloud18-gitlab-password", "cloud18-domain-secret", "backup-restic-aws-access-key-id", "backup-restic-aws-access-secret", "backup-restic-password", "cloud18-dba-user-credentials", "cloud18-sponsor-user-credentials", "haproxy-password", "backup-verification-credential":
+	case "replication-credential", "db-servers-credential", "proxysql-servers-credential", "proxy-servers-backend-max-connections", "proxy-servers-backend-max-replication-lag", "maxscale-servers-credential", "shardproxy-servers-credential", "mail-smtp-password", "mail-smtp-user", "mail-to", "mail-from", "cloud18-gitlab-user", "cloud18-gitlab-password", "cloud18-domain-secret", "backup-restic-aws-access-key-id", "backup-restic-aws-access-secret", "backup-restic-password", "cloud18-dba-user-credentials", "cloud18-sponsor-user-credentials", "haproxy-password", "backup-verification-credential", "alert-slack-url", "cloud18-alert-slack-url", "alert-teams-url", "alert-teams-proxy-url":
 		return "API receive set setting %s to ****", []interface{}{name}
 	default:
 		logValue := value
@@ -5076,7 +5076,9 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		if err != nil {
 			return errors.New("unable to decode")
 		}
-		mycluster.SetAlertSlackUrl(string(val))
+		if err := mycluster.SetAlertSlackUrl(string(val)); err != nil {
+			return err
+		}
 	case "alert-slack-user":
 		mycluster.SetAlertSlackUser(value)
 	case "cloud18-alert":
@@ -5097,7 +5099,9 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		if err != nil {
 			return errors.New("unable to decode")
 		}
-		mycluster.SetCloud18AlertSlackUrl(string(val))
+		if err := mycluster.SetCloud18AlertSlackUrl(string(val)); err != nil {
+			return err
+		}
 	case "cloud18-alert-slack-user":
 		mycluster.SetCloud18AlertSlackUser(value)
 	case "alert-teams-proxy-url":
@@ -5105,7 +5109,9 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		if err != nil {
 			return errors.New("unable to decode")
 		}
-		mycluster.SetAlertTeamsProxyUrl(string(val))
+		if err := mycluster.SetAlertTeamsProxyUrl(string(val)); err != nil {
+			return err
+		}
 	case "alert-teams-state":
 		mycluster.SetAlertTeamsState(value)
 	case "alert-teams-url":
@@ -5113,7 +5119,9 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		if err != nil {
 			return errors.New("unable to decode")
 		}
-		mycluster.SetAlertTeamsUrl(string(val))
+		if err := mycluster.SetAlertTeamsUrl(string(val)); err != nil {
+			return err
+		}
 	case "monitoring-alert-trigger":
 		mycluster.SetMonitoringAlertTriggerl(value)
 	case "mail-smtp-addr":

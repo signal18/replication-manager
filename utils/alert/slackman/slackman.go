@@ -1,7 +1,9 @@
 package slackman
 
 import (
+	"errors"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -28,6 +30,21 @@ type SlackmanHook struct {
 	hook    logrus.Hook // The actual logrus hook instance.
 	Enabled bool        // Whether the hook is currently active.
 	mu      sync.Mutex  // Mutex to ensure safe concurrent access.
+}
+
+// urlRedactingHook fires a webhook hook and removes the webhook URL from its error: the URL
+// is the credential, and logrus prints a failed hook's error (an HTTP error quotes the URL).
+type urlRedactingHook struct {
+	logrus.Hook
+	url string
+}
+
+func (h *urlRedactingHook) Fire(entry *logrus.Entry) error {
+	err := h.Hook.Fire(entry)
+	if err != nil && h.url != "" {
+		return errors.New(strings.ReplaceAll(err.Error(), h.url, "<webhook-url>"))
+	}
+	return err
 }
 
 // SlackManager manages multiple Slack/Mattermost webhook hooks.
@@ -147,6 +164,8 @@ func (s *SlackManager) Activate(hooktype string, useLock bool) bool {
 			},
 		}
 	}
+
+	sh.hook = &urlRedactingHook{Hook: sh.hook, url: sh.Config.URL}
 
 	// Register the hook with logrus.
 	s.AddHook(sh.hook)

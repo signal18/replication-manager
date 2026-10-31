@@ -4720,6 +4720,8 @@ func (repman *ReplicationManager) GetEncryptedValueFromMemory(key string) string
 		return repman.Conf.GetStableEncryptedValue("git-pull-access-token", repman.Conf.GetDecryptedValue("git-pull-access-token"))
 	case "vault-token":
 		return repman.Conf.GetStableEncryptedValue("vault-token", repman.Conf.GetDecryptedValue("vault-token"))
+	case "alert-slack-url", "cloud18-alert-slack-url", "alert-teams-url", "alert-teams-proxy-url", "monitoring-tunnel-credential", "registry-consul-credential", "registry-consul-token", "mysqlrouter-pass":
+		return repman.Conf.GetStableEncryptedValue(key, repman.Conf.GetDecryptedValue(key))
 	default:
 		return ""
 	}
