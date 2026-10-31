@@ -651,6 +651,8 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 	case "mcp-server":
 		repman.Conf.MCPServ = isactive
 		repman.restartMCPServer()
+	case "api-v3-server":
+		repman.Conf.ApiV3Serv = isactive
 	case "cloud18-self-service-clusters":
 		repman.Conf.Cloud18SelfServiceClusters = isactive
 	case "mcp-auth-enabled":
@@ -829,6 +831,8 @@ func (repman *ReplicationManager) switchRepmanSetting(name string) error {
 	case "mcp-server":
 		repman.Conf.MCPServ = !repman.Conf.MCPServ
 		repman.restartMCPServer()
+	case "api-v3-server":
+		repman.Conf.ApiV3Serv = !repman.Conf.ApiV3Serv
 	case "cloud18-self-service-clusters":
 		repman.Conf.Cloud18SelfServiceClusters = !repman.Conf.Cloud18SelfServiceClusters
 	case "cloud18-self-service-clusters-can-borrow":

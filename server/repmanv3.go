@@ -338,8 +338,29 @@ func (s *ReplicationManager) getCredentials() (opts []grpc.ServerOption, dopts [
 
 // grpcHandlerFunc returns an http.Handler that delegates to grpcServer on incoming gRPC
 // connections or otherHandler otherwise. Adapter from cockroachdb.
+// isV3Request tells whether req is for the v3 API: gRPC, gRPC-web, or a path under /v3/.
+func (s *ReplicationManager) isV3Request(req *http.Request) bool {
+	if req.ProtoMajor == 2 && req.Header.Get("Content-Type") == "application/grpc" {
+		return true
+	}
+	if s.grpcWrapped != nil && (s.grpcWrapped.IsAcceptableGrpcCorsRequest(req) || s.grpcWrapped.IsGrpcWebRequest(req)) {
+		return true
+	}
+	return req.URL.Path == "/v3" || strings.HasPrefix(req.URL.Path, "/v3/")
+}
+
 func grpcHandlerFunc(s *ReplicationManager, otherHandler http.Handler, legacyHandler http.Handler) http.Handler {
 	return http.HandlerFunc(func(resp http.ResponseWriter, req *http.Request) {
+		// api-v3-server off (the default): no v3 request is served, every other one goes to
+		// the REST API. Read on each request, so the switch applies live (#2273).
+		if !s.Conf.ApiV3Serv {
+			if s.isV3Request(req) {
+				http.Error(resp, "The v3 API is not enabled (api-v3-server)", http.StatusNotFound)
+				return
+			}
+			legacyHandler.ServeHTTP(resp, req)
+			return
+		}
 		if req.ProtoMajor == 2 && req.Header.Get("Content-Type") == "application/grpc" {
 			s.grpcServer.ServeHTTP(resp, req)
 		} else {
