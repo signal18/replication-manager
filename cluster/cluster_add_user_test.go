@@ -212,7 +212,7 @@ func TestAppendRolesNeverAddsVisitorNextToRealRole(t *testing.T) {
 
 // A `system` created by secret-login with "db proxy" (#1967) holds its grants exactly from the
 // load on (in memory), and the next EnsureSystemServiceUser saves them: the sensors, the tasks
-// and their results, the config, nothing else; its entry and roles are kept.
+// and their results (the config fetch included), nothing else; its entry and roles are kept.
 func TestEnsureSystemServiceUserSetsItsGrants(t *testing.T) {
 	c := newTestClusterForUsers(t)
 	c.Conf.SecretKey = []byte("0123456789abcdef0123456789abcdef")
@@ -224,12 +224,12 @@ func TestEnsureSystemServiceUserSetsItsGrants(t *testing.T) {
 	c.LoadAPIUsers()
 	check := func(when string) {
 		s := c.APIUsers["system"]
-		for _, g := range []string{config.GrantClusterResourceSensor, config.GrantDBJobs, config.GrantDBConfigFlag} {
+		for _, g := range []string{config.GrantClusterResourceSensor, config.GrantDBJobs} {
 			if !s.Grants[g] {
 				t.Fatalf("%s: system must hold %s", when, g)
 			}
 		}
-		for _, g := range []string{config.GrantDBShowVariables, config.GrantDBBackup, config.GrantDBRestore, config.GrantProxyConfigCreate, config.GrantTokenCreate} {
+		for _, g := range []string{config.GrantDBConfigFlag, config.GrantDBShowVariables, config.GrantDBBackup, config.GrantDBRestore, config.GrantProxyConfigCreate, config.GrantTokenCreate} {
 			if s.Grants[g] {
 				t.Fatalf("%s: system must not hold %s", when, g)
 			}

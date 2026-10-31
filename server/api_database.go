@@ -23,7 +23,6 @@ import (
 	"time"
 
 	"github.com/codegangsta/negroni"
-	jwt "github.com/golang-jwt/jwt/v5"
 	"github.com/gorilla/mux"
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
@@ -5087,7 +5086,7 @@ func (repman *ReplicationManager) secretLoginHandler(w http.ResponseWriter, r *h
 		return
 	}
 
-	_, _, errcode, err := mycluster.SecretLoginCheck(vars, r.Body)
+	node, _, errcode, err := mycluster.SecretLoginCheck(vars, r.Body)
 	if err != nil {
 		http.Error(w, err.Error(), errcode)
 		return
@@ -5115,31 +5114,19 @@ func (repman *ReplicationManager) secretLoginHandler(w http.ResponseWriter, r *h
 	}
 
 	// The token names the cluster's jobs principal, not `system`: the jobs grants only, on this
-	// cluster (cluster.EnsureJobsPrincipal), and no password.
+	// cluster (cluster.EnsureJobsPrincipal), for the server whose job body logged in (Server,
+	// cluster.JobsTokenServerInScope), and no password. A one-time job body only reaches here
+	// (SecretLoginCheck refuses a legacy one): a short token, the jobs script logs in again
+	// before it expires.
 	mycluster.EnsureJobsPrincipal()
 	userInfo := struct {
 		Name     string
 		Role     string
 		Password string
-	}{mycluster.JobsPrincipalName(), "Member", ""}
-
-	signer := jwt.New(jwt.SigningMethodRS256)
-	claims := signer.Claims.(jwt.MapClaims)
-	//set claims
-	claims["iss"] = "https://api.replication-manager.signal18.io"
-	claims["iat"] = time.Now().Unix()
-	// a one-time job body only reaches here (SecretLoginCheck refuses a legacy one): a short
-	// token, the jobs script logs in again before it expires
-	claims["exp"] = time.Now().Add(time.Minute * time.Duration(secretLoginTokenMinutes(repman.Conf.APISecretLoginTokenTimeout))).Unix()
-	claims["jti"] = "1"
-	claims["token"] = ""
-	claims["CustomUserInfo"] = userInfo
-	signer.Claims = claims
-	sk, _ := jwt.ParseRSAPrivateKeyFromPEM(signingKey)
-
-	tokenString, err := signer.SignedString(sk)
+		Server   string
+	}{mycluster.JobsPrincipalName(), "Member", "", node.URL}
+	tokenString, err := repman.issueJWTFor(userInfo, "", repman.secretLoginTokenLifetime())
 	if err != nil {
-		fmt.Fprintln(w, "Error while signing the token")
 		http.Error(w, "Error signing token: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -6712,4 +6699,10 @@ func secretLoginTokenMinutes(v int) int {
 		return 15
 	}
 	return v
+}
+
+// secretLoginTokenLifetime is the lifetime of the service tokens: a secret-login's (the jobs
+// script) and a `system` login's (the compute sensor).
+func (repman *ReplicationManager) secretLoginTokenLifetime() time.Duration {
+	return time.Minute * time.Duration(secretLoginTokenMinutes(repman.Conf.APISecretLoginTokenTimeout))
 }

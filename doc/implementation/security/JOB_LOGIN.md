@@ -66,34 +66,44 @@ tasks share it, and logs in again once it is older than 10 minutes (`job_token`)
 (a backup) always posts with a valid token. Each run starts with a fresh login
 (`job_token refresh`); a failed login stops the run.
 
-## The jobs token: the jobs grants only
+## The jobs token: the jobs grants, its own server
 
-The token `secret-login` returns does not name the `system` account (which holds `db proxy` and
-the sensor grant: every db-* grant, backups, restores, maintenance included). It names the
-cluster's **jobs principal**, `token:jobs:system` (`EnsureJobsPrincipal`), the API-token
-mechanism of #1835 without a stored token:
+The token `secret-login` returns does not name the `system` account. It names the cluster's
+**jobs principal**, `token:jobs:system` (`EnsureJobsPrincipal`), the API-token mechanism of
+#1835 without a stored token:
 
-- grants: `db-jobs` (needs, write-log, receive-task, job-state, jobs check and upgrade),
-  `db-config-flag` (config-receiver, config-dummy-sender) and `cluster-resource-sensor` (dbu),
-  intersected with what `system` holds at each check (`GetACLUser`);
-- scope: its cluster only;
+- grants: `db-jobs` (needs, write-log, receive-task, job-state, jobs check and upgrade, and the
+  config fetch: config-receiver and config-dummy-sender have their own `db-jobs` rule) and
+  `cluster-resource-sensor` (dbu), intersected with what `system` holds at each check
+  (`GetACLUser`). Never `db-config-flag`: that grant also reaches the config of any server,
+  apply-dynamic-config, the database tags and the secret stores;
+- scope: its cluster, and **its server**: the JWT names the server whose job body logged in
+  (`Server`), and `IsValidClusterACL` refuses the token on any URL that does not name that server
+  (`JobsTokenServerInScope`: another server's endpoints, cluster endpoints);
 - registered at cluster start and at each secret-login: one per cluster, in memory, so a restart
   or a reload never leaves a valid token without its principal;
+- lifetime `api-secret-login-token-timeout` (15 min);
 - the JWT carries no password (it used to carry the `system` password, encrypted).
 
-`IsValidClusterACL` runs a JWT naming a token principal as a token (grants, cluster scope). The
-global ACL and the MCP authentication look the name up as a user and refuse it: a jobs token
-reaches nothing outside its cluster's job endpoints. This holds for legacy bodies too: an older
+The global ACL and the MCP authentication look the name up as a user and refuse it: a jobs token
+reaches nothing outside its server's job endpoints. This holds for legacy bodies too: an older
 script calls the same endpoints.
 
-## The `system` account: its grants exactly
+## The `system` account: no session of its own
 
-The `system` service account itself holds only what the machine callers do with it
-(`SystemServiceGrants`): `cluster-resource-sensor` (the app, proxy and database sensors),
-`db-jobs` (get the tasks to do, report their results) and `db-config-flag` (get the config).
-Every load sets it to exactly that in memory (`reconcileSystemServiceGrants`, which also keeps
-it from ever holding a token grant), and `EnsureSystemServiceUser` saves it in the cluster ACL
-entry. An older secret-login created it with `db proxy`: every db and proxy action.
+The `system` service account holds the grants its two principals narrow (`SystemServiceGrants`):
+`db-jobs` and `cluster-resource-sensor`. Every load sets it to exactly that in memory
+(`reconcileSystemServiceGrants`, which also keeps it from ever holding a token grant), and
+`EnsureSystemServiceUser` saves it in the cluster ACL entry. An older secret-login created it with
+`db proxy`: every db and proxy action.
+
+No session acts as `system` itself:
+
+- a password login of `system` (`/api/login`, the compute sensor of the proxies and apps with the
+  repman-wide derived key) returns a token naming the **sensor principal**, `token:sensor:system`:
+  `cluster-resource-sensor` only, for `api-secret-login-token-timeout` (15 min), not
+  `api-token-timeout` (48 h). The sensor logs in before each push;
+- `IsValidClusterACL` refuses a JWT naming bare `system` (a token issued by an older release).
 
 ## Legacy format
 

@@ -117,11 +117,21 @@ func (cluster *Cluster) GetJobsKey() string {
 const jobsPrincipalID = "jobs"
 
 // jobsGrants are the only grants a jobs token carries, what the jobs script calls: the job
-// dispatch endpoints (needs, write-log, receive-task, job-state, jobs check and upgrade:
-// db-jobs), its config fetch (config-receiver, config-dummy-sender: db-config-flag) and the
-// usage push (dbu: cluster-resource-sensor). Never backups, restores, maintenance, topology or
-// settings, whatever the `system` account holds.
-var jobsGrants = []string{config.GrantDBJobs, config.GrantDBConfigFlag, config.GrantClusterResourceSensor}
+// dispatch endpoints (needs, write-log, receive-task, job-state, jobs check and upgrade) and its
+// config fetch (config-receiver, config-dummy-sender: their own rules, db-jobs), plus the usage
+// push (dbu: cluster-resource-sensor). Never db-config-flag (the config of other servers,
+// dynamic config, tags, secret stores), backups, restores, maintenance, topology or settings.
+// The token names its server too (jobsTokenServer): it acts on that server's endpoints only.
+var jobsGrants = []string{config.GrantDBJobs, config.GrantClusterResourceSensor}
+
+// sensorPrincipalID names the sensor token principal of a cluster: what a password login of
+// the `system` account returns (token:sensor:system), for the compute sensor of the proxies
+// and apps (share/scripts/app_job.sh). Its key is repman-wide (GetSystemAPIKey): it pushes
+// usage and nothing else, and its token is short (secret-login's lifetime).
+const sensorPrincipalID = "sensor"
+
+// sensorGrants are the grants of a sensor token: the usage push only.
+var sensorGrants = []string{config.GrantClusterResourceSensor}
 
 // SystemServiceGrants are the grants of the `system` service account, exactly: what the
 // machine callers do with it and nothing more, the jobs grants (sensors, get the tasks to do and
@@ -153,21 +163,52 @@ func (cluster *Cluster) hasSystemServiceGrants(u APIUser) bool {
 	return true
 }
 
-// EnsureJobsPrincipal registers the cluster's jobs token principal: the jobs grants, on this
-// cluster only, intersected with the `system` account's at each check (GetACLUser). Registered
-// at cluster start and at each secret-login, so a restart or a reload never leaves a valid
-// token without its principal. One per cluster: bounded.
+// EnsureJobsPrincipal registers the cluster's service token principals: the jobs one (the
+// jobs grants) and the sensor one (the usage push), on this cluster only, intersected with
+// the `system` account's at each check (GetACLUser). Registered at cluster start, at each
+// secret-login and at each `system` login, so a restart or a reload never leaves a valid
+// token without its principal. Two per cluster: bounded.
 func (cluster *Cluster) EnsureJobsPrincipal() {
-	grants := make(map[string]bool, len(jobsGrants))
-	for _, g := range jobsGrants {
-		grants[g] = true
+	for id, list := range map[string][]string{jobsPrincipalID: jobsGrants, sensorPrincipalID: sensorGrants} {
+		grants := make(map[string]bool, len(list))
+		for _, g := range list {
+			grants[g] = true
+		}
+		cluster.SetTokenPrincipal(TokenPrincipal{ID: id, User: "system", Grants: grants, Clusters: []string{cluster.Name}})
 	}
-	cluster.SetTokenPrincipal(TokenPrincipal{ID: jobsPrincipalID, User: "system", Grants: grants, Clusters: []string{cluster.Name}})
 }
 
 // JobsPrincipalName is the identity a secret-login token names: token:jobs:system.
 func (cluster *Cluster) JobsPrincipalName() string {
 	return TokenPrincipalName(jobsPrincipalID, "system")
+}
+
+// SensorPrincipalName is the identity a `system` login's token names: token:sensor:system.
+func SensorPrincipalName() string {
+	return TokenPrincipalName(sensorPrincipalID, "system")
+}
+
+// IsJobsPrincipal: name is the jobs token principal, whose token is bound to one server.
+func IsJobsPrincipal(name string) bool {
+	id, user, ok := ParseTokenPrincipal(name)
+	return ok && id == jobsPrincipalID && user == "system"
+}
+
+// JobsTokenServerInScope: a jobs token minted for server (its URL, the claim
+// secretLoginHandler sets) acts on that server's endpoints only, /servers/<name>[/<port>]/...
+// naming it (namedBy, or its name for the routes without a port). Any other URL, another
+// server's or a cluster one, is refused.
+func (cluster *Cluster) JobsTokenServerInScope(server string, serverName string, serverPort string) bool {
+	if server == "" || serverName == "" {
+		return false
+	}
+	var node *ServerMonitor
+	if serverPort == "" {
+		node = cluster.GetServerFromName(serverName)
+	} else {
+		node = cluster.GetServerFromURL(serverName + ":" + serverPort)
+	}
+	return node != nil && node.URL == server
 }
 
 // secretLoginWindow is the accepted distance to a body's timestamp.
