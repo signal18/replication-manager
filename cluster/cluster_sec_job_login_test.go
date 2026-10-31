@@ -106,7 +106,7 @@ func TestOpenJobBodyOneTime(t *testing.T) {
 
 // A legacy body (an older script) is accepted only to fetch the new script (legacyAllowed: the
 // jobs check and upgrade endpoints), noted for WARN0274; refused everywhere else, secret-login
-// included; and refused everywhere once the new script was sent to the server. No setting.
+// included; and refused everywhere once the new script answered (a one-time body). No setting.
 func TestOpenJobBodyLegacy(t *testing.T) {
 	s := jobLoginServer()
 	body := legacyJobBody(t, `{"server":"db1:3306","secret":"pw"}`, s.Pass)
@@ -127,9 +127,12 @@ func TestOpenJobBodyLegacy(t *testing.T) {
 		t.Fatalf("WARN0274 on the server: %+v", open)
 	}
 
-	s.jobsScriptSent.Store(true) // UpgradeJobsScript sent the new script
+	// the new script answers: a one-time body from the server closes the legacy one everywhere
+	if _, _, code, err := s.OpenJobBody(scriptJobBody(t, `{"server":"db1:3306","secret":"pw"}`, s.Pass), time.Now(), false); code != 200 {
+		t.Fatalf("one-time body of the new script: %d %v", code, err)
+	}
 	if _, _, code, _ := s.OpenJobBody(body, time.Now(), true); code != 401 {
-		t.Fatalf("once the new script was sent, a legacy body must be refused even for the upgrade, got %d", code)
+		t.Fatalf("once the new script answered, a legacy body must be refused even for the upgrade, got %d", code)
 	}
 }
 

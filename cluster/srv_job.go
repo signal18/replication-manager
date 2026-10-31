@@ -1939,8 +1939,6 @@ func (server *ServerMonitor) UpgradeJobsScript() error {
 		return err
 	}
 
-	// the new script is on its way: from now on this server's legacy body is refused everywhere
-	server.jobsScriptSent.Store(true)
 	if server.HasRollingJobsUpgradeCookie() {
 		server.DelRollingJobsUpgradeCookie()
 	}

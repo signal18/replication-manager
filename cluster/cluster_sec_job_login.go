@@ -35,9 +35,10 @@ import (
 //
 // Legacy format: {"data": <base64>}, the IV derived from the password, no timestamp, no nonce:
 // the same body at every run, replayable. It is accepted for one thing only, fetching the new
-// jobs script (the jobs check and jobs upgrade endpoints), and only until replication-manager
-// has sent it the new script since its start (jobsScriptSent) or seen a one-time body from it:
-// everything else, secret-login included, refuses it. Each use opens WARN0274 on that server.
+// jobs script (the jobs check and jobs upgrade endpoints), and only until the new script answers
+// (a one-time body from that server since start): everything else, secret-login included,
+// refuses it. Not when the script is sent: a send that lands on another listener would leave
+// the server refused everywhere with an old script and no way to upgrade. Each use opens WARN0274 on that server.
 // No setting: the transition is the script upgrade itself, kept in memory per server.
 
 // jobBody is the posted JSON.
@@ -183,9 +184,8 @@ func (cluster *Cluster) secretLoginWindow() time.Duration {
 //     shared by the cluster's servers;
 //   - one-time (jobs or db key): refused outside the window of its timestamp or with a nonce
 //     already seen (401);
-//   - legacy: accepted only when legacyAllowed (the jobs check and upgrade endpoints) and while
-//     the new script was not sent to this server nor a one-time body seen from it; noted for
-//     WARN0274.
+//   - legacy: accepted only when legacyAllowed (the jobs check and upgrade endpoints) and until
+//     a one-time body was seen from this server; noted for WARN0274.
 func (server *ServerMonitor) OpenJobBody(raw []byte, now time.Time, legacyAllowed bool) ([]byte, string, int, error) {
 	cluster := server.ClusterGroup
 	var b jobBody
@@ -212,8 +212,6 @@ func (server *ServerMonitor) OpenJobBody(raw []byte, now time.Time, legacyAllowe
 	} else if !legacyAllowed {
 		atomic.StoreInt64(&server.legacyJobLoginAt, now.Unix())
 		return nil, JobKeyLegacy, 401, fmt.Errorf("Legacy job body refused: an older jobs script may only fetch the new one (jobs upgrade)")
-	} else if server.jobsScriptSent.Load() {
-		return nil, JobKeyLegacy, 401, fmt.Errorf("Legacy job body refused: the new jobs script was already sent to this server")
 	} else if auth, _ := server.jobStream.Load().(jobStreamAuth); auth.Key != "" {
 		// its script signs since this start: a legacy body now is a captured one replayed
 		return nil, JobKeyLegacy, 401, fmt.Errorf("Legacy job body refused: the jobs script of this server posts one-time bodies (replay)")

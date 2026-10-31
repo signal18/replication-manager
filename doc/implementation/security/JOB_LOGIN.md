@@ -109,8 +109,10 @@ memory (`OpenJobBody`, `legacyAllowed`):
 - **Refused everywhere else**, `secret-login` included: an older script gets no token at all,
   so no token outlives `api-secret-login-token-timeout` (15 min) any more; its job states,
   tasks and logs are refused until the new script runs.
-- **Refused everywhere once the new script was sent** to that server since start
-  (`UpgradeJobsScript` sets `jobsScriptSent`), or once it posted a one-time body.
+- **Refused everywhere once the new script answers:** its first one-time body since start
+  closes the legacy body of that server (`jobStream`). Not when the script is sent: a send that
+  lands on another listener (an older script's reseed receiver) would leave the server refused
+  everywhere with no way to upgrade.
 - Each use, accepted or refused, records the time on the server (`legacyJobLoginAt`);
   `CheckSecretLoginLegacy` (every tick) opens the security state **WARN0274** naming the servers
   seen within 10 minutes. It closes by itself once they run the new script.
