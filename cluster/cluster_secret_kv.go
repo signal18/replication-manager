@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"sort"
 	"strings"
@@ -1105,9 +1106,10 @@ func (cluster *Cluster) writeOpenSVCRootPassword(svc opensvc.Collector, password
 	return nil
 }
 
-// checkOpenSVCRootPassword runs at each tick on the active monitor. Once after the start it
-// reads the env secret (v3 agents) and opens WARN0275 when it holds another password than the
-// current one: a state lost at a restart or a failover is found again. While the secret is
+// checkOpenSVCRootPassword runs at each tick on the active monitor. After the start it reads
+// the env secret (v3 agents), every secret-kv-retry-interval until the agent answers, and
+// opens WARN0275 when it holds another password than the current one: a state lost at a
+// restart or a failover is found again. While the secret is
 // behind, WARN0275 is raised and, every secret-kv-retry-interval, the current database
 // password is written again. Both run in the background: never blocks the tick.
 func (cluster *Cluster) checkOpenSVCRootPassword() {
@@ -1121,27 +1123,31 @@ func (cluster *Cluster) checkOpenSVCRootPassword() {
 	c.mu.Lock()
 	why, tried, checked := c.orchestratorBehind, c.orchestratorTried, c.orchestratorChecked
 	c.mu.Unlock()
+	retry := time.Duration(cluster.Conf.SecretKvRetryInterval) * time.Second
+	if retry <= 0 {
+		retry = time.Minute
+	}
 	if !checked {
-		if c.orchestratorWriting.CompareAndSwap(false, true) {
-			c.mu.Lock()
-			c.orchestratorChecked = true
-			c.mu.Unlock()
+		// read again every interval until the agent answers: after a failover it may not yet
+		if time.Since(tried) >= retry && c.orchestratorWriting.CompareAndSwap(false, true) {
 			go func() {
 				defer c.orchestratorWriting.Store(false)
-				cluster.verifyOpenSVCRootPassword(cluster.OpenSVCConnect())
+				answered := cluster.verifyOpenSVCRootPassword(cluster.OpenSVCConnect())
+				c.mu.Lock()
+				if answered {
+					c.orchestratorChecked = true
+				} else if c.orchestratorBehind == "" {
+					c.orchestratorTried = time.Now()
+				}
+				c.mu.Unlock()
 			}()
 		}
-		return
 	}
 	if why == "" {
 		return
 	}
 	cluster.SecurityStateMachine.AddState("WARN0275", state.State{ErrType: "WARNING", ErrFrom: "SECURITY",
 		ErrDesc: fmt.Sprintf(clusterError["WARN0275"], cluster.Name, why)})
-	retry := time.Duration(cluster.Conf.SecretKvRetryInterval) * time.Second
-	if retry <= 0 {
-		retry = time.Minute
-	}
 	if time.Since(tried) < retry || !c.orchestratorWriting.CompareAndSwap(false, true) {
 		return
 	}
@@ -1153,19 +1159,22 @@ func (cluster *Cluster) checkOpenSVCRootPassword() {
 
 // verifyOpenSVCRootPassword compares the env secret's MYSQL_ROOT_PASSWORD with the current
 // database password and marks the secret behind when they differ (the next tick writes it).
-// A v2 agent has no read of a key: nothing is checked. An unreadable secret raises nothing:
-// a cluster monitored, not provisioned, on OpenSVC has none.
-func (cluster *Cluster) verifyOpenSVCRootPassword(svc opensvc.Collector) {
+// It returns whether the agent answered: false on a v2 agent until the version is known, or
+// when the agent is unreachable, so the caller reads again. A v2 agent has no read of a key:
+// nothing is checked. A missing secret raises nothing: a cluster monitored, not provisioned,
+// on OpenSVC has none.
+func (cluster *Cluster) verifyOpenSVCRootPassword(svc opensvc.Collector) bool {
 	if !svc.IsV3() {
-		return
+		return cluster.GetOrchestratorVersion() == "v2" || svc.UseCollectorAPI
 	}
 	cur, err := svc.GetSecretKeyValueV3(cluster.Name, "env", "MYSQL_ROOT_PASSWORD")
+	var se *opensvc.StatusError
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlDbg, "Can not read MYSQL_ROOT_PASSWORD of the OpenSVC secret %s/sec/env: %s", cluster.Name, err)
-		return
+		return errors.As(err, &se) && se.StatusCode == http.StatusNotFound
 	}
 	if string(cur) == cluster.GetDbPass() {
-		return
+		return true
 	}
 	c := &cluster.secretKv
 	c.mu.Lock()
@@ -1174,6 +1183,7 @@ func (cluster *Cluster) verifyOpenSVCRootPassword(svc opensvc.Collector) {
 		c.orchestratorTried = time.Time{}
 	}
 	c.mu.Unlock()
+	return true
 }
 
 func (cluster *Cluster) setStoreWritten(entry string) {

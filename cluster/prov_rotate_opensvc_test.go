@@ -217,7 +217,18 @@ func TestOpenSVCSecretCheckedAfterStart(t *testing.T) {
 		svc.SetV3()
 		return svc
 	}
-	cl.verifyOpenSVCRootPassword(v3()) // no secret: a cluster monitored, not provisioned
+	agent.mu.Lock()
+	agent.fail = true
+	agent.mu.Unlock()
+	if cl.verifyOpenSVCRootPassword(v3()) { // the agent not answering yet (after a failover)
+		t.Fatal("an agent in error counted as answered: the secret would never be read again")
+	}
+	agent.mu.Lock()
+	agent.fail = false
+	agent.mu.Unlock()
+	if !cl.verifyOpenSVCRootPassword(v3()) { // no secret: a cluster monitored, not provisioned
+		t.Fatal("a missing secret is an answer")
+	}
 	if cl.secretKv.orchestratorBehind != "" {
 		t.Fatalf("a missing secret marked behind: %q", cl.secretKv.orchestratorBehind)
 	}
