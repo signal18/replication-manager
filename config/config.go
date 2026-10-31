@@ -377,6 +377,7 @@ type Config struct {
 	HttpServ                                 bool                         `scope:"server" mapstructure:"http-server" toml:"http-server" json:"httpServer"`
 	ApiServ                                  bool                         `scope:"server" mapstructure:"api-server" toml:"api-server" json:"apiServer"`
 	MCPServ                                  bool                         `scope:"server" mapstructure:"mcp-server" toml:"mcp-server" json:"mcpServer"`
+	ApiV3Serv                                bool                         `scope:"server" mapstructure:"api-v3-server" toml:"api-v3-server" json:"apiV3Server"`
 	MCPServerAuth                            string                       `scope:"server" mapstructure:"mcp-server-auth" toml:"mcp-server-auth" json:"mcpServerAuth"`
 	MCPTransport                             string                       `scope:"server" mapstructure:"mcp-transport" toml:"mcp-transport" json:"mcpTransport"`
 	MCPPort                                  string                       `scope:"server" mapstructure:"mcp-port" toml:"mcp-port" json:"mcpPort"`

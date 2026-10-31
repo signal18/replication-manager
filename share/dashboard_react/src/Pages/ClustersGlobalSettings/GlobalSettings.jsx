@@ -56,6 +56,7 @@ function GlobalSettings({ config }) {
   const hLogStats = `**Log Stats Level**\n\nVerbosity of internal statistics logging.\n\nConfig: \`log-level-stats\``
   const hLogHeartbeat = `**Log HeartBeat**\n\nEnables logging of arbitration heartbeats exchanged with the arbitrator and peers.\n\nConfig: \`log-heartbeat\``
   const hLogHeartbeatLevel = `**Log HeartBeat Level**\n\nVerbosity of the heartbeat log channel.\n\nConfig: \`log-level-heartbeat\``
+  const hApiV3 = `**Enable API v3**\n\nServes the v3 API (gRPC and its JSON gateway under \`/v3/\`) on the API port. The GUI and \`replication-manager-cli\` do not use it: they use the REST API under \`/api/\`. Off by default: a v3 request then gets 404. Applied live.\n\nConfig: \`api-v3-server\``
   const hSwagger = `**Enable API Swagger**\n\nServes the interactive API explorer at \`/api-docs/\`.\n\nConfig: \`api-swagger-enabled\``
   const hLogApiLogin = `**Log API Login**\n\nRecords every successful API login (user, source address) in the security log. On by default. Failed logins are always recorded. API tokens never log in, so token calls add nothing.\n\nConfig: \`monitoring-log-api-login\``
   const hLogApiSilent = `**Log API Login Silent Users**\n\nComma-separated users whose logins are not recorded (health probes, internal accounts).\n\nConfig: \`monitoring-log-api-login-silent-users\``
@@ -362,6 +363,17 @@ function GlobalSettings({ config }) {
           />
           { config?.apiSwaggerEnabled && (<RMIconButton icon={TbApi} onClick={() => { window.open("/api-docs/", "_blank") }} />) }
         </HStack>
+      )
+    },
+    {
+      key: 'Enable API v3',
+      help: h(hApiV3, 'Enable API v3'),
+      value: (
+        <RMSwitch
+          confirmTitle={'Confirm switch global settings for API v3?'}
+          onChange={(_v, setRefresh) => dispatch(switchGlobalSetting({ setting: 'api-v3-server', setRefresh }))}
+          isChecked={config?.apiV3Server}
+        />
       )
     },
     {
