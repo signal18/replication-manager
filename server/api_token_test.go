@@ -459,8 +459,9 @@ func TestAPITokenGrantsAndSystemAccount(t *testing.T) {
 	if u := cl.APIUsers["system"]; u.Grants[config.GrantTokenCreate] || u.Grants[config.GrantTokenManage] {
 		t.Error("token grants must be stripped from system on load")
 	}
-	if !cl.APIUsers["system"].Grants[config.GrantDBShowVariables] {
-		t.Error("other grants of system must be untouched")
+	// and system holds its own grants only: the sensors, the jobs, the config
+	if u := cl.APIUsers["system"]; u.Grants[config.GrantDBShowVariables] || !u.Grants[config.GrantDBJobs] {
+		t.Error("system must hold its grants exactly on load, not db or proxy")
 	}
 	// token-manage lists other users' tokens on a cluster; token-create alone does not.
 	cl.APIUsers["alice"] = func() cluster.APIUser {

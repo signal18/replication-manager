@@ -11,7 +11,6 @@ import (
 	"crypto/sha256"
 	"crypto/tls"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -24,7 +23,6 @@ import (
 	"github.com/jordan-wright/email"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/config/credstore"
-	"github.com/signal18/replication-manager/utils/crypto"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/state"
@@ -641,25 +639,29 @@ func (cluster *Cluster) RevokeDBUserGrants(user string) error {
 	return nil
 }
 
-type DecodedData struct {
-	Data string `json:"data"`
-}
-
 // SecretLoginCheck authenticates a job-callback request and, alongside the
 // resolved node, returns the full decrypted JSON payload -- not just the
 // "secret" field DecodeSecret checks -- so callers that send extra fields in
 // the encrypted body (e.g. handlerMuxServerJobState's "restore" field,
 // server/api_database.go) can parse them without a second decrypt pass.
+//
+// The body is a job body (OpenJobBody): a one-time body is accepted once, within the window
+// of its timestamp; a legacy one never (SecretLoginCheckJobsUpgrade for the script upgrade).
 func (cluster *Cluster) SecretLoginCheck(vars map[string]string, rbody io.ReadCloser) (*ServerMonitor, string, int, error) {
-	var decodedData DecodedData
+	return cluster.secretLoginCheck(vars, rbody, false)
+}
+
+// SecretLoginCheckJobsUpgrade is SecretLoginCheck for the jobs check and jobs upgrade endpoints:
+// an older script's legacy body is accepted there, so it can fetch the new script, until that
+// script was sent (OpenJobBody).
+func (cluster *Cluster) SecretLoginCheckJobsUpgrade(vars map[string]string, rbody io.ReadCloser) (*ServerMonitor, string, int, error) {
+	return cluster.secretLoginCheck(vars, rbody, true)
+}
+
+func (cluster *Cluster) secretLoginCheck(vars map[string]string, rbody io.ReadCloser, legacyAllowed bool) (*ServerMonitor, string, int, error) {
 	body, err := io.ReadAll(rbody)
 	if err != nil {
 		return nil, "", 500, fmt.Errorf("Error reading body: %s", err.Error())
-	}
-
-	err = json.Unmarshal(body, &decodedData)
-	if err != nil {
-		return nil, "", 400, fmt.Errorf("Decode body: %s. Err: %s", string(body), err.Error())
 	}
 
 	var node *ServerMonitor
@@ -671,16 +673,19 @@ func (cluster *Cluster) SecretLoginCheck(vars map[string]string, rbody io.ReadCl
 	if node == nil {
 		return nil, "", 500, fmt.Errorf("No server")
 	}
-	// Decrypt the encrypted data
-	key := crypto.GetSHA256Hash(node.Pass)
-	iv := crypto.GetMD5Hash(node.Pass)
-
-	secret, payload, err := node.DecodeSecret(decodedData.Data, key, iv)
+	data, mode, code, err := node.OpenJobBody(body, time.Now(), legacyAllowed)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Job body of %s refused: %s", node.URL, err.Error())
+		return nil, "", code, err
+	}
+	secret, payload, err := node.DecodeSecret(data)
 	if err != nil {
 		return nil, "", 500, fmt.Errorf("Error decrypting data : %s", err.Error())
 	}
 
-	if secret != cluster.GetDbPass() {
+	// a body under the jobs key proved itself by decrypting (OpenJobBody checked its server);
+	// under the server's password, it carries the database password
+	if mode != JobKeyJobs && secret != cluster.GetDbPass() {
 		return nil, "", 401, fmt.Errorf("Invalid secret")
 	}
 
@@ -727,35 +732,43 @@ func (cluster *Cluster) EnsureSystemServiceUser() {
 		return // no persistent key -> cannot derive; app/proxy sensor auth stays unavailable
 	}
 	if u, ok := cluster.APIUsers["system"]; ok {
-		// An existing `system` may predate the sensor grant (secret-login used to create
-		// it with only "db proxy", #1967): add the grant, keep the others.
-		if u.Grants[config.GrantClusterResourceSensor] {
+		// An existing `system` may hold more (secret-login created it with "db proxy", #1967;
+		// an ACL string or the GUI may have added some): its saved entry is set to its grants
+		// exactly. The saved entry, not the in-memory account, which every load already
+		// narrows (reconcileSystemServiceGrants).
+		saved := APIUser{Grants: map[string]bool{}}
+		if e, ok := cluster.GetClusterUserAllowACLs(cluster.Conf.APIUsersACLAllowExternal)["system"]; ok {
+			cluster.SetUserGrants(&saved, e.ACLs)
+		} else {
+			saved = u
+		}
+		if cluster.hasSystemServiceGrants(saved) {
 			return
 		}
 		// The main config ACL is applied last with a strict override: a cluster entry
-		// cannot change what it says, so rewriting it would repeat on every start.
+		// cannot change what it says, so rewriting it would repeat on every start. The grants
+		// are still enforced in memory at each load (reconcileSystemServiceGrants).
 		if _, ok := cluster.GetClusterUserAllowACLs(cluster.Conf.APIUsersACLAllow)["system"]; ok {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
-				"`system` is defined in api-credentials-acl-allow without %s: add the grant there, the cluster ACL cannot override it", config.GrantClusterResourceSensor)
+				"`system` is defined in api-credentials-acl-allow: set its grants there to %q, the cluster ACL cannot override it", SystemServiceGrants())
 			return
 		}
-		allow, _ := config.GetCompactGrants(u.Grants)
 		// Keep the roles of the entry; visitor is the default and comes back on reload.
 		roles := strings.Fields(cluster.SaveUserRoles("system"))
 		roles = slices.DeleteFunc(roles, func(r string) bool { return r == config.RoleVisitor })
 		if err := cluster.UpdateUser(UserForm{
 			Username: "system",
-			Grants:   strings.Join(append(allow, config.GrantClusterResourceSensor), " "),
+			Grants:   SystemServiceGrants(),
 			Roles:    strings.Join(roles, " "),
 		}, "admin", true); err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
-				"Adding %s to the `system` service account failed: %s", config.GrantClusterResourceSensor, err)
+				"Setting the `system` service account to its grants failed: %s", err)
 		}
 		return
 	}
 	cluster.AddUser(UserForm{
 		Username: "system",
-		Grants:   "db proxy " + config.GrantClusterResourceSensor,
+		Grants:   SystemServiceGrants(),
 		Password: apikey,
 	}, "admin", true)
 }

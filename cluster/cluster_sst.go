@@ -342,7 +342,7 @@ func (sst *SST) tcp_con_handle_to_gzip(server *ServerMonitor, task string) {
 	}()
 
 	var conn net.Conn
-	conn, err = sst.listener.Accept()
+	conn, err = sst.acceptJobStream(server, task)
 	// published under SSTs: a backup that cuts its stream reads it (srv_job_backup_remote.go)
 	SSTs.Lock()
 	sst.in = conn
@@ -390,7 +390,7 @@ func (sst *SST) tcp_con_handle_to_file(server *ServerMonitor, task string) {
 	}()
 
 	var conn net.Conn
-	conn, err = sst.listener.Accept()
+	conn, err = sst.acceptJobStream(server, task)
 	// published under SSTs: a backup that cuts its stream reads it (srv_job_backup_remote.go)
 	SSTs.Lock()
 	sst.in = conn
@@ -648,6 +648,9 @@ func (cluster *Cluster) SSTRunSender(backupfile string, sv *ServerMonitor, uncom
 		return fmt.Errorf("SST Reseed failed connection to port %s server %s %s ", sv.SSTPort, sv.Host, err)
 	}
 	defer client.Close()
+	if err = sv.writeJobStreamHeader(client); err != nil {
+		return fmt.Errorf("SST Reseed failed to sign the stream to server %s: %s", sv.Host, err)
+	}
 
 	// The gzip-vs-raw decision is about the LOGICAL artifact (the ".gz"
 	// suffix survives compression, not encryption): an encrypted compressed
@@ -684,6 +687,9 @@ func (cluster *Cluster) SSTRunSenderStream(sourceName string, opener SSTStreamOp
 		return fmt.Errorf("SST Reseed stream failed connection to port %s server %s %s ", sv.SSTPort, sv.Host, err)
 	}
 	defer client.Close()
+	if err = sv.writeJobStreamHeader(client); err != nil {
+		return fmt.Errorf("SST Reseed stream failed to sign the stream to server %s: %s", sv.Host, err)
+	}
 
 	if err = cluster.sstSendStream(client, sourceName, opener, sv, uncompress, progress); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "Backup stream failed to send, closing connection!")
@@ -706,6 +712,9 @@ func (cluster *Cluster) SSTRunSenderStreamSSL(sourceName string, opener SSTStrea
 		return fmt.Errorf("SST Reseed stream failed connection via SSL to port %s server %s %s ", sv.SSTPort, sv.Host, err)
 	}
 	defer client.Close()
+	if err = sv.writeJobStreamHeader(client); err != nil {
+		return fmt.Errorf("SST Reseed stream failed to sign the stream to server %s: %s", sv.Host, err)
+	}
 
 	if err = cluster.sstSendStream(client, sourceName, opener, sv, uncompress, progress); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "Backup stream failed to send via SSL, closing connection!")
@@ -934,6 +943,9 @@ func (cluster *Cluster) SSTRunSenderSSL(backupfile string, sv *ServerMonitor, pr
 		return fmt.Errorf("SST Reseed failed connection via SSL to port %s server %s %s ", sv.SSTPort, sv.Host, err)
 	}
 	defer client.Close()
+	if err = sv.writeJobStreamHeader(client); err != nil {
+		return fmt.Errorf("SST Reseed failed to sign the stream to server %s: %s", sv.Host, err)
+	}
 
 	if strings.HasSuffix(logicalArtifactName(backupfile), "gz") {
 		err = cluster.SSTRunSendGzip(client, backupfile, sv, progress)

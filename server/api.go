@@ -137,6 +137,11 @@ type AuthTokenWithUpgrade struct {
 // issueJWT builds and signs an RS256 JWT with the supplied userInfo and GitLab
 // token claims.  gitlabToken may be empty for local-only users.
 func (repman *ReplicationManager) issueJWT(userInfo interface{}, gitlabToken string) (string, error) {
+	return repman.issueJWTFor(userInfo, gitlabToken, time.Hour*time.Duration(repman.Conf.TokenTimeout))
+}
+
+// issueJWTFor is issueJWT with its lifetime: the service tokens are short (secretLoginTokenLifetime).
+func (repman *ReplicationManager) issueJWTFor(userInfo interface{}, gitlabToken string, lifetime time.Duration) (string, error) {
 	jti, err := newUpgradeID()
 	if err != nil {
 		return "", fmt.Errorf("issueJWT: failed to generate token ID: %w", err)
@@ -145,7 +150,7 @@ func (repman *ReplicationManager) issueJWT(userInfo interface{}, gitlabToken str
 	claims := signer.Claims.(jwt.MapClaims)
 	claims["iss"] = "https://api.replication-manager.signal18.io"
 	claims["iat"] = time.Now().Unix()
-	claims["exp"] = time.Now().Add(time.Hour * time.Duration(repman.Conf.TokenTimeout)).Unix()
+	claims["exp"] = time.Now().Add(lifetime).Unix()
 	claims["jti"] = jti
 	claims["token"] = gitlabToken
 	claims["CustomUserInfo"] = userInfo
@@ -563,6 +568,13 @@ func (repman *ReplicationManager) isValidRequest(r *http.Request) (bool, error) 
 	return false, err
 }
 
+// isTokenPrincipal: a JWT naming a token principal is a jobs token (secret-login); the
+// package name is shadowed in IsValidClusterACL.
+var isTokenPrincipal = cluster.IsTokenPrincipal
+
+// isJobsPrincipal: a jobs token, bound to the server its secret-login named.
+var isJobsPrincipal = cluster.IsJobsPrincipal
+
 func (repman *ReplicationManager) IsValidClusterACL(r *http.Request, cluster *cluster.Cluster) (bool, string) {
 	// A user-issued API token (api_token.go): no password, the ACL runs under the
 	// token principal so the grants are the token's ∩ the owner's, and the cluster
@@ -599,6 +611,23 @@ func (repman *ReplicationManager) IsValidClusterACL(r *http.Request, cluster *cl
 				meuser = mycutinfo["email"].(string)
 				return cluster.IsValidACL(meuser, mepwd, r.URL.Path, "oidc"), meuser
 			}
+		}
+		// a service token (secret-login, `system` login): its principal's grants only, on its
+		// cluster; a jobs token on the endpoints of its own server only
+		if isTokenPrincipal(meuser) {
+			if isJobsPrincipal(meuser) {
+				server, _ := mycutinfo["Server"].(string)
+				vars := mux.Vars(r)
+				if !cluster.JobsTokenServerInScope(server, vars["serverName"], vars["serverPort"]) {
+					return false, meuser
+				}
+			}
+			return cluster.IsValidACL(meuser, "", r.URL.Path, "token"), meuser
+		}
+		// `system` holds the service grants for its principals only: no session acts as it
+		// (a token issued before the sensor principal, or a forged name, is refused)
+		if meuser == "system" {
+			return false, meuser
 		}
 		return cluster.IsValidACL(meuser, mepwd, r.URL.Path, "password"), meuser
 	}
@@ -868,7 +897,22 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 			return
 		}
 		resetAuthTry()
-		tokenString, err := repman.issueJWT(userInfo, "")
+		lifetime := time.Hour * time.Duration(repman.Conf.TokenTimeout)
+		if user.Username == "system" {
+			// `system` never gets a session of its own: its key (repman-wide, in the sensor's
+			// secret) gets a short token naming the sensor principal, the usage push only
+			// (cluster.SensorPrincipalName). The jobs log in with secret-login.
+			for _, cl := range repman.Clusters {
+				cl.EnsureJobsPrincipal()
+			}
+			userInfo = struct {
+				Name     string
+				Role     string
+				Password string
+			}{cluster.SensorPrincipalName(), "Member", ""}
+			lifetime = repman.secretLoginTokenLifetime()
+		}
+		tokenString, err := repman.issueJWTFor(userInfo, "", lifetime)
 		if err != nil {
 			http.Error(w, "Error signing token: "+err.Error(), http.StatusInternalServerError)
 			return
@@ -1929,6 +1973,7 @@ func (repman *ReplicationManager) createCluster(name string, cForm cluster.Clust
 	// Without it, the first dbjob secret-login re-created `system` with a
 	// random password and without cluster-resource-sensor.
 	cl.EnsureSystemServiceUser()
+	cl.EnsureJobsPrincipal()
 
 	cl.LoadAPIUsers()
 	cl.SaveAcls()

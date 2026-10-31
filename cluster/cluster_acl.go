@@ -9,7 +9,6 @@ package cluster
 import (
 	"crypto/subtle"
 	"fmt"
-	"maps"
 	"slices"
 	"sort"
 	"strings"
@@ -430,28 +429,20 @@ func (cluster *Cluster) LoadAPIUsers() error {
 	return nil
 }
 
-// reconcileSystemServiceGrants strips the API-token grants from the `system`
-// service account on every load: a machine identity authenticating with a derived
-// key must never mint or manage bearer credentials, whatever an ACL string or the
-// user-management GUI handed it (issue #1835).
+// reconcileSystemServiceGrants sets the `system` service account to its grants exactly
+// (SystemServiceGrants) on every load, in memory: a machine identity authenticating with a
+// derived key holds what the sensors and the jobs need and nothing else, whatever an ACL
+// string, an older secret-login ("db proxy", #1967) or the user-management GUI handed it; it
+// never mints or manages bearer credentials (issue #1835).
 func (cluster *Cluster) reconcileSystemServiceGrants() {
 	u, ok := cluster.APIUsers["system"]
-	if !ok || u.Grants == nil {
+	if !ok || cluster.hasSystemServiceGrants(u) {
 		return
 	}
-	stripped := false
-	grants := maps.Clone(u.Grants) // never the live map's entry: readers hold it
-	for _, g := range config.GetGrantToken() {
-		if grants[g] {
-			grants[g] = false
-			stripped = true
-		}
-	}
-	if stripped {
-		u.Grants = grants
-		cluster.setAPIUser("system", u)
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Stripped API token grants from the `system` service account: a machine identity never issues tokens")
-	}
+	u.Grants = cluster.systemServiceGrantMap() // a new map: readers hold the old one
+	cluster.setAPIUser("system", u)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+		"Set the `system` service account to its grants (%s): a machine identity holds what the sensors and the jobs need, never tokens", SystemServiceGrants())
 }
 
 // checkAPITokenIssuers runs with the config states: WARN0251 while api-user-tokens

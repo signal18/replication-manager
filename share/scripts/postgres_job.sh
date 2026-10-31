@@ -183,7 +183,7 @@ run_task() {
         fi
         rm -f "$file"
         log "$task: listening on :$port"
-        "$CLI" stream --listen ":$port" --accept-timeout 900 > "$file" 2>"$ERR" &
+        "$CLI" stream --job --secret-env POSTGRES_PASSWORD --listen ":$port" --accept-timeout 900 > "$file" 2>"$ERR" &
         pid=$!
         sleep 1
         job state "$task" waiting || log "$task: cannot report waiting"
@@ -227,11 +227,11 @@ run_task() {
     : > "$ERR"
     case "$task" in
     pgdump)
-        pg_dumpall --clean --if-exists 2>"$ERR" | "$CLI" stream --to "$addr"
+        pg_dumpall --clean --if-exists 2>"$ERR" | "$CLI" stream --job --secret-env POSTGRES_PASSWORD --to "$addr"
         rc_cmd=${PIPESTATUS[0]} rc_stream=${PIPESTATUS[1]}
         ;;
     pgbasebackup)
-        pg_basebackup -D - -Ft -X fetch -c fast 2>"$ERR" | "$CLI" stream --to "$addr"
+        pg_basebackup -D - -Ft -X fetch -c fast 2>"$ERR" | "$CLI" stream --job --secret-env POSTGRES_PASSWORD --to "$addr"
         rc_cmd=${PIPESTATUS[0]} rc_stream=${PIPESTATUS[1]}
         ;;
     esac
@@ -340,7 +340,7 @@ ship_wal_archive() {
             wal_ship_failed="$name"
             return
         fi
-        if "$CLI" stream --to "$addr" < "$f" 2>"$ERR"; then
+        if "$CLI" stream --job --secret-env POSTGRES_PASSWORD --to "$addr" < "$f" 2>"$ERR"; then
             rm -f "$f"; n=$((n + 1)); wal_ship_failed=""
         else
             [ "$wal_ship_failed" = "$name" ] || log "wal archive: $name not sent: $(head -c 200 "$ERR")"

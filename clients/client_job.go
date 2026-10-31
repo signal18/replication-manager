@@ -51,6 +51,7 @@ func jobClient() *jobapi.Client {
 		Server:  env(cliJobServer, "REPLICATION_MANAGER_HOST_NAME"),
 		Port:    env(cliJobPort, "REPLICATION_MANAGER_HOST_PORT"),
 		Secret:  os.Getenv(cliJobSecretEnv),
+		JobsKey: jobapi.JobsKeyFromEnv(),
 	}
 	if c.BaseURL == "" || c.Cluster == "" || c.Server == "" || c.Port == "" || c.Secret == "" {
 		fmt.Fprintln(os.Stderr, "job: url, cluster, server, port and the secret environment variable are required")

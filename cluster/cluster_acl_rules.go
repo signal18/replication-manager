@@ -99,6 +99,10 @@ var databaseACLRules = []ACLRule{
 	{"/actions/job-state/", nil, []string{config.GrantDBJobs}},
 	{"/actions/receive-jobs-check", nil, []string{config.GrantDBJobs}},
 	{"/actions/send-jobs-upgrade", nil, []string{config.GrantDBJobs}},
+	// the jobs script fetching its own server's config (a jobs token, never db-config-flag);
+	// a config editor still reaches them through /config
+	{"/config-receiver", nil, []string{config.GrantDBJobs}},
+	{"/config-dummy-sender", nil, []string{config.GrantDBJobs}},
 
 	// Show actions
 	{"/variables", nil, []string{config.GrantDBShowVariables}},

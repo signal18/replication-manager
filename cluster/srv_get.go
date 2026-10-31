@@ -83,7 +83,8 @@ func (server *ServerMonitor) GetSshEnv() string {
 		";" + shellExport("REPLICATION_MANAGER_HOST_NAME", server.Host) +
 		";" + shellExport("REPLICATION_MANAGER_HOST_PORT", server.Port) +
 		";" + shellExport("REPLICATION_MANAGER_CLUSTER_NAME", server.ClusterGroup.Name) +
-		";" + shellExport("REPLICATION_MANAGER_JOBS_MODE", server.ClusterGroup.Conf.SchedulerJobsMode)
+		";" + shellExport("REPLICATION_MANAGER_JOBS_MODE", server.ClusterGroup.Conf.SchedulerJobsMode) +
+		";" + shellExport("JOBS_API_KEY", server.ClusterGroup.GetJobsKey())
 
 	// Export the Docker image tag so upgrade scripts can parse the target version
 	if server.ClusterGroup.Conf.ProvDbImg != "" {

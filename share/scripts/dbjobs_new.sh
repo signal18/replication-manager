@@ -273,21 +273,127 @@ derive_key() {
     echo "$key"
 }
 
-derive_iv() {
-    local password="${1:-$MYSQL_ROOT_PASSWORD}"
-    local iv=$(echo -n "$password" | md5sum | awk '{print $1}')
-    echo "$iv"
+# Jobs key: the cluster's key the job bodies are encrypted with (replication-manager's
+# GetJobsKey), never a database password. On-premise it comes in the ssh environment
+# (JOBS_API_KEY), on OpenSVC from the shm secret volume, read at use time so a new key is
+# picked up without a restart. Empty when replication-manager has no persistent key: the job
+# bodies then use the database password and carry it ("secret").
+jobs_key() {
+    if [[ -n "${JOBS_API_KEY:-}" ]]; then
+        printf "%s" "$JOBS_API_KEY"
+    elif [[ -s /credentials/JOBS_API_KEY ]]; then
+        tr -d '\n' < /credentials/JOBS_API_KEY
+    fi
 }
 
-# Function to encrypt data using AES-256 in CBC mode
-encrypt_data() {
+# The "secret" member of a job body: the database password, only when there is no jobs key.
+# Usage: "{\"server\":\"h:p\"$(job_secret)}"
+job_secret() {
+    [[ -n "$(jobs_key)" ]] || printf ',"secret":"%s"' "$MYSQL_ROOT_PASSWORD"
+}
+
+# Job body: the JSON a job request posts, {"data":"<base64>","iv":"<hex>","key":"jobs"|"db"}.
+# The clear JSON object is stamped with "ts" (unix seconds) and a random "nonce", and
+# encrypted with AES-256-CBC under a random IV, with the jobs key (jobs_key) or, without one,
+# the database password: replication-manager accepts it once, within its window around ts
+# (api-secret-login-window), so a captured body cannot be replayed.
+# Usage: job_body "json_object" ["password"]
+job_body() {
     local data="$1"
     local password="${2:-$MYSQL_ROOT_PASSWORD}"
+    local keyname="db"
+    local jk=$(jobs_key)
+    if [[ -n "$jk" ]]; then
+        password="$jk"
+        keyname="jobs"
+    fi
     local key=$(derive_key "$password")
-    local iv=$(derive_iv "$password")
-    local padded=$(pad_pkcs7 "$data")
+    local iv=$(openssl rand -hex 16)
+    local nonce=$(openssl rand -hex 16)
+    local rest="${data#\{}"
+    local sep=","
+    [[ "${rest#"${rest%%[![:space:]]*}"}" == \}* ]] && sep=""
+    local stamped="{\"ts\":$(date +%s),\"nonce\":\"$nonce\"${sep}${rest}"
+    local padded=$(pad_pkcs7 "$stamped")
     local encrypted=$(echo -n "$padded" | openssl aes-256-cbc -a -nosalt -K "$key" -iv "$iv" | tr -d '\n')
-    echo "$encrypted"
+    echo "{\"data\":\"$encrypted\",\"iv\":\"$iv\",\"key\":\"$keyname\"}"
+}
+
+# Every stream between replication-manager and these jobs starts with a header line signed
+# with the key of the job bodies (the jobs key, else the database password), so each side takes
+# a stream from the other only (utils/jobapi/stream.go on the replication-manager side):
+#   MRMSTREAM1 <ts> <nonce> <hex HMAC-SHA256(derive_key(secret), "<direction>:<server>:<ts>:<nonce>")>
+# direction: to-db for what replication-manager sends to the jobs listener (SST_RECEIVER_PORT: a
+# backup to restore, a new jobs script, a config), to-repman for what the jobs send to a
+# replication-manager receiver (a backup, a dump, a log, the jobs check).
+# job_stream_open reads it from stdin and copies the rest of the stream to stdout only when it is
+# valid: within JOB_STREAM_WINDOW seconds of its timestamp, with a nonce not taken before. Else
+# it writes why in $LOG_DIR/stream.refused and returns 1 with nothing written, so a stream from
+# whoever connects to the port first is never restored, installed or run.
+# Usage: socat -u TCP-LISTEN:... STDOUT | job_stream_open | ...
+readonly JOB_STREAM_WINDOW=300
+job_stream_open() {
+    local line tag ts nonce mac want now store="$LOG_DIR/.stream_nonces"
+    rm -f "$LOG_DIR/stream.refused"
+    # bash reads a pipe a byte at a time: the stream after the newline stays for cat. No read
+    # timeout: the listener's own (accept-timeout, timeout) bounds the wait for the sender.
+    if ! IFS= read -r -n 200 line; then
+        # nothing at all: the listener timed out or the sender closed before sending, not a
+        # stream refused (job_stream_refused stays empty, the caller reports its own timeout)
+        [[ -n "$line" ]] && echo "no stream header" >"$LOG_DIR/stream.refused"
+        return 1
+    fi
+    read -r tag ts nonce mac <<<"$line"
+    now=$(date +%s)
+    if [[ "$tag" != "MRMSTREAM1" || ! "$ts" =~ ^[0-9]+$ || ! "$nonce" =~ ^[0-9a-f]{32}$ || ! "$mac" =~ ^[0-9a-f]{64}$ ]]; then
+        echo "no stream header" >"$LOG_DIR/stream.refused"
+        return 1
+    fi
+    if (( ts < now - JOB_STREAM_WINDOW || ts > now + JOB_STREAM_WINDOW )); then
+        echo "stream header outside the ${JOB_STREAM_WINDOW}s window (clock skew or replay)" >"$LOG_DIR/stream.refused"
+        return 1
+    fi
+    want=$(job_stream_mac to-db "$ts" "$nonce")
+    if [[ "$want" != "$mac" ]]; then
+        echo "stream header not signed by replication-manager" >"$LOG_DIR/stream.refused"
+        return 1
+    fi
+    # the nonces taken within twice the window (bounded by it), checked and written under a
+    # lock (flock when the image has it): two streams at once cannot both take one nonce
+    if ! (
+        umask 077
+        command -v flock >/dev/null 2>&1 && flock 9
+        grep -qs " $nonce\$" "$store" && exit 1
+        { awk -v min=$((now - 2 * JOB_STREAM_WINDOW)) '$1 >= min' "$store" 2>/dev/null; echo "$now $nonce"; } >"$store.$BASHPID" && mv -f "$store.$BASHPID" "$store"
+    ) 9>>"$store.lock"; then
+        echo "stream header already used (replay)" >"$LOG_DIR/stream.refused"
+        return 1
+    fi
+    exec cat
+}
+
+# job_stream_mac prints the MAC of a stream header: direction, ts, nonce.
+job_stream_mac() {
+    local secret
+    secret=$(jobs_key)
+    [[ -n "$secret" ]] || secret="$MYSQL_ROOT_PASSWORD"
+    printf "%s:%s:%s:%s" "$1" "$MYSQL_SERVER:$MYSQL_PORT" "$2" "$3" |
+        openssl dgst -sha256 -mac HMAC -macopt hexkey:"$(derive_key "$secret")" | awk '{print $NF}'
+}
+
+# job_stream_signed copies stdin to stdout after the header of a stream to replication-manager.
+# Usage: ... | job_stream_signed | socat -u STDIN TCP:...
+job_stream_signed() {
+    local ts nonce
+    ts=$(date +%s)
+    nonce=$(openssl rand -hex 16)
+    printf "MRMSTREAM1 %s %s %s\n" "$ts" "$nonce" "$(job_stream_mac to-repman "$ts" "$nonce")"
+    exec cat
+}
+
+# job_stream_refused prints why the last stream was refused, nothing when it was not.
+job_stream_refused() {
+    cat "$LOG_DIR/stream.refused" 2>/dev/null
 }
 
 ########################
@@ -376,7 +482,7 @@ send_http_get() {
     local host="$1"
     local port="$2"
     local endpoint="$3"
-    send_http_request "GET" "$host" "$port" "$endpoint" "" "application/json" "$TOKEN"
+    send_http_request "GET" "$host" "$port" "$endpoint" "" "application/json" "$(job_token)"
 }
 
 # Send authenticated HTTP GET request with Bearer token
@@ -404,14 +510,13 @@ send_encrypted_api_request() {
         port=10005
     fi
 
-    # Encrypt the data if provided
-    local encrypted_data=""
+    # Encrypt the data if provided: a one-time job body
+    local json_data="{\"data\":\"\"}"
     if [[ -n "$raw_data" ]]; then
-        encrypted_data=$(encrypt_data "$raw_data" "$password")
+        json_data=$(job_body "$raw_data" "$password")
     fi
 
-    local json_data="{\"data\":\"$encrypted_data\"}"
-    send_http_request "POST" "$host" "$port" "$api_endpoint" "$json_data" "application/json" "$TOKEN"
+    send_http_request "POST" "$host" "$port" "$api_endpoint" "$json_data" "application/json" "$(job_token)"
 }
 
 # Rotate log file if it exceeds size limit
@@ -504,7 +609,7 @@ send_lines_to_api() {
 
     check_log_level "$CLUSTER_NAME" "$job" "$level" || return 0
 
-    local data="{\"server\":\"$MYSQL_SERVER:$MYSQL_PORT\",\"secret\":\"$MYSQL_ROOT_PASSWORD\",\"log\":\"$lines\",\"level\":\"$level\"}"
+    local data="{\"server\":\"$MYSQL_SERVER:$MYSQL_PORT\"$(job_secret),\"log\":\"$lines\",\"level\":\"$level\"}"
     local api_endpoint="/api/clusters/$CLUSTER_NAME/servers/$MYSQL_SERVER/$MYSQL_PORT/write-log/$job"
 
     send_to_api_with_retry "$api_host" "$api_port" "$api_endpoint" "$data" "$MAX_RETRIES"
@@ -522,7 +627,7 @@ check_task_needs() {
     local api_port="$REPLICATION_MANAGER_PORT"
 
     local endpoint="/api/clusters/${cluster}/servers/${server}/${port}/needs/${taskname}"
-    local response=$(send_encrypted_api_request "$api_host" "$api_port" "$endpoint" "{\"server\":\"$server:$port\",\"secret\":\"$MYSQL_ROOT_PASSWORD\"}")
+    local response=$(send_encrypted_api_request "$api_host" "$api_port" "$endpoint" "{\"server\":\"$server:$port\"$(job_secret)}")
 
     local http_code=$(extract_http_code "$response")
     local body=$(extract_http_body "$response" | tr -d '\n')
@@ -548,7 +653,7 @@ get_task_receiver() {
     local api_port="$REPLICATION_MANAGER_PORT"
 
     local endpoint="/api/clusters/${cluster}/servers/${server}/${port}/actions/receive-task/${taskname}"
-    local response=$(send_encrypted_api_request "$api_host" "$api_port" "$endpoint" "{\"server\":\"$server:$port\",\"secret\":\"$MYSQL_ROOT_PASSWORD\"}")
+    local response=$(send_encrypted_api_request "$api_host" "$api_port" "$endpoint" "{\"server\":\"$server:$port\"$(job_secret)}")
 
     local http_code=$(extract_http_code "$response")
     local body=$(extract_http_body "$response" | tr -d '\n')
@@ -598,7 +703,7 @@ report_job_state() {
     local api_host="$REPLICATION_MANAGER_HOST"
     local api_port="$REPLICATION_MANAGER_PORT"
     local endpoint="/api/clusters/${CLUSTER_NAME}/servers/${MYSQL_SERVER}/${MYSQL_PORT}/actions/job-state/${taskname}/${jobstate}"
-    local data="{\"server\":\"$MYSQL_SERVER:$MYSQL_PORT\",\"secret\":\"$MYSQL_ROOT_PASSWORD\""
+    local data="{\"server\":\"$MYSQL_SERVER:$MYSQL_PORT\"$(job_secret)"
     if [[ -n "$restore_json" ]]; then
         data="${data},\"restore\":${restore_json}"
     fi
@@ -628,6 +733,44 @@ report_job_state() {
 # Print Defaults Functions       #
 ##################################
 
+# Current API token of the jobs script: the token secret_login returned, kept in the jobs
+# directory (0600) so background tasks share it, and renewed by a new one-time login once it
+# ends within JOB_TOKEN_RENEW seconds (its own exp claim: api-secret-login-token-timeout, 15
+# min by default, whatever it is set to), so a long task (a backup) still posts with a valid
+# one. A token whose end cannot be read is renewed after JOB_TOKEN_RENEW. "refresh" forces a
+# new login.
+# Usage: job_token ["refresh"]
+JOB_TOKEN_RENEW=300
+job_token() {
+    local file="$LOG_DIR/.job_token"
+    if [[ "$1" != "refresh" && -s "$file" ]]; then
+        local now=$(date +%s)
+        local exp=$(job_token_exp "$(cat "$file")")
+        local age=$(( now - $(date -r "$file" +%s 2>/dev/null || echo 0) ))
+        if [[ -n "$exp" ]] && (( now < exp - JOB_TOKEN_RENEW )); then
+            cat "$file"
+            return 0
+        elif [[ -z "$exp" ]] && (( age < JOB_TOKEN_RENEW )); then
+            cat "$file"
+            return 0
+        fi
+    fi
+    local token
+    token="$(secret_login "$CLUSTER_NAME" "$MYSQL_SERVER" "$MYSQL_PORT")" || token=""
+    if [[ -n "$token" ]]; then
+        (umask 077 && printf "%s" "$token" > "$file.$BASHPID" && mv -f "$file.$BASHPID" "$file")
+    fi
+    printf "%s" "$token"
+}
+
+# job_token_exp prints the exp claim (unix seconds) of a JWT, nothing when unreadable.
+job_token_exp() {
+    local payload
+    payload=$(printf "%s" "$1" | cut -d. -f2 | tr '_-' '/+')
+    while (( ${#payload} % 4 )); do payload="$payload="; done
+    printf "%s" "$payload" | base64 -d 2>/dev/null | grep -o '"exp":[0-9]*' | cut -d: -f2
+}
+
 # Login using secret
 # Usage: secret_login "cluster" "server" "port" "encrypted_secret"
 # Returns: token on success, empty string on failure
@@ -636,15 +779,15 @@ secret_login() {
     local cluster="$1"
     local server="$2"
     local port="$3"
-    local encrypted_secret="$(encrypt_data "{\"server\":\"$server:$port\", \"secret\":\"$MYSQL_ROOT_PASSWORD\"}")"
+
     local api_host="$REPLICATION_MANAGER_HOST"
     local api_port="$REPLICATION_MANAGER_PORT"
 
     # Build endpoint
     local endpoint="/api/clusters/${cluster}/servers/${server}/${port}/secret-login"
 
-    # Prepare JSON payload
-    local json_data="{\"data\":\"$encrypted_secret\"}"
+    # Prepare JSON payload: a one-time job body
+    local json_data=$(job_body "{\"server\":\"$server:$port\"$(job_secret)}")
 
     # Send request
     local response=$(send_http_request "POST" "$api_host" "$api_port" "$endpoint" "$json_data")
@@ -812,7 +955,7 @@ collect_dbu() {
     wait_json=$(read_cgroup_wait_counters "$cg")
     local data="{\"windowStart\":\"$ws\",\"windowEnd\":\"$we\",\"memMaxBytes\":$mem,\"cpuMaxCores\":$cpu_cores,\"ioMaxIops\":$io_iops,\"diskMaxBytes\":$disk,\"diskFreeBytes\":${disk_free:-0},\"wait\":$wait_json,\"netRxBytes\":${net_rx:-0},\"netTxBytes\":${net_tx:-0}}"
     local endpoint="/api/clusters/$CLUSTER_NAME/servers/$MYSQL_SERVER/$MYSQL_PORT/dbu"
-    send_http_request "POST" "$REPLICATION_MANAGER_HOST" "$REPLICATION_MANAGER_PORT" "$endpoint" "$data" "application/json" "$TOKEN" >/dev/null 2>&1 || true
+    send_http_request "POST" "$REPLICATION_MANAGER_HOST" "$REPLICATION_MANAGER_PORT" "$endpoint" "$data" "application/json" "$(job_token)" >/dev/null 2>&1 || true
 }
 
 # Fetch config receiver information
@@ -822,7 +965,7 @@ fetch_config_receiver() {
 
     # Use authenticated request if TOKEN is available
     if [[ -n "$TOKEN" ]]; then
-        response=$(send_http_get_authenticated "$REPLICATION_MANAGER_HOST" "$REPLICATION_MANAGER_PORT" "$urlpost" "$TOKEN")
+        response=$(send_http_get_authenticated "$REPLICATION_MANAGER_HOST" "$REPLICATION_MANAGER_PORT" "$urlpost" "$(job_token)")
     else
         response=$(send_http_get "$REPLICATION_MANAGER_HOST" "$REPLICATION_MANAGER_PORT" "$urlpost")
     fi
@@ -925,7 +1068,7 @@ fetch_and_extract_config() {
     fi
 
     # Start listener in background and capture PID
-    timeout "$listener_timeout" socat -u "TCP-LISTEN:$sst_port,reuseaddr" "OPEN:$config_file,creat,trunc" > "$LOG_DIR/socat_listener.log" 2>&1 &
+    (set -o pipefail; timeout "$listener_timeout" socat -u "TCP-LISTEN:$sst_port,reuseaddr" STDOUT 2>"$LOG_DIR/socat_listener.log" | job_stream_open > "$config_file") &
     local socat_pid=$!
 
     send_lines_to_api "Listener started (PID: $socat_pid), waiting for config delivery (timeout: ${listener_timeout}s)..." "print-defaults" "$LVL_DEBUG"
@@ -934,7 +1077,11 @@ fetch_and_extract_config() {
     wait $socat_pid
     local socat_exit=$?
 
-    if [[ $socat_exit -eq 124 ]]; then
+    if [[ -n "$(job_stream_refused)" ]]; then
+        send_lines_to_api "ERROR: Config stream refused: $(job_stream_refused)" "print-defaults" "$LVL_ERROR"
+        rm -f "$config_file"
+        return 1
+    elif [[ $socat_exit -eq 124 ]]; then
         send_lines_to_api "ERROR: Timeout waiting for config delivery after ${listener_timeout}s" "print-defaults" "$LVL_ERROR"
         return 1
     elif [[ $socat_exit -ne 0 ]]; then
@@ -1083,7 +1230,7 @@ send_mariadb_defaults() {
     local recv_host="${receiver_addr%%:*}"
     local recv_port="${receiver_addr##*:}"
 
-    if ! echo "$processed_output" | socat -u STDIN "TCP:$recv_host:$recv_port"; then
+    if ! echo "$processed_output" | job_stream_signed | socat -u STDIN "TCP:$recv_host:$recv_port"; then
         send_lines_to_api "ERROR: Failed to send data to $receiver_addr" "print-defaults" "$LVL_ERROR"
         return 1
     fi
@@ -1165,7 +1312,7 @@ print_defaults_for_fetch() {
     local extract_dir="/bootstrap/dummy"
 
     # Fetch and extract configuration (use global TOKEN if available)
-    if ! fetch_and_extract_config "$extract_dir" "$TOKEN"; then
+    if ! fetch_and_extract_config "$extract_dir" "$(job_token)"; then
         send_lines_to_api "ERROR: Failed to fetch and extract configuration" "print-defaults" "$LVL_ERROR"
         return 1
     fi
@@ -1248,7 +1395,7 @@ check_jobs_receiver() {
     local api_port="$REPLICATION_MANAGER_PORT"
 
     local endpoint="/api/clusters/${cluster}/servers/${server}/${port}/actions/receive-jobs-check"
-    local response=$(send_encrypted_api_request "$api_host" "$api_port" "$endpoint" "{\"server\":\"$server:$port\",\"secret\":\"$MYSQL_ROOT_PASSWORD\"}")
+    local response=$(send_encrypted_api_request "$api_host" "$api_port" "$endpoint" "{\"server\":\"$server:$port\"$(job_secret)}")
 
     local http_code=$(extract_http_code "$response")
     local body=$(extract_http_body "$response")
@@ -1279,7 +1426,7 @@ request_jobs_upgrade() {
     local api_host="$REPLICATION_MANAGER_HOST"
     local api_port="$REPLICATION_MANAGER_PORT"
     local endpoint="/api/clusters/${cluster}/servers/${server}/${port}/actions/send-jobs-upgrade"
-    local response=$(send_encrypted_api_request "$api_host" "$api_port" "$endpoint" "{\"server\":\"$server:$port\",\"secret\":\"$MYSQL_ROOT_PASSWORD\"}")
+    local response=$(send_encrypted_api_request "$api_host" "$api_port" "$endpoint" "{\"server\":\"$server:$port\"$(job_secret)}")
 
     local http_code=$(extract_http_code "$response")
     [[ "$http_code" == "200" ]]
@@ -1554,7 +1701,7 @@ dblogfile() {
     # If DB log has new content
     if [ -s "$TMPLOG" ]; then
         # Send content via socat
-        if socat -u stdio TCP:$ADDRESS < "$TMPLOG" &>"$LOG_DIR/$JOB.process.out"; then
+        if job_stream_signed < "$TMPLOG" | socat -u stdio TCP:$ADDRESS &>"$LOG_DIR/$JOB.process.out"; then
             # Persist the streaming offset: remember the last non-empty line we
             # just streamed so the next run resumes AFTER it (grep -Fxn on the
             # source) instead of re-sending the whole file from line 1. Without
@@ -1566,7 +1713,7 @@ dblogfile() {
         fi
     else
         # Send empty payload
-        echo -n | socat -u stdio TCP:$ADDRESS &>"$LOG_DIR/$JOB.process.out"
+        echo -n | job_stream_signed | socat -u stdio TCP:$ADDRESS &>"$LOG_DIR/$JOB.process.out"
     fi
 }
 
@@ -1679,7 +1826,7 @@ stream_dump() {
         DUMP_RC=(1 1)
         return
     fi
-    socat stdio TCP:$ADDRESS <"$fifo" &>"$LOG_DIR/$job.out" &
+    socat stdio TCP:$ADDRESS < <(job_stream_signed <"$fifo") &>"$LOG_DIR/$job.out" &
     local stream_pid=$!
     $BINARY_DUMP "${DUMP_ARGS[@]}" --protocol=TCP --user="$USER" --host="$MYSQL_SERVER" --password="$PASSWORD" --port="$MYSQL_PORT" 2>"$LOG_DIR/backup.out" >"$fifo" &
     local dump_pid=$!
@@ -1805,7 +1952,7 @@ receiveBackup() {
         return 1
     fi
     rm -f "$count"
-    (socat -u TCP-LISTEN:$SST_RECEIVER_PORT,reuseaddr,accept-timeout=600,bind=$SOCAT_BIND STDOUT |
+    (socat -u TCP-LISTEN:$SST_RECEIVER_PORT,reuseaddr,accept-timeout=600,bind=$SOCAT_BIND STDOUT | job_stream_open |
         head -c "$budget" | tee >(wc -c >"$count") | $unpack -x -C "$BACKUPDIR") &
     sub=$!
     while kill -0 "$sub" 2>/dev/null; do
@@ -1828,6 +1975,10 @@ receiveBackup() {
     done
     got=$(cat "$count" 2>/dev/null)
     rm -f "$count"
+    if [[ -n "$(job_stream_refused)" ]]; then
+        receiveBackupAbort "Backup transfer refused: $(job_stream_refused). Nothing was received; no database or table was changed."
+        return 1
+    fi
     if [[ "${got:-0}" -ge "$budget" ]]; then
         # The numbers of the last poll can be old: report the current ones.
         read -r total avail < <(df -P -B1 "$DATADIR" 2>/dev/null | awk 'NR==2{print $2, $4}')
@@ -3018,7 +3169,7 @@ jobsCheck() {
     fi
 
     echo "Sending new script." >>"$LOG_DIR/jobs-check.process.out"
-    socat -u FILE:"${BASH_SOURCE[0]}",rdonly TCP:$REPLICATION_MANAGER_HOST:$RCV_PORT,reuseaddr,bind=$SOCAT_BIND 2>>"$LOG_DIR/jobs-check.process.out"
+    job_stream_signed <"${BASH_SOURCE[0]}" | socat -u STDIN TCP:$REPLICATION_MANAGER_HOST:$RCV_PORT,reuseaddr,bind=$SOCAT_BIND 2>>"$LOG_DIR/jobs-check.process.out"
 
     if [ $? -ne 0 ]; then
         echo "Failed to send the script via socat." >>"$LOG_DIR/jobs-check.process.out"
@@ -3073,7 +3224,7 @@ jobsUpgrade() {
 
     # Open receiver port to get the new script to a temporary file
     TEMP_FILE="${BASH_SOURCE[0]}.tmp"
-    timeout 120 socat -u TCP-LISTEN:$SST_RECEIVER_PORT,reuseaddr,bind=$SOCAT_BIND - > "$TEMP_FILE" 2>>"$LOG_DIR/jobs-upgrade.process.out" &
+    (set -o pipefail; timeout 120 socat -u TCP-LISTEN:$SST_RECEIVER_PORT,reuseaddr,bind=$SOCAT_BIND - 2>>"$LOG_DIR/jobs-upgrade.process.out" | job_stream_open > "$TEMP_FILE") &
     SOCAT_PID=$!
 
     # Request the upgrade
@@ -3102,6 +3253,9 @@ jobsUpgrade() {
             # Re-execute with the new version
             exec bash "${BASH_SOURCE[0]}" "$@"
         fi
+    elif [ -n "$(job_stream_refused)" ]; then
+        send_lines_to_api "New script refused: $(job_stream_refused)." "jobs-upgrade" "$LVL_ERROR"
+        rm -f "$TEMP_FILE"
     else
         send_lines_to_api "Failed to receive the new script via socat." "jobs-upgrade" "$LVL_ERROR"
         rm -f "$TEMP_FILE"
@@ -3121,8 +3275,9 @@ ensure_directories || exit 1
 
 select_database_binaries || exit 1
 
-TOKEN="$(secret_login "$CLUSTER_NAME" "$MYSQL_SERVER" "$MYSQL_PORT")"
-if [ "$TOKEN" == "error" ]; then
+# A fresh one-time login at each run (the token is renewed by job_token during the run).
+TOKEN="$(job_token refresh)"
+if [ -z "$TOKEN" ]; then
     echo "Failed to authenticate with the replication manager API."
     exit 1
 fi
@@ -3291,11 +3446,11 @@ for job in "${JOBS[@]}"; do
         xtrabackup)
             cd /docker-entrypoint-initdb.d
             xtrabackup_undo_args
-            $XTRABACKUP --defaults-file=$MYSQL_CONF/my.cnf --backup "${XB_UNDO_ARGS[@]}" -u$USER -H$MYSQL_SERVER -p$PASSWORD -P$MYSQL_PORT --stream=xbstream --target-dir=$LOG_DIR/ 2>"$LOG_DIR/backup.out" | socat -u stdio TCP:$ADDRESS &>"$LOG_DIR/$job.out"
+            $XTRABACKUP --defaults-file=$MYSQL_CONF/my.cnf --backup "${XB_UNDO_ARGS[@]}" -u$USER -H$MYSQL_SERVER -p$PASSWORD -P$MYSQL_PORT --stream=xbstream --target-dir=$LOG_DIR/ 2>"$LOG_DIR/backup.out" | job_stream_signed | socat -u stdio TCP:$ADDRESS &>"$LOG_DIR/$job.out"
             ;;
         mariabackup)
             cd /docker-entrypoint-initdb.d
-            $MARIADB_BACKUP --defaults-file="$MYSQL_CONF/my.cnf" --backup --databases-exclude=.system --protocol=TCP --user="$USER" --host="$MYSQL_SERVER" --password="$PASSWORD" --port="$MYSQL_PORT" --stream=xbstream --target-dir="$LOG_DIR/" 2>"$LOG_DIR/backup.out" | socat -u stdio TCP:$ADDRESS &>"$LOG_DIR/$job.out"
+            $MARIADB_BACKUP --defaults-file="$MYSQL_CONF/my.cnf" --backup --databases-exclude=.system --protocol=TCP --user="$USER" --host="$MYSQL_SERVER" --password="$PASSWORD" --port="$MYSQL_PORT" --stream=xbstream --target-dir="$LOG_DIR/" 2>"$LOG_DIR/backup.out" | job_stream_signed | socat -u stdio TCP:$ADDRESS &>"$LOG_DIR/$job.out"
             ;;
         mysqldump)
             # Logical backup on the DB node (scheduler-jobs-exec-remote): replication-manager

@@ -29754,6 +29754,12 @@ const docTemplate = `{
                 "apiPublicUrl": {
                     "type": "string"
                 },
+                "apiSecretLoginTokenTimeout": {
+                    "type": "integer"
+                },
+                "apiSecretLoginWindow": {
+                    "type": "integer"
+                },
                 "apiServer": {
                     "type": "boolean"
                 },
@@ -33656,6 +33662,14 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "data": {
+                    "type": "string"
+                },
+                "iv": {
+                    "description": "a job body's random IV (one-time format, cluster.OpenJobBody)",
+                    "type": "string"
+                },
+                "key": {
+                    "description": "a job body's key: \"jobs\" (the cluster's jobs key) or \"db\" (the server's password)",
                     "type": "string"
                 }
             }

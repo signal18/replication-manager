@@ -872,19 +872,14 @@ func (server *ServerMonitor) ParseLogEntries(entry config.LogEntry, mod int, tas
 	return nil
 }
 
-// DecodeSecret decrypts an encrypted job-callback body and returns both the
+// DecodeSecret reads a decrypted job-callback body (OpenJobBody) and returns both the
 // "secret" field (used by SecretLoginCheck for auth) and the full decrypted
 // JSON payload, trimmed to its outermost object -- callers that need fields
 // beyond "secret"/"server" (e.g. handlerMuxServerJobState's "restore" field,
 // server/api_database.go) parse the returned payload themselves rather than
 // this function growing a field for every such caller.
-func (server *ServerMonitor) DecodeSecret(encrypted, key, iv string) (secret string, payload string, err error) {
+func (server *ServerMonitor) DecodeSecret(data []byte) (secret string, payload string, err error) {
 	cluster := server.ClusterGroup
-	data, err := server.DecryptAES256(encrypted, key, iv)
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error decrypting secret: %s", err.Error())
-		return "", "", err
-	}
 
 	pos := bytes.LastIndex(data, []byte("}"))
 	if pos > 1 {
