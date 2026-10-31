@@ -45,6 +45,7 @@ function SchedulerSettings({ selectedCluster, user, openConfirmModal }) {
   const hRollingReprov = cronHelp('Rolling Reprovision', 'Schedules a rolling re-provisioning of cluster nodes from scratch.', 'scheduler-rolling-reprov / scheduler-rolling-reprov-cron')
   const hSlaRotate = cronHelp('Rotate SLA', 'Schedules rotation of SLA availability statistics.', 'scheduler-sla-rotate-cron')
   const hDisableAlert = cronHelp('Disable Alerting', 'Schedules a window during which all alert notifications are suppressed.', 'scheduler-alert-disable / scheduler-alert-disable-cron')
+  const hRotatePasswords = cronHelp('Rotate Passwords', 'Schedules the rotation of the database and replication passwords, the same rotation as the Rotate Passwords button: once a week by default (Sunday 03:00). A credential set in a config file (immutable) is never rotated. A run skipped because of the cluster state (a database down, replication stopped) opens a security state until a scheduled rotation succeeds; the next run tries again.', 'scheduler-rotate-passwords / scheduler-rotate-passwords-cron')
   const hSchemaMonitor = cronHelp('Monitor Schema Changes', 'Schedules schema change detection scans instead of scanning every monitoring cycle.', 'monitoring-schema-scheduler / monitoring-schema-scheduler-cron')
   const hChecksumTables = cronHelp('Monitor Checksum Tables', 'Schedules periodic table checksum verification to detect silent data divergence.', 'monitoring-checksum-scheduler / monitoring-checksum-scheduler-cron')
 
@@ -111,6 +112,7 @@ function SchedulerSettings({ selectedCluster, user, openConfirmModal }) {
       { key: 'Rolling Reprovision', help: h(hRollingReprov, 'Rolling Reprovision'), value: sc('scheduler-rolling-reprov', 'schedulerRollingReprov', 'schedulerRollingReprovCron', 'scheduler-rolling-reprov-cron', 'Rolling Reprovision') },
       { key: 'Rotate SLA', help: h(hSlaRotate, 'Rotate SLA'), value: sc(null, null, 'schedulerSlaRotateCron', 'scheduler-sla-rotate-cron', 'Rotate SLA', false) },
       { key: 'Disable Alerting', help: h(hDisableAlert, 'Disable Alerting'), value: sc('scheduler-alert-disable', 'schedulerAlertDisable', 'schedulerAlertDisableCron', 'scheduler-alert-disable-cron', 'Disable Alerting') },
+      { key: 'Rotate Passwords', help: h(hRotatePasswords, 'Rotate Passwords'), value: sc('scheduler-rotate-passwords', 'schedulerRotatePasswords', 'schedulerRotatePasswordsCron', 'scheduler-rotate-passwords-cron', 'Rotate Passwords') },
       { key: 'Monitor Schema Changes', help: h(hSchemaMonitor, 'Monitor Schema Changes'), value: sc('monitoring-schema-scheduler', 'monitoringSchemaScheduler', 'monitoringSchemaSchedulerCron', 'monitoring-schema-scheduler-cron', 'Monitor Schema Changes') },
       { key: 'Monitor Checksum Tables', help: h(hChecksumTables, 'Monitor Checksum Tables'), value: sc('monitoring-checksum-scheduler', 'monitoringChecksumScheduler', 'monitoringChecksumSchedulerCron', 'monitoring-checksum-scheduler-cron', 'Monitor Checksum Tables') },
     ] : [])

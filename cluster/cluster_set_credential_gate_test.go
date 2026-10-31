@@ -22,17 +22,26 @@ func TestCanSetCredential(t *testing.T) {
 		want   string // "" = allowed, else a part of the refusal
 	}{
 		{"allowed", "db-servers-credential", func(*Cluster) {}, ""},
-		// #2227 rule 9: a credential set in a config file takes a change as a version
-		{"db credential in a file", "db-servers-credential", func(c *Cluster) { c.Conf.ImmuableFlagMap["db-servers-credential"] = "root:x" }, ""},
-		{"replication credential in a file", "replication-credential", func(c *Cluster) { c.Conf.ImmuableFlagMap["replication-credential"] = "repl:x" }, ""},
+		// #2227 rule 9, #2269: a credential set in a config file (immutable) is never changed
+		{"db credential in a file", "db-servers-credential", func(c *Cluster) { c.Conf.ImmuableFlagMap["db-servers-credential"] = "root:x" }, "immutable"},
+		{"replication credential in a file", "replication-credential", func(c *Cluster) { c.Conf.ImmuableFlagMap["replication-credential"] = "repl:x" }, "immutable"},
 		{"credential in a file, no versioned store", "replication-credential", func(c *Cluster) {
 			c.Conf.ImmuableFlagMap["replication-credential"] = "repl:x"
 			c.Conf.MonitoringSecretVersioning = false
-		}, "no credential store keeps versions"},
+		}, "immutable"},
 		{"another credential in a file", "db-servers-credential", func(c *Cluster) { c.Conf.ImmuableFlagMap["replication-credential"] = "repl:x" }, ""},
 		// #2227 rule 1: the change is a version in the versioned stores, never in the config
 		{"config not saved, versioning on", "replication-credential", func(c *Cluster) { c.Conf.ConfRewrite = false }, ""},
-		{"no versioned store", "replication-credential", func(c *Cluster) { c.Conf.MonitoringSecretVersioning = false }, "no credential store keeps versions"},
+		// #2269: no store keeps versions: the config is the store, while it is saved
+		{"no versioned store", "replication-credential", func(c *Cluster) { c.Conf.MonitoringSecretVersioning = false }, ""},
+		{"no versioned store, config not saved", "replication-credential", func(c *Cluster) {
+			c.Conf.MonitoringSecretVersioning = false
+			c.Conf.ConfRewrite = false
+		}, "monitoring-save-config is off"},
+		{"no versioned store, no encryption key", "replication-credential", func(c *Cluster) {
+			c.Conf.MonitoringSecretVersioning = false
+			c.Conf.SecretKey = nil
+		}, "no encryption key"},
 		{"no versioned store, a vault entry", "replication-credential", func(c *Cluster) {
 			c.Conf.MonitoringSecretVersioning = false
 			c.Conf.SecretKvs = []config.SecretKvConfig{{Name: "vault-a", Plugin: config.ConstSecretKvPluginVault, Enabled: true}}
@@ -92,7 +101,8 @@ func TestGetCredentialsInfo(t *testing.T) {
 	if s := c.GetCredentialsInfo()[0].Source; s != "dynamic-config" {
 		t.Fatalf("held by the dynamic config: source %q", s)
 	}
-	if rpl.User != "repl" || rpl.Source != "config-file" || rpl.Refusal != "" {
+	// #2269: set in a config file (immutable), it is never changed
+	if rpl.User != "repl" || rpl.Source != "config-file" || !strings.Contains(rpl.Refusal, "immutable") {
 		t.Fatalf("replication: %+v", rpl)
 	}
 	for _, i := range infos {

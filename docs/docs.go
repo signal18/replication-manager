@@ -29757,6 +29757,9 @@ const docTemplate = `{
                 "apiTokenTimeout": {
                     "type": "integer"
                 },
+                "apiTrustedNetworks": {
+                    "type": "string"
+                },
                 "apiUserTokens": {
                     "type": "boolean"
                 },
@@ -32606,6 +32609,12 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "schedulerRollingRestartCron": {
+                    "type": "string"
+                },
+                "schedulerRotatePasswords": {
+                    "type": "boolean"
+                },
+                "schedulerRotatePasswordsCron": {
                     "type": "string"
                 },
                 "schedulerSlaRotateCron": {

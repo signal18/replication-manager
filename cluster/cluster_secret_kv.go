@@ -540,9 +540,9 @@ func (cluster *Cluster) activeStoreKeepsVersions() bool {
 	return cluster.Conf.IsMonitoringSecretVersioningEnabled() || len(cluster.Conf.SecretKvActive()) > 0
 }
 
-// errNoVersionedStore is the refusal of a change or a rotation when no active store keeps
-// the versions (rules 1 and 9): the config keeps the starting value, nothing else.
-var errNoVersionedStore = errors.New("no credential store keeps versions: monitoring-secret-versioning is off (it is on by default: it was turned off) and no vault entry (secret-kv) is enabled, the new value would live only in memory and a restart would lose it; turn versioning on or enable a vault entry")
+// errNoVersionedStore says no active store keeps the versions: the config is then the store
+// (#2269), the version store keeps the previous value in memory only. Never a refusal.
+var errNoVersionedStore = errors.New("no credential store keeps versions: monitoring-secret-versioning is off and no vault entry (secret-kv) is enabled, the config is the store")
 
 // versionsKeepError is nil when an active store keeps the versions.
 func (cluster *Cluster) versionsKeepError() error {
@@ -557,6 +557,22 @@ func (cluster *Cluster) versionsKeepError() error {
 // in the config.
 func isVersionedKey(key string) bool {
 	return isDatabaseSecretKey(key) || proxySecretKeys[key] != ""
+}
+
+// keepCurrentCredentialInConfig: when no store keeps versions (versioning turned off, the vault
+// entries off), the config is the store (#2269): the current version the version store still
+// holds goes to the dynamic config, so the save writes it and the next start reads it.
+func (cluster *Cluster) keepCurrentCredentialInConfig(key string) {
+	if cluster.activeStoreKeepsVersions() {
+		return
+	}
+	if _, pinned := cluster.Conf.GetImmuableFlag(key); pinned {
+		return
+	}
+	// an encrypted value only: the config goes to the config repo (F9)
+	if v, ok, _ := cluster.versionStore().Get(key); ok && strings.Contains(v, "hash_") {
+		cluster.Conf.SetDynamicFlag(key, v)
+	}
 }
 
 // versionStore is the cluster's version store, made once (a reload keeps it) and filled from

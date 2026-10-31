@@ -420,6 +420,9 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 		if test.Name == "testCredentialVersionsRotation" {
 			res = regtest.TestCredentialVersionsRotation(cl, test.ConfigFile, &test)
 		}
+		if test.Name == "testCredentialConfigRotationScheduled" {
+			res = regtest.TestCredentialConfigRotationScheduled(cl, test.ConfigFile, &test)
+		}
 		if test.Name == "testCredentialVersionsRotationVault" {
 			res = regtest.TestCredentialVersionsRotationVault(cl, test.ConfigFile, &test)
 		}

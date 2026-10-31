@@ -39,10 +39,10 @@ func (v FileVersion) At() time.Time {
 // with its time and writing instance; the config keeps the starting value forever. The
 // local file (secret_store.json) is its copy on disk, written by the cluster's save callback
 // only (T25) and pushed with the config; the vault entries get each version from the queue.
-// A change is refused when no active store keeps versions, so the config never holds
-// anything else than the starting value. A value set in a config file (immutable) is a
-// starting value too: the versions win over it until an operator edits it there
-// (TakeConfigFileValue).
+// When no active store keeps versions (#2269), the config is the store: a change keeps the
+// current and the previous value here, in memory only, and the current one in the dynamic
+// config, which the save writes (encrypted) like any setting. A value set in a config file
+// (immutable) is never changed: repman does not write it.
 type VersionStore struct {
 	mu       sync.Mutex
 	conf     func() *config.Config
@@ -70,8 +70,13 @@ func (s *VersionStore) Name() string    { return SourceVersions }
 func (s *VersionStore) Versioned() bool { return true }
 func (s *VersionStore) Generates() bool { return false }
 
-// Persistent: a change survives a restart when an active store keeps it.
-func (s *VersionStore) Persistent() bool { return s.keeps == nil || s.keeps() == nil }
+// Persistent: a change survives a restart when an active store keeps it, else when the config
+// is saved (monitoring-save-config on, #2269).
+func (s *VersionStore) Persistent() bool { return s.keepsVersions() || s.conf().ConfRewrite }
+
+// keepsVersions: an active store keeps the versions (the local file with versioning on, or a
+// vault entry). Otherwise the config is the store (#2269).
+func (s *VersionStore) keepsVersions() bool { return s.keeps == nil || s.keeps() == nil }
 
 // Holds: key is one of the secrets this store versions.
 func (s *VersionStore) Holds(key string) bool { return s.held != nil && s.held(key) }
@@ -93,16 +98,33 @@ func (s *VersionStore) CanSet(key string) error {
 	if !s.Holds(key) {
 		return fmt.Errorf("%s is not versioned: %w", key, ErrNotHeld)
 	}
-	if s.keeps != nil {
-		if err := s.keeps(); err != nil {
-			return &heldRefusal{err}
-		}
+	conf := s.conf()
+	if _, pinned := conf.GetImmuableFlag(key); pinned {
+		return &heldRefusal{fmt.Errorf("%s is set in a config file (immutable): repman never changes it, it is not rotated", key)}
 	}
-	if !canEncrypt(s.conf()) {
+	if !s.keepsVersions() {
+		// the config is the store (#2269): the value goes to the cluster config, in the push
+		if conf.SecretKey == nil {
+			conf.LoadEncrytionKey()
+		}
+		if conf.SecretKey == nil {
+			return &heldRefusal{ErrNoEncryptionKeyConfig}
+		}
+		return nil
+	}
+	if !canEncrypt(conf) {
 		return &heldRefusal{ErrNoEncryptionKey}
 	}
 	return nil
 }
+
+// ErrNoEncryptionKeyConfig refuses a change the cluster config could not keep encrypted, when
+// the config is the store (#2269): the config goes to the config repo (F9).
+var ErrNoEncryptionKeyConfig = errors.New("no encryption key: the new value goes to the cluster config, pushed to the config repo encrypted only; create the key (monitoring-key-path)")
+
+// configKeeps is how many values a key keeps in memory when the config is the store: the
+// current one and the previous one, until the next change (#2269).
+const configKeeps = 2
 
 // ErrNoEncryptionKey refuses a version the local file could not keep encrypted: without the
 // key, EncryptSecretValue returns the value as it is, and the file goes to the config repo (F9).
@@ -127,8 +149,24 @@ func (s *VersionStore) Set(key, value string) error {
 		return err
 	}
 	conf := s.conf()
-	s.add(key, conf.EncryptSecretValue(value), time.Now().UTC(), conf.ArbitrationSasUniqueId)
+	stored := conf.EncryptSecretValue(value)
+	s.add(key, stored, time.Now().UTC(), conf.ArbitrationSasUniqueId)
+	if !s.keepsVersions() {
+		// the config is the store (#2269): the current value in the dynamic config, written by
+		// the save; here the previous one, until the next change
+		s.trim(key, configKeeps)
+		conf.SetDynamicFlag(key, stored)
+	}
 	return nil
+}
+
+// trim keeps the last n versions of key, in a new array (the dropped values are freed).
+func (s *VersionStore) trim(key string, n int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if vs := s.versions[key]; len(vs) > n {
+		s.versions[key] = append([]FileVersion(nil), vs[len(vs)-n:]...)
+	}
 }
 
 func (s *VersionStore) add(key, stored string, at time.Time, by int) {
@@ -324,19 +362,38 @@ func (s *VersionStore) saveEvent() {
 	}
 }
 
+// versionSnapshot is a key as it was before a change: its versions, and the dynamic config's
+// value, which a change writes too when the config is the store (#2269).
+type versionSnapshot struct {
+	versions       []FileVersion
+	dynamic        interface{}
+	dynamicPresent bool
+}
+
 func (s *VersionStore) snapshot(key string) (interface{}, bool) {
+	snap := versionSnapshot{}
+	snap.dynamic, snap.dynamicPresent = s.conf().GetDynamicFlag(key)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return len(s.versions[key]), true
+	snap.versions = append([]FileVersion(nil), s.versions[key]...)
+	return snap, true
 }
 
 func (s *VersionStore) restore(key string, raw interface{}, present bool) {
-	n, _ := raw.(int)
+	snap, _ := raw.(versionSnapshot)
+	conf := s.conf()
+	if snap.dynamicPresent {
+		conf.SetDynamicFlag(key, snap.dynamic)
+	} else {
+		conf.DeleteDynamicFlag(key)
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if len(s.versions[key]) > n {
-		s.versions[key] = s.versions[key][:n]
+	if len(snap.versions) == 0 {
+		delete(s.versions, key)
+		return
 	}
+	s.versions[key] = snap.versions
 }
 
 // isHeldRefusal: err is a refusal the chain must not look past.

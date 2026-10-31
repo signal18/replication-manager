@@ -565,6 +565,9 @@ type Cluster struct {
 	secretVersionStoreDirty bool             `json:"-"`
 	// secretKv: the versions written to the credential store entries (#2227)
 	secretKv secretKvStores `json:"-"`
+	// scheduledRotationSkipped: why the last scheduled password rotation was skipped (#2269)
+	scheduledRotationMu      sync.Mutex `json:"-"`
+	scheduledRotationSkipped string     `json:"-"`
 
 	// archiveOps: archive name -> a running remove, or its error (#2091)
 	archiveOps   map[string]string `json:"-"`
@@ -1128,6 +1131,7 @@ func (cluster *Cluster) initScheduler() {
 		cluster.SetSchedulerSlaRotate()
 		cluster.SetSchedulerDbJobsSsh()
 		cluster.SetSchedulerAlertDisable()
+		cluster.SetSchedulerRotatePasswords()
 		cluster.SetSchedulerMonitorSchema()
 		cluster.SetSchedulerMonitorChecksum()
 		cluster.SetSchedulerArchivePurge()
@@ -1531,6 +1535,8 @@ func (cluster *Cluster) tickBody() {
 		cluster.CheckReplicationTLS()
 		// the credential store entries: full passes, stores behind, queue drops (#2227)
 		cluster.CheckSecretKvStores()
+		// a skipped scheduled password rotation (#2269)
+		cluster.CheckScheduledPasswordRotation()
 		// Run generic log-tailer plugin checks (errorlog / sqlerrorlog / slowlog 24h)
 		cluster.CheckLogPlugins()
 		// Replication plugins: supervised on the active monitor only (#2015)
@@ -2353,9 +2359,11 @@ func (cluster *Cluster) SaveConfigFile() (bool, error) {
 			// Vault entry (#2227)
 			s.Delete(key)
 		} else if isVersionedKey(key) {
-			// a versioned secret: the config keeps its starting value forever, the current
-			// one lives in the versioned stores (#2227 rule 1)
+			// a versioned secret: the config keeps its starting value while a versioned store
+			// keeps the current one (#2227 rule 1); without one the config is the store and
+			// holds the current value (#2269)
 			s.Delete(key)
+			cluster.keepCurrentCredentialInConfig(key)
 			if raw, ok := cluster.Conf.GetDynamicFlag(key); ok && raw != nil && fmt.Sprintf("%v", raw) != "" {
 				buf.WriteString(key + " = \"" + cluster.startingValueEncrypted(fmt.Sprintf("%v", raw)) + "\"\n")
 			}

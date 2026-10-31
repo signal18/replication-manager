@@ -422,23 +422,22 @@ func TestChainArchiveSecretsConcurrent(t *testing.T) {
 	}
 }
 
-// #2227 rule 9: a value set in a config file is a starting value; the versions win over it
-// until an operator edits it in the file, and the edit is then the current version
+// #2227 rule 9, #2269: a value set in a config file (immutable) is never changed by repman; a
+// version made before (an older release rotated it) wins over it until an operator edits it in
+// the file, and the edit is then the current version
 func TestTakeConfigFileValue(t *testing.T) {
 	conf := testConf()
 	conf.ImmuableFlagMap["replication-credential"] = "repl:file1"
 	vs := NewVersionStore(func() *config.Config { return conf }, func(k string) bool { return k == "replication-credential" }, nil, nil)
 	current := func() string { v, _ := vs.Latest("replication-credential"); return v.Value }
 
-	if err := vs.CanSet("replication-credential"); err != nil {
-		t.Fatalf("a key set in a config file is refused with a versioned store: %v", err)
+	if err := vs.CanSet("replication-credential"); err == nil || !strings.Contains(err.Error(), "immutable") {
+		t.Fatalf("a key set in a config file must be refused: %v", err)
 	}
 	if !vs.TakeConfigFileValue("replication-credential", "repl:file1") || current() != "repl:file1" {
 		t.Fatalf("first start: the file's value is version 1, got %q", current())
 	}
-	if err := vs.Set("replication-credential", "repl:rotated"); err != nil {
-		t.Fatal(err)
-	}
+	vs.Insert("replication-credential", Version{Value: "repl:rotated", At: time.Now()})
 	if vs.TakeConfigFileValue("replication-credential", "repl:file1") || current() != "repl:rotated" {
 		t.Fatalf("restart, file unchanged: the rotated version must win, got %q", current())
 	}
@@ -497,4 +496,85 @@ func TestVersionStoreWithoutKeyStoresNothing(t *testing.T) {
 	if err := vs.CanSet("replication-credential"); err != nil {
 		t.Fatalf("versioning off, no key: %v, want no refusal", err)
 	}
+}
+
+// #2269: no store keeps versions: the config is the store. A change is taken, the current value
+// goes encrypted to the dynamic config (the save writes it), the previous one stays in memory
+// until the next change; a key set in a config file is refused; a failed change puts both back.
+func TestConfigIsTheStoreWithoutVersions(t *testing.T) {
+	const key = "replication-credential"
+	conf := testConf()
+	conf.DynamicFlagMap[key] = conf.EncryptSecretValue("repl:pass1")
+	noVersions := func() error { return errors.New("no store keeps versions") }
+	vs := NewVersionStore(func() *config.Config { return conf }, func(k string) bool { return k == key }, noVersions, nil)
+	chain := NewVersionedChain(conf, nil, vs)
+	chain.Refresh()
+
+	for _, pass := range []string{"repl:pass2", "repl:pass3", "repl:pass4"} {
+		if err := chain.Set(key, pass); err != nil {
+			t.Fatalf("%s refused: %v", pass, err)
+		}
+	}
+	raw, _ := conf.GetDynamicFlag(key)
+	if s := fmt.Sprintf("%v", raw); !strings.Contains(s, "hash_") || conf.DecryptSecretValue(key, s) != "repl:pass4" {
+		t.Fatalf("the dynamic config must hold the current value encrypted, got %q", conf.DecryptSecretValue(key, s))
+	}
+	if got := conf.Secrets.Get(key); got.Value != "repl:pass4" || got.OldValue != "repl:pass3" {
+		t.Fatalf("current %q, old %q", got.Value, got.OldValue)
+	}
+	if n := vs.Count(key); n != configKeeps {
+		t.Fatalf("%d values kept in memory, want %d", n, configKeeps)
+	}
+	if !chain.Persists(key) {
+		t.Fatal("monitoring-save-config on: the change persists through the config")
+	}
+
+	// a restart: no version file, the config is read
+	restarted := NewVersionedChain(conf, nil, NewVersionStore(func() *config.Config { return conf }, func(k string) bool { return k == key }, noVersions, nil))
+	restarted.Refresh()
+	if v := conf.Secrets.Get(key).Value; v != "repl:pass4" {
+		t.Fatalf("after a restart: %q", v)
+	}
+
+	// a failed change of two keys puts the first back, in memory and in the config
+	failing := &failStore{}
+	two := NewChain(conf, vs, failing)
+	before, _ := conf.GetDynamicFlag(key)
+	if err := two.SetAll(Change{Key: key, Value: "repl:pass5"}, Change{Key: "other", Value: "x"}); err == nil {
+		t.Fatal("the failing store did not fail")
+	}
+	if after, _ := conf.GetDynamicFlag(key); after != before || vs.Count(key) != configKeeps {
+		t.Fatalf("not put back: config changed %v, %d values", after != before, vs.Count(key))
+	}
+	if v, _ := vs.Latest(key); v.Value != "repl:pass4" {
+		t.Fatalf("current after the failure: %q", v.Value)
+	}
+
+	conf.ImmuableFlagMap[key] = "repl:file"
+	if err := chain.Set(key, "repl:pass6"); err == nil || !strings.Contains(err.Error(), "immutable") {
+		t.Fatalf("a key set in a config file must be refused: %v", err)
+	}
+
+	// F9: without the key the value cannot go encrypted to the config
+	delete(conf.ImmuableFlagMap, key)
+	conf.SecretKey = nil
+	conf.MonitoringKeyPath = t.TempDir() + "/no.key"
+	if err := vs.CanSet(key); !errors.Is(err, ErrNoEncryptionKeyConfig) {
+		t.Fatalf("no key: %v", err)
+	}
+}
+
+// failStore takes the key "other" and fails to write it.
+type failStore struct{}
+
+func (failStore) Name() string                     { return "fail" }
+func (failStore) Get(string) (string, bool, error) { return "", false, nil }
+func (failStore) Versioned() bool                  { return false }
+func (failStore) Generates() bool                  { return false }
+func (failStore) Set(string, string) error         { return errors.New("write failed") }
+func (failStore) CanSet(key string) error {
+	if key == "other" {
+		return nil
+	}
+	return ErrNotHeld
 }
