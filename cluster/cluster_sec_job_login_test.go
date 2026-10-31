@@ -105,7 +105,7 @@ func TestOpenJobBodyOneTime(t *testing.T) {
 }
 
 // A legacy body (an older script) is accepted only to fetch the new script (legacyAllowed: the
-// jobs check and upgrade endpoints), noted for WARN0274; refused everywhere else, secret-login
+// jobs check and upgrade endpoints), noted for WARN0276; refused everywhere else, secret-login
 // included; and refused everywhere once the new script answered (a one-time body). No setting.
 func TestOpenJobBodyLegacy(t *testing.T) {
 	s := jobLoginServer()
@@ -123,8 +123,8 @@ func TestOpenJobBodyLegacy(t *testing.T) {
 	}
 	s.ClusterGroup.CheckSecretLoginLegacy()
 	open := s.ClusterGroup.SecurityStateMachine.GetOpenStates()
-	if len(open) != 1 || open[0].ErrKey != "WARN0274" || !strings.Contains(open[0].ErrDesc, s.URL) {
-		t.Fatalf("WARN0274 on the server: %+v", open)
+	if len(open) != 1 || open[0].ErrKey != "WARN0276" || !strings.Contains(open[0].ErrDesc, s.URL) {
+		t.Fatalf("WARN0276 on the server: %+v", open)
 	}
 
 	// the new script answers: a one-time body from the server closes the legacy one everywhere
@@ -364,7 +364,7 @@ func TestJobStreamHeader(t *testing.T) {
 
 // A replication-manager receiver takes the stream the script signs (job_stream_signed) and
 // refuses one without the header, closing it and waiting for the next on the same listener:
-// whoever connects first neither writes the backup nor blocks it; WARN0275 says so.
+// whoever connects first neither writes the backup nor blocks it; WARN0277 says so.
 func TestJobStreamReceiver(t *testing.T) {
 	s := jobLoginServer()
 	c := s.ClusterGroup
@@ -418,8 +418,8 @@ func TestJobStreamReceiver(t *testing.T) {
 		t.Fatalf("the same signed stream again is a replay: %v", err)
 	}
 	c.CheckJobStreamRefused()
-	if !c.SecurityStateMachine.IsInState("WARN0275") {
-		t.Fatal("a refused stream opens WARN0275")
+	if !c.SecurityStateMachine.IsInState("WARN0277") {
+		t.Fatal("a refused stream opens WARN0277")
 	}
 }
 

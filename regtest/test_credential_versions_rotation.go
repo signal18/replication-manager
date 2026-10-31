@@ -99,38 +99,8 @@ func (regtest *RegTest) credentialVersionsRotation(cl *cluster.Cluster, withVaul
 	// check runs after each step: every server answers pass2, the config keeps pass1, the file
 	// holds both
 	check := func(step, pass2 string) bool {
-		deadline := time.Now().Add(60 * time.Second)
-		for {
-			why := ""
-			if v := cl.Conf.GetDecryptedValue(key); v != pass2 {
-				why = "repman's current credential is not the rotated one"
-			}
-			for _, srv := range cl.Servers {
-				if why != "" {
-					break
-				}
-				if srv.IsDown() {
-					why = srv.URL + " is down"
-					break
-				}
-				if cl.StateMachine.IsInState("ERR00004@" + srv.URL) {
-					why = srv.URL + " access denied"
-					break
-				}
-				conn, err := srv.GetNewDBConn()
-				if err != nil {
-					why = fmt.Sprintf("%s: no login with the rotated credential: %s", srv.URL, err)
-					break
-				}
-				conn.Close()
-			}
-			if why == "" {
-				break
-			}
-			if time.Now().After(deadline) {
-				return fail("%s: %s", step, why)
-			}
-			time.Sleep(2 * time.Second)
+		if why := serversOnCredential(cl, key, pass2, 60*time.Second); why != "" {
+			return fail("%s: %s", step, why)
 		}
 		raw, ok := cl.Conf.GetDynamicFlag(key)
 		if !ok {
@@ -142,7 +112,7 @@ func (regtest *RegTest) credentialVersionsRotation(cl *cluster.Cluster, withVaul
 		cl.Save()
 		// the file is written by the config-sync gate, every 60 ticks; a cycle still busy
 		// skips one gate, so two periods
-		deadline = time.Now().Add(2 * 60 * time.Duration(cl.Conf.MonitoringTicker) * time.Second)
+		deadline := time.Now().Add(2 * 60 * time.Duration(cl.Conf.MonitoringTicker) * time.Second)
 		for {
 			versions, err := cl.SecretVersionsInFile(key)
 			if err == nil && len(versions) >= 2 && versions[0] == pass1 && versions[len(versions)-1] == pass2 {
@@ -251,4 +221,39 @@ func (regtest *RegTest) credentialVersionsRotation(cl *cluster.Cluster, withVaul
 	}
 	logf("TEST", "restart: a start from the files on disk runs on the rotated credential, its config holds the starting value -- OK")
 	return true
+}
+
+// serversOnCredential waits up to timeout for repman to run on the credential pass of key and
+// every server to log in with it, no access denied; empty when they do, else why not.
+func serversOnCredential(cl *cluster.Cluster, key, pass string, timeout time.Duration) string {
+	deadline := time.Now().Add(timeout)
+	for {
+		why := ""
+		if v := cl.Conf.GetDecryptedValue(key); v != pass {
+			why = "repman's current credential is not the rotated one"
+		}
+		for _, srv := range cl.Servers {
+			if why != "" {
+				break
+			}
+			if srv.IsDown() {
+				why = srv.URL + " is down"
+				break
+			}
+			if cl.StateMachine.IsInState("ERR00004@" + srv.URL) {
+				why = srv.URL + " access denied"
+				break
+			}
+			conn, err := srv.GetNewDBConn()
+			if err != nil {
+				why = fmt.Sprintf("%s: no login with the rotated credential: %s", srv.URL, err)
+				break
+			}
+			conn.Close()
+		}
+		if why == "" || time.Now().After(deadline) {
+			return why
+		}
+		time.Sleep(2 * time.Second)
+	}
 }

@@ -38,7 +38,7 @@ import (
 // jobs script (the jobs check and jobs upgrade endpoints), and only until the new script answers
 // (a one-time body from that server since start): everything else, secret-login included,
 // refuses it. Not when the script is sent: a send that lands on another listener would leave
-// the server refused everywhere with an old script and no way to upgrade. Each use opens WARN0274 on that server.
+// the server refused everywhere with an old script and no way to upgrade. Each use opens WARN0276 on that server.
 // No setting: the transition is the script upgrade itself, kept in memory per server.
 
 // jobBody is the posted JSON.
@@ -59,7 +59,7 @@ const (
 // posts a few bodies a minute.
 const jobNonceMax = 65536
 
-// legacyJobLoginShown is how long WARN0274 stays open after the last legacy body of a server.
+// legacyJobLoginShown is how long WARN0276 stays open after the last legacy body of a server.
 const legacyJobLoginShown = 10 * time.Minute
 
 // jobNonces are the nonces of the one-time bodies seen, with when they can be forgotten. One
@@ -226,7 +226,7 @@ func (cluster *Cluster) secretLoginWindow() time.Duration {
 //   - one-time (jobs or db key): refused outside the window of its timestamp or with a nonce
 //     already seen (401);
 //   - legacy: accepted only when legacyAllowed (the jobs check and upgrade endpoints) and until
-//     a one-time body was seen from this server; noted for WARN0274.
+//     a one-time body was seen from this server; noted for WARN0276.
 func (server *ServerMonitor) OpenJobBody(raw []byte, now time.Time, legacyAllowed bool) ([]byte, string, int, error) {
 	cluster := server.ClusterGroup
 	var b jobBody
@@ -309,7 +309,7 @@ func jobJSONObject(data []byte) []byte {
 	return []byte(s[i : j+1])
 }
 
-// CheckSecretLoginLegacy runs every tick: WARN0274, a security state (T3), naming the servers
+// CheckSecretLoginLegacy runs every tick: WARN0276, a security state (T3), naming the servers
 // whose jobs script used the legacy job body within legacyJobLoginShown, until their script is
 // upgraded.
 func (cluster *Cluster) CheckSecretLoginLegacy() {
@@ -327,8 +327,8 @@ func (cluster *Cluster) CheckSecretLoginLegacy() {
 	if len(urls) == 0 {
 		return
 	}
-	cluster.SecurityStateMachine.AddState("WARN0274", state.State{ErrType: "WARNING", ErrKey: "WARN0274", ErrFrom: "SECURITY",
-		ErrDesc: fmt.Sprintf(clusterError["WARN0274"], strings.Join(urls, ", "))})
+	cluster.SecurityStateMachine.AddState("WARN0276", state.State{ErrType: "WARNING", ErrKey: "WARN0276", ErrFrom: "SECURITY",
+		ErrDesc: fmt.Sprintf(clusterError["WARN0276"], strings.Join(urls, ", "))})
 }
 
 // The job stream header (jobapi.StreamHeader): the first line of every stream between
@@ -425,7 +425,7 @@ type jobStreamRefusal struct {
 }
 
 // acceptJobStream accepts the stream of the server's jobs on the receiver's listener: a
-// connection whose header CheckJobStream refuses is closed, noted for WARN0275, and the next
+// connection whose header CheckJobStream refuses is closed, noted for WARN0277, and the next
 // one awaited until the listener's deadline, so whoever connects first can neither write the
 // backup or log nor block the real transfer.
 func (sst *SST) acceptJobStream(server *ServerMonitor, task string) (net.Conn, error) {
@@ -443,7 +443,7 @@ func (sst *SST) acceptJobStream(server *ServerMonitor, task string) (net.Conn, e
 	}
 }
 
-// CheckJobStreamRefused runs every tick: WARN0275, a security state, naming the servers whose
+// CheckJobStreamRefused runs every tick: WARN0277, a security state, naming the servers whose
 // receivers refused a stream within legacyJobLoginShown, and why.
 func (cluster *Cluster) CheckJobStreamRefused() {
 	now := time.Now()
@@ -459,6 +459,6 @@ func (cluster *Cluster) CheckJobStreamRefused() {
 	if len(refused) == 0 {
 		return
 	}
-	cluster.SecurityStateMachine.AddState("WARN0275", state.State{ErrType: "WARNING", ErrKey: "WARN0275", ErrFrom: "SECURITY",
-		ErrDesc: fmt.Sprintf(clusterError["WARN0275"], strings.Join(refused, ", "))})
+	cluster.SecurityStateMachine.AddState("WARN0277", state.State{ErrType: "WARNING", ErrKey: "WARN0277", ErrFrom: "SECURITY",
+		ErrDesc: fmt.Sprintf(clusterError["WARN0277"], strings.Join(refused, ", "))})
 }

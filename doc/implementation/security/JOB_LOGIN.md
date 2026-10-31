@@ -124,7 +124,7 @@ memory (`OpenJobBody`, `legacyAllowed`):
   lands on another listener (an older script's reseed receiver) would leave the server refused
   everywhere with no way to upgrade.
 - Each use, accepted or refused, records the time on the server (`legacyJobLoginAt`);
-  `CheckSecretLoginLegacy` (every tick) opens the security state **WARN0274** naming the servers
+  `CheckSecretLoginLegacy` (every tick) opens the security state **WARN0276** naming the servers
   seen within 10 minutes. It closes by itself once they run the new script.
 - After a restart, the memory is empty: a server still on an older script can again only fetch
   the new script. Nothing else is reachable with its body.
@@ -170,14 +170,14 @@ script):
     MAC, window, and the nonce in the job body store.
   - A refused connection is closed, and the receiver waits for the next one until its
     deadline. Whoever connects first can neither write the backup nor block the real transfer.
-  - Each refusal opens the security state **WARN0275** for 10 minutes, naming the server, the
+  - Each refusal opens the security state **WARN0277** for 10 minutes, naming the server, the
     task and the source address.
 - **Older scripts:**
   - A server whose script posts legacy bodies gets no header and is not asked for one. Its
     first jobs upgrade still goes over the unchecked listener, and it is the last.
   - Once a server has posted a one-time body, a legacy body for it is refused (a replay could
     otherwise downgrade it) until replication-manager restarts.
-  - Once WARN0274 is gone, every server's script signs and every stream is checked.
+  - Once WARN0276 is gone, every server's script signs and every stream is checked.
 - **PostgreSQL:** `utils/jobapi` posts the one-time body too, with the jobs key when the
   container has one (`JobsKeyFromEnv`): the PostgreSQL jobs never depend on the legacy body.
 - **What it does not do:** it authenticates the stream, it does not encrypt it (that is

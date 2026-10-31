@@ -111,24 +111,105 @@ func TestCredentialSetTagSaveReload(t *testing.T) {
 	}
 }
 
-// #2227 rule 1: no store keeps versions: a change is refused, the config keeps its value
-func TestCredentialChangeRefusedWithoutVersionedStore(t *testing.T) {
+// #2269: no store keeps versions: the config is the store. A change is taken, the save writes
+// the current value encrypted in the cluster config, the previous one stays in memory, and a
+// restart reads the current one from the config.
+func TestCredentialChangeInConfigWithoutVersionedStore(t *testing.T) {
 	cl, _ := newTestClusterServer(t)
 	cl.ConfigManager = &manager.ConfigManager{}
 	cl.Conf.ConfRewrite = true
 	cl.Conf.SecretKey = []byte("0123456789abcdef")
 	cl.Conf.DefaultFlagMap = map[string]interface{}{}
-	cl.Conf.DynamicFlagMap = map[string]interface{}{"replication-credential": "repl:pass1"}
+	cl.Conf.DynamicFlagMap = map[string]interface{}{"replication-credential": cl.Conf.EncryptSecretValue("repl:pass1")}
 	cl.Conf.ImmuableFlagMap = map[string]interface{}{}
 	cl.SetClusterCredentialsFromConfig()
-	err := cl.CredentialChain().Set("replication-credential", "repl:pass2")
-	if err == nil || !strings.Contains(err.Error(), "no credential store keeps versions") {
-		t.Fatalf("got %v", err)
+	if err := os.MkdirAll(filepath.Join(cl.Conf.WorkingDir, cl.Name), 0700); err != nil {
+		t.Fatal(err)
 	}
-	if v, _ := cl.Conf.GetDynamicFlag("replication-credential"); v != "repl:pass1" || cl.Conf.GetDecryptedValue("replication-credential") != "repl:pass1" {
-		t.Fatalf("config %v, current %q", v, cl.Conf.GetDecryptedValue("replication-credential"))
+	if err := cl.CredentialChain().Set("replication-credential", "repl:pass2"); err != nil {
+		t.Fatalf("refused: %v", err)
 	}
-	if err := cl.CanRotatePasswords(); err == nil || !strings.Contains(err.Error(), "no credential store keeps versions") {
-		t.Fatalf("rotation: %v", err)
+	if got := cl.Conf.Secrets.Get("replication-credential"); got.Value != "repl:pass2" || got.OldValue != "repl:pass1" {
+		t.Fatalf("current %q, old %q", got.Value, got.OldValue)
+	}
+	cl.SetClusterCredentialsFromConfig()
+	if v := cl.Conf.GetDecryptedValue("replication-credential"); v != "repl:pass2" {
+		t.Fatalf("after a reread: %q", v)
+	}
+
+	if _, err := cl.SaveConfigFile(); err != nil {
+		t.Fatal(err)
+	}
+	cl.ReconcileSecretVersionStore()
+	if _, err := os.Stat(SecretVersionStorePath(cl.Conf.WorkingDir, cl.Name)); err == nil {
+		t.Fatal("versioning off: no version file")
+	}
+	data, err := os.ReadFile(filepath.Join(cl.Conf.WorkingDir, cl.Name, cl.Name+".toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "pass2") || strings.Contains(string(data), "pass1") {
+		t.Fatal("a value in clear in the saved config")
+	}
+	tree, err := toml.Load(string(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	saved, ok := tree.Get("saved-" + cl.Name).(*toml.Tree)
+	if !ok {
+		t.Fatalf("no [saved-%s] section", cl.Name)
+	}
+	raw, _ := saved.Get("replication-credential").(string)
+	if cl.Conf.DecryptSecretValue("replication-credential", raw) != "repl:pass2" {
+		t.Fatal("the saved config must hold the current value")
+	}
+
+	restarted, _ := newTestClusterServer(t)
+	restarted.Name = cl.Name
+	restarted.ConfigManager = &manager.ConfigManager{}
+	restarted.Conf = &config.Config{
+		WorkingDir:      cl.Conf.WorkingDir,
+		SecretKey:       cl.Conf.SecretKey,
+		ConfRewrite:     true,
+		DefaultFlagMap:  map[string]interface{}{},
+		ImmuableFlagMap: map[string]interface{}{},
+		DynamicFlagMap:  saved.ToMap(),
+	}
+	restarted.SetClusterCredentialsFromConfig()
+	if v := restarted.Conf.GetDecryptedValue("replication-credential"); v != "repl:pass2" {
+		t.Fatalf("after the restart: %q, want pass2", v)
+	}
+}
+
+// #2269: versioning turned off after a rotation: the save hands the current version over to
+// the cluster config, so a restart without the version file reads it.
+func TestVersioningOffHandsCurrentToConfig(t *testing.T) {
+	cl, _ := newTestClusterServer(t)
+	cl.ConfigManager = &manager.ConfigManager{}
+	cl.Conf.ConfRewrite = true
+	cl.Conf.MonitoringSecretVersioning = true
+	cl.Conf.SecretKey = []byte("0123456789abcdef")
+	cl.Conf.DefaultFlagMap = map[string]interface{}{}
+	cl.Conf.DynamicFlagMap = map[string]interface{}{"replication-credential": cl.Conf.EncryptSecretValue("repl:pass1")}
+	cl.Conf.ImmuableFlagMap = map[string]interface{}{}
+	cl.SetClusterCredentialsFromConfig()
+	if err := os.MkdirAll(filepath.Join(cl.Conf.WorkingDir, cl.Name), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := cl.CredentialChain().Set("replication-credential", "repl:pass2"); err != nil {
+		t.Fatal(err)
+	}
+	cl.Conf.MonitoringSecretVersioning = false
+	if _, err := cl.SaveConfigFile(); err != nil {
+		t.Fatal(err)
+	}
+	tree, err := toml.LoadFile(filepath.Join(cl.Conf.WorkingDir, cl.Name, cl.Name+".toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	saved, _ := tree.Get("saved-" + cl.Name).(*toml.Tree)
+	raw, _ := saved.Get("replication-credential").(string)
+	if cl.Conf.DecryptSecretValue("replication-credential", raw) != "repl:pass2" {
+		t.Fatal("versioning off: the saved config must hold the current version")
 	}
 }

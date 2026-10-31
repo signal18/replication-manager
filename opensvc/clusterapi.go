@@ -587,7 +587,8 @@ func (collector *Collector) CreateConfigKeyValueV2(namespace string, service str
 	}
 
 	if collector.isLoggable(config.ConstLogModOrchestrator, config.LvlDbg) {
-		collector.Logrus.WithField("FROM", "OpenSVC").Println("API Request: ", urlpost, " Payload: ", string(jsonData))
+		// the path and key only: the data can be a secret (F10)
+		collector.Logrus.WithField("FROM", "OpenSVC").Println("API Request: ", urlpost, " Path: ", requestData.Path, " Key: ", requestData.Key)
 	}
 
 	client := collector.GetHttpClient()
@@ -666,7 +667,8 @@ func (collector *Collector) CreateSecretKeyValueV2(namespace string, service str
 	}
 
 	if collector.isLoggable(config.ConstLogModOrchestrator, config.LvlDbg) {
-		collector.Logrus.WithField("FROM", "OpenSVC").Println("API Request: ", urlpost, " Payload: ", string(jsonData))
+		// the path and key only: the data can be a secret (F10)
+		collector.Logrus.WithField("FROM", "OpenSVC").Println("API Request: ", urlpost, " Path: ", requestData.Path, " Key: ", requestData.Key)
 	}
 
 	client := collector.GetHttpClient()
@@ -681,6 +683,9 @@ func (collector *Collector) CreateSecretKeyValueV2(namespace string, service str
 	req.Close = true
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("o-node", "ANY")
+	ctx, cancel := context.WithTimeout(req.Context(), 10*time.Second)
+	defer cancel()
+	req = req.WithContext(ctx)
 	resp, err := client.Do(req)
 	if err != nil {
 		if collector.isLoggable(config.ConstLogModOrchestrator, config.LvlErr) {

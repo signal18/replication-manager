@@ -1322,21 +1322,15 @@ func (cluster *Cluster) GetAgentInOrchetrator(name string) (Agent, error) {
 func (cluster *Cluster) ProvisionRotatePasswords(password string) error {
 	switch cluster.GetOrchestrator() {
 	case config.ConstOrchestratorOpenSVC:
-		svc := cluster.OpenSVCConnect()
-		err := svc.CreateSecretKeyValueV2(cluster.Name, "env", "MYSQL_ROOT_PASSWORD", password)
-		if err == nil {
-			cluster.reportOrchestratorSecret("env", "MYSQL_ROOT_PASSWORD", password)
-		}
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "ProvisionRotatePasswords error: Can not add key to secret: %s %s ", "MYSQL_ROOT_PASSWORD", err)
-		}
+		// on failure WARN0275 stays open and the tick writes the key again (#2255)
+		return cluster.writeOpenSVCRootPassword(cluster.OpenSVCConnect(), password)
 	case config.ConstOrchestratorKubernetes:
 		client, err := cluster.K8SConnectAPI()
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "ProvisionRotatePasswords error: Cannot init Kubernetes client API %s ", err)
 			return err
 		}
-		cluster.k8sRotatePasswordsWithClient(client, password)
+		return cluster.k8sRotatePasswordsWithClient(client, password)
 	}
 	return nil
 }
@@ -1349,10 +1343,12 @@ func (cluster *Cluster) ProvisionRotatePasswords(password string) error {
 // would keep authenticating with the pre-rotation password indefinitely,
 // and a future from-scratch reprovision would seed a fresh datadir with the
 // wrong initial root password.
-func (cluster *Cluster) k8sRotatePasswordsWithClient(client kubernetes.Interface, password string) {
+func (cluster *Cluster) k8sRotatePasswordsWithClient(client kubernetes.Interface, password string) error {
 	if err := cluster.k8sEnsureDatabaseSecret(client, password); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "ProvisionRotatePasswords error: Cannot update Kubernetes secret: %s ", err)
+		return err
 	}
+	return nil
 }
 
 func (cluster *Cluster) ReloadOpenSVCDaemonNodeStats() error {

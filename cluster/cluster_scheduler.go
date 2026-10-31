@@ -2,6 +2,7 @@ package cluster
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/signal18/replication-manager/config"
 )
@@ -108,6 +109,17 @@ func (cluster *Cluster) GetDbJobsSshFunction() func() {
 	}
 }
 
+// GetRotatePasswordsFunction is the scheduled password rotation (#2269): the same rotation as
+// the button, on the active monitor only.
+func (cluster *Cluster) GetRotatePasswordsFunction() func() {
+	return func() {
+		if !cluster.IsActive() {
+			return
+		}
+		cluster.ScheduledPasswordRotation()
+	}
+}
+
 func (cluster *Cluster) GetAlertDisableFunction() func() {
 	return func() {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Alerting is disabled from scheduler")
@@ -155,6 +167,8 @@ func scheduleDescription(title string) string {
 		return "DB Jobs SSH Execution"
 	case "alertdisable":
 		return "Alert Disable"
+	case "rotatepasswords":
+		return "Password Rotation"
 	case "monitor-schemas":
 		return "Monitor Schemas"
 	case "archivepurge":
@@ -164,10 +178,12 @@ func scheduleDescription(title string) string {
 	}
 }
 
-func (cluster *Cluster) SetScheduler(switcher bool, title, schedule string, scheduleFunc func()) {
+// SetScheduler (re)schedules the job title when switcher is on; an invalid cron expression
+// leaves it unscheduled, logged, and is returned.
+func (cluster *Cluster) SetScheduler(switcher bool, title, schedule string, scheduleFunc func()) error {
 	if cluster.scheduler == nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Scheduler is disable cancel")
-		return
+		return nil
 	}
 
 	entry := cluster.GetSchedule(title)
@@ -181,10 +197,13 @@ func (cluster *Cluster) SetScheduler(switcher bool, title, schedule string, sche
 		var err error
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Schedule %s time at: %s", scheduleDescription(title), schedule)
 		entryID, err := cluster.scheduler.AddFunc(schedule, scheduleFunc)
-		if err == nil {
-			cluster.Schedule[title] = cluster.scheduler.Entry(entryID)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "%s not scheduled, invalid cron %q: %s", scheduleDescription(title), schedule, err)
+			return err
 		}
+		cluster.Schedule[title] = cluster.scheduler.Entry(entryID)
 	}
+	return nil
 }
 
 func (cluster *Cluster) SetSchedulerBackupLogical() {
@@ -225,6 +244,18 @@ func (cluster *Cluster) SetSchedulerSlaRotate() {
 
 func (cluster *Cluster) SetSchedulerDbJobsSsh() {
 	cluster.SetScheduler(cluster.Conf.SchedulerJobsSSH, "sshdbjobs", cluster.Conf.SchedulerJobsSSHCron, cluster.GetDbJobsSshFunction())
+}
+
+// SetSchedulerRotatePasswords schedules the password rotation; a cron that cannot be scheduled
+// opens WARN0274 as a skipped run does, so the rotation never stops silently.
+func (cluster *Cluster) SetSchedulerRotatePasswords() error {
+	err := cluster.SetScheduler(cluster.Conf.SchedulerRotatePasswords, "rotatepasswords", cluster.Conf.SchedulerRotatePasswordsCron, cluster.GetRotatePasswordsFunction())
+	if err != nil {
+		cluster.setScheduledRotationSkipped(fmt.Sprintf("invalid cron %q in scheduler-rotate-passwords-cron: %s", cluster.Conf.SchedulerRotatePasswordsCron, err))
+	} else if cluster.scheduler != nil {
+		cluster.clearScheduledRotationCronError()
+	}
+	return err
 }
 
 func (cluster *Cluster) SetSchedulerAlertDisable() {

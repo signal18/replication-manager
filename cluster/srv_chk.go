@@ -607,7 +607,7 @@ func (server *ServerMonitor) CheckMonitoringCredentialsRotation() {
 				cluster.SetClusterMonitorCredentialsFromConfig()
 				server.SetCredential(server.URL, cluster.GetDbUser(), cluster.GetDbPass())
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Vault monitoring user password rotation")
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Ping function User: %s, Pass: %s", server.User, server.Pass)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Ping function User: %s", server.User) // never the password (F10)
 
 				for _, pri := range cluster.Proxies {
 					if prx, ok := pri.(*ProxySQLProxy); ok {

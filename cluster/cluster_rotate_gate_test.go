@@ -6,12 +6,15 @@ package cluster
 
 import (
 	"database/sql"
+	"errors"
 	"strings"
 	"testing"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/cron"
 	"github.com/signal18/replication-manager/utils/dbhelper"
+	"github.com/signal18/replication-manager/utils/state"
 )
 
 // rotateGateCluster: a cluster where a rotation outside Vault is allowed, every case
@@ -29,8 +32,9 @@ func rotateGateCluster() *Cluster {
 	}
 }
 
-// #2042: outside Vault, a rotation keeps the new passwords only in memory unless the
-// secret store records them: it is refused with versioning off, and the reason is given.
+// #2042, #2269: outside Vault, a rotation needs a durable place for the new passwords: a store
+// keeping versions, or else the cluster config (saved, encrypted). A credential set in a config
+// file (immutable) is refused when no store keeps versions, and the reason is given.
 func TestCanRotatePasswords(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -38,7 +42,8 @@ func TestCanRotatePasswords(t *testing.T) {
 		want   string // "" = allowed, else a part of the refusal
 	}{
 		{"allowed", func(*Cluster) {}, ""},
-		{"versioning off", func(c *Cluster) { c.Conf.MonitoringSecretVersioning = false }, "monitoring-secret-versioning is off"},
+		// #2269: no store keeps versions: the config is the store
+		{"versioning off", func(c *Cluster) { c.Conf.MonitoringSecretVersioning = false }, ""},
 		{"versioning on through backup encryption", func(c *Cluster) { c.Conf.MonitoringSecretVersioning = false; c.Conf.BackupEncryption = true }, ""},
 		{"vault, versioning off", func(c *Cluster) {
 			c.Conf.MonitoringSecretVersioning = false
@@ -52,7 +57,7 @@ func TestCanRotatePasswords(t *testing.T) {
 		{"versioning off, the vault entry off", func(c *Cluster) {
 			c.Conf.MonitoringSecretVersioning = false
 			c.Conf.SecretKvs = []config.SecretKvConfig{{Name: "vault-a", Plugin: config.ConstSecretKvPluginVault}}
-		}, "no credential store keeps versions"},
+		}, ""},
 		{"vault entry enabled, db credential in a file", func(c *Cluster) {
 			c.Conf.SecretKvs = []config.SecretKvConfig{{Name: "vault-a", Plugin: config.ConstSecretKvPluginVault, Enabled: true}}
 			c.Conf.ImmuableFlagMap["db-servers-credential"] = "root:x"
@@ -65,13 +70,14 @@ func TestCanRotatePasswords(t *testing.T) {
 		}, ""},
 		{"no encryption key", func(c *Cluster) { c.Conf.SecretKey = nil }, "no encryption key"},
 		{"config not saved", func(c *Cluster) { c.Conf.ConfRewrite = false }, "monitoring-save-config is off"},
-		// #2227 rule 9: a credential set in a config file is a starting value, rotated as versions
+		// #2227 rule 9: a credential set in a config file is a starting value, rotated as
+		// versions; #2269: refused when no store keeps versions
 		{"db credential in a file", func(c *Cluster) { c.Conf.ImmuableFlagMap["db-servers-credential"] = "root:x" }, ""},
 		{"replication credential in a file", func(c *Cluster) { c.Conf.ImmuableFlagMap["replication-credential"] = "repl:x" }, ""},
 		{"db credential in a file, no versioned store", func(c *Cluster) {
 			c.Conf.ImmuableFlagMap["db-servers-credential"] = "root:x"
 			c.Conf.MonitoringSecretVersioning = false
-		}, "no credential store keeps versions"},
+		}, "immutable"},
 		{"a database down", func(c *Cluster) { c.Servers = append(c.Servers, &ServerMonitor{State: stateFailed}) }, "databases are down"},
 		{"replication stopped on a replica", func(c *Cluster) {
 			replica := &ServerMonitor{State: stateSlave, Conn: &sqlx.DB{}, Replications: []dbhelper.SlaveStatus{{
@@ -117,12 +123,114 @@ func TestCanRotatePasswords(t *testing.T) {
 // RotatePasswords itself refuses (MCP or any other caller), and changes nothing
 func TestRotatePasswordsRefusedChangesNothing(t *testing.T) {
 	cl := rotateGateCluster()
+	cl.Conf.ImmuableFlagMap["db-servers-credential"] = "root:before"
 	cl.Conf.MonitoringSecretVersioning = false
 	cl.Conf.Secrets = config.NewSecrets(map[string]config.Secret{"db-servers-credential": {Value: "root:before"}})
 	if err := cl.RotatePasswords(); err == nil {
-		t.Fatal("rotation ran with versioning off")
+		t.Fatal("rotation ran on a credential set in a config file")
 	}
 	if v := cl.Conf.Secrets.Get("db-servers-credential").Value; v != "root:before" {
 		t.Fatalf("credential changed to %q", v)
+	}
+}
+
+// #2269: a rotation waits for a config save, so a second one (the next cron, the button) is
+// refused while one runs, and the running one is left alone
+func TestRotatePasswordsRefusedWhileOneRuns(t *testing.T) {
+	cl := rotateGateCluster()
+	cl.Conf.Secrets = config.NewSecrets(map[string]config.Secret{"db-servers-credential": {Value: "root:before"}})
+	cl.inPasswordRotation.Store(true)
+	if err := cl.CanRotatePasswords(); !errors.Is(err, errPasswordRotationRunning) {
+		t.Fatalf("CanRotatePasswords while one runs: %v", err)
+	}
+	if err := cl.RotatePasswords(); !errors.Is(err, errPasswordRotationRunning) {
+		t.Fatalf("RotatePasswords while one runs: %v", err)
+	}
+	if !cl.inPasswordRotation.Load() {
+		t.Fatal("a refused rotation must not release the running one")
+	}
+	if v := cl.Conf.Secrets.Get("db-servers-credential").Value; v != "root:before" {
+		t.Fatalf("credential changed to %q", v)
+	}
+}
+
+// #2269: a scheduled run the cluster refuses is skipped: WARN0274 in the security domain at each
+// tick, until the schedule is switched off (or a scheduled rotation succeeds)
+func TestScheduledPasswordRotationSkipped(t *testing.T) {
+	cl := rotateGateCluster()
+	cl.Status = ConstMonitorActif
+	cl.SecurityStateMachine = new(state.StateMachine)
+	cl.SecurityStateMachine.Init()
+	cl.Conf.SchedulerRotatePasswords = true
+	cl.Conf.ImmuableFlagMap["db-servers-credential"] = "root:x"
+	cl.Conf.MonitoringSecretVersioning = false
+
+	cl.CheckScheduledPasswordRotation()
+	if hasState(cl.SecurityStateMachine, "WARN0274") {
+		t.Fatal("a state before any scheduled run")
+	}
+	cl.GetRotatePasswordsFunction()()
+	cl.CheckScheduledPasswordRotation()
+	if !hasState(cl.SecurityStateMachine, "WARN0274") {
+		t.Fatalf("a skipped run must open WARN0274: %v", cl.SecurityStateMachine.GetStates())
+	}
+	if !strings.Contains(cl.scheduledRotationSkipped, "immutable") {
+		t.Fatalf("reason %q", cl.scheduledRotationSkipped)
+	}
+
+	cl.SwitchSchedulerRotatePasswords() // off
+	cl.SecurityStateMachine.ClearState()
+	cl.CheckScheduledPasswordRotation()
+	if hasState(cl.SecurityStateMachine, "WARN0274") || cl.scheduledRotationSkipped != "" {
+		t.Fatal("switched off, the state must close")
+	}
+
+	// a standby runs nothing
+	cl.Conf.SchedulerRotatePasswords = true
+	cl.Status = ConstMonitorStandby
+	cl.GetRotatePasswordsFunction()()
+	if cl.scheduledRotationSkipped != "" {
+		t.Fatal("a standby ran the scheduled rotation")
+	}
+}
+
+// #2269: a cron that cannot be scheduled never stops the rotation silently: WARN0274 opens
+// while the schedule is on, and closes once a valid cron is set
+func TestScheduledPasswordRotationInvalidCron(t *testing.T) {
+	cl := rotateGateCluster()
+	cl.Status = ConstMonitorActif
+	cl.SecurityStateMachine = new(state.StateMachine)
+	cl.SecurityStateMachine.Init()
+	cl.scheduler = cron.New()
+	cl.Schedule = map[string]cron.Entry{}
+	cl.Conf.SchedulerRotatePasswords = true
+	cl.Conf.SchedulerRotatePasswordsCron = "0 0 3 * * 0"
+
+	// the setter (API, GUI) refuses it and keeps the cron as it was
+	if err := cl.SetSchedulerRotatePasswordsCron("not a cron"); err == nil {
+		t.Fatal("an invalid cron was accepted")
+	}
+	if cl.Conf.SchedulerRotatePasswordsCron != "0 0 3 * * 0" {
+		t.Fatalf("a refused cron must keep the former one, got %q", cl.Conf.SchedulerRotatePasswordsCron)
+	}
+	// a config file that holds one (read at start): not scheduled, the state says why
+	cl.Conf.SchedulerRotatePasswordsCron = "not a cron"
+	if err := cl.SetSchedulerRotatePasswords(); err == nil {
+		t.Fatal("an invalid cron was scheduled")
+	}
+	cl.CheckScheduledPasswordRotation()
+	if !hasState(cl.SecurityStateMachine, "WARN0274") {
+		t.Fatal("an invalid cron must open WARN0274")
+	}
+	if err := cl.SetSchedulerRotatePasswordsCron("0 0 3 * * 0"); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := cl.Schedule["rotatepasswords"]; !ok {
+		t.Fatal("the valid cron is not scheduled")
+	}
+	cl.SecurityStateMachine.ClearState()
+	cl.CheckScheduledPasswordRotation()
+	if hasState(cl.SecurityStateMachine, "WARN0274") {
+		t.Fatal("a valid cron must close the state")
 	}
 }

@@ -24,6 +24,7 @@ var notFlatSecrets = map[string]string{
 	"api-credentials-acl-discard-external": "ACL grants, no password",
 	"cloud18-git-token-expires":            "the git token's expiry date, not the token",
 	"secret-kv":                            "structured secret-kv entries, their own secret model",
+	"scheduler-rotate-passwords-cron":      "the cron of the scheduled password rotation, no password",
 }
 
 // Every string config key named like a credential is a flat secret (masked on the API,

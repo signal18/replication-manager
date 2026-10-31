@@ -21215,6 +21215,12 @@ const docTemplate = `{
                             "type": "string"
                         }
                     },
+                    "400": {
+                        "description": "Bad or refused cron pattern",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
                     "403": {
                         "description": "No valid ACL",
                         "schema": {
@@ -29763,6 +29769,9 @@ const docTemplate = `{
                 "apiTokenTimeout": {
                     "type": "integer"
                 },
+                "apiTrustedNetworks": {
+                    "type": "string"
+                },
                 "apiUserTokens": {
                     "type": "boolean"
                 },
@@ -32612,6 +32621,12 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "schedulerRollingRestartCron": {
+                    "type": "string"
+                },
+                "schedulerRotatePasswords": {
+                    "type": "boolean"
+                },
+                "schedulerRotatePasswordsCron": {
                     "type": "string"
                 },
                 "schedulerSlaRotateCron": {

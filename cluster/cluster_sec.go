@@ -25,6 +25,7 @@ import (
 	"github.com/signal18/replication-manager/config/credstore"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
+	"github.com/signal18/replication-manager/utils/state"
 	"github.com/sirupsen/logrus"
 )
 
@@ -32,11 +33,14 @@ var logger = logrus.New()
 
 // CanRotatePasswords says whether a password rotation can run now, and why not (#2042).
 // The API checks it before starting the rotation, so a refusal reaches the caller; the
-// GUI shows it. Outside Vault the new passwords must have a durable place: until #2041
-// saves and reloads them, they live only in memory, and a restart after the rotation
-// loses access to every server (the password is unrecoverable). So outside Vault the
-// rotation needs secret versioning on, and the credentials not set in a config file.
+// GUI shows it. Outside Vault the new passwords must have a durable place: a store keeping
+// versions, or else the cluster config, saved and pushed encrypted (#2269). A credential set in
+// a config file (immutable) rotates as versions; with no store keeping versions it is refused:
+// repman does not write the file.
 func (cluster *Cluster) CanRotatePasswords() error {
+	if cluster.inPasswordRotation.Load() {
+		return errPasswordRotationRunning
+	}
 	if !cluster.Conf.IsVaultUsed() {
 		if err := cluster.canRotatePasswordsOutsideVault(); err != nil {
 			return err
@@ -62,13 +66,9 @@ func (cluster *Cluster) canRotatePasswordsOutsideVault() error {
 	if !cluster.Conf.ConfRewrite {
 		return errors.New("monitoring-save-config is off: the new passwords cannot be saved")
 	}
-	// an active store keeps the versions (#2227): the local file with versioning on, or a
-	// vault entry
-	if err := cluster.versionsKeepError(); err != nil {
-		return err
-	}
-	// the credential chain must take the new values (#2075): the version store heads it, a
-	// credential set in a config file included, its versions win over the file (#2227 rule 9)
+	// the credential chain must take the new values (#2075): the version store heads it, with
+	// a store keeping versions or the config as the store (#2269); a credential set in a
+	// config file (immutable) is refused when no store keeps versions (#2227 rule 9)
 	chain := cluster.CredentialChain()
 	for _, key := range []string{"db-servers-credential", "replication-credential"} {
 		if err := chain.CanSet(key); err != nil {
@@ -160,11 +160,84 @@ func (cluster *Cluster) StartPasswordRotation() error {
 	return nil
 }
 
+// ScheduledPasswordRotation is the run of the scheduled rotation (#2269): RotatePasswords, as
+// the button. A run CanRotatePasswords refuses (a database down, replication stopped, a
+// credential set in a config file with no store keeping versions) is skipped: one line in the
+// security log, and a security state (WARN0274) until a scheduled rotation succeeds or the
+// schedule is switched off. The reason is kept in memory: after a failover the new active
+// monitor shows the state from its own first skipped run.
+func (cluster *Cluster) ScheduledPasswordRotation() {
+	if err := cluster.RotatePasswords(); errors.Is(err, ErrRotatedWithErrors) {
+		// the run was not skipped: the new credentials are in force, some steps failed
+		cluster.setScheduledRotationSkipped("")
+		cluster.logSecurity("scheduler", "scheduled password rotation done with errors: "+err.Error())
+		return
+	} else if err != nil {
+		reason := credstore.Reason(err)
+		cluster.setScheduledRotationSkipped(reason)
+		cluster.logSecurity("scheduler", "scheduled password rotation skipped: "+reason)
+		return
+	}
+	cluster.setScheduledRotationSkipped("")
+	cluster.logSecurity("scheduler", "scheduled password rotation done")
+}
+
+// setScheduledRotationSkipped keeps why the last scheduled rotation was skipped, empty when it
+// ran or the schedule is off.
+func (cluster *Cluster) setScheduledRotationSkipped(reason string) {
+	cluster.scheduledRotationMu.Lock()
+	cluster.scheduledRotationSkipped = reason
+	cluster.scheduledRotationMu.Unlock()
+}
+
+// clearScheduledRotationCronError closes a cron error once the schedule is set; a skipped
+// run's reason stays until a run succeeds.
+func (cluster *Cluster) clearScheduledRotationCronError() {
+	cluster.scheduledRotationMu.Lock()
+	if strings.HasPrefix(cluster.scheduledRotationSkipped, "invalid cron ") {
+		cluster.scheduledRotationSkipped = ""
+	}
+	cluster.scheduledRotationMu.Unlock()
+}
+
+// CheckScheduledPasswordRotation opens WARN0274, at each tick, while the last scheduled
+// rotation was skipped or the schedule cannot be set (security domain, T3).
+func (cluster *Cluster) CheckScheduledPasswordRotation() {
+	if !cluster.Conf.SchedulerRotatePasswords || cluster.SecurityStateMachine == nil || !cluster.IsActive() {
+		return
+	}
+	cluster.scheduledRotationMu.Lock()
+	reason := cluster.scheduledRotationSkipped
+	cluster.scheduledRotationMu.Unlock()
+	if reason != "" {
+		cluster.SecurityStateMachine.AddState("WARN0274", state.State{ErrType: "WARNING", ErrFrom: "SECURITY",
+			ErrDesc: fmt.Sprintf(clusterError["WARN0274"], reason)})
+	}
+}
+
+// ErrRotatedWithErrors is a rotation that changed the credentials, some of its steps failed
+// (a user on the master, a replica's channel, the orchestrator secret): it is done, not
+// skipped, and the error lists the steps.
+var ErrRotatedWithErrors = errors.New("rotated with errors")
+
+var errPasswordRotationRunning = errors.New("a password rotation is running")
+
+// IsInPasswordRotation says a RotatePasswords is running (#2269).
+func (cluster *Cluster) IsInPasswordRotation() bool {
+	return cluster.inPasswordRotation.Load()
+}
+
 func (cluster *Cluster) RotatePasswords() error {
 	if err := cluster.CanRotatePasswords(); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Password rotation refused: %s", err)
 		return err
 	}
+	// one rotation at a time: it waits for a config save, a cron or a button can start another
+	if !cluster.inPasswordRotation.CompareAndSwap(false, true) {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Password rotation refused: %s", errPasswordRotationRunning)
+		return errPasswordRotationRunning
+	}
+	defer cluster.inPasswordRotation.Store(false)
 	if e, ok := cluster.vaultEngineEntry(); ok {
 		return cluster.rotateWithVaultEngine(e)
 	}
@@ -197,11 +270,24 @@ func (cluster *Cluster) RotatePasswords() error {
 	if rotateShardProxy {
 		rotated = append(rotated, credstore.Change{Key: "shardproxy-credential", Value: cluster.GetShardUser() + ":" + new_password_shard})
 	}
-	if err := chain.SetAll(rotated...); err != nil {
+	revert, err := chain.SetAllRevertible(rotated...)
+	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Password rotation refused, nothing changed: %s", err)
 		return err
 	}
 	cluster.MarkSecretVersionStoreDirty()
+	// the new values are on disk (the cluster config, the version file) before any server
+	// changes (#2269): a repman stopped from here on starts on a credential the databases
+	// accept. A save that does not come in time puts the former values back, nothing changed.
+	if err := cluster.WaitConfigSaved(); err != nil {
+		if rerr := revert(); rerr != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Password rotation: the former credentials not all put back: %s", rerr)
+		}
+		cluster.MarkSecretVersionStoreDirty()
+		err = fmt.Errorf("the new credentials were not saved (%w), nothing changed", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Password rotation abandoned: %s", err)
+		return err
+	}
 	if rotateProxySQL || rotateShardProxy {
 		cluster.SetClusterProxyCredentialsFromConfig()
 	}
@@ -214,12 +300,25 @@ func (cluster *Cluster) RotatePasswords() error {
 		srv.SetCredential(srv.URL, cluster.GetDbUser(), cluster.GetDbPass())
 	}
 
+	// from here the rotation goes on step by step: a step that fails is logged and kept for
+	// the outcome (ErrRotatedWithErrors), the next steps still run
+	var failed []error
 	for _, u := range cluster.master.Users.ToNewMap() {
 		if u.User == cluster.GetDbUser() {
-			dbhelper.SetUserPassword(cluster.master.Conn, cluster.master.DBVersion, u.Host, u.User, new_password_db)
+			if _, err := dbhelper.SetUserPassword(cluster.master.Conn, cluster.master.DBVersion, u.Host, u.User, new_password_db); err != nil {
+				// a driver error can quote the statement (F10)
+				msg := dbhelper.MaskAppPassword(err.Error(), new_password_db)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Fail of SetUserPassword %s@%s during rotation password: %s", u.User, u.Host, msg)
+				failed = append(failed, fmt.Errorf("%s@%s on the master: %s", u.User, u.Host, msg))
+			}
 		}
 		if u.User == cluster.GetRplUser() {
-			dbhelper.SetUserPassword(cluster.master.Conn, cluster.master.DBVersion, u.Host, u.User, new_password_rpl)
+			if _, err := dbhelper.SetUserPassword(cluster.master.Conn, cluster.master.DBVersion, u.Host, u.User, new_password_rpl); err != nil {
+				// a driver error can quote the statement (F10)
+				msg := dbhelper.MaskAppPassword(err.Error(), new_password_rpl)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Fail of SetUserPassword %s@%s during rotation password: %s", u.User, u.Host, msg)
+				failed = append(failed, fmt.Errorf("%s@%s on the master: %s", u.User, u.Host, msg))
+			}
 		}
 	}
 	for _, s := range cluster.slaves {
@@ -227,7 +326,9 @@ func (cluster *Cluster) RotatePasswords() error {
 		for _, ss := range s.Replications {
 			err := s.rejoinSlaveChangePassword(&ss)
 			if err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Fail of rejoinSlaveChangePassword during rotation password: %s", err)
+				msg := dbhelper.MaskAppPassword(err.Error(), new_password_rpl)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Fail of rejoinSlaveChangePassword during rotation password: %s", msg)
+				failed = append(failed, fmt.Errorf("replication of %s: %s", s.URL, msg))
 			}
 		}
 
@@ -258,9 +359,10 @@ func (cluster *Cluster) RotatePasswords() error {
 			}
 		}
 	}
-	err := cluster.ProvisionRotatePasswords(new_password_db)
+	err = cluster.ProvisionRotatePasswords(new_password_db)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Fail of ProvisionRotatePasswords during rotation password: %v", err)
+		failed = append(failed, fmt.Errorf("the orchestrator secret: %s", dbhelper.MaskAppPassword(err.Error(), new_password_db)))
 	}
 
 	if cluster.GetConf().PushoverAppToken != "" && cluster.GetConf().PushoverUserToken != "" {
@@ -273,8 +375,12 @@ func (cluster *Cluster) RotatePasswords() error {
 		go cluster.SendEMailMessage(cluster.ToAlertMessage(msg), subj, cluster.GetAlertRecipients(AlertRecipient{To: cluster.Conf.MailTo, All: true}))
 	}
 
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Password rotation is done.")
 	cluster.ConfigManager.SaveConfig(cluster, false)
+	if len(failed) > 0 {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Password rotation is done, with %d errors.", len(failed))
+		return fmt.Errorf("%w: %w", ErrRotatedWithErrors, errors.Join(failed...))
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Password rotation is done.")
 	return nil
 }
 
