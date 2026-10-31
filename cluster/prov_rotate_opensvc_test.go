@@ -62,7 +62,7 @@ func rotateOpenSVCTestCluster(t *testing.T, agent *fakeOpenSVCKeyAgent) *Cluster
 }
 
 // #2255: the rotation writes MYSQL_ROOT_PASSWORD in the cluster's env secret; a failure is
-// WARN0274, written again by the tick with the current password, closed once written
+// WARN0275, written again by the tick with the current password, closed once written
 func TestProvisionRotatePasswordsOpenSVCSecretBehind(t *testing.T) {
 	agent := &fakeOpenSVCKeyAgent{fail: true}
 	cl := rotateOpenSVCTestCluster(t, agent)
@@ -72,8 +72,8 @@ func TestProvisionRotatePasswordsOpenSVCSecretBehind(t *testing.T) {
 	}
 	cl.SecurityStateMachine.ClearState()
 	cl.CheckSecretKvStores()
-	if !hasState(cl.SecurityStateMachine, "WARN0274") {
-		t.Fatal("WARN0274 not raised while the OpenSVC secret is behind")
+	if !hasState(cl.SecurityStateMachine, "WARN0275") {
+		t.Fatal("WARN0275 not raised while the OpenSVC secret is behind")
 	}
 	if desc := cl.SecurityStateMachine.GetStates(); strings.Contains(strings.Join(desc, " "), "rotated") {
 		t.Fatalf("the state carries the password: %v", desc)
@@ -96,8 +96,8 @@ func TestProvisionRotatePasswordsOpenSVCSecretBehind(t *testing.T) {
 	}
 	cl.SecurityStateMachine.ClearState()
 	cl.CheckSecretKvStores()
-	if hasState(cl.SecurityStateMachine, "WARN0274") {
-		t.Fatal("WARN0274 still raised once the secret is written")
+	if hasState(cl.SecurityStateMachine, "WARN0275") {
+		t.Fatal("WARN0275 still raised once the secret is written")
 	}
 }
 
@@ -113,7 +113,7 @@ func TestProvisionRotatePasswordsOpenSVCSecretWritten(t *testing.T) {
 	}
 	cl.SecurityStateMachine.ClearState()
 	cl.CheckSecretKvStores()
-	if hasState(cl.SecurityStateMachine, "WARN0274") {
-		t.Fatal("WARN0274 raised after a successful write")
+	if hasState(cl.SecurityStateMachine, "WARN0275") {
+		t.Fatal("WARN0275 raised after a successful write")
 	}
 }

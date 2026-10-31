@@ -871,6 +871,8 @@ type Config struct {
 	SchedulerRollingRestartCron               string            `mapstructure:"scheduler-rolling-restart-cron" toml:"scheduler-rolling-restart-cron" json:"schedulerRollingRestartCron"`
 	SchedulerRollingReprov                    bool              `mapstructure:"scheduler-rolling-reprov" toml:"scheduler-rolling-reprov" json:"schedulerRollingReprov"`
 	SchedulerRollingReprovCron                string            `mapstructure:"scheduler-rolling-reprov-cron" toml:"scheduler-rolling-reprov-cron" json:"schedulerRollingReprovCron"`
+	SchedulerRotatePasswords                  bool              `mapstructure:"scheduler-rotate-passwords" toml:"scheduler-rotate-passwords" json:"schedulerRotatePasswords"`
+	SchedulerRotatePasswordsCron              string            `mapstructure:"scheduler-rotate-passwords-cron" toml:"scheduler-rotate-passwords-cron" json:"schedulerRotatePasswordsCron"`
 	SchedulerJobsSSH                          bool              `mapstructure:"scheduler-jobs-ssh" toml:"scheduler-jobs-ssh" json:"schedulerJobsSsh"`
 	SchedulerJobsSSHCron                      string            `mapstructure:"scheduler-jobs-ssh-cron" toml:"scheduler-jobs-ssh-cron" json:"schedulerJobsSshCron"`
 	SchedulerJobsMode                         string            `mapstructure:"scheduler-jobs-mode" toml:"scheduler-jobs-mode" json:"schedulerJobsMode"`

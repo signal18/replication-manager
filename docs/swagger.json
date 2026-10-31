@@ -29746,6 +29746,9 @@
                 "apiTokenTimeout": {
                     "type": "integer"
                 },
+                "apiTrustedNetworks": {
+                    "type": "string"
+                },
                 "apiUserTokens": {
                     "type": "boolean"
                 },
@@ -32595,6 +32598,12 @@
                     "type": "boolean"
                 },
                 "schedulerRollingRestartCron": {
+                    "type": "string"
+                },
+                "schedulerRotatePasswords": {
+                    "type": "boolean"
+                },
+                "schedulerRotatePasswordsCron": {
                     "type": "string"
                 },
                 "schedulerSlaRotateCron": {

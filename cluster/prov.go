@@ -1322,7 +1322,7 @@ func (cluster *Cluster) GetAgentInOrchetrator(name string) (Agent, error) {
 func (cluster *Cluster) ProvisionRotatePasswords(password string) error {
 	switch cluster.GetOrchestrator() {
 	case config.ConstOrchestratorOpenSVC:
-		// on failure WARN0274 stays open and the tick writes the key again (#2255)
+		// on failure WARN0275 stays open and the tick writes the key again (#2255)
 		return cluster.writeOpenSVCRootPassword(cluster.OpenSVCConnect(), password)
 	case config.ConstOrchestratorKubernetes:
 		client, err := cluster.K8SConnectAPI()

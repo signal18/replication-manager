@@ -108,6 +108,17 @@ func (cluster *Cluster) GetDbJobsSshFunction() func() {
 	}
 }
 
+// GetRotatePasswordsFunction is the scheduled password rotation (#2269): the same rotation as
+// the button, on the active monitor only.
+func (cluster *Cluster) GetRotatePasswordsFunction() func() {
+	return func() {
+		if !cluster.IsActive() {
+			return
+		}
+		cluster.ScheduledPasswordRotation()
+	}
+}
+
 func (cluster *Cluster) GetAlertDisableFunction() func() {
 	return func() {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Alerting is disabled from scheduler")
@@ -155,6 +166,8 @@ func scheduleDescription(title string) string {
 		return "DB Jobs SSH Execution"
 	case "alertdisable":
 		return "Alert Disable"
+	case "rotatepasswords":
+		return "Password Rotation"
 	case "monitor-schemas":
 		return "Monitor Schemas"
 	case "archivepurge":
@@ -225,6 +238,10 @@ func (cluster *Cluster) SetSchedulerSlaRotate() {
 
 func (cluster *Cluster) SetSchedulerDbJobsSsh() {
 	cluster.SetScheduler(cluster.Conf.SchedulerJobsSSH, "sshdbjobs", cluster.Conf.SchedulerJobsSSHCron, cluster.GetDbJobsSshFunction())
+}
+
+func (cluster *Cluster) SetSchedulerRotatePasswords() {
+	cluster.SetScheduler(cluster.Conf.SchedulerRotatePasswords, "rotatepasswords", cluster.Conf.SchedulerRotatePasswordsCron, cluster.GetRotatePasswordsFunction())
 }
 
 func (cluster *Cluster) SetSchedulerAlertDisable() {

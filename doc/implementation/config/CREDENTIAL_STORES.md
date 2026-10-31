@@ -77,13 +77,20 @@ settings (secrets encrypted, F9), on/off, forms drawn from the manifest.
 
 ### The rules
 
-1. **The config keeps the starting value forever**: the first value, known at provisioning
-   or typed by an operator (`root:pass1`). A rotation or a change never writes the config:
-   the current value and its versions live only in the active stores. When no active store
-   keeps versions (versioning off, no vault), a change is refused as a rotation is (rule 9),
-   so the config never holds anything else. `monitoring-secret-versioning` is on by default,
-   so a default install keeps versions locally and takes changes; turning it off without a
-   vault entry makes every credential change and rotation refused. A version is kept
+1. **The config keeps the starting value while a store keeps versions**: the first value,
+   known at provisioning or typed by an operator (`root:pass1`). With an active store keeping
+   versions, a rotation or a change never writes the config: the current value and its
+   versions live only in the active stores. **When no active store keeps versions**
+   (versioning off, no vault entry), **the config is the store** (#2269): a change or a
+   rotation writes the current value, encrypted, in the dynamic config (`<cluster>.toml`),
+   which the save callback writes and the config push carries like any setting (the DR and
+   the peers get it from git); the version store keeps the current and the previous value in
+   memory only (`configKeeps`, 2), and `Conf.Secrets.OldValue` the previous one, until the
+   next change. It needs the encryption key (`ErrNoEncryptionKeyConfig`, F9) and
+   `monitoring-save-config` on (else a change would be lost at restart: refused, as before).
+   Turning versioning off hands the current version to the config at the next save
+   (`keepCurrentCredentialInConfig`, called by `SaveCallBack`), so a restart without the
+   file reads it. `monitoring-secret-versioning` is on by default. A version is kept
    encrypted only (F9: the file is in the config push): with versioning on and no encryption
    key, the version store refuses a change (`ErrNoEncryptionKey`, before any write) and adds
    no version from a config file or a vault read, never a cleartext value; the GUI shows the
@@ -135,23 +142,26 @@ settings (secrets encrypted, F9), on/off, forms drawn from the manifest.
    Kubernetes Secret get the current version at provisioning and after each rotation, as
    today. Their writers report the values they set (`CopySecret`); nothing reads them back.
    The rotation writes `MYSQL_ROOT_PASSWORD` in the OpenSVC `env` secret through the v2 or
-   v3 API the agent speaks (`CreateSecretKeyValue`). A failed write is WARN0274 (security):
+   v3 API the agent speaks (`CreateSecretKeyValue`). A failed write is WARN0275 (security):
    the active monitor writes the current password again every `secret-kv-retry-interval`,
    in the background, and the state closes once it is written (#2255).
 8. **`database_engine`** is a vault store that generates: a rotation asks Vault
    (`rotate-role`); the value it returns is written as a new version to the other active
    stores; it is read from the engine first.
-9. **Rotation** is allowed when an active store keeps versions (the file with versioning
-   on, or any vault entry); refused otherwise, as today (`canRotatePasswordsOutsideVault`,
-   its check becoming "an active store keeps versions"). A value set in a config file
-   (immutable) is a starting value like the others: with a store keeping versions it is
-   rotated and changed as versions, the newest version wins over it at a restart. When an
+9. **Rotation** is allowed with a store keeping versions or with the config as the store
+   (rule 1, #2269). A value set in a config file or on the command line (immutable,
+   `ImmuableFlagMap`) is a starting value like the others: with a store keeping versions it
+   is rotated and changed as versions, the newest version wins over it at a restart. When an
    operator edits it in the file, that edit is the current version at the next start: the
    local file keeps the value last seen in the config file (a version marked
    `from_config_file`, never pruned away) to tell the edit. With vault entries only
-   (versioning off) nothing keeps that value and an edit is not told: the newest version
-   in the vaults wins. Turning versioning or a store off is allowed; it only brings the
-   refusal back.
+   (versioning off) nothing keeps that value and an edit is not told: the newest version in
+   the vaults wins. **With no store keeping versions, an immutable credential is the one
+   refusal** (`VersionStore.CanSet`, a held refusal): repman never writes the file and the
+   config cannot hold a version over it. The other refusals of
+   `canRotatePasswordsOutsideVault` are the means to keep the new value (the encryption key,
+   `monitoring-save-config`); the conditions of the moment (a database down, replication
+   stopped) refuse that run only.
 10. **Turning a store off** stops its versions and leaves what it holds. Repman never
     deletes a secret; a removed object's secrets stay, a renamed one writes under its new
     name.
@@ -261,7 +271,8 @@ files on disk, and the chain a start builds over it with the local file
   vault's jwt role and the space policies of rule 14) is not built yet.
 - **States**: WARN0271 (security, per entry: behind, or failing), WARN0272 (security: drops
   not repaired), WARN0273 (config, per key: a Vault path pinned in a file), WARN0274
-  (security: the OpenSVC env secret keeps an old `MYSQL_ROOT_PASSWORD`, rule 7).
+  (security: a scheduled rotation skipped, #2269), WARN0275 (security: the OpenSVC env secret
+  keeps an old `MYSQL_ROOT_PASSWORD`, rule 7).
 - **Writers to wire later** call `Cluster.CopySecret(kind, object, key, value)`.
 
 ### The Cloud18 vault entry
@@ -323,9 +334,9 @@ last, because it is the starting value.
 - **`Conf.Secrets` is only a cache** of what the chain reads. `chain.Refresh()` rebuilds it
   and is safe to call from anywhere, at any time: every write went into a store, so a
   reread, a reload or a tag change finds the same value. This removes the cause of #2017.
-- **Rotation** is allowed when the store taking the write is `Versioned` (a lost new
-  password can be recovered from its history), or when a store `Generates` (that store
-  rotates).
+- **Rotation** is allowed when a store takes the write and keeps it across a restart: a
+  store keeping versions, the config as the store (#2269), or a store that `Generates`
+  (that store rotates). An immutable credential needs a store keeping versions (rule 9).
 - **A pin is a starting value.** A store records the pinned value it last saw. When the
   operator edits that value in the file, the file wins and its value goes into the store
   as a new version: the operator's intent beats an older stored value. Done by
@@ -338,8 +349,8 @@ last, because it is the starting value.
 |---|---|---|---|
 | **Vault**: `VaultKV` or `VaultDbEngine` → `DynamicConfig` → `PinnedConfig` | from Vault, at the path the config gives, pinned or not | KV: a new Vault version. Database engine: refused | KV: repman writes a new version. Database engine: Vault rotates |
 | **Local**: `LocalSecretStore` → `DynamicConfig` → `PinnedConfig` | the store's latest version, else the config | a new version in the store, pinned or not | allowed (versioned) |
-| **No store, not pinned**: `DynamicConfig` → `PinnedConfig` | `<cluster>.toml` | refused (rule 1: the config keeps the starting value) | refused (no history) |
-| **No store, pinned**: `PinnedConfig` | the file | refused: the file wins at restart | refused |
+| **No store, not pinned**: `DynamicConfig` → `PinnedConfig` | `<cluster>.toml` | the config is the store (#2269): the current value in `<cluster>.toml`, the previous one in memory | allowed |
+| **No store, pinned**: `PinnedConfig` | the file | refused: repman never writes the file | refused |
 
 So:
 
@@ -347,9 +358,37 @@ So:
 - **Vault or local** only decides who keeps the versions and who makes the passwords;
 - a Vault credential is never written to repman's files: they hold the path only.
 
-The last row is today's behaviour for every credential outside Vault (`CanSetCredential`
-and `canRotatePasswordsOutsideVault` in `cluster/cluster_sec.go`, #2042 and #2048): the
-safe default until the stores exist.
+`CanSetCredential` and `canRotatePasswordsOutsideVault` (`cluster/cluster_sec.go`, #2042,
+#2048) ask the chain.
+
+## Scheduled rotation (#2269)
+
+| Setting | Default | |
+|---|---|---|
+| `scheduler-rotate-passwords` | `false` | the switch (T14); on a client's cluster only with the client's agreement (F1) |
+| `scheduler-rotate-passwords-cron` | `0 0 3 * * 0` | once a week, Sunday 03:00 |
+
+The job (`rotatepasswords`, `GetRotatePasswordsFunction` in `cluster/cluster_scheduler.go`)
+runs on the active monitor only and calls `ScheduledPasswordRotation`, which calls the same
+`RotatePasswords` as the button. A run `CanRotatePasswords` refuses is skipped: one line in
+the security log, and WARN0274 (security domain, re-added at each tick by
+`CheckScheduledPasswordRotation`) until a scheduled rotation succeeds or the schedule is
+switched off. A successful run writes one line in the security log too. API:
+`settings/actions/switch/scheduler-rotate-passwords` and
+`settings/actions/set-cron/scheduler-rotate-passwords-cron/{value}`, under the cluster
+settings grant like the other scheduler settings; GUI: Settings > Scheduler, Rotate Passwords.
+
+Old backups: `backupPasswordHistory` (`srv_job_backup_encryption.go`) reads the old root
+passwords from the local file to open an encrypted backup taken before a rotation.
+`backup-encryption` turns versioning on (`IsMonitoringSecretVersioningEnabled`), so a cluster
+whose backups are encrypted with the root password always keeps the file: the config is
+never its store, and every password that encrypted a backup stays in the history.
+
+Regtest (T13): `testCredentialConfigRotationScheduled` (MariaDB and MySQL, in the default
+list; versioning off and the scheduler on for the test): the schedule on with a cron of every
+minute rotates the database credential; every server logs in with the new password, the
+previous one is kept in memory, a config reload and a start from the files on disk run on the
+new one, and `<cluster>.toml` holds it encrypted.
 
 ## What changes in code
 

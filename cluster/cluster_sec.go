@@ -27,6 +27,7 @@ import (
 	"github.com/signal18/replication-manager/utils/crypto"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
+	"github.com/signal18/replication-manager/utils/state"
 	"github.com/sirupsen/logrus"
 )
 
@@ -34,10 +35,10 @@ var logger = logrus.New()
 
 // CanRotatePasswords says whether a password rotation can run now, and why not (#2042).
 // The API checks it before starting the rotation, so a refusal reaches the caller; the
-// GUI shows it. Outside Vault the new passwords must have a durable place: until #2041
-// saves and reloads them, they live only in memory, and a restart after the rotation
-// loses access to every server (the password is unrecoverable). So outside Vault the
-// rotation needs secret versioning on, and the credentials not set in a config file.
+// GUI shows it. Outside Vault the new passwords must have a durable place: a store keeping
+// versions, or else the cluster config, saved and pushed encrypted (#2269). A credential set in
+// a config file (immutable) rotates as versions; with no store keeping versions it is refused:
+// repman does not write the file.
 func (cluster *Cluster) CanRotatePasswords() error {
 	if !cluster.Conf.IsVaultUsed() {
 		if err := cluster.canRotatePasswordsOutsideVault(); err != nil {
@@ -64,13 +65,9 @@ func (cluster *Cluster) canRotatePasswordsOutsideVault() error {
 	if !cluster.Conf.ConfRewrite {
 		return errors.New("monitoring-save-config is off: the new passwords cannot be saved")
 	}
-	// an active store keeps the versions (#2227): the local file with versioning on, or a
-	// vault entry
-	if err := cluster.versionsKeepError(); err != nil {
-		return err
-	}
-	// the credential chain must take the new values (#2075): the version store heads it, a
-	// credential set in a config file included, its versions win over the file (#2227 rule 9)
+	// the credential chain must take the new values (#2075): the version store heads it, with
+	// a store keeping versions or the config as the store (#2269); a credential set in a
+	// config file (immutable) is refused when no store keeps versions (#2227 rule 9)
 	chain := cluster.CredentialChain()
 	for _, key := range []string{"db-servers-credential", "replication-credential"} {
 		if err := chain.CanSet(key); err != nil {
@@ -160,6 +157,44 @@ func (cluster *Cluster) StartPasswordRotation() error {
 	}
 	go cluster.RotatePasswords()
 	return nil
+}
+
+// ScheduledPasswordRotation is the run of the scheduled rotation (#2269): RotatePasswords, as
+// the button. A run CanRotatePasswords refuses (a database down, replication stopped, a
+// credential set in a config file with no store keeping versions) is skipped: one line in the security log, and a security
+// state (WARN0274) until a scheduled rotation succeeds or the schedule is switched off.
+func (cluster *Cluster) ScheduledPasswordRotation() {
+	if err := cluster.RotatePasswords(); err != nil {
+		reason := credstore.Reason(err)
+		cluster.setScheduledRotationSkipped(reason)
+		cluster.logSecurity("scheduler", "scheduled password rotation skipped: "+reason)
+		return
+	}
+	cluster.setScheduledRotationSkipped("")
+	cluster.logSecurity("scheduler", "scheduled password rotation done")
+}
+
+// setScheduledRotationSkipped keeps why the last scheduled rotation was skipped, empty when it
+// ran or the schedule is off.
+func (cluster *Cluster) setScheduledRotationSkipped(reason string) {
+	cluster.scheduledRotationMu.Lock()
+	cluster.scheduledRotationSkipped = reason
+	cluster.scheduledRotationMu.Unlock()
+}
+
+// CheckScheduledPasswordRotation opens WARN0274, at each tick, while the last scheduled
+// rotation was skipped (security domain, T3).
+func (cluster *Cluster) CheckScheduledPasswordRotation() {
+	if !cluster.Conf.SchedulerRotatePasswords || cluster.SecurityStateMachine == nil || !cluster.IsActive() {
+		return
+	}
+	cluster.scheduledRotationMu.Lock()
+	reason := cluster.scheduledRotationSkipped
+	cluster.scheduledRotationMu.Unlock()
+	if reason != "" {
+		cluster.SecurityStateMachine.AddState("WARN0274", state.State{ErrType: "WARNING", ErrFrom: "SECURITY",
+			ErrDesc: fmt.Sprintf(clusterError["WARN0274"], reason)})
+	}
 }
 
 func (cluster *Cluster) RotatePasswords() error {

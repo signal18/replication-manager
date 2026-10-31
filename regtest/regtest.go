@@ -107,6 +107,7 @@ var tests = []string{
 	"testConfigPersistBackupOption",
 	"testCredentialPersistTagReload",
 	"testCredentialVersionsRotation",
+	"testCredentialConfigRotationScheduled",
 	"testConfigCookiePushBasic",
 	"testConfigCookiePushLifecycle",
 	"testConfigCookiePushMultipleServers",
@@ -328,6 +329,8 @@ var testTargets = map[string][]TestTarget{
 	// entry, testCredentialVersionsRotationVault, is run by name on a cluster whose config enables
 	// a [[<cluster>.secret-kv]] on a Vault or OpenBao dev container.
 	"testCredentialVersionsRotation": {{FlavorTarget: []string{"mariadb", "mysql"}, ConfigVariableMustHave: map[string]string{"monitoring-secret-versioning": "true"}}},
+	// #2269: the config is the store (versioning off), the rotation run by the scheduler
+	"testCredentialConfigRotationScheduled": {{FlavorTarget: []string{"mariadb", "mysql"}, ConfigVariableMustSet: map[string]string{"monitoring-secret-versioning": "false", "monitoring-scheduler": "true"}}},
 }
 
 // TestResultSkip is the result of a test whose targets the cluster does not match: it did

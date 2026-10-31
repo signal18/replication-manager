@@ -2558,6 +2558,8 @@ definitions:
         type: boolean
       apiTokenTimeout:
         type: integer
+      apiTrustedNetworks:
+        type: string
       apiUserTokens:
         type: boolean
       apiUserTokensDefaultExpireDays:
@@ -4502,6 +4504,10 @@ definitions:
       schedulerRollingRestart:
         type: boolean
       schedulerRollingRestartCron:
+        type: string
+      schedulerRotatePasswords:
+        type: boolean
+      schedulerRotatePasswordsCron:
         type: string
       schedulerSlaRotateCron:
         type: string

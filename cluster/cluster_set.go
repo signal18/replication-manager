@@ -2141,6 +2141,12 @@ func (cluster *Cluster) SetSchedulerJobsSshCron(value string) error {
 	return nil
 }
 
+func (cluster *Cluster) SetSchedulerRotatePasswordsCron(value string) error {
+	cluster.Conf.SchedulerRotatePasswordsCron = value
+	cluster.SetSchedulerRotatePasswords()
+	return nil
+}
+
 func (cluster *Cluster) SetSchedulerAlertDisableCron(value string) error {
 	cluster.Conf.SchedulerAlertDisableCron = value
 	cluster.SetSchedulerAlertDisable()

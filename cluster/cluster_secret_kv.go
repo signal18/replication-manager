@@ -546,9 +546,9 @@ func (cluster *Cluster) activeStoreKeepsVersions() bool {
 	return cluster.Conf.IsMonitoringSecretVersioningEnabled() || len(cluster.Conf.SecretKvActive()) > 0
 }
 
-// errNoVersionedStore is the refusal of a change or a rotation when no active store keeps
-// the versions (rules 1 and 9): the config keeps the starting value, nothing else.
-var errNoVersionedStore = errors.New("no credential store keeps versions: monitoring-secret-versioning is off (it is on by default: it was turned off) and no vault entry (secret-kv) is enabled, the new value would live only in memory and a restart would lose it; turn versioning on or enable a vault entry")
+// errNoVersionedStore says no active store keeps the versions: the config is then the store
+// (#2269), the version store keeps the previous value in memory only. Never a refusal.
+var errNoVersionedStore = errors.New("no credential store keeps versions: monitoring-secret-versioning is off and no vault entry (secret-kv) is enabled, the config is the store")
 
 // versionsKeepError is nil when an active store keeps the versions.
 func (cluster *Cluster) versionsKeepError() error {
@@ -563,6 +563,22 @@ func (cluster *Cluster) versionsKeepError() error {
 // in the config.
 func isVersionedKey(key string) bool {
 	return isDatabaseSecretKey(key) || proxySecretKeys[key] != ""
+}
+
+// keepCurrentCredentialInConfig: when no store keeps versions (versioning turned off, the vault
+// entries off), the config is the store (#2269): the current version the version store still
+// holds goes to the dynamic config, so the save writes it and the next start reads it.
+func (cluster *Cluster) keepCurrentCredentialInConfig(key string) {
+	if cluster.activeStoreKeepsVersions() {
+		return
+	}
+	if _, pinned := cluster.Conf.GetImmuableFlag(key); pinned {
+		return
+	}
+	// an encrypted value only: the config goes to the config repo (F9)
+	if v, ok, _ := cluster.versionStore().Get(key); ok && strings.Contains(v, "hash_") {
+		cluster.Conf.SetDynamicFlag(key, v)
+	}
 }
 
 // versionStore is the cluster's version store, made once (a reload keeps it) and filled from
@@ -674,7 +690,8 @@ func (cluster *Cluster) writeSecretVersionFile() error {
 // CheckSecretKvStores runs at each tick on the active monitor: the full pass at start, for a
 // store turned on and after drops; the worker back when versions wait; the states raised
 // again: WARN0271 per store behind, WARN0272 while drops are not repaired, WARN0273 per
-// credential pinned to a Vault path, WARN0274 while the OpenSVC env secret is behind. It only queues: never blocks.
+// credential pinned to a Vault path, WARN0275 while the OpenSVC env secret is behind. It only
+// queues: never blocks.
 func (cluster *Cluster) CheckSecretKvStores() {
 	// a standby takes the versions the active monitor pushed (rule 11)
 	cluster.reloadVersionsFromPeer()
@@ -1048,7 +1065,7 @@ func (cluster *Cluster) reportOrchestratorSecret(object, key, value string) {
 
 // writeOpenSVCRootPassword writes the database root password in the cluster's OpenSVC env
 // secret, through the v2 or v3 API the agent speaks, and reports it to the stores. A failure
-// keeps WARN0274 open (checkOpenSVCRootPassword writes the key again), a success closes it:
+// keeps WARN0275 open (checkOpenSVCRootPassword writes the key again), a success closes it:
 // a reprovision would otherwise start the databases with the old password (#2255).
 func (cluster *Cluster) writeOpenSVCRootPassword(svc opensvc.Collector, password string) error {
 	err := svc.CreateSecretKeyValue(cluster.Name, "env", "MYSQL_ROOT_PASSWORD", password)
@@ -1070,7 +1087,7 @@ func (cluster *Cluster) writeOpenSVCRootPassword(svc opensvc.Collector, password
 }
 
 // checkOpenSVCRootPassword runs at each tick on the active monitor: while the OpenSVC env
-// secret is behind, WARN0274 is raised and, every secret-kv-retry-interval, the current
+// secret is behind, WARN0275 is raised and, every secret-kv-retry-interval, the current
 // database password is written again in the background. Never blocks the tick.
 func (cluster *Cluster) checkOpenSVCRootPassword() {
 	c := &cluster.secretKv
@@ -1080,8 +1097,8 @@ func (cluster *Cluster) checkOpenSVCRootPassword() {
 	if why == "" || cluster.GetOrchestrator() != config.ConstOrchestratorOpenSVC {
 		return
 	}
-	cluster.SecurityStateMachine.AddState("WARN0274", state.State{ErrType: "WARNING", ErrFrom: "SECURITY",
-		ErrDesc: fmt.Sprintf(clusterError["WARN0274"], cluster.Name, why)})
+	cluster.SecurityStateMachine.AddState("WARN0275", state.State{ErrType: "WARNING", ErrFrom: "SECURITY",
+		ErrDesc: fmt.Sprintf(clusterError["WARN0275"], cluster.Name, why)})
 	retry := time.Duration(cluster.Conf.SecretKvRetryInterval) * time.Second
 	if retry <= 0 {
 		retry = time.Minute

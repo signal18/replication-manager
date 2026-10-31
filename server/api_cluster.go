@@ -3586,6 +3586,8 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.SwitchSchedulerDatabaseAnalyze()
 	case "scheduler-alert-disable":
 		mycluster.SwitchSchedulerAlertDisable()
+	case "scheduler-rotate-passwords":
+		mycluster.SwitchSchedulerRotatePasswords()
 	case "graphite-metrics":
 		mycluster.SwitchGraphiteMetrics()
 	case "graphite-embedded":
@@ -4891,6 +4893,8 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.ParseJobsExecOverrides()
 	case "scheduler-alert-disable-cron":
 		mycluster.SetSchedulerAlertDisableCron(value)
+	case "scheduler-rotate-passwords-cron":
+		mycluster.SetSchedulerRotatePasswordsCron(value)
 	case "monitoring-schema-scheduler-cron":
 		mycluster.SetMonitoringSchemaSchedulerCron(value)
 	case "monitoring-checksum-scheduler-cron":
@@ -5763,6 +5767,10 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		}
 	case "scheduler-alert-disable":
 		mycluster.Conf.SchedulerAlertDisable = applyIsActive(mycluster.Conf.SchedulerAlertDisable, isactive)
+	case "scheduler-rotate-passwords":
+		if applyIsActive(mycluster.Conf.SchedulerRotatePasswords, isactive) != mycluster.Conf.SchedulerRotatePasswords {
+			mycluster.SwitchSchedulerRotatePasswords()
+		}
 	case "graphite-metrics":
 		mycluster.Conf.GraphiteMetrics = applyIsActive(mycluster.Conf.GraphiteMetrics, isactive)
 	case "graphite-embedded":
