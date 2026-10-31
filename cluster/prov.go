@@ -1322,15 +1322,8 @@ func (cluster *Cluster) GetAgentInOrchetrator(name string) (Agent, error) {
 func (cluster *Cluster) ProvisionRotatePasswords(password string) error {
 	switch cluster.GetOrchestrator() {
 	case config.ConstOrchestratorOpenSVC:
-		svc := cluster.OpenSVCConnect()
-		err := svc.CreateSecretKeyValueV2(cluster.Name, "env", "MYSQL_ROOT_PASSWORD", password)
-		if err == nil {
-			cluster.reportOrchestratorSecret("env", "MYSQL_ROOT_PASSWORD", password)
-		}
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "ProvisionRotatePasswords error: Can not add key to secret: %s %s ", "MYSQL_ROOT_PASSWORD", err)
-			return err
-		}
+		// on failure WARN0275 stays open and the tick writes the key again (#2255)
+		return cluster.writeOpenSVCRootPassword(cluster.OpenSVCConnect(), password)
 	case config.ConstOrchestratorKubernetes:
 		client, err := cluster.K8SConnectAPI()
 		if err != nil {
