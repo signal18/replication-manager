@@ -344,7 +344,9 @@ func TestSwitchServerSetting_ProvAppTemplateRepo_GlobalDefaultDoesNotFanOut(t *t
 // verifies that the global endpoint scope guard explicitly allows the
 // prov-app-template-repo* key family.
 func TestHandlerMuxSetGlobalSettings_ProvAppTemplateRepoAllowlistedClusterDefaults(t *testing.T) {
-	repman := &ReplicationManager{Clusters: map[string]*cluster.Cluster{}}
+	repman := &ReplicationManager{Clusters: map[string]*cluster.Cluster{}, Conf: &config.Config{TokenTimeout: 1}}
+	repman.initKeys()
+	admin := issueGlobalSettingsTestJWT(t, repman, "admin")
 
 	cases := []struct {
 		setting string
@@ -361,6 +363,7 @@ func TestHandlerMuxSetGlobalSettings_ProvAppTemplateRepoAllowlistedClusterDefaul
 		t.Run(tc.setting, func(t *testing.T) {
 			req := httptest.NewRequest(http.MethodPost, "/api/clusters/settings/actions/set/"+tc.setting+"/x", nil)
 			req = setMuxVars(req, map[string]string{"settingName": tc.setting, "settingValue": tc.value})
+			req.Header.Set("Authorization", "Bearer "+admin)
 			rr := httptest.NewRecorder()
 
 			repman.handlerMuxSetGlobalSettings(rr, req)

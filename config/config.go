@@ -377,6 +377,7 @@ type Config struct {
 	HttpServ                                 bool                         `scope:"server" mapstructure:"http-server" toml:"http-server" json:"httpServer"`
 	ApiServ                                  bool                         `scope:"server" mapstructure:"api-server" toml:"api-server" json:"apiServer"`
 	MCPServ                                  bool                         `scope:"server" mapstructure:"mcp-server" toml:"mcp-server" json:"mcpServer"`
+	MCPServerAuth                            string                       `scope:"server" mapstructure:"mcp-server-auth" toml:"mcp-server-auth" json:"mcpServerAuth"`
 	MCPTransport                             string                       `scope:"server" mapstructure:"mcp-transport" toml:"mcp-transport" json:"mcpTransport"`
 	MCPPort                                  string                       `scope:"server" mapstructure:"mcp-port" toml:"mcp-port" json:"mcpPort"`
 	MCPBindAddr                              string                       `scope:"server" mapstructure:"mcp-bind-address" toml:"mcp-bind-address" json:"mcpBindAddress"`
@@ -1047,6 +1048,7 @@ type Config struct {
 	Cloud18GitPassword               string  `scope:"server" mapstructure:"cloud18-gitlab-password" toml:"cloud18-gitlab-password" json:"-"`
 	Cloud18IdentityURL               string  `scope:"server" mapstructure:"cloud18-identity-url" toml:"cloud18-identity-url" json:"cloud18IdentityUrl"`
 	Cloud18SSOLogin                  bool    `scope:"server" mapstructure:"cloud18-sso-login" toml:"cloud18-sso-login" json:"cloud18SsoLogin"`
+	Cloud18LoginACR                  string  `scope:"server" mapstructure:"cloud18-login-acr" toml:"cloud18-login-acr" json:"cloud18LoginAcr"`
 	Cloud18GatewayDomainName         string  `scope:"server" mapstructure:"cloud18-gateway-domain-name" toml:"cloud18-gateway-domain-name"  json:"cloud18GatewayDomainName"`
 	Cloud18GatewayService            string  `scope:"server" mapstructure:"cloud18-gateway-service" toml:"Cloud18-gateway-service" json:"cloud18GatewayService"`
 	Cloud18CrmApiUrl                 string  `scope:"server" mapstructure:"cloud18-crm-api-url" toml:"cloud18-crm-api-url" json:"cloud18CrmApiUrl"`
@@ -1152,6 +1154,7 @@ type Config struct {
 	TerminalSessionEnabled                 bool                   `scope:"server" mapstructure:"terminal-session-enabled" toml:"terminal-session-enabled" json:"terminalSessionEnabled"`
 	TerminalSessionResume                  bool                   `scope:"server" mapstructure:"terminal-session-resume" toml:"terminal-session-resume" json:"terminalSessionResume"`
 	TerminalSessionManager                 string                 `mapstructure:"terminal-session-manager" toml:"terminal-session-manager" json:"terminalSessionManager"`
+	TerminalSessionAuth                    string                 `scope:"server" mapstructure:"terminal-session-auth" toml:"terminal-session-auth" json:"terminalSessionAuth"`
 	// Cloud18ArchiveOfferRequests: the archive offers of the marketplace catalogue whose access
 	// the cluster asks the back-office for (comma-separated offer names); the BO harvests it and
 	// delivers, in the cluster's inject.toml, the S3 provider (OVH S3) or the archive (a PBS token)

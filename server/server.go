@@ -826,6 +826,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.ApiServ, "api-server", true, "Start the API HTTPS server")
 	flags.BoolVar(&conf.ApiSwaggerEnabled, "api-swagger-enabled", true, "Start the API with Swagger")
 	flags.BoolVar(&conf.MCPServ, "mcp-server", false, "Start MCP server for AI assistant integration")
+	flags.StringVar(&conf.MCPServerAuth, "mcp-server-auth", config.ConstMCPAuthAuto, "Logins the MCP accepts: cloud18 (a Cloud18 login, a realm token or a Sign in with Cloud18 session with its second factor when cloud18-login-acr asks one, or an API token; a local password login refused), any (every login of the API), auto (cloud18 on an instance registered to Cloud18, any otherwise). An unknown value acts as cloud18. Local accounts keep the API and the admin zone. The stdio transport carries no login: it starts only with mcp-auth-enabled=false")
 	flags.StringVar(&conf.MCPTransport, "mcp-transport", "api", "MCP transport: api (mounted on the HTTP and HTTPS API listeners at /api/mcp, default), sse (own listener on mcp-port), stdio, or both (sse + stdio)")
 	flags.StringVar(&conf.MCPPort, "mcp-port", "10007", "MCP standalone SSE listen port (transport sse/both only)")
 	flags.StringVar(&conf.MCPBindAddr, "mcp-bind-address", "localhost", "MCP server bind address")
@@ -1281,6 +1282,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.Cloud18GitPassword, "cloud18-gitlab-password", "", "Cloud 18 GitLab password")
 	flags.StringVar(&conf.Cloud18IdentityURL, "cloud18-identity-url", config.ConstCloud18IdentityURL, "Cloud18 identity realm (OpenID Connect issuer): a person connects this replication-manager to it once (device login), for the S3 SSO storages, the Cloud18 vault and the Cloud18 GitLab token")
 	flags.BoolVar(&conf.Cloud18SSOLogin, "cloud18-sso-login", false, "On a registered repman with a public https address (api-public-url) whose callback (<api-public-url>/api/auth/cloud18/callback) the Cloud18 realm accepts, the login page offers Sign in and Sign up with Cloud18 and checks the realm session silently (#2185). Off by default: no repman is declared in the realm unless it registers its own address; the Sign in form checks Cloud18 server-side without it")
+	flags.StringVar(&conf.Cloud18LoginACR, "cloud18-login-acr", "", "Authentication levels (OpenID Connect acr values, comma-separated) a Cloud18 login must reach on this repman, e.g. mfa for the password and a one-time code: repman asks the realm for them and refuses a realm token whose acr claim is not literally one of them (Sign in with Cloud18, the Sign in form, a bearer at the API or the MCP, a peer). Set for the Cloud18 Keycloak realm (acr as a string). Empty: any level")
 	flags.StringVar(&conf.Cloud18PlatformDescription, "cloud18-platform-description", "", "Marketing banner display on the cloud18 portal describing the infrastucture")
 	flags.StringVar(&conf.Cloud18ArchiveOfferRequests, "cloud18-archive-offer-requests", "", "Archive offers of the Cloud18 marketplace whose access the cluster asks the back-office for (comma-separated offer names): it delivers the S3 provider or the archive")
 	flags.StringVar(&conf.Cloud18InfraDataCenters, "cloud18-infra-data-centers", "", "Infrastucture datacenters name")
@@ -1498,6 +1500,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.TerminalSessionResume, "terminal-session-resume", false, "Enable terminal session resume")
 	flags.StringVar(&conf.TerminalSessionManager, "terminal-session-manager", "tmux", "Terminal session manager: tmux|screen")
 	flags.BoolVar(&conf.TerminalSessionEnabled, "terminal-session-enabled", false, "Enable terminal session")
+	flags.StringVar(&conf.TerminalSessionAuth, "terminal-session-auth", config.ConstTerminalAuthLocal, "Logins allowed to open a terminal (comma-separated): local (an account of this repman), cloud18-mfa (a Cloud18 login, only while cloud18-login-acr asks a second factor). A Cloud18 login without it and an API token are refused. Empty: local")
 }
 
 // DicoverClusters from viper merged config send a sperated list of clusters

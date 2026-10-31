@@ -6,6 +6,7 @@ import { Spinner, Center } from '@chakra-ui/react'
 import './App.css'
 import ToastManager from './components/ToastManager'
 import SSOUpgradePoller from './components/SSOUpgradePoller'
+import AdminModeModal from './components/Modals/AdminModeModal'
 import Login from './Pages/Login'
 import Signup from './Pages/Signup'
 // const Login = lazy(() => import('./Pages/Login'))
@@ -63,6 +64,7 @@ function App() {
       <SessionGuard />
       <ToastManager />
       <SSOUpgradePoller />
+      <AdminModeModal />
       <Routes>
         <Route
           path={'/'}

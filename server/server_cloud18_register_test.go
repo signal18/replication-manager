@@ -61,6 +61,9 @@ type registerFakes struct {
 	rotate         bool              // each refresh gives a new refresh token and revokes the used one
 	shortTokens    bool              // access tokens of 30 s: every call refreshes
 	liveRefresh    map[string]bool   // refresh tokens still valid, when rotating
+	acr            string            // the authentication level (acr) of the tokens the realm gives
+	otp            bool              // an authorization asking a level (acr_values) gets the one-time code page
+	otpAtLogin     bool              // the password post itself gets the one-time code page (OTP required for everyone)
 }
 
 type fakeToken struct {
@@ -95,6 +98,8 @@ func newRegisterFakes(t *testing.T) (*registerFakes, string) {
 			switch {
 			case ok && pw == "":
 				fmt.Fprint(w, `<h1 id="kc-page-title">Email verification</h1><div class="kc-feedback-text">You need to verify your email address to activate your account.</div>`)
+			case ok && pw == r.Form.Get("password") && f.otpAtLogin:
+				fmt.Fprintf(w, `<form id="kc-otp-login-form" action="%s/realms/cloud18/login-actions/authenticate?session_code=5" method="post">`, realmURL)
 			case ok && pw == r.Form.Get("password"):
 				f.logins++
 				http.SetCookie(w, &http.Cookie{Name: "KEYCLOAK_IDENTITY", Value: url.QueryEscape(r.Form.Get("username")), Path: "/realms/cloud18/"})
@@ -106,6 +111,10 @@ func newRegisterFakes(t *testing.T) (*registerFakes, string) {
 			c, err := r.Cookie("KEYCLOAK_IDENTITY")
 			if err != nil || f.noLoginClient || r.Form.Get("client_id") != config.ConstCloud18LoginClientID || r.Form.Get("code_challenge_method") != "S256" {
 				http.Error(w, "Client not found.", 400)
+				return
+			}
+			if f.otp && r.Form.Get("acr_values") != "" {
+				fmt.Fprintf(w, `<form id="kc-otp-login-form" action="%s/realms/cloud18/login-actions/authenticate?session_code=4" method="post">`, realmURL)
 				return
 			}
 			email, _ := url.QueryUnescape(c.Value)
@@ -258,13 +267,22 @@ func newRegisterFakes(t *testing.T) (*registerFakes, string) {
 // realmToken is a token of the realm for email, signed with its key (call with f.mu held or
 // before the fakes serve).
 func (f *registerFakes) realmToken(email, aud string, verified bool, life time.Duration) string {
-	return signRealmToken(f.realmKey, f.issuer, email, aud, verified, life)
+	return signRealmTokenACR(f.realmKey, f.issuer, email, aud, f.acr, verified, life)
 }
 
 // signRealmToken is a realm token signed with key for issuer.
 func signRealmToken(key *rsa.PrivateKey, issuer, email, aud string, verified bool, life time.Duration) string {
-	tok := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{"iss": issuer, "aud": []string{aud, "account"}, "azp": config.ConstCloud18LoginClientID,
-		"sub": "kc-" + email, "email": email, "email_verified": verified, "name": "A Person", "exp": time.Now().Add(life).Unix(), "iat": time.Now().Unix()})
+	return signRealmTokenACR(key, issuer, email, aud, "", verified, life)
+}
+
+// signRealmTokenACR is a realm token of the authentication level acr ("": no acr claim).
+func signRealmTokenACR(key *rsa.PrivateKey, issuer, email, aud, acr string, verified bool, life time.Duration) string {
+	claims := jwt.MapClaims{"iss": issuer, "aud": []string{aud, "account"}, "azp": config.ConstCloud18LoginClientID,
+		"sub": "kc-" + email, "email": email, "email_verified": verified, "name": "A Person", "exp": time.Now().Add(life).Unix(), "iat": time.Now().Unix()}
+	if acr != "" {
+		claims["acr"] = acr
+	}
+	tok := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
 	tok.Header["kid"] = "k1"
 	s, err := tok.SignedString(key)
 	if err != nil {

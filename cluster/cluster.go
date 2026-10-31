@@ -1018,6 +1018,23 @@ func (cluster *Cluster) InitFromConf() {
 			"Failed to pre-initialize preserved variables: %v (will retry on demand)", err)
 	}
 
+	// Loading configuration compliances, before the server list: newServerList generates each
+	// server's database config with the configurator, which needs its config and its logger (a
+	// configurator used before Init panicked on its nil logger while newServerList held the cluster
+	// lock, and the whole repman waited on that lock at startup).
+	err = cluster.Configurator.Init(*cluster.Conf, cluster.Logrus)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could not initialize configurator %s", err)
+		log.Fatal("missing important file, giving up")
+	}
+
+	switch cluster.GetOrchestrator() {
+	case config.ConstOrchestratorLocalhost:
+		cluster.DropDBTagConfig("docker")
+		cluster.DropDBTagConfig("threadpool")
+		cluster.AddDBTagConfig("pkg")
+	}
+
 	cluster.detachDeadBackupMountAtStart() // the servers read their backups: never through a mount left by a previous run (#2091)
 	err = cluster.newServerList()
 	if err != nil {
@@ -1044,19 +1061,6 @@ func (cluster *Cluster) InitFromConf() {
 	err = cluster.newAppList()
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could not set app list %s", err)
-	}
-	//Loading configuration compliances
-	err = cluster.Configurator.Init(*cluster.Conf, cluster.Logrus)
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could not initialize configurator %s", err)
-		log.Fatal("missing important file, giving up")
-	}
-
-	switch cluster.GetOrchestrator() {
-	case config.ConstOrchestratorLocalhost:
-		cluster.DropDBTagConfig("docker")
-		cluster.DropDBTagConfig("threadpool")
-		cluster.AddDBTagConfig("pkg")
 	}
 	//fmt.Printf("INIT CLUSTER CONF :\n")
 	//cluster.Conf.PrintConf()

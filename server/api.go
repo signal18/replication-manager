@@ -2427,6 +2427,13 @@ func (repman *ReplicationManager) handlerTerminal(w http.ResponseWriter, r *http
 	// Send uinfomap to the client
 	// session.SafeWriteMessage(websocket.TextMessage, bytes.Join([][]byte{[]byte("User info:"), uinfo}, []byte(" ")))
 
+	// Only the logins terminal-session-auth names open a shell (#2262): a local account by default.
+	if err := repman.Conf.TerminalAuthAllows(uinfomap["AuthType"], uinfomap["Cloud18Login"] != "" || uinfomap["Cloud18Token"] != ""); err != nil {
+		repman.logSecurityEvent("terminal_denied", uinfomap["User"], r.RemoteAddr, "Terminal refused: "+err.Error())
+		session.SafeWriteMessage(websocket.TextMessage, []byte("Terminal refused: "+err.Error()+"\n"))
+		return
+	}
+
 	plainuser := uinfomap["User"]
 	username := plainuser
 	md5h := md5.New()
@@ -2436,8 +2443,8 @@ func (repman *ReplicationManager) handlerTerminal(w http.ResponseWriter, r *http
 	sessionID := "global"
 
 	if vars["clusterName"] == "" {
-		// Check if the user is allowed to access the terminal
-		if uinfomap["User"] != "admin" && uinfomap["User"] != repman.Conf.Cloud18GitUser {
+		// the shell on the repman host: the local admin account only
+		if uinfomap["User"] != "admin" || uinfomap["AuthType"] != "Local" {
 			session.SafeWriteMessage(websocket.TextMessage, []byte("No valid ACL\n"))
 			return
 		}
