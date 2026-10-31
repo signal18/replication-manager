@@ -107,7 +107,7 @@ func (server *ServerMonitor) Tunnel() {
 	remoteAddr := server.Host + ":" + server.Port
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Opening tunnel from %s to %s", localAddr, remoteAddr)
 	// Build SSH client configuration
-	user, pwd := misc.SplitPair(server.ClusterGroup.Conf.TunnelCredential)
+	user, pwd := misc.SplitPair(server.ClusterGroup.Conf.GetDecryptedValue("monitoring-tunnel-credential"))
 	cfg, err := server.makeSshConfig(user, pwd)
 	if err != nil {
 		log.Fatalln(err)

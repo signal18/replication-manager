@@ -2775,9 +2775,27 @@ func (cluster *Cluster) SetAlertSlackChannel(value string) {
 	cluster.LogSlack.SetChannel("slack", value)
 }
 
-func (cluster *Cluster) SetAlertSlackUrl(value string) {
+// setSecretURL writes a webhook URL secret through the credential chain, as the other
+// secrets: a field set alone would be reverted by the save, which encrypts the chain's value.
+// The API sends SecretMask for a secret: written back, it would replace the URL.
+func (cluster *Cluster) setSecretURL(key string, value string) error {
+	if value == config.SecretMask {
+		return fmt.Errorf("%s: the masked value %q is not a URL", key, config.SecretMask)
+	}
+	if err := cluster.CredentialChain().Set(key, value); err != nil {
+		return err
+	}
+	cluster.MarkSecretVersionStoreDirty()
+	return nil
+}
+
+func (cluster *Cluster) SetAlertSlackUrl(value string) error {
+	if err := cluster.setSecretURL("alert-slack-url", value); err != nil {
+		return err
+	}
 	cluster.Conf.SlackURL = value
 	cluster.LogSlack.SetURL("slack", value)
+	return nil
 }
 
 func (cluster *Cluster) SetAlertSlackUser(value string) {
@@ -2790,9 +2808,13 @@ func (cluster *Cluster) SetCloud18AlertSlackChannel(value string) {
 	cluster.LogSlack.SetChannel("cloud18", value)
 }
 
-func (cluster *Cluster) SetCloud18AlertSlackUrl(value string) {
+func (cluster *Cluster) SetCloud18AlertSlackUrl(value string) error {
+	if err := cluster.setSecretURL("cloud18-alert-slack-url", value); err != nil {
+		return err
+	}
 	cluster.Conf.Cloud18AlertSlackURL = value
 	cluster.LogSlack.SetURL("cloud18", value)
+	return nil
 }
 
 func (cluster *Cluster) SetCloud18AlertSlackUser(value string) {
@@ -2800,16 +2822,24 @@ func (cluster *Cluster) SetCloud18AlertSlackUser(value string) {
 	cluster.LogSlack.SetUser("cloud18", value)
 }
 
-func (cluster *Cluster) SetAlertTeamsProxyUrl(value string) {
+func (cluster *Cluster) SetAlertTeamsProxyUrl(value string) error {
+	if err := cluster.setSecretURL("alert-teams-proxy-url", value); err != nil {
+		return err
+	}
 	cluster.Conf.TeamsProxyUrl = value
+	return nil
 }
 
 func (cluster *Cluster) SetAlertTeamsState(value string) {
 	cluster.Conf.TeamsAlertState = value
 }
 
-func (cluster *Cluster) SetAlertTeamsUrl(value string) {
+func (cluster *Cluster) SetAlertTeamsUrl(value string) error {
+	if err := cluster.setSecretURL("alert-teams-url", value); err != nil {
+		return err
+	}
 	cluster.Conf.TeamsUrl = value
+	return nil
 }
 
 func (cluster *Cluster) SetMonitoringAlertTriggerl(value string) {
