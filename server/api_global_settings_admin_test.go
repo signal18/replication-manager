@@ -71,6 +71,9 @@ func TestGlobalSettingsLocalAdminOnly(t *testing.T) {
 			if rr.Code != c.want {
 				t.Errorf("%s, %s: got %d, want %d (%s)", name, h.route, rr.Code, c.want, rr.Body.String())
 			}
+			if marked := rr.Header().Get(adminRequiredHeader) == "true"; marked != (c.want == http.StatusForbidden) {
+				t.Errorf("%s, %s: admin-required header %v on %d", name, h.route, marked, rr.Code)
+			}
 		}
 	}
 }

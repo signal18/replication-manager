@@ -826,6 +826,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.ApiServ, "api-server", true, "Start the API HTTPS server")
 	flags.BoolVar(&conf.ApiSwaggerEnabled, "api-swagger-enabled", true, "Start the API with Swagger")
 	flags.BoolVar(&conf.MCPServ, "mcp-server", false, "Start MCP server for AI assistant integration")
+	flags.StringVar(&conf.MCPServerAuth, "mcp-server-auth", config.ConstMCPAuthAuto, "Logins the MCP accepts: cloud18 (a Cloud18 login only: a realm token or a Sign in with Cloud18 session, with its second factor when cloud18-login-acr asks one; local accounts and API tokens refused), any (every login of the API), auto (cloud18 on an instance registered to Cloud18, any otherwise). Local accounts keep the API and the admin zone")
 	flags.StringVar(&conf.MCPTransport, "mcp-transport", "api", "MCP transport: api (mounted on the HTTP and HTTPS API listeners at /api/mcp, default), sse (own listener on mcp-port), stdio, or both (sse + stdio)")
 	flags.StringVar(&conf.MCPPort, "mcp-port", "10007", "MCP standalone SSE listen port (transport sse/both only)")
 	flags.StringVar(&conf.MCPBindAddr, "mcp-bind-address", "localhost", "MCP server bind address")

@@ -30,3 +30,30 @@ func TestTerminalAuthAllows(t *testing.T) {
 		}
 	}
 }
+
+// #2262: on an instance registered to Cloud18 the MCP takes a Cloud18 login only by default; any
+// login elsewhere, or when asked; cloud18 is a setting of its own too.
+func TestMCPAuthAllows(t *testing.T) {
+	for _, c := range []struct {
+		mode       string
+		registered bool
+		method     string
+		cloud18    bool
+		ok         bool
+	}{
+		{"", true, "oidc", true, true},
+		{"", true, "password", false, false},
+		{"", true, "token", false, false},
+		{"", true, "oidc", false, false},
+		{"", false, "password", false, true},
+		{"auto", false, "token", false, true},
+		{"any", true, "password", false, true},
+		{"cloud18", false, "password", false, false},
+		{"cloud18", false, "oidc", true, true},
+	} {
+		conf := &Config{MCPServerAuth: c.mode, Cloud18: c.registered}
+		if err := conf.MCPAuthAllows(c.method, c.cloud18); (err == nil) != c.ok {
+			t.Errorf("mode %q registered %v %s cloud18=%v: allowed=%v, want %v (%v)", c.mode, c.registered, c.method, c.cloud18, err == nil, c.ok, err)
+		}
+	}
+}

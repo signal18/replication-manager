@@ -20,6 +20,29 @@ const (
 	ConstTerminalAuthCloud18MFA = "cloud18-mfa"
 )
 
+// The logins the MCP accepts (mcp-server-auth, #2262).
+const (
+	ConstMCPAuthAuto    = "auto"    // cloud18 on an instance registered to Cloud18, any otherwise
+	ConstMCPAuthCloud18 = "cloud18" // a Cloud18 login only
+	ConstMCPAuthAny     = "any"     // every login of the API
+)
+
+// MCPAuthAllows says whether the MCP takes a login: authMethod is the MCP principal's (password,
+// oidc, token), cloud18 whether its SSO login is a Cloud18 one. Nil when allowed, else why.
+func (conf *Config) MCPAuthAllows(authMethod string, cloud18 bool) error {
+	mode := strings.TrimSpace(conf.MCPServerAuth)
+	if mode == "" || mode == ConstMCPAuthAuto {
+		mode = ConstMCPAuthAny
+		if conf.Cloud18 {
+			mode = ConstMCPAuthCloud18
+		}
+	}
+	if mode == ConstMCPAuthCloud18 && !(authMethod == "oidc" && cloud18) {
+		return errors.New("this MCP accepts Cloud18 logins only (mcp-server-auth): sign in with Cloud18")
+	}
+	return nil
+}
+
 // TerminalAuthAllows says whether a session may open a terminal: authType is the session's
 // (Local, SSO, Token), cloud18 whether its SSO login is a Cloud18 one. Nil when allowed, else why.
 func (conf *Config) TerminalAuthAllows(authType string, cloud18 bool) error {

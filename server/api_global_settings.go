@@ -55,6 +55,9 @@ func (repman *ReplicationManager) writeStandbyPersistenceWarning(w http.Response
 	return true
 }
 
+// adminRequiredHeader marks a refusal for want of the local admin: the GUI's admin mode answers it.
+const adminRequiredHeader = "X-Repman-Admin-Required"
+
 // isGlobalSettingsAdmin: a global (scope server) setting is changed by the local admin account
 // only (#2262), never by a Cloud18 login, an API token or another local account, whatever their
 // grants: the terminal, the logins, the API and the MCP are global settings. A refusal answers 403
@@ -65,6 +68,8 @@ func (repman *ReplicationManager) isGlobalSettingsAdmin(w http.ResponseWriter, r
 		return true
 	}
 	repman.logSecurityEvent("global_setting_denied", claims["User"], r.RemoteAddr, "Global setting "+setting+" refused: only the local admin account changes global settings")
+	// the GUI's admin mode asks the local admin login and sends the request again (adminMode.js)
+	w.Header().Set(adminRequiredHeader, "true")
 	http.Error(w, "Only the local admin account changes global settings", http.StatusForbidden)
 	return false
 }

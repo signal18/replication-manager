@@ -48,7 +48,35 @@ the local accounts (the host shell stays the local admin's either way): keep `lo
 that is wanted. Removed behaviour, for the release notes: the Cloud18 service account
 (`cloud18-gitlab-user`) no longer opens the host shell.
 
+## Admin mode in the GUI
+
+A person signed in with Cloud18 changes a global setting without signing out: the server's 403 for
+want of the local admin carries `X-Repman-Admin-Required: true`, the GUI then asks for the local admin
+user and password (`AdminModeModal`), logs in with them (`POST /api/login`) and sends the refused
+request again with that session (`services/adminMode.js`, `apiHelper.js`). The admin token is kept in
+memory only (a reload or another tab asks again), until its end (`api-token-timeout`) or "Leave";
+every other call keeps the person's own session. The host terminal asks for admin mode before it
+connects. No server state: the gate stays the local admin session.
+
+## The MCP: Cloud18 logins only (`mcp-server-auth`)
+
+`mcp-server-auth` (scope server): `cloud18` = a Cloud18 login only (a realm token or a Sign in with
+Cloud18 session, with its second factor when `cloud18-login-acr` asks one); `any` = every login of the
+API; `auto` (default) = `cloud18` on an instance registered to Cloud18, `any` otherwise
+(`config.MCPAuthAllows`, checked in `AuthenticateMCP`, refusals in the security log as
+`mcp_auth_failure`). Local accounts and API tokens keep the API and the admin zone, not the MCP. A
+client using an API token on a registered instance (the website assistant) needs a Cloud18 identity,
+or `mcp-server-auth = any` on that instance.
+
+## Recovery: the configuration file
+
+With Keycloak or the realm down, whoever holds the host edits `/etc/replication-manager/config.toml`
+(for example empties `cloud18-login-acr`, sets `mcp-server-auth`) and restarts. Those keys are
+immutable: only the file changes them, never the API. The local admin login keeps working through
+the API meanwhile.
+
 ## Tests
 
 `config/terminal_auth_test.go` (`TestTerminalAuthAllows`), `server/api_global_settings_admin_test.go`
-(`TestGlobalSettingsLocalAdminOnly`, `TestImmutableGlobalSettingRefused`).
+(`TestGlobalSettingsLocalAdminOnly` with the admin-required header, `TestImmutableGlobalSettingRefused`,
+`TestClusterSettingToolsRefuseGlobalKeys`), `TestMCPAuthAllows`.

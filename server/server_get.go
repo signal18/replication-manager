@@ -219,6 +219,9 @@ func (repman *ReplicationManager) GetName() string {
 // the cluster ACL exactly as IsValidClusterACL does.
 func (repman *ReplicationManager) AuthenticateMCP(r *http.Request) (*repmanmcp.Principal, error) {
 	if t, isAPIToken, ok := repman.apiTokenFromRequest(r); ok {
+		if err := repman.Conf.MCPAuthAllows("token", false); err != nil {
+			return nil, err
+		}
 		return &repmanmcp.Principal{User: t.User, AuthMethod: "token", TokenID: t.ID, TokenLabel: t.Label, Remote: r.RemoteAddr, Auth: t, Bearer: bearerOf(r)}, nil
 	} else if isAPIToken {
 		return nil, fmt.Errorf("API token invalid, revoked, expired or disabled")
@@ -255,6 +258,9 @@ func (repman *ReplicationManager) AuthenticateMCP(r *http.Request) (*repmanmcp.P
 		if t, ok := info["cloud18_token"].(string); ok && t != "" {
 			p.Cloud18Token = repman.Conf.GetDecryptedPassword("cloud18-token", t)
 		}
+	}
+	if err := repman.Conf.MCPAuthAllows(p.AuthMethod, p.Cloud18Login != "" || p.Cloud18Token != ""); err != nil {
+		return nil, err
 	}
 	return p, nil
 }
