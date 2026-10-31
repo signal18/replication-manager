@@ -81,8 +81,11 @@ login.
   login (password grant, second factor per `cloud18-login-acr`) and Sign in with Cloud18 stay. A
   wrong password stays 401. API tokens and realm tokens are unchanged.
 - `/api/auth/cloud18` answers `cloud18Only` when Sign in with Cloud18 is offered and the rule
-  holds. The login page then shows Sign in with Cloud18 and Sign up only; its **Admin zone** link
-  opens the user and password form (the local admin), with a way back. Where Sign in with Cloud18
+  holds. The login page then goes straight to the Cloud18 sign-in (the realm's page offers Sign
+  up; an open realm session comes straight back, signed in). The admin zone is `/login?admin`: the
+  user and password form (the local admin), with a way back to Cloud18. A failed Cloud18 return
+  shows its reason, a Sign in with Cloud18 button and the Admin zone link, never a redirect loop.
+  Where Sign in with Cloud18
   is not offered (no public address), the form stays: the server rule still applies.
 
 ## Recovery: the configuration file

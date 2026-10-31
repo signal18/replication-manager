@@ -22,8 +22,9 @@ function Login({ dashboard = false }) {
   const [errorMessage, setErrorMessage] = useState('')
   const [cloud18Enabled, setCloud18Enabled] = useState(false)
   // Cloud18 logins only (#2262): the user and password form is the admin zone's, opened on demand
+  // and the login goes straight to Cloud18; the admin zone is /login?admin
   const [cloud18Only, setCloud18Only] = useState(false)
-  const [adminZone, setAdminZone] = useState(false)
+  const [adminZone] = useState(() => new URLSearchParams(window.location.search).has('admin'))
   const [cloud18Loading, setCloud18Loading] = useState(false)
   // the Cloud18 status is known and no silent check is under way: autologin may run
   const [cloud18Ready, setCloud18Ready] = useState(false)
@@ -87,6 +88,12 @@ function Login({ dashboard = false }) {
         const enabled = resp?.status === 200 && resp?.data?.enabled === true
         setCloud18Enabled(enabled)
         setCloud18Only(enabled && resp?.data?.cloud18Only === true)
+        // Cloud18 logins only: straight to the Cloud18 sign-in (its page offers Sign up; an open
+        // Cloud18 session comes straight back), except the admin zone and a return from Cloud18
+        if (enabled && resp?.data?.cloud18Only === true && !cloud18Back && !adminZone && !isAuthorized()) {
+          window.location.assign('/api/auth/cloud18/start')
+          return
+        }
         // once per tab: after a Logout (which ends the Cloud18 session) or a check that found none,
         // the page shows its form and does not try again
         if (enabled && !cloud18Back && !isAuthorized() && sessionStorage.getItem('cloud18_silent_tried') !== '1') {
@@ -248,15 +255,8 @@ function Login({ dashboard = false }) {
                     onClick={() => window.location.assign('/api/auth/cloud18/start')}>
                     Sign in with Cloud18
                   </RMButton>
-                  <RMButton
-                    id='btnCloud18Register'
-                    type='button'
-                    size='medium'
-                    onClick={() => window.location.assign('/api/auth/cloud18/start?signup=1')}>
-                    Sign up with Cloud18
-                  </RMButton>
                   <Text fontSize='sm' textAlign='center'>
-                    <Link id='lnkAdminZone' color='teal.500' onClick={() => setAdminZone(true)}>
+                    <Link id='lnkAdminZone' color='teal.500' href='/login?admin'>
                       Admin zone
                     </Link>
                   </Text>
@@ -319,7 +319,7 @@ function Login({ dashboard = false }) {
                 )}
                 {cloud18Only && (
                   <Text fontSize='sm' textAlign='center'>
-                    <Link id='lnkCloud18Back' color='teal.500' onClick={() => setAdminZone(false)}>
+                    <Link id='lnkCloud18Back' color='teal.500' href='/api/auth/cloud18/start'>
                       Back to Sign in with Cloud18
                     </Link>
                   </Text>
