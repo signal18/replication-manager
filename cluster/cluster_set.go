@@ -22,6 +22,7 @@ import (
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/opensvc"
+	"github.com/signal18/replication-manager/utils/cron"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/state"
@@ -2141,7 +2142,12 @@ func (cluster *Cluster) SetSchedulerJobsSshCron(value string) error {
 	return nil
 }
 
+// SetSchedulerRotatePasswordsCron sets the rotation's cron (#2269). A cron that does not parse
+// is refused, the schedule kept as it was.
 func (cluster *Cluster) SetSchedulerRotatePasswordsCron(value string) error {
+	if _, err := cron.Parse(value); err != nil {
+		return fmt.Errorf("invalid cron %q: %w", value, err)
+	}
 	cluster.Conf.SchedulerRotatePasswordsCron = value
 	return cluster.SetSchedulerRotatePasswords()
 }

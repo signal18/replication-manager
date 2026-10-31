@@ -969,7 +969,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.SchedulerRollingRestartCron, "scheduler-rolling-restart-cron", "0 30 11 * * *", "Rolling restart cron expression represents a set of times, using 6 space-separated fields.")
 	flags.BoolVar(&conf.SchedulerRollingReprov, "scheduler-rolling-reprov", false, "Schedule rolling reprov")
 	flags.StringVar(&conf.SchedulerRollingReprovCron, "scheduler-rolling-reprov-cron", "0 30 10 * * 5", "Rolling reprov cron expression represents a set of times, using 6 space-separated fields.")
-	flags.BoolVar(&conf.SchedulerRotatePasswords, "scheduler-rotate-passwords", false, "Schedule the rotation of the database and replication passwords (#2269): a credential set in a config file is never rotated; a run the cluster's state skips is a security state until a scheduled rotation succeeds")
+	flags.BoolVar(&conf.SchedulerRotatePasswords, "scheduler-rotate-passwords", false, "Schedule the rotation of the database and replication passwords (#2269): a credential set in a config file rotates only when a store keeps versions (monitoring-secret-versioning or a vault entry); a skipped run is a security state until a scheduled rotation succeeds")
 	flags.StringVar(&conf.SchedulerRotatePasswordsCron, "scheduler-rotate-passwords-cron", "0 0 3 * * 0", "Password rotation cron expression represents a set of times, using 6 space-separated fields: once a week by default, Sunday 03:00")
 	flags.BoolVar(&conf.SchedulerJobsSSH, "scheduler-jobs-ssh", false, "Schedule remote execution of dbjobs via ssh ")
 	flags.StringVar(&conf.SchedulerJobsSSHCron, "scheduler-jobs-ssh-cron", "0 * * * * *", "Remote execution of dbjobs via ssh ")

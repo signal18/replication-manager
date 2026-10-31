@@ -579,3 +579,53 @@ func (failStore) CanSet(key string) error {
 	}
 	return ErrNotHeld
 }
+
+// a rotation that cannot see its change saved puts it back (#2269): every store, the cache
+// (current and previous value) and the copies as before, a key that was absent absent again
+func TestChainSetAllRevertible(t *testing.T) {
+	const versioned, plain = "replication-credential", "db-servers-credential"
+	conf := testConf()
+	conf.DynamicFlagMap[versioned] = conf.EncryptSecretValue("repl:pass1")
+	noVersions := func() error { return errors.New("no store keeps versions") }
+	vs := NewVersionStore(func() *config.Config { return conf }, func(k string) bool { return k == versioned }, noVersions, nil)
+	chain := NewVersionedChain(conf, nil, vs)
+	chain.Refresh()
+	if err := chain.Set(versioned, "repl:pass2"); err != nil {
+		t.Fatal(err)
+	}
+	var told [][]Change
+	chain.OnSet(func(c []Change) { told = append(told, c) })
+
+	rawBefore, _ := conf.GetDynamicFlag(versioned)
+	countBefore := vs.Count(versioned)
+	secretBefore := conf.Secrets.Get(versioned)
+	revert, err := chain.SetAllRevertible(Change{Key: versioned, Value: "repl:pass3"}, Change{Key: plain, Value: "root:new"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := conf.Secrets.Get(versioned); got.Value != "repl:pass3" || got.OldValue != "repl:pass2" {
+		t.Fatalf("set: current %q, old %q", got.Value, got.OldValue)
+	}
+	if err := revert(); err != nil {
+		t.Fatal(err)
+	}
+	if raw, _ := conf.GetDynamicFlag(versioned); raw != rawBefore || vs.Count(versioned) != countBefore {
+		t.Fatalf("not put back: config changed %v, %d values (want %d)", raw != rawBefore, vs.Count(versioned), countBefore)
+	}
+	if v, _ := vs.Latest(versioned); v.Value != "repl:pass2" {
+		t.Fatalf("current version after the revert: %q", v.Value)
+	}
+	if got := conf.Secrets.Get(versioned); got != secretBefore {
+		t.Fatalf("cache after the revert: current %q, old %q, want %q, %q", got.Value, got.OldValue, secretBefore.Value, secretBefore.OldValue)
+	}
+	if _, present := conf.GetDynamicFlag(plain); present {
+		t.Fatal("a key absent before the change must be absent after the revert")
+	}
+	if len(told) != 2 || len(told[1]) != 1 || told[1][0] != (Change{Key: versioned, Value: "repl:pass2"}) {
+		t.Fatalf("the copies must be told the former values, got %v", told)
+	}
+	chain.Refresh()
+	if v := conf.Secrets.Get(versioned).Value; v != "repl:pass2" {
+		t.Fatalf("after a refresh: %q", v)
+	}
+}

@@ -1329,6 +1329,7 @@ func (cluster *Cluster) ProvisionRotatePasswords(password string) error {
 		}
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "ProvisionRotatePasswords error: Can not add key to secret: %s %s ", "MYSQL_ROOT_PASSWORD", err)
+			return err
 		}
 	case config.ConstOrchestratorKubernetes:
 		client, err := cluster.K8SConnectAPI()
@@ -1336,7 +1337,7 @@ func (cluster *Cluster) ProvisionRotatePasswords(password string) error {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "ProvisionRotatePasswords error: Cannot init Kubernetes client API %s ", err)
 			return err
 		}
-		cluster.k8sRotatePasswordsWithClient(client, password)
+		return cluster.k8sRotatePasswordsWithClient(client, password)
 	}
 	return nil
 }
@@ -1349,10 +1350,12 @@ func (cluster *Cluster) ProvisionRotatePasswords(password string) error {
 // would keep authenticating with the pre-rotation password indefinitely,
 // and a future from-scratch reprovision would seed a fresh datadir with the
 // wrong initial root password.
-func (cluster *Cluster) k8sRotatePasswordsWithClient(client kubernetes.Interface, password string) {
+func (cluster *Cluster) k8sRotatePasswordsWithClient(client kubernetes.Interface, password string) error {
 	if err := cluster.k8sEnsureDatabaseSecret(client, password); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "ProvisionRotatePasswords error: Cannot update Kubernetes secret: %s ", err)
+		return err
 	}
+	return nil
 }
 
 func (cluster *Cluster) ReloadOpenSVCDaemonNodeStats() error {

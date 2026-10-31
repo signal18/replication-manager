@@ -35,6 +35,11 @@ Config persistence is split so the heavy work never rides a caller's goroutine o
   `wait=false` → `Save()` (event); `wait=true` → `SaveCallBack()` (synchronous, for
   shutdown/register). No queue, no worker goroutine.
 
+- **`cluster.WaitConfigSaved()`** — for a caller that must know its change is on disk before
+  acting on it (the password rotation, a regtest's start config): asks `Save()`, then waits until
+  `ConfigSavedAsOf()` (the *start* of the last save completed, a version file not written
+  excluded) is after the ask. Bounded: two gate periods, 30 s at least. Never on the monitor tick.
+
 ## The single config-sync gate (single writer)
 
 One guarded goroutine in the serve loop (`counter%60`) is the **only** writer of config. It runs

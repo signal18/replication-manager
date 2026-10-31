@@ -19,7 +19,8 @@ import (
 // TestCredentialConfigRotationScheduled is the real-cluster regtest of #2269 (T13), through
 // repman's own API: with no store keeping versions (monitoring-secret-versioning off, no vault
 // entry) the config is the credential store. The scheduled rotation, switched on with a cron of
-// every minute, rotates the database credential; then every server logs in with the new
+// every minute, rotates the database credential, saved to the config before any server
+// changes; then every server logs in with the new
 // password, repman keeps the previous one in memory, a config reload and a start from the files
 // on disk run on the new one, and the cluster config holds it encrypted. A credential set in a
 // config file is refused here (no store keeps versions): the test fails on it. The schedule is
@@ -89,8 +90,18 @@ func (regtest *RegTest) TestCredentialConfigRotationScheduled(cl *cluster.Cluste
 	if code, body := api("/settings/actions/switch/scheduler-rotate-passwords"); code != http.StatusOK {
 		return fail("switching the schedule off (%d): %s", code, body)
 	}
-	time.Sleep(5 * time.Second) // a run started in the same second ends
+	// the run saves the new values before it changes a database (#2269): it ends within two
+	// config-sync gates, then the servers
+	gates := 2 * 60 * time.Duration(cl.Conf.MonitoringTicker) * time.Second
+	for deadline = time.Now().Add(gates + 60*time.Second); cl.IsInPasswordRotation(); time.Sleep(2 * time.Second) {
+		if time.Now().After(deadline) {
+			return fail("the rotation did not end within %s", gates+60*time.Second)
+		}
+	}
 	pass := cl.Conf.GetDecryptedValue(key)
+	if pass == before {
+		return fail("rotation: the new credential was put back (no config save in time, see the security log)")
+	}
 
 	if why := serversOnCredential(cl, key, pass, 60*time.Second); why != "" {
 		return fail("rotation: %s", why)

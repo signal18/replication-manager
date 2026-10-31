@@ -6,6 +6,7 @@ package cluster
 
 import (
 	"database/sql"
+	"errors"
 	"strings"
 	"testing"
 
@@ -133,6 +134,26 @@ func TestRotatePasswordsRefusedChangesNothing(t *testing.T) {
 	}
 }
 
+// #2269: a rotation waits for a config save, so a second one (the next cron, the button) is
+// refused while one runs, and the running one is left alone
+func TestRotatePasswordsRefusedWhileOneRuns(t *testing.T) {
+	cl := rotateGateCluster()
+	cl.Conf.Secrets = config.NewSecrets(map[string]config.Secret{"db-servers-credential": {Value: "root:before"}})
+	cl.inPasswordRotation.Store(true)
+	if err := cl.CanRotatePasswords(); !errors.Is(err, errPasswordRotationRunning) {
+		t.Fatalf("CanRotatePasswords while one runs: %v", err)
+	}
+	if err := cl.RotatePasswords(); !errors.Is(err, errPasswordRotationRunning) {
+		t.Fatalf("RotatePasswords while one runs: %v", err)
+	}
+	if !cl.inPasswordRotation.Load() {
+		t.Fatal("a refused rotation must not release the running one")
+	}
+	if v := cl.Conf.Secrets.Get("db-servers-credential").Value; v != "root:before" {
+		t.Fatalf("credential changed to %q", v)
+	}
+}
+
 // #2269: a scheduled run the cluster refuses is skipped: WARN0274 in the security domain at each
 // tick, until the schedule is switched off (or a scheduled rotation succeeds)
 func TestScheduledPasswordRotationSkipped(t *testing.T) {
@@ -183,9 +204,19 @@ func TestScheduledPasswordRotationInvalidCron(t *testing.T) {
 	cl.scheduler = cron.New()
 	cl.Schedule = map[string]cron.Entry{}
 	cl.Conf.SchedulerRotatePasswords = true
+	cl.Conf.SchedulerRotatePasswordsCron = "0 0 3 * * 0"
 
+	// the setter (API, GUI) refuses it and keeps the cron as it was
 	if err := cl.SetSchedulerRotatePasswordsCron("not a cron"); err == nil {
 		t.Fatal("an invalid cron was accepted")
+	}
+	if cl.Conf.SchedulerRotatePasswordsCron != "0 0 3 * * 0" {
+		t.Fatalf("a refused cron must keep the former one, got %q", cl.Conf.SchedulerRotatePasswordsCron)
+	}
+	// a config file that holds one (read at start): not scheduled, the state says why
+	cl.Conf.SchedulerRotatePasswordsCron = "not a cron"
+	if err := cl.SetSchedulerRotatePasswords(); err == nil {
+		t.Fatal("an invalid cron was scheduled")
 	}
 	cl.CheckScheduledPasswordRotation()
 	if !hasState(cl.SecurityStateMachine, "WARN0274") {

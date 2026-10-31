@@ -435,7 +435,8 @@ type Cluster struct {
 	inInitNodes                         bool                        `json:"-"`
 	initConfigDone                      atomic.Bool                 `json:"-"`
 	inBootstrapReplication              atomic.Int32                `json:"-"` // BootstrapReplication calls running: the monitor does not rejoin (#2174)
-	configSaveDone                      atomic.Int64                `json:"-"` // unix nanoseconds of the last SaveCallBack that completed, changed or not
+	inPasswordRotation                  atomic.Bool                 `json:"-"` // a RotatePasswords is running: it waits for a config save (#2269), a second one is refused
+	configSavedAsOf                     atomic.Int64                `json:"-"` // unix nanoseconds: the start of the last SaveCallBack that completed, changed or not
 	inOptimizeTables                    bool                        `json:"inOptimizeTables" groups:"web"`
 	inAnalyzeTables                     bool                        `json:"inAnalyzeTables" groups:"web"`
 	inConnectVault                      bool                        `json:"-"`
@@ -2171,6 +2172,8 @@ func (cluster *Cluster) SaveCallBack() error {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlDbg, "Skipping config save: cluster init not complete")
 		return nil
 	}
+	// what this save writes is the configuration in memory from now on (ConfigSavedAsOf)
+	asOf := time.Now()
 
 	_, file, no, ok := runtime.Caller(1)
 	if ok {
@@ -2220,7 +2223,7 @@ func (cluster *Cluster) SaveCallBack() error {
 	}
 
 	// the local versioned file of the secrets, written here only (#2227 rule 2, T25)
-	cluster.ReconcileSecretVersionStore()
+	versionErr := cluster.ReconcileSecretVersionStore()
 
 	has_changed := false
 
@@ -2299,19 +2302,46 @@ func (cluster *Cluster) SaveCallBack() error {
 	if has_changed {
 		cluster.IsNeedGitPush = true
 	}
-	cluster.configSaveDone.Store(time.Now().UnixNano())
+	// a version file not written is a save not complete: the credentials it keeps are not on disk
+	if versionErr == nil {
+		cluster.configSavedAsOf.Store(asOf.UnixNano())
+	}
 
 	return nil
 }
 
-// ConfigSaveDoneAt is when the config-sync gate last completed a save of this cluster,
-// whether the files changed or not: a caller that asked for a Save() knows from it that
-// the files on disk hold the configuration it had in memory then.
-func (cluster *Cluster) ConfigSaveDoneAt() time.Time {
-	if n := cluster.configSaveDone.Load(); n != 0 {
+// ConfigSavedAsOf is the start of the last save of this cluster the config-sync gate
+// completed, whether the files changed or not: the files on disk hold the configuration in
+// memory at that time. A save that started before a change and ended after it does not carry
+// the change, so it is the start that counts. Zero before the first save.
+func (cluster *Cluster) ConfigSavedAsOf() time.Time {
+	if n := cluster.configSavedAsOf.Load(); n != 0 {
 		return time.Unix(0, n)
 	}
 	return time.Time{}
+}
+
+// configSaveWaitFloor is the shortest wait of WaitConfigSaved (a variable for the tests).
+var configSaveWaitFloor = 30 * time.Second
+
+// WaitConfigSaved asks for a save (the event) and waits for the config-sync gate, the single
+// writer of the files (T25), to complete one that started after the ask: the files on disk
+// then hold the configuration in memory now. It waits two gate periods at most (30 s at
+// least): a cycle still busy skips one gate. An error when no such save completed in time; a
+// standby repman never saves.
+func (cluster *Cluster) WaitConfigSaved() error {
+	asked := time.Now()
+	cluster.Save()
+	wait := 2 * time.Duration(cluster.Conf.MonitoringTicker) * 60 * time.Second
+	if wait < configSaveWaitFloor {
+		wait = configSaveWaitFloor
+	}
+	for deadline := asked.Add(wait); !cluster.ConfigSavedAsOf().After(asked); time.Sleep(500 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			return fmt.Errorf("no config save completed within %s", wait)
+		}
+	}
+	return nil
 }
 
 func (cluster *Cluster) SaveConfigFile() (bool, error) {

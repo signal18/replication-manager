@@ -21215,6 +21215,12 @@ const docTemplate = `{
                             "type": "string"
                         }
                     },
+                    "400": {
+                        "description": "Bad or refused cron pattern",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
                     "403": {
                         "description": "No valid ACL",
                         "schema": {
