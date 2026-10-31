@@ -18,6 +18,7 @@ import (
 	vault "github.com/hashicorp/vault/api"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/config/credstore"
+	"github.com/signal18/replication-manager/opensvc"
 	"github.com/signal18/replication-manager/utils/state"
 )
 
@@ -74,6 +75,11 @@ type secretKvStores struct {
 	offers          map[string]config.MarketplaceVaultOffer // offer name -> the catalogue's offer
 	dropsSeen       uint64
 	dropsUnresolved bool
+	// orchestratorBehind: why the OpenSVC env secret kept an old MYSQL_ROOT_PASSWORD (never
+	// a value), "" when it has the current one; orchestratorTried: the last write of it
+	orchestratorBehind  string
+	orchestratorTried   time.Time
+	orchestratorWriting atomic.Bool
 }
 
 func (cluster *Cluster) storeQueue() *credstore.StoreQueue {
@@ -668,7 +674,7 @@ func (cluster *Cluster) writeSecretVersionFile() error {
 // CheckSecretKvStores runs at each tick on the active monitor: the full pass at start, for a
 // store turned on and after drops; the worker back when versions wait; the states raised
 // again: WARN0271 per store behind, WARN0272 while drops are not repaired, WARN0273 per
-// credential pinned to a Vault path. It only queues: never blocks.
+// credential pinned to a Vault path, WARN0274 while the OpenSVC env secret is behind. It only queues: never blocks.
 func (cluster *Cluster) CheckSecretKvStores() {
 	// a standby takes the versions the active monitor pushed (rule 11)
 	cluster.reloadVersionsFromPeer()
@@ -689,6 +695,7 @@ func (cluster *Cluster) CheckSecretKvStores() {
 	if !cluster.IsActive() || cluster.SecurityStateMachine == nil {
 		return
 	}
+	cluster.checkOpenSVCRootPassword()
 	active := map[string]bool{}
 	c.mu.Lock()
 	for _, e := range cluster.Conf.SecretKvActive() {
@@ -1037,6 +1044,55 @@ func (cluster *Cluster) reportOrchestratorSecret(object, key, value string) {
 			}
 		}
 	}
+}
+
+// writeOpenSVCRootPassword writes the database root password in the cluster's OpenSVC env
+// secret, through the v2 or v3 API the agent speaks, and reports it to the stores. A failure
+// keeps WARN0274 open (checkOpenSVCRootPassword writes the key again), a success closes it:
+// a reprovision would otherwise start the databases with the old password (#2255).
+func (cluster *Cluster) writeOpenSVCRootPassword(svc opensvc.Collector, password string) error {
+	err := svc.CreateSecretKeyValue(cluster.Name, "env", "MYSQL_ROOT_PASSWORD", password)
+	c := &cluster.secretKv
+	c.mu.Lock()
+	c.orchestratorTried = time.Now()
+	if err != nil {
+		c.orchestratorBehind = err.Error()
+	} else {
+		c.orchestratorBehind = ""
+	}
+	c.mu.Unlock()
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not write MYSQL_ROOT_PASSWORD in the OpenSVC secret %s/sec/env: %s", cluster.Name, err)
+		return err
+	}
+	cluster.reportOrchestratorSecret("env", "MYSQL_ROOT_PASSWORD", password)
+	return nil
+}
+
+// checkOpenSVCRootPassword runs at each tick on the active monitor: while the OpenSVC env
+// secret is behind, WARN0274 is raised and, every secret-kv-retry-interval, the current
+// database password is written again in the background. Never blocks the tick.
+func (cluster *Cluster) checkOpenSVCRootPassword() {
+	c := &cluster.secretKv
+	c.mu.Lock()
+	why, tried := c.orchestratorBehind, c.orchestratorTried
+	c.mu.Unlock()
+	if why == "" || cluster.GetOrchestrator() != config.ConstOrchestratorOpenSVC {
+		return
+	}
+	cluster.SecurityStateMachine.AddState("WARN0274", state.State{ErrType: "WARNING", ErrFrom: "SECURITY",
+		ErrDesc: fmt.Sprintf(clusterError["WARN0274"], cluster.Name, why)})
+	retry := time.Duration(cluster.Conf.SecretKvRetryInterval) * time.Second
+	if retry <= 0 {
+		retry = time.Minute
+	}
+	if time.Since(tried) < retry || !c.orchestratorWriting.CompareAndSwap(false, true) {
+		return
+	}
+	go func() {
+		defer c.orchestratorWriting.Store(false)
+		cluster.writeOpenSVCRootPassword(cluster.OpenSVCConnect(), cluster.GetDbPass())
+	}()
 }
 
 func (cluster *Cluster) setStoreWritten(entry string) {

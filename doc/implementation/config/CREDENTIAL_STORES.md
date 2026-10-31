@@ -134,6 +134,10 @@ settings (secrets encrypted, F9), on/off, forms drawn from the manifest.
 7. **Orchestrator objects are consumers, not stores**: the OpenSVC `sec` object and the
    Kubernetes Secret get the current version at provisioning and after each rotation, as
    today. Their writers report the values they set (`CopySecret`); nothing reads them back.
+   The rotation writes `MYSQL_ROOT_PASSWORD` in the OpenSVC `env` secret through the v2 or
+   v3 API the agent speaks (`CreateSecretKeyValue`). A failed write is WARN0274 (security):
+   the active monitor writes the current password again every `secret-kv-retry-interval`,
+   in the background, and the state closes once it is written (#2255).
 8. **`database_engine`** is a vault store that generates: a rotation asks Vault
    (`rotate-role`); the value it returns is written as a new version to the other active
    stores; it is read from the engine first.
@@ -256,7 +260,8 @@ files on disk, and the chain a start builds over it with the local file
   partner and no Edit or Remove. The back-office side (the file, the
   vault's jwt role and the space policies of rule 14) is not built yet.
 - **States**: WARN0271 (security, per entry: behind, or failing), WARN0272 (security: drops
-  not repaired), WARN0273 (config, per key: a Vault path pinned in a file).
+  not repaired), WARN0273 (config, per key: a Vault path pinned in a file), WARN0274
+  (security: the OpenSVC env secret keeps an old `MYSQL_ROOT_PASSWORD`, rule 7).
 - **Writers to wire later** call `Cluster.CopySecret(kind, object, key, value)`.
 
 ### The Cloud18 vault entry
