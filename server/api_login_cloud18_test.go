@@ -383,3 +383,61 @@ func TestCloud18TokenFlood(t *testing.T) {
 		t.Fatalf("the log counter: %d", n)
 	}
 }
+
+// cloud18-login-acr: a realm token below the level the instance asks is refused everywhere (a
+// bearer, the browser sign-in, the Sign in form); the Sign in form, which only posts a password,
+// cannot give a one-time code and says to use Sign in with Cloud18; the browser sign-in asks the
+// realm for the level. Without the setting any level will do.
+func TestCloud18LoginACR(t *testing.T) {
+	f, issuer := newRegisterFakes(t)
+	repman := loginRepman(t, issuer)
+	repman.Conf.Cloud18LoginACR = "mfa, 2"
+
+	if got := repman.Conf.Cloud18LoginACRValues(); len(got) != 2 || got[0] != "mfa" || got[1] != "2" {
+		t.Fatalf("levels: %q", got)
+	}
+	strong := signRealmTokenACR(f.realmKey, issuer, "person@acme.example", config.ConstCloud18APIAudience, "mfa", true, 5*time.Minute)
+	if _, _, err := repman.cloud18TokenSession(strong); err != nil {
+		t.Fatalf("a token at the level: %v", err)
+	}
+	if _, err := repman.Conf.VerifyCloud18Token(signRealmTokenACR(f.realmKey, issuer, "person@acme.example", config.ConstCloud18APIAudience, "2", true, 5*time.Minute)); err != nil {
+		t.Fatalf("a token at the second level named: %v", err)
+	}
+	for name, acr := range map[string]string{"password only": "1", "no acr": ""} {
+		raw := signRealmTokenACR(f.realmKey, issuer, "other@acme.example", config.ConstCloud18APIAudience, acr, true, 5*time.Minute)
+		if _, _, err := repman.cloud18TokenSession(raw); !errors.Is(err, config.ErrCloud18TokenRefused) {
+			t.Errorf("%s: must be refused, got %v", name, err)
+		}
+	}
+
+	// the realm asks the code: the form cannot answer it
+	f.mu.Lock()
+	f.otp = true
+	f.mu.Unlock()
+	if _, err := repman.ssoPasswordLogin("admin@acme.example", "s3cr3t-cloud18"); !errors.Is(err, config.ErrCloud18SecondFactor) {
+		t.Fatalf("the realm asks a one-time code: %v", err)
+	}
+	// a realm that does not ask it gives a token below the level: refused as well
+	f.mu.Lock()
+	f.otp, f.acr = false, "1"
+	f.mu.Unlock()
+	if _, err := repman.ssoPasswordLogin("admin@acme.example", "s3cr3t-cloud18"); !errors.Is(err, config.ErrCloud18SecondFactor) {
+		t.Fatalf("a password-level token: %v", err)
+	}
+
+	u, err := repman.Conf.Cloud18SSOAuthorizeURL("https://repman.example", "st", "ch", config.Cloud18SSOMode{})
+	if err != nil || !strings.Contains(u, "acr_values=mfa+2") {
+		t.Fatalf("the browser sign-in asks the level: %s %v", u, err)
+	}
+
+	repman.Conf.Cloud18LoginACR = ""
+	f.mu.Lock()
+	f.acr = ""
+	f.mu.Unlock()
+	if _, err := repman.ssoPasswordLogin("admin@acme.example", "s3cr3t-cloud18"); err != nil {
+		t.Fatalf("no level asked: the form logs in: %v", err)
+	}
+	if u, _ := repman.Conf.Cloud18SSOAuthorizeURL("https://repman.example", "st", "ch", config.Cloud18SSOMode{}); strings.Contains(u, "acr_values") {
+		t.Errorf("no level asked: no acr_values: %s", u)
+	}
+}

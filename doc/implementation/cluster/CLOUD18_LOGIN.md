@@ -88,6 +88,28 @@ issuer is the realm): an instance not registered to Cloud18 never trusts the rea
 - The password goes to another instance only on a 401 to the token login (an older release; or a token
   that ended on the way): never on a 403, a 429, a 5xx or an unreachable instance.
 
+## Second factor: the authentication level (`cloud18-login-acr`)
+
+A password proves only that someone knows it; a one-time code (an authenticator app) proves the person
+holds the device. The realm gives the second factor (Keycloak's OTP, enrolled once by scanning a QR code);
+repman decides on each instance which level a Cloud18 login must reach, with the OpenID Connect `acr`:
+
+- `cloud18-login-acr` (scope server, empty by default: any level) names the accepted levels, comma
+  separated, e.g. `mfa` (password and one-time code).
+- Repman asks for them: `acr_values` in the browser sign-in (`Cloud18SSOAuthorizeURL`) and in the realm
+  token the Sign in form gets (`cloud18LoginToken`). The realm then asks the person for the code.
+- The request proves nothing (anyone can remove a URL parameter): `VerifyCloud18Token` refuses a token
+  whose `acr` claim is not one of the levels. Every path taking a realm token goes through it: the
+  browser sign-in, a bearer at the API and the MCP, `/api/login` with a token, the realm token a peer sends.
+- The Sign in form posts a password only and cannot answer the code page: with a level set, it refuses
+  the login (`ErrCloud18SecondFactor`, "use Sign in with Cloud18") when the realm shows the code page or
+  gives a token below the level, and never falls back to the password for the other instances.
+
+Realm side, once for the realm (no client per repman): in the browser flow, the "Conditional - Level Of
+Authentication" steps (level 1 password, level 2 password and OTP), and on the client
+`replication-manager-login` the ACR to LoA mapping (`mfa` -> 2) and the `acr` claim in its access tokens
+(client scope `acr`). Check on a token that `acr` reads `mfa` before setting `cloud18-login-acr`.
+
 ## Rollout (step 3, later)
 
 Older releases keep logging in with GitLab's password grant as long as GitLab accepts it. Once the fleet
@@ -105,4 +127,5 @@ a Cloud18 login (GitLab token, realm token verified, refresh token kept encrypte
 the grant off, a realm without the login client; realm tokens refused for a foreign audience, an unverified
 email, an expired token, another key, another realm, an unregistered instance; the middleware, `/api/login`
 and the MCP with a realm token; a peer on this release (token) and on an older one (password); one refresh
-per token lifetime. `TestPeerIdentityFor` covers the realm token in the peer identity.
+per token lifetime; `TestCloud18LoginACR`: the level asked and checked, a token below it refused, the
+form refused on the code page and on a password-level token. `TestPeerIdentityFor` covers the realm token in the peer identity.

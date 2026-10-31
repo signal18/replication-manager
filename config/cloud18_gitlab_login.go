@@ -42,6 +42,9 @@ var (
 	// ErrCloud18AccountNotReady: the account exists but waits for its email confirmation (where the
 	// person also chooses the password).
 	ErrCloud18AccountNotReady = errors.New("the Cloud18 account is not activated yet: confirm the email Cloud18 sent (its link lets you choose your password)")
+	// ErrCloud18SecondFactor: the login must reach a level the password alone does not give
+	// (cloud18-login-acr): the realm asks for a second factor, which only the browser can give.
+	ErrCloud18SecondFactor = errors.New("this login needs the Cloud18 second factor (one-time code): use Sign in with Cloud18")
 	// ErrCloud18AccountExists: the sign-up was refused, an account has that email.
 	ErrCloud18AccountExists = errors.New("a Cloud18 account already exists with this email")
 )
@@ -110,6 +113,7 @@ var (
 	kcMessageRe     = regexp.MustCompile(`(?s)(?:input-error|kc-feedback-text|pf-v5-c-alert__title|pf-m-error)[^>]*>(.*?)</`)
 	redirectLinkRe  = regexp.MustCompile(`href="(` + regexp.QuoteMeta(cloud18GitLabOAuthRedirect) + `\?[^"]+)"`)
 	htmlTagRe       = regexp.MustCompile(`<[^>]+>|\s+`)
+	kcOTPFormRe     = regexp.MustCompile(`<form[^>]*id="kc-otp-login-form"`)
 	kcVerifyEmailRe = regexp.MustCompile(`(?i)verify your email|email verification|update password|required action`)
 )
 
@@ -260,6 +264,8 @@ func (conf *Config) cloud18GitLabWalk(email, password string) (string, *cloud18W
 		return "", nil, ErrCloud18BadCredentials
 	case kcVerifyEmailRe.MatchString(page):
 		return "", nil, ErrCloud18AccountNotReady
+	case kcOTPFormRe.MatchString(page):
+		return "", nil, ErrCloud18SecondFactor
 	}
 	return "", nil, gitlabStop(page, at)
 }

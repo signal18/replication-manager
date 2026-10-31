@@ -16,6 +16,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -47,6 +48,21 @@ const (
 // valid here (signature, expiry, audience, unverified email).
 var ErrCloud18TokenRefused = errors.New("Cloud18 token refused")
 
+// Cloud18LoginACRValues are the authentication levels (acr) a Cloud18 login must reach on this
+// repman (cloud18-login-acr), none when any level will do.
+func (conf *Config) Cloud18LoginACRValues() []string {
+	return strings.FieldsFunc(conf.Cloud18LoginACR, func(r rune) bool { return r == ',' || r == ' ' })
+}
+
+// setCloud18ACRValues asks the realm, in an authorization, for the levels cloud18-login-acr names:
+// the realm then asks the person for what the level needs (a one-time code). The request alone
+// proves nothing, VerifyCloud18Token checks the level the token carries.
+func (conf *Config) setCloud18ACRValues(q url.Values) {
+	if want := conf.Cloud18LoginACRValues(); len(want) > 0 {
+		q.Set("acr_values", strings.Join(want, " "))
+	}
+}
+
 // Cloud18Login is a person's login with the Cloud18 account.
 type Cloud18Login struct {
 	GitLabToken string       // GitLab (scope api), for the person's GitLab calls
@@ -66,9 +82,19 @@ func (conf *Config) Cloud18Login(email, password string) (*Cloud18Login, error) 
 	}
 	l := &Cloud18Login{GitLabToken: token, Web: w.client}
 	if a, err := conf.cloud18LoginToken(w); err != nil {
+		if len(conf.Cloud18LoginACRValues()) > 0 {
+			conf.cloud18Log(LvlWarn, "Cloud18 login of %s refused: no realm token at the level cloud18-login-acr asks: %s", email, err)
+			return nil, ErrCloud18SecondFactor
+		}
 		conf.cloud18Log(LvlWarn, "Cloud18 gave no realm token for the login of %s (the other instances get the password): %s", email, err)
 	} else {
 		l.Access, l.Refresh = a.AccessToken, a.RefreshToken
+	}
+	if len(conf.Cloud18LoginACRValues()) > 0 {
+		if _, err := conf.VerifyCloud18Token(l.Access); err != nil {
+			conf.cloud18Log(LvlWarn, "Cloud18 login of %s refused: %s", email, err)
+			return nil, ErrCloud18SecondFactor
+		}
 	}
 	return l, nil
 }
@@ -88,8 +114,13 @@ func (conf *Config) cloud18LoginToken(w *cloud18Web) (cloud18TokenAnswer, error)
 	w.code, w.state = "", ""
 	q := url.Values{"client_id": {ConstCloud18LoginClientID}, "redirect_uri": {cloud18LoginRedirect}, "response_type": {"code"},
 		"scope": {"openid email profile"}, "state": {"repman-login"}, "code_challenge": {challenge}, "code_challenge_method": {"S256"}}
-	if _, _, err := w.do(http.MethodGet, issuer+"/protocol/openid-connect/auth?"+q.Encode(), nil); err != nil {
+	conf.setCloud18ACRValues(q)
+	page, _, err := w.do(http.MethodGet, issuer+"/protocol/openid-connect/auth?"+q.Encode(), nil)
+	if err != nil {
 		return a, fmt.Errorf("Cloud18: %w", err)
+	}
+	if w.code == "" && kcOTPFormRe.MatchString(page) {
+		return a, ErrCloud18SecondFactor
 	}
 	if w.code == "" {
 		return a, fmt.Errorf("the realm gave no code to client %s", ConstCloud18LoginClientID)
@@ -306,12 +337,16 @@ func (conf *Config) VerifyCloud18Token(raw string) (Cloud18User, error) {
 		Email         string `json:"email"`
 		EmailVerified bool   `json:"email_verified"`
 		Name          string `json:"name"`
+		ACR           string `json:"acr"`
 	}
 	if err := t.Claims(&c); err != nil {
 		return u, fmt.Errorf("%w: %s", ErrCloud18TokenRefused, err)
 	}
 	if c.Email == "" || !c.EmailVerified {
 		return u, fmt.Errorf("%w: no verified email", ErrCloud18TokenRefused)
+	}
+	if want := conf.Cloud18LoginACRValues(); len(want) > 0 && !slices.Contains(want, c.ACR) {
+		return u, fmt.Errorf("%w: authentication level %q, cloud18-login-acr asks %s", ErrCloud18TokenRefused, c.ACR, strings.Join(want, " or "))
 	}
 	return Cloud18User{Email: strings.ToLower(c.Email), Name: c.Name, Expires: t.Expiry}, nil
 }
@@ -494,6 +529,7 @@ func (conf *Config) Cloud18SSOAuthorizeURL(public, state, challenge string, mode
 	if mode.Hint != "" {
 		q.Set("login_hint", mode.Hint)
 	}
+	conf.setCloud18ACRValues(q)
 	endpoint := "/protocol/openid-connect/auth?"
 	switch {
 	case mode.SignUp:
