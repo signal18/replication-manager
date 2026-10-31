@@ -54,10 +54,30 @@ type MarketplaceArchiveOffer struct {
 	RetrievalCostEurGib *float64 `json:"retrievalCostEurGib"`
 }
 
+// MarketplaceVaultOffer is a vault offer of the marketplace catalogue
+// (.pull/marketplace-vault.json, #2227): a Vault a Cloud18-registered instance writes its
+// clusters' secrets to, signed in with the instance's Cloud18 identity (jwt), no setting to
+// type. Each cluster gets it as a vault entry, off until its sponsor turns it on.
+type MarketplaceVaultOffer struct {
+	Name    string `json:"name"`
+	Title   string `json:"title,omitempty"`
+	Partner string `json:"partner"`
+	Address string `json:"address"`
+	Mount   string `json:"mount,omitempty"` // the KV v2 mount, kv when empty
+	// Role is the jwt role; empty, the realm's client id (ConstCloud18IdentityClientID)
+	Role string `json:"role,omitempty"`
+	// PathPrefix is the instance's folder in the vault; empty, repman fills
+	// <cloud18-domain>/<cloud18-sub-domain>-<cloud18-sub-domain-zone>, the instance's URI
+	PathPrefix string `json:"pathPrefix,omitempty"`
+	Dc         string `json:"dc,omitempty"`
+	DcLocation string `json:"dcLocation,omitempty"`
+}
+
 // MarketplaceCatalogue is the back-office's catalogue as an instance holds it.
 type MarketplaceCatalogue struct {
 	S3       []MarketplaceS3           `json:"s3"`
 	Archives []MarketplaceArchiveOffer `json:"archives"`
+	Vaults   []MarketplaceVaultOffer   `json:"vaults"`
 }
 
 // SameStorage: the S3 provider is this catalogue storage: the same endpoint, and the Cloud18

@@ -29,7 +29,6 @@ import (
 	"time"
 
 	"github.com/bluele/logrus_slack"
-	vault "github.com/hashicorp/vault/api"
 
 	"github.com/pelletier/go-toml"
 	"github.com/signal18/replication-manager/cluster/configurator"
@@ -564,6 +563,8 @@ type Cluster struct {
 	credChainMu             sync.Mutex       `json:"-"`
 	secretVersionStoreMu    sync.Mutex       `json:"-"`
 	secretVersionStoreDirty bool             `json:"-"`
+	// secretKv: the versions written to the credential store entries (#2227)
+	secretKv secretKvStores `json:"-"`
 
 	// archiveOps: archive name -> a running remove, or its error (#2091)
 	archiveOps   map[string]string `json:"-"`
@@ -736,6 +737,8 @@ func (cluster *Cluster) Init(confs *config.ConfVersion, cfgGroup string, tlog *s
 	*cluster.Conf = confs.ConfInit
 	// the archive list, migrated from backup-archive-mode / backup-restic-* (#2077)
 	cluster.Conf.MigrateArchives()
+	// the credential store entries, vault-* migrated into vault-default (#2227)
+	cluster.Conf.MigrateSecretKvs()
 	// the cluster's own scheduler-jobs-exec-remote, not the map parsed for the defaults
 	cluster.Conf.ParseJobsExecOverrides()
 
@@ -881,6 +884,12 @@ func (cluster *Cluster) InitFromConf() {
 	cluster.ensureCloud18Provider() // registered to Cloud18: the Cloud18 storage, SSO (#2091)
 	cluster.LoadArchivePlugins()    // the external archive plugins' manifests, once per process (#2091)
 
+	// the newest version the vault entries hold, read once before monitoring begins, for
+	// the secrets the local file does not version (#2227 rule 1b, bounded); first, a
+	// credential edited in a config file since the last start (rule 9)
+	cluster.takeConfigFileCredentials()
+	cluster.CredentialChain().Refresh()
+	cluster.ReadVaultsAtStart()
 	cluster.SetClusterCredentialsFromConfig()
 	cluster.LoadAPIUsers()
 	cluster.EnsureSystemServiceUser() // `system` API-key service account (derived key) for the app/proxy compute sensor
@@ -1235,7 +1244,6 @@ func (cluster *Cluster) trackTickGoroutine(fn func()) {
 // reloadMu can wrap it with a plain defer (see Run()) without reformatting
 // the ~225-line body itself.
 func (cluster *Cluster) tickBody() {
-	cluster.ReconcileSecretVersionStore()
 	cluster.ServerIdList = cluster.GetDBServerIdList()
 	cluster.ProxyIdList = cluster.GetProxyServerIdList()
 	cluster.AppIdList = cluster.GetAppServerIdList()
@@ -1521,6 +1529,8 @@ func (cluster *Cluster) tickBody() {
 		// a failover is evaluated: CheckFailed returns early without a master (#2191)
 		cluster.IsSameWsrepUUID()
 		cluster.CheckReplicationTLS()
+		// the credential store entries: full passes, stores behind, queue drops (#2227)
+		cluster.CheckSecretKvStores()
 		// Run generic log-tailer plugin checks (errorlog / sqlerrorlog / slowlog 24h)
 		cluster.CheckLogPlugins()
 		// Replication plugins: supervised on the active monitor only (#2015)
@@ -2111,7 +2121,10 @@ func (cluster *Cluster) CredentialChain() *credstore.Chain {
 	cluster.credChainMu.Lock()
 	defer cluster.credChainMu.Unlock()
 	if cluster.credChain == nil || cluster.credChain.Conf() != cluster.Conf {
-		cluster.credChain = credstore.NewConfigChain(cluster.Conf, cluster.Save)
+		// the version store first: the config keeps the starting value (#2227 rule 1)
+		cluster.credChain = credstore.NewVersionedChain(cluster.Conf, cluster.Save, cluster.versionStore())
+		// each change is a version in every active store, queued after the chain's lock (#2227)
+		cluster.credChain.OnSet(cluster.onCredentialChange)
 	}
 	return cluster.credChain
 }
@@ -2200,6 +2213,9 @@ func (cluster *Cluster) SaveCallBack() error {
 		return err
 	}
 
+	// the local versioned file of the secrets, written here only (#2227 rule 2, T25)
+	cluster.ReconcileSecretVersionStore()
+
 	has_changed := false
 
 	if cluster.Conf.ConfRewrite {
@@ -2208,6 +2224,8 @@ func (cluster *Cluster) SaveCallBack() error {
 
 		// a setter changed a BackupRestic* field: archive 1 carries it into the save (#2077)
 		cluster.Conf.SyncArchiveFromConfig()
+		// a setter or inject.toml changed a Vault* field: the primary Vault entry carries it (#2227)
+		cluster.Conf.SyncSecretKvFromConfig()
 
 		// Save the main configuration file
 		changed, err := cluster.SaveConfigFile()
@@ -2329,10 +2347,18 @@ func (cluster *Cluster) SaveConfigFile() (bool, error) {
 		}
 		_, dynamic := cluster.Conf.GetDynamicFlag(key)
 		_, secret := cluster.Conf.Secrets.Lookup(key)
-		if ok || config.IsArchiveLegacyKey(key) || cluster.Conf.ArchiveHoldsSecret(key) {
+		if ok || config.IsArchiveLegacyKey(key) || cluster.Conf.ArchiveHoldsSecret(key) || cluster.Conf.SecretKvHoldsLegacyKey(key) {
 			// a legacy archive key is carried by the archive list (#2077), a secret the
-			// connected archive holds by its entry (#2088)
+			// connected archive holds by its entry (#2088), a vault-* key by the primary
+			// Vault entry (#2227)
 			s.Delete(key)
+		} else if isVersionedKey(key) {
+			// a versioned secret: the config keeps its starting value forever, the current
+			// one lives in the versioned stores (#2227 rule 1)
+			s.Delete(key)
+			if raw, ok := cluster.Conf.GetDynamicFlag(key); ok && raw != nil && fmt.Sprintf("%v", raw) != "" {
+				buf.WriteString(key + " = \"" + cluster.startingValueEncrypted(fmt.Sprintf("%v", raw)) + "\"\n")
+			}
 		} else if secret && dynamic {
 			// a secret the dynamic config store holds (#2075): written whatever its raw
 			// field says, a value set at runtime (rotation, API) survives the restart
@@ -2364,6 +2390,16 @@ func (cluster *Cluster) SaveConfigFile() (bool, error) {
 			return false, err
 		}
 		buf.WriteString(archives)
+	}
+
+	// the credential store entries, unless a config file pins them (#2227)
+	if _, pinned := cluster.Conf.GetImmuableFlag("secret-kv"); !pinned {
+		stores, err := cluster.Conf.SecretKvsToml("saved-" + cluster.Name)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Error rendering the credential store list: %s", err)
+			return false, err
+		}
+		buf.WriteString(stores)
 	}
 
 	// the S3 provider list, unless the config does not keep it (#2155)
@@ -2404,7 +2440,10 @@ func (cluster *Cluster) SaveImmutableConfig() (bool, error) {
 	for _, key := range keys {
 		val, _ := cluster.Conf.GetImmuableFlag(key)
 		_, ok := cluster.Conf.Secrets.Lookup(key)
-		if ok {
+		if ok && isVersionedKey(key) {
+			// the file's starting value, never the current one (#2227 rule 1)
+			buf.WriteString(key + " = \"" + cluster.startingValueEncrypted(fmt.Sprintf("%v", val)) + "\"\n")
+		} else if ok {
 			encrypt_val := cluster.GetEncryptedValueFromMemory(key)
 			buf.WriteString(key + " = \"" + encrypt_val + "\"\n")
 		} else {
@@ -2711,6 +2750,7 @@ func (cluster *Cluster) ReloadConfig(conf config.Config) {
 	cluster.Lock()
 	*cluster.Conf = conf
 	cluster.Conf.MigrateArchives()
+	cluster.Conf.MigrateSecretKvs()
 	cluster.Conf.ParseJobsExecOverrides()
 	cluster.Unlock()
 	// the backups already read glued to the archive list as the config is (#2091)
@@ -3765,35 +3805,19 @@ func (cluster *Cluster) ResetStates() {
 	//cluster.StateMachine.RemoveFailoverState()
 }
 
+// DecryptSecretsFromVault replaces each credential whose config value is a Vault path by the
+// value the primary Vault holds there (#2227: one sign-in for all of them).
 func (cluster *Cluster) DecryptSecretsFromVault() {
-	// Only proceed if Vault is being used
 	if !cluster.Conf.IsVaultUsed() {
 		return
 	}
-
-	for k, v := range cluster.Conf.Secrets.Snapshot() {
-		origin_value := v.Value
-		var secret config.Secret
-		secret.Value = fmt.Sprintf("%v", origin_value)
-		if cluster.Conf.IsPath(secret.Value) {
-			//	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault,LvlInfo, "Decrypting all the secret variables on Vault")
-			vault_config := vault.DefaultConfig()
-			vault_config.Address = cluster.Conf.VaultServerAddr
-			client, err := cluster.Conf.GetVaultConnection()
-			if err == nil {
-				if cluster.Conf.VaultMode == VaultConfigStoreV2 {
-					vault_value, err := cluster.Conf.GetVaultCredentials(client, secret.Value, k)
-					if err != nil {
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, config.LvlWarn, "Unable to get %s Vault secret: %v", k, err)
-					} else if vault_value != "" {
-						secret.Value = vault_value
-					}
-				}
-			} else {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, config.LvlErr, "Unable to initialize AppRole auth method: %v", err)
-			}
-			cluster.Conf.Secrets.Set(k, secret)
-		}
+	errs, err := cluster.primaryVault().Resolve(context.Background(), cluster.Conf)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, config.LvlErr, "Unable to sign in to Vault (%s): %v", cluster.Conf.VaultAuth, err)
+		return
+	}
+	for k, err := range errs {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, config.LvlWarn, "Unable to get %s Vault secret: %v", k, err)
 	}
 }
 

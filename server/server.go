@@ -441,7 +441,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.ConfRewrite, "monitoring-save-config", true, "Save configuration changes to <monitoring-datadir>/<cluster_name> ")
 	flags.BoolVar(&conf.ConfRestoreOnStart, "monitoring-restore-config-on-start", false, "Wipe working directory and restore config")
 	flags.BoolVar(&conf.MonitoringMergeConfigOnStart, "monitoring-merge-config-on-start", false, "Merge configuration changes to source config.toml file (/etc or other source location) ")
-	flags.BoolVar(&conf.MonitoringSecretVersioning, "monitoring-secret-versioning", false, "Track cluster-local secret hash versions")
+	flags.BoolVar(&conf.MonitoringSecretVersioning, "monitoring-secret-versioning", true, "Keep the versions of the database and proxy credentials, encrypted, in the cluster's local file: a credential change or rotation becomes a version (needs the encryption key)")
 	flags.BoolVar(&conf.MonitoringSecretVersioningAutoPrune, "monitoring-secret-versioning-auto-prune", false, "Automatically prune tracked secret versions during reconciliation")
 	flags.IntVar(&conf.MonitoringSecretVersioningKeepLast, "monitoring-secret-versioning-keep-last", 0, "Keep only the last N versions per secret key when auto-prune is enabled (0 = unlimited)")
 	flags.Int64Var(&conf.MonitoringTicker, "monitoring-ticker", 2, "Monitoring interval in seconds")
@@ -761,6 +761,10 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.VaultMount, "vault-mount", "kv", "Vault mount for the secret")
 	flags.StringVar(&conf.VaultAuth, "vault-auth", "approle", "Vault auth method : approle|jwt|userpass|ldap|token|github|alicloud|aws|azure|gcp|kerberos|kubernetes|radius (jwt: the Cloud18 identity token, role vault-role-id, else replication-manager)")
 	flags.StringVar(&conf.VaultToken, "vault-token", "", "Vault Token")
+	flags.IntVar(&conf.SecretKvQueueLimit, "secret-kv-queue-limit", 1000, "Max secret versions waiting to be written to the credential store entries (secret-kv); the oldest are dropped once exceeded, and a full pass writes every secret again once the queue drains. <= 0 falls back to this default, never unbounded")
+	flags.IntVar(&conf.SecretKvWriteTimeout, "secret-kv-write-timeout", 10, "Timeout in seconds of each write (and of the login) to a credential store entry")
+	flags.IntVar(&conf.SecretKvStartTimeout, "secret-kv-start-timeout", 3, "Timeout in seconds of the read of the vault entries at a cluster's start, for the secrets the local versioned file does not hold (versioning off, or no version yet); past it the cluster starts on what it has and the entry is behind (WARN0269)")
+	flags.IntVar(&conf.SecretKvRetryInterval, "secret-kv-retry-interval", 60, "Seconds between two tries of the writes to a credential store entry that failed")
 	flags.BoolVar(&conf.LogVault, "log-vault", true, "Log vault debug")
 	flags.IntVar(&conf.LogVaultLevel, "log-level-vault", 1, "Log level for vault")
 
@@ -3697,6 +3701,9 @@ func (repman *ReplicationManager) initCluster(clusterName string) (*cluster.Clus
 	// Reload Users
 	repman.currentCluster.LoadAPIUsers()
 	repman.currentCluster.SaveAcls()
+	// the marketplace's vault offers, off until the sponsor turns them on (#2227): here for
+	// the clusters of the startup too, whose catalogue was read before they existed
+	repman.currentCluster.EnsureMarketplaceVaults(repman.MarketplaceCatalogue().Vaults)
 	repman.ConfigManager.UpdateLoggerConfig(clusterName, repman.currentCluster.Conf)
 	repman.ConfigManager.SaveConfig(repman.currentCluster, true)
 

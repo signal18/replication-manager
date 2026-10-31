@@ -53,7 +53,7 @@ func TestPublishedJSON(t *testing.T) {
 	view.Refusal.Store("versioning off")
 	view.Credentials.Store([]CredentialInfo{{Key: "db-servers-credential", User: "root", Source: "dynamic-config"}})
 	out, _ = json.Marshal(&view)
-	want := `{"rotatePasswordsRefusal":"versioning off","credentials":[{"key":"db-servers-credential","user":"root","source":"dynamic-config","refusal":""}]}`
+	want := `{"rotatePasswordsRefusal":"versioning off","credentials":[{"key":"db-servers-credential","user":"root","source":"dynamic-config","refusal":"","initial":"","versions":0,"lastChange":"0001-01-01T00:00:00Z"}]}`
 	if string(out) != want {
 		t.Fatalf("got %s\nwant %s", out, want)
 	}

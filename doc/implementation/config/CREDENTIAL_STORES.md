@@ -1,8 +1,13 @@
 # Credential stores: one interface for config, local store and Vault (design)
 
-Status: **design, not implemented** (2026-10-16). Issues: #2017 (cause), #2041 (local
-store wins at start), #2057 (Vault settings and setter). Related laws: T2 (one way to do
-a thing), T25 (tracked files written only by the save callback).
+Status: step 1 (`secret_kv-config`, the chain) implemented in `config/credstore`; versioned
+stores (#2227) designed and closed 2026-10-28: rules 1-12, 15, 16 implemented with the API,
+the GUI and the Cloud18 vault offer; rule 14 (the vault's policies) and the offer's catalogue
+file are the back-office's, to do; rule 13 is out of #2227 (branch
+`feat/vault-secrets-copy-2227`, not merged):
+see "Implementation" below. Issues: #2017 (cause), #2041 (local store wins at start), #2057
+(Vault settings and setter), #2227 (versioned stores). Related laws: T2 (one way to do a
+thing), T25 (tracked files written only by the save callback).
 
 ## Why
 
@@ -48,6 +53,218 @@ type CredentialStore interface {
 | `LocalSecretStore` (today `SecretVersionStore`) | `secret_kv-localstore`, external | encrypted versions | yes, with an encryption key and `monitoring-secret-versioning` on | **yes** | no |
 | `VaultKV` (`VaultConfigStoreV2`) | `secret_kv-vault`, external, **enterprise** | the value at a path | `Patch` at the path, as the rotation already does | **yes** (Vault versions) | no |
 | `VaultDbEngine` (`VaultDbEngine`) | `secret_kv-vault`, external, **enterprise** | nothing repman sets | refused | yes | **yes** (`rotate-role`) |
+
+## Versioned stores: every secret in every active store (#2227)
+
+Design closed 2026-10-28. It replaces the single store of "the four chains" below for the
+choice of where a credential lives; the interface, the chain's one write point and the
+cache stay.
+
+### The stores
+
+Two plugins:
+
+| Plugin | What it is | Versions |
+|---|---|---|
+| `secret_kv-config` | built in, always there: the config (the seed) plus the local versioned file `cluster.d/<cluster>_secret_store.json` | when `monitoring-secret-versioning` is on, bounded by `monitoring-secret-versioning-keep-last` |
+| `secret_kv-vault` | n entries `[[<cluster>.secret-kv]]`, each on or off: address, mount, auth (`approle`, `jwt` with the instance's Cloud18 identity), mode (`config_store_v2`, `database_engine`) | always (KV v2); repman sets `max-versions` to the same keep-last |
+
+The local versioned file is part of `secret_kv-config`: the separate `secret_kv-localstore`
+plugin of the sections below is not built, and the enterprise tiers there are left aside for now.
+
+The vault entries follow the same model as archives and S3 providers (`config/plugin_entry.go`): name, plugin,
+settings (secrets encrypted, F9), on/off, forms drawn from the manifest.
+
+### The rules
+
+1. **The config keeps the starting value forever**: the first value, known at provisioning
+   or typed by an operator (`root:pass1`). A rotation or a change never writes the config:
+   the current value and its versions live only in the active stores. When no active store
+   keeps versions (versioning off, no vault), a change is refused as a rotation is (rule 9),
+   so the config never holds anything else. `monitoring-secret-versioning` is on by default,
+   so a default install keeps versions locally and takes changes; turning it off without a
+   vault entry makes every credential change and rotation refused. A version is kept
+   encrypted only (F9: the file is in the config push): with versioning on and no encryption
+   key, the version store refuses a change (`ErrNoEncryptionKey`, before any write) and adds
+   no version from a config file or a vault read, never a cleartext value; the GUI shows the
+   refusal on each credential. Versioning off, the file is not written and a vault entry
+   keeps its values server side: no key is needed. Provisioning, a reprovision and the regtests
+   read the current version, never the starting value; the GUI shows it as the initial
+   value.
+1b. **Every reload restores the last value**: a restart, a config reload, a tag change, a
+   peer replay, `SetClusterCredentialsFromConfig` all go through `chain.Refresh()`, which
+   applies the newest version of the active stores; the config's starting value only when
+   no store holds one (before the first change). This is what keeps #2017 fixed.
+   At a cluster's start only, before monitoring begins, a secret the local file does not
+   version (versioning off, or no version yet) is read once from the enabled vault entries
+   (`Cluster.ReadVaultsAtStart`: a database engine first, else the newest version), bounded
+   by `secret-kv-start-timeout` (3 s): the value becomes the current one with its own time,
+   no new version. Past the timeout or on a failure the cluster starts on what it has, the
+   entry is behind (WARN0271) and the full pass catches up. Never on the monitor tick.
+2. **Every write is a version in every active store.** The version is made in memory at the
+   write, with its time and writing instance; the file is written only by the cluster's save
+   callback after `cluster.Save()` (T25) and is in the config git push (encrypted values
+   only, F9; versions change only at rotations and changes, T17). Each vault through a bounded queue (T18: the latest value per key wins, a hard cap,
+   drops counted) and a worker with a timeout per write, after the chain's lock: it never
+   blocks the write, a provisioning or the monitor (F2). Only the active monitor writes.
+3. **Read**: the newest version wins across the stores (timestamp and writing instance,
+   the event log's LWW rule); the seed last. A store behind the others is a tracked state
+   (WARN0271, security domain, per entry) and gets the winning version at the next pass.
+4. **Full pass**: when a store is turned on, at start, and after queue drops (WARN0272).
+   It runs in the worker, reads each store's current version and writes only when it
+   differs: no version churn, no blocking read at load (the one exception is the bounded
+   read at start of rule 1b).
+5. **Paths are computed by repman, never typed**:
+   ```
+   <mount>/<path-prefix>/<cluster>/
+       databases/<server name>/<key>
+       proxies/<proxy name>/<key>
+       apps/<app name>/<key>
+       archives/<archive name>/<key>
+   ```
+   `path-prefix` is a setting of the vault entry, empty by default (then
+   `<mount>/<cluster>/...`): the client lays its own Vault out with it; on Cloud18 the
+   marketplace entry fills it with `<domain>/<subdomain>`. An active monitor and its standby
+   share the entry, so they write the same folder. A secret the whole cluster shares (the database credential) is
+   written under every server that uses it. Each key keeps the setting's name.
+6. **What is a secret of the cluster**: the chain's credentials, the proxy passwords, the
+   app secrets (generated password, secret variables, database user), the archive secrets.
+   Instance secrets (git token, OAuth secret, the vault logins) stay instance-local and are
+   never copied.
+7. **Orchestrator objects are consumers, not stores**: the OpenSVC `sec` object and the
+   Kubernetes Secret get the current version at provisioning and after each rotation, as
+   today. Their writers report the values they set (`CopySecret`); nothing reads them back.
+8. **`database_engine`** is a vault store that generates: a rotation asks Vault
+   (`rotate-role`); the value it returns is written as a new version to the other active
+   stores; it is read from the engine first.
+9. **Rotation** is allowed when an active store keeps versions (the file with versioning
+   on, or any vault entry); refused otherwise, as today (`canRotatePasswordsOutsideVault`,
+   its check becoming "an active store keeps versions"). A value set in a config file
+   (immutable) is a starting value like the others: with a store keeping versions it is
+   rotated and changed as versions, the newest version wins over it at a restart. When an
+   operator edits it in the file, that edit is the current version at the next start: the
+   local file keeps the value last seen in the config file (a version marked
+   `from_config_file`, never pruned away) to tell the edit. With vault entries only
+   (versioning off) nothing keeps that value and an edit is not told: the newest version
+   in the vaults wins. Turning versioning or a store off is allowed; it only brings the
+   refusal back.
+10. **Turning a store off** stops its versions and leaves what it holds. Repman never
+    deletes a secret; a removed object's secrets stay, a renamed one writes under its new
+    name.
+11. **Peers (active and standby)**: the file travels in the config git like
+    `<cluster>.toml`; the peer reads it from there, so both see the same history. Vaults
+    are shared and need nothing more.
+12. **Migration, with the release (no toggle)**: the `vault-*` keys become the entry
+    `vault-default`, `database_engine` included. A config value that is a Vault path is
+    read once at load as the seed and written through the chain. A path pinned in a file
+    is read at each start, as today, and a config state asks the operator to remove the
+    pin. `SetSecretsToVault` (the old flat copy) is removed.
+13. **repman's key**: OUT of #2227, a separate key-rotation issue: repman has no path that
+    changes its encryption key today (it is read at start; `keygen --overwrite` replaces the
+    file offline and re-encrypts nothing). The vaults encrypt their own data.
+14. **Access**: an instance's vault policy writes its own clusters' spaces only; people
+    read through the space policies (on the Cloud18 vault: the sponsor, the owner, the
+    administrators).
+15. **Never a value in a log** (F10); the log line names the store, path and key.
+16. **Accepted race**: an API change made while a newer remote value is being applied may
+    skip its vault writes; the next full pass repairs it.
+
+### Regtest (T13)
+
+MariaDB and MySQL in Docker: provision with `pass1`; rotate (`pass2`); reload the config;
+add then drop a tag; restart repman. After each step: every server monitored with no auth
+error, logged in with `pass2`; the config still holds `pass1`; the file holds both
+versions. Variant with a Vault container and a vault entry on: the same, and the vault
+holds `pass2` at `databases/<server>/db-servers-credential`.
+
+Implemented as `testCredentialVersionsRotation` (in the default list, MariaDB and MySQL,
+`monitoring-secret-versioning` on) and `testCredentialVersionsRotationVault` (run by name on
+a cluster whose config enables a `[[<cluster>.secret-kv]]` on a Vault or OpenBao dev
+container) in `regtest/test_credential_versions_rotation.go`. A repman restart is simulated
+in-process as `testCredentialPersistTagReload` does: the config the server builds from the
+files on disk, and the chain a start builds over it with the local file
+(`Cluster.ChainAtStart`). A credential set in a config file is rotated as well (rule 9).
+
+### Implementation (#2227)
+
+| Piece | Where |
+|---|---|
+| entry list, manifests, migration of `vault-*` (database engine included) into `vault-default`, the flat Vault fields reset | `config/secret_kv.go` (`MigrateSecretKvs`, `SyncSecretKvFromConfig`) |
+| helpers shared with archives and S3 providers | `config/plugin_entry.go` |
+| the versions in memory (head of the cluster's chain: the config keeps the starting value; a change refused when no store keeps versions), the file's version format (`written_by` added) | `config/credstore/versions.go` (`VersionStore`), `cluster/secret_version_store.go` |
+| the file written by the save callback only, staged in the config push | `Cluster.ReconcileSecretVersionStore` (called by `SaveCallBack`), `config/manager` `ClusterStagedJSONFiles` |
+| the one Vault code: approle/jwt sign-in, KV v2 versions (`written-at`, `written-by` fields, `max-versions` at a secret's first write), database engine (`rotate-role`, `static-creds`) | `config/credstore/vault.go` (`VaultKV`) |
+| bounded queue (latest version per secret, drops counted), `Version.Newer` (LWW) | `config/credstore/store_queue.go` |
+| chain hook after its lock (`Chain.OnSet`) | `config/credstore/credstore.go` |
+| layout, writes, worker, full pass, seed of bare paths, states, database engine rotation | `cluster/cluster_secret_kv.go` |
+| fake Vault for the tests | `config/credstore/vaultfake` |
+
+- **Settings** (TOML, T16): `[[<cluster>.secret-kv]]` with `name`, `plugin`, `enabled` and
+  `address`, `mount`, `path-prefix`, `mode`, `auth`, `role-id`, `secret-id` (encrypted, left out without
+  an encryption key); `secret-kv-queue-limit` (1000), `secret-kv-write-timeout` (10 s),
+  `secret-kv-retry-interval` (60 s), `secret-kv-start-timeout` (3 s). An entry's `role-id` and `secret-id` are instance-local
+  (never replayed), as `vault-role-id` and `vault-secret-id`.
+- **Versioned secrets** (rule 1): the database credentials (`db-servers-credential`,
+  `replication-credential`, `monitoring-write-heartbeat-credential`) and the proxy
+  credentials. The archive secrets stay in their archive's entry, the other secrets
+  (instance secrets, `backup-verification-credential`...) in the config as before; the file
+  still records their history at each save.
+- **The file** (`secret_kv-config`, `<cluster>/secret_store.json`): loaded at the cluster's
+  start when versioning is on, written by the save callback only (T25), atomically, when a
+  version changed; a standby merges the file the config pull brings (versions known by time
+  and writer) and never writes it. A remote newer version is inserted with its own time and
+  writer (no new version, rule 3).
+- **Secret-store CLI tools** (`server/server_secret_store.go`): `secret-store-restore`
+  restores a versioned secret as a new version of the file (offline: appended atomically,
+  `AppendSecretVersionFile`; with `--apply-runtime`: through the running cluster's chain and
+  its save), never into `cluster.d/<cluster>.toml`, so the config keeps its starting value;
+  the other secrets go to the config file as before. `secret-store-prune` prunes a loaded
+  cluster's version store (the save writes the file), offline the file as before.
+  `secret-store-copy` is unchanged (an export copy).
+- **Orchestrator and app writers** (rule 7): `reportOrchestratorSecret` after each
+  successful OpenSVC `CreateSecretKeyValue*` and `k8sPatchSecretValues` (the root password
+  under every database server, the shard proxy password under every shard proxy, an app's
+  secret variables, git and S3 secrets under `apps/<app>`), and the app's generated password
+  (`apps/<app>/app-random-password`). The instance's secrets are never copied.
+- **API** (`server/api_secret_kv.go`, T6): `GET /api/clusters/{cluster}/secret-kv-list`
+  (entries with `secretsSet` only, per-entry state: last write and behind/WARN0271, the
+  queue's drops/WARN0272, the manifests, the copy settings, the credentials' initial source,
+  current source, version count and last change); `POST .../secret-kv-actions/add`,
+  `edit/{entry}`, `enable/{entry}`, `disable/{entry}`, `remove/{entry}` (409 when a config
+  file sets `secret-kv`). ACL: `cluster-settings` for all; the list, enable and disable also
+  `db-config-flag`, the grant a cluster's sponsor holds by default, so the sponsor turns an
+  entry on or off. `secret-kv-queue-limit`, `-write-timeout`, `-retry-interval`,
+  `-start-timeout` through the settings setter. No MCP tool: the archive entries have none.
+- **GUI** (`share/dashboard_react`, Database Credentials): `SecretKvEntries.jsx` (entries,
+  switch, state pill, form from the manifest with the archives' `SettingField`), each
+  credential's current and initial source, version count and last change.
+- **Cloud18 vault offer**: the catalogue file `.pull/marketplace-vault.json`, a JSON array
+  the back-office pushes like `marketplace-archive.json`:
+  ```json
+  [{"name": "vault-fr", "title": "Cloud18 vault", "partner": "signal18",
+    "address": "https://vault.example:8200", "mount": "kv", "role": "",
+    "pathPrefix": "", "dc": "", "dcLocation": ""}]
+  ```
+  `mount` defaults to `kv`, `role` to the realm's client id, `pathPrefix` to the instance's
+  URI `<domain>/<sub-domain>-<zone>` (as the buckets). Each Cloud18-registered cluster gets
+  `cloud18-<name>`, sign-in `jwt`, **off**: the sponsor turns it on; a new catalogue updates
+  its address, mount, role and prefix, never its switch. The entry records its origin
+  (`offer = "<name>"` in the saved config); the list API gives `offer` (name, title, partner
+  from the catalogue; null for the user's own entries); its edit and remove are refused (409:
+  the back-office manages its settings), only enable and disable remain; a user's own entry
+  cannot take a `cloud18-` name. The GUI shows a Cloud18 badge with the offer's title and
+  partner and no Edit or Remove. The back-office side (the file, the
+  vault's jwt role and the space policies of rule 14) is not built yet.
+- **States**: WARN0271 (security, per entry: behind, or failing), WARN0272 (security: drops
+  not repaired), WARN0273 (config, per key: a Vault path pinned in a file).
+- **Writers to wire later** call `Cluster.CopySecret(kind, object, key, value)`.
+
+### The Cloud18 vault entry
+
+On a Cloud18-registered instance the marketplace catalogue offers a `secret_kv-vault` entry
+for the Cloud18 vault, as it offers Cloud18 storages for archives: its address comes with
+the registration, it signs in with the instance's Cloud18 identity (`jwt`, #2159), no
+setting to type. The sponsor turns it on per cluster.
 
 ## Packaging: the `secret_kv` plugin family
 
@@ -106,7 +323,9 @@ last, because it is the starting value.
   rotates).
 - **A pin is a starting value.** A store records the pinned value it last saw. When the
   operator edits that value in the file, the file wins and its value goes into the store
-  as a new version: the operator's intent beats an older stored value.
+  as a new version: the operator's intent beats an older stored value. Done by
+  `VersionStore.TakeConfigFileValue` at a cluster's start (`takeConfigFileCredentials`,
+  before the chain is read), versioning on.
 
 ## The four cases are four chains
 
@@ -114,7 +333,7 @@ last, because it is the starting value.
 |---|---|---|---|
 | **Vault**: `VaultKV` or `VaultDbEngine` → `DynamicConfig` → `PinnedConfig` | from Vault, at the path the config gives, pinned or not | KV: a new Vault version. Database engine: refused | KV: repman writes a new version. Database engine: Vault rotates |
 | **Local**: `LocalSecretStore` → `DynamicConfig` → `PinnedConfig` | the store's latest version, else the config | a new version in the store, pinned or not | allowed (versioned) |
-| **No store, not pinned**: `DynamicConfig` → `PinnedConfig` | `<cluster>.toml` | saved to `<cluster>.toml` | refused (no history) |
+| **No store, not pinned**: `DynamicConfig` → `PinnedConfig` | `<cluster>.toml` | refused (rule 1: the config keeps the starting value) | refused (no history) |
 | **No store, pinned**: `PinnedConfig` | the file | refused: the file wins at restart | refused |
 
 So:
@@ -156,13 +375,12 @@ One epic issue for the interface, with these steps:
    the chain and the cache; every setter on `chain.Set`: fixes #2017 (its test must
    pass), plus a set → tag → save → reload test and a `-race` test of concurrent setters;
 2. the external plugin wire and its loader (signature, timeouts, state when missing);
-3. `secret_kv-localstore` from `SecretVersionStore`, and the start order (#2041);
-4. `secret_kv-vault` (enterprise) from the Vault code, and the Vault setter (#2057).
+3. the local versioned file inside `secret_kv-config` (no separate plugin), and the start order (#2041);
+4. `secret_kv-vault` (enterprise) from the Vault code, and the Vault setter (#2057);
+5. versioned stores: every secret in every active store, vault entries, the Cloud18 vault entry (#2227).
 
 ## Open questions
 
-- **The pin rule**: should an operator's edit of a pinned value always win over the
-  store (proposed), or should the store win and raise a state that the file differs?
 - **Proxy and other credentials** (`proxysql-password`, `haproxy-password`,
   `mail-smtp-password`, `backup-verification-credential`…): the same chain from step 1,
   or database and replication credentials first?

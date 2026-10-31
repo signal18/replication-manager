@@ -7,6 +7,7 @@ package credstore
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -418,5 +419,82 @@ func TestChainArchiveSecretsConcurrent(t *testing.T) {
 	case <-done:
 	case <-time.After(10 * time.Second):
 		t.Fatal("deadlock")
+	}
+}
+
+// #2227 rule 9: a value set in a config file is a starting value; the versions win over it
+// until an operator edits it in the file, and the edit is then the current version
+func TestTakeConfigFileValue(t *testing.T) {
+	conf := testConf()
+	conf.ImmuableFlagMap["replication-credential"] = "repl:file1"
+	vs := NewVersionStore(func() *config.Config { return conf }, func(k string) bool { return k == "replication-credential" }, nil, nil)
+	current := func() string { v, _ := vs.Latest("replication-credential"); return v.Value }
+
+	if err := vs.CanSet("replication-credential"); err != nil {
+		t.Fatalf("a key set in a config file is refused with a versioned store: %v", err)
+	}
+	if !vs.TakeConfigFileValue("replication-credential", "repl:file1") || current() != "repl:file1" {
+		t.Fatalf("first start: the file's value is version 1, got %q", current())
+	}
+	if err := vs.Set("replication-credential", "repl:rotated"); err != nil {
+		t.Fatal(err)
+	}
+	if vs.TakeConfigFileValue("replication-credential", "repl:file1") || current() != "repl:rotated" {
+		t.Fatalf("restart, file unchanged: the rotated version must win, got %q", current())
+	}
+	if !vs.TakeConfigFileValue("replication-credential", "repl:file2") || current() != "repl:file2" {
+		t.Fatalf("file edited: its value must be the current version, got %q", current())
+	}
+	if vs.TakeConfigFileValue("replication-credential", "repl:file2") || vs.Count("replication-credential") != 3 {
+		t.Fatalf("the same edit seen again makes no version: %d versions", vs.Count("replication-credential"))
+	}
+
+	// a file of versions made before the mark: the file's value is kept as seen, not current
+	legacy := NewVersionStore(func() *config.Config { return conf }, func(string) bool { return true }, nil, nil)
+	legacy.Load(map[string][]FileVersion{"replication-credential": {
+		{Version: 1, HashValue: conf.EncryptSecretValue("repl:old"), RotatedAt: "2026-01-01T00:00:00Z"},
+		{Version: 2, HashValue: conf.EncryptSecretValue("repl:new"), RotatedAt: "2026-01-02T00:00:00Z"},
+	}})
+	if legacy.TakeConfigFileValue("replication-credential", "repl:file1") {
+		t.Fatal("first sight with versions made the file's value current")
+	}
+	if v, _ := legacy.Latest("replication-credential"); v.Value != "repl:new" || legacy.Count("replication-credential") != 3 {
+		t.Fatalf("legacy: current %q, %d versions", v.Value, legacy.Count("replication-credential"))
+	}
+	file, _ := legacy.Export()
+	if !file["replication-credential"][0].FromConfigFile || file["replication-credential"][0].Version != 1 {
+		t.Fatalf("the seen value goes first: %+v", file["replication-credential"][0])
+	}
+}
+
+// F9: without the encryption key, EncryptSecretValue returns the value as it is: the store
+// refuses a change and adds no version, so no cleartext reaches the file the config push sends
+func TestVersionStoreWithoutKeyStoresNothing(t *testing.T) {
+	conf := testConf()
+	conf.MonitoringSecretVersioning = true // the local file is in use
+	conf.SecretKey = nil
+	conf.MonitoringKeyPath = filepath.Join(t.TempDir(), "no.key")
+	vs := NewVersionStore(func() *config.Config { return conf }, func(k string) bool { return k == "replication-credential" }, nil, nil)
+
+	err := vs.CanSet("replication-credential")
+	if !errors.Is(err, ErrNoEncryptionKey) {
+		t.Fatalf("CanSet without a key: %v, want ErrNoEncryptionKey", err)
+	}
+	if err := vs.Set("replication-credential", "repl:new"); !errors.Is(err, ErrNoEncryptionKey) {
+		t.Fatalf("Set without a key: %v", err)
+	}
+	if vs.TakeConfigFileValue("replication-credential", "repl:file") {
+		t.Fatal("a config file value became a version without a key")
+	}
+	vs.Insert("replication-credential", Version{Value: "repl:vault", At: time.Now()})
+	if n := vs.Count("replication-credential"); n != 0 {
+		t.Fatalf("%d versions stored without a key", n)
+	}
+
+	// versioning off: the file is not written, a vault entry keeps its values server side, no
+	// key is needed
+	conf.MonitoringSecretVersioning = false
+	if err := vs.CanSet("replication-credential"); err != nil {
+		t.Fatalf("versioning off, no key: %v, want no refusal", err)
 	}
 }

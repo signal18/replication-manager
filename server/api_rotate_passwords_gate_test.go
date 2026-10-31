@@ -23,7 +23,7 @@ func TestRespondPasswordRotationRefusedWithoutVersioning(t *testing.T) {
 	if w.Code != http.StatusConflict {
 		t.Fatalf("status %d, want 409", w.Code)
 	}
-	if body := w.Body.String(); !strings.HasPrefix(body, "Password rotation refused: monitoring-secret-versioning is off") {
+	if body := w.Body.String(); !strings.HasPrefix(body, "Password rotation refused: no credential store keeps versions: monitoring-secret-versioning is off") {
 		t.Fatalf("body %q", body)
 	}
 }

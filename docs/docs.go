@@ -11935,6 +11935,388 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/secret-kv-actions/add": {
+            "post": {
+                "description": "Adds a vault entry (plugin secret_kv-vault) from the settings of its manifest: address, mount, path-prefix, mode, auth, role-id, secret-id (written only). An enabled entry gets every version of every secret of the cluster, a full pass first.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterCredentials"
+                ],
+                "summary": "Add a credential store entry",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "name, settings, enabled",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/config.SecretKvSpec"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "name",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid entry",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "409": {
+                        "description": "The list is set by a config file",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/secret-kv-actions/disable/{entryName}": {
+            "post": {
+                "description": "The entry gets no more versions; what it holds stays. The cluster's sponsor may do it.",
+                "produces": [
+                    "text/plain"
+                ],
+                "tags": [
+                    "ClusterCredentials"
+                ],
+                "summary": "Turn a credential store entry off",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Entry Name",
+                        "name": "entryName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Credential store off",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Unknown entry",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "409": {
+                        "description": "The list is set by a config file",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/secret-kv-actions/edit/{entryName}": {
+            "post": {
+                "description": "Changes a vault entry's settings (an empty secret keeps the secret, unset clears names).",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterCredentials"
+                ],
+                "summary": "Edit a credential store entry",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Entry Name",
+                        "name": "entryName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "settings, unset, enabled",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/config.SecretKvSpec"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "name",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid entry",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "409": {
+                        "description": "The list is set by a config file, or the entry comes from a Cloud18 marketplace offer (its settings are the back-office's)",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/secret-kv-actions/enable/{entryName}": {
+            "post": {
+                "description": "The entry gets every version of every secret of the cluster, a full pass first. The cluster's sponsor may do it.",
+                "produces": [
+                    "text/plain"
+                ],
+                "tags": [
+                    "ClusterCredentials"
+                ],
+                "summary": "Turn a credential store entry on",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Entry Name",
+                        "name": "entryName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Credential store on",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Unknown entry",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "409": {
+                        "description": "The list is set by a config file",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/secret-kv-actions/remove/{entryName}": {
+            "post": {
+                "description": "Takes the entry out of the list. repman never deletes a secret: what the vault holds stays.",
+                "produces": [
+                    "text/plain"
+                ],
+                "tags": [
+                    "ClusterCredentials"
+                ],
+                "summary": "Remove a credential store entry",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Entry Name",
+                        "name": "entryName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Credential store removed",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Unknown entry",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "409": {
+                        "description": "The list is set by a config file, or the entry comes from a Cloud18 marketplace offer (its settings are the back-office's)",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/secret-kv-list": {
+            "get": {
+                "description": "The cluster's vault entries (secrets never returned, only the names of those set; offer: the Cloud18 marketplace offer an entry comes from, name, title and partner, null for the user's own), each one's state (last write, behind: WARN0271), the queue's drops (WARN0272), the plugins' manifests, the copy settings, and the database credentials' starting value source, current source, version count and refusal.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterCredentials"
+                ],
+                "summary": "List the credential store entries",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/cluster.SecretKvListResult"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/security/apply-fix": {
             "post": {
                 "consumes": [
@@ -27520,6 +27902,35 @@ const docTemplate = `{
                 }
             }
         },
+        "cluster.CredentialInfo": {
+            "type": "object",
+            "properties": {
+                "initial": {
+                    "description": "Initial is where the starting value is (#2227 rule 1): config-file, dynamic-config,\ndefault; Versions how many versions the versioned stores hold, LastChange the newest's time",
+                    "type": "string"
+                },
+                "key": {
+                    "type": "string"
+                },
+                "lastChange": {
+                    "type": "string"
+                },
+                "refusal": {
+                    "description": "why a change through the API is refused now, empty when allowed",
+                    "type": "string"
+                },
+                "source": {
+                    "description": "where the value comes from (credstore.Source*): versions (a version of the versioned stores), config-file (immutable), dynamic-config, runtime-config (monitoring-save-config off), default, vault",
+                    "type": "string"
+                },
+                "user": {
+                    "type": "string"
+                },
+                "versions": {
+                    "type": "integer"
+                }
+            }
+        },
         "cluster.Diff": {
             "type": "object",
             "properties": {
@@ -28071,6 +28482,68 @@ const docTemplate = `{
                 }
             }
         },
+        "cluster.SecretKvListResult": {
+            "type": "object",
+            "properties": {
+                "credentials": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/cluster.CredentialInfo"
+                    }
+                },
+                "dropped": {
+                    "type": "integer"
+                },
+                "dropsPending": {
+                    "description": "WARN0272",
+                    "type": "boolean"
+                },
+                "entries": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/config.SecretKvConfig"
+                    }
+                },
+                "pinned": {
+                    "description": "a config file sets the list: change it there",
+                    "type": "boolean"
+                },
+                "plugins": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/config.SecretKvPluginManifest"
+                    }
+                },
+                "queued": {
+                    "type": "integer"
+                },
+                "settings": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "integer"
+                    }
+                },
+                "states": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "$ref": "#/definitions/cluster.SecretKvState"
+                    }
+                }
+            }
+        },
+        "cluster.SecretKvState": {
+            "type": "object",
+            "properties": {
+                "behind": {
+                    "description": "why it is behind (WARN0271), empty when not",
+                    "type": "string"
+                },
+                "lastWrite": {
+                    "description": "its last successful write in this run",
+                    "type": "string"
+                }
+            }
+        },
         "cluster.SnapbackState": {
             "type": "object",
             "properties": {
@@ -28538,35 +29011,12 @@ const docTemplate = `{
                 "settings": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/config.ArchivePluginSetting"
+                        "$ref": "#/definitions/config.PluginSetting"
                     }
                 },
                 "tier": {
                     "description": "ConstArchiveTierEnterprise, \"\" for every plan",
                     "type": "string"
-                }
-            }
-        },
-        "config.ArchivePluginSetting": {
-            "type": "object",
-            "properties": {
-                "group": {
-                    "description": "ConstArchiveSettingGroup*, \"\" for the main settings",
-                    "type": "string"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "type": {
-                    "description": "ConstArchiveSettingType*",
-                    "type": "string"
-                },
-                "values": {
-                    "description": "the allowed values of an enum",
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
                 }
             }
         },
@@ -28798,6 +29248,29 @@ const docTemplate = `{
                 }
             }
         },
+        "config.PluginSetting": {
+            "type": "object",
+            "properties": {
+                "group": {
+                    "description": "ConstArchiveSettingGroup*, \"\" for the main settings",
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "type": {
+                    "description": "ConstArchiveSettingType*",
+                    "type": "string"
+                },
+                "values": {
+                    "description": "the allowed values of an enum",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
         "config.Route": {
             "type": "object",
             "properties": {
@@ -28951,6 +29424,91 @@ const docTemplate = `{
                 "S3ProviderSourceApp",
                 "S3ProviderSourceCustom"
             ]
+        },
+        "config.SecretKvConfig": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "offer": {
+                    "description": "OfferInfo is the offer as the catalogue describes it, for the API (never saved)",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/config.SecretKvOffer"
+                        }
+                    ]
+                },
+                "plugin": {
+                    "type": "string"
+                },
+                "settings": {
+                    "type": "object",
+                    "additionalProperties": true
+                }
+            }
+        },
+        "config.SecretKvOffer": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string"
+                },
+                "partner": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
+        "config.SecretKvPluginManifest": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "settings": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/config.PluginSetting"
+                    }
+                },
+                "tier": {
+                    "description": "ConstArchiveTierEnterprise, \"\" for every plan",
+                    "type": "string"
+                }
+            }
+        },
+        "config.SecretKvSpec": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "plugin": {
+                    "type": "string"
+                },
+                "settings": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "unset": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
         },
         "config.ServerTaskList": {
             "type": "object",
@@ -32052,6 +32610,24 @@ const docTemplate = `{
                 },
                 "schedulerSlaRotateCron": {
                     "type": "string"
+                },
+                "secretKvQueueLimit": {
+                    "type": "integer"
+                },
+                "secretKvRetryInterval": {
+                    "type": "integer"
+                },
+                "secretKvStartTimeout": {
+                    "type": "integer"
+                },
+                "secretKvWriteTimeout": {
+                    "type": "integer"
+                },
+                "secretKvs": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/config.SecretKvConfig"
+                    }
                 },
                 "shardproxy": {
                     "type": "boolean"

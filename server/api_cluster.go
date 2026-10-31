@@ -245,6 +245,32 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxResticCheckConfig)),
 	))
 
+	// credential store entries: the vault entries (#2227)
+	router.Handle("/api/clusters/{clusterName}/secret-kv-list", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSecretKvList)),
+	))
+	router.Handle("/api/clusters/{clusterName}/secret-kv-actions/add", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSecretKvAdd)),
+	))
+	router.Handle("/api/clusters/{clusterName}/secret-kv-actions/edit/{entryName}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSecretKvEdit)),
+	))
+	router.Handle("/api/clusters/{clusterName}/secret-kv-actions/enable/{entryName}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSecretKvEnable)),
+	))
+	router.Handle("/api/clusters/{clusterName}/secret-kv-actions/disable/{entryName}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSecretKvDisable)),
+	))
+	router.Handle("/api/clusters/{clusterName}/secret-kv-actions/remove/{entryName}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSecretKvRemove)),
+	))
+
 	// archive list (#2091)
 	router.Handle("/api/clusters/{clusterName}/archive-list", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
@@ -4966,6 +4992,19 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "graphite-metrics-queue-limit":
 		val, _ := strconv.Atoi(value)
 		mycluster.Conf.GraphiteMetricsQueueLimit = val
+	// the vault entries' queue and timeouts (#2227): <= 0 falls back to the defaults
+	case "secret-kv-queue-limit":
+		val, _ := strconv.Atoi(value)
+		mycluster.Conf.SecretKvQueueLimit = val
+	case "secret-kv-write-timeout":
+		val, _ := strconv.Atoi(value)
+		mycluster.Conf.SecretKvWriteTimeout = val
+	case "secret-kv-retry-interval":
+		val, _ := strconv.Atoi(value)
+		mycluster.Conf.SecretKvRetryInterval = val
+	case "secret-kv-start-timeout":
+		val, _ := strconv.Atoi(value)
+		mycluster.Conf.SecretKvStartTimeout = val
 	case "topology-target":
 		mycluster.BootstrapTopology(value)
 	case "log-task-level", "log-level-task":

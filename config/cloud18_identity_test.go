@@ -6,7 +6,6 @@ package config
 
 import (
 	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -410,34 +409,5 @@ func TestTokenSubject(t *testing.T) {
 		if _, err := TokenSubject(bad); err == nil {
 			t.Errorf("%q must be refused", bad)
 		}
-	}
-}
-
-// #2159: vault-auth = jwt logs in at auth/jwt/login with the identity token, the role being
-// vault-role-id or else the realm's client id, and keeps the vault's token
-func TestVaultJWTLogin(t *testing.T) {
-	realm := refreshRealm(t, "offline-v", func() string { return accessAnswer("2", 300) }, nil)
-	defer realm.Close()
-	var gotRole, gotJWT string
-	vault := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/v1/auth/jwt/login" {
-			http.NotFound(w, r)
-			return
-		}
-		var body map[string]string
-		json.NewDecoder(r.Body).Decode(&body)
-		gotRole, gotJWT = body["role"], body["jwt"]
-		fmt.Fprint(w, `{"auth":{"client_token":"vault-token"}}`)
-	}))
-	defer vault.Close()
-
-	conf := connectedConf(t, realm.URL+"/realms/cloud18", "offline-v")
-	conf.VaultServerAddr, conf.VaultAuth = vault.URL, "jwt"
-	client, err := conf.GetVaultConnection()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if client.Token() != "vault-token" || gotRole != ConstCloud18IdentityClientID || gotJWT == "" {
-		t.Fatalf("token %q role %q jwt set %v", client.Token(), gotRole, gotJWT != "")
 	}
 }

@@ -1264,6 +1264,30 @@ definitions:
       table:
         type: string
     type: object
+  cluster.CredentialInfo:
+    properties:
+      initial:
+        description: |-
+          Initial is where the starting value is (#2227 rule 1): config-file, dynamic-config,
+          default; Versions how many versions the versioned stores hold, LastChange the newest's time
+        type: string
+      key:
+        type: string
+      lastChange:
+        type: string
+      refusal:
+        description: why a change through the API is refused now, empty when allowed
+        type: string
+      source:
+        description: 'where the value comes from (credstore.Source*): versions (a
+          version of the versioned stores), config-file (immutable), dynamic-config,
+          runtime-config (monitoring-save-config off), default, vault'
+        type: string
+      user:
+        type: string
+      versions:
+        type: integer
+    type: object
   cluster.Diff:
     properties:
       role:
@@ -1622,6 +1646,48 @@ definitions:
         items:
           type: string
         type: array
+    type: object
+  cluster.SecretKvListResult:
+    properties:
+      credentials:
+        items:
+          $ref: '#/definitions/cluster.CredentialInfo'
+        type: array
+      dropped:
+        type: integer
+      dropsPending:
+        description: WARN0272
+        type: boolean
+      entries:
+        items:
+          $ref: '#/definitions/config.SecretKvConfig'
+        type: array
+      pinned:
+        description: 'a config file sets the list: change it there'
+        type: boolean
+      plugins:
+        items:
+          $ref: '#/definitions/config.SecretKvPluginManifest'
+        type: array
+      queued:
+        type: integer
+      settings:
+        additionalProperties:
+          type: integer
+        type: object
+      states:
+        additionalProperties:
+          $ref: '#/definitions/cluster.SecretKvState'
+        type: object
+    type: object
+  cluster.SecretKvState:
+    properties:
+      behind:
+        description: why it is behind (WARN0271), empty when not
+        type: string
+      lastWrite:
+        description: its last successful write in this run
+        type: string
     type: object
   cluster.SnapbackState:
     properties:
@@ -1985,27 +2051,11 @@ definitions:
         type: string
       settings:
         items:
-          $ref: '#/definitions/config.ArchivePluginSetting'
+          $ref: '#/definitions/config.PluginSetting'
         type: array
       tier:
         description: ConstArchiveTierEnterprise, "" for every plan
         type: string
-    type: object
-  config.ArchivePluginSetting:
-    properties:
-      group:
-        description: ConstArchiveSettingGroup*, "" for the main settings
-        type: string
-      name:
-        type: string
-      type:
-        description: ConstArchiveSettingType*
-        type: string
-      values:
-        description: the allowed values of an enum
-        items:
-          type: string
-        type: array
     type: object
   config.ArchivePurgePolicy:
     properties:
@@ -2162,6 +2212,22 @@ definitions:
       volumename:
         type: string
     type: object
+  config.PluginSetting:
+    properties:
+      group:
+        description: ConstArchiveSettingGroup*, "" for the main settings
+        type: string
+      name:
+        type: string
+      type:
+        description: ConstArchiveSettingType*
+        type: string
+      values:
+        description: the allowed values of an enum
+        items:
+          type: string
+        type: array
+    type: object
   config.Route:
     properties:
       cname:
@@ -2269,6 +2335,62 @@ definitions:
     x-enum-varnames:
     - S3ProviderSourceApp
     - S3ProviderSourceCustom
+  config.SecretKvConfig:
+    properties:
+      enabled:
+        type: boolean
+      name:
+        type: string
+      offer:
+        allOf:
+        - $ref: '#/definitions/config.SecretKvOffer'
+        description: OfferInfo is the offer as the catalogue describes it, for the
+          API (never saved)
+      plugin:
+        type: string
+      settings:
+        additionalProperties: true
+        type: object
+    type: object
+  config.SecretKvOffer:
+    properties:
+      name:
+        type: string
+      partner:
+        type: string
+      title:
+        type: string
+    type: object
+  config.SecretKvPluginManifest:
+    properties:
+      description:
+        type: string
+      name:
+        type: string
+      settings:
+        items:
+          $ref: '#/definitions/config.PluginSetting'
+        type: array
+      tier:
+        description: ConstArchiveTierEnterprise, "" for every plan
+        type: string
+    type: object
+  config.SecretKvSpec:
+    properties:
+      enabled:
+        type: boolean
+      name:
+        type: string
+      plugin:
+        type: string
+      settings:
+        additionalProperties: true
+        type: object
+      unset:
+        items:
+          type: string
+        type: array
+    type: object
   config.ServerTaskList:
     properties:
       serverUrl:
@@ -4383,6 +4505,18 @@ definitions:
         type: string
       schedulerSlaRotateCron:
         type: string
+      secretKvQueueLimit:
+        type: integer
+      secretKvRetryInterval:
+        type: integer
+      secretKvStartTimeout:
+        type: integer
+      secretKvWriteTimeout:
+        type: integer
+      secretKvs:
+        items:
+          $ref: '#/definitions/config.SecretKvConfig'
+        type: array
       shardproxy:
         type: boolean
       shardproxyCopyGrants:
@@ -13794,6 +13928,278 @@ paths:
       summary: Retrieve the scheduled database event consistency of a specific cluster
       tags:
       - ClusterSchema
+  /api/clusters/{clusterName}/secret-kv-actions/add:
+    post:
+      consumes:
+      - application/json
+      description: 'Adds a vault entry (plugin secret_kv-vault) from the settings
+        of its manifest: address, mount, path-prefix, mode, auth, role-id, secret-id
+        (written only). An enabled entry gets every version of every secret of the
+        cluster, a full pass first.'
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: name, settings, enabled
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/config.SecretKvSpec'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: name
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Invalid entry
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "409":
+          description: The list is set by a config file
+          schema:
+            type: string
+      summary: Add a credential store entry
+      tags:
+      - ClusterCredentials
+  /api/clusters/{clusterName}/secret-kv-actions/disable/{entryName}:
+    post:
+      description: The entry gets no more versions; what it holds stays. The cluster's
+        sponsor may do it.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Entry Name
+        in: path
+        name: entryName
+        required: true
+        type: string
+      produces:
+      - text/plain
+      responses:
+        "200":
+          description: Credential store off
+          schema:
+            type: string
+        "400":
+          description: Unknown entry
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "409":
+          description: The list is set by a config file
+          schema:
+            type: string
+      summary: Turn a credential store entry off
+      tags:
+      - ClusterCredentials
+  /api/clusters/{clusterName}/secret-kv-actions/edit/{entryName}:
+    post:
+      consumes:
+      - application/json
+      description: Changes a vault entry's settings (an empty secret keeps the secret,
+        unset clears names).
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Entry Name
+        in: path
+        name: entryName
+        required: true
+        type: string
+      - description: settings, unset, enabled
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/config.SecretKvSpec'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: name
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Invalid entry
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "409":
+          description: The list is set by a config file, or the entry comes from a
+            Cloud18 marketplace offer (its settings are the back-office's)
+          schema:
+            type: string
+      summary: Edit a credential store entry
+      tags:
+      - ClusterCredentials
+  /api/clusters/{clusterName}/secret-kv-actions/enable/{entryName}:
+    post:
+      description: The entry gets every version of every secret of the cluster, a
+        full pass first. The cluster's sponsor may do it.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Entry Name
+        in: path
+        name: entryName
+        required: true
+        type: string
+      produces:
+      - text/plain
+      responses:
+        "200":
+          description: Credential store on
+          schema:
+            type: string
+        "400":
+          description: Unknown entry
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "409":
+          description: The list is set by a config file
+          schema:
+            type: string
+      summary: Turn a credential store entry on
+      tags:
+      - ClusterCredentials
+  /api/clusters/{clusterName}/secret-kv-actions/remove/{entryName}:
+    post:
+      description: 'Takes the entry out of the list. repman never deletes a secret:
+        what the vault holds stays.'
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Entry Name
+        in: path
+        name: entryName
+        required: true
+        type: string
+      produces:
+      - text/plain
+      responses:
+        "200":
+          description: Credential store removed
+          schema:
+            type: string
+        "400":
+          description: Unknown entry
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "409":
+          description: The list is set by a config file, or the entry comes from a
+            Cloud18 marketplace offer (its settings are the back-office's)
+          schema:
+            type: string
+      summary: Remove a credential store entry
+      tags:
+      - ClusterCredentials
+  /api/clusters/{clusterName}/secret-kv-list:
+    get:
+      description: 'The cluster''s vault entries (secrets never returned, only the
+        names of those set; offer: the Cloud18 marketplace offer an entry comes from,
+        name, title and partner, null for the user''s own), each one''s state (last
+        write, behind: WARN0271), the queue''s drops (WARN0272), the plugins'' manifests,
+        the copy settings, and the database credentials'' starting value source, current
+        source, version count and refusal.'
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/cluster.SecretKvListResult'
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: List the credential store entries
+      tags:
+      - ClusterCredentials
   /api/clusters/{clusterName}/security/apply-fix:
     post:
       consumes:

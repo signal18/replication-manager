@@ -42,7 +42,7 @@ import PurgePoliciesEditor from './PurgePoliciesEditor'
 // (an archive billed on its content is invoiced on it) and the number of backups of the
 // catalogue it holds; remove's confirmation reads the size first and shows what is deleted.
 
-const NAME_PATTERN = '^[a-z0-9][a-z0-9_-]{0,63}$'
+export const NAME_PATTERN = '^[a-z0-9][a-z0-9_-]{0,63}$'
 // a manifest without groups (an older external plugin): its settings from this one on are advanced
 const FIRST_COMMON_SETTING = 'repo-append-cluster'
 
@@ -207,7 +207,7 @@ const KEEP_WITHIN = [
 ]
 const DURATION_PATTERN = '^(\\d+y)?(\\d+m)?(\\d+d)?(\\d+h)?$'
 
-function SettingField({ st, value, onChange, secretSet, s3Providers }) {
+export function SettingField({ st, value, onChange, secretSet, s3Providers }) {
   // the archive's S3 storage: one of the cluster's S3 providers (an offer's is added first)
   if (st.name === 's3-provider' && s3Providers) {
     const names = [...new Set([...s3Providers.map((p) => p.name), ...(value ? [value] : [])])]

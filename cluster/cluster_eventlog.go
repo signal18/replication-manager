@@ -80,7 +80,8 @@ var instanceLocalConfigKeys = map[string]bool{
 // IsInstanceLocalConfigKey reports whether a config key is excluded from
 // event-log replication (never authored, never applied).
 func IsInstanceLocalConfigKey(key string) bool {
-	return instanceLocalConfigKeys[key]
+	// a credential store entry's Vault login, as vault-role-id and vault-secret-id (#2227)
+	return instanceLocalConfigKeys[key] || config.IsSecretKvInstanceLocalKey(key)
 }
 
 // eventLogWriteLock serializes appends to this instance's own event log:
@@ -257,6 +258,11 @@ func (cluster *Cluster) emitConfigChangeEvents(oldData []byte, newData []byte, s
 			}
 			if _, secret := config.ArchiveSecretName(k); secret {
 				// #2088: the secret moved into its archive's entry
+				continue
+			}
+			if config.IsSecretKvLegacyKey(k) {
+				// #2227: a vault-* key moved into the primary Vault entry; a peer replaying
+				// its unset would stop using Vault
 				continue
 			}
 			action, val = "unset", ""
