@@ -10,8 +10,8 @@ import (
 	"github.com/signal18/replication-manager/config"
 )
 
-// #2042: the API refuses before starting the rotation: 409 with the reason; #2269: the one
-// lasting refusal is a credential set in a config file (immutable)
+// #2042: the API refuses before starting the rotation: 409 with the reason; #2269: a
+// credential set in a config file with no store keeping versions (versioning off here)
 func TestRespondPasswordRotationRefusedImmutable(t *testing.T) {
 	cl := &cluster.Cluster{Conf: &config.Config{
 		SecretKey:       []byte("0123456789abcdef"),

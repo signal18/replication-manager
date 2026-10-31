@@ -144,17 +144,20 @@ settings (secrets encrypted, F9), on/off, forms drawn from the manifest.
 8. **`database_engine`** is a vault store that generates: a rotation asks Vault
    (`rotate-role`); the value it returns is written as a new version to the other active
    stores; it is read from the engine first.
-9. **Rotation and change are refused for an immutable credential only** (#2269): a value
-   set in a config file or on the command line (`ImmuableFlagMap`) is never changed, since
-   repman never writes it (`VersionStore.CanSet`, a held refusal: no later store takes it).
-   Every other credential rotates, with a store keeping versions or with the config as the
-   store (rule 1). The other refusals of `canRotatePasswordsOutsideVault` are the means to
-   keep the new value: the encryption key and `monitoring-save-config`; the conditions of the
-   moment (a database down, replication stopped) refuse that run only. A version made before
-   #2269 for a credential set in a config file still wins over it until an operator edits it
-   in the file: that edit is the current version at the next start (the local file keeps the
-   value last seen in the config file, a version marked `from_config_file`, never pruned
-   away, to tell the edit).
+9. **Rotation** is allowed with a store keeping versions or with the config as the store
+   (rule 1, #2269). A value set in a config file or on the command line (immutable,
+   `ImmuableFlagMap`) is a starting value like the others: with a store keeping versions it
+   is rotated and changed as versions, the newest version wins over it at a restart. When an
+   operator edits it in the file, that edit is the current version at the next start: the
+   local file keeps the value last seen in the config file (a version marked
+   `from_config_file`, never pruned away) to tell the edit. With vault entries only
+   (versioning off) nothing keeps that value and an edit is not told: the newest version in
+   the vaults wins. **With no store keeping versions, an immutable credential is the one
+   refusal** (`VersionStore.CanSet`, a held refusal): repman never writes the file and the
+   config cannot hold a version over it. The other refusals of
+   `canRotatePasswordsOutsideVault` are the means to keep the new value (the encryption key,
+   `monitoring-save-config`); the conditions of the moment (a database down, replication
+   stopped) refuse that run only.
 10. **Turning a store off** stops its versions and leaves what it holds. Repman never
     deletes a secret; a removed object's secrets stay, a renamed one writes under its new
     name.
@@ -328,7 +331,7 @@ last, because it is the starting value.
   reread, a reload or a tag change finds the same value. This removes the cause of #2017.
 - **Rotation** is allowed when a store takes the write and keeps it across a restart: a
   store keeping versions, the config as the store (#2269), or a store that `Generates`
-  (that store rotates). An immutable credential is refused (rule 9).
+  (that store rotates). An immutable credential needs a store keeping versions (rule 9).
 - **A pin is a starting value.** A store records the pinned value it last saw. When the
   operator edits that value in the file, the file wins and its value goes into the store
   as a new version: the operator's intent beats an older stored value. Done by
@@ -342,7 +345,7 @@ last, because it is the starting value.
 | **Vault**: `VaultKV` or `VaultDbEngine` → `DynamicConfig` → `PinnedConfig` | from Vault, at the path the config gives, pinned or not | KV: a new Vault version. Database engine: refused | KV: repman writes a new version. Database engine: Vault rotates |
 | **Local**: `LocalSecretStore` → `DynamicConfig` → `PinnedConfig` | the store's latest version, else the config | a new version in the store, pinned or not | allowed (versioned) |
 | **No store, not pinned**: `DynamicConfig` → `PinnedConfig` | `<cluster>.toml` | the config is the store (#2269): the current value in `<cluster>.toml`, the previous one in memory | allowed |
-| **Pinned** (any chain) | the file (a version made before #2269 wins over it) | refused: repman never writes the file | refused |
+| **No store, pinned**: `PinnedConfig` | the file | refused: repman never writes the file | refused |
 
 So:
 

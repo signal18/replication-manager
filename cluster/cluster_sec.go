@@ -37,7 +37,8 @@ var logger = logrus.New()
 // The API checks it before starting the rotation, so a refusal reaches the caller; the
 // GUI shows it. Outside Vault the new passwords must have a durable place: a store keeping
 // versions, or else the cluster config, saved and pushed encrypted (#2269). A credential set in
-// a config file (immutable) is never rotated: repman does not write it.
+// a config file (immutable) rotates as versions; with no store keeping versions it is refused:
+// repman does not write the file.
 func (cluster *Cluster) CanRotatePasswords() error {
 	if !cluster.Conf.IsVaultUsed() {
 		if err := cluster.canRotatePasswordsOutsideVault(); err != nil {
@@ -66,7 +67,7 @@ func (cluster *Cluster) canRotatePasswordsOutsideVault() error {
 	}
 	// the credential chain must take the new values (#2075): the version store heads it, with
 	// a store keeping versions or the config as the store (#2269); a credential set in a
-	// config file (immutable) is refused (#2227 rule 9)
+	// config file (immutable) is refused when no store keeps versions (#2227 rule 9)
 	chain := cluster.CredentialChain()
 	for _, key := range []string{"db-servers-credential", "replication-credential"} {
 		if err := chain.CanSet(key); err != nil {
@@ -159,8 +160,8 @@ func (cluster *Cluster) StartPasswordRotation() error {
 }
 
 // ScheduledPasswordRotation is the run of the scheduled rotation (#2269): RotatePasswords, as
-// the button. A run the cluster's state refuses (a database down, replication stopped, a
-// credential set in a config file) is skipped: one line in the security log, and a security
+// the button. A run CanRotatePasswords refuses (a database down, replication stopped, a
+// credential set in a config file with no store keeping versions) is skipped: one line in the security log, and a security
 // state (WARN0274) until a scheduled rotation succeeds or the schedule is switched off.
 func (cluster *Cluster) ScheduledPasswordRotation() {
 	if err := cluster.RotatePasswords(); err != nil {

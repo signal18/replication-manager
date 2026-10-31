@@ -22,9 +22,10 @@ func TestCanSetCredential(t *testing.T) {
 		want   string // "" = allowed, else a part of the refusal
 	}{
 		{"allowed", "db-servers-credential", func(*Cluster) {}, ""},
-		// #2227 rule 9, #2269: a credential set in a config file (immutable) is never changed
-		{"db credential in a file", "db-servers-credential", func(c *Cluster) { c.Conf.ImmuableFlagMap["db-servers-credential"] = "root:x" }, "immutable"},
-		{"replication credential in a file", "replication-credential", func(c *Cluster) { c.Conf.ImmuableFlagMap["replication-credential"] = "repl:x" }, "immutable"},
+		// #2227 rule 9: a credential set in a config file takes a change as a version; #2269:
+		// refused when no store keeps versions
+		{"db credential in a file", "db-servers-credential", func(c *Cluster) { c.Conf.ImmuableFlagMap["db-servers-credential"] = "root:x" }, ""},
+		{"replication credential in a file", "replication-credential", func(c *Cluster) { c.Conf.ImmuableFlagMap["replication-credential"] = "repl:x" }, ""},
 		{"credential in a file, no versioned store", "replication-credential", func(c *Cluster) {
 			c.Conf.ImmuableFlagMap["replication-credential"] = "repl:x"
 			c.Conf.MonitoringSecretVersioning = false
@@ -101,8 +102,7 @@ func TestGetCredentialsInfo(t *testing.T) {
 	if s := c.GetCredentialsInfo()[0].Source; s != "dynamic-config" {
 		t.Fatalf("held by the dynamic config: source %q", s)
 	}
-	// #2269: set in a config file (immutable), it is never changed
-	if rpl.User != "repl" || rpl.Source != "config-file" || !strings.Contains(rpl.Refusal, "immutable") {
+	if rpl.User != "repl" || rpl.Source != "config-file" || rpl.Refusal != "" {
 		t.Fatalf("replication: %+v", rpl)
 	}
 	for _, i := range infos {

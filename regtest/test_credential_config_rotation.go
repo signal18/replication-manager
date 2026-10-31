@@ -21,7 +21,8 @@ import (
 // entry) the config is the credential store. The scheduled rotation, switched on with a cron of
 // every minute, rotates the database credential; then every server logs in with the new
 // password, repman keeps the previous one in memory, a config reload and a start from the files
-// on disk run on the new one, and the cluster config holds it encrypted. The schedule is
+// on disk run on the new one, and the cluster config holds it encrypted. A credential set in a
+// config file is refused here (no store keeps versions): the test fails on it. The schedule is
 // switched off and its cron put back at the end. The rotation is real: the cluster ends on the
 // new password.
 func (regtest *RegTest) TestCredentialConfigRotationScheduled(cl *cluster.Cluster, conf string, test *cluster.Test) bool {

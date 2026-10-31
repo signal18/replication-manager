@@ -422,22 +422,23 @@ func TestChainArchiveSecretsConcurrent(t *testing.T) {
 	}
 }
 
-// #2227 rule 9, #2269: a value set in a config file (immutable) is never changed by repman; a
-// version made before (an older release rotated it) wins over it until an operator edits it in
-// the file, and the edit is then the current version
+// #2227 rule 9: a value set in a config file is a starting value; the versions win over it
+// until an operator edits it in the file, and the edit is then the current version
 func TestTakeConfigFileValue(t *testing.T) {
 	conf := testConf()
 	conf.ImmuableFlagMap["replication-credential"] = "repl:file1"
 	vs := NewVersionStore(func() *config.Config { return conf }, func(k string) bool { return k == "replication-credential" }, nil, nil)
 	current := func() string { v, _ := vs.Latest("replication-credential"); return v.Value }
 
-	if err := vs.CanSet("replication-credential"); err == nil || !strings.Contains(err.Error(), "immutable") {
-		t.Fatalf("a key set in a config file must be refused: %v", err)
+	if err := vs.CanSet("replication-credential"); err != nil {
+		t.Fatalf("a key set in a config file is refused with a versioned store: %v", err)
 	}
 	if !vs.TakeConfigFileValue("replication-credential", "repl:file1") || current() != "repl:file1" {
 		t.Fatalf("first start: the file's value is version 1, got %q", current())
 	}
-	vs.Insert("replication-credential", Version{Value: "repl:rotated", At: time.Now()})
+	if err := vs.Set("replication-credential", "repl:rotated"); err != nil {
+		t.Fatal(err)
+	}
 	if vs.TakeConfigFileValue("replication-credential", "repl:file1") || current() != "repl:rotated" {
 		t.Fatalf("restart, file unchanged: the rotated version must win, got %q", current())
 	}

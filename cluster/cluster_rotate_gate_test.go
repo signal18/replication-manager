@@ -32,7 +32,7 @@ func rotateGateCluster() *Cluster {
 
 // #2042, #2269: outside Vault, a rotation needs a durable place for the new passwords: a store
 // keeping versions, or else the cluster config (saved, encrypted). A credential set in a config
-// file (immutable) is refused, and the reason is given.
+// file (immutable) is refused when no store keeps versions, and the reason is given.
 func TestCanRotatePasswords(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -59,7 +59,7 @@ func TestCanRotatePasswords(t *testing.T) {
 		{"vault entry enabled, db credential in a file", func(c *Cluster) {
 			c.Conf.SecretKvs = []config.SecretKvConfig{{Name: "vault-a", Plugin: config.ConstSecretKvPluginVault, Enabled: true}}
 			c.Conf.ImmuableFlagMap["db-servers-credential"] = "root:x"
-		}, "immutable"},
+		}, ""},
 		{"replication stopped, a database engine entry", func(c *Cluster) {
 			replica := &ServerMonitor{State: stateSlave, Conn: &sqlx.DB{}}
 			c.Servers = append(c.Servers, replica)
@@ -68,9 +68,10 @@ func TestCanRotatePasswords(t *testing.T) {
 		}, ""},
 		{"no encryption key", func(c *Cluster) { c.Conf.SecretKey = nil }, "no encryption key"},
 		{"config not saved", func(c *Cluster) { c.Conf.ConfRewrite = false }, "monitoring-save-config is off"},
-		// #2227 rule 9, #2269: a credential set in a config file (immutable) is never rotated
-		{"db credential in a file", func(c *Cluster) { c.Conf.ImmuableFlagMap["db-servers-credential"] = "root:x" }, "immutable"},
-		{"replication credential in a file", func(c *Cluster) { c.Conf.ImmuableFlagMap["replication-credential"] = "repl:x" }, "immutable"},
+		// #2227 rule 9: a credential set in a config file is a starting value, rotated as
+		// versions; #2269: refused when no store keeps versions
+		{"db credential in a file", func(c *Cluster) { c.Conf.ImmuableFlagMap["db-servers-credential"] = "root:x" }, ""},
+		{"replication credential in a file", func(c *Cluster) { c.Conf.ImmuableFlagMap["replication-credential"] = "repl:x" }, ""},
 		{"db credential in a file, no versioned store", func(c *Cluster) {
 			c.Conf.ImmuableFlagMap["db-servers-credential"] = "root:x"
 			c.Conf.MonitoringSecretVersioning = false
@@ -121,6 +122,7 @@ func TestCanRotatePasswords(t *testing.T) {
 func TestRotatePasswordsRefusedChangesNothing(t *testing.T) {
 	cl := rotateGateCluster()
 	cl.Conf.ImmuableFlagMap["db-servers-credential"] = "root:before"
+	cl.Conf.MonitoringSecretVersioning = false
 	cl.Conf.Secrets = config.NewSecrets(map[string]config.Secret{"db-servers-credential": {Value: "root:before"}})
 	if err := cl.RotatePasswords(); err == nil {
 		t.Fatal("rotation ran on a credential set in a config file")
@@ -139,6 +141,7 @@ func TestScheduledPasswordRotationSkipped(t *testing.T) {
 	cl.SecurityStateMachine.Init()
 	cl.Conf.SchedulerRotatePasswords = true
 	cl.Conf.ImmuableFlagMap["db-servers-credential"] = "root:x"
+	cl.Conf.MonitoringSecretVersioning = false
 
 	cl.CheckScheduledPasswordRotation()
 	if hasState(cl.SecurityStateMachine, "WARN0274") {

@@ -39,10 +39,12 @@ func (v FileVersion) At() time.Time {
 // with its time and writing instance; the config keeps the starting value forever. The
 // local file (secret_store.json) is its copy on disk, written by the cluster's save callback
 // only (T25) and pushed with the config; the vault entries get each version from the queue.
-// When no active store keeps versions (#2269), the config is the store: a change keeps the
-// current and the previous value here, in memory only, and the current one in the dynamic
-// config, which the save writes (encrypted) like any setting. A value set in a config file
-// (immutable) is never changed: repman does not write it.
+// A value set in a config file (immutable) is a starting value too: the versions win over it
+// until an operator edits it there (TakeConfigFileValue). When no active store keeps versions
+// (#2269), the config is the store: a change keeps the current and the previous value here, in
+// memory only, and the current one in the dynamic config, which the save writes (encrypted)
+// like any setting; a value set in a config file is then refused, nothing can hold a version
+// over it.
 type VersionStore struct {
 	mu       sync.Mutex
 	conf     func() *config.Config
@@ -99,11 +101,12 @@ func (s *VersionStore) CanSet(key string) error {
 		return fmt.Errorf("%s is not versioned: %w", key, ErrNotHeld)
 	}
 	conf := s.conf()
-	if _, pinned := conf.GetImmuableFlag(key); pinned {
-		return &heldRefusal{fmt.Errorf("%s is set in a config file (immutable): repman never changes it, it is not rotated", key)}
-	}
 	if !s.keepsVersions() {
-		// the config is the store (#2269): the value goes to the cluster config, in the push
+		// the config is the store (#2269): the value goes to the cluster config, in the push;
+		// a value set in a config file has no store to hold a version over it
+		if _, pinned := conf.GetImmuableFlag(key); pinned {
+			return &heldRefusal{fmt.Errorf("%s is set in a config file (immutable) and no store keeps versions (monitoring-secret-versioning off, no vault entry): repman never writes the file, it is not rotated", key)}
+		}
 		if conf.SecretKey == nil {
 			conf.LoadEncrytionKey()
 		}
