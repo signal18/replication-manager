@@ -61,3 +61,21 @@ func TestMCPAuthAllows(t *testing.T) {
 		}
 	}
 }
+
+// #2262: Cloud18LoginOnly follows mcp-server-auth: auto on a Cloud18 instance, cloud18 and a
+// typo everywhere, never any.
+func TestCloud18LoginOnly(t *testing.T) {
+	for _, c := range []struct {
+		mode    string
+		cloud18 bool
+		want    bool
+	}{
+		{"", false, false}, {"auto", false, false}, {"", true, true}, {"Auto", true, true},
+		{"any", true, false}, {"cloud18", false, true}, {"cloud-18", false, true},
+	} {
+		conf := &Config{MCPServerAuth: c.mode, Cloud18: c.cloud18}
+		if got := conf.Cloud18LoginOnly(); got != c.want {
+			t.Errorf("mode %q cloud18 %v: got %v, want %v", c.mode, c.cloud18, got, c.want)
+		}
+	}
+}

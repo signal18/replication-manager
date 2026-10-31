@@ -21,6 +21,9 @@ function Login({ dashboard = false }) {
   const [passwordError, setPasswordError] = useState('')
   const [errorMessage, setErrorMessage] = useState('')
   const [cloud18Enabled, setCloud18Enabled] = useState(false)
+  // Cloud18 logins only (#2262): the user and password form is the admin zone's, opened on demand
+  const [cloud18Only, setCloud18Only] = useState(false)
+  const [adminZone, setAdminZone] = useState(false)
   const [cloud18Loading, setCloud18Loading] = useState(false)
   // the Cloud18 status is known and no silent check is under way: autologin may run
   const [cloud18Ready, setCloud18Ready] = useState(false)
@@ -83,6 +86,7 @@ function Login({ dashboard = false }) {
       .then((resp) => {
         const enabled = resp?.status === 200 && resp?.data?.enabled === true
         setCloud18Enabled(enabled)
+        setCloud18Only(enabled && resp?.data?.cloud18Only === true)
         // once per tab: after a Logout (which ends the Cloud18 session) or a check that found none,
         // the page shows its form and does not try again
         if (enabled && !cloud18Back && !isAuthorized() && sessionStorage.getItem('cloud18_silent_tried') !== '1') {
@@ -233,6 +237,35 @@ function Login({ dashboard = false }) {
           </Stack>
           <Box as='form' className={styles.loginForm} onSubmit={onButtonClick}>
             <Stack spacing='6'>
+              {cloud18Only && !adminZone ? (
+                <>
+                  {errorMessage && <Message message={errorMessage} />}
+                  <RMButton
+                    id='btnCloud18Login'
+                    type='button'
+                    size='medium'
+                    isLoading={cloud18Loading}
+                    onClick={() => window.location.assign('/api/auth/cloud18/start')}>
+                    Sign in with Cloud18
+                  </RMButton>
+                  <RMButton
+                    id='btnCloud18Register'
+                    type='button'
+                    size='medium'
+                    onClick={() => window.location.assign('/api/auth/cloud18/start?signup=1')}>
+                    Sign up with Cloud18
+                  </RMButton>
+                  <Text fontSize='sm' textAlign='center'>
+                    <Link id='lnkAdminZone' color='teal.500' onClick={() => setAdminZone(true)}>
+                      Admin zone
+                    </Link>
+                  </Text>
+                </>
+              ) : (
+              <>
+              {cloud18Only && (
+                <Text fontSize='sm'>Admin zone: the local admin account of this replication-manager. Other accounts sign in with Cloud18.</Text>
+              )}
               <Stack spacing='5'>
                 <FormControl isInvalid={usernameError}>
                   <FormLabel className={theme === 'dark' ? styles.darkLoginText : ""} htmlFor='username'>Username or Email</FormLabel>
@@ -259,7 +292,7 @@ function Login({ dashboard = false }) {
                   loadingText={'Signing in'}>
                   Sign in
                 </RMButton>
-                {cloud18Enabled && (
+                {cloud18Enabled && !cloud18Only && (
                   <>
                     {/* the fields above serve Sign in only: the Cloud18 password is typed on the
                         Cloud18 page (#2185); an email already typed is prefilled there */}
@@ -284,7 +317,16 @@ function Login({ dashboard = false }) {
                     </RMButton>
                   </>
                 )}
+                {cloud18Only && (
+                  <Text fontSize='sm' textAlign='center'>
+                    <Link id='lnkCloud18Back' color='teal.500' onClick={() => setAdminZone(false)}>
+                      Back to Sign in with Cloud18
+                    </Link>
+                  </Text>
+                )}
               </Stack>
+              </>
+              )}
             </Stack>
           </Box>
           <HStack justify='center' spacing='6' pt='2' fontSize='sm'>

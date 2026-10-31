@@ -101,12 +101,13 @@ func clearCloud18SSOCookie(w http.ResponseWriter) {
 // @Description On a partner repman with a public address (cloud18 on, plan partner, a public https api-public-url, cloud18-sso-login on), the login page offers Sign in with Cloud18 (#2185). Public.
 // @Tags Auth
 // @Produce json
-// @Success 200 {object} map[string]interface{} "enabled, and the reason when it is not"
+// @Success 200 {object} map[string]interface{} "enabled, cloud18Only (the user and password form only in the admin zone), and the reason when it is not enabled"
 // @Router /api/auth/cloud18 [get]
 func (repman *ReplicationManager) handlerMuxCloud18SSO(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	_, err := repman.Conf.Cloud18SSO()
-	out := map[string]interface{}{"enabled": err == nil}
+	// cloud18Only: the user and password form is the admin zone's only (Cloud18LoginOnly, #2262)
+	out := map[string]interface{}{"enabled": err == nil, "cloud18Only": err == nil && repman.Conf.Cloud18LoginOnly()}
 	if err != nil {
 		out["reason"] = err.Error()
 	}

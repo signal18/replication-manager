@@ -67,15 +67,34 @@ grants narrowed), never the session of a local password login; `any` = every log
 checked in `AuthenticateMCP`, refusals in the security log as `mcp_auth_failure`). Local accounts keep
 the API and the admin zone, not the MCP; clients on API tokens (the website assistant) are unchanged. The value is matched without case or spaces; an unknown value (a typo) acts as `cloud18`: it fails closed, never open. The stdio transport carries no login and starts only with `mcp-auth-enabled=false`, so it is outside this gate by construction.
 
+## The login: Cloud18 only, the admin zone for local accounts (`Cloud18LoginOnly`)
+
+The same setting sets the login (`config.Cloud18LoginOnly`: `mcp-server-auth` resolved to `cloud18`,
+so by default an instance registered to Cloud18). No setting of its own: one rule for the MCP and the
+login.
+
+- `/api/login` (`loginHandler`): the admin accounts (global-admin-show) and `system` log in with
+  their local password as before; every other local account is refused **403** with "sign in with
+  Cloud18", whatever its password, logged in the security log as `api_auth_failure`. The local
+  password is never tried first for them (no session, no asynchronous SSO upgrade); their Cloud18
+  login (password grant, second factor per `cloud18-login-acr`) and Sign in with Cloud18 stay. A
+  wrong password stays 401. API tokens and realm tokens are unchanged.
+- `/api/auth/cloud18` answers `cloud18Only` when Sign in with Cloud18 is offered and the rule
+  holds. The login page then shows Sign in with Cloud18 and Sign up only; its **Admin zone** link
+  opens the user and password form (the local admin), with a way back. Where Sign in with Cloud18
+  is not offered (no public address), the form stays: the server rule still applies.
+
 ## Recovery: the configuration file
 
 With Keycloak or the realm down, whoever holds the host edits `/etc/replication-manager/config.toml`
-(for example empties `cloud18-login-acr`, sets `mcp-server-auth`) and restarts. Those keys are
+(for example empties `cloud18-login-acr`, sets `mcp-server-auth = "any"`, which also reopens the
+login to every local account) and restarts. Those keys are
 immutable: only the file changes them, never the API. The local admin login keeps working through
 the API meanwhile.
 
 ## Tests
 
-`config/terminal_auth_test.go` (`TestTerminalAuthAllows`), `server/api_global_settings_admin_test.go`
+`config/terminal_auth_test.go` (`TestTerminalAuthAllows`, `TestCloud18LoginOnly`),
+`server/api_login_cloud18_only_test.go` (`TestLoginCloud18OnlyRefusesLocalAccounts`), `server/api_global_settings_admin_test.go`
 (`TestGlobalSettingsLocalAdminOnly` with the admin-required header, `TestImmutableGlobalSettingRefused`,
 `TestClusterSettingToolsRefuseGlobalKeys`), `TestMCPAuthAllows`.
