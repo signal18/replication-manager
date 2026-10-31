@@ -136,6 +136,15 @@ readonly SLOWLOG="%%ENV:SVC_CONF_ENV_SLOW_LOG%%"
 
 # Directories
 readonly BACKUPDIR="${DATADIR}/.system/backup"
+# A restore stages its files in $DATADIR/.system, on the datadir's disk. A
+# server configured without ignore_db_dirs=.system lists that folder as the
+# database #mysql50#.system, on which every --all-databases dump fails
+# (#2202). So the restore that creates the folder owns it and removes it whole
+# when it ends, failed or not; the cookie holds the process group of its run,
+# whose processes (mbstream, mariabackup, the definitions server) may outlive a
+# killed run. A .system found in place is never claimed nor removed.
+readonly SYSTEM_DIR="${DATADIR}/.system"
+readonly SYSTEM_DIR_COOKIE="${SYSTEM_DIR}/.mrm_created"
 readonly TMP_DIR="%%ENV:SVC_CONF_ENV_JOBS_DATADIR%%"
 readonly LOG_DIR="${TMP_DIR}"
 readonly CHECKPOINT_DIR="${TMP_DIR}/checkpoints"
@@ -2836,7 +2845,37 @@ pr_rm_backupdir() {
 }
 
 reset_backupdir() {
-    pr_rm_backupdir && mkdir -p -- "$BACKUPDIR"
+    pr_rm_backupdir && system_dir_claim && mkdir -p -- "$BACKUPDIR"
+}
+
+# proc_pgid prints the process group of process $1 (field 5 of /proc/$1/stat).
+proc_pgid() {
+    local s
+    s=$(cat "/proc/$1/stat" 2>/dev/null) || return 1
+    s=${s##*) }
+    set -- $s
+    printf '%s' "$3"
+}
+
+# system_dir_claim creates $SYSTEM_DIR for this run when it does not exist,
+# with the cookie that makes this run its owner.
+system_dir_claim() {
+    pr_paths_ok || return 1
+    [[ -e "$SYSTEM_DIR" ]] && return 0
+    mkdir -p -- "$SYSTEM_DIR" && proc_pgid "$$" >"$SYSTEM_DIR_COOKIE"
+}
+
+# system_dir_release removes a $SYSTEM_DIR a run created: with "self", at the
+# end of this run's restore; otherwise once no process of the owning run's
+# process group is left (a killed run). Returns 1 while it is kept.
+system_dir_release() {
+    local pgid
+    pr_paths_ok && [[ -f "$SYSTEM_DIR_COOKIE" ]] || return 0
+    pgid=$(cat "$SYSTEM_DIR_COOKIE" 2>/dev/null)
+    if [[ "$1" != "self" || "$pgid" != "$(proc_pgid "$$")" ]]; then
+        [[ "$pgid" =~ ^[0-9]+$ ]] && kill -0 -- "-$pgid" 2>/dev/null && return 1
+    fi
+    rm -rf -- "$SYSTEM_DIR"
 }
 
 # pr_disk_ok checks, between the phases that write on the datadir volume after
@@ -3103,8 +3142,9 @@ partialRestore() {
     if [[ "$PR_STATUS" -eq 0 ]]; then
         # The backup is no longer needed: without this it would hold about
         # its whole size on the datadir volume until the next reseed. After a
-        # failure it is kept, to investigate. Quarantined leftovers of
-        # earlier failed restores are bounded to the newest three.
+        # failure it is kept, to investigate, unless this run created .system:
+        # system_dir_release then removes it whole (#2202). Quarantined
+        # leftovers of earlier failed restores are bounded to the newest three.
         pr_try "Remove the restored backup $BACKUPDIR" pr_rm_backupdir
         ls -1dt "$DATADIR"/.system/orphan-quarantine-* 2>/dev/null | tail -n +4 | while read -r f; do
             pr_try "Remove old quarantine $f" rm -rf "$f"
@@ -3293,6 +3333,8 @@ echo "" > "$LOG_DIR/request.txt"
 echo "" > "$LOG_DIR/encrypt.txt"
 
 recoverDeadJobs
+# after recoverDeadJobs stopped the definitions server of a killed restore
+system_dir_release
 
 jobsCheck
 checkresult=$?
@@ -3564,6 +3606,9 @@ for job in "${JOBS[@]}"; do
         else
             doneJob "$job"
         fi
+        case "$job" in
+        reseed* | flashback*) system_dir_release self ;;
+        esac
         remove_run_lockdir "$job"
         trap - EXIT
     else

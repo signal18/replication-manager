@@ -1582,6 +1582,10 @@ func (server *ServerMonitor) JobRunViaSSH() error {
 
 	if _, err := os.Stat(scriptpath); os.IsNotExist(err) {
 		server.GetDatabaseConfig()
+	} else if script, err := os.ReadFile(scriptpath); err == nil && !bytes.Contains(script, []byte(`readonly TMP_DIR="`+server.GetJobDatadir()+`"`)) {
+		// Rendered before the server's variables were read: its jobs folder may be one the
+		// server lists as a database (#2202).
+		server.GetDatabaseConfig()
 	}
 
 	if server.GetCluster().GetConf().OnPremiseSSHDbJobScript != "" {

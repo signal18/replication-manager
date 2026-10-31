@@ -1178,6 +1178,34 @@ func GetSchemas(db *sqlx.DB) ([]string, string, error) {
 	return sch, query, nil
 }
 
+// InvalidNameSchemaPrefix is the prefix under which MariaDB and MySQL 5.x list a folder of the
+// datadir whose name is not a database name (.system, lost+found) and that ignore_db_dirs does
+// not hide. Selecting such a database fails with error 1102 ("Incorrect database name").
+const InvalidNameSchemaPrefix = "#mysql50#"
+
+// GetAllDatabasesDumpSchemas returns the databases mysqldump --all-databases selects (every
+// listed database but information_schema, performance_schema and sys), split into those it can
+// select and those listed under InvalidNameSchemaPrefix, on which --all-databases aborts the whole
+// dump. PostgreSQL has no mysqldump and no such names: it returns nothing.
+func GetAllDatabasesDumpSchemas(db *sqlx.DB, myver *version.Version) (schemas []string, invalid []string, query string, err error) {
+	if myver != nil && myver.IsPostgreSQL() {
+		return nil, nil, "", nil
+	}
+	query = "SELECT SCHEMA_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME NOT IN ('information_schema','performance_schema','sys') ORDER BY SCHEMA_NAME"
+	names := []string{}
+	if err = db.Select(&names, query); err != nil {
+		return nil, nil, query, err
+	}
+	for _, name := range names {
+		if strings.HasPrefix(name, InvalidNameSchemaPrefix) {
+			invalid = append(invalid, name)
+		} else {
+			schemas = append(schemas, name)
+		}
+	}
+	return schemas, invalid, query, nil
+}
+
 func GetSchemasMap(db *sqlx.DB) (map[string]string, string, error) {
 	query := "SELECT SCHEMA_NAME FROM information_schema.SCHEMATA WHERE  SCHEMA_NAME NOT IN('information_schema','mysql','performance_schema')"
 	schemas := make(map[string]string)
