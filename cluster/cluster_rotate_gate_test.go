@@ -7,11 +7,16 @@ package cluster
 import (
 	"database/sql"
 	"errors"
+	"hash"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/config/manager"
 	"github.com/signal18/replication-manager/utils/cron"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/state"
@@ -232,5 +237,52 @@ func TestScheduledPasswordRotationInvalidCron(t *testing.T) {
 	cl.CheckScheduledPasswordRotation()
 	if hasState(cl.SecurityStateMachine, "WARN0274") {
 		t.Fatal("a valid cron must close the state")
+	}
+}
+
+// #2269: the rotation waits for a config save; a config reload in that window resets
+// cluster.master and the slaves. The rotation goes on with the master and replicas it took at
+// its start: it ends, it does not panic (a panic there stopped the monitor).
+func TestRotatePasswordsMasterResetDuringSaveWait(t *testing.T) {
+	floor := configSaveWaitFloor
+	configSaveWaitFloor = 5 * time.Second
+	defer func() { configSaveWaitFloor = floor }()
+
+	cl, srv := newTestClusterServer(t)
+	cl.ConfigManager = &manager.ConfigManager{}
+	cl.CheckSumConfig = map[string]hash.Hash{}
+	cl.initConfigDone.Store(true)
+	if err := os.MkdirAll(filepath.Join(cl.Conf.WorkingDir, cl.Name), 0700); err != nil {
+		t.Fatal(err)
+	}
+	cl.Conf.SecretKey = []byte("0123456789abcdef")
+	cl.Conf.ConfRewrite = true
+	cl.Conf.MonitoringSecretVersioning = true
+	cl.Conf.Topology = config.TopoUnknown
+	cl.Conf.ImmuableFlagMap = map[string]interface{}{}
+	cl.Conf.DynamicFlagMap = map[string]interface{}{}
+	cl.Conf.DefaultFlagMap = map[string]interface{}{}
+	cl.Conf.Secrets = config.NewSecrets(map[string]config.Secret{"db-servers-credential": {Value: "root:before"}, "replication-credential": {Value: "repl:before"}})
+	srv.State = stateMaster
+	srv.Conn = &sqlx.DB{}
+	srv.Users = dbhelper.NewGrantsMap() // no account to change: the test is the topology reset
+	cl.master = srv
+	cl.CredentialChain().Refresh()
+
+	// the gate: a reload resets the topology, then the save completes
+	go func() {
+		for !cl.IsNeedConfigSave {
+			time.Sleep(20 * time.Millisecond)
+		}
+		cl.master, cl.slaves = nil, nil
+		cl.IsNeedConfigSave = false
+		cl.SaveCallBack()
+	}()
+	err := cl.RotatePasswords()
+	if err != nil && strings.Contains(err.Error(), "internal error") {
+		t.Fatalf("the rotation panicked: %v", err)
+	}
+	if cl.IsInPasswordRotation() {
+		t.Fatal("the rotation did not end")
 	}
 }

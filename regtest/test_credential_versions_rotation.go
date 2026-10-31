@@ -160,6 +160,14 @@ func (regtest *RegTest) credentialVersionsRotation(cl *cluster.Cluster, withVaul
 		}
 		time.Sleep(2 * time.Second)
 	}
+	// the credential changes before the rotation's last steps (the databases, the orchestrator
+	// secret): the next steps wait for its end
+	for cl.IsInPasswordRotation() {
+		if time.Now().After(deadline) {
+			return fail("the rotation did not end")
+		}
+		time.Sleep(2 * time.Second)
+	}
 	pass2 := cl.Conf.GetDecryptedValue(key)
 	if !check("rotation", pass2) {
 		return false
