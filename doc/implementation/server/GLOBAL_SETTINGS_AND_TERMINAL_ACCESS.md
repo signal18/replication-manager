@@ -37,7 +37,11 @@ admin included: such a setting is changed on the host, in the file.
   login of the instance then proved it, see `doc/implementation/cluster/CLOUD18_LOGIN.md`).
 
 An API token, another SSO login, and a Cloud18 login without the second factor are refused
-(`config.TerminalAuthAllows`, security log `terminal_denied`). The global terminal (the shell on the
+(`config.TerminalAuthAllows`, security log `terminal_denied`). Both settings are read at each terminal
+request: unsetting `cloud18-login-acr` closes the terminal to Cloud18 logins at once, sessions opened
+before included. A session is a Cloud18 one when its repman-signed JWT carries the `cloud18` or
+`cloud18_token` claim, which only the three Cloud18 issuers set (the Sign in form through the realm,
+Sign in with Cloud18, a verified realm token); another SSO provider never does. The global terminal (the shell on the
 repman host) is for the local `admin` account only: the `cloud18-gitlab-user` exception is removed.
 `terminal-session-enabled` stays the off switch. `terminal-session-auth = cloud18-mfa` alone also refuses
 the local accounts (the host shell stays the local admin's either way): keep `local` in the list unless
