@@ -12,6 +12,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { getClusterData } from '../../redux/clusterSlice';
 import RMButton from '../../components/RMButton';
 import { getTokenByBaseURL } from '../../services/apiHelper';
+import { adminMode } from '../../services/adminMode';
 import {
   normalizeRIDSearchParams,
   OpenSVCTerminalRID,
@@ -175,7 +176,15 @@ const TerminalComponent = () => {
 
   }, []); // Empty dependency array ensures this effect runs only once
 
-  const handleConnect = () => {
+  const handleConnect = async () => {
+    // the shell on the repman host is the local admin's only (#2262): enter admin mode first
+    if (!clusterName && !adminMode.isActive()) {
+      try {
+        await adminMode.request();
+      } catch (e) {
+        return;
+      }
+    }
     let websocketUrl = '';
     if (clusterName && serverName) {
       websocketUrl = `/api/terminal/connect/clusters/${clusterName}/servers/${serverName}`;
@@ -237,7 +246,9 @@ const TerminalComponent = () => {
           return;
         }
         setStatus('connected');
-        socket.send(JSON.stringify({ type: 'auth', token: getTokenByBaseURL(baseURL) }));
+        // the admin mode's session when one is open (a local terminal), the person's otherwise
+        const token = (!baseURL && adminMode.token()) || getTokenByBaseURL(baseURL);
+        socket.send(JSON.stringify({ type: 'auth', token }));
       };
 
       socket.onclose = () => {

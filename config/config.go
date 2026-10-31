@@ -36,8 +36,6 @@ import (
 	git_obj "github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	git_https "github.com/go-git/go-git/v5/plumbing/transport/http"
-	vault "github.com/hashicorp/vault/api"
-	auth "github.com/hashicorp/vault/api/auth/approle"
 	"github.com/signal18/replication-manager/share"
 	"github.com/signal18/replication-manager/utils/crypto"
 	"github.com/signal18/replication-manager/utils/dbhelper"
@@ -379,6 +377,7 @@ type Config struct {
 	HttpServ                                 bool                         `scope:"server" mapstructure:"http-server" toml:"http-server" json:"httpServer"`
 	ApiServ                                  bool                         `scope:"server" mapstructure:"api-server" toml:"api-server" json:"apiServer"`
 	MCPServ                                  bool                         `scope:"server" mapstructure:"mcp-server" toml:"mcp-server" json:"mcpServer"`
+	MCPServerAuth                            string                       `scope:"server" mapstructure:"mcp-server-auth" toml:"mcp-server-auth" json:"mcpServerAuth"`
 	MCPTransport                             string                       `scope:"server" mapstructure:"mcp-transport" toml:"mcp-transport" json:"mcpTransport"`
 	MCPPort                                  string                       `scope:"server" mapstructure:"mcp-port" toml:"mcp-port" json:"mcpPort"`
 	MCPBindAddr                              string                       `scope:"server" mapstructure:"mcp-bind-address" toml:"mcp-bind-address" json:"mcpBindAddress"`
@@ -811,6 +810,7 @@ type Config struct {
 	APIAutologin                              bool              `scope:"server" mapstructure:"api-autologin" toml:"api-autologin" json:"apiAutologin"`
 	APIAutologinUser                          string            `scope:"server" mapstructure:"api-autologin-user" toml:"api-autologin-user" json:"apiAutologinUser"`
 	APIDashboardUser                          string            `scope:"server" mapstructure:"api-dashboard-user" toml:"api-dashboard-user" json:"apiDashboardUser"`
+	APITrustedNetworks                        string            `scope:"server" mapstructure:"api-trusted-networks" toml:"api-trusted-networks" json:"apiTrustedNetworks"`
 	APIPort                                   string            `scope:"server" mapstructure:"api-port" toml:"api-port" json:"apiPort"`
 	APIBind                                   string            `scope:"server" mapstructure:"api-bind" toml:"api-bind" json:"apiBind"`
 	APIPublicURL                              string            `scope:"server" mapstructure:"api-public-url" toml:"api-public-url" json:"apiPublicUrl"`
@@ -919,6 +919,11 @@ type Config struct {
 	BackupArchiveName                         string            `mapstructure:"backup-archive-name" toml:"backup-archive-name" json:"backupArchiveName"`
 	Archives                                  []ArchiveConfig   `mapstructure:"archive" toml:"archive" json:"archives"`
 	S3Providers                               S3ProviderBlocks  `mapstructure:"s3-provider" toml:"-" json:"-"`
+	SecretKvs                                 []SecretKvConfig  `mapstructure:"secret-kv" toml:"secret-kv" json:"secretKvs"`
+	SecretKvQueueLimit                        int               `mapstructure:"secret-kv-queue-limit" toml:"secret-kv-queue-limit" json:"secretKvQueueLimit"`
+	SecretKvWriteTimeout                      int               `mapstructure:"secret-kv-write-timeout" toml:"secret-kv-write-timeout" json:"secretKvWriteTimeout"`
+	SecretKvRetryInterval                     int               `mapstructure:"secret-kv-retry-interval" toml:"secret-kv-retry-interval" json:"secretKvRetryInterval"`
+	SecretKvStartTimeout                      int               `mapstructure:"secret-kv-start-timeout" toml:"secret-kv-start-timeout" json:"secretKvStartTimeout"`
 	BackupArchiveRemoveOriginal               bool              `mapstructure:"backup-archive-remove-original" toml:"backup-archive-remove-original" json:"backupArchiveRemoveOriginal"`
 	BackupDiscovery                           bool              `mapstructure:"backup-discovery" toml:"backup-discovery" json:"backupDiscovery"`
 	BackupDiscoveryCandidateMax               int               `mapstructure:"backup-discovery-candidate-max" toml:"backup-discovery-candidate-max" json:"backupDiscoveryCandidateMax"`
@@ -1043,6 +1048,7 @@ type Config struct {
 	Cloud18GitPassword               string  `scope:"server" mapstructure:"cloud18-gitlab-password" toml:"cloud18-gitlab-password" json:"-"`
 	Cloud18IdentityURL               string  `scope:"server" mapstructure:"cloud18-identity-url" toml:"cloud18-identity-url" json:"cloud18IdentityUrl"`
 	Cloud18SSOLogin                  bool    `scope:"server" mapstructure:"cloud18-sso-login" toml:"cloud18-sso-login" json:"cloud18SsoLogin"`
+	Cloud18LoginACR                  string  `scope:"server" mapstructure:"cloud18-login-acr" toml:"cloud18-login-acr" json:"cloud18LoginAcr"`
 	Cloud18GatewayDomainName         string  `scope:"server" mapstructure:"cloud18-gateway-domain-name" toml:"cloud18-gateway-domain-name"  json:"cloud18GatewayDomainName"`
 	Cloud18GatewayService            string  `scope:"server" mapstructure:"cloud18-gateway-service" toml:"Cloud18-gateway-service" json:"cloud18GatewayService"`
 	Cloud18CrmApiUrl                 string  `scope:"server" mapstructure:"cloud18-crm-api-url" toml:"cloud18-crm-api-url" json:"cloud18CrmApiUrl"`
@@ -1151,6 +1157,7 @@ type Config struct {
 	TerminalSessionEnabled                 bool                   `scope:"server" mapstructure:"terminal-session-enabled" toml:"terminal-session-enabled" json:"terminalSessionEnabled"`
 	TerminalSessionResume                  bool                   `scope:"server" mapstructure:"terminal-session-resume" toml:"terminal-session-resume" json:"terminalSessionResume"`
 	TerminalSessionManager                 string                 `mapstructure:"terminal-session-manager" toml:"terminal-session-manager" json:"terminalSessionManager"`
+	TerminalSessionAuth                    string                 `scope:"server" mapstructure:"terminal-session-auth" toml:"terminal-session-auth" json:"terminalSessionAuth"`
 	// Cloud18ArchiveOfferRequests: the archive offers of the marketplace catalogue whose access
 	// the cluster asks the back-office for (comma-separated offer names); the BO harvests it and
 	// delivers, in the cluster's inject.toml, the S3 provider (OVH S3) or the archive (a PBS token)
@@ -1996,6 +2003,16 @@ var SecretKeys = []string{
 	"meet-token",
 	"prov-app-template-repo-password",
 	"prov-docker-registry-credentials",
+	// webhook URLs (the URL is the credential), the tunnel and Consul credentials, and
+	// password/token fields with no reader yet
+	"alert-slack-url",
+	"cloud18-alert-slack-url",
+	"alert-teams-url",
+	"alert-teams-proxy-url",
+	"monitoring-tunnel-credential",
+	"registry-consul-credential",
+	"registry-consul-token",
+	"mysqlrouter-pass",
 }
 
 // DecryptSecretsFromConfig rebuilds Conf.Secrets from the config maps: DynamicFlagMap, then
@@ -2219,123 +2236,6 @@ func (conf *Config) GetStableEncryptedValue(key string, value string) string {
 	return enc
 }
 
-func (conf *Config) GetVaultCredentials(client *vault.Client, path string, key string) (string, error) {
-	if conf.IsVaultUsed() && conf.IsPath(path) {
-		if conf.VaultMode == VaultConfigStoreV2 {
-			secret, err := client.KVv2(conf.VaultMount).Get(context.Background(), path)
-
-			if err != nil {
-				return "", err
-			}
-			return secret.Data[key].(string), nil
-		} else {
-			secret, err := client.KVv1("").Get(context.Background(), path)
-			if err != nil {
-				return "", err
-			}
-			return secret.Data["username"].(string) + ":" + secret.Data["password"].(string), nil
-		}
-	}
-	return "", errors.New("Failed to get vault credentials")
-}
-
-func (conf *Config) DecryptSecretsFromVault() {
-	for k, v := range conf.Secrets.Snapshot() {
-		origin_value := v.Value
-		var secret Secret
-		secret.Value = fmt.Sprintf("%v", origin_value)
-		if conf.IsVaultUsed() && conf.IsPath(secret.Value) {
-			//	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlInfo, "Decrypting all the secret variables on Vault")
-			vault_config := vault.DefaultConfig()
-			vault_config.Address = conf.VaultServerAddr
-			client, err := conf.GetVaultConnection()
-			if err == nil {
-				if conf.VaultMode == VaultConfigStoreV2 {
-					vault_value, err := conf.GetVaultCredentials(client, secret.Value, k)
-					if err != nil {
-						log.Printf("Unable to get %s Vault secret: %v", k, err)
-					} else if vault_value != "" {
-						secret.Value = vault_value
-					}
-				}
-			} else {
-				log.Printf("Unable to initialize AppRole auth method: %v", err)
-			}
-			conf.Secrets.Set(k, secret)
-		}
-	}
-}
-
-func (conf *Config) GetVaultConnection() (*vault.Client, error) {
-	if conf.IsVaultUsed() {
-		log.Printf("Vault authentication (%s)", conf.VaultAuth)
-		config := vault.DefaultConfig()
-
-		config.Address = conf.VaultServerAddr
-
-		client, err := vault.NewClient(config)
-		if err != nil {
-			log.Printf("Unable to initialize AppRole auth method: %v", err)
-			return nil, err
-		}
-
-		if conf.VaultAuth == "jwt" {
-			return conf.vaultJWTLogin(client)
-		}
-
-		roleID := conf.VaultRoleId
-		secretID := &auth.SecretID{FromString: conf.GetDecryptedPassword("vault-secret-id", conf.VaultSecretId)}
-		if roleID == "" || secretID == nil {
-			log.Printf("Unable to initialize AppRole auth method: %v", err)
-			return nil, err
-		}
-
-		appRoleAuth, err := auth.NewAppRoleAuth(
-			roleID,
-			secretID,
-		)
-		if err != nil {
-			log.Printf("Unable to initialize AppRole auth method: %v", err)
-			return nil, err
-		}
-
-		authInfo, err := client.Auth().Login(context.Background(), appRoleAuth)
-		if err != nil {
-			log.Printf("Unable to initialize AppRole auth method: %v", err)
-			return nil, err
-		}
-		if authInfo == nil {
-			log.Printf("Unable to initialize AppRole auth method: %v", err)
-			return nil, err
-		}
-		return client, err
-	}
-	return nil, errors.New("Not using Vault")
-}
-
-// vaultJWTLogin logs in to the vault's jwt auth method with the instance's Cloud18 identity
-// token (#2159): no secret of the vault is kept here. The role is vault-role-id when set, else
-// the realm's client id (ConstCloud18IdentityClientID), the Cloud18 vault binding it on sub.
-func (conf *Config) vaultJWTLogin(client *vault.Client) (*vault.Client, error) {
-	token, _, err := conf.Cloud18IdentityToken()
-	if err != nil {
-		return nil, err
-	}
-	role := conf.VaultRoleId
-	if role == "" {
-		role = ConstCloud18IdentityClientID
-	}
-	secret, err := client.Logical().Write("auth/jwt/login", map[string]interface{}{"role": role, "jwt": token})
-	if err != nil {
-		return nil, fmt.Errorf("vault jwt login: %w", err)
-	}
-	if secret == nil || secret.Auth == nil || secret.Auth.ClientToken == "" {
-		return nil, errors.New("vault jwt login: no token in the answer")
-	}
-	client.SetToken(secret.Auth.ClientToken)
-	return client, nil
-}
-
 // encryptedTokenRe matches one encrypted value as GetEncryptedString writes it, anywhere
 // in a string: "hash_" and the hex ciphertext. The ciphertext carries a 16-byte IV before
 // the data, so a real token has at least 34 hex digits; shorter matches are not ours and
@@ -2430,6 +2330,10 @@ func readAndPrintFile(fileName string) {
 func (conf *Config) IsPath(str string) bool {
 
 	if strings.Contains(str, "=") || strings.Contains(str, "+") {
+		return false
+	}
+	// a URL (a webhook secret) is a value, never a Vault path
+	if strings.Contains(str, "://") {
 		return false
 	}
 	return strings.Contains(str, "/")
@@ -2820,6 +2724,12 @@ func (conf *Config) PushConfigToGit(url string, tok string, user string, dir str
 					if conf.IsEligibleForPrinting(ConstLogModGit, LvlErr) {
 						log.Errorf("Git error : cannot Add %s : %s", name+"/queryrules.json", err)
 					}
+				}
+			}
+			// the versions of the secrets, encrypted (#2227)
+			if _, err := os.Stat(conf.WorkingDir + "/" + name + "/secret_store.json"); err == nil {
+				if _, err := w.Add(name + "/secret_store.json"); err != nil && conf.IsEligibleForPrinting(ConstLogModGit, LvlErr) {
+					log.Errorf("Git error : cannot Add %s : %s", name+"/secret_store.json", err)
 				}
 			}
 		}

@@ -50,7 +50,7 @@ import (
 type ServerMonitor struct {
 	legacyJobLoginAt int64        // unix time of the last legacy job body (OpenJobBody), read atomically; 0 never
 	jobStream        atomic.Value // jobStreamAuth: how the server's jobs script signs and checks its streams (OpenJobBody)
-	jobStreamRefused atomic.Value // jobStreamRefusal: the last stream of this server's jobs refused by a receiver (WARN0273)
+	jobStreamRefused atomic.Value // jobStreamRefusal: the last stream of this server's jobs refused by a receiver (WARN0275)
 
 	Id                          string                      `json:"id" groups:"apps"` //Unique name given by cluster & crc64(URL) used by test to provision
 	Name                        string                      `json:"name" groups:"apps"`

@@ -7,6 +7,7 @@
 package server
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -57,11 +58,23 @@ func (repman *ReplicationManager) GetConf() *config.Config {
 	return repman.Conf
 }
 
+// errGlobalSettingThroughCluster: a global (scope server) key is changed through the global
+// settings routes only, by the local admin (#2262), never through a cluster tool (the MCP).
+var errGlobalSettingThroughCluster = errors.New("a global setting: change it through the global settings with the local admin account")
+
+// SetClusterSetting changes a cluster key for the MCP; a global key is refused.
 func (repman *ReplicationManager) SetClusterSetting(cl *cluster.Cluster, key, value string) error {
+	if config.IsScope(key, "server") {
+		return fmt.Errorf("%s: %w", key, errGlobalSettingThroughCluster)
+	}
 	return repman.setClusterSetting(cl, key, value)
 }
 
+// SwitchClusterSetting switches a cluster key for the MCP; a global key is refused.
 func (repman *ReplicationManager) SwitchClusterSetting(cl *cluster.Cluster, key string) error {
+	if config.IsScope(key, "server") {
+		return fmt.Errorf("%s: %w", key, errGlobalSettingThroughCluster)
+	}
 	return repman.switchClusterSettings(cl, key)
 }
 
@@ -206,6 +219,9 @@ func (repman *ReplicationManager) GetName() string {
 // the cluster ACL exactly as IsValidClusterACL does.
 func (repman *ReplicationManager) AuthenticateMCP(r *http.Request) (*repmanmcp.Principal, error) {
 	if t, isAPIToken, ok := repman.apiTokenFromRequest(r); ok {
+		if err := repman.Conf.MCPAuthAllows("token", false); err != nil {
+			return nil, err
+		}
 		return &repmanmcp.Principal{User: t.User, AuthMethod: "token", TokenID: t.ID, TokenLabel: t.Label, Remote: r.RemoteAddr, Auth: t, Bearer: bearerOf(r)}, nil
 	} else if isAPIToken {
 		return nil, fmt.Errorf("API token invalid, revoked, expired or disabled")
@@ -242,6 +258,12 @@ func (repman *ReplicationManager) AuthenticateMCP(r *http.Request) (*repmanmcp.P
 		if t, ok := info["cloud18_token"].(string); ok && t != "" {
 			p.Cloud18Token = repman.Conf.GetDecryptedPassword("cloud18-token", t)
 		}
+	}
+	// a Cloud18 session = its repman-signed JWT carries the cloud18 or cloud18_token claim, which
+	// only the Cloud18 issuers set (the Sign in form through the realm, Sign in with Cloud18, a
+	// verified realm token): a new issuer setting them changes this gate and the terminal's
+	if err := repman.Conf.MCPAuthAllows(p.AuthMethod, p.Cloud18Login != "" || p.Cloud18Token != ""); err != nil {
+		return nil, err
 	}
 	return p, nil
 }

@@ -218,6 +218,18 @@ func (repman *ReplicationManager) applyPeerConfigEvent(ev cluster.ConfigChangeEv
 		}
 	}
 
+	// the credential store list diffs per entry: "secret-kv.<name>.<setting>" (#2227)
+	if rest, ok := strings.CutPrefix(ev.Key, "secret-kv."); ok {
+		if i := strings.LastIndex(rest, "."); i > 0 {
+			if err := cl.Conf.SetSecretKvSetting(rest[:i], rest[i+1:], ev.Value, ev.Action == "unset"); err != nil {
+				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "Event log: cannot apply %s on %s: %s", ev.Key, ev.Cluster, err)
+				cl.RecordEventProvenance(ev.Key, ev.Value, ev.Ts, ev.Author)
+				return false
+			}
+			cl.RecordEventProvenance(ev.Key, ev.Value, ev.Ts, ev.Author)
+			return true
+		}
+	}
 	// the S3 provider list diffs per entry: "s3-provider.<name>.<key>" (#2155)
 	if rest, ok := strings.CutPrefix(ev.Key, "s3-provider."); ok {
 		if i := strings.LastIndex(rest, "."); i > 0 {
@@ -268,8 +280,12 @@ func (repman *ReplicationManager) applyPeerConfigEvent(ev cluster.ConfigChangeEv
 		// Seed the ciphertext cache with the peer's exact ciphertext so our
 		// next save writes the identical bytes: both peers' saved configs
 		// converge and the echo subtraction matches on the first save.
+		// The plaintext goes with it: a key applied generically (a webhook
+		// URL, whose setter takes base64) set its field only, and its readers
+		// read the secret.
 		sec := cl.Conf.Secrets.Get(ev.Key)
 		sec.Crypted = ev.Value
+		sec.Value = applyVal
 		cl.Conf.Secrets.Set(ev.Key, sec)
 	}
 

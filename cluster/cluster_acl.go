@@ -149,6 +149,10 @@ func (cluster *Cluster) IsLocalOnlyAccount(strUser string) bool {
 	return user.Password != "" && strUser != cluster.Conf.Cloud18GitUser
 }
 
+// AuthMethodSubmittedPassword is the auth method of a password a client typed (/api/login,
+// HTTP Basic): IsValidACL compares it as received, never decrypted.
+const AuthMethodSubmittedPassword = "submitted-password"
+
 func (cluster *Cluster) IsValidACL(strUser string, strPassword string, URL string, AuthMethod string) bool {
 	return cluster.isValidACL(strUser, strPassword, URL, AuthMethod, true)
 }
@@ -194,7 +198,14 @@ func (cluster *Cluster) isValidACL(strUser string, strPassword string, URL strin
 	if user.Password == "" || strPassword == "" {
 		return false
 	}
-	if subtle.ConstantTimeCompare([]byte(user.Password), []byte(cluster.Conf.GetDecryptedPassword("api-credentials", strPassword))) == 1 {
+	// A session JWT carries the password encrypted ("password"); a password a client typed
+	// (login, HTTP Basic) is compared as received: decrypting it would let an encrypted
+	// value read from any JWT or saved configuration log in as its user.
+	submitted := strPassword
+	if AuthMethod != AuthMethodSubmittedPassword {
+		submitted = cluster.Conf.GetDecryptedPassword("api-credentials", strPassword)
+	}
+	if subtle.ConstantTimeCompare([]byte(user.Password), []byte(submitted)) == 1 {
 		return cluster.IsURLPassACL(strUser, URL, errorPrint)
 	}
 	return false

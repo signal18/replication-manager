@@ -242,6 +242,9 @@ func (repman *ReplicationManager) CalibrateSMTGain(ctx context.Context, user, ur
 // @Router /api/clusters/settings/actions/calibrate-smt-gain [post]
 func (repman *ReplicationManager) handlerMuxCalibrateSMTGain(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
+	if !repman.isGlobalSettingsAdmin(w, r, "resource-manager-smt-gain") {
+		return
+	}
 	var mycluster = repman.firstCluster()
 	if mycluster == nil {
 		http.Error(w, "No cluster", http.StatusInternalServerError)

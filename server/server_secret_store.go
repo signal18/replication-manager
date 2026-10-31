@@ -184,6 +184,9 @@ var secretStoreRestoreCmd = &cobra.Command{
 
 		fmt.Printf("Cluster: %s\n", cfgGroup)
 		fmt.Printf("Target: %s\n", summary.ConfigPath)
+		if summary.VersionsPath != "" {
+			fmt.Printf("Versioned secrets: a new version in %s, the config keeps the starting value\n", summary.VersionsPath)
+		}
 		if summary.Mode == "version" {
 			fmt.Printf("Mode: secret-version=%s\n", summary.RequestedVersion)
 		} else {
@@ -221,6 +224,11 @@ func pruneSecretStoreForCluster(repman *ReplicationManager, clusterName string, 
 		return cluster.SecretVersionStorePruneSummary{}, fmt.Errorf("cluster %s not found in configuration", clusterName)
 	}
 
+	// a loaded cluster prunes its version store, the save callback writes the file (#2227
+	// rule 2); offline, the file itself, atomically, in the same format
+	if cl, loaded := repman.Clusters[clusterName]; loaded && cl != nil {
+		return cl.PruneSecretVersions(keepLast, dryRun), nil
+	}
 	storePath := cluster.SecretVersionStorePath(clusterConf.WorkingDir, clusterName)
 	return cluster.PruneSecretVersionStoreFile(storePath, keepLast, dryRun)
 }
@@ -253,6 +261,7 @@ func copySecretStoreForCluster(repman *ReplicationManager, clusterName string, d
 
 type secretStoreRestoreSummary struct {
 	ConfigPath       string
+	VersionsPath     string // where the versioned secrets are restored, as a new version (#2227)
 	Selection        string
 	Mode             string
 	RequestedVersion string
@@ -335,19 +344,42 @@ func restoreSecretStoreForCluster(repman *ReplicationManager, clusterName string
 		summary.RequestedAt = at.Format(time.RFC3339)
 	}
 
+	// a versioned secret is restored as a new version: the config keeps its starting value
+	// (#2227 rule 1); the other secrets go to the config file as before
+	var configEntries, versionEntries []cluster.SecretVersionStoreRestoreEntry
+	for _, e := range entries {
+		if cluster.IsVersionedSecretKey(e.Key) {
+			versionEntries = append(versionEntries, e)
+		} else {
+			configEntries = append(configEntries, e)
+		}
+	}
+	if len(versionEntries) > 0 {
+		summary.VersionsPath = storePath
+	}
+
 	if dryRun {
 		return summary, nil
 	}
 
-	if err := applyRestoreEntriesToClusterConfigFile(configPath, clusterName, entries); err != nil {
-		return summary, err
+	if len(configEntries) > 0 {
+		if err := applyRestoreEntriesToClusterConfigFile(configPath, clusterName, configEntries); err != nil {
+			return summary, err
+		}
 	}
 
 	if applyRuntime {
+		// the running cluster makes the versions through its chain, its save writes the file
 		if err := applyRestoreEntriesToRuntime(repman, clusterName, entries); err != nil {
 			return summary, err
 		}
 		summary.RuntimeApplied = true
+		return summary, nil
+	}
+	for _, e := range versionEntries {
+		if err := cluster.AppendSecretVersionFile(storePath, e.Key, e.HashValue, clusterConf.ArbitrationSasUniqueId); err != nil {
+			return summary, err
+		}
 	}
 
 	return summary, nil
@@ -524,7 +556,7 @@ func applyRestoreEntriesToRuntime(repman *ReplicationManager, clusterName string
 		}
 	}
 
+	// the save callback records the versions and writes the file (#2227 rule 2, T25)
 	cl.MarkSecretVersionStoreDirty()
-	cl.ReconcileSecretVersionStore()
 	return nil
 }

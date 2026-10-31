@@ -9,13 +9,10 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
-
-	"github.com/pelletier/go-toml"
 )
 
 // A cluster's archives (#2077, doc/implementation/cluster/BACKUP_ARCHIVE_PLUGINS.md):
@@ -45,18 +42,47 @@ type ArchivePluginManifest struct {
 	Tier        string `json:"tier,omitempty"` // ConstArchiveTierEnterprise, "" for every plan
 	// External: the plugin is a program (archiveplugin-<binary>, cluster/archiveplugin/wire)
 	// that keeps its archives with its own engine; restic plugins are run by replication-manager
-	External     bool                   `json:"external,omitempty"`
-	Binary       string                 `json:"-"` // the external plugin's program
-	Settings     []ArchivePluginSetting `json:"settings"`
-	Capabilities []string               `json:"capabilities"`
+	External     bool           `json:"external,omitempty"`
+	Binary       string         `json:"-"` // the external plugin's program
+	Settings     PluginSettings `json:"settings"`
+	Capabilities []string       `json:"capabilities"`
 }
 
-// ArchivePluginSetting is one setting of a plugin's config.
-type ArchivePluginSetting struct {
+// PluginSetting is one typed setting of a plugin entry's config: an archive's, a credential
+// store's (#2227). Its types are the ConstArchiveSettingType* ones.
+type PluginSetting struct {
 	Name   string   `json:"name"`
 	Type   string   `json:"type"`             // ConstArchiveSettingType*
 	Values []string `json:"values,omitempty"` // the allowed values of an enum
 	Group  string   `json:"group,omitempty"`  // ConstArchiveSettingGroup*, "" for the main settings
+}
+
+// ArchivePluginSetting is one setting of an archive plugin's config.
+type ArchivePluginSetting = PluginSetting
+
+// PluginSettings is a plugin manifest's settings.
+type PluginSettings []PluginSetting
+
+// Setting is the declared setting name.
+func (ss PluginSettings) Setting(name string) (PluginSetting, bool) {
+	for _, st := range ss {
+		if st.Name == name {
+			return st, true
+		}
+	}
+	return PluginSetting{}, false
+}
+
+// HasSetting: name is declared, a setting that is not a secret.
+func (ss PluginSettings) HasSetting(name string) bool {
+	st, ok := ss.Setting(name)
+	return ok && st.Type != ConstArchiveSettingTypeSecret
+}
+
+// HasSecret: name is declared, a secret.
+func (ss PluginSettings) HasSecret(name string) bool {
+	st, ok := ss.Setting(name)
+	return ok && st.Type == ConstArchiveSettingTypeSecret
 }
 
 // Archive setting groups, how a form lays a plugin's settings out: the location and
@@ -288,25 +314,14 @@ func ArchivePlugins() []ArchivePluginManifest {
 
 // Setting is the declared setting name.
 func (m ArchivePluginManifest) Setting(name string) (ArchivePluginSetting, bool) {
-	for _, st := range m.Settings {
-		if st.Name == name {
-			return st, true
-		}
-	}
-	return ArchivePluginSetting{}, false
+	return m.Settings.Setting(name)
 }
 
 // HasSetting: the plugin declares name, a setting that is not a secret.
-func (m ArchivePluginManifest) HasSetting(name string) bool {
-	st, ok := m.Setting(name)
-	return ok && st.Type != ConstArchiveSettingTypeSecret
-}
+func (m ArchivePluginManifest) HasSetting(name string) bool { return m.Settings.HasSetting(name) }
 
 // HasSecret: the plugin declares name, a secret.
-func (m ArchivePluginManifest) HasSecret(name string) bool {
-	st, ok := m.Setting(name)
-	return ok && st.Type == ConstArchiveSettingTypeSecret
-}
+func (m ArchivePluginManifest) HasSecret(name string) bool { return m.Settings.HasSecret(name) }
 
 func (m ArchivePluginManifest) Can(capability string) bool {
 	for _, c := range m.Capabilities {
@@ -474,19 +489,13 @@ func ArchiveModeForPlugin(plugin string) (string, bool) {
 
 // MarshalJSON never shows a secret: the API gets the names of the secrets set.
 func (a ArchiveConfig) MarshalJSON() ([]byte, error) {
-	settings := make(map[string]interface{}, len(a.Settings))
-	secrets := []string{}
 	m, known := ArchivePlugin(a.Plugin)
-	for k, v := range a.Settings {
-		// the restic secrets, and every secret a plugin's manifest declares (a PBS token secret,
-		// its client encryption key): never sent, not even encrypted
-		if _, secret := archiveSecretKeys[k]; secret || known && m.HasSecret(k) {
-			secrets = append(secrets, k)
-			continue
-		}
-		settings[k] = v
-	}
-	sort.Strings(secrets)
+	// the restic secrets, and every secret a plugin's manifest declares (a PBS token secret,
+	// its client encryption key): never sent, not even encrypted
+	settings, secrets := splitSecretSettings(a.Settings, func(k string) bool {
+		_, secret := archiveSecretKeys[k]
+		return secret || known && m.HasSecret(k)
+	})
 	return json.Marshal(struct {
 		Name       string                 `json:"name"`
 		Plugin     string                 `json:"plugin"`
@@ -664,10 +673,7 @@ func cloneArchives(in []ArchiveConfig) []ArchiveConfig {
 	out := make([]ArchiveConfig, len(in))
 	for i, a := range in {
 		out[i] = a
-		out[i].Settings = make(map[string]interface{}, len(a.Settings))
-		for k, v := range a.Settings {
-			out[i].Settings[k] = v
-		}
+		out[i].Settings = cloneSettings(a.Settings)
 	}
 	return out
 }
@@ -1064,28 +1070,9 @@ func (conf *Config) ArchivesToml(section string) (string, error) {
 	defer archiveMu.Unlock()
 	var b strings.Builder
 	for _, a := range conf.Archives {
-		b.WriteString("\n[[" + section + ".archive]]\n")
 		head := map[string]interface{}{"name": a.Name, "plugin": a.Plugin}
-		for _, part := range []map[string]interface{}{head, a.Settings} {
-			if len(part) == 0 {
-				continue
-			}
-			keys := make([]string, 0, len(part))
-			for k := range part {
-				keys = append(keys, k)
-			}
-			sort.Strings(keys)
-			for _, k := range keys {
-				t, err := toml.TreeFromMap(map[string]interface{}{k: part[k]})
-				if err != nil {
-					return "", err
-				}
-				line, err := t.ToTomlString()
-				if err != nil {
-					return "", err
-				}
-				b.WriteString(line)
-			}
+		if err := writeEntryToml(&b, section, "archive", head, a.Settings); err != nil {
+			return "", err
 		}
 	}
 	return b.String(), nil
@@ -1101,15 +1088,10 @@ type ArchiveSpec struct {
 	Unset    []string               `json:"unset,omitempty" mapstructure:"unset"`
 }
 
-var archiveNameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,63}$`)
-
 // ValidateArchiveName: lowercase letters, digits, - and _, starting with a letter or a
 // digit, 64 characters at most. The name goes into the config file and the event keys.
 func ValidateArchiveName(name string) error {
-	if !archiveNameRe.MatchString(name) {
-		return fmt.Errorf("archive name %q: lowercase letters, digits, - and _ only, 64 characters at most", name)
-	}
-	return nil
+	return validateEntryName("archive", name)
 }
 
 // ArchiveExists: the list holds name.
@@ -1154,9 +1136,9 @@ func (conf *Config) LegacyArchiveName() string {
 	return ""
 }
 
-// typedArchiveValue checks v against the plugin's setting and returns it as stored: a
-// bool, an int64, a string, or an encrypted secret.
-func (conf *Config) typedArchiveValue(st ArchivePluginSetting, v interface{}) (interface{}, error) {
+// typedSettingValue checks v against a plugin's setting (an archive's, a credential store's)
+// and returns it as stored: a bool, an int64, a string, or an encrypted secret.
+func (conf *Config) typedSettingValue(st ArchivePluginSetting, v interface{}) (interface{}, error) {
 	s := strings.TrimSpace(fmt.Sprintf("%v", v))
 	if err := st.Validate(s); err != nil {
 		return nil, err
@@ -1230,7 +1212,7 @@ func (conf *Config) TakeArchivePluginSecrets(a *ArchiveConfig, secrets map[strin
 		if cur, held := a.Settings[name]; held && fmt.Sprintf("%v", cur) != "" {
 			continue
 		}
-		a.Settings[name] = conf.GetEncryptedString(v) // whole, as typedArchiveValue
+		a.Settings[name] = conf.GetEncryptedString(v) // whole, as typedSettingValue
 	}
 	return nil
 }
@@ -1273,22 +1255,8 @@ func (conf *Config) BuildArchive(spec ArchiveSpec, create, upsert bool) (Archive
 		return a, false, fmt.Errorf("archive %s: plugin %s cannot be edited", a.Name, a.Plugin)
 	}
 	cleanArchiveEntry(&a)
-	for name, v := range spec.Settings {
-		st, ok := m.Setting(name)
-		if !ok {
-			return a, false, fmt.Errorf("plugin %s has no setting %s", a.Plugin, name)
-		}
-		if st.Type == ConstArchiveSettingTypeSecret && fmt.Sprintf("%v", v) == "" {
-			continue // an empty secret field in a form keeps the secret
-		}
-		tv, err := conf.typedArchiveValue(st, v)
-		if err != nil {
-			return a, false, err
-		}
-		a.Settings[name] = tv
-	}
-	for _, name := range spec.Unset {
-		delete(a.Settings, name)
+	if err := conf.applyEntrySpec(a.Settings, m.Settings, a.Plugin, spec.Settings, spec.Unset); err != nil {
+		return a, false, err
 	}
 	return a, isNew, nil
 }

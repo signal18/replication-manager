@@ -444,7 +444,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.ConfRewrite, "monitoring-save-config", true, "Save configuration changes to <monitoring-datadir>/<cluster_name> ")
 	flags.BoolVar(&conf.ConfRestoreOnStart, "monitoring-restore-config-on-start", false, "Wipe working directory and restore config")
 	flags.BoolVar(&conf.MonitoringMergeConfigOnStart, "monitoring-merge-config-on-start", false, "Merge configuration changes to source config.toml file (/etc or other source location) ")
-	flags.BoolVar(&conf.MonitoringSecretVersioning, "monitoring-secret-versioning", false, "Track cluster-local secret hash versions")
+	flags.BoolVar(&conf.MonitoringSecretVersioning, "monitoring-secret-versioning", true, "Keep the versions of the database and proxy credentials, encrypted, in the cluster's local file: a credential change or rotation becomes a version (needs the encryption key)")
 	flags.BoolVar(&conf.MonitoringSecretVersioningAutoPrune, "monitoring-secret-versioning-auto-prune", false, "Automatically prune tracked secret versions during reconciliation")
 	flags.IntVar(&conf.MonitoringSecretVersioningKeepLast, "monitoring-secret-versioning-keep-last", 0, "Keep only the last N versions per secret key when auto-prune is enabled (0 = unlimited)")
 	flags.Int64Var(&conf.MonitoringTicker, "monitoring-ticker", 2, "Monitoring interval in seconds")
@@ -586,7 +586,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.IntVar(&conf.LogLevelDatabaseAudit, "log-level-database-audit", 3, "Log Level for fetcher audit log")
 	flags.BoolVar(&conf.LogPlugin, "log-plugin", false, "Enable generic log-tailer plugin checks (errorlog, sqlerrorlog, slowlog 24h windows)")
 	flags.BoolVar(&conf.MonitorBinlogEvents, "monitoring-binlog-events", false, "Enable incremental binlog QUERY event scanning (feeds binlog security plugins: cleartext-password, credit-card-leak)")
-	flags.BoolVar(&conf.MonitoringLogAPILogin, "monitoring-log-api-login", false, "Log successful API logins to the global server log and security log")
+	flags.BoolVar(&conf.MonitoringLogAPILogin, "monitoring-log-api-login", true, "Log successful API logins to the global server log and security log")
 	flags.StringVar(&conf.MonitoringLogAPILoginSilentUsers, "monitoring-log-api-login-silent-users", "system", "Comma-separated list of usernames excluded from API login logging (default: system, used by dbjobs polling)")
 	flags.IntVar(&conf.LogPluginLevel, "log-level-plugin", 2, "Log verbosity level for log-tailer plugins (1=error,2=warn,3=info,4=debug)")
 
@@ -744,6 +744,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.APIAutologin, "api-autologin", false, "Enable unauthenticated auto-login token endpoint (trusted networks only)")
 	flags.StringVar(&conf.APIAutologinUser, "api-autologin-user", "admin", "Username to generate a token for when api-autologin is enabled")
 	flags.StringVar(&conf.APIDashboardUser, "api-dashboard-user", "", "Read-only user for the /dashboard public endpoint (empty = disabled)")
+	flags.StringVar(&conf.APITrustedNetworks, "api-trusted-networks", "127.0.0.1/32,::1/128", "Comma-separated CIDRs whose direct callers (TCP peer, never a forwarded header) may use the credential-less endpoints api-autologin and api-dashboard-user; never list a gateway or proxy that relays the public")
 	flags.StringVar(&conf.APIPublicURL, "api-public-url", "https://127.0.0.1:10005", "Public address of monitoring API Used for cloud18 OAuth callback")
 	flags.StringVar(&conf.OAuthProvider, "api-oauth-provider-url", "https://gitlab.signal18.io", "API OAuth Provider URL")
 	flags.StringVar(&conf.OAuthClientID, "api-oauth-client-id", "", "API OAuth Client ID")
@@ -763,6 +764,10 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.VaultMount, "vault-mount", "kv", "Vault mount for the secret")
 	flags.StringVar(&conf.VaultAuth, "vault-auth", "approle", "Vault auth method : approle|jwt|userpass|ldap|token|github|alicloud|aws|azure|gcp|kerberos|kubernetes|radius (jwt: the Cloud18 identity token, role vault-role-id, else replication-manager)")
 	flags.StringVar(&conf.VaultToken, "vault-token", "", "Vault Token")
+	flags.IntVar(&conf.SecretKvQueueLimit, "secret-kv-queue-limit", 1000, "Max secret versions waiting to be written to the credential store entries (secret-kv); the oldest are dropped once exceeded, and a full pass writes every secret again once the queue drains. <= 0 falls back to this default, never unbounded")
+	flags.IntVar(&conf.SecretKvWriteTimeout, "secret-kv-write-timeout", 10, "Timeout in seconds of each write (and of the login) to a credential store entry")
+	flags.IntVar(&conf.SecretKvStartTimeout, "secret-kv-start-timeout", 3, "Timeout in seconds of the read of the vault entries at a cluster's start, for the secrets the local versioned file does not hold (versioning off, or no version yet); past it the cluster starts on what it has and the entry is behind (WARN0269)")
+	flags.IntVar(&conf.SecretKvRetryInterval, "secret-kv-retry-interval", 60, "Seconds between two tries of the writes to a credential store entry that failed")
 	flags.BoolVar(&conf.LogVault, "log-vault", true, "Log vault debug")
 	flags.IntVar(&conf.LogVaultLevel, "log-level-vault", 1, "Log level for vault")
 
@@ -824,6 +829,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.ApiServ, "api-server", true, "Start the API HTTPS server")
 	flags.BoolVar(&conf.ApiSwaggerEnabled, "api-swagger-enabled", true, "Start the API with Swagger")
 	flags.BoolVar(&conf.MCPServ, "mcp-server", false, "Start MCP server for AI assistant integration")
+	flags.StringVar(&conf.MCPServerAuth, "mcp-server-auth", config.ConstMCPAuthAuto, "Logins the MCP accepts: cloud18 (a Cloud18 login, a realm token or a Sign in with Cloud18 session with its second factor when cloud18-login-acr asks one, or an API token; a local password login refused), any (every login of the API), auto (cloud18 on an instance registered to Cloud18, any otherwise). An unknown value acts as cloud18. Local accounts keep the API and the admin zone. The stdio transport carries no login: it starts only with mcp-auth-enabled=false")
 	flags.StringVar(&conf.MCPTransport, "mcp-transport", "api", "MCP transport: api (mounted on the HTTP and HTTPS API listeners at /api/mcp, default), sse (own listener on mcp-port), stdio, or both (sse + stdio)")
 	flags.StringVar(&conf.MCPPort, "mcp-port", "10007", "MCP standalone SSE listen port (transport sse/both only)")
 	flags.StringVar(&conf.MCPBindAddr, "mcp-bind-address", "localhost", "MCP server bind address")
@@ -1278,7 +1284,8 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.Cloud18GitUser, "cloud18-gitlab-user", "", "Cloud 18 GitLab user")
 	flags.StringVar(&conf.Cloud18GitPassword, "cloud18-gitlab-password", "", "Cloud 18 GitLab password")
 	flags.StringVar(&conf.Cloud18IdentityURL, "cloud18-identity-url", config.ConstCloud18IdentityURL, "Cloud18 identity realm (OpenID Connect issuer): a person connects this replication-manager to it once (device login), for the S3 SSO storages, the Cloud18 vault and the Cloud18 GitLab token")
-	flags.BoolVar(&conf.Cloud18SSOLogin, "cloud18-sso-login", true, "On a registered repman with a public https address (api-public-url), the login page offers Sign in and Sign up with Cloud18: the browser signs in at the Cloud18 realm once for every such repman (#2185)")
+	flags.BoolVar(&conf.Cloud18SSOLogin, "cloud18-sso-login", false, "On a registered repman with a public https address (api-public-url) whose callback (<api-public-url>/api/auth/cloud18/callback) the Cloud18 realm accepts, the login page offers Sign in and Sign up with Cloud18 and checks the realm session silently (#2185). Off by default: no repman is declared in the realm unless it registers its own address; the Sign in form checks Cloud18 server-side without it")
+	flags.StringVar(&conf.Cloud18LoginACR, "cloud18-login-acr", "", "Authentication levels (OpenID Connect acr values, comma-separated) a Cloud18 login must reach on this repman, e.g. mfa for the password and a one-time code: repman asks the realm for them and refuses a realm token whose acr claim is not literally one of them (Sign in with Cloud18, the Sign in form, a bearer at the API or the MCP, a peer). Set for the Cloud18 Keycloak realm (acr as a string). Empty: any level")
 	flags.StringVar(&conf.Cloud18PlatformDescription, "cloud18-platform-description", "", "Marketing banner display on the cloud18 portal describing the infrastucture")
 	flags.StringVar(&conf.Cloud18ArchiveOfferRequests, "cloud18-archive-offer-requests", "", "Archive offers of the Cloud18 marketplace whose access the cluster asks the back-office for (comma-separated offer names): it delivers the S3 provider or the archive")
 	flags.StringVar(&conf.Cloud18InfraDataCenters, "cloud18-infra-data-centers", "", "Infrastucture datacenters name")
@@ -1496,6 +1503,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.TerminalSessionResume, "terminal-session-resume", false, "Enable terminal session resume")
 	flags.StringVar(&conf.TerminalSessionManager, "terminal-session-manager", "tmux", "Terminal session manager: tmux|screen")
 	flags.BoolVar(&conf.TerminalSessionEnabled, "terminal-session-enabled", false, "Enable terminal session")
+	flags.StringVar(&conf.TerminalSessionAuth, "terminal-session-auth", config.ConstTerminalAuthLocal, "Logins allowed to open a terminal (comma-separated): local (an account of this repman), cloud18-mfa (a Cloud18 login, only while cloud18-login-acr asks a second factor). A Cloud18 login without it and an API token are refused. Empty: local")
 }
 
 // DicoverClusters from viper merged config send a sperated list of clusters
@@ -3699,6 +3707,9 @@ func (repman *ReplicationManager) initCluster(clusterName string) (*cluster.Clus
 	// Reload Users
 	repman.currentCluster.LoadAPIUsers()
 	repman.currentCluster.SaveAcls()
+	// the marketplace's vault offers, off until the sponsor turns them on (#2227): here for
+	// the clusters of the startup too, whose catalogue was read before they existed
+	repman.currentCluster.EnsureMarketplaceVaults(repman.MarketplaceCatalogue().Vaults)
 	repman.ConfigManager.UpdateLoggerConfig(clusterName, repman.currentCluster.Conf)
 	repman.ConfigManager.SaveConfig(repman.currentCluster, true)
 
@@ -4715,6 +4726,8 @@ func (repman *ReplicationManager) GetEncryptedValueFromMemory(key string) string
 		return repman.Conf.GetStableEncryptedValue("git-pull-access-token", repman.Conf.GetDecryptedValue("git-pull-access-token"))
 	case "vault-token":
 		return repman.Conf.GetStableEncryptedValue("vault-token", repman.Conf.GetDecryptedValue("vault-token"))
+	case "alert-slack-url", "cloud18-alert-slack-url", "alert-teams-url", "alert-teams-proxy-url", "monitoring-tunnel-credential", "registry-consul-credential", "registry-consul-token", "mysqlrouter-pass":
+		return repman.Conf.GetStableEncryptedValue(key, repman.Conf.GetDecryptedValue(key))
 	default:
 		return ""
 	}

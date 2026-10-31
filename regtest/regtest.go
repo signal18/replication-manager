@@ -106,6 +106,7 @@ var tests = []string{
 	"testRunSysbenchTPCPerMinuteIncreaseThreads",
 	"testConfigPersistBackupOption",
 	"testCredentialPersistTagReload",
+	"testCredentialVersionsRotation",
 	"testConfigCookiePushBasic",
 	"testConfigCookiePushLifecycle",
 	"testConfigCookiePushMultipleServers",
@@ -322,6 +323,11 @@ var testTargets = map[string][]TestTarget{
 	"testCreateStagingSplitdump":                                               anyCluster,
 	"testCreateChildSplitdump":                                                 anyCluster,
 	"testAlterEngine":                                                          anyCluster,
+
+	// #2227: a real rotation on MariaDB and MySQL, the versioned file on. Its variant with a vault
+	// entry, testCredentialVersionsRotationVault, is run by name on a cluster whose config enables
+	// a [[<cluster>.secret-kv]] on a Vault or OpenBao dev container.
+	"testCredentialVersionsRotation": {{FlavorTarget: []string{"mariadb", "mysql"}, ConfigVariableMustHave: map[string]string{"monitoring-secret-versioning": "true"}}},
 }
 
 // TestResultSkip is the result of a test whose targets the cluster does not match: it did

@@ -26,7 +26,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/codegangsta/negroni"
-	"github.com/iancoleman/strcase"
 	log "github.com/sirupsen/logrus"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
@@ -244,6 +243,32 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 	router.Handle("/api/clusters/{clusterName}/restic/check-config", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxResticCheckConfig)),
+	))
+
+	// credential store entries: the vault entries (#2227)
+	router.Handle("/api/clusters/{clusterName}/secret-kv-list", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSecretKvList)),
+	))
+	router.Handle("/api/clusters/{clusterName}/secret-kv-actions/add", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSecretKvAdd)),
+	))
+	router.Handle("/api/clusters/{clusterName}/secret-kv-actions/edit/{entryName}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSecretKvEdit)),
+	))
+	router.Handle("/api/clusters/{clusterName}/secret-kv-actions/enable/{entryName}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSecretKvEnable)),
+	))
+	router.Handle("/api/clusters/{clusterName}/secret-kv-actions/disable/{entryName}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSecretKvDisable)),
+	))
+	router.Handle("/api/clusters/{clusterName}/secret-kv-actions/remove/{entryName}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSecretKvRemove)),
 	))
 
 	// archive list (#2091)
@@ -4224,7 +4249,7 @@ var base64LogValueSettings = map[string]struct{}{
 
 func GetApiChangeLogFormat(name, value string) (string, []interface{}) {
 	switch name {
-	case "replication-credential", "db-servers-credential", "proxysql-servers-credential", "proxy-servers-backend-max-connections", "proxy-servers-backend-max-replication-lag", "maxscale-servers-credential", "shardproxy-servers-credential", "mail-smtp-password", "mail-smtp-user", "mail-to", "mail-from", "cloud18-gitlab-user", "cloud18-gitlab-password", "cloud18-domain-secret", "backup-restic-aws-access-key-id", "backup-restic-aws-access-secret", "backup-restic-password", "cloud18-dba-user-credentials", "cloud18-sponsor-user-credentials", "haproxy-password", "backup-verification-credential":
+	case "replication-credential", "db-servers-credential", "proxysql-servers-credential", "proxy-servers-backend-max-connections", "proxy-servers-backend-max-replication-lag", "maxscale-servers-credential", "shardproxy-servers-credential", "mail-smtp-password", "mail-smtp-user", "mail-to", "mail-from", "cloud18-gitlab-user", "cloud18-gitlab-password", "cloud18-domain-secret", "backup-restic-aws-access-key-id", "backup-restic-aws-access-secret", "backup-restic-password", "cloud18-dba-user-credentials", "cloud18-sponsor-user-credentials", "haproxy-password", "backup-verification-credential", "alert-slack-url", "cloud18-alert-slack-url", "alert-teams-url", "alert-teams-proxy-url":
 		return "API receive set setting %s to ****", []interface{}{name}
 	default:
 		logValue := value
@@ -4967,6 +4992,19 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "graphite-metrics-queue-limit":
 		val, _ := strconv.Atoi(value)
 		mycluster.Conf.GraphiteMetricsQueueLimit = val
+	// the vault entries' queue and timeouts (#2227): <= 0 falls back to the defaults
+	case "secret-kv-queue-limit":
+		val, _ := strconv.Atoi(value)
+		mycluster.Conf.SecretKvQueueLimit = val
+	case "secret-kv-write-timeout":
+		val, _ := strconv.Atoi(value)
+		mycluster.Conf.SecretKvWriteTimeout = val
+	case "secret-kv-retry-interval":
+		val, _ := strconv.Atoi(value)
+		mycluster.Conf.SecretKvRetryInterval = val
+	case "secret-kv-start-timeout":
+		val, _ := strconv.Atoi(value)
+		mycluster.Conf.SecretKvStartTimeout = val
 	case "topology-target":
 		mycluster.BootstrapTopology(value)
 	case "log-task-level", "log-level-task":
@@ -5038,7 +5076,9 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		if err != nil {
 			return errors.New("unable to decode")
 		}
-		mycluster.SetAlertSlackUrl(string(val))
+		if err := mycluster.SetAlertSlackUrl(string(val)); err != nil {
+			return err
+		}
 	case "alert-slack-user":
 		mycluster.SetAlertSlackUser(value)
 	case "cloud18-alert":
@@ -5059,7 +5099,9 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		if err != nil {
 			return errors.New("unable to decode")
 		}
-		mycluster.SetCloud18AlertSlackUrl(string(val))
+		if err := mycluster.SetCloud18AlertSlackUrl(string(val)); err != nil {
+			return err
+		}
 	case "cloud18-alert-slack-user":
 		mycluster.SetCloud18AlertSlackUser(value)
 	case "alert-teams-proxy-url":
@@ -5067,7 +5109,9 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		if err != nil {
 			return errors.New("unable to decode")
 		}
-		mycluster.SetAlertTeamsProxyUrl(string(val))
+		if err := mycluster.SetAlertTeamsProxyUrl(string(val)); err != nil {
+			return err
+		}
 	case "alert-teams-state":
 		mycluster.SetAlertTeamsState(value)
 	case "alert-teams-url":
@@ -5075,7 +5119,9 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		if err != nil {
 			return errors.New("unable to decode")
 		}
-		mycluster.SetAlertTeamsUrl(string(val))
+		if err := mycluster.SetAlertTeamsUrl(string(val)); err != nil {
+			return err
+		}
 	case "monitoring-alert-trigger":
 		mycluster.SetMonitoringAlertTriggerl(value)
 	case "mail-smtp-addr":
@@ -7612,11 +7658,9 @@ func buildClusterAPIPayload(mycluster *cluster.Cluster) ([]byte, error) {
 		return nil, fmt.Errorf("marshal cluster: %w", err)
 	}
 
-	for crkey := range mycluster.Conf.Secrets.Snapshot() {
-		cl, err = sjson.SetBytes(cl, "config."+strcase.ToLowerCamel(crkey), "*:*")
-		if err != nil {
-			return nil, fmt.Errorf("mask secret %s: %w", crkey, err)
-		}
+	cl, err = mycluster.Conf.MaskSecretsJSON(cl, "config.")
+	if err != nil {
+		return nil, fmt.Errorf("mask secrets: %w", err)
 	}
 
 	// Reduce the content of the cluster object. "apps" is the harmless

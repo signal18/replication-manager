@@ -99,7 +99,7 @@ func (s *MCPServer) registerCloud18Tools() {
 
 	s.addTool(
 		mcp.NewTool("list-cloud18-archive-offers",
-			mcp.WithDescription("The archive offers of the Cloud18 marketplace: each partner's storage sold for backup archives (S3 or Proxmox Backup Server), with its data center and location, how it is reached (Cloud18 sign-in or keys delivered per cluster), and its price per size unit and per BAU (20 GiB) per month; and the S3 storages behind the S3 offers. Published by Signal18 to every instance. A client can also archive on its own S3 storage, not listed here."),
+			mcp.WithDescription("The archive offers of the Cloud18 marketplace: each partner's storage sold for backup archives (S3 or Proxmox Backup Server), with its data center and location, how it is reached (Cloud18 sign-in or keys delivered per cluster), and its price per size unit and per BAU (20 GiB) per month; and the S3 storages behind the S3 offers; and the vault offers, the vaults a registered instance writes its clusters' secrets to with its Cloud18 identity (each cluster gets one as a credential store entry, off until its sponsor turns it on). Published by Signal18 to every instance. A client can also archive on its own S3 storage, not listed here."),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			c := s.repman.MarketplaceCatalogue()
@@ -108,6 +108,9 @@ func (s *MCPServer) registerCloud18Tools() {
 			}
 			if c.Archives == nil {
 				c.Archives = []config.MarketplaceArchiveOffer{}
+			}
+			if c.Vaults == nil {
+				c.Vaults = []config.MarketplaceVaultOffer{}
 			}
 			return mcp.NewToolResultText(toJSON(c)), nil
 		},

@@ -735,7 +735,9 @@ func TestWaitForBinlogMetaNoDeadlock(t *testing.T) {
 	go func() {
 		// Match WriteBackupMetadata's caller state: enter holding the mutex.
 		server.backupMetaMutex.Lock()
-		server.waitForBinlogMeta(lastmeta)
+		if !server.waitForBinlogMeta(lastmeta) {
+			t.Error("waitForBinlogMeta returned false, want true: the position was published")
+		}
 		server.backupMetaMutex.Unlock() // helper returns holding it, per its contract
 		close(done)
 	}()
@@ -753,6 +755,66 @@ func TestWaitForBinlogMetaNoDeadlock(t *testing.T) {
 	case <-done:
 	case <-time.After(5 * time.Second):
 		t.Fatal("waitForBinlogMeta did not return within 5s: backupMetaMutex self-deadlock regressed")
+	}
+}
+
+// TestWaitForBinlogMetaDeadline: a position that never comes (a line the pattern did not match,
+// a log pipe that stopped) must not keep the backup slot forever (#2250). The wait returns false
+// after its deadline, holding the mutex as its contract says.
+func TestWaitForBinlogMetaDeadline(t *testing.T) {
+	_, server := newTestClusterServer(t)
+	saved := binlogMetaWaitTimeout
+	binlogMetaWaitTimeout = 100 * time.Millisecond
+	defer func() { binlogMetaWaitTimeout = saved }()
+
+	done := make(chan bool)
+	go func() {
+		server.backupMetaMutex.Lock()
+		got := server.waitForBinlogMeta(&backupmgr.BackupMetadata{})
+		server.backupMetaMutex.Unlock()
+		done <- got
+	}()
+	select {
+	case got := <-done:
+		if got {
+			t.Fatal("waitForBinlogMeta returned true with no position, want false")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("waitForBinlogMeta did not return after its deadline")
+	}
+}
+
+// TestParseLogEntriesEmptyGTID: mariabackup on a server without GTID prints an empty GTID; the
+// file and position must still be recorded, or the metadata writer waits for them (#2250).
+func TestParseLogEntriesEmptyGTID(t *testing.T) {
+	_, server := newTestClusterServer(t)
+	server.LastBackupMeta.Physical = &backupmgr.BackupMetadata{}
+	entry := config.LogEntry{Server: server.URL, Level: config.LvlInfo,
+		Log: "[00] 2026-10-30 15:45:39 MySQL binlog position: filename 'binlog.000001', position '43551187', GTID of the last change ''"}
+	if err := server.ParseLogEntries(entry, config.ConstLogModTask, "mariabackup"); err != nil {
+		t.Fatal(err)
+	}
+	meta := server.LastBackupMeta.Physical
+	if meta.BinLogFileName != "binlog.000001" || meta.BinLogFilePos != 43551187 || meta.BinLogGtid != "" {
+		t.Fatalf("position = %q:%d gtid %q, want binlog.000001:43551187 with no GTID", meta.BinLogFileName, meta.BinLogFilePos, meta.BinLogGtid)
+	}
+}
+
+// TestReseedPointInTimeRefusesBackupWithoutPosition: a PITR with binary logs from a backup with
+// no recorded position would replay every binlog from the oldest one over the restored data. It
+// is refused before anything is restored (#2256); the scheduler is off here, so a request that
+// went further would fail on it instead.
+func TestReseedPointInTimeRefusesBackupWithoutPosition(t *testing.T) {
+	cluster, server := newTestClusterServer(t)
+	cluster.BackupMetaMap.Set(7, &backupmgr.BackupMetadata{Id: 7, BackupTool: "mariabackup"})
+
+	err := server.ReseedPointInTime(backupmgr.PointInTimeMeta{Backup: 7, UseBinlog: true})
+	if err == nil || !strings.Contains(err.Error(), "no recorded binary log position") {
+		t.Fatalf("PITR with binary logs from a backup without position: err = %v, want the position refusal", err)
+	}
+	err = server.ReseedPointInTime(backupmgr.PointInTimeMeta{Backup: 7})
+	if err == nil || strings.Contains(err.Error(), "no recorded binary log position") {
+		t.Fatalf("PITR without binary logs: err = %v, want it to go past the position check", err)
 	}
 }
 

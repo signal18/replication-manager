@@ -1324,6 +1324,9 @@ func (cluster *Cluster) ProvisionRotatePasswords(password string) error {
 	case config.ConstOrchestratorOpenSVC:
 		svc := cluster.OpenSVCConnect()
 		err := svc.CreateSecretKeyValueV2(cluster.Name, "env", "MYSQL_ROOT_PASSWORD", password)
+		if err == nil {
+			cluster.reportOrchestratorSecret("env", "MYSQL_ROOT_PASSWORD", password)
+		}
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "ProvisionRotatePasswords error: Can not add key to secret: %s %s ", "MYSQL_ROOT_PASSWORD", err)
 		}

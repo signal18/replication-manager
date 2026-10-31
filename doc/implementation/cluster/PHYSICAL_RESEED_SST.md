@@ -241,3 +241,22 @@ To verify the mariabackup reseed **outside** the crash-rejoin flow:
 *Related: crash-rejoin cascade and lost-events flow (`cluster/crash.go`,
 `SPLIT_BRAIN_ORCHESTRATION.md`); restore/backup selection (`restore_selector.go`);
 restic reseed (`srv_job_restic.go`).*
+
+## A backup without a binary log position
+
+A physical backup gets its position from the backup tool's log line (`MySQL binlog position:
+filename '...', position '...', GTID of the last change '...'`), parsed by `ParseLogEntries`. The
+GTID may be empty (a server without GTID, Galera among them): the file and position are kept.
+`WriteBackupMetadata` waits for that line at most `binlogMetaWaitTimeout` (5 minutes) and not at
+all when the server has no binary log. Without it, the metadata is written with no position and
+a warning, and the backup slot is freed (#2250).
+
+Such a backup restores as usual: a physical reseed reads the position from the restored files,
+not from the metadata. A point-in-time restore with binary logs needs the metadata's position to
+start the replay, so `ReseedPointInTime` refuses it for a backup without one, before anything is
+restored (#2256). Without a start, the replay would begin at the oldest binlog and apply again
+what the backup already holds. A point-in-time restore without binary logs is unchanged.
+
+A position line that arrives after the deadline is still parsed into the server's physical
+backup metadata. The metadata file was already written without it; the next backup's metadata
+replaces it.

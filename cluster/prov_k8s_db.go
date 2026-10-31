@@ -148,8 +148,13 @@ func (cluster *Cluster) k8sPatchSecretValues(client kubernetes.Interface, values
 	}
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot provision Kubernetes secret %s ", err)
+		return err
 	}
-	return err
+	// the values set go to the credential stores, never read back (#2227 rule 7)
+	for k, v := range values {
+		cluster.reportOrchestratorSecret("env", k, v)
+	}
+	return nil
 }
 
 // k8sEnsureDatabaseSecret is k8sPatchSecretValues for just

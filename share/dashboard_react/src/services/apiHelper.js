@@ -1,3 +1,5 @@
+import { adminMode, ADMIN_REQUIRED_HEADER } from './adminMode'
+
 const toBase64 = (str) => btoa(unescape(encodeURIComponent(str)));
 
 const authConfig = {
@@ -113,6 +115,22 @@ const performRequest = async (method, apiUrl, params, authValue, baseUrl = '') =
 
   try {
     const response = await fetch(url, options);
+
+    // The admin zone (#2262): a local call refused for want of the local admin is sent again with
+    // the admin mode's token, asked for once (adminMode.js); cancelled, the refusal stands.
+    if (response.status === 403 && authValue === 'local' && baseUrl === '' && response.headers.get(ADMIN_REQUIRED_HEADER)) {
+      let adminToken = null
+      try {
+        adminToken = await adminMode.request()
+      } catch (e) {
+        return handleResponse(response)
+      }
+      const retried = await fetch(url, { ...options, headers: { ...headers, Authorization: `Bearer ${adminToken}` } })
+      if (retried.status === 401) {
+        adminMode.leave() // the admin session ended: the next refusal asks again
+      }
+      return handleResponse(retried)
+    }
 
     // Only invalidate the session when the request actually carried an auth token.
     // Public 401s (login form, autologin, unauthenticated endpoints) must not

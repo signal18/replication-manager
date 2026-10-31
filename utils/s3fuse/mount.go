@@ -2,11 +2,12 @@
 // Copyright 2017-2026 SIGNAL18 CLOUD SAS
 // This source code is licensed under the GNU General Public License, version 3.
 
-// Package s3fuse mounts an S3 bucket's folder as a folder, inside replication-manager's own
-// process (#2091): GeeseFS (github.com/yandex-cloud/geesefs, the maintained successor of
+// Package s3fuse mounts an S3 bucket's folder as a folder (#2091), served by a child process of
+// replication-manager's own binary (#2246): GeeseFS (github.com/yandex-cloud/geesefs, the maintained successor of
 // goofys: bounded S3 requests, retries, writes buffered and flushed in the background, real
 // modifications, appends and renames) behind DeadlineFS, which answers every FUSE request in
-// time so a stalled S3 can never hold replication-manager.
+// time so a stalled S3 can never hold replication-manager. In the child, a fatal error of the
+// file system (a stack overflow, which no recover catches) ends the child, never the monitor.
 package s3fuse
 
 import (
@@ -44,6 +45,8 @@ type Options struct {
 	Debug       bool
 	OnLate      func(op string)
 	OnPanic     func(op string, recovered interface{}, stack []byte)
+	// OnLog gets each line the mount's server prints (GeeseFS's log, a crash), bounded (may be nil)
+	OnLog func(line string)
 }
 
 // mounted holds the mounts this process serves, by mount point.
@@ -135,19 +138,31 @@ func ETags(path string, max int) (map[string]string, error) {
 	}
 }
 
-// Mount is a mounted folder.
+// Mount is a mounted folder, served by a child process of this binary (#2246).
 type Mount struct {
 	point  string
-	fs     *core.Goofys
-	mfs    *fuse.MountedFileSystem
-	lister *core.S3Backend // the bucket's listings, for the ETags
+	server *server         // the child serving the mount
+	lister *core.S3Backend // the bucket's listings, for the ETags: this process's own S3 client
 	prefix string          // the folder's key prefix in the bucket, "" or ending in /
 }
 
-// New mounts o.Bucket on o.MountPoint, owned by this process's user, and returns once mounted.
-func New(ctx context.Context, o Options) (*Mount, error) {
+// s3Flags are GeeseFS's settings for o, and its S3 configuration.
+func s3Flags(o Options) (*cfg.FlagStorage, *cfg.S3Config) {
+	flags := cfg.DefaultFlags()
+	flags.MountPoint = o.MountPoint
+	flags.Endpoint = o.Endpoint
+	flags.HTTPTimeout = o.HTTPTimeout
+	flags.MemoryLimit = o.MemoryLimit
+	flags.DebugS3 = o.Debug
+	flags.Uid, flags.Gid = uint32(os.Getuid()), uint32(os.Getgid())
+	s3 := (&cfg.S3Config{Region: o.Region, RegionSet: o.Region != "", Credentials: o.Credentials}).Init()
+	flags.Backend = s3
+	return flags, s3
+}
+
+func (o *Options) defaults() error {
 	if o.MountPoint == "" || o.Bucket == "" || o.Credentials == nil {
-		return nil, errors.New("s3fuse: mount point, bucket and credentials are required")
+		return errors.New("s3fuse: mount point, bucket and credentials are required")
 	}
 	if o.HTTPTimeout <= 0 {
 		o.HTTPTimeout = 30 * time.Second
@@ -158,16 +173,18 @@ func New(ctx context.Context, o Options) (*Mount, error) {
 	if o.MemoryLimit == 0 {
 		o.MemoryLimit = 256 << 20
 	}
-	flags := cfg.DefaultFlags()
-	flags.MountPoint = o.MountPoint
-	flags.Endpoint = o.Endpoint
-	flags.HTTPTimeout = o.HTTPTimeout
-	flags.MemoryLimit = o.MemoryLimit
-	flags.DebugS3 = o.Debug
-	flags.Uid, flags.Gid = uint32(os.Getuid()), uint32(os.Getgid())
-	s3 := (&cfg.S3Config{Region: o.Region, RegionSet: o.Region != "", Credentials: o.Credentials}).Init()
-	flags.Backend = s3
+	return nil
+}
 
+// New mounts o.Bucket on o.MountPoint, owned by this process's user, and returns once mounted.
+// The file system runs in a child process of this binary (the backup-folder-mount command): a
+// fatal error in it (a stack overflow, which no recover catches) ends the child, never this
+// process; the kernel then fails what waits on the mount (ENOTCONN) and Join returns why.
+func New(ctx context.Context, o Options) (*Mount, error) {
+	if err := o.defaults(); err != nil {
+		return nil, err
+	}
+	flags, s3 := s3Flags(o)
 	bucket, prefix, _ := strings.Cut(o.Bucket, ":")
 	if prefix = strings.Trim(prefix, "/"); prefix != "" {
 		prefix += "/"
@@ -176,7 +193,48 @@ func New(ctx context.Context, o Options) (*Mount, error) {
 	if err != nil {
 		return nil, fmt.Errorf("s3fuse: %s: %w", o.Bucket, err)
 	}
+	srv, err := startServer(ctx, o)
+	if err != nil {
+		return nil, err
+	}
+	m := &Mount{point: filepath.Clean(o.MountPoint), server: srv, lister: lister, prefix: prefix}
+	mounted.Store(m.point, m)
+	return m, nil
+}
 
+// Join waits until the mount ends: its server exited, said in the error when it did not end
+// as asked (a crash, a kill).
+func (m *Mount) Join(ctx context.Context) error {
+	select {
+	case <-m.server.exited:
+		mounted.CompareAndDelete(m.point, m) // never a newer mount of the same point
+		return m.server.exitErr
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+// Unmount asks the server to flush what is buffered, unmount and stop. A refused unmount
+// (busy) is returned: the server keeps serving, so a request still in the mount gets its
+// answer, until the mount, detached by the caller, is released or the server's bound ends
+// (#2142).
+func (m *Mount) Unmount() error {
+	mounted.CompareAndDelete(m.point, m)
+	return m.server.unmount()
+}
+
+// served is a mount served in this process: the backup-folder-mount child's.
+type served struct {
+	fs  *core.Goofys
+	mfs *fuse.MountedFileSystem
+}
+
+// serve mounts o.Bucket on o.MountPoint in this process and returns once mounted.
+func serve(ctx context.Context, o Options) (*served, error) {
+	if err := o.defaults(); err != nil {
+		return nil, err
+	}
+	flags, _ := s3Flags(o)
 	fs, err := core.NewGoofys(ctx, o.Bucket, flags)
 	if err != nil || fs == nil {
 		if err == nil {
@@ -184,7 +242,7 @@ func New(ctx context.Context, o Options) (*Mount, error) {
 		}
 		return nil, fmt.Errorf("s3fuse: %s: %w", o.Bucket, err)
 	}
-	served := DeadlineFS{Fs: core.NewGoofysFuse(fs), Timeout: o.OpTimeout, OnLate: o.OnLate, OnPanic: o.OnPanic}
+	d := DeadlineFS{Fs: core.NewGoofysFuse(fs), Timeout: o.OpTimeout, OnLate: o.OnLate, OnPanic: o.OnPanic}
 	mountCfg := &fuse.MountConfig{
 		FSName:                  o.Bucket,
 		Subtype:                 "geesefs",
@@ -192,40 +250,26 @@ func New(ctx context.Context, o Options) (*Mount, error) {
 		UseVectoredRead:         true,
 		UseReadDirPlus:          true,
 	}
-	mfs, err := fuse.Mount(o.MountPoint, fuseutil.NewFileSystemServer(served), mountCfg)
+	mfs, err := fuse.Mount(o.MountPoint, fuseutil.NewFileSystemServer(d), mountCfg)
 	if err != nil {
 		fs.Shutdown()
 		return nil, fmt.Errorf("s3fuse: mount %s on %s: %w", o.Bucket, o.MountPoint, err)
 	}
-	m := &Mount{point: filepath.Clean(o.MountPoint), fs: fs, mfs: mfs, lister: lister, prefix: prefix}
-	// before anything else opens a file of the mount: without it the process can freeze
+	s := &served{fs: fs, mfs: mfs}
+	// before anything opens a file of the mount: a poll request is then never sent to it
 	if err := disablePoll(o.MountPoint); err != nil {
-		m.Unmount()
+		s.unmount(o.MountPoint)
 		return nil, err
 	}
-	mounted.Store(m.point, m)
-	return m, nil
+	return s, nil
 }
 
-// Join waits until the mount ends.
-func (m *Mount) Join(ctx context.Context) error {
-	err := m.mfs.Join(ctx)
-	if ctx.Err() == nil { // the mount ended, not the wait
-		mounted.Delete(m.point)
-	}
-	return err
-}
-
-// Unmount flushes what is buffered, unmounts and stops the file system. A refused unmount
-// (busy) leaves the file system serving: a request still in the mount, one of our own threads
-// included, gets its answer, where a shut-down file system left it waiting forever, the process
-// never ending and keeping its ports (dev3 2026-10-22, after a SIGTERM) (#2142). The caller
-// detaches the mount; the file system ends with the process.
-func (m *Mount) Unmount() error {
-	mounted.Delete(m.point)
-	if err := core.TryUnmount(m.point); err != nil {
+// unmount flushes, unmounts and stops the file system; a refused unmount (busy) leaves it
+// serving.
+func (s *served) unmount(point string) error {
+	if err := core.TryUnmount(point); err != nil {
 		return err
 	}
-	m.fs.Shutdown()
+	s.fs.Shutdown()
 	return nil
 }

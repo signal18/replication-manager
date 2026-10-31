@@ -255,6 +255,17 @@ type Chain struct {
 	mu     sync.Mutex
 	conf   *config.Config
 	stores []CredentialStore
+	// copies is told the plain values of each successful SetAll, outside the lock: the
+	// copies to the entries that are not the primary (#2227). It must never block.
+	copies func([]Change)
+}
+
+// OnSet sets the hook told the changes of each successful SetAll, called outside the lock:
+// it queues the copies (#2227) and must never block.
+func (c *Chain) OnSet(copies func([]Change)) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.copies = copies
 }
 
 // NewConfigChain returns the chain of the internal secret_kv-config plugin: the connected
@@ -262,6 +273,13 @@ type Chain struct {
 // defaults. save is the config save event.
 func NewConfigChain(conf *config.Config, save func()) *Chain {
 	return NewChain(conf, &ArchiveStore{conf: conf, save: save}, &DynamicConfig{conf: conf, save: save}, &PinnedConfig{conf: conf})
+}
+
+// NewVersionedChain is a cluster's chain (#2227): its versioned store first, then the
+// internal secret_kv-config stores. The config keeps the starting value of the secrets the
+// version store holds.
+func NewVersionedChain(conf *config.Config, save func(), versions *VersionStore) *Chain {
+	return NewChain(conf, versions, &ArchiveStore{conf: conf, save: save}, &DynamicConfig{conf: conf, save: save}, &PinnedConfig{conf: conf})
 }
 
 // NewChain returns a chain of stores, read and written in their order.
@@ -310,6 +328,10 @@ func (c *Chain) writer(key string) (CredentialStore, error) {
 		err := s.CanSet(key)
 		if err == nil {
 			return s, nil
+		}
+		if isHeldRefusal(err) {
+			// the key is this store's: no later store takes it instead (#2227 rule 1)
+			return nil, &RefusedError{Reason: errors.Unwrap(err)}
 		}
 		if first == nil && !errors.Is(err, ErrNotHeld) {
 			first = err
@@ -411,8 +433,12 @@ func (c *Chain) SetAll(changes ...Change) error {
 		// the ciphertext is left empty: the save reuses the store's (GetStableEncryptedValue)
 		c.conf.Secrets.Set(ch.Key, config.Secret{Value: ch.Value, OldValue: old.Value})
 	}
+	copies := c.copies
 	c.mu.Unlock()
 	c.saveEvents(writers)
+	if copies != nil {
+		copies(changes)
+	}
 	return nil
 }
 

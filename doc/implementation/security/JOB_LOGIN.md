@@ -104,8 +104,8 @@ is the same at every run and can be replayed. It is what scripts before this cha
   still log in and fetch the new script (jobs upgrade). Its token keeps `api-token-timeout`
   (hours): an older script uses one token for a whole run.
 - Each use records the time on the server (`legacyJobLoginAt`); `CheckSecretLoginLegacy` (every
-  tick) opens the security state **WARN0272** naming the servers seen within 10 minutes.
-- Once no cluster shows WARN0272, turn the switch off (GUI: Global Settings, **Accept Legacy Job
+  tick) opens the security state **WARN0274** naming the servers seen within 10 minutes.
+- Once no cluster shows WARN0274, turn the switch off (GUI: Global Settings, **Accept Legacy Job
   Login**; it applies to every cluster at once). Off, a legacy body is refused (401): a server
   still running an older script cannot log in until its script is upgraded by hand.
 
@@ -150,14 +150,14 @@ script):
     MAC, window, and the nonce in the job body store.
   - A refused connection is closed, and the receiver waits for the next one until its
     deadline. Whoever connects first can neither write the backup nor block the real transfer.
-  - Each refusal opens the security state **WARN0273** for 10 minutes, naming the server, the
+  - Each refusal opens the security state **WARN0275** for 10 minutes, naming the server, the
     task and the source address.
 - **Older scripts:**
   - A server whose script posts legacy bodies gets no header and is not asked for one. Its
     first jobs upgrade still goes over the unchecked listener, and it is the last.
   - Once a server has posted a one-time body, a legacy body for it is refused (a replay could
     otherwise downgrade it) until replication-manager restarts.
-  - Once WARN0272 is gone and `api-secret-login-legacy` is off, every stream is checked.
+  - Once WARN0274 is gone and `api-secret-login-legacy` is off, every stream is checked.
 - **PostgreSQL:** `utils/jobapi` posts the one-time body too, with the jobs key when the
   container has one (`JobsKeyFromEnv`), so `api-secret-login-legacy` can be turned off without
   breaking the PostgreSQL jobs.

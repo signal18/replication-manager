@@ -28,31 +28,35 @@ func (cluster *Cluster) newServerList() error {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlErr, "Failed to validate config: %s", err)
 	}
 	//cluster.LogModulePrintf(cluster.Conf.Verbose,config.ConstLogModTopology,config.LvlErr, "hello %+v", cluster.Conf.Hosts)
-	cluster.Lock()
-	// The old monitors are dropped, never closed: release what they hold on the primaries
-	// (the event scanner's replica stream and its pool lease, #1886) or every rebuild --
-	// config reload, host list change, add server -- leaks one Binlog Dump thread and one
-	// id, and the pool is exhausted after eleven of them.
-	cluster.closeServersBinlogStreams(cluster.Servers)
-	// cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlInfo, "Processing host: %s", cluster.Conf.Hosts)
-	cluster.Servers = make([]*ServerMonitor, len(cluster.hostList))
-	// split("")  return len = 1
+	// Unlocked by a defer: a panic in a server's monitor or config, recovered by Init, must never
+	// leave the cluster lock held (every later Lock, SetClusterList at startup first, waits forever).
+	func() {
+		cluster.Lock()
+		defer cluster.Unlock()
+		// The old monitors are dropped, never closed: release what they hold on the primaries
+		// (the event scanner's replica stream and its pool lease, #1886) or every rebuild --
+		// config reload, host list change, add server -- leaks one Binlog Dump thread and one
+		// id, and the pool is exhausted after eleven of them.
+		cluster.closeServersBinlogStreams(cluster.Servers)
+		// cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlInfo, "Processing host: %s", cluster.Conf.Hosts)
+		cluster.Servers = make([]*ServerMonitor, len(cluster.hostList))
+		// split("")  return len = 1
 
-	if cluster.Conf.Hosts != "" {
-		for k, url := range cluster.hostList {
-			// Source name will equal to cluster name
-			cluster.Servers[k], _ = cluster.newServerMonitor(url, cluster.GetDbUser(), cluster.GetDbPass(), false, cluster.GetDomain(), cluster.Name)
-			cluster.Servers[k].SetPlacement(k, cluster.Conf.ProvAgents, cluster.Conf.SlapOSDBPartitions, cluster.Conf.SchedulerReceiverPorts)
+		if cluster.Conf.Hosts != "" {
+			for k, url := range cluster.hostList {
+				// Source name will equal to cluster name
+				cluster.Servers[k], _ = cluster.newServerMonitor(url, cluster.GetDbUser(), cluster.GetDbPass(), false, cluster.GetDomain(), cluster.Name)
+				cluster.Servers[k].SetPlacement(k, cluster.Conf.ProvAgents, cluster.Conf.SlapOSDBPartitions, cluster.Conf.SchedulerReceiverPorts)
 
-			if cluster.Conf.Verbose {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlInfo, "New database monitored: %v", cluster.Servers[k].URL)
+				if cluster.Conf.Verbose {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlInfo, "New database monitored: %v", cluster.Servers[k].URL)
+				}
+
 			}
-
 		}
-	}
 
-	cluster.RefreshDatabaseConfigs()
-	cluster.Unlock()
+		cluster.RefreshDatabaseConfigs()
+	}()
 
 	// The DB log writer cache is Cluster-scoped and keyed by canonical path
 	// (see getDBLogRotatingWriter), not by *ServerMonitor identity, so an

@@ -884,6 +884,8 @@ func (cluster *Cluster) SetClusterCredentialsFromConfig() {
 	// runtime is kept (#2017)
 	cluster.CredentialChain().Refresh()
 	cluster.DecryptSecretsFromVault()
+	// a credential still declared by a Vault path: read once, then in the stores (#2227)
+	cluster.seedVaultPathSecrets()
 	cluster.SetClusterMonitorCredentialsFromConfig()
 	cluster.SetClusterReplicationCredentialsFromConfig()
 	cluster.SetClusterProxyCredentialsFromConfig()
@@ -2402,13 +2404,16 @@ func (cluster *Cluster) SetInjectVariables() {
 		switch key {
 		case "vault-role-id":
 			cluster.Conf.VaultRoleId = fmt.Sprintf("%v", val)
+			// the login goes into the vault-default entry (#2227)
+			cluster.Conf.SyncSecretKvFromConfig()
 		case "vault-secret-id":
 			cluster.Conf.VaultSecretId = fmt.Sprintf("%v", val)
 			var secret config.Secret
 			secret.Value = fmt.Sprintf("%v", val)
 			cluster.Conf.Secrets.Set("vault-secret-id", secret)
-			cluster.SetSecretsToVault()
-			cluster.GetVaultToken()
+			// the login goes into the vault-default entry; its full pass writes the secrets
+			// (#2227: the old flat copy SetSecretsToVault is gone)
+			cluster.Conf.SyncSecretKvFromConfig()
 		case "api-oauth-client-id":
 			cluster.Conf.OAuthClientID = fmt.Sprintf("%v", val)
 		case "api-oauth-client-secret":
@@ -2426,35 +2431,6 @@ func (cluster *Cluster) SetInjectVariables() {
 			cluster.Conf.APIUsersACLAllowExternal = fmt.Sprintf("%v", val)
 		case "api-credentials-acl-discard-external":
 			cluster.Conf.APIUsersACLDiscardExternal = fmt.Sprintf("%v", val)
-		}
-	}
-}
-
-func (cluster *Cluster) SetSecretsToVault() {
-	if cluster.Conf.VaultRoleId != "" && cluster.Conf.VaultSecretId != "" {
-		//	cluster.Conf.VaultServerAddr = "http://vault.infra.svc.cloud18:8200"
-		if cluster.Conf.VaultServerAddr == "" {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, config.LvlInfo, "No vault-server-addr defined for writing secrets to Vault")
-			return
-		}
-		client, err := cluster.GetVaultConnection()
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, config.LvlErr, "Unable to initialize AppRole auth method: %v", err)
-			return
-		}
-		secrets_map := make(map[string]interface{})
-		for key, val := range cluster.Conf.Secrets.Snapshot() {
-			if val.Value != "" {
-				secrets_map[key] = val.Value
-			}
-
-		}
-		secret_path := cluster.Conf.Cloud18Domain + "/" + cluster.Conf.Cloud18SubDomain + "-" + cluster.Conf.Cloud18SubDomainZone + "/" + cluster.Name
-		_, err = client.KVv2(cluster.Conf.VaultMount).Patch(context.Background(), secret_path, secrets_map)
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, config.LvlErr, "Failed to write secrets to Vault: %v", err)
-		} else {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, config.LvlInfo, "Success of writing secrets to Vault: %s", secret_path)
 		}
 	}
 }
@@ -2799,9 +2775,27 @@ func (cluster *Cluster) SetAlertSlackChannel(value string) {
 	cluster.LogSlack.SetChannel("slack", value)
 }
 
-func (cluster *Cluster) SetAlertSlackUrl(value string) {
+// setSecretURL writes a webhook URL secret through the credential chain, as the other
+// secrets: a field set alone would be reverted by the save, which encrypts the chain's value.
+// The API sends SecretMask for a secret: written back, it would replace the URL.
+func (cluster *Cluster) setSecretURL(key string, value string) error {
+	if value == config.SecretMask {
+		return fmt.Errorf("%s: the masked value %q is not a URL", key, config.SecretMask)
+	}
+	if err := cluster.CredentialChain().Set(key, value); err != nil {
+		return err
+	}
+	cluster.MarkSecretVersionStoreDirty()
+	return nil
+}
+
+func (cluster *Cluster) SetAlertSlackUrl(value string) error {
+	if err := cluster.setSecretURL("alert-slack-url", value); err != nil {
+		return err
+	}
 	cluster.Conf.SlackURL = value
 	cluster.LogSlack.SetURL("slack", value)
+	return nil
 }
 
 func (cluster *Cluster) SetAlertSlackUser(value string) {
@@ -2814,9 +2808,13 @@ func (cluster *Cluster) SetCloud18AlertSlackChannel(value string) {
 	cluster.LogSlack.SetChannel("cloud18", value)
 }
 
-func (cluster *Cluster) SetCloud18AlertSlackUrl(value string) {
+func (cluster *Cluster) SetCloud18AlertSlackUrl(value string) error {
+	if err := cluster.setSecretURL("cloud18-alert-slack-url", value); err != nil {
+		return err
+	}
 	cluster.Conf.Cloud18AlertSlackURL = value
 	cluster.LogSlack.SetURL("cloud18", value)
+	return nil
 }
 
 func (cluster *Cluster) SetCloud18AlertSlackUser(value string) {
@@ -2824,16 +2822,24 @@ func (cluster *Cluster) SetCloud18AlertSlackUser(value string) {
 	cluster.LogSlack.SetUser("cloud18", value)
 }
 
-func (cluster *Cluster) SetAlertTeamsProxyUrl(value string) {
+func (cluster *Cluster) SetAlertTeamsProxyUrl(value string) error {
+	if err := cluster.setSecretURL("alert-teams-proxy-url", value); err != nil {
+		return err
+	}
 	cluster.Conf.TeamsProxyUrl = value
+	return nil
 }
 
 func (cluster *Cluster) SetAlertTeamsState(value string) {
 	cluster.Conf.TeamsAlertState = value
 }
 
-func (cluster *Cluster) SetAlertTeamsUrl(value string) {
+func (cluster *Cluster) SetAlertTeamsUrl(value string) error {
+	if err := cluster.setSecretURL("alert-teams-url", value); err != nil {
+		return err
+	}
 	cluster.Conf.TeamsUrl = value
+	return nil
 }
 
 func (cluster *Cluster) SetMonitoringAlertTriggerl(value string) {

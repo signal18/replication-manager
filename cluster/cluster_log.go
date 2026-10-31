@@ -137,10 +137,10 @@ func (cluster *Cluster) sendMsTeams(level string, format string, args ...interfa
 	mstClient := teams.NewTeamsClient()
 
 	// setup webhook url
-	webhookUrl := cluster.Conf.TeamsUrl
-	webhookProxyUrl := cluster.Conf.TeamsProxyUrl
+	webhookUrl := cluster.Conf.GetDecryptedValue("alert-teams-url")
+	webhookProxyUrl := cluster.Conf.GetDecryptedValue("alert-teams-proxy-url")
 
-	proxyUrl, err := url.Parse(cluster.Conf.TeamsProxyUrl)
+	proxyUrl, err := url.Parse(webhookProxyUrl)
 
 	// Create a copy of the default mstClient.HTTPClient
 	httpClient := mstClient.HTTPClient()
@@ -149,11 +149,8 @@ func (cluster *Cluster) sendMsTeams(level string, format string, args ...interfa
 		if err == nil {
 			httpClient.Transport = &http.Transport{Proxy: http.ProxyURL(proxyUrl)}
 		} else {
-			cluster.Logrus.Printf(
-				"Failed to parse proxy URL %q: %v. Using the default HTTP client without a proxy.",
-				webhookProxyUrl,
-				err,
-			)
+			// the proxy URL may carry credentials: log the parse error only
+			cluster.Logrus.Printf("Failed to parse alert-teams-proxy-url. Using the default HTTP client without a proxy.")
 		}
 	} else {
 		cluster.Logrus.Printf("Proxy URL is empty. Using the default HTTP client without a proxy.")
@@ -174,10 +171,12 @@ func (cluster *Cluster) sendMsTeams(level string, format string, args ...interfa
 	msgCard.Text = fmt.Sprintf(format, args...)
 	// send
 	if err := mstClient.Send(webhookUrl, msgCard); err != nil {
-		cluster.Logrus.Printf(
-			"failed to send MSTeams alert message: %s",
-			err,
-		)
+		// the client's errors quote the webhook URL, the credential
+		msg := err.Error()
+		if webhookUrl != "" {
+			msg = strings.ReplaceAll(msg, webhookUrl, "<alert-teams-url>")
+		}
+		cluster.Logrus.Printf("failed to send MSTeams alert message: %s", msg)
 	}
 	return nil
 }

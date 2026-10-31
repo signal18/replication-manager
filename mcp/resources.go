@@ -7,6 +7,7 @@ package repmanmcp
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -108,7 +109,13 @@ func (s *MCPServer) registerClusterResourceTemplates() {
 			if err != nil {
 				return nil, err
 			}
-			return jsonResource(req.Params.URI, cl), nil
+			// the compact cluster object REST lists, secrets masked: the raw cluster carries
+			// its Conf, api-credentials in clear
+			doc, err := cl.GetCompactJson()
+			if err != nil {
+				return nil, err
+			}
+			return jsonResource(req.Params.URI, json.RawMessage(doc)), nil
 		},
 	)
 
@@ -122,7 +129,11 @@ func (s *MCPServer) registerClusterResourceTemplates() {
 			if err != nil {
 				return nil, err
 			}
-			return jsonResource(req.Params.URI, cl.Conf), nil
+			doc, err := cl.GetConfigJSONForWire()
+			if err != nil {
+				return nil, err
+			}
+			return jsonResource(req.Params.URI, json.RawMessage(doc)), nil
 		},
 	)
 
