@@ -380,7 +380,7 @@ var ClusterError = map[string]string{
 	"WARN0271":  "Credential store %s is behind the other stores (%s) -- it gets the newest version at the next pass, every secret-kv-retry-interval; check the entry's address and sign-in",
 	"WARN0272":  "Credential stores: %d secret version(s) dropped, the queue (secret-kv-queue-limit %d) was full -- once the queue drains, a full pass writes the newest version of every secret again",
 	"WARN0273":  "Credential %s is a Vault path pinned in a config file: it is read from Vault at each start -- remove it from the file, its value now lives in the credential stores",
-	"WARN0274":  "Database jobs of %s log in with the replayable job body of an older jobs script: upgrade their jobs script (jobs-upgrade), then turn off api-secret-login-legacy",
+	"WARN0274":  "Database jobs of %s still run an older jobs script (replayable job body): only fetching the new script is accepted from them, everything else is refused until it runs",
 	"WARN0275":  "Job streams refused (no valid stream header: sent by something else than the jobs or replication-manager, or replayed): %s",
 	"WARN0264":  "Binlog budget of %s at its floor, %s (%s): the data leaves no room, each closed binlog is purged at once, its copy and lagging replicas with it -- grow the disk or free data",
 	"WARN0265":  "Replica %s, disconnected, needs binlog %s of %s, beyond its binlog size limit %s (oldest kept %s): MariaDB purges it by size, the replica will need a reseed unless it reconnects first",

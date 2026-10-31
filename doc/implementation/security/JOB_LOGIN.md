@@ -100,14 +100,22 @@ entry. An older secret-login created it with `db proxy`: every db and proxy acti
 `{"data": <base64>}`: the IV derived from the password (MD5), no timestamp, no nonce. The body
 is the same at every run and can be replayed. It is what scripts before this change send.
 
-- `api-secret-login-legacy` (default `true`): accepted, so a server with an older script can
-  still log in and fetch the new script (jobs upgrade). Its token keeps `api-token-timeout`
-  (hours): an older script uses one token for a whole run.
-- Each use records the time on the server (`legacyJobLoginAt`); `CheckSecretLoginLegacy` (every
-  tick) opens the security state **WARN0274** naming the servers seen within 10 minutes.
-- Once no cluster shows WARN0274, turn the switch off (GUI: Global Settings, **Accept Legacy Job
-  Login**; it applies to every cluster at once). Off, a legacy body is refused (401): a server
-  still running an older script cannot log in until its script is upgraded by hand.
+There is no setting for it: the transition is the script upgrade itself, decided per server, in
+memory (`OpenJobBody`, `legacyAllowed`):
+
+- **Accepted for one thing only, fetching the new script:** the jobs check and jobs upgrade
+  endpoints (`receive-jobs-check`, `send-jobs-upgrade`, through `SecretLoginCheckJobsUpgrade`).
+  A replay of it can only make replication-manager send that server the new script.
+- **Refused everywhere else**, `secret-login` included: an older script gets no token at all,
+  so no token outlives `api-secret-login-token-timeout` (15 min) any more; its job states,
+  tasks and logs are refused until the new script runs.
+- **Refused everywhere once the new script was sent** to that server since start
+  (`UpgradeJobsScript` sets `jobsScriptSent`), or once it posted a one-time body.
+- Each use, accepted or refused, records the time on the server (`legacyJobLoginAt`);
+  `CheckSecretLoginLegacy` (every tick) opens the security state **WARN0274** naming the servers
+  seen within 10 minutes. It closes by itself once they run the new script.
+- After a restart, the memory is empty: a server still on an older script can again only fetch
+  the new script. Nothing else is reachable with its body.
 
 On OpenSVC clusters, a replication-manager start flags every server for a jobs upgrade
 (WARN0155, `SetRollingJobsUpgradeState`), so the scripts move to the one-time format at the
@@ -157,10 +165,9 @@ script):
     first jobs upgrade still goes over the unchecked listener, and it is the last.
   - Once a server has posted a one-time body, a legacy body for it is refused (a replay could
     otherwise downgrade it) until replication-manager restarts.
-  - Once WARN0274 is gone and `api-secret-login-legacy` is off, every stream is checked.
+  - Once WARN0274 is gone, every server's script signs and every stream is checked.
 - **PostgreSQL:** `utils/jobapi` posts the one-time body too, with the jobs key when the
-  container has one (`JobsKeyFromEnv`), so `api-secret-login-legacy` can be turned off without
-  breaking the PostgreSQL jobs.
+  container has one (`JobsKeyFromEnv`): the PostgreSQL jobs never depend on the legacy body.
 - **What it does not do:** it authenticates the stream, it does not encrypt it (that is
   `scheduler-receiver-use-ssl`). Repeated connections from an attacker can still delay a
   transfer until the receiver's deadline.

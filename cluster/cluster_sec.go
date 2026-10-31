@@ -540,8 +540,19 @@ func (cluster *Cluster) RevokeDBUserGrants(user string) error {
 // server/api_database.go) can parse them without a second decrypt pass.
 //
 // The body is a job body (OpenJobBody): a one-time body is accepted once, within the window
-// of its timestamp; a legacy one while api-secret-login-legacy is on.
+// of its timestamp; a legacy one never (SecretLoginCheckJobsUpgrade for the script upgrade).
 func (cluster *Cluster) SecretLoginCheck(vars map[string]string, rbody io.ReadCloser) (*ServerMonitor, string, int, error) {
+	return cluster.secretLoginCheck(vars, rbody, false)
+}
+
+// SecretLoginCheckJobsUpgrade is SecretLoginCheck for the jobs check and jobs upgrade endpoints:
+// an older script's legacy body is accepted there, so it can fetch the new script, until that
+// script was sent (OpenJobBody).
+func (cluster *Cluster) SecretLoginCheckJobsUpgrade(vars map[string]string, rbody io.ReadCloser) (*ServerMonitor, string, int, error) {
+	return cluster.secretLoginCheck(vars, rbody, true)
+}
+
+func (cluster *Cluster) secretLoginCheck(vars map[string]string, rbody io.ReadCloser, legacyAllowed bool) (*ServerMonitor, string, int, error) {
 	body, err := io.ReadAll(rbody)
 	if err != nil {
 		return nil, "", 500, fmt.Errorf("Error reading body: %s", err.Error())
@@ -556,7 +567,7 @@ func (cluster *Cluster) SecretLoginCheck(vars map[string]string, rbody io.ReadCl
 	if node == nil {
 		return nil, "", 500, fmt.Errorf("No server")
 	}
-	data, mode, code, err := node.OpenJobBody(body, time.Now())
+	data, mode, code, err := node.OpenJobBody(body, time.Now(), legacyAllowed)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Job body of %s refused: %s", node.URL, err.Error())
 		return nil, "", code, err

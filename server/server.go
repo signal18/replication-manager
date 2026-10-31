@@ -390,7 +390,6 @@ func (repman *ReplicationManager) SetDefaultFlags(v *viper.Viper) {
 
 func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Config, isClient bool) {
 	flags.IntVar(&conf.TokenTimeout, "api-token-timeout", 48, "Timespan of API Token before expired in hour")
-	flags.BoolVar(&conf.APISecretLoginLegacy, "api-secret-login-legacy", true, "Accept the replayable job body of a database jobs script older than the one-time format (fixed IV, no timestamp, no nonce); a server that still sends it opens WARN0272. Turn off once no server shows it")
 	flags.IntVar(&conf.APISecretLoginTokenTimeout, "api-secret-login-token-timeout", 15, "Lifetime in minutes of the token a one-time job login (secret-login) returns; the jobs script logs in again before it expires")
 	flags.IntVar(&conf.APISecretLoginWindow, "api-secret-login-window", 300, "Seconds a one-time job body is accepted around its timestamp (clock skew between a database server and replication-manager); its nonce is refused if seen within twice that")
 	flags.BoolVar(&conf.APIUserTokens, "api-user-tokens", true, "Let users issue API tokens for themselves (bearer tokens narrowed to a subset of their grants and a cluster scope, stored encrypted in monitoring-datadir/api-tokens.json)")

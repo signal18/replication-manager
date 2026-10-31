@@ -66,8 +66,8 @@ func legacyJobBody(t *testing.T, payload, password string) []byte {
 	return b
 }
 
-func jobLoginServer(legacy bool) *ServerMonitor {
-	c := &Cluster{Name: "c1", Conf: &config.Config{APISecretLoginLegacy: legacy, APISecretLoginWindow: 300}}
+func jobLoginServer() *ServerMonitor {
+	c := &Cluster{Name: "c1", Conf: &config.Config{APISecretLoginWindow: 300}}
 	c.SecurityStateMachine = new(state.StateMachine)
 	c.SecurityStateMachine.Init()
 	s := &ServerMonitor{URL: "db1:3306", Host: "db1", Port: "3306", Pass: "s3cr3t", ClusterGroup: c}
@@ -78,11 +78,11 @@ func jobLoginServer(legacy bool) *ServerMonitor {
 // A one-time body of the script is accepted once, its payload intact; the same body again is
 // a replay; a body outside the window is refused.
 func TestOpenJobBodyOneTime(t *testing.T) {
-	s := jobLoginServer(false)
+	s := jobLoginServer()
 	body := scriptJobBody(t, `{"server":"db1:3306", "secret":"pw"}`, s.Pass)
 	now := time.Now()
 
-	data, mode, code, err := s.OpenJobBody(body, now)
+	data, mode, code, err := s.OpenJobBody(body, now, false)
 	if err != nil || code != 200 || mode != JobKeyDB {
 		t.Fatalf("first use: code %d, mode %s, err %v", code, mode, err)
 	}
@@ -90,28 +90,32 @@ func TestOpenJobBodyOneTime(t *testing.T) {
 	if err != nil || secret != "pw" || !secretPayloadHas(payload, "nonce") {
 		t.Fatalf("payload: secret %q, %s, err %v", secret, payload, err)
 	}
-	if _, _, code, err = s.OpenJobBody(body, now); code != 401 || err == nil {
+	if _, _, code, err = s.OpenJobBody(body, now, false); code != 401 || err == nil {
 		t.Fatalf("replay must be refused 401, got %d %v", code, err)
 	}
 
 	late := scriptJobBody(t, `{"server":"db1:3306", "secret":"pw"}`, s.Pass)
-	if _, _, code, _ = s.OpenJobBody(late, now.Add(10*time.Minute)); code != 401 {
+	if _, _, code, _ = s.OpenJobBody(late, now.Add(10*time.Minute), false); code != 401 {
 		t.Fatalf("a body 10 min old must be refused with a 5 min window, got %d", code)
 	}
 	empty := scriptJobBody(t, `{}`, s.Pass)
-	if _, _, code, err = s.OpenJobBody(empty, now); code != 200 {
+	if _, _, code, err = s.OpenJobBody(empty, now, false); code != 200 {
 		t.Fatalf("an empty object stamped by the script must be valid JSON, got %d %v", code, err)
 	}
 }
 
-// A legacy body is accepted while api-secret-login-legacy is on and noted for WARN0274;
-// refused when it is off.
+// A legacy body (an older script) is accepted only to fetch the new script (legacyAllowed: the
+// jobs check and upgrade endpoints), noted for WARN0274; refused everywhere else, secret-login
+// included; and refused everywhere once the new script was sent to the server. No setting.
 func TestOpenJobBodyLegacy(t *testing.T) {
-	s := jobLoginServer(true)
+	s := jobLoginServer()
 	body := legacyJobBody(t, `{"server":"db1:3306","secret":"pw"}`, s.Pass)
-	for i := 0; i < 2; i++ { // replayable by nature: accepted each time while legacy is on
-		if _, mode, code, err := s.OpenJobBody(body, time.Now()); code != 200 || mode != JobKeyLegacy || err != nil {
-			t.Fatalf("legacy on: code %d, mode %s, err %v", code, mode, err)
+	if _, _, code, _ := s.OpenJobBody(body, time.Now(), false); code != 401 {
+		t.Fatalf("a legacy body outside the script upgrade must be refused 401, got %d", code)
+	}
+	for i := 0; i < 2; i++ { // replayable by nature: accepted for the upgrade until the script is sent
+		if _, mode, code, err := s.OpenJobBody(body, time.Now(), true); code != 200 || mode != JobKeyLegacy || err != nil {
+			t.Fatalf("legacy for the upgrade: code %d, mode %s, err %v", code, mode, err)
 		}
 	}
 	if atomic.LoadInt64(&s.legacyJobLoginAt) == 0 {
@@ -123,17 +127,17 @@ func TestOpenJobBodyLegacy(t *testing.T) {
 		t.Fatalf("WARN0274 on the server: %+v", open)
 	}
 
-	s.ClusterGroup.Conf.APISecretLoginLegacy = false
-	if _, _, code, _ := s.OpenJobBody(body, time.Now()); code != 401 {
-		t.Fatalf("legacy off must refuse 401, got %d", code)
+	s.jobsScriptSent.Store(true) // UpgradeJobsScript sent the new script
+	if _, _, code, _ := s.OpenJobBody(body, time.Now(), true); code != 401 {
+		t.Fatalf("once the new script was sent, a legacy body must be refused even for the upgrade, got %d", code)
 	}
 }
 
 // A malformed IV is a bad request; a full nonce store refuses (bounded, F4) until the oldest
 // expire.
 func TestOpenJobBodyBadIVAndBound(t *testing.T) {
-	s := jobLoginServer(false)
-	if _, _, code, _ := s.OpenJobBody([]byte(`{"data":"x","iv":"zz"}`), time.Now()); code != 400 {
+	s := jobLoginServer()
+	if _, _, code, _ := s.OpenJobBody([]byte(`{"data":"x","iv":"zz"}`), time.Now(), false); code != 400 {
 		t.Fatalf("bad iv must be 400, got %d", code)
 	}
 
@@ -148,10 +152,10 @@ func TestOpenJobBodyBadIVAndBound(t *testing.T) {
 	defer func() { jobNonces.Lock(); jobNonces.seen = saved; jobNonces.Unlock() }()
 
 	body := scriptJobBody(t, `{"server":"db1:3306","secret":"pw"}`, s.Pass)
-	if _, _, code, _ := s.OpenJobBody(body, now); code != 503 {
+	if _, _, code, _ := s.OpenJobBody(body, now, false); code != 503 {
 		t.Fatalf("a full store must refuse 503, got %d", code)
 	}
-	if _, _, code, err := s.OpenJobBody(body, now.Add(2*time.Minute)); code != 200 {
+	if _, _, code, err := s.OpenJobBody(body, now.Add(2*time.Minute), false); code != 200 {
 		t.Fatalf("expired nonces are purged when full, got %d %v", code, err)
 	}
 }
@@ -169,7 +173,7 @@ func secretPayloadHas(payload, field string) bool {
 // it names, refused for another server of the cluster, refused when the key cannot be derived;
 // SecretLoginCheck lets it in without "secret".
 func TestOpenJobBodyJobsKey(t *testing.T) {
-	s := jobLoginServer(false)
+	s := jobLoginServer()
 	c := s.ClusterGroup
 	c.Conf.SecretKey = []byte("0123456789abcdef0123456789abcdef")
 	other := &ServerMonitor{URL: "db2:3306", Host: "db2", Port: "3306", Pass: "other", ClusterGroup: c}
@@ -183,13 +187,13 @@ func TestOpenJobBodyJobsKey(t *testing.T) {
 	if !strings.Contains(string(body), `"key":"jobs"`) {
 		t.Fatalf("the script must name the jobs key: %s", body)
 	}
-	data, mode, code, err := s.OpenJobBody(body, time.Now())
+	data, mode, code, err := s.OpenJobBody(body, time.Now(), false)
 	if code != 200 || mode != JobKeyJobs || err != nil || strings.Contains(string(data), "secret") {
 		t.Fatalf("jobs key: code %d, mode %s, err %v, data %s", code, mode, err, data)
 	}
 
 	stolen := scriptJobBodyKey(t, `{"server":"db1:3306"}`, s.Pass, jk)
-	if _, _, code, _ := other.OpenJobBody(stolen, time.Now()); code != 401 {
+	if _, _, code, _ := other.OpenJobBody(stolen, time.Now(), false); code != 401 {
 		t.Fatalf("a body naming db1 posted for db2 must be refused, got %d", code)
 	}
 
@@ -200,7 +204,7 @@ func TestOpenJobBodyJobsKey(t *testing.T) {
 
 	c.Conf.SecretKey = nil
 	late := scriptJobBodyKey(t, `{"server":"db1:3306"}`, s.Pass, jk)
-	if _, _, code, _ := s.OpenJobBody(late, time.Now()); code != 401 {
+	if _, _, code, _ := s.OpenJobBody(late, time.Now(), false); code != 401 {
 		t.Fatalf("no persistent key: a jobs-key body must be refused, got %d", code)
 	}
 }
@@ -295,7 +299,7 @@ job_stream_refused >&2`
 // with nothing written. A server whose script posts legacy bodies gets no header; once its
 // script signs, a legacy body is a replay.
 func TestJobStreamHeader(t *testing.T) {
-	s := jobLoginServer(true)
+	s := jobLoginServer()
 	c := s.ClusterGroup
 	c.Conf.SecretKey = []byte("0123456789abcdef0123456789abcdef")
 	jk := c.GetJobsKey()
@@ -304,16 +308,16 @@ func TestJobStreamHeader(t *testing.T) {
 		return scriptStream(t, "job_stream_open", dir, stream, password, key)
 	}
 
-	if _, _, code, _ := s.OpenJobBody(legacyJobBody(t, `{"server":"db1:3306"}`, s.Pass), time.Now()); code != 200 {
+	if _, _, code, _ := s.OpenJobBody(legacyJobBody(t, `{"server":"db1:3306"}`, s.Pass), time.Now(), true); code != 200 {
 		t.Fatalf("legacy body: %d", code)
 	}
 	if h, err := s.JobStreamHeader(time.Now()); h != nil || err != nil {
 		t.Fatalf("an older script reads no header: got %q %v", h, err)
 	}
-	if _, _, code, err := s.OpenJobBody(scriptJobBodyKey(t, `{"server":"db1:3306"}`, s.Pass, jk), time.Now()); code != 200 {
+	if _, _, code, err := s.OpenJobBody(scriptJobBodyKey(t, `{"server":"db1:3306"}`, s.Pass, jk), time.Now(), false); code != 200 {
 		t.Fatalf("jobs key body: %d %v", code, err)
 	}
-	if _, _, code, _ := s.OpenJobBody(legacyJobBody(t, `{"server":"db1:3306"}`, s.Pass), time.Now()); code != 401 {
+	if _, _, code, _ := s.OpenJobBody(legacyJobBody(t, `{"server":"db1:3306"}`, s.Pass), time.Now(), true); code != 401 {
 		t.Fatalf("a legacy body once the script signs is a replay, got %d", code)
 	}
 	h, err := s.JobStreamHeader(time.Now())
@@ -346,7 +350,7 @@ func TestJobStreamHeader(t *testing.T) {
 	}
 
 	// without a jobs key the script signs with the database password, and so does the header
-	if _, _, code, err := s.OpenJobBody(scriptJobBody(t, `{"server":"db1:3306"}`, s.Pass), time.Now()); code != 200 {
+	if _, _, code, err := s.OpenJobBody(scriptJobBody(t, `{"server":"db1:3306"}`, s.Pass), time.Now(), false); code != 200 {
 		t.Fatalf("db key body: %d %v", code, err)
 	}
 	h, _ = s.JobStreamHeader(time.Now())
@@ -359,11 +363,11 @@ func TestJobStreamHeader(t *testing.T) {
 // refuses one without the header, closing it and waiting for the next on the same listener:
 // whoever connects first neither writes the backup nor blocks it; WARN0275 says so.
 func TestJobStreamReceiver(t *testing.T) {
-	s := jobLoginServer(false)
+	s := jobLoginServer()
 	c := s.ClusterGroup
 	c.Conf.SecretKey = []byte("0123456789abcdef0123456789abcdef")
 	jk := c.GetJobsKey()
-	if _, _, code, err := s.OpenJobBody(scriptJobBodyKey(t, `{"server":"db1:3306"}`, s.Pass, jk), time.Now()); code != 200 {
+	if _, _, code, err := s.OpenJobBody(scriptJobBodyKey(t, `{"server":"db1:3306"}`, s.Pass, jk), time.Now(), false); code != 200 {
 		t.Fatalf("jobs key body: %d %v", code, err)
 	}
 	payload := "backup bytes\x00\x01 and more\n"
@@ -427,7 +431,7 @@ func pipeWith(b string) net.Conn {
 // too, with the jobs key or the password, and its stream listener (stream --listen --job)
 // takes replication-manager's signed stream only, once.
 func TestJobAPIClientOneTime(t *testing.T) {
-	s := jobLoginServer(false)
+	s := jobLoginServer()
 	c := s.ClusterGroup
 	c.Conf.SecretKey = []byte("0123456789abcdef0123456789abcdef")
 	for _, key := range []string{"", c.GetJobsKey()} {
@@ -436,14 +440,14 @@ func TestJobAPIClientOneTime(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		data, mode, code, err := s.OpenJobBody(body, time.Now())
+		data, mode, code, err := s.OpenJobBody(body, time.Now(), false)
 		if code != 200 || (key != "") != (mode == JobKeyJobs) {
 			t.Fatalf("jobapi body (jobs key %v): code %d, mode %s, err %v", key != "", code, mode, err)
 		}
 		if secret, _, _ := s.DecodeSecret(data); (secret == s.Pass) == (key != "") {
 			t.Fatalf("the password travels without a jobs key only (jobs key %v)", key != "")
 		}
-		if _, _, code, _ := s.OpenJobBody(body, time.Now()); code != 401 {
+		if _, _, code, _ := s.OpenJobBody(body, time.Now(), false); code != 401 {
 			t.Fatalf("jobapi body replayed: %d", code)
 		}
 

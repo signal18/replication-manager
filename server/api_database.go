@@ -3804,8 +3804,8 @@ func (repman *ReplicationManager) handlerMuxServersWriteLog(w http.ResponseWrite
 
 		node := mycluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
 		if node != nil {
-			// a job body: one-time, or legacy while api-secret-login-legacy is on
-			decrypted, _, code, err := node.OpenJobBody(body, time.Now())
+			// a job body: one-time only (a legacy one may only fetch the new script)
+			decrypted, _, code, err := node.OpenJobBody(body, time.Now(), false)
 			if err != nil {
 				node.SetErrState("WARN0158", "WARNING", "JOB", config.ClusterError["WARN0158"], node.URL, err.Error())
 				http.Error(w, err.Error(), code)
@@ -5087,7 +5087,7 @@ func (repman *ReplicationManager) secretLoginHandler(w http.ResponseWriter, r *h
 		return
 	}
 
-	_, payload, errcode, err := mycluster.SecretLoginCheck(vars, r.Body)
+	_, _, errcode, err := mycluster.SecretLoginCheck(vars, r.Body)
 	if err != nil {
 		http.Error(w, err.Error(), errcode)
 		return
@@ -5128,12 +5128,9 @@ func (repman *ReplicationManager) secretLoginHandler(w http.ResponseWriter, r *h
 	//set claims
 	claims["iss"] = "https://api.replication-manager.signal18.io"
 	claims["iat"] = time.Now().Unix()
-	// a one-time job body gets a short token, the jobs script logs in again before it expires;
-	// a legacy body (an older script) keeps the API token lifetime, its runs re-use one token
-	claims["exp"] = time.Now().Add(time.Hour * time.Duration(repman.Conf.TokenTimeout)).Unix()
-	if secretLoginOneTime(payload) {
-		claims["exp"] = time.Now().Add(time.Minute * time.Duration(secretLoginTokenMinutes(repman.Conf.APISecretLoginTokenTimeout))).Unix()
-	}
+	// a one-time job body only reaches here (SecretLoginCheck refuses a legacy one): a short
+	// token, the jobs script logs in again before it expires
+	claims["exp"] = time.Now().Add(time.Minute * time.Duration(secretLoginTokenMinutes(repman.Conf.APISecretLoginTokenTimeout))).Unix()
 	claims["jti"] = "1"
 	claims["token"] = ""
 	claims["CustomUserInfo"] = userInfo
@@ -5403,7 +5400,7 @@ func (repman *ReplicationManager) handlerMuxServerJobsCheckReceiver(w http.Respo
 	if mycluster != nil {
 		defer mycluster.LogPanicToFile("jobs-check")
 
-		node, _, errcode, err := mycluster.SecretLoginCheck(vars, r.Body)
+		node, _, errcode, err := mycluster.SecretLoginCheckJobsUpgrade(vars, r.Body)
 		if err != nil {
 			http.Error(w, err.Error(), errcode)
 			return
@@ -5778,7 +5775,7 @@ func (repman *ReplicationManager) handlerMuxServerJobsUpgradeSender(w http.Respo
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		node, _, errcode, err := mycluster.SecretLoginCheck(vars, r.Body)
+		node, _, errcode, err := mycluster.SecretLoginCheckJobsUpgrade(vars, r.Body)
 		if err != nil {
 			http.Error(w, err.Error(), errcode)
 			return
@@ -6707,15 +6704,6 @@ func parseSnapshotToken(token string) (string, error) {
 		return "", err
 	}
 	return t.UTC().Format(time.RFC3339), nil
-}
-
-// secretLoginOneTime: the job body of a secret-login carried a nonce, it was a one-time body
-// (cluster.OpenJobBody refused it otherwise).
-func secretLoginOneTime(payload string) bool {
-	var p struct {
-		Nonce string `json:"nonce"`
-	}
-	return json.Unmarshal([]byte(payload), &p) == nil && p.Nonce != ""
 }
 
 // secretLoginTokenMinutes is the lifetime of a one-time secret-login's token, 15 when unset.

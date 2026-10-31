@@ -2552,8 +2552,6 @@ definitions:
         type: string
       apiPublicUrl:
         type: string
-      apiSecretLoginLegacy:
-        type: boolean
       apiSecretLoginTokenTimeout:
         type: integer
       apiSecretLoginWindow:

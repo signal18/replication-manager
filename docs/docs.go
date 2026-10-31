@@ -29748,9 +29748,6 @@ const docTemplate = `{
                 "apiPublicUrl": {
                     "type": "string"
                 },
-                "apiSecretLoginLegacy": {
-                    "type": "boolean"
-                },
                 "apiSecretLoginTokenTimeout": {
                     "type": "integer"
                 },

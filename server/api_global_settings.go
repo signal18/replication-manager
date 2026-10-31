@@ -682,8 +682,6 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 		repman.Mailer.UpdateTLSConfig(repman.Conf.MailSMTPTLSSkipVerify)
 	case "monitoring-log-api-login":
 		repman.Conf.MonitoringLogAPILogin = isactive
-	case "api-secret-login-legacy":
-		repman.setSecretLoginLegacy(isactive)
 	case "monitoring-log-api-login-silent-users":
 		repman.Conf.MonitoringLogAPILoginSilentUsers = value
 	case "cloud18-self-service-clusters-enabled-script":
@@ -871,8 +869,6 @@ func (repman *ReplicationManager) switchRepmanSetting(name string) error {
 		repman.Conf.SetImmuableFlag("log-heartbeat", repman.Conf.LogHeartbeat)
 	case "monitoring-log-api-login":
 		repman.Conf.MonitoringLogAPILogin = !repman.Conf.MonitoringLogAPILogin
-	case "api-secret-login-legacy":
-		repman.setSecretLoginLegacy(!repman.Conf.APISecretLoginLegacy)
 	case "log-history-enable":
 		repman.Conf.LogHistoryEnable = !repman.Conf.LogHistoryEnable
 	case "cloud18-disable-peers":
@@ -975,15 +971,4 @@ func parseSmtGain(value string) (float64, error) {
 		return 0, fmt.Errorf("invalid resource-manager-smt-gain %q: a finite number >= 0 (1 or less = SMT not accounted)", value)
 	}
 	return f, nil
-}
-
-// setSecretLoginLegacy applies api-secret-login-legacy to the server and to every cluster: the
-// job body is checked against the cluster's config (cluster.OpenJobBody).
-func (repman *ReplicationManager) setSecretLoginLegacy(on bool) {
-	repman.Conf.APISecretLoginLegacy = on
-	for _, cl := range repman.Clusters {
-		if cl != nil && cl.Conf != nil {
-			cl.Conf.APISecretLoginLegacy = on
-		}
-	}
 }
