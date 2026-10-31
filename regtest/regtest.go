@@ -3,8 +3,11 @@ package regtest
 import (
 	"bufio"
 	"encoding/json"
+	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/signal18/replication-manager/cluster"
@@ -48,7 +51,7 @@ var tests = []string{
 	"testFailoverNoRplChecksNoSemiSyncMasterHeartbeat",
 	"testFailoverNumberFailureLimitReach",
 	"testFailoverTimeNotReach",
-	"testFailoverManual",
+	"testCancelFailoverReplicationHeartbeatDetection",
 	"testFailoverAssyncAutoRejoinFlashback",
 	"testFailoverSemisyncAutoRejoinFlashback",
 	"testFailoverAssyncAutoRejoinNowrites",
@@ -64,15 +67,11 @@ var tests = []string{
 	"testSetDualActive",
 	"testSplitBrainNoWinner",
 	"testMasterNil",
-	// testStagingRecoverNoReadOnly is intentionally not in this list: it
-	// requires topology-staging=true and a resolvable staging-server-host,
-	// which most clusters don't have. Including it here would make it run
-	// (and hard-FAIL, since this framework has no "skip" result) as part of
-	// "ALL" on every non-staging cluster. Run it explicitly by name instead:
-	// --test=testStagingRecoverNoReadOnly
-	// testPhysicalReseedRestore is intentionally not in this list for the same
-	// reason: it needs a jobs container next to each database and a physical
-	// backup tool matching the servers, and it reseeds a replica. Run it by
+	// skipped on a cluster without topology-staging (its config-variable target)
+	"testStagingRecoverNoReadOnly",
+	// testPhysicalReseedRestore is intentionally not in this list: it needs a
+	// jobs container next to each database and a physical backup tool matching
+	// the servers, and it reseeds a replica. Run it by
 	// name: /api/clusters/<cluster>/tests/actions/run/testPhysicalReseedRestore
 	// testBackupArchiveRemoveOriginal is not in this list either: it needs a jobs
 	// container next to each database, a physical backup tool and restic, and it
@@ -107,6 +106,7 @@ var tests = []string{
 	"testRunSysbenchTPCPerMinuteIncreaseThreads",
 	"testConfigPersistBackupOption",
 	"testCredentialPersistTagReload",
+	"testCredentialVersionsRotation",
 	"testConfigCookiePushBasic",
 	"testConfigCookiePushLifecycle",
 	"testConfigCookiePushMultipleServers",
@@ -137,6 +137,9 @@ var tests = []string{
 	"testGroupReplicationBootstrap",
 	"testGroupReplicationSwitchover",
 	"testGroupReplicationPrimaryLoss",
+	"testGaleraBootstrap",
+	"testGaleraSwitchover",
+	"testGaleraMasterLoss",
 	"testK8SProvisionSchedulerVolumeBinding",
 	"testK8SStopStartDatabaseService",
 	"testSchemaPlugin",
@@ -151,6 +154,7 @@ var tests = []string{
 	"testProxyReadBackendReconciliation",
 	"testMaintenancePersistReload",
 	"testAppWarningDebounceAndRecovery",
+	"testAppMonitorHTTP",
 	"testReplicationTLSAutoCertificate",
 	"testReplicationTLSStaleCAEmptied",
 	"testReplicationTLSVerifyOffWarns",
@@ -162,6 +166,263 @@ var tests = []string{
 	"testCreateStagingSplitdump",
 	"testCreateChildSplitdump",
 	"testAlterEngine",
+}
+
+// TestTarget is the setup a test applies to. An empty target means any: a test without
+// targets runs on every cluster.
+type TestTarget struct {
+	// TopologyTarget lists the declared topologies (GetTopologyTarget) the test applies to.
+	TopologyTarget []string
+	// NumberNodesTarget is the minimum number of database servers.
+	NumberNodesTarget int
+	// FlavorTarget lists the flavors, lowercase: mariadb, mysql, percona, postgresql.
+	FlavorTarget []string
+	// OrchestratorTarget lists the orchestrators, only for a test of orchestrator
+	// mechanics: a functional test applies to every orchestrator.
+	OrchestratorTarget []string
+	// DbuTarget is the minimum DBU per database server (the cluster's plan, GetPlanDbu).
+	DbuTarget int
+	// ConfigVariableMustHave maps 1 to n configuration keys (toml names) to the value the
+	// cluster must already have, printed as GetValueByKey prints it (true, 4, opensvc): a
+	// setting that describes the architecture (arbitration, staging, orchestrator), which
+	// setting it would not build. Checked before the test, never set.
+	ConfigVariableMustHave map[string]string
+	// ConfigVariableMustSet maps configuration keys to the value the test runs with: a
+	// behaviour the test exercises. The runner sets them before the test, as the API does,
+	// and restores the configuration after it.
+	ConfigVariableMustSet map[string]string
+}
+
+// testTargets declares the targets of a test by its name. A test not listed has none.
+// anyCluster is the targets of a test that runs on every cluster.
+var anyCluster = []TestTarget{{}}
+
+// arbitrationRequired is the targets of the split-brain tests: arbitration is the architecture
+// they test (an arbitrator and a peer replication-manager), which turning it on would not build.
+var arbitrationRequired = []TestTarget{{ConfigVariableMustHave: map[string]string{"arbitration-external": "true"}}}
+
+// testTargets holds the targets of every test in tests (TestTargetsDeclared checks it): the test
+// runs when the cluster matches at least one of them. anyCluster marks a test not classified yet,
+// which runs on every cluster.
+var testTargets = map[string][]TestTarget{
+	"testSwitchoverNoDivergenceOnOldMaster":                        anyCluster,
+	"testSwitchoverAllSlavesDelayMultimasterNoRplChecksNoSemiSync": anyCluster,
+	"testSwitchoverLongTransactionNoRplCheckNoSemiSync":            anyCluster,
+	"testSwitchoverLongTransactionWaitNoRplCheckNoSemiSync":        anyCluster,
+	"testSwitchoverLongQueryNoRplCheckNoSemiSync":                  anyCluster,
+	"testSwitchoverLongTrxWithoutCommitNoRplCheckNoSemiSync":       anyCluster,
+	"testSwitchoverReadOnlyNoRplCheck":                             anyCluster,
+	"testSwitchoverNoReadOnlyNoRplCheck":                           anyCluster,
+	"testSwitchover2TimesReplicationOkNoSemiSyncNoRplCheck":        anyCluster,
+	"testSwitchover2TimesReplicationOkSemiSyncNoRplCheck":          anyCluster,
+	"testSwitchoverBackPreferedMasterNoRplCheckSemiSync":           anyCluster,
+	"testSwitchoverAllSlavesStopRplCheckNoSemiSync":                {{TopologyTarget: []string{config.TopoMasterSlave}, NumberNodesTarget: 2, ConfigVariableMustSet: map[string]string{"check-replication-state": "true", "failover-max-slave-delay": "0"}}},
+	"testSwitchoverAllSlavesStopNoSemiSyncNoRplCheck":              anyCluster,
+	"testSwitchoverAllSlavesDelayRplCheckNoSemiSync":               anyCluster,
+	"testSwitchoverAllSlavesDelayNoRplChecksNoSemiSync":            anyCluster,
+	"testFailoverSemisyncAutoRejoinSafeMSMXMS":                     anyCluster,
+	"testFailoverSemisyncAutoRejoinSafeMSXMSM":                     anyCluster,
+	"testFailoverSemisyncAutoRejoinSafeMSMXXXRMXMS":                anyCluster,
+	"testFailoverSemisyncAutoRejoinSafeMSMXXXRXSMS":                anyCluster,
+	"testFailoverSemisyncAutoRejoinUnsafeMSMXMS":                   anyCluster,
+	"testFailoverSemisyncAutoRejoinUnsafeMSMXXXMXMS":               anyCluster,
+	"testFailoverSemisyncAutoRejoinUnsafeMSMXXXXMSM":               anyCluster,
+	"testFailoverSemisyncAutoRejoinUnsafeMSXMSM":                   anyCluster,
+	"testFailoverSemisyncAutoRejoinUnsafeMSXMXXMXMS":               anyCluster,
+	"testFailoverSemisyncAutoRejoinUnsafeMSMXMXXXMSM":              anyCluster,
+	"testFailoverSemisyncAutoRejoinUnsafeMSMXXXRMXMS":              anyCluster,
+	"testFailoverSemisyncAutoRejoinUnsafeMSMXXXRXMSM":              anyCluster,
+	"testFailoverAssyncAutoRejoinRelay":                            anyCluster,
+	"testFailoverAssyncAutoRejoinNoGtid":                           anyCluster,
+	"testFailoverAllSlavesDelayNoRplChecksNoSemiSync":              anyCluster,
+	"testFailoverAllSlavesDelayRplChecksNoSemiSync":                anyCluster,
+	"testFailoverNoRplChecksNoSemiSync":                            anyCluster,
+	"testFailoverNoRplChecksNoSemiSyncMasterHeartbeat":             anyCluster,
+	"testFailoverNumberFailureLimitReach":                          anyCluster,
+	"testFailoverTimeNotReach":                                     anyCluster,
+	// a direct replica receives from the master: the check reads it on master-slave only
+	"testCancelFailoverReplicationHeartbeatDetection": {{TopologyTarget: []string{config.TopoMasterSlave}, NumberNodesTarget: 2, ConfigVariableMustSet: map[string]string{"failover-falsepositive-heartbeat": "true"}}},
+	"testFailoverAssyncAutoRejoinFlashback":                        anyCluster,
+	"testFailoverSemisyncAutoRejoinFlashback":                      anyCluster,
+	"testFailoverAssyncAutoRejoinNowrites":                         anyCluster,
+	"testFailoverSemisyncAutoRejoinMSSXMSXXMSXMSSM":                anyCluster,
+	"testFailoverSemisyncAutoRejoinMSSXMSXXMXSMSSM":                anyCluster,
+	"testFailoverSemisyncSlavekilledAutoRejoin":                    anyCluster,
+	"testSlaReplAllSlavesStopNoSemiSync":                           anyCluster,
+	"testSlaReplAllSlavesDelayNoSemiSync":                          anyCluster,
+	"testMasterSuspect":                                            anyCluster,
+	"testSetMinorityWithMaster":                                    arbitrationRequired,
+	"testSetMinorityWithMasterSysbench":                            arbitrationRequired,
+	"testSetMinorityWithoutMaster":                                 arbitrationRequired,
+	"testSetDualActive":                                            arbitrationRequired,
+	"testSplitBrainNoWinner":                                       arbitrationRequired,
+	"testMasterNil":                                                anyCluster,
+	"testStagingRecoverNoReadOnly":                                 {{ConfigVariableMustHave: map[string]string{"topology-staging": "true"}}},
+	"testRunSysbenchTPCPerMinuteIncreaseThreads":                   anyCluster,
+	"testConfigPersistBackupOption":                                anyCluster,
+	"testCredentialPersistTagReload":                               anyCluster,
+	"testConfigCookiePushBasic":                                    anyCluster,
+	"testConfigCookiePushLifecycle":                                anyCluster,
+	"testConfigCookiePushMultipleServers":                          anyCluster,
+	"testConfigCookiePushTiming":                                   anyCluster,
+	"testConfigCookiePushCookieDir":                                anyCluster,
+	"testConfigCookiePushNoConfigFetchCookie":                      anyCluster,
+	"testRestartCookieBasic":                                       anyCluster,
+	"testRestartCookieLifecycle":                                   anyCluster,
+	"testRestartCookieMultipleServers":                             anyCluster,
+	"testRestartCookieParameters":                                  anyCluster,
+	"testRestartCookieCleanup":                                     anyCluster,
+	"testRestartCookieTiming":                                      anyCluster,
+	"testRestartCookieConcurrent":                                  anyCluster,
+	"testResticReseedRestore":                                      anyCluster,
+	"testResticReseedDump":                                         anyCluster,
+	"testResticReseedMount":                                        anyCluster,
+	"testResticReseedFallback":                                     anyCluster,
+	"testResticReseedMysqldump":                                    anyCluster,
+	"testResticReseedMydumper":                                     anyCluster,
+	"testResticReseedXtrabackup":                                   anyCluster,
+	"testResticReseedMariabackup":                                  anyCluster,
+	"testOpenSVCUpgradeWarnRecovery":                               {{OrchestratorTarget: []string{config.ConstOrchestratorOpenSVC}, NumberNodesTarget: 2, ConfigVariableMustHave: map[string]string{"prov-db-start-fetch-config": "true"}}},
+	"testRejoinStaleCrashKeepsMaster":                              anyCluster,
+	"testMisplacedReplicaNotRelay":                                 anyCluster,
+	"testRollingRestart":                                           anyCluster,
+	"testRollingUpgrade":                                           anyCluster,
+	"testRollingReprovReseed":                                      anyCluster,
+	"testGaleraBootstrap":                                          {{TopologyTarget: []string{config.TopoMultiMasterWsrep}, NumberNodesTarget: 2, FlavorTarget: []string{"mariadb"}}},
+	"testGaleraSwitchover":                                         {{TopologyTarget: []string{config.TopoMultiMasterWsrep}, NumberNodesTarget: 2, FlavorTarget: []string{"mariadb"}}},
+	// the Primary component keeps a majority after losing the write node only from 3 nodes
+	"testGaleraMasterLoss":                                         {{TopologyTarget: []string{config.TopoMultiMasterWsrep}, NumberNodesTarget: 3, FlavorTarget: []string{"mariadb"}}},
+	"testGroupReplicationBootstrap":                                {{TopologyTarget: []string{config.TopoMultiMasterGrouprep}, NumberNodesTarget: 2, FlavorTarget: []string{"mysql", "percona"}}},
+	"testGroupReplicationSwitchover":                               {{TopologyTarget: []string{config.TopoMultiMasterGrouprep}, NumberNodesTarget: 2, FlavorTarget: []string{"mysql", "percona"}}},
+	// the group keeps a majority after losing its PRIMARY only from 3 members
+	"testGroupReplicationPrimaryLoss":                                          {{TopologyTarget: []string{config.TopoMultiMasterGrouprep}, NumberNodesTarget: 3, FlavorTarget: []string{"mysql", "percona"}}},
+	"testK8SProvisionSchedulerVolumeBinding":                                   {{OrchestratorTarget: []string{config.ConstOrchestratorKubernetes}}},
+	"testK8SStopStartDatabaseService":                                          {{OrchestratorTarget: []string{config.ConstOrchestratorKubernetes}}},
+	"testSchemaPlugin":                                                         anyCluster,
+	// its own local web service: any cluster
+	"testAppMonitorHTTP": anyCluster,
+	"testGraphiteMetricsQueueBound":                                            anyCluster,
+	"testDirectReseedSystemAllEmptyDestination":                                anyCluster,
+	"testDirectReseedSystemAllPluginAlreadyActive":                             anyCluster,
+	"testDirectReseedSystemAllPreExistingUserAppliedViaAlterUser":              anyCluster,
+	"testDirectReseedSystemAllRetainsArtifactOnPhaseTwoFailure":                anyCluster,
+	"testDirectReseedSystemAllSplitUserSingleAuthority":                        anyCluster,
+	"testDirectReseedSystemAllStrictPasswordValidationIdenticalAccountSkipped": anyCluster,
+	"testHaproxyRuntimeAPIDynamicServerLifecycle":                              anyCluster,
+	"testProxyReadBackendReconciliation":                                       anyCluster,
+	"testMaintenancePersistReload":                                             anyCluster,
+	"testAppWarningDebounceAndRecovery":                                        anyCluster,
+	"testReplicationTLSAutoCertificate":                                        anyCluster,
+	"testReplicationTLSStaleCAEmptied":                                         anyCluster,
+	"testReplicationTLSVerifyOffWarns":                                         anyCluster,
+	"testReplicationTLSSSLTagLifecycle":                                        anyCluster,
+	"testRollingUpgradeTransparentSSL":                                         anyCluster,
+	"testRejoinRefusesNodeWithData":                                            anyCluster,
+	"testCreateStaging":                                                        anyCluster,
+	"testCreateChild":                                                          anyCluster,
+	"testCreateStagingSplitdump":                                               anyCluster,
+	"testCreateChildSplitdump":                                                 anyCluster,
+	"testAlterEngine":                                                          anyCluster,
+
+	// #2227: a real rotation on MariaDB and MySQL, the versioned file on. Its variant with a vault
+	// entry, testCredentialVersionsRotationVault, is run by name on a cluster whose config enables
+	// a [[<cluster>.secret-kv]] on a Vault or OpenBao dev container.
+	"testCredentialVersionsRotation": {{FlavorTarget: []string{"mariadb", "mysql"}, ConfigVariableMustHave: map[string]string{"monitoring-secret-versioning": "true"}}},
+}
+
+// TestResultSkip is the result of a test whose targets the cluster does not match: it did
+// not run, so it is neither a PASS nor a FAIL of the setup.
+const TestResultSkip = "SKIP"
+
+// MatchTarget returns the first target of a test the cluster matches, or, when it matches
+// none, why: the miss of each target joined by "; ". A test that declares no targets matches
+// with an empty target. An unknown flavor (no database version read yet) or DBU (no plan)
+// does not miss: the test runs and its result says what it found.
+// ConfigVariablesMustSet lists every must-set variable of every test, by test: the server
+// checks that the API can set each one (a key it refuses leaves its test unrun, ERR).
+func ConfigVariablesMustSet() map[string][]map[string]string {
+	all := make(map[string][]map[string]string)
+	for name, targets := range testTargets {
+		for _, target := range targets {
+			if len(target.ConfigVariableMustSet) > 0 {
+				all[name] = append(all[name], target.ConfigVariableMustSet)
+			}
+		}
+	}
+	return all
+}
+
+func (regtest *RegTest) MatchTarget(cl *cluster.Cluster, name string) (TestTarget, string) {
+	if miss := mysqlGTIDMiss(cl); miss != "" {
+		return TestTarget{}, miss
+	}
+	targets := testTargets[name]
+	if len(targets) == 0 {
+		return TestTarget{}, ""
+	}
+	misses := make([]string, 0, len(targets))
+	for _, target := range targets {
+		miss := target.missReason(cl)
+		if miss == "" {
+			return target, ""
+		}
+		misses = append(misses, miss)
+	}
+	return TestTarget{}, strings.Join(misses, "; ")
+}
+
+// missReason says which condition of the target the cluster misses, empty when it matches.
+func (target TestTarget) missReason(cl *cluster.Cluster) string {
+	if topology := cl.GetTopologyTarget(); len(target.TopologyTarget) > 0 && !misc.Contains(target.TopologyTarget, topology) {
+		return fmt.Sprintf("topology-target %s, cluster is %s", strings.Join(target.TopologyTarget, ","), topology)
+	}
+	if nodes := len(cl.GetServers()); nodes < target.NumberNodesTarget {
+		return fmt.Sprintf("number-nodes-target %d, cluster has %d", target.NumberNodesTarget, nodes)
+	}
+	if len(target.FlavorTarget) > 0 {
+		if server := SetupServer(cl); server != nil {
+			if v := server.GetVersion(); v != nil && !misc.Contains(target.FlavorTarget, strings.ToLower(v.Flavor)) {
+				return fmt.Sprintf("flavor-target %s, cluster is %s", strings.Join(target.FlavorTarget, ","), strings.ToLower(v.Flavor))
+			}
+		}
+	}
+	if orchestrator := cl.GetOrchestrator(); len(target.OrchestratorTarget) > 0 && !misc.Contains(target.OrchestratorTarget, orchestrator) {
+		return fmt.Sprintf("orchestrator-target %s, cluster is %s", strings.Join(target.OrchestratorTarget, ","), orchestrator)
+	}
+	if nodes := len(cl.GetServers()); target.DbuTarget > 0 && nodes > 0 {
+		if dbu := cl.GetPlanDbu() / nodes; dbu > 0 && dbu < target.DbuTarget {
+			return fmt.Sprintf("dbu-target %d per node, cluster has %d", target.DbuTarget, dbu)
+		}
+	}
+	// sorted, so the reason names the same key at every run
+	for _, key := range slices.Sorted(maps.Keys(target.ConfigVariableMustHave)) {
+		want := target.ConfigVariableMustHave[key]
+		if value, ok := cl.Conf.GetValueByKey(key); !ok || !strings.EqualFold(value, want) {
+			return fmt.Sprintf("config-variable-must-have %s=%s, cluster has %s", key, want, value)
+		}
+	}
+	return ""
+}
+
+// mysqlGTIDMiss: every test runs a MySQL or Percona cluster on GTID, as the provisioning
+// builds it (#2226): the cluster declares the mysqlgtid tag. Without it a failover is
+// positional and the tests do not exercise what a client runs. Group replication has GTID
+// from its own tag.
+func mysqlGTIDMiss(cl *cluster.Cluster) string {
+	if cl.GetTopologyTarget() == config.TopoMultiMasterGrouprep {
+		return ""
+	}
+	server := SetupServer(cl)
+	if server == nil {
+		return ""
+	}
+	if v := server.GetVersion(); v == nil || !v.IsMySQLOrPercona() {
+		return ""
+	}
+	if !cl.Configurator.HaveDBTag(cluster.ProvisionMySQLGTIDTag) {
+		return fmt.Sprintf("a MySQL cluster declares the %s tag (prov-db-tags), cluster has %s", cluster.ProvisionMySQLGTIDTag, cl.Conf.ProvTags)
+	}
+	return ""
 }
 
 const recoverTime = 8
@@ -269,6 +530,11 @@ func (regtest *RegTest) GetTestsFromPath(cl *cluster.Cluster, tests map[string]c
 		}
 	}
 	return allTests
+}
+
+// GetTestSkipLabel is the result of a test MatchTarget kept from running.
+func (regtest *RegTest) GetTestSkipLabel() string {
+	return TestResultSkip
 }
 
 func (regtest *RegTest) GetTestResultLabel(res bool) string {

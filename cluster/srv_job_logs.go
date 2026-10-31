@@ -679,6 +679,16 @@ func (server *ServerMonitor) ErrorLogWatcher() {
 
 var spacesRe = regexp.MustCompile(`\s+`)
 
+// job log patterns read by ParseLogEntries, compiled once
+var (
+	// the GTID is empty on a server without GTID (Galera without wsrep GTID mode): the file
+	// and position are still the backup's position (#2250)
+	binRegex     = regexp.MustCompile(`filename '([^']+)', position '([^']+)', GTID of the last change '([^']*)'`)
+	startRegex   = regexp.MustCompile(`Job [^']+ initiated`)
+	endRegex     = regexp.MustCompile(`Job [^']+ ended with state`)
+	err2002Regex = regexp.MustCompile(`Database query failed`)
+)
+
 // ErrorLogWatcher monitor the tail of the log and populate ring buffer
 func (server *ServerMonitor) AuditLogWatcher() {
 	if server.AuditLogTailer == nil {
@@ -824,11 +834,6 @@ func (server *ServerMonitor) ParseLogEntries(entry config.LogEntry, mod int, tas
 		return err
 	}
 
-	binRegex := regexp.MustCompile(`filename '([^']+)', position '([^']+)', GTID of the last change '([^']+)'`)
-	startRegex := regexp.MustCompile(`Job [^']+ initiated`)
-	endRegex := regexp.MustCompile(`Job [^']+ ended with state`)
-	err2002Regex := regexp.MustCompile(`Database query failed`)
-
 	lines := strings.Split(strings.ReplaceAll(entry.Log, "\\n", "\n"), "\n")
 	for _, line := range lines {
 		if strings.TrimSpace(line) != "" {
@@ -850,9 +855,14 @@ func (server *ServerMonitor) ParseLogEntries(entry config.LogEntry, mod int, tas
 				switch task {
 				case "xtrabackup", "mariabackup":
 					if matches := binRegex.FindStringSubmatch(line); matches != nil {
-						server.LastBackupMeta.Physical.BinLogGtid = matches[3]
-						server.LastBackupMeta.Physical.BinLogFilePos, _ = strconv.ParseUint(matches[2], 10, 64)
-						server.LastBackupMeta.Physical.BinLogFileName = matches[1]
+						// under backupMetaMutex: waitForBinlogMeta reads it under the same mutex
+						server.backupMetaMutex.Lock()
+						if meta := server.LastBackupMeta.Physical; meta != nil {
+							meta.BinLogGtid = matches[3]
+							meta.BinLogFilePos, _ = strconv.ParseUint(matches[2], 10, 64)
+							meta.BinLogFileName = matches[1]
+						}
+						server.backupMetaMutex.Unlock()
 					}
 				}
 				cluster.LogModulePrintf(cluster.Conf.Verbose, mod, entry.Level, "[%s] %s", server.URL, line)

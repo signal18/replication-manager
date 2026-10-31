@@ -60,7 +60,7 @@ SELECT
   0 AS "Master_Server_Id", 'Slave_Pos' AS "Using_Gtid",
   '0-0-' || (io_lsn - '0/0'::pg_lsn)::bigint AS "Gtid_IO_Pos",
   '0-0-' || (replay - '0/0'::pg_lsn)::bigint AS "Gtid_Slave_Pos",
-  1 AS "Slave_Heartbeat_Period", '' AS "Slave_SQL_Running_State"
+  1 AS "Slave_heartbeat_period", '' AS "Slave_SQL_Running_State"
 FROM r WHERE pg_is_in_recovery()`
 
 // postgresMasterStatusQuery is the SHOW MASTER STATUS of PostgreSQL, valid on a primary

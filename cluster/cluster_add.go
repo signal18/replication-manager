@@ -9,6 +9,8 @@ package cluster
 import (
 	"errors"
 	"fmt"
+	"maps"
+	"path"
 	"slices"
 	"strings"
 	"sync"
@@ -89,6 +91,61 @@ func (cluster *Cluster) addColumnstoreTag() {
 			cluster.AddDBTagConfig(tag)
 		}
 	}
+}
+
+// ProvisionMySQLGTIDTag is the database tag whose ruleset turns GTID on for MySQL and
+// Percona (gtid-mode=ON, enforce-gtid-consistency=ON).
+const ProvisionMySQLGTIDTag = "mysqlgtid"
+
+// provDbImageIsMySQL tells whether the provisioned database image is MySQL or Percona
+// Server, by the last segment of its repository (any registry): mysql, mysql-server,
+// percona, percona-server. Not a Percona XtraDB Cluster image (Galera), nor a name that
+// only contains mysql.
+func (cluster *Cluster) provDbImageIsMySQL() bool {
+	switch path.Base(dockerImageRepository(cluster.Conf.ProvDbImg)) {
+	case "mysql", "mysql-server", "percona", "percona-server":
+		return true
+	}
+	return false
+}
+
+// addMySQLGTIDTag: a MySQL or Percona cluster provisioned by replication-manager
+// replicates on GTID (#2226). Without it a failover is positional: the replicas wait in
+// maintenance on the dead master and the rejoins have no GTID position. Group
+// replication has GTID from its own tag. Only while no database server answers (a new
+// cluster, or all of them down): ProvisionServices also runs from Bootstrap on an
+// existing cluster, and turning GTID on for a running server is an operator procedure
+// (gtid_mode through OFF_PERMISSIVE and ON_PERMISSIVE), never a tag rendered behind its
+// back for its next restart.
+func (cluster *Cluster) addMySQLGTIDTag() {
+	if !cluster.provDbImageIsMySQL() || cluster.Conf.MultiMasterGrouprep || cluster.Conf.MultiMasterWsrep || cluster.Configurator.HaveDBTag(ProvisionMySQLGTIDTag) {
+		return
+	}
+	if cluster.hasDatabaseServerUp() {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Database tag %s not added: database servers of %s are running, turning GTID on for them is an operator procedure", ProvisionMySQLGTIDTag, cluster.Name)
+		return
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Adding database tag %s: a MySQL cluster is provisioned with GTID", ProvisionMySQLGTIDTag)
+	cluster.AddDBTagConfig(ProvisionMySQLGTIDTag)
+}
+
+// hasDatabaseServerUp tells whether a database server of the cluster runs, or may run:
+// any state but Failed, and Suspect only once the server answered in this process
+// (neverAnswered: its version is no longer the placeholder it is created with), as a
+// running server goes Suspect on one failed ping. ErrorAuth runs: it refuses our login. Limit: right after a
+// restart of replication-manager, before the first ping, a running server is Suspect with
+// no version yet and counts as down.
+func (cluster *Cluster) hasDatabaseServerUp() bool {
+	for _, s := range cluster.Servers {
+		if s == nil || s.State == stateFailed {
+			continue
+		}
+		if s.State == stateSuspect && s.neverAnswered() {
+			continue
+		}
+		return true
+	}
+	return false
 }
 
 // ErrColumnstoreNoDynamic: the columnstore topology turns down prov-db-dynamic-resource and
@@ -260,6 +317,8 @@ func (cluster *Cluster) FilterGrants(grants string, delegator *APIUser) string {
 }
 
 func (cluster *Cluster) AppendGrants(grants string, user *APIUser) string {
+	// the user may be an entry read from APIUsers: its map is the live one, readers check it
+	user.Grants = maps.Clone(user.Grants)
 	cluster.SetUserGrants(user, grants)
 	allow, _ := config.GetCompactGrants(user.Grants)
 	return strings.Join(allow, " ")
@@ -270,6 +329,10 @@ func (cluster *Cluster) AppendRoles(roles string, user *APIUser) string {
 	// kept next to a real role it would be saved in the entry and hide the
 	// operator buttons (#1971). A real role drops it, and it is never added
 	// next to one.
+	// The user may be an entry read from APIUsers: its map is the live one, readers check it.
+	if user.Roles = maps.Clone(user.Roles); user.Roles == nil {
+		user.Roles = map[string]bool{}
+	}
 	for _, role := range strings.Fields(roles) {
 		if role == config.RoleVisitor {
 			continue
@@ -443,9 +506,11 @@ func (cluster *Cluster) UpdateUser(userform UserForm, delegator string, reloadAC
 
 		cluster.Conf.APIUsersACLDiscardExternal = strings.Join(new_acls, ",")
 
+		// the entry's maps are the live map's: readers check them, so they are copied first
+		auser.Grants, auser.Roles = maps.Clone(auser.Grants), maps.Clone(auser.Roles)
 		cluster.SetUserGrants(&auser, grants)
 		cluster.SetUserRoles(&auser, roles)
-		cluster.APIUsers[user] = auser
+		cluster.setAPIUser(user, auser)
 
 		if reloadACL {
 			cluster.LoadAPIUsers()
@@ -487,7 +552,7 @@ func (cluster *Cluster) DropUser(userform UserForm, reloadACL bool) error {
 			}
 		}
 
-		delete(cluster.APIUsers, user)
+		cluster.deleteAPIUser(user)
 		cluster.Conf.APIUsersExternal = strings.Join(new_cred, ",")
 		if reloadACL {
 			cluster.SaveAcls()

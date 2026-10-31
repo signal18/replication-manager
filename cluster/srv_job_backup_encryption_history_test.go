@@ -224,17 +224,16 @@ func setTestDbPassword(c *Cluster, pass string) {
 	c.Conf.Secrets.Set("db-servers-credential", config.Secret{Value: "root:" + pass})
 }
 
-// Encryption alone turns versioning on, and the first encrypted backup
-// records the current password even if the store was never reconciled.
+// Encryption alone turns versioning on, monitoring-secret-versioning turned off (it is on
+// by default, #2227), and the first encrypted backup records the current password even if
+// the store was never reconciled.
 func TestEncryptionForcesSecretVersioningAndRecordsFirstPassword(t *testing.T) {
 	c := newEncryptionTestCluster(t, "pw1")
 	c.WorkingDir = filepath.Join(c.Conf.WorkingDir, c.Name)
 	os.MkdirAll(c.WorkingDir, 0700)
 	c.Conf.SecretKey = []byte("01234567890123456789012345678901")
 	c.BackupMetaMap = backupmgr.NewBackupMetaMap()
-	if c.Conf.MonitoringSecretVersioning {
-		t.Fatalf("test must not enable monitoring-secret-versioning explicitly")
-	}
+	c.Conf.MonitoringSecretVersioning = false
 
 	old := encryptTestBackup(t, c, "mysqldump.sql.gz", "taken with pw1")
 	setTestDbPassword(c, "pw2")

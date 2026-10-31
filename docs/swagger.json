@@ -88,6 +88,155 @@
                 }
             }
         },
+        "/api/auth/cloud18": {
+            "get": {
+                "description": "On a partner repman with a public address (cloud18 on, plan partner, a public https api-public-url, cloud18-sso-login on), the login page offers Sign in with Cloud18 (#2185). Public.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "Sign in with Cloud18: offered or not",
+                "responses": {
+                    "200": {
+                        "description": "enabled, and the reason when it is not",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/api/auth/cloud18/callback": {
+            "get": {
+                "description": "The realm sends the browser back here with a code; the session is opened and the browser sent to /login with a one-time code (#2185). Public.",
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "Sign in with Cloud18: the realm's answer",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "authorization code",
+                        "name": "code",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "the state of /api/auth/cloud18/start",
+                        "name": "state",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "302": {
+                        "description": "to /login?cloud18=\u003cone-time code\u003e",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/auth/cloud18/logout": {
+            "get": {
+                "description": "Redirects the browser to the realm's logout, back to /login (#2185). Public.",
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "Sign in with Cloud18: logout",
+                "responses": {
+                    "302": {
+                        "description": "to the realm's logout",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/auth/cloud18/session": {
+            "post": {
+                "description": "Trades the one-time code the callback gave the dashboard for the session token, once, within 60 s (#2185). Public.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "Sign in with Cloud18: the session",
+                "parameters": [
+                    {
+                        "description": "{\\",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "token, username, loginMethod cloud18",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "unknown, used or expired code",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/auth/cloud18/start": {
+            "get": {
+                "description": "Redirects the browser to the Cloud18 realm's sign-in (login_hint), silent check (silent=1) or sign-up (signup=1), back to /api/auth/cloud18/callback (#2185). Public.",
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "Sign in with Cloud18: start",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "the email typed on the login page, prefilled on the realm's page",
+                        "name": "login_hint",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "1: sign in only if the person has a realm session, nothing shown",
+                        "name": "silent",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "1: the realm's sign-up form",
+                        "name": "signup",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "302": {
+                        "description": "to the realm",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/cloud18/self-service": {
             "get": {
                 "description": "Whether this instance accepts self-service cluster creation from Cloud18 users, the per-user limit, and how many clusters the caller already sponsors here.",
@@ -564,7 +713,7 @@
         },
         "/api/clusters/settings/actions/cloud18-identity": {
             "get": {
-                "description": "state none (nobody connected it), pending (a device login waits: device holds the code and the page), connected, or reconnect (the login ended: reason). Never a token.",
+                "description": "state none (not registered to Cloud18), registered (no login yet: made with the registered account at the next use or keep-alive), connected, or refused (the realm refused the registered account: register again, reason). Never a token.",
                 "produces": [
                     "application/json"
                 ],
@@ -591,96 +740,6 @@
                     },
                     "403": {
                         "description": "No valid ACL",
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/clusters/settings/actions/cloud18-identity/connect": {
-            "post": {
-                "description": "Asks the realm for a code: the person opens the page (device.verificationUri), logs in and types the code (device.userCode); replication-manager then keeps the login. Replaces a login still waiting.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "GlobalSetting"
-                ],
-                "summary": "Connect this replication-manager to the Cloud18 identity (device login)",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "default": "Bearer \u003cAdd access token here\u003e",
-                        "description": "Insert your access token",
-                        "name": "Authorization",
-                        "in": "header",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/config.Cloud18IdentityStatus"
-                        }
-                    },
-                    "403": {
-                        "description": "No valid ACL",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "409": {
-                        "description": "The realm or the setting refused the login",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "503": {
-                        "description": "The realm cannot be reached",
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/clusters/settings/actions/cloud18-identity/disconnect": {
-            "post": {
-                "description": "Forgets the kept login and ends it at the realm (best effort). The S3 SSO storages and the Cloud18 vault refuse until someone connects it again.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "GlobalSetting"
-                ],
-                "summary": "Disconnect this replication-manager from the Cloud18 identity",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "default": "Bearer \u003cAdd access token here\u003e",
-                        "description": "Insert your access token",
-                        "name": "Authorization",
-                        "in": "header",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/config.Cloud18IdentityStatus"
-                        }
-                    },
-                    "403": {
-                        "description": "No valid ACL",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "500": {
-                        "description": "The login file cannot be removed",
                         "schema": {
                             "type": "string"
                         }
@@ -3581,14 +3640,38 @@
                     },
                     {
                         "type": "string",
-                        "description": "Number of threads",
+                        "description": "Sysbench test (sysbench-test)",
+                        "name": "test",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Duration in seconds (sysbench-time)",
+                        "name": "time",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Number of threads, 0 = scale from 1 to 2×cores (sysbench-threads)",
                         "name": "threads",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Number of tables (sysbench-tables)",
+                        "name": "tables",
                         "in": "query"
                     }
                 ],
                 "responses": {
                     "200": {
                         "description": "Successfully triggered sysbench",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Unknown test or invalid number: nothing is changed or started",
                         "schema": {
                             "type": "string"
                         }
@@ -4537,7 +4620,7 @@
                     },
                     {
                         "type": "string",
-                        "description": "Node Name (optional, if not provided, will restart default node). Can use ALL or * to restart on all nodes.",
+                        "description": "Node Name (optional). OpenSVC v3: without it, ALL or *, every instance restarts, one at a time by the orchestrator; with it, that instance only. OpenSVC v2: without it, the default node.",
                         "name": "node",
                         "in": "path"
                     }
@@ -6830,6 +6913,58 @@
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/cluster.ArchiveListResult"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/archive-offers": {
+            "get": {
+                "description": "The archive offers of the marketplace catalogue the back-office pushes to every instance, each with its S3 storage, whether the cluster already has that storage and whether it can use the offer now: a storage reached with the Cloud18 SSO needs no key; a storage whose keys Cloud18 issues is requested (cloud18-archive-offer-requests) and usable once its S3 provider is delivered; the others are on request. Public fields only, no key.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterArchive"
+                ],
+                "summary": "List the archive offers",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/server.ArchiveOffer"
+                            }
                         }
                     },
                     "403": {
@@ -11772,6 +11907,388 @@
                         "description": "Successfully set universal table",
                         "schema": {
                             "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/secret-kv-actions/add": {
+            "post": {
+                "description": "Adds a vault entry (plugin secret_kv-vault) from the settings of its manifest: address, mount, path-prefix, mode, auth, role-id, secret-id (written only). An enabled entry gets every version of every secret of the cluster, a full pass first.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterCredentials"
+                ],
+                "summary": "Add a credential store entry",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "name, settings, enabled",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/config.SecretKvSpec"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "name",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid entry",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "409": {
+                        "description": "The list is set by a config file",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/secret-kv-actions/disable/{entryName}": {
+            "post": {
+                "description": "The entry gets no more versions; what it holds stays. The cluster's sponsor may do it.",
+                "produces": [
+                    "text/plain"
+                ],
+                "tags": [
+                    "ClusterCredentials"
+                ],
+                "summary": "Turn a credential store entry off",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Entry Name",
+                        "name": "entryName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Credential store off",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Unknown entry",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "409": {
+                        "description": "The list is set by a config file",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/secret-kv-actions/edit/{entryName}": {
+            "post": {
+                "description": "Changes a vault entry's settings (an empty secret keeps the secret, unset clears names).",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterCredentials"
+                ],
+                "summary": "Edit a credential store entry",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Entry Name",
+                        "name": "entryName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "settings, unset, enabled",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/config.SecretKvSpec"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "name",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid entry",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "409": {
+                        "description": "The list is set by a config file, or the entry comes from a Cloud18 marketplace offer (its settings are the back-office's)",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/secret-kv-actions/enable/{entryName}": {
+            "post": {
+                "description": "The entry gets every version of every secret of the cluster, a full pass first. The cluster's sponsor may do it.",
+                "produces": [
+                    "text/plain"
+                ],
+                "tags": [
+                    "ClusterCredentials"
+                ],
+                "summary": "Turn a credential store entry on",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Entry Name",
+                        "name": "entryName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Credential store on",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Unknown entry",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "409": {
+                        "description": "The list is set by a config file",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/secret-kv-actions/remove/{entryName}": {
+            "post": {
+                "description": "Takes the entry out of the list. repman never deletes a secret: what the vault holds stays.",
+                "produces": [
+                    "text/plain"
+                ],
+                "tags": [
+                    "ClusterCredentials"
+                ],
+                "summary": "Remove a credential store entry",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Entry Name",
+                        "name": "entryName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Credential store removed",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Unknown entry",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "409": {
+                        "description": "The list is set by a config file, or the entry comes from a Cloud18 marketplace offer (its settings are the back-office's)",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/secret-kv-list": {
+            "get": {
+                "description": "The cluster's vault entries (secrets never returned, only the names of those set; offer: the Cloud18 marketplace offer an entry comes from, name, title and partner, null for the user's own), each one's state (last write, behind: WARN0271), the queue's drops (WARN0272), the plugins' manifests, the copy settings, and the database credentials' starting value source, current source, version count and refusal.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterCredentials"
+                ],
+                "summary": "List the credential store entries",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/cluster.SecretKvListResult"
                         }
                     },
                     "403": {
@@ -23699,7 +24216,7 @@
         },
         "/api/login": {
             "post": {
-                "description": "Authenticates a user and returns a JWT token upon successful login. A local account,\nthen (Cloud18 instance) the Cloud18 account (email and Cloud18 password), then GitLab's\npassword grant while cloud18-gitlab-password-grant is on. On a registered Cloud18\ninstance, a Cloud18 realm token as bearer with an empty body ({}) logs its person in\n(another Cloud18 instance acting for its user, #2182).",
+                "description": "Authenticates a user and returns a JWT token upon successful login. A local account,\nthen (Cloud18 instance) the Cloud18 account (email and Cloud18 password); GitLab's\npassword grant is no longer tried. On a registered Cloud18\ninstance, a Cloud18 realm token as bearer with an empty body ({}) logs its person in\n(another Cloud18 instance acting for its user, #2182).",
                 "consumes": [
                     "application/json"
                 ],
@@ -25123,6 +25640,15 @@
                         "description": "Unauthorized user",
                         "schema": {
                             "type": "string"
+                        }
+                    },
+                    "409": {
+                        "description": "A Sign in with Cloud18 session: open the chat's web app at url",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     },
                     "500": {
@@ -27365,6 +27891,35 @@
                 }
             }
         },
+        "cluster.CredentialInfo": {
+            "type": "object",
+            "properties": {
+                "initial": {
+                    "description": "Initial is where the starting value is (#2227 rule 1): config-file, dynamic-config,\ndefault; Versions how many versions the versioned stores hold, LastChange the newest's time",
+                    "type": "string"
+                },
+                "key": {
+                    "type": "string"
+                },
+                "lastChange": {
+                    "type": "string"
+                },
+                "refusal": {
+                    "description": "why a change through the API is refused now, empty when allowed",
+                    "type": "string"
+                },
+                "source": {
+                    "description": "where the value comes from (credstore.Source*): versions (a version of the versioned stores), config-file (immutable), dynamic-config, runtime-config (monitoring-save-config off), default, vault",
+                    "type": "string"
+                },
+                "user": {
+                    "type": "string"
+                },
+                "versions": {
+                    "type": "integer"
+                }
+            }
+        },
         "cluster.Diff": {
             "type": "object",
             "properties": {
@@ -27916,6 +28471,68 @@
                 }
             }
         },
+        "cluster.SecretKvListResult": {
+            "type": "object",
+            "properties": {
+                "credentials": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/cluster.CredentialInfo"
+                    }
+                },
+                "dropped": {
+                    "type": "integer"
+                },
+                "dropsPending": {
+                    "description": "WARN0272",
+                    "type": "boolean"
+                },
+                "entries": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/config.SecretKvConfig"
+                    }
+                },
+                "pinned": {
+                    "description": "a config file sets the list: change it there",
+                    "type": "boolean"
+                },
+                "plugins": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/config.SecretKvPluginManifest"
+                    }
+                },
+                "queued": {
+                    "type": "integer"
+                },
+                "settings": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "integer"
+                    }
+                },
+                "states": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "$ref": "#/definitions/cluster.SecretKvState"
+                    }
+                }
+            }
+        },
+        "cluster.SecretKvState": {
+            "type": "object",
+            "properties": {
+                "behind": {
+                    "description": "why it is behind (WARN0271), empty when not",
+                    "type": "string"
+                },
+                "lastWrite": {
+                    "description": "its last successful write in this run",
+                    "type": "string"
+                }
+            }
+        },
         "cluster.SnapbackState": {
             "type": "object",
             "properties": {
@@ -27999,6 +28616,10 @@
                     "type": "string"
                 },
                 "result": {
+                    "type": "string"
+                },
+                "skip-reason": {
+                    "description": "SkipReason is the target the cluster missed, when Result is SKIP.",
                     "type": "string"
                 }
             }
@@ -28243,8 +28864,24 @@
                 "appHostsIpv6": {
                     "type": "string"
                 },
+                "appMonitorCertExpireDays": {
+                    "description": "AppMonitorCertExpireDays: in app-monitor-mode https-cert, the certificate warns when it\nexpires within this many days (0: 14).",
+                    "type": "integer"
+                },
+                "appMonitorExpectStatus": {
+                    "description": "AppMonitorExpectStatus: the accepted status codes of the http/https check (default\n\"200\"), same syntax as a route's monitor expect-status.",
+                    "type": "string"
+                },
                 "appMonitorMode": {
-                    "description": "AppMonitorMode: how an app without a route is probed. \"port\" (default) connects to\napp-port over TCP; \"ping\" sends an ICMP echo to the app host, for a process that\nlistens on nothing (ERPNext worker and scheduler, #1919). The port stays the identity.",
+                    "description": "AppMonitorMode: how an app without a route is probed. \"port\" (default) connects to\napp-port over TCP; \"ping\" sends an ICMP echo to the app host, for a process that\nlistens on nothing (ERPNext worker and scheduler, #1919). The port stays the identity.\n\"http\" and \"https\" send a GET to \u003cmode\u003e://\u003capp-host\u003e:\u003capp-port\u003e\u003capp-monitor-path\u003e and\nexpect app-monitor-expect-status, for a web service that accepts connections and may\nnever answer (#2209); a full app-host name (with a dot) is called as is. \"https-cert\"\nis https that also verifies the certificate and its expiry (app-monitor-cert-expire-days).",
+                    "type": "string"
+                },
+                "appMonitorOnly": {
+                    "description": "AppMonitorOnly: the app was added without image nor template to watch a service that\nruns elsewhere (#2209): checked by app-monitor-mode, never provisioned, reserves no plan unit.",
+                    "type": "boolean"
+                },
+                "appMonitorPath": {
+                    "description": "AppMonitorPath: the path of the http/https check (default \"/\"), like a route's monitor path.",
                     "type": "string"
                 },
                 "appPort": {
@@ -28363,35 +29000,12 @@
                 "settings": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/config.ArchivePluginSetting"
+                        "$ref": "#/definitions/config.PluginSetting"
                     }
                 },
                 "tier": {
                     "description": "ConstArchiveTierEnterprise, \"\" for every plan",
                     "type": "string"
-                }
-            }
-        },
-        "config.ArchivePluginSetting": {
-            "type": "object",
-            "properties": {
-                "group": {
-                    "description": "ConstArchiveSettingGroup*, \"\" for the main settings",
-                    "type": "string"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "type": {
-                    "description": "ConstArchiveSettingType*",
-                    "type": "string"
-                },
-                "values": {
-                    "description": "the allowed values of an enum",
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
                 }
             }
         },
@@ -28468,31 +29082,11 @@
                 }
             }
         },
-        "config.Cloud18DeviceLogin": {
-            "type": "object",
-            "properties": {
-                "expiresAt": {
-                    "type": "string"
-                },
-                "userCode": {
-                    "type": "string"
-                },
-                "verificationUri": {
-                    "type": "string"
-                },
-                "verificationUriComplete": {
-                    "type": "string"
-                }
-            }
-        },
         "config.Cloud18IdentityStatus": {
             "type": "object",
             "properties": {
                 "connectedAt": {
                     "type": "string"
-                },
-                "device": {
-                    "$ref": "#/definitions/config.Cloud18DeviceLogin"
                 },
                 "expires": {
                     "type": "string"
@@ -28501,7 +29095,7 @@
                     "type": "string"
                 },
                 "state": {
-                    "description": "none: nobody connected it; pending: a device login waits for the person; connected;\nreconnect: the login ended or ends soon, someone must connect again",
+                    "description": "none: not registered; registered: no login yet, made at the next use or keep-alive;\nconnected; refused: the realm refused the registered account, register again",
                     "type": "string"
                 },
                 "sub": {
@@ -28570,6 +29164,50 @@
                 }
             }
         },
+        "config.MarketplaceS3": {
+            "type": "object",
+            "properties": {
+                "auth": {
+                    "description": "cloud18-sso, cloud18-keys or partner-token",
+                    "type": "string"
+                },
+                "bucket": {
+                    "description": "Bucket: the bucket an archive on this storage uses (S3Provider.Bucket); with the Cloud18\nSSO, each identity has its own folder in it",
+                    "type": "string"
+                },
+                "cloud18Sso": {
+                    "description": "Cloud18SSO: reached with the Cloud18 identity, no keys (S3Provider.Cloud18SSO)",
+                    "type": "boolean"
+                },
+                "dc": {
+                    "type": "string"
+                },
+                "dcLocation": {
+                    "type": "string"
+                },
+                "endpoint": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "partner": {
+                    "type": "string"
+                },
+                "providerSource": {
+                    "$ref": "#/definitions/config.S3ProviderSource"
+                },
+                "region": {
+                    "type": "string"
+                },
+                "storageClass": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
         "config.PathMapping": {
             "type": "object",
             "properties": {
@@ -28596,6 +29234,29 @@
                 },
                 "volumename": {
                     "type": "string"
+                }
+            }
+        },
+        "config.PluginSetting": {
+            "type": "object",
+            "properties": {
+                "group": {
+                    "description": "ConstArchiveSettingGroup*, \"\" for the main settings",
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "type": {
+                    "description": "ConstArchiveSettingType*",
+                    "type": "string"
+                },
+                "values": {
+                    "description": "the allowed values of an enum",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 }
             }
         },
@@ -28739,6 +29400,102 @@
                 },
                 "volumename": {
                     "type": "string"
+                }
+            }
+        },
+        "config.S3ProviderSource": {
+            "type": "string",
+            "enum": [
+                "app",
+                "custom"
+            ],
+            "x-enum-varnames": [
+                "S3ProviderSourceApp",
+                "S3ProviderSourceCustom"
+            ]
+        },
+        "config.SecretKvConfig": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "offer": {
+                    "description": "OfferInfo is the offer as the catalogue describes it, for the API (never saved)",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/config.SecretKvOffer"
+                        }
+                    ]
+                },
+                "plugin": {
+                    "type": "string"
+                },
+                "settings": {
+                    "type": "object",
+                    "additionalProperties": true
+                }
+            }
+        },
+        "config.SecretKvOffer": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string"
+                },
+                "partner": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
+        "config.SecretKvPluginManifest": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "settings": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/config.PluginSetting"
+                    }
+                },
+                "tier": {
+                    "description": "ConstArchiveTierEnterprise, \"\" for every plan",
+                    "type": "string"
+                }
+            }
+        },
+        "config.SecretKvSpec": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "plugin": {
+                    "type": "string"
+                },
+                "settings": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "unset": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 }
             }
         },
@@ -29571,6 +30328,10 @@
                 "cloud18AlertSlackUser": {
                     "type": "string"
                 },
+                "cloud18ArchiveOfferRequests": {
+                    "description": "Cloud18ArchiveOfferRequests: the archive offers of the marketplace catalogue whose access\nthe cluster asks the back-office for (comma-separated offer names); the BO harvests it and\ndelivers, in the cluster's inject.toml, the S3 provider (OVH S3) or the archive (a PBS token)",
+                    "type": "string"
+                },
                 "cloud18CostCurrency": {
                     "type": "string"
                 },
@@ -29646,9 +30407,6 @@
                 },
                 "cloud18GitUser": {
                     "type": "string"
-                },
-                "cloud18GitlabPasswordGrant": {
-                    "type": "boolean"
                 },
                 "cloud18HealthRefreshInterval": {
                     "type": "integer"
@@ -29772,6 +30530,9 @@
                 "cloud18SelfServiceClustersCanBorrow": {
                     "type": "boolean"
                 },
+                "cloud18SelfServiceClustersCanConsumeForSale": {
+                    "type": "boolean"
+                },
                 "cloud18SelfServiceClustersEnabledScript": {
                     "type": "string"
                 },
@@ -29792,6 +30553,9 @@
                 },
                 "cloud18SponsorUserCredential": {
                     "type": "string"
+                },
+                "cloud18SsoLogin": {
+                    "type": "boolean"
                 },
                 "cloud18SubDomain": {
                     "type": "string"
@@ -31694,6 +32458,15 @@
                 "replicationUseSsl": {
                     "type": "boolean"
                 },
+                "resourceManagerDiscoveredCpuCores": {
+                    "type": "number"
+                },
+                "resourceManagerDiscoveredInterval": {
+                    "type": "integer"
+                },
+                "resourceManagerDiscoveredMemoryMb": {
+                    "type": "number"
+                },
                 "resourceManagerInfraCpuCores": {
                     "type": "number"
                 },
@@ -31826,6 +32599,24 @@
                 },
                 "schedulerSlaRotateCron": {
                     "type": "string"
+                },
+                "secretKvQueueLimit": {
+                    "type": "integer"
+                },
+                "secretKvRetryInterval": {
+                    "type": "integer"
+                },
+                "secretKvStartTimeout": {
+                    "type": "integer"
+                },
+                "secretKvWriteTimeout": {
+                    "type": "integer"
+                },
+                "secretKvs": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/config.SecretKvConfig"
+                    }
                 },
                 "shardproxy": {
                     "type": "boolean"
@@ -32608,6 +33399,84 @@
                 }
             }
         },
+        "server.ArchiveOffer": {
+            "type": "object",
+            "properties": {
+                "added": {
+                    "description": "Added: the cluster has the offer's storage: an S3 provider of its name, on its endpoint (and\nreached with the Cloud18 SSO for an SSO storage); for an offer delivered as an archive (PBS),\nan archive of its name and plugin",
+                    "type": "boolean"
+                },
+                "auth": {
+                    "type": "string"
+                },
+                "dc": {
+                    "type": "string"
+                },
+                "dcLocation": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "partner": {
+                    "type": "string"
+                },
+                "plugin": {
+                    "description": "the archive plugin it runs with (archive-plakar-s3, archive-pbs)",
+                    "type": "string"
+                },
+                "priceEurBauMonth": {
+                    "description": "per BAU (20 GiB) per month",
+                    "type": "number"
+                },
+                "priceEurMonth": {
+                    "type": "number"
+                },
+                "reason": {
+                    "description": "Reason: why the offer is not usable now",
+                    "type": "string"
+                },
+                "region": {
+                    "type": "string"
+                },
+                "requestable": {
+                    "description": "Requestable: the back-office delivers the storage's keys to the cluster on request\n(cloud18-archive-offer-requests); Requested: asked, not delivered yet",
+                    "type": "boolean"
+                },
+                "requested": {
+                    "type": "boolean"
+                },
+                "retrievalCostEurGib": {
+                    "type": "number"
+                },
+                "s3": {
+                    "description": "S3 is the catalogue's storage of an S3 offer (MarketplaceArchiveOffer.S3Provider)",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/config.MarketplaceS3"
+                        }
+                    ]
+                },
+                "s3Provider": {
+                    "description": "S3Provider names the MarketplaceS3 entry of an S3 offer; empty for the others",
+                    "type": "string"
+                },
+                "sizeUnit": {
+                    "description": "the unit priceEurMonth is for: GiB, TiB or TB",
+                    "type": "string"
+                },
+                "storageClass": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "usable": {
+                    "description": "Usable: the cluster can add an archive on the offer's storage now: a storage reached with\nthe Cloud18 SSO on a replication-manager connected to Cloud18 (no key), or a storage whose\nkeys the back-office delivered (the S3 provider is there)",
+                    "type": "boolean"
+                }
+            }
+        },
         "server.AuthTokenWithUpgrade": {
             "type": "object",
             "properties": {
@@ -32771,6 +33640,10 @@
                 "authType": {
                     "description": "\"password\" or \"token\"",
                     "type": "string"
+                },
+                "monitorOnly": {
+                    "description": "MonitorOnly: add a monitor-only app (#2209), without image nor template: the explicit\nopt-in, an add without image nor template and without it is refused.",
+                    "type": "boolean"
                 },
                 "password": {
                     "type": "string"

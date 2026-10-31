@@ -7,6 +7,7 @@
 package server
 
 import (
+	"fmt"
 	"sort"
 	"strings"
 	"time"
@@ -78,6 +79,7 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 	for key, test := range allTests {
 		var res bool
 		testStart := time.Now()
+		test.SkipReason = "" // a result read back from tests.json carries the last run's
 		testConfig := startConfig
 		if testExp == "SUITE" && repman.regtestReporting(cl) {
 			testConfig = regtestFileTOML(test.ConfigFile)
@@ -99,8 +101,36 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 			cl.SaveTestConf()
 		}
 		test.ConfigFile = cl.GetConf().ConfigFile
-		if test.Name == "testFailoverManual" {
-			res = regtest.TestFailoverSemisyncAutoRejoinSafeMSMXMS(cl, test.ConfigFile, &test)
+		closeTest := func() {
+			if testExp == "SUITE" {
+				cl.CloseTestCluster(test.ConfigFile, &test)
+			} else {
+				cl.RestoreConf()
+			}
+		}
+		// A test whose targets the cluster misses does not run, and a test that did not run
+		// is not a tested setup: SKIP, not reported.
+		target, reason := regtest.MatchTarget(cl, test.Name)
+		if reason != "" {
+			cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Skip %s: %s", test.Name, reason)
+			test.Result = regtest.GetTestSkipLabel()
+			test.SkipReason = reason
+			closeTest()
+			allTests[key] = test
+			continue
+		}
+		// The values the test runs with, set as an operator sets them through the API;
+		// closeTest restores them with the rest of the configuration. A value that cannot be
+		// set leaves the test unrun: ERR, not reported.
+		if err := repman.setTestVariables(cl, test.Name, target.ConfigVariableMustSet); err != nil {
+			cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "%s not run: %s", test.Name, err)
+			test.Result = "ERR"
+			closeTest()
+			allTests[key] = test
+			continue
+		}
+		if test.Name == "testCancelFailoverReplicationHeartbeatDetection" {
+			res = regtest.TestCancelFailoverReplicationHeartbeatDetection(cl, test.ConfigFile, &test)
 		}
 		if test.Name == "testFailoverSemisyncAutoRejoinSafeMSMXMS" {
 			res = regtest.TestFailoverSemisyncAutoRejoinSafeMSMXMS(cl, test.ConfigFile, &test)
@@ -306,6 +336,15 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 		if test.Name == "testGroupReplicationPrimaryLoss" {
 			res = regtest.TestGroupReplicationPrimaryLoss(cl, test.ConfigFile, &test)
 		}
+		if test.Name == "testGaleraBootstrap" {
+			res = regtest.TestGaleraBootstrap(cl, test.ConfigFile, &test)
+		}
+		if test.Name == "testGaleraSwitchover" {
+			res = regtest.TestGaleraSwitchover(cl, test.ConfigFile, &test)
+		}
+		if test.Name == "testGaleraMasterLoss" {
+			res = regtest.TestGaleraMasterLoss(cl, test.ConfigFile, &test)
+		}
 		if test.Name == "testReplicationTLSAutoCertificate" {
 			res = regtest.TestReplicationTLSAutoCertificate(cl, test.ConfigFile, &test)
 		}
@@ -378,6 +417,12 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 		if test.Name == "testCredentialPersistTagReload" {
 			res = regtest.TestCredentialPersistTagReload(cl, test.ConfigFile, &test)
 		}
+		if test.Name == "testCredentialVersionsRotation" {
+			res = regtest.TestCredentialVersionsRotation(cl, test.ConfigFile, &test)
+		}
+		if test.Name == "testCredentialVersionsRotationVault" {
+			res = regtest.TestCredentialVersionsRotationVault(cl, test.ConfigFile, &test)
+		}
 		if test.Name == "testGraphiteMetricsQueueBound" {
 			res = regtest.TestGraphiteMetricsQueueBound(cl, test.ConfigFile, &test)
 		}
@@ -426,15 +471,24 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 		if test.Name == "testAppWarningDebounceAndRecovery" {
 			res = regtest.TestAppWarningDebounceAndRecovery(cl, test.ConfigFile, &test)
 		}
+		if test.Name == "testAppMonitorHTTP" {
+			res = regtest.TestAppMonitorHTTP(cl, test.ConfigFile, &test)
+		}
 
+		// A test that finds nothing to exercise on this cluster says why (test.SkipReason):
+		// SKIP, not reported, as a target missed (a rolling upgrade with no newer release
+		// passed without upgrading anything, #2228).
+		if test.SkipReason != "" {
+			cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Skip %s: %s", test.Name, test.SkipReason)
+			test.Result = regtest.GetTestSkipLabel()
+			closeTest()
+			allTests[key] = test
+			continue
+		}
 		test.Result = regtest.GetTestResultLabel(res)
 		// the setup is read before the suite closes its test cluster
 		reported = append(reported, regtestReportedTest{Setup: regtestSetupOf(cl, test), Test: test.Name, Result: test.Result, Duration: time.Since(testStart), ClusterTOML: testConfig})
-		if testExp == "SUITE" {
-			cl.CloseTestCluster(test.ConfigFile, &test)
-		} else {
-			cl.RestoreConf()
-		}
+		closeTest()
 		allTests[key] = test
 
 	} //end loop on all tests
@@ -453,4 +507,21 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 	regtest.SaveTestsFromResult(cl, allTests)
 	repman.reportRegtestResults(cl, reported)
 	return vals
+}
+
+// setTestVariables sets the must-set configuration variables of a test, in key order, through
+// setClusterSetting, the path of the API and the GUI.
+func (repman *ReplicationManager) setTestVariables(cl *cluster.Cluster, name string, variables map[string]string) error {
+	keys := make([]string, 0, len(variables))
+	for key := range variables {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "%s sets %s=%s", name, key, variables[key])
+		if err := repman.setClusterSetting(cl, key, variables[key]); err != nil {
+			return fmt.Errorf("set %s=%s: %w", key, variables[key], err)
+		}
+	}
+	return nil
 }

@@ -36,8 +36,6 @@ import (
 	git_obj "github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	git_https "github.com/go-git/go-git/v5/plumbing/transport/http"
-	vault "github.com/hashicorp/vault/api"
-	auth "github.com/hashicorp/vault/api/auth/approle"
 	"github.com/signal18/replication-manager/share"
 	"github.com/signal18/replication-manager/utils/crypto"
 	"github.com/signal18/replication-manager/utils/dbhelper"
@@ -759,6 +757,9 @@ type Config struct {
 	ResourceManagerInfraDiskGB                float64           `scope:"server" mapstructure:"resource-manager-infra-disk-gb" toml:"resource-manager-infra-disk-gb" json:"resourceManagerInfraDiskGb"`
 	ResourceManagerInfraIops                  float64           `scope:"server" mapstructure:"resource-manager-infra-iops" toml:"resource-manager-infra-iops" json:"resourceManagerInfraIops"`
 	ResourceManagerInfraNetworkMbps           float64           `scope:"server" mapstructure:"resource-manager-infra-network-mbps" toml:"resource-manager-infra-network-mbps" json:"resourceManagerInfraNetworkMbps"`
+	ResourceManagerDiscoveredCpuCores         float64           `scope:"server" mapstructure:"resource-manager-discovered-cpu-cores" toml:"resource-manager-discovered-cpu-cores" json:"resourceManagerDiscoveredCpuCores"`
+	ResourceManagerDiscoveredMemoryMB         float64           `scope:"server" mapstructure:"resource-manager-discovered-memory-mb" toml:"resource-manager-discovered-memory-mb" json:"resourceManagerDiscoveredMemoryMb"`
+	ResourceManagerDiscoveredInterval         int               `scope:"server" mapstructure:"resource-manager-discovered-interval" toml:"resource-manager-discovered-interval" json:"resourceManagerDiscoveredInterval"`
 	ResourceManagerSmtGain                    float64           `scope:"server" mapstructure:"resource-manager-smt-gain" toml:"resource-manager-smt-gain" json:"resourceManagerSmtGain"`
 	ProvDbBootstrapScript                     string            `mapstructure:"prov-db-bootstrap-script" toml:"prov-db-bootstrap-script" json:"provDbBootstrapScript"`
 	ProvProxyBootstrapScript                  string            `mapstructure:"prov-proxy-bootstrap-script" toml:"prov-proxy-bootstrap-script" json:"provProxyBootstrapScript"`
@@ -808,6 +809,7 @@ type Config struct {
 	APIAutologin                              bool              `scope:"server" mapstructure:"api-autologin" toml:"api-autologin" json:"apiAutologin"`
 	APIAutologinUser                          string            `scope:"server" mapstructure:"api-autologin-user" toml:"api-autologin-user" json:"apiAutologinUser"`
 	APIDashboardUser                          string            `scope:"server" mapstructure:"api-dashboard-user" toml:"api-dashboard-user" json:"apiDashboardUser"`
+	APITrustedNetworks                        string            `scope:"server" mapstructure:"api-trusted-networks" toml:"api-trusted-networks" json:"apiTrustedNetworks"`
 	APIPort                                   string            `scope:"server" mapstructure:"api-port" toml:"api-port" json:"apiPort"`
 	APIBind                                   string            `scope:"server" mapstructure:"api-bind" toml:"api-bind" json:"apiBind"`
 	APIPublicURL                              string            `scope:"server" mapstructure:"api-public-url" toml:"api-public-url" json:"apiPublicUrl"`
@@ -916,6 +918,11 @@ type Config struct {
 	BackupArchiveName                         string            `mapstructure:"backup-archive-name" toml:"backup-archive-name" json:"backupArchiveName"`
 	Archives                                  []ArchiveConfig   `mapstructure:"archive" toml:"archive" json:"archives"`
 	S3Providers                               S3ProviderBlocks  `mapstructure:"s3-provider" toml:"-" json:"-"`
+	SecretKvs                                 []SecretKvConfig  `mapstructure:"secret-kv" toml:"secret-kv" json:"secretKvs"`
+	SecretKvQueueLimit                        int               `mapstructure:"secret-kv-queue-limit" toml:"secret-kv-queue-limit" json:"secretKvQueueLimit"`
+	SecretKvWriteTimeout                      int               `mapstructure:"secret-kv-write-timeout" toml:"secret-kv-write-timeout" json:"secretKvWriteTimeout"`
+	SecretKvRetryInterval                     int               `mapstructure:"secret-kv-retry-interval" toml:"secret-kv-retry-interval" json:"secretKvRetryInterval"`
+	SecretKvStartTimeout                      int               `mapstructure:"secret-kv-start-timeout" toml:"secret-kv-start-timeout" json:"secretKvStartTimeout"`
 	BackupArchiveRemoveOriginal               bool              `mapstructure:"backup-archive-remove-original" toml:"backup-archive-remove-original" json:"backupArchiveRemoveOriginal"`
 	BackupDiscovery                           bool              `mapstructure:"backup-discovery" toml:"backup-discovery" json:"backupDiscovery"`
 	BackupDiscoveryCandidateMax               int               `mapstructure:"backup-discovery-candidate-max" toml:"backup-discovery-candidate-max" json:"backupDiscoveryCandidateMax"`
@@ -1039,7 +1046,7 @@ type Config struct {
 	Cloud18GitUser                   string  `scope:"server" mapstructure:"cloud18-gitlab-user" toml:"cloud18-gitlab-user" json:"cloud18GitUser"`
 	Cloud18GitPassword               string  `scope:"server" mapstructure:"cloud18-gitlab-password" toml:"cloud18-gitlab-password" json:"-"`
 	Cloud18IdentityURL               string  `scope:"server" mapstructure:"cloud18-identity-url" toml:"cloud18-identity-url" json:"cloud18IdentityUrl"`
-	Cloud18GitLabPasswordGrant       bool    `scope:"server" mapstructure:"cloud18-gitlab-password-grant" toml:"cloud18-gitlab-password-grant" json:"cloud18GitlabPasswordGrant"`
+	Cloud18SSOLogin                  bool    `scope:"server" mapstructure:"cloud18-sso-login" toml:"cloud18-sso-login" json:"cloud18SsoLogin"`
 	Cloud18GatewayDomainName         string  `scope:"server" mapstructure:"cloud18-gateway-domain-name" toml:"cloud18-gateway-domain-name"  json:"cloud18GatewayDomainName"`
 	Cloud18GatewayService            string  `scope:"server" mapstructure:"cloud18-gateway-service" toml:"Cloud18-gateway-service" json:"cloud18GatewayService"`
 	Cloud18CrmApiUrl                 string  `scope:"server" mapstructure:"cloud18-crm-api-url" toml:"cloud18-crm-api-url" json:"cloud18CrmApiUrl"`
@@ -1078,20 +1085,21 @@ type Config struct {
 	// Cloud18LicenseFile, when set, is the single switch for offline-license mode:
 	// the instance sources its plan from this signed file instead of the CRM (for
 	// air-gapped/PCI instances). Empty = normal online CRM path.
-	Cloud18LicenseFile                      string  `scope:"server" mapstructure:"cloud18-license-file" toml:"cloud18-license-file" json:"cloud18LicenseFile"`
-	Cloud18PeerHealthMode                   string  `scope:"server" mapstructure:"cloud18-peer-health-mode" toml:"cloud18-peer-health-mode" json:"cloud18PeerHealthMode"`
-	Cloud18DisablePeers                     bool    `scope:"server" mapstructure:"cloud18-disable-peers" toml:"cloud18-disable-peers" json:"cloud18DisablePeers"`
-	Cloud18SelfServiceClusters              bool    `scope:"server" mapstructure:"cloud18-self-service-clusters" toml:"cloud18-self-service-clusters" json:"cloud18SelfServiceClusters"`
-	Cloud18SelfServiceMaxClustersPerUser    int     `scope:"server" mapstructure:"cloud18-self-service-max-clusters-per-user" toml:"cloud18-self-service-max-clusters-per-user" json:"cloud18SelfServiceMaxClustersPerUser"`
-	Cloud18SelfServiceCacheSeconds          int     `scope:"server" mapstructure:"cloud18-self-service-cache-seconds" toml:"cloud18-self-service-cache-seconds" json:"cloud18SelfServiceCacheSeconds"`
-	Cloud18SelfServiceClustersEnabledScript string  `scope:"server" mapstructure:"cloud18-self-service-clusters-enabled-script" toml:"cloud18-self-service-clusters-enabled-script" json:"cloud18SelfServiceClustersEnabledScript"`
-	Cloud18SelfServiceClustersCanBorrow     bool    `scope:"server" mapstructure:"cloud18-self-service-clusters-can-borrow" toml:"cloud18-self-service-clusters-can-borrow" json:"cloud18SelfServiceClustersCanBorrow"`
-	Cloud18DisableForSale                   bool    `scope:"server" mapstructure:"cloud18-disable-for-sale" toml:"cloud18-disable-for-sale" json:"cloud18DisableForSale"`
-	Cloud18MarketplacePricingMode           string  `scope:"server" mapstructure:"cloud18-marketplace-pricing-mode" toml:"cloud18-marketplace-pricing-mode" json:"cloud18MarketplacePricingMode"`
-	Cloud18MarketplaceDBUPrice              float64 `scope:"server" mapstructure:"cloud18-marketplace-dbu-price" toml:"cloud18-marketplace-dbu-price" json:"cloud18MarketplaceDbuPrice"`
-	Cloud18MarketplaceAPUPrice              float64 `scope:"server" mapstructure:"cloud18-marketplace-apu-price" toml:"cloud18-marketplace-apu-price" json:"cloud18MarketplaceApuPrice"`
-	Cloud18MarketplaceBKUPrice              float64 `scope:"server" mapstructure:"cloud18-marketplace-bku-price" toml:"cloud18-marketplace-bku-price" json:"cloud18MarketplaceBkuPrice"`
-	Cloud18MarketplaceBAUPrice              float64 `scope:"server" mapstructure:"cloud18-marketplace-bau-price" toml:"cloud18-marketplace-bau-price" json:"cloud18MarketplaceBauPrice"`
+	Cloud18LicenseFile                          string  `scope:"server" mapstructure:"cloud18-license-file" toml:"cloud18-license-file" json:"cloud18LicenseFile"`
+	Cloud18PeerHealthMode                       string  `scope:"server" mapstructure:"cloud18-peer-health-mode" toml:"cloud18-peer-health-mode" json:"cloud18PeerHealthMode"`
+	Cloud18DisablePeers                         bool    `scope:"server" mapstructure:"cloud18-disable-peers" toml:"cloud18-disable-peers" json:"cloud18DisablePeers"`
+	Cloud18SelfServiceClusters                  bool    `scope:"server" mapstructure:"cloud18-self-service-clusters" toml:"cloud18-self-service-clusters" json:"cloud18SelfServiceClusters"`
+	Cloud18SelfServiceMaxClustersPerUser        int     `scope:"server" mapstructure:"cloud18-self-service-max-clusters-per-user" toml:"cloud18-self-service-max-clusters-per-user" json:"cloud18SelfServiceMaxClustersPerUser"`
+	Cloud18SelfServiceCacheSeconds              int     `scope:"server" mapstructure:"cloud18-self-service-cache-seconds" toml:"cloud18-self-service-cache-seconds" json:"cloud18SelfServiceCacheSeconds"`
+	Cloud18SelfServiceClustersEnabledScript     string  `scope:"server" mapstructure:"cloud18-self-service-clusters-enabled-script" toml:"cloud18-self-service-clusters-enabled-script" json:"cloud18SelfServiceClustersEnabledScript"`
+	Cloud18SelfServiceClustersCanBorrow         bool    `scope:"server" mapstructure:"cloud18-self-service-clusters-can-borrow" toml:"cloud18-self-service-clusters-can-borrow" json:"cloud18SelfServiceClustersCanBorrow"`
+	Cloud18SelfServiceClustersCanConsumeForSale bool    `scope:"server" mapstructure:"cloud18-self-service-clusters-can-consume-for-sale" toml:"cloud18-self-service-clusters-can-consume-for-sale" json:"cloud18SelfServiceClustersCanConsumeForSale"`
+	Cloud18DisableForSale                       bool    `scope:"server" mapstructure:"cloud18-disable-for-sale" toml:"cloud18-disable-for-sale" json:"cloud18DisableForSale"`
+	Cloud18MarketplacePricingMode               string  `scope:"server" mapstructure:"cloud18-marketplace-pricing-mode" toml:"cloud18-marketplace-pricing-mode" json:"cloud18MarketplacePricingMode"`
+	Cloud18MarketplaceDBUPrice                  float64 `scope:"server" mapstructure:"cloud18-marketplace-dbu-price" toml:"cloud18-marketplace-dbu-price" json:"cloud18MarketplaceDbuPrice"`
+	Cloud18MarketplaceAPUPrice                  float64 `scope:"server" mapstructure:"cloud18-marketplace-apu-price" toml:"cloud18-marketplace-apu-price" json:"cloud18MarketplaceApuPrice"`
+	Cloud18MarketplaceBKUPrice                  float64 `scope:"server" mapstructure:"cloud18-marketplace-bku-price" toml:"cloud18-marketplace-bku-price" json:"cloud18MarketplaceBkuPrice"`
+	Cloud18MarketplaceBAUPrice                  float64 `scope:"server" mapstructure:"cloud18-marketplace-bau-price" toml:"cloud18-marketplace-bau-price" json:"cloud18MarketplaceBauPrice"`
 	// GWU (#1872): the gateway network unit, egress through the Cloud18 gateways.
 	// Cloud18GatewayBandwidthMbit: the shared uplink of each gateway in Mb/s, a list aligned with
 	// cloud18-gateway-service; the bandwidth is tracked per cluster against it, not invoiced (#1872).
@@ -1144,6 +1152,10 @@ type Config struct {
 	TerminalSessionEnabled                 bool                   `scope:"server" mapstructure:"terminal-session-enabled" toml:"terminal-session-enabled" json:"terminalSessionEnabled"`
 	TerminalSessionResume                  bool                   `scope:"server" mapstructure:"terminal-session-resume" toml:"terminal-session-resume" json:"terminalSessionResume"`
 	TerminalSessionManager                 string                 `mapstructure:"terminal-session-manager" toml:"terminal-session-manager" json:"terminalSessionManager"`
+	// Cloud18ArchiveOfferRequests: the archive offers of the marketplace catalogue whose access
+	// the cluster asks the back-office for (comma-separated offer names); the BO harvests it and
+	// delivers, in the cluster's inject.toml, the S3 provider (OVH S3) or the archive (a PBS token)
+	Cloud18ArchiveOfferRequests string `mapstructure:"cloud18-archive-offer-requests" toml:"cloud18-archive-offer-requests" json:"cloud18ArchiveOfferRequests"`
 	//OAuthRedirectURL                          string                 `mapstructure:"api-oauth-redirect-url" toml:"git-url" json:"-"`
 	//	BackupResticStoragePolicy                  string `mapstructure:"backup-restic-storage-policy"  toml:"backup-restic-storage-policy" json:"backupResticStoragePolicy"`
 	//ProvMode                           string `mapstructure:"prov-mode" toml:"prov-mode" json:"provMode"` //InitContainer vs API
@@ -1213,13 +1225,33 @@ type AppConfig struct {
 	// AppMonitorMode: how an app without a route is probed. "port" (default) connects to
 	// app-port over TCP; "ping" sends an ICMP echo to the app host, for a process that
 	// listens on nothing (ERPNext worker and scheduler, #1919). The port stays the identity.
+	// "http" and "https" send a GET to <mode>://<app-host>:<app-port><app-monitor-path> and
+	// expect app-monitor-expect-status, for a web service that accepts connections and may
+	// never answer (#2209); a full app-host name (with a dot) is called as is. "https-cert"
+	// is https that also verifies the certificate and its expiry (app-monitor-cert-expire-days).
 	AppMonitorMode string `mapstructure:"app-monitor-mode" toml:"app-monitor-mode" json:"appMonitorMode"`
+	// AppMonitorPath: the path of the http/https check (default "/"), like a route's monitor path.
+	AppMonitorPath string `mapstructure:"app-monitor-path" toml:"app-monitor-path" json:"appMonitorPath"`
+	// AppMonitorExpectStatus: the accepted status codes of the http/https check (default
+	// "200"), same syntax as a route's monitor expect-status.
+	AppMonitorExpectStatus string `mapstructure:"app-monitor-expect-status" toml:"app-monitor-expect-status" json:"appMonitorExpectStatus"`
+	// AppMonitorCertExpireDays: in app-monitor-mode https-cert, the certificate warns when it
+	// expires within this many days (0: 14).
+	AppMonitorCertExpireDays int `mapstructure:"app-monitor-cert-expire-days" toml:"app-monitor-cert-expire-days" json:"appMonitorCertExpireDays"`
+	// AppMonitorOnly: the app was added without image nor template to watch a service that
+	// runs elsewhere (#2209): checked by app-monitor-mode, never provisioned, reserves no plan unit.
+	AppMonitorOnly bool `mapstructure:"app-monitor-only" toml:"app-monitor-only" json:"appMonitorOnly"`
 	// AppConfigVersion is the explicit persisted migration marker stamped by
 	// cluster.CanonicalizeAppContent. 0/missing means unflagged legacy (V1)
 	// content; AppConfigVersionV2 means content already matches the V1 -> V2
 	// migration baseline and does not need re-canonicalizing for shape alone.
 	AppConfigVersion int         `mapstructure:"app-config-version" toml:"app-config-version" json:"appConfigVersion"`
 	Deployment       *Deployment `mapstructure:"deployment" toml:"deployment" json:"deployment" groups:"apps"`
+}
+
+// IsMonitorOnly: see AppMonitorOnly (#2209).
+func (appcnf *AppConfig) IsMonitorOnly() bool {
+	return appcnf != nil && appcnf.AppMonitorOnly
 }
 
 func (appcnf *AppConfig) GetDeploymentVariables(name string) *VariableMapping {
@@ -2188,123 +2220,6 @@ func (conf *Config) GetStableEncryptedValue(key string, value string) string {
 	return enc
 }
 
-func (conf *Config) GetVaultCredentials(client *vault.Client, path string, key string) (string, error) {
-	if conf.IsVaultUsed() && conf.IsPath(path) {
-		if conf.VaultMode == VaultConfigStoreV2 {
-			secret, err := client.KVv2(conf.VaultMount).Get(context.Background(), path)
-
-			if err != nil {
-				return "", err
-			}
-			return secret.Data[key].(string), nil
-		} else {
-			secret, err := client.KVv1("").Get(context.Background(), path)
-			if err != nil {
-				return "", err
-			}
-			return secret.Data["username"].(string) + ":" + secret.Data["password"].(string), nil
-		}
-	}
-	return "", errors.New("Failed to get vault credentials")
-}
-
-func (conf *Config) DecryptSecretsFromVault() {
-	for k, v := range conf.Secrets.Snapshot() {
-		origin_value := v.Value
-		var secret Secret
-		secret.Value = fmt.Sprintf("%v", origin_value)
-		if conf.IsVaultUsed() && conf.IsPath(secret.Value) {
-			//	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlInfo, "Decrypting all the secret variables on Vault")
-			vault_config := vault.DefaultConfig()
-			vault_config.Address = conf.VaultServerAddr
-			client, err := conf.GetVaultConnection()
-			if err == nil {
-				if conf.VaultMode == VaultConfigStoreV2 {
-					vault_value, err := conf.GetVaultCredentials(client, secret.Value, k)
-					if err != nil {
-						log.Printf("Unable to get %s Vault secret: %v", k, err)
-					} else if vault_value != "" {
-						secret.Value = vault_value
-					}
-				}
-			} else {
-				log.Printf("Unable to initialize AppRole auth method: %v", err)
-			}
-			conf.Secrets.Set(k, secret)
-		}
-	}
-}
-
-func (conf *Config) GetVaultConnection() (*vault.Client, error) {
-	if conf.IsVaultUsed() {
-		log.Printf("Vault authentication (%s)", conf.VaultAuth)
-		config := vault.DefaultConfig()
-
-		config.Address = conf.VaultServerAddr
-
-		client, err := vault.NewClient(config)
-		if err != nil {
-			log.Printf("Unable to initialize AppRole auth method: %v", err)
-			return nil, err
-		}
-
-		if conf.VaultAuth == "jwt" {
-			return conf.vaultJWTLogin(client)
-		}
-
-		roleID := conf.VaultRoleId
-		secretID := &auth.SecretID{FromString: conf.GetDecryptedPassword("vault-secret-id", conf.VaultSecretId)}
-		if roleID == "" || secretID == nil {
-			log.Printf("Unable to initialize AppRole auth method: %v", err)
-			return nil, err
-		}
-
-		appRoleAuth, err := auth.NewAppRoleAuth(
-			roleID,
-			secretID,
-		)
-		if err != nil {
-			log.Printf("Unable to initialize AppRole auth method: %v", err)
-			return nil, err
-		}
-
-		authInfo, err := client.Auth().Login(context.Background(), appRoleAuth)
-		if err != nil {
-			log.Printf("Unable to initialize AppRole auth method: %v", err)
-			return nil, err
-		}
-		if authInfo == nil {
-			log.Printf("Unable to initialize AppRole auth method: %v", err)
-			return nil, err
-		}
-		return client, err
-	}
-	return nil, errors.New("Not using Vault")
-}
-
-// vaultJWTLogin logs in to the vault's jwt auth method with the instance's Cloud18 identity
-// token (#2159): no secret of the vault is kept here. The role is vault-role-id when set, else
-// the realm's client id (ConstCloud18IdentityClientID), the Cloud18 vault binding it on sub.
-func (conf *Config) vaultJWTLogin(client *vault.Client) (*vault.Client, error) {
-	token, _, err := conf.Cloud18IdentityToken()
-	if err != nil {
-		return nil, err
-	}
-	role := conf.VaultRoleId
-	if role == "" {
-		role = ConstCloud18IdentityClientID
-	}
-	secret, err := client.Logical().Write("auth/jwt/login", map[string]interface{}{"role": role, "jwt": token})
-	if err != nil {
-		return nil, fmt.Errorf("vault jwt login: %w", err)
-	}
-	if secret == nil || secret.Auth == nil || secret.Auth.ClientToken == "" {
-		return nil, errors.New("vault jwt login: no token in the answer")
-	}
-	client.SetToken(secret.Auth.ClientToken)
-	return client, nil
-}
-
 // encryptedTokenRe matches one encrypted value as GetEncryptedString writes it, anywhere
 // in a string: "hash_" and the hex ciphertext. The ciphertext carries a 16-byte IV before
 // the data, so a real token has at least 34 hex digits; shorter matches are not ours and
@@ -2791,6 +2706,12 @@ func (conf *Config) PushConfigToGit(url string, tok string, user string, dir str
 					}
 				}
 			}
+			// the versions of the secrets, encrypted (#2227)
+			if _, err := os.Stat(conf.WorkingDir + "/" + name + "/secret_store.json"); err == nil {
+				if _, err := w.Add(name + "/secret_store.json"); err != nil && conf.IsEligibleForPrinting(ConstLogModGit, LvlErr) {
+					log.Errorf("Git error : cannot Add %s : %s", name+"/secret_store.json", err)
+				}
+			}
 		}
 	}
 
@@ -3048,12 +2969,20 @@ func GetFSType() map[string]bool {
 	}
 }
 
+// GetSysbenchTests are the sysbench tests a benchmark accepts: the built-in tests of sysbench
+// 1.0 and 1.1 that run on tables (bulk_insert has its own and is left out), and tpcc (#2239).
 func GetSysbenchTests() map[string]bool {
 	return map[string]bool{
 		"oltp_read_write":       true,
 		"oltp_read_only":        true,
+		"oltp_write_only":       true,
+		"oltp_point_select":     true,
+		"oltp_insert":           true,
+		"oltp_delete":           true,
 		"oltp_update_non_index": true,
 		"oltp_update_index":     true,
+		"select_random_points":  true,
+		"select_random_ranges":  true,
 		"tpcc":                  true,
 	}
 }

@@ -126,8 +126,8 @@ func physReseedShapeDiff(s *clusterpkg.ServerMonitor) string {
 //
 // It needs a cluster with a jobs container next to each database and a
 // physical backup tool matching the servers (mariabackup on MariaDB,
-// xtrabackup on MySQL/Percona). It is deliberately not part of "ALL": the
-// framework has no "skip" result, and it reseeds a replica. Run it by name:
+// xtrabackup on MySQL/Percona). It is deliberately not part of "ALL": no
+// target (testTargets) declares a jobs container, and it reseeds a replica. Run it by name:
 // /api/clusters/<cluster>/tests/actions/run/testPhysicalReseedRestore
 func (regtest *RegTest) TestPhysicalReseedRestore(cl *clusterpkg.Cluster, conf string, test *clusterpkg.Test) bool {
 	fail := func(format string, args ...interface{}) bool {

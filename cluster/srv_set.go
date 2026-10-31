@@ -15,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
@@ -386,8 +387,38 @@ func (server *ServerMonitor) SetCredential(url string, user string, pass string)
 
 }
 
+// errNoMySQLGTID: a MySQL/Percona replica or source without GTID has no GTID position
+// to rejoin on; MASTER_AUTO_POSITION=1 is refused there (Error 1777, #2226).
+var errNoMySQLGTID = errors.New("no GTID position to rejoin on, positional coordinates needed")
+
+// mysqlGTIDRejoinError tells why a MySQL/Percona server cannot be pointed to master on
+// its GTID position, nil when it can (always on MariaDB). MASTER_AUTO_POSITION needs
+// gtid_mode ON on the source and ON or ON_PERMISSIVE on the replica: gtid_mode itself,
+// not HasMySQLGTID, which enforce_gtid_consistency=ON alone satisfies (the first step of
+// the OFF -> ON migration, gtid_mode still OFF).
+func (server *ServerMonitor) mysqlGTIDRejoinError(master *ServerMonitor) error {
+	if !server.DBVersion.IsMySQLOrPercona() {
+		return nil
+	}
+	if server.GetClusterConfig().ForceSlaveNoGtid {
+		return fmt.Errorf("%w: force-slave-no-gtid is on", errNoMySQLGTID)
+	}
+	if mode := server.Variables.Get("GTID_MODE"); mode != "ON" && mode != "ON_PERMISSIVE" {
+		return fmt.Errorf("%w: %s has gtid_mode=%s", errNoMySQLGTID, server.URL, mode)
+	}
+	if master != nil && !master.IsMaxscale {
+		if mode := master.Variables.Get("GTID_MODE"); mode != "ON" {
+			return fmt.Errorf("%w: source %s has gtid_mode=%s", errNoMySQLGTID, master.URL, mode)
+		}
+	}
+	return nil
+}
+
 func (server *ServerMonitor) SetReplicationGTIDSlavePosFromServer(master *ServerMonitor) (string, error) {
 	cluster := server.ClusterGroup
+	if err := server.mysqlGTIDRejoinError(master); err != nil {
+		return "", err
+	}
 	server.StopSlave()
 
 	changemasteropt := cluster.GetChangeMasterBaseOptForSlave(server, master, server.IsDelayed)
@@ -401,6 +432,9 @@ func (server *ServerMonitor) SetReplicationGTIDSlavePosFromServer(master *Server
 
 func (server *ServerMonitor) SetReplicationGTIDCurrentPosFromServer(master *ServerMonitor) (string, error) {
 	cluster := server.ClusterGroup
+	if err := server.mysqlGTIDRejoinError(master); err != nil {
+		return "", err
+	}
 
 	changemasteropt := cluster.GetChangeMasterBaseOptForSlave(server, master, server.IsDelayed)
 	if server.DBVersion.IsMySQLOrPerconaGreater57() {
@@ -1087,8 +1121,10 @@ type ReplicationTLS struct {
 //   - Primary on its auto-generated certificate: the CA is emptied.
 //   - Primary on a configured certificate, with replication-use-ssl: the CA is named
 //     from replication-ssl-ca, else the CA shipped on a provisioned cluster with the ssl
-//     tag, else the replica's own ssl_ca when it is the primary's too; otherwise the
-//     channel keeps its CA (one an operator set stays).
+//     tag, else the replica's own ssl_ca when it is the primary's too (an absolute
+//     path: a relative one is each node's own datadir file, MySQL's auto-generated
+//     ca.pem, and empties the CA, #2218); otherwise the channel keeps its CA (one an
+//     operator set stays).
 func (server *ServerMonitor) ReplicationTLSFor(host, port string, useSSL bool) ReplicationTLS {
 	cluster := server.ClusterGroup
 	if cluster == nil || cluster.Conf == nil || server.DBVersion == nil || server.DBVersion.IsPostgreSQL() {
@@ -1131,6 +1167,13 @@ func (server *ServerMonitor) ReplicationTLSFor(host, port string, useSSL bool) R
 		}
 	}
 	if ca, ok := server.liveVariable("SSL_CA"); ok && ca.String != "" {
+		// A relative CA is a file in each node's own datadir: MySQL's auto_generate_certs
+		// gives every node its own ca.pem under that one name, so an equal name proves
+		// nothing about who signed the primary's certificate (error 2026, #2218). The
+		// channel gets no CA, as for an auto-generated MariaDB certificate.
+		if !filepath.IsAbs(ca.String) {
+			return ReplicationTLS{ClearCA: true}
+		}
 		if pca, ok := primary.liveVariable("SSL_CA"); ok && pca.String == ca.String {
 			return ReplicationTLS{CA: ca.String}
 		}

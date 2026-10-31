@@ -90,3 +90,18 @@ func TestAbortStuckUnreadable(t *testing.T) {
 		t.Fatal("an unreadable fusectl is not reported")
 	}
 }
+
+// Only a process started as a mount's server is one (#2246).
+func TestIsServerCmdline(t *testing.T) {
+	for cmdline, want := range map[string]bool{
+		"replication-manager\x00" + ServerCommand + "\x00":                 true,
+		"/proc/self/exe\x00" + ServerCommand + "\x00":                      false,
+		"/usr/bin/replication-manager-osc\x00monitor\x00":                  false,
+		"/usr/bin/replication-manager-osc\x00monitor\x00--config\x00x\x00": false,
+		"": false,
+	} {
+		if got := isServerCmdline(cmdline); got != want {
+			t.Errorf("%q: %v, want %v", cmdline, got, want)
+		}
+	}
+}

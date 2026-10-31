@@ -453,7 +453,7 @@ Start create an account in https://gitlab.signal18.io
   const hStatus = `**Cloud18 Status**\n\nShows whether this instance is actively connected to Signal18 Cloud18.\nWhen ONLINE, configuration is automatically backed up to GitLab on every change, and marketplace features are available.\n\nConfig: \`cloud18\``
   const hGitUser = `**Git User**\n\nGitLab email or username at \`gitlab.signal18.io\`.\nCreated during registration — used for authentication, encrypted configuration backup, and marketplace identity.\n\n**Locked while connected.** To change the email, unregister first (which drops the GitLab projects for this URI), then register again with the new email.\n\nConfig: \`cloud18-gitlab-user\``
   const hGitPass = `**GitLab Password**\n\nPassword for the GitLab account at \`gitlab.signal18.io\`.\nStored encrypted in the replication-manager configuration.\n\nConfig: \`cloud18-gitlab-password\``
-  const hIdentity = `**Identity**\n\nThe person who connected this instance to the Cloud18 identity (\`identity.cloud18.io\`). replication-manager acts as that person for the S3 SSO archive storages (the archive folder is theirs), the Cloud18 vault (\`vault-auth = jwt\`) and its Cloud18 GitLab token.\n\n**Connect** shows a code: open the page in any browser, on any machine, log in and enter the code. Done once per instance; each peer connects with its own login. The login is kept encrypted on this instance only, never sent to a peer or to git, and renewed by replication-manager itself.\n\n**Reconnect** when the login was revoked or ended. **Disconnect** forgets it.\n\nConfig: realm \`cloud18-identity-url\``
+  const hIdentity = `**Identity**\n\nThe Cloud18 login of this instance (\`identity.cloud18.io\`), made with the account it is registered with: replication-manager signs in once, keeps the login and refreshes it. It acts as that account for the S3 SSO archive storages (the archive folder is the account's) and the Cloud18 vault (\`vault-auth = jwt\`).\n\n**Not registered**: no Cloud18 login. **Refused**: Cloud18 refuses the registered account (its password changed, the account was removed): register this instance again.`
   const hDomain = `**Domain**\n\nCompany namespace on Cloud18 (e.g. \`mycompany\`).\nA top-level GitLab group with this name is created at \`gitlab.signal18.io\` to host your cluster configurations.\n\nConfig: \`cloud18-domain\``
   const hSubdomain = `**Subdomain**\n\nDatacenter or environment identifier (e.g. \`ovh\`, \`aws\`).\nCreates a subgroup under your domain group, allowing multiple independent deployment environments.\n\nConfig: \`cloud18-sub-domain\``
   const hZone = `**Subdomain Zone**\n\nGeographic zone or region (e.g. \`fr-1\`, \`us-east\`).\nCompletes the three-part URI: \`domain.subdomain.zone\`. This URI uniquely identifies your instance on Cloud18.\n\nConfig: \`cloud18-sub-domain-zone\``
@@ -701,6 +701,17 @@ Start create an account in https://gitlab.signal18.io
           confirmTitle='Confirm switch settings for cloud18-self-service-clusters-can-borrow?'
           onChange={() => dispatch(switchGlobalSetting({ setting: 'cloud18-self-service-clusters-can-borrow' }))}
           isChecked={config?.cloud18SelfServiceClustersCanBorrow}
+        />
+      )
+    },
+    {
+      key: 'Self-Service Consumes For Sale',
+      help: h(`**Self-Service Consumes For Sale**\n\nLet a new self-service cluster take the plans your clusters for sale hold above their floors (1 DBU per database node, 1 APU per proxy and per running app instance, a locked plan whole): the offer stays on sale with a lower plan. The Cloud18 quote counts the same room. Off: only the free pool counts, at creation and in the quote, and this instance publishes 0 for sale (forSaleDbu, forSaleApu) whatever its offers hold. The creation check follows a change at once; the published self-service status within cloud18-self-service-cache-seconds (10 s by default).\n\nConfig: \`cloud18-self-service-clusters-can-consume-for-sale\``, 'Self-Service Consumes For Sale'),
+      value: (
+        <RMSwitch
+          confirmTitle='Confirm switch settings for cloud18-self-service-clusters-can-consume-for-sale?'
+          onChange={() => dispatch(switchGlobalSetting({ setting: 'cloud18-self-service-clusters-can-consume-for-sale' }))}
+          isChecked={config?.cloud18SelfServiceClustersCanConsumeForSale}
         />
       )
     },

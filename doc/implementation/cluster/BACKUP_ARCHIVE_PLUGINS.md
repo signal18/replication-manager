@@ -23,10 +23,13 @@ versions, and the way back. Today the only archive is restic (`backup-archive-mo
 - **mode duality**: the legacy `BackupRestic` / `BackupResticAws` bools are still what the
   code reads, derived from the mode (`applyBackupArchiveModeFlags`), and the local/sftp
   split is a path prefix;
-- **a bug it hides**: BAU reads the remote archive size only when `backup-restic-repository`
-  is S3 or SFTP (`resticRepositoryIsRemote`, `cluster/cluster_bku.go:97`). An SFTP repo set
-  in `backup-restic-local-repository`, or an S3 repo built from the bucket fields, likely
-  meters 0 BAU (to confirm and file separately).
+- **remote or local** (fixed 2026-10-29): BAU asks `resticRepositoryIsRemote` of the
+  repository restic runs (`resticRepoPathFor`: S3 when `backup-restic-aws` is on, else the
+  local repository), never of `backup-restic-repository`: restic does not run that key and
+  its default is an S3 URL, so a local archive was metered twice, in BKU and in BAU. An
+  external plugin's archive (plakar on S3, PBS) is metered at its last size read
+  (`archive-sizes.json`, `SizeArchive`); it is only read on request for now, so it meters 0
+  BAU before a first read (under-billed, never over-billed).
 
 Adding a backend (native S3, rclone, a client's own storage) means touching all of these.
 

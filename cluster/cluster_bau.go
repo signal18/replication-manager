@@ -6,6 +6,8 @@ package cluster
 import (
 	"math"
 	"time"
+
+	"github.com/signal18/replication-manager/config"
 )
 
 // BAUReading is the per-cluster REMOTE backup archive: what restic holds off the cluster on
@@ -36,13 +38,32 @@ type BAUReading struct {
 	UpdatedAt     time.Time `json:"updatedAt"`
 }
 
-// bauUnitPrice is the price one BAU costs this cluster per month: the instance price unless
-// the cluster's remote repository is the client's own storage, then 0 (tracked, not priced).
+// bauUnitPrice is the price one BAU costs this cluster per month: 0 when the cluster's remote
+// repository is the client's own storage (tracked, not priced); the BAU price of the offer the
+// attached archive runs on, the one the archive offers show the client
+// (marketplace-archive.json priceEurBauMonth); else the instance price
+// (cloud18-marketplace-bau-price). What is billed is what was shown.
 func (cluster *Cluster) bauUnitPrice() float64 {
 	if cluster.Conf.Cloud18MarketplaceBAUClientStorage {
 		return 0
 	}
+	if o := cluster.attachedArchiveOffer(); o != nil && o.PriceEurBauMonth != nil {
+		return *o.PriceEurBauMonth
+	}
 	return cluster.unitPrices().BAU
+}
+
+// attachedArchiveOffer is the catalogue offer the attached archive runs on, nil when none or
+// before the instance gave the manager its catalogue.
+func (cluster *Cluster) attachedArchiveOffer() *config.MarketplaceArchiveOffer {
+	if cluster.resources == nil {
+		return nil
+	}
+	a, ok := cluster.attachedArchiveConfig()
+	if !ok {
+		return nil
+	}
+	return cluster.resources.MarketplaceCatalogue().ArchiveOffer(a, cluster.GetS3ProvidersSnapshot())
 }
 
 // computeBAU builds the remote archive reading from the consumer bytes and the producer

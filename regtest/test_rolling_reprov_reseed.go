@@ -47,10 +47,11 @@ func createProbeTable(master *cluster.ServerMonitor) error {
 	return nil
 }
 
-// dropProbeTable drops the probe schema on the current master.
+// dropProbeTable drops the probe table on the current master, never its schema:
+// replication_manager_schema also holds repman's jobs, heartbeat and traffic marker (#2195).
 func dropProbeTable(cl *cluster.Cluster) {
 	if m := cl.GetMaster(); m != nil && m.Conn != nil {
-		m.Conn.Exec("DROP DATABASE IF EXISTS " + rollingProbeSchema)
+		m.Conn.Exec("DROP TABLE IF EXISTS " + rollingProbeSchema + "." + rollingProbeTable)
 	}
 }
 
@@ -220,15 +221,32 @@ func (regtest *RegTest) TestRollingUpgrade(cl *cluster.Cluster, conf string, tes
 	if cl.GetOrchestrator() == config.ConstOrchestratorOnPremise {
 		return rollingHealthCheckVersions(cl, "RollingUpgrade", cl.RollingUpgrade, "")
 	}
+	test.FromDbVersion = upgradeFromRelease(cl)
+	// Nothing to upgrade: the declared image resolves to the release the nodes run (an exact
+	// release declares itself). Not a tested upgrade, whatever the health check says: SKIP
+	// (#2228, 8.0.41 -> 8.0.41 and 8.0.46 -> 8.0.46 reported PASS). Read from the plan alone,
+	// before Prepare declares or pushes anything. A plan error is reported by Prepare below.
+	if planned, err := cl.PlanRollingUpgrade("patch", ""); err == nil {
+		if _, release := releases.SplitImage(planned.TargetImage); nothingToUpgrade(test.FromDbVersion, release) {
+			test.SkipReason = fmt.Sprintf("nothing to upgrade: %s resolves to %s, the release the nodes run; declare a line (e.g. mysql:8.0) to upgrade to its newest release", planned.DeclaredAfter, planned.TargetImage)
+			return false
+		}
+	}
 	plan, err := cl.PrepareRollingUpgrade("patch", "")
 	if err != nil {
 		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "FAIL RollingUpgrade: plan refused: %s", err)
 		return false
 	}
-	test.FromDbVersion = upgradeFromRelease(cl)
 	_, release := releases.SplitImage(plan.TargetImage)
 	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "RollingUpgrade plan: %s -> %s (%s), every node must run %s afterwards", plan.CurrentImage, plan.TargetImage, plan.Mechanic, release)
 	return rollingHealthCheckVersions(cl, "RollingUpgrade", func() error { return cl.RunRollingUpgrade(plan) }, release)
+}
+
+// nothingToUpgrade tells whether a rolling upgrade to release leaves the nodes where they
+// are: from, the release they run, is release itself. Unknown on either side: not decided
+// here, the upgrade runs.
+func nothingToUpgrade(from, release string) bool {
+	return from != "" && release != "" && from == release
 }
 
 // SetupServer is the server whose database version names the setup a test ran on: the

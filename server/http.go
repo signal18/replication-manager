@@ -33,6 +33,7 @@ package server
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	_ "net/http/pprof"
@@ -71,6 +72,20 @@ func (repman *ReplicationManager) testFile(fn string) error {
 	return nil
 }
 
+// loopbackOnly serves h to callers whose TCP peer is a loopback address and answers 404 to
+// anyone else, a gateway or proxy on the same host included only when it connects from a
+// non-loopback address.
+func loopbackOnly(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		host, _, err := net.SplitHostPort(r.RemoteAddr)
+		if ip := net.ParseIP(host); err != nil || ip == nil || !ip.IsLoopback() {
+			http.NotFound(w, r)
+			return
+		}
+		h.ServeHTTP(w, r)
+	})
+}
+
 func (repman *ReplicationManager) httpserver() {
 	//PUBLIC ENDPOINTS
 	router := mux.NewRouter()
@@ -79,7 +94,9 @@ func (repman *ReplicationManager) httpserver() {
 	router.SkipClean(true)
 	router.Use(repman.RecoveryMiddleware)
 	router.Use(repman.cloud18TokenMiddleware)
-	router.PathPrefix("/debug/pprof/").Handler(http.DefaultServeMux)
+	// the profiler shows the process's goroutines, arguments and memory: callers on the
+	// loopback only (curl from inside the host or container), whatever http-bind-address
+	router.PathPrefix("/debug/pprof/").Handler(loopbackOnly(http.DefaultServeMux))
 
 	graphiteHost := repman.Conf.GraphiteCarbonHost
 	if repman.Conf.GraphiteEmbedded {
@@ -152,6 +169,7 @@ func (repman *ReplicationManager) httpserver() {
 	})
 
 	router.HandleFunc(cloud18LoginPath, repman.loginHandler) // "/api/login": the realm-token middleware leaves this path to the handler (#2182)
+	repman.registerCloud18SSORoutes(router)                  // Sign in with Cloud18 (#2185)
 	router.HandleFunc("/api/login/upgrade", repman.upgradeHandler).Methods(http.MethodGet, http.MethodOptions)
 	// Public auth routes are intentionally wired in both http.go and api.go because
 	// replication-manager can run either HTTP API path depending on runtime flags.
@@ -230,10 +248,6 @@ func (repman *ReplicationManager) httpserver() {
 
 	router.Handle("/api/health", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxHealth)),
-	))
-
-	router.Handle("/api/auth/callback", negroni.New(
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAuthCallback)),
 	))
 
 	router.Handle("/api/whoami", negroni.New(

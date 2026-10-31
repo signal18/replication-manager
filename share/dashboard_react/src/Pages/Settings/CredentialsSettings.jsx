@@ -16,9 +16,11 @@ import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { HiQuestionMarkCircle } from 'react-icons/hi'
 import RMIconButton from '../../components/RMIconButton'
+import SecretKvEntries from './SecretKvEntries'
 
-// where a credential's value comes from (cluster JSON `credentials`, #2050)
+// where a credential's value comes from (cluster JSON `credentials`, #2050, #2227)
 const SOURCE_LABEL = {
+  versions: { label: 'Versioned stores', color: 'blue' },
   'config-file': { label: 'Config file (immutable)', color: 'orange' },
   'dynamic-config': { label: 'Dynamic config', color: 'green' },
   'runtime-config': { label: 'Runtime only (monitoring-save-config off)', color: 'yellow' },
@@ -72,11 +74,17 @@ function CredentialsSettings({ selectedCluster, user, openConfirmModal }) {
   const credentialRow = (key) => {
     const c = credential(key)
     const source = SOURCE_LABEL[c?.source]
+    const initial = SOURCE_LABEL[c?.initial]
     return (
       <Flex align='center' gap='3' wrap='wrap'>
         <Text as='span' fontWeight='semibold'>{c?.user || '—'}</Text>
         <Text as='span' color='gray.500'>password ****</Text>
-        {source && <Badge colorScheme={source.color}>{source.label}</Badge>}
+        {source && <Tooltip label='where the current value is read from' hasArrow><Badge colorScheme={source.color}>current: {source.label}</Badge></Tooltip>}
+        {initial && <Tooltip label='the starting value, kept by the config forever' hasArrow><Badge variant='outline'>initial: {initial.label}</Badge></Tooltip>}
+        <Text as='span' fontSize='sm' color='gray.500'>
+          {c?.versions ? `${c.versions} version${c.versions > 1 ? 's' : ''}` : 'no version yet'}
+          {c?.lastChange && !c.lastChange.startsWith('0001') ? `, last ${new Date(c.lastChange).toLocaleString()}` : ''}
+        </Text>
         <GatedButton reason={c?.refusal ? `Refused: ${c.refusal}` : ''} isDisabled={!g['cluster-settings']} onClick={() => setCredentialType(key)}>
           Change
         </GatedButton>
@@ -85,21 +93,21 @@ function CredentialsSettings({ selectedCluster, user, openConfirmModal }) {
   }
 
   const versioningOn = config.monitoringSecretVersioning || config.backupEncryption
-  const vaultOn = !!config.vaultServerAddr
-  // a rotation outside Vault needs both stores (canRotatePasswordsOutsideVault)
-  const storesMissing = !vaultOn && !(config.monitoringSaveConfig && versioningOn)
+  const vaultOn = (config.secretKvs || []).some((e) => e.enabled)
+  // a change or a rotation needs an active store that keeps versions (#2227 rule 9)
+  const storesMissing = !vaultOn && !versioningOn
   // what a store is for, under its switch
   const role = (text) => <Text as='span' fontSize='sm' color='gray.500'>{text}</Text>
 
-  const hMonitoring = `**Monitoring User**\n\nThe account replication-manager uses to monitor and manage the databases.\n\nSource:\n- **Config file (immutable)**: set in a file under /etc. A change here would be lost at the next restart, so it is refused.\n- **Dynamic config**: set at runtime, saved in the cluster's config file.\n- **Vault**: read from Vault.\n\nA change applies to every database at once. Config: \`db-servers-credential\``
+  const hMonitoring = `**Monitoring User**\n\nThe account replication-manager uses to monitor and manage the databases.\n\n- **initial**: the starting value, kept by the config forever (a file under /etc, the cluster's dynamic config, or the default).\n- **current**: from the first change or rotation, the newest version of the versioned stores (the local file, the vaults); before it, the initial value.\n\nA change is a new version in every active store, refused when none keeps versions or when the value is set in a file under /etc. It applies to every database at once. Config: \`db-servers-credential\``
   const hReplication = `**Replication User**\n\nThe account the replicas use to connect to the primary. Same sources and refusals as the monitoring user.\n\nConfig: \`replication-credential\``
-  const hRotate = `**Rotate Passwords**\n\nGenerates new passwords for the monitoring and replication users and sets them on the databases.\n\nOutside Vault, it needs a durable place for the new passwords: **Dynamic config** on and **Local encrypted** on, and neither user set in a config file. Otherwise a restart would lose access to the databases.`
+  const hRotate = `**Rotate Passwords**\n\nGenerates new passwords for the monitoring and replication users and sets them on the databases (with a Vault database engine, Vault rotates them).\n\nIt needs an active store that keeps the versions, **Local encrypted** on or a vault on. Otherwise a restart would lose access to the databases. A user set in a config file under /etc is rotated too: the newest version wins at a restart, unless that file is edited.`
   const hTls = `**Replication Use TLS**\n\nReplicas connect to the primary over TLS.\n\nConfig: \`replication-use-ssl\``
   const hSslMode = `**Database TLS Mode**\n\nThe TLS mode replication-manager uses to connect to the databases. Default (empty) uses TLS when available, and VERIFY_CA when the ssl tag is set in the configurator.\n\nConfig: \`db-servers-tls-ssl-mode\``
   const hCerts = `**Certificates**\n\n**Rotate** generates new certificates and deploys them. **Reload** makes the databases and replication-manager read the current ones again.`
-  const hDynamic = `**Store: Dynamic Config**\n\nA credential changed through the API or the GUI is saved, encrypted, in the cluster's config file and read again at start.\n\nNeeded with Local Encrypted for a rotation outside Vault.\n\nConfig: \`monitoring-save-config\``
-  const hLocal = `**Store: Local Encrypted**\n\nKeeps every version of the credentials, encrypted, in secret_store.json, so a former password can be found again. Also on when backup encryption is on. Not read at start yet: Dynamic Config holds the current value.\n\nConfig: \`monitoring-secret-versioning\``
-  const hVault = `**Store: Vault**\n\nThe credentials are read from Vault, and a rotation writes the new passwords there. Replaces Dynamic Config and Local Encrypted for the credentials.\n\nConfig: \`vault-server-addr\``
+  const hDynamic = `**Store: Dynamic Config**\n\nThe cluster's settings are saved in its config file. For the database credentials it keeps the initial value only: the current one and its versions live in the versioned stores.\n\nConfig: \`monitoring-save-config\``
+  const hLocal = `**Store: Local Encrypted**\n\nKeeps every version of the credentials, encrypted, in secret_store.json, written at each save and pushed with the config; read at start, its newest version is the current value. Also on when backup encryption is on.\n\nConfig: \`monitoring-secret-versioning\``
+  const hVault = `**Store: Vaults**\n\nEach vault that is on gets every version of every secret of the cluster at mount/path-prefix/cluster/databases, proxies, apps or archives/name/key. The newest version across the stores is the current one. A vault behind the others is flagged and gets the newest version at the next pass. The cluster's sponsor can turn a vault on or off. Turning one off keeps what it holds.\n\nConfig: \`[[secret-kv]]\``
 
   const dataObject = [
     { key: 'Monitoring User', help: h(hMonitoring, 'Monitoring User'), value: credentialRow('db-servers-credential') },
@@ -115,7 +123,7 @@ function CredentialsSettings({ selectedCluster, user, openConfirmModal }) {
             onClick={() => openConfirmModal('Rotate the database passwords?', () => () => dispatch(rotateDBCredential({ clusterName: selectedCluster?.name })))}>
             Rotate
           </GatedButton>
-          {storesMissing && role('needs Dynamic Config and Local Encrypted on, or Vault')}
+          {storesMissing && role('needs Local Encrypted on, or a vault on')}
         </Flex>
       )
     },
@@ -155,7 +163,7 @@ function CredentialsSettings({ selectedCluster, user, openConfirmModal }) {
       value: (
         <Flex align='center' gap='3' wrap='wrap'>
           {sw('monitoring-save-config', config.monitoringSaveConfig)}
-          {role('current value, read at start')}
+          {role('the initial values')}
         </Flex>
       )
     },
@@ -170,14 +178,9 @@ function CredentialsSettings({ selectedCluster, user, openConfirmModal }) {
       )
     },
     {
-      key: 'Store: Vault',
-      help: h(hVault, 'Store: Vault'),
-      value: (
-        <Flex align='center' gap='3' wrap='wrap'>
-          {vaultOn ? <Badge colorScheme='purple'>{config.vaultServerAddr}</Badge> : <Text as='span' color='gray.500'>not configured</Text>}
-          {role('replaces both')}
-        </Flex>
-      )
+      key: 'Store: Vaults',
+      help: h(hVault, 'Store: Vaults'),
+      value: <SecretKvEntries clusterName={selectedCluster?.name} user={user} />
     }
   ]
 

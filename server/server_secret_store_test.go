@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -8,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	toml "github.com/pelletier/go-toml"
 	"github.com/signal18/replication-manager/config"
 	s18crypto "github.com/signal18/replication-manager/utils/crypto"
 )
@@ -168,15 +168,35 @@ func TestRestoreSecretStoreForClusterConfigByVersion(t *testing.T) {
 		t.Fatalf("expected mode=version, got %s", summary.Mode)
 	}
 
+	// #2227 rule 1: a versioned secret is restored as a new version, the config keeps its
+	// starting value (no config file written for it)
 	configPath := filepath.Join(confDir, "cluster.d", clusterName+".toml")
-	data, err := os.ReadFile(configPath)
+	if _, err := os.Stat(configPath); !os.IsNotExist(err) {
+		t.Fatalf("the config was written: %v", err)
+	}
+	if v, n := lastStoreVersion(t, storePath, "db-servers-credential"); v != "hash_new" || n != 3 {
+		t.Fatalf("restored version %q (%d versions)", v, n)
+	}
+}
+
+// lastStoreVersion is the last value of key in the store file and how many versions it has.
+func lastStoreVersion(t *testing.T, storePath, key string) (string, int) {
+	t.Helper()
+	data, err := os.ReadFile(storePath)
 	if err != nil {
-		t.Fatalf("read restored config failed: %v", err)
+		t.Fatal(err)
 	}
-	content := string(data)
-	if content == "" || !containsAll(content, []string{"[cluster-a]", `db-servers-credential = "hash_new"`}) {
-		t.Fatalf("restored config does not contain expected value: %s", content)
+	var store map[string][]struct {
+		HashValue string `json:"hash_value"`
 	}
+	if err := json.Unmarshal(data, &store); err != nil {
+		t.Fatal(err)
+	}
+	vs := store[key]
+	if len(vs) == 0 {
+		return "", 0
+	}
+	return vs[len(vs)-1].HashValue, len(vs)
 }
 
 func TestRestoreSecretStoreForClusterConfigByDateDryRun(t *testing.T) {
@@ -272,8 +292,13 @@ func TestRestoreSecretStoreForClusterAllSecretsConfigOnly(t *testing.T) {
 		t.Fatalf("read restored config failed: %v", err)
 	}
 	content := string(data)
-	if !containsAll(content, []string{`db-servers-credential = "hash_db_v2"`, `mail-smtp-password = "hash_mail_v2"`}) {
-		t.Fatalf("restored config does not contain expected all-secrets values: %s", content)
+	// #2227 rule 1: the versioned db-servers-credential is a new version, the other secret
+	// goes to the config as before
+	if !containsAll(content, []string{`mail-smtp-password = "hash_mail_v2"`}) || strings.Contains(content, "db-servers-credential") {
+		t.Fatalf("restored config: %s", content)
+	}
+	if v, n := lastStoreVersion(t, storePath, "db-servers-credential"); v != "hash_db_v2" || n != 3 {
+		t.Fatalf("restored version %q (%d versions)", v, n)
 	}
 }
 
@@ -390,16 +415,8 @@ func TestRestoreSecretStoreForClusterWithLegacyKeyPath(t *testing.T) {
 		t.Fatalf("restore with legacy key-path failed: %v", err)
 	}
 
-	configPath := filepath.Join(confDir, "cluster.d", clusterName+".toml")
-	loaded, err := toml.LoadFile(configPath)
-	if err != nil {
-		t.Fatalf("load restored toml failed: %v", err)
-	}
-	v := loaded.Get(clusterName + ".db-servers-credential")
-	restoredValue, ok := v.(string)
-	if !ok {
-		t.Fatalf("restored value type invalid: %T", v)
-	}
+	// #2227 rule 1: restored as a new version of the store, re-encrypted with the current key
+	restoredValue, _ := lastStoreVersion(t, storePath, "db-servers-credential")
 	if restoredValue == legacyStoredValue {
 		t.Fatalf("expected transformed value with current key, got unchanged value")
 	}

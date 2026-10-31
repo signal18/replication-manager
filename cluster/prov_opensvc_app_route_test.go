@@ -193,3 +193,29 @@ func TestBuildGroupedHostRouteFragment_EmptyRoutes_Errors(t *testing.T) {
 		t.Fatal("expected error for empty routes slice")
 	}
 }
+
+// A host route is https at the gateway: its backend tells the app so with
+// X-Forwarded-Proto, set and never added (#2252). A port route is not TLS-terminated
+// by the gateway and carries no such header.
+func TestRouteFragments_XForwardedProto(t *testing.T) {
+	const xfp = "http-request set-header X-Forwarded-Proto https"
+	_, host, err := buildGroupedHostRouteFragment([]config.Route{{Mode: "host", Protocol: "https", CName: "meet.example.com", DestinationPort: "8065"}}, "mattermost.ns.svc.local", 1)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if strings.Count(host, xfp) != 1 {
+		t.Fatalf("host route fragment must set X-Forwarded-Proto once:\n%s", host)
+	}
+	if strings.Contains(host, "add-header X-Forwarded-Proto") {
+		t.Fatalf("host route fragment must set, not add, X-Forwarded-Proto:\n%s", host)
+	}
+	for _, proto := range []string{"http", "tcp"} {
+		_, port, err := buildRouteFragment(config.Route{Mode: "port", Protocol: proto, CName: "api.example.com", SourcePort: "9000", DestinationPort: "9001"}, "minio.ns.svc.local", 1)
+		if err != nil {
+			t.Fatalf("unexpected error for %s port route: %v", proto, err)
+		}
+		if strings.Contains(port, "X-Forwarded-Proto") {
+			t.Fatalf("%s port route fragment must not claim https:\n%s", proto, port)
+		}
+	}
+}

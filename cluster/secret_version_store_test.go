@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/config/credstore"
 )
 
 func TestReconcileSecretVersionStoreBootstrapReconcileAndDedupe(t *testing.T) {
@@ -782,5 +783,66 @@ func assertSecretVersionCount(t *testing.T, store secretVersionStore, key string
 	}
 	if want > 0 && versions[len(versions)-1].Version != want {
 		t.Fatalf("unexpected latest version number for %s: got=%d want=%d", key, versions[len(versions)-1].Version, want)
+	}
+}
+
+// #2227 rule 9: the prune keeps the value a config file held when last seen, so an edit of
+// the file is still told from the versions made since
+func TestPruneSecretVersionStoreKeepsConfigFileValue(t *testing.T) {
+	store := secretVersionStore{"db-servers-credential": {
+		{Version: 1, HashValue: "f1", RotatedAt: "2026-01-01T00:00:00Z", FromConfigFile: true},
+		{Version: 2, HashValue: "h2", RotatedAt: "2026-01-02T00:00:00Z"},
+		{Version: 3, HashValue: "h3", RotatedAt: "2026-01-03T00:00:00Z"},
+		{Version: 4, HashValue: "h4", RotatedAt: "2026-01-04T00:00:00Z"},
+	}}
+	pruned, _, removed := pruneSecretVersionStore(store, 2)
+	got := pruned["db-servers-credential"]
+	if removed != 1 || len(got) != 3 || got[0].HashValue != "f1" || got[2].HashValue != "h4" {
+		t.Fatalf("removed %d, kept %+v", removed, got)
+	}
+	if _, _, again := pruneSecretVersionStore(pruned, 2); again != 0 {
+		t.Fatalf("a second prune removed %d", again)
+	}
+}
+
+// F9: a version kept in memory without the key (versioning off, then turned on at runtime with
+// the key still missing) is never written to the file; once the key is installed it is
+// encrypted and the file written, without a restart
+func TestWriteSecretVersionFileRefusesUnencryptedVersion(t *testing.T) {
+	root := t.TempDir()
+	cl := &Cluster{
+		Name:       "cluster-f9",
+		WorkingDir: filepath.Join(root, "cluster-f9"),
+		Conf:       &config.Config{WorkingDir: root, MonitoringKeyPath: filepath.Join(root, "no.key")},
+	}
+	// versioning off, a vault entry: its read is kept in memory as it is, there is no key
+	vs := cl.versionStore()
+	vs.Insert("replication-credential", credstore.Version{Value: "repl:cleartext", At: time.Now()})
+	if vs.Count("replication-credential") != 1 {
+		t.Fatal("the vault read was not kept in memory")
+	}
+	cl.Conf.MonitoringSecretVersioning = true
+	if err := cl.writeSecretVersionFile(); err == nil {
+		t.Fatal("a version without encryption was written")
+	}
+	if _, err := os.Stat(SecretVersionStorePath(root, cl.Name)); !os.IsNotExist(err) {
+		t.Fatalf("the file exists: %v", err)
+	}
+
+	// the key installed: the version is encrypted and the file written, no restart
+	cl.Conf.SecretKey = []byte("01234567890123456789012345678901")
+	if err := cl.writeSecretVersionFile(); err != nil {
+		t.Fatalf("with the key: %v", err)
+	}
+	file, err := loadSecretVersionStore(SecretVersionStorePath(root, cl.Name))
+	if err != nil || len(file["replication-credential"]) != 1 {
+		t.Fatalf("the file after the key: %v, %+v", err, file)
+	}
+	stored := file["replication-credential"][0].HashValue
+	if !containsHashPrefixToken(stored) || strings.Contains(stored, "cleartext") {
+		t.Fatalf("written unencrypted: %q", stored)
+	}
+	if v := cl.Conf.DecryptSecretValue("replication-credential", stored); v != "repl:cleartext" {
+		t.Fatalf("decrypts to %q", v)
 	}
 }

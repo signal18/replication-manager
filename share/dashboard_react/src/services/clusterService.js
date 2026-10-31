@@ -54,6 +54,11 @@ export const clusterService = {
   resticCopyRepo,
   resticWipeRepo,
   getArchiveList,
+  getSecretKvList,
+  putSecretKv,
+  switchSecretKv,
+  removeSecretKv,
+  getArchiveOffers,
   addArchive,
   editArchive,
   renameArchive,
@@ -887,14 +892,15 @@ function monitorAllSchemas(clusterName, baseURL) {
 //#endregion Database service APIs
 
 //#region Test run APIs
-function runSysbench(clusterName, threads, baseURL, test, time) {
-  const params = `threads=${threads}` + (test ? `&test=${test}` : '') + (time ? `&time=${time}` : '')
+function runSysbench(clusterName, threads, baseURL, test, time, tables) {
+  const params = `threads=${threads}` + (test ? `&test=${test}` : '') + (time ? `&time=${time}` : '') + (tables ? `&tables=${tables}` : '')
   return getApi(baseURL).get(`clusters/${clusterName}/actions/sysbench?${params}`)
 }
 
-function cleanupSysbench(clusterName, test, baseURL) {
-  const params = test ? `?test=${test}` : ''
-  return getApi(baseURL).post(`clusters/${clusterName}/actions/sysbench-cleanup${params}`)
+function cleanupSysbench(clusterName, test, baseURL, tables) {
+  const params = [test ? `test=${test}` : '', tables ? `tables=${tables}` : ''].filter(Boolean).join('&')
+  const query = params ? `?${params}` : ''
+  return getApi(baseURL).post(`clusters/${clusterName}/actions/sysbench-cleanup${query}`)
 }
 
 function runRegressionTests(clusterName, testName, baseURL) {
@@ -1143,9 +1149,32 @@ function resticWipeRepo(clusterName, payload, baseURL) {
   return getApi(baseURL).post(`clusters/${clusterName}/restic/wipe`, payload)
 }
 
+// credential store entries, the vault entries (#2227): secrets go in through add and edit and
+// never come back (secretsSet)
+function getSecretKvList(clusterName, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/secret-kv-list`)
+}
+
+function putSecretKv(clusterName, spec, isEdit, baseURL) {
+  const path = isEdit ? `edit/${encodeURIComponent(spec.name)}` : 'add'
+  return getApi(baseURL).post(`clusters/${clusterName}/secret-kv-actions/${path}`, spec)
+}
+
+function switchSecretKv(clusterName, entryName, enabled, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/secret-kv-actions/${enabled ? 'enable' : 'disable'}/${encodeURIComponent(entryName)}`)
+}
+
+function removeSecretKv(clusterName, entryName, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/secret-kv-actions/remove/${encodeURIComponent(entryName)}`)
+}
+
 // archive list (#2091): secrets go in through add and edit and never come back
 function getArchiveList(clusterName, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/archive-list`)
+}
+
+function getArchiveOffers(clusterName, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/archive-offers`)
 }
 
 function addArchive(clusterName, spec, baseURL) {

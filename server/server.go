@@ -42,7 +42,6 @@ import (
 	"github.com/mitchellh/mapstructure"
 	"github.com/pelletier/go-toml"
 	"github.com/spf13/viper"
-	"golang.org/x/oauth2"
 	"google.golang.org/grpc"
 	"gopkg.in/natefinch/lumberjack.v2"
 
@@ -147,6 +146,11 @@ type ReplicationManager struct {
 	// written under the repman lock during Heartbeat.
 	peerHeartbeatFailures map[string]string `json:"-"`
 	peerHeartbeatSameUID  bool              `json:"-"`
+	// pullPluginRefused holds, per pulled plugin binary, the hash of the copy
+	// whose signature check failed, so the same binary is neither verified nor
+	// logged again at the next pull (#2233). Only syncPluginsFromPull uses it,
+	// and the git manager runs one pull at a time.
+	pullPluginRefused map[string]string `json:"-"`
 	//Adding default flags from AddFlags
 	CommandLineFlag             []string                    `json:"-"`
 	ConfigPathList              []string                    `json:"-"`
@@ -177,10 +181,9 @@ type ReplicationManager struct {
 	IsGlobalInterventionPending bool                        `json:"isGlobalInterventionPending"`
 	GlobalInterventionEntry     *cluster.InterventionEntry  `json:"globalInterventionEntry,omitempty"`
 	ActiveInterventionCount     int                         `json:"activeInterventionCount"`
-	Cloud18LoginState           string                      `json:"cloud18LoginState"` // the Cloud18 login (#2159): none, pending, connected, reconnect; "" Cloud18 off
+	Cloud18LoginState           string                      `json:"cloud18LoginState"` // the Cloud18 login (#2159): none, registered, connected, refused; "" Cloud18 off
 	UserAuthTry                 sync.Map                    `json:"-"`
 	apiTokens                   apiTokenStoreState          // user-issued API tokens store (api_token.go)
-	OAuthAccessToken            *oauth2.Token               `json:"-"`
 	ViperConfig                 *viper.Viper                `json:"-"`
 	tlog                        s18log.TermLog
 	termlength                  int
@@ -438,7 +441,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.ConfRewrite, "monitoring-save-config", true, "Save configuration changes to <monitoring-datadir>/<cluster_name> ")
 	flags.BoolVar(&conf.ConfRestoreOnStart, "monitoring-restore-config-on-start", false, "Wipe working directory and restore config")
 	flags.BoolVar(&conf.MonitoringMergeConfigOnStart, "monitoring-merge-config-on-start", false, "Merge configuration changes to source config.toml file (/etc or other source location) ")
-	flags.BoolVar(&conf.MonitoringSecretVersioning, "monitoring-secret-versioning", false, "Track cluster-local secret hash versions")
+	flags.BoolVar(&conf.MonitoringSecretVersioning, "monitoring-secret-versioning", true, "Keep the versions of the database and proxy credentials, encrypted, in the cluster's local file: a credential change or rotation becomes a version (needs the encryption key)")
 	flags.BoolVar(&conf.MonitoringSecretVersioningAutoPrune, "monitoring-secret-versioning-auto-prune", false, "Automatically prune tracked secret versions during reconciliation")
 	flags.IntVar(&conf.MonitoringSecretVersioningKeepLast, "monitoring-secret-versioning-keep-last", 0, "Keep only the last N versions per secret key when auto-prune is enabled (0 = unlimited)")
 	flags.Int64Var(&conf.MonitoringTicker, "monitoring-ticker", 2, "Monitoring interval in seconds")
@@ -580,7 +583,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.IntVar(&conf.LogLevelDatabaseAudit, "log-level-database-audit", 3, "Log Level for fetcher audit log")
 	flags.BoolVar(&conf.LogPlugin, "log-plugin", false, "Enable generic log-tailer plugin checks (errorlog, sqlerrorlog, slowlog 24h windows)")
 	flags.BoolVar(&conf.MonitorBinlogEvents, "monitoring-binlog-events", false, "Enable incremental binlog QUERY event scanning (feeds binlog security plugins: cleartext-password, credit-card-leak)")
-	flags.BoolVar(&conf.MonitoringLogAPILogin, "monitoring-log-api-login", false, "Log successful API logins to the global server log and security log")
+	flags.BoolVar(&conf.MonitoringLogAPILogin, "monitoring-log-api-login", true, "Log successful API logins to the global server log and security log")
 	flags.StringVar(&conf.MonitoringLogAPILoginSilentUsers, "monitoring-log-api-login-silent-users", "system", "Comma-separated list of usernames excluded from API login logging (default: system, used by dbjobs polling)")
 	flags.IntVar(&conf.LogPluginLevel, "log-level-plugin", 2, "Log verbosity level for log-tailer plugins (1=error,2=warn,3=info,4=debug)")
 
@@ -738,6 +741,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.APIAutologin, "api-autologin", false, "Enable unauthenticated auto-login token endpoint (trusted networks only)")
 	flags.StringVar(&conf.APIAutologinUser, "api-autologin-user", "admin", "Username to generate a token for when api-autologin is enabled")
 	flags.StringVar(&conf.APIDashboardUser, "api-dashboard-user", "", "Read-only user for the /dashboard public endpoint (empty = disabled)")
+	flags.StringVar(&conf.APITrustedNetworks, "api-trusted-networks", "127.0.0.1/32,::1/128", "Comma-separated CIDRs whose direct callers (TCP peer, never a forwarded header) may use the credential-less endpoints api-autologin and api-dashboard-user; never list a gateway or proxy that relays the public")
 	flags.StringVar(&conf.APIPublicURL, "api-public-url", "https://127.0.0.1:10005", "Public address of monitoring API Used for cloud18 OAuth callback")
 	flags.StringVar(&conf.OAuthProvider, "api-oauth-provider-url", "https://gitlab.signal18.io", "API OAuth Provider URL")
 	flags.StringVar(&conf.OAuthClientID, "api-oauth-client-id", "", "API OAuth Client ID")
@@ -757,6 +761,10 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.VaultMount, "vault-mount", "kv", "Vault mount for the secret")
 	flags.StringVar(&conf.VaultAuth, "vault-auth", "approle", "Vault auth method : approle|jwt|userpass|ldap|token|github|alicloud|aws|azure|gcp|kerberos|kubernetes|radius (jwt: the Cloud18 identity token, role vault-role-id, else replication-manager)")
 	flags.StringVar(&conf.VaultToken, "vault-token", "", "Vault Token")
+	flags.IntVar(&conf.SecretKvQueueLimit, "secret-kv-queue-limit", 1000, "Max secret versions waiting to be written to the credential store entries (secret-kv); the oldest are dropped once exceeded, and a full pass writes every secret again once the queue drains. <= 0 falls back to this default, never unbounded")
+	flags.IntVar(&conf.SecretKvWriteTimeout, "secret-kv-write-timeout", 10, "Timeout in seconds of each write (and of the login) to a credential store entry")
+	flags.IntVar(&conf.SecretKvStartTimeout, "secret-kv-start-timeout", 3, "Timeout in seconds of the read of the vault entries at a cluster's start, for the secrets the local versioned file does not hold (versioning off, or no version yet); past it the cluster starts on what it has and the entry is behind (WARN0269)")
+	flags.IntVar(&conf.SecretKvRetryInterval, "secret-kv-retry-interval", 60, "Seconds between two tries of the writes to a credential store entry that failed")
 	flags.BoolVar(&conf.LogVault, "log-vault", true, "Log vault debug")
 	flags.IntVar(&conf.LogVaultLevel, "log-level-vault", 1, "Log level for vault")
 
@@ -1207,6 +1215,9 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.Float64Var(&conf.ResourceManagerSmtGain, "resource-manager-smt-gain", 1, "Throughput of a physical core with all its SMT threads busy, relative to one thread (hyperthreading gain, e.g. 1.15). On a node whose agent reports more threads than cores, the capacity counts cores x gain and a DBU core gets threads-per-core / gain logical CPUs of quota, so a DBU core delivers a real core. 1 or less = SMT not accounted (capacity in physical cores, quota 1 CPU per core)")
 	flags.Float64Var(&conf.ResourceManagerInfraIops, "resource-manager-infra-iops", 0, "ResourceManager infra capacity override: total IOPS. 0 = unset (use the monitored/calibrated value).")
 	flags.Float64Var(&conf.ResourceManagerInfraNetworkMbps, "resource-manager-infra-network-mbps", 0, "ResourceManager infra capacity override: total public network bandwidth in Mbps (the BPU axis). 0 = unset (use the monitored value).")
+	flags.Float64Var(&conf.ResourceManagerDiscoveredCpuCores, "resource-manager-discovered-cpu-cores", 0, "ResourceManager infra capacity discovered from the agents: total CPU cores (x SMT gain). Written by replication-manager, not an override.")
+	flags.Float64Var(&conf.ResourceManagerDiscoveredMemoryMB, "resource-manager-discovered-memory-mb", 0, "ResourceManager infra capacity discovered from the agents: total memory in MB. Written by replication-manager, not an override.")
+	flags.IntVar(&conf.ResourceManagerDiscoveredInterval, "resource-manager-discovered-interval", 3600, "Seconds between two readings of the agents' capacity into resource-manager-discovered-*, on its own timer (not the monitoring loop); after a start it is read as soon as the agents are, then every interval. A change applies without a restart. 0 = never.")
 	flags.BoolVar(&conf.ProvSerialized, "prov-serialized", false, "Disable concurrent provisionning")
 	flags.StringVar(&conf.ProvDBClientBasedir, "prov-db-client-basedir", "/usr/bin", "Path to database client binary")
 	flags.StringVar(&conf.ProvDBBinaryBasedir, "prov-db-binary-basedir", "/usr/local/mysql/bin", "Path to mysqld binary")
@@ -1269,8 +1280,9 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.Cloud18GitUser, "cloud18-gitlab-user", "", "Cloud 18 GitLab user")
 	flags.StringVar(&conf.Cloud18GitPassword, "cloud18-gitlab-password", "", "Cloud 18 GitLab password")
 	flags.StringVar(&conf.Cloud18IdentityURL, "cloud18-identity-url", config.ConstCloud18IdentityURL, "Cloud18 identity realm (OpenID Connect issuer): a person connects this replication-manager to it once (device login), for the S3 SSO storages, the Cloud18 vault and the Cloud18 GitLab token")
-	flags.BoolVar(&conf.Cloud18GitLabPasswordGrant, "cloud18-gitlab-password-grant", true, "A login (dashboard, CLI, API, another Cloud18 instance) the Cloud18 account refused is tried with GitLab's password grant, for accounts still on their GitLab password (#2182); off once GitLab ends the grant")
+	flags.BoolVar(&conf.Cloud18SSOLogin, "cloud18-sso-login", false, "On a registered repman with a public https address (api-public-url) whose callback (<api-public-url>/api/auth/cloud18/callback) the Cloud18 realm accepts, the login page offers Sign in and Sign up with Cloud18 and checks the realm session silently (#2185). Off by default: no repman is declared in the realm unless it registers its own address; the Sign in form checks Cloud18 server-side without it")
 	flags.StringVar(&conf.Cloud18PlatformDescription, "cloud18-platform-description", "", "Marketing banner display on the cloud18 portal describing the infrastucture")
+	flags.StringVar(&conf.Cloud18ArchiveOfferRequests, "cloud18-archive-offer-requests", "", "Archive offers of the Cloud18 marketplace whose access the cluster asks the back-office for (comma-separated offer names): it delivers the S3 provider or the archive")
 	flags.StringVar(&conf.Cloud18InfraDataCenters, "cloud18-infra-data-centers", "", "Infrastucture datacenters name")
 	flags.Float64Var(&conf.Cloud18InfraPublicBandwidth, "cloud18-infra-public-bandwidth", 0, "Infrastucture public bandwidth")
 	flags.Float64Var(&conf.Cloud18PromotionPct, "cloud18-promotion-pct", 0, "Promotion in pourcentage")
@@ -1328,6 +1340,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.IntVar(&conf.Cloud18SelfServiceCacheSeconds, "cloud18-self-service-cache-seconds", 10, "Seconds the self-service status (pool, templates, enabled-script verdict) is served from a snapshot: one computation per interval whatever the request rate on /api/cloud18/self-service; 0 computes at every request")
 	flags.StringVar(&conf.Cloud18SelfServiceClustersEnabledScript, "cloud18-self-service-clusters-enabled-script", "", "Script run before a self-service cluster creation (argv: identity, orchestrator; env REPMAN_IDENTITY, REPMAN_SPONSORED_CLUSTERS, REPMAN_NEEDED_DBU/APU, REPMAN_FREE_DBU/APU, REPMAN_BORROW_DBU/APU); a non-zero exit vetoes it, its first output line is the reason")
 	flags.BoolVar(&conf.Cloud18SelfServiceClustersCanBorrow, "cloud18-self-service-clusters-can-borrow", false, "Let a self-service cluster be created on borrowed capacity (the over-commit pot) when the plan pot cannot guarantee its default units")
+	flags.BoolVar(&conf.Cloud18SelfServiceClustersCanConsumeForSale, "cloud18-self-service-clusters-can-consume-for-sale", true, "Let a self-service cluster take the plans the clusters for sale (cloud18-shared) hold above their floors, in the creation check and in the Cloud18 quote; off, only the free pool counts")
 	flags.StringVar(&conf.Cloud18GatewayDomainName, "cloud18-gateway-domain-name", "", "Cloud18 gateway VIP domain(s), comma-separated and aligned with cloud18-gateway-service; the first one is where the app CNAMEs point (the DNS round-robins the VIPs)")
 	flags.StringVar(&conf.Cloud18SubscriptionPlan, "cloud18-subscription-plan", "free", "Cloud18 subscription plan code (validated by CRM)")
 	flags.StringVar(&conf.Cloud18LicenseFile, "cloud18-license-file", "", "Path to a signed offline license (license.json; detached signature license.sig alongside). When set, the instance sources its Cloud18 plan from this file instead of the CRM — for air-gapped/PCI instances. Verified with plugin-signing-public-key. Empty = normal online CRM path")
@@ -1465,7 +1478,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 
 	flags.BoolVar(&conf.AppOn, "app-on", false, "Enable application mode")
 	flags.IntVar(&conf.AppErrorDebounceThreshold, "app-error-debounce-threshold", 3, "Consecutive app route failures before emitting runtime app errors")
-	flags.IntVar(&conf.AppRefreshConcurrency, "app-refresh-concurrency", 2, "Number of concurrent refresh for deployed apps")
+	flags.IntVar(&conf.AppRefreshConcurrency, "app-refresh-concurrency", 2, "Deprecated, ignored: each app is checked in its own goroutine (#2209)")
 	flags.IntVar(&conf.LogAppLevel, "app-log-level", 3, "Log level for application")
 	flags.StringVar(&conf.ProvAppAgents, "prov-app-agents", "", "App agents for micro services provisionning.")
 	flags.StringVar(&conf.ProvAppDisk, "prov-app-disk-size", "4G", "Disk in g for micro service VM. When cloud18 credit system is used, this is the base for 1 credit")
@@ -3102,6 +3115,8 @@ func (repman *ReplicationManager) Run() error {
 	//then it generate a new PAT gitlab to preserved a valid PAT in order to clone/push/pull on the distant gitlab
 	// GWU (#1872): poll the gateways' HAProxy stats for the egress of every cluster.
 	go repman.gatewayTrafficLoop()
+	// resource-manager-discovered-*: the agents' capacity into the config, on its own interval.
+	go repman.discoveredResourcesLoop()
 
 	// App API tokens (#2158) are renewed at provision: warn daily about those close to expiry.
 	go func() {
@@ -3115,42 +3130,6 @@ func (repman *ReplicationManager) Run() error {
 	}()
 
 	go repman.cloud18TokenRenewals()
-
-	ticker_PAT := time.NewTicker(86400 * time.Second)
-	quit_PAT := make(chan struct{})
-	go func() {
-		for {
-			select {
-			case <-ticker_PAT.C:
-				//to do it only when auth to gitlab
-				if repman.Conf.GitUrl != "" && repman.OAuthAccessToken != nil && repman.Conf.Cloud18 {
-					//to obtain new app access token
-					repman.OAuthAccessToken.AccessToken, repman.OAuthAccessToken.RefreshToken, err = githelper.RefreshAccessToken(repman.OAuthAccessToken.RefreshToken, repman.Conf.OAuthClientID, repman.Conf.GetDecryptedPassword("api-oauth-client-secret", repman.Conf.OAuthClientSecret), repman.Conf.IsEligibleForPrinting(config.ConstLogModGit, config.LvlDbg))
-					//to obtain a new PAT
-					tokenName := conf.GetInstancePATName()
-					new_tok, _ := githelper.GetGitLabTokenOAuth(repman.OAuthAccessToken.AccessToken, tokenName, repman.Conf.IsEligibleForPrinting(config.ConstLogModGit, config.LvlDbg))
-					if new_tok == "" {
-						// keep the current token rather than blank it
-						continue
-					}
-
-					//save the new PAT
-					newSecret := repman.Conf.Secrets.Get("git-acces-token")
-					newSecret.OldValue = newSecret.Value
-					newSecret.Value = new_tok
-					repman.Conf.Secrets.Set("git-acces-token", newSecret)
-					for _, cluster := range repman.Clusters {
-						cluster.Conf.Secrets.Set("git-acces-token", newSecret)
-					}
-					keepGitAccessToken(repman.Conf, new_tok)
-					repman.Save()
-				}
-			case <-quit_PAT:
-				ticker_PAT.Stop()
-				return
-			}
-		}
-	}()
 
 	//	ticker := time.NewTicker(interval * time.Duration(repman.Conf.MonitoringTicker))
 	repman.isStarted = true
@@ -3171,7 +3150,6 @@ func (repman *ReplicationManager) Run() error {
 
 		repman.Logrus.Info("Shutdown: stopping ticker goroutines")
 		close(quit_GitPull)
-		close(quit_PAT)
 
 		repman.Logrus.Infof("Shutdown: stopping %d clusters", len(repman.Clusters))
 		clStart := time.Now()
@@ -3692,6 +3670,8 @@ func (repman *ReplicationManager) initCluster(clusterName string) (*cluster.Clus
 	repman.resourceManager.SetQuotaPct(repman.Conf.ResourceManagerInfraQuotaPct)
 	repman.resourceManager.SetSmtGain(repman.Conf.ResourceManagerSmtGain)
 	repman.resourceManager.SetPrices(repman.billingPrices())
+	// the catalogue read at start (LoadMarketplaceCatalogue) before the manager existed
+	repman.resourceManager.SetMarketplaceCatalogue(repman.MarketplaceCatalogue())
 	if repman.Conf.WorkingDir != "" {
 		logf := func(format string, args ...interface{}) {
 			if repman.Logrus != nil {
@@ -3721,6 +3701,9 @@ func (repman *ReplicationManager) initCluster(clusterName string) (*cluster.Clus
 	// Reload Users
 	repman.currentCluster.LoadAPIUsers()
 	repman.currentCluster.SaveAcls()
+	// the marketplace's vault offers, off until the sponsor turns them on (#2227): here for
+	// the clusters of the startup too, whose catalogue was read before they existed
+	repman.currentCluster.EnsureMarketplaceVaults(repman.MarketplaceCatalogue().Vaults)
 	repman.ConfigManager.UpdateLoggerConfig(clusterName, repman.currentCluster.Conf)
 	repman.ConfigManager.SaveConfig(repman.currentCluster, true)
 

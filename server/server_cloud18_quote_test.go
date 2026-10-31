@@ -61,6 +61,59 @@ func TestQuotePoolVerdictRetakenForTheRequest(t *testing.T) {
 	}
 }
 
+// The quote takes the room the creation check takes: the free pool plus what the clusters
+// for sale give back (#2212). A default cluster, 4 DBU and 4 APU, on a pool 2.4 short.
+func TestQuoteCountsWhatClustersForSaleGiveBack(t *testing.T) {
+	spec, _ := normalizeSpec(Cloud18ClusterSpec{ClusterName: "q", DBCount: 2, DBU: 2, APU: 4})
+	ss := ssFixture(false, "no free DBU on this infrastructure", -2.4, -2.4, 16, 13)
+	ss["poolBlocked"] = true
+	pool := ss["pool"].(map[string]any)
+	pool["forSaleDbu"], pool["forSaleApu"] = 85.0, 12.0
+	q := cloud18QuoteOf(spec, ss)
+	if q["canCreate"] != true || q["fits"] != true || q["roomNote"] == nil {
+		t.Fatalf("the clusters for sale give back 85 DBU / 12 APU, the request fits: %v", q)
+	}
+	if fs := q["forSale"].(map[string]float64); fs["dbu"] != 85 || fs["apu"] != 12 {
+		t.Fatalf("forSale = %v", fs)
+	}
+	// what they give back is not enough: refused, the reason names both
+	pool["forSaleDbu"], pool["forSaleApu"] = 5.0, 4.0
+	q = cloud18QuoteOf(spec, ss)
+	if q["canCreate"] != false || q["fits"] != false || !strings.Contains(q["reason"].(string), "clusters for sale") {
+		t.Fatalf("2.6 DBU of room for 4: %v", q)
+	}
+	// short on APU only: the clusters for sale give the APU back, the note says so
+	pool["freeDbu"], pool["forSaleApu"] = 10.0, 12.0
+	if q = cloud18QuoteOf(spec, ss); q["canCreate"] != true || q["roomNote"] == nil {
+		t.Fatalf("APU short, given back by the clusters for sale: %v", q)
+	}
+	// the free pool alone holds it: no note
+	pool["freeDbu"], pool["freeApu"] = 10.0, 10.0
+	if q = cloud18QuoteOf(spec, ss); q["canCreate"] != true || q["roomNote"] != nil {
+		t.Fatalf("free pool enough: %v", q)
+	}
+}
+
+// An infrastructure on an older release publishes no forSaleDbu/forSaleApu: 0, the free
+// pool alone, the quote as before #2212.
+func TestQuoteOlderInfrastructureWithoutForSale(t *testing.T) {
+	spec, _ := normalizeSpec(Cloud18ClusterSpec{ClusterName: "q", DBCount: 2, DBU: 2, APU: 4})
+	ss := ssFixture(false, "no free DBU on this infrastructure", -2.4, -2.4, 16, 13)
+	q := cloud18QuoteOf(spec, ss)
+	if q["canCreate"] != false || q["fits"] != false || q["roomNote"] != nil {
+		t.Fatalf("free pool short, nothing for sale published: %v", q)
+	}
+	if fs := q["forSale"].(map[string]float64); fs["dbu"] != 0 || fs["apu"] != 0 {
+		t.Fatalf("forSale = %v", fs)
+	}
+	// a non-numeric field is 0 and leaves the others
+	ss["pool"].(map[string]any)["forSaleDbu"] = "85"
+	ss["pool"].(map[string]any)["freeDbu"] = 10.0
+	if q = cloud18QuoteOf(spec, ss); q["fits"] != false || q["free"].(map[string]float64)["dbu"] != 10 {
+		t.Fatalf("a string forSaleDbu must not zero the pool: %v", q)
+	}
+}
+
 func TestQuoteUnknownPrice(t *testing.T) {
 	ss := ssFixture(true, "", 50, 50, 0, 0)
 	delete(ss, "prices")

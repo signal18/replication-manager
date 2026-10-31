@@ -83,7 +83,7 @@ func haproxyWaitSrvRemovableFailed(res string, err error) bool {
 // enables it itself in that case if it wasn't already
 // (save/restore pattern from TestGraphiteMetricsQueueBound). Fails with a
 // specific reason rather than a false pass if those prerequisites aren't
-// met — this framework has no "skip" result.
+// met — a prerequisite its targets (testTargets) do not declare fails, it is not skipped.
 //
 // Three phases poll for the cluster's own background monitor loop to react
 // (this test never calls Refresh() itself):

@@ -88,6 +88,7 @@ export const authSlice = createSlice({
     logout: (state) => {
       clearLocalStorageByPrefix('user_token')
       localStorage.removeItem('username')
+      localStorage.removeItem('login_method')
       sessionStorage.removeItem('meet_unavailable')
       state.user = null
       state.isLogged = false

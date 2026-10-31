@@ -34,6 +34,9 @@ import (
 // This source code is licensed under the GNU General Public License, version 3.
 
 func (cluster *Cluster) OpenSVCUnprovisionAppService(app *App) error {
+	if err := cluster.refuseMonitorOnlyApp(app); err != nil {
+		return err
+	}
 	svc := cluster.OpenSVCConnect()
 	var opErr error
 	if cluster.Conf.ProvOpensvcUseCollectorAPI {
@@ -66,6 +69,11 @@ func (cluster *Cluster) OpenSVCUnprovisionAppService(app *App) error {
 			opErr = errors.Join(opErr, err)
 		}
 		for _, volumename := range app.GetVolumes(true) {
+			if verr := config.ValidateVolumeName(volumename); verr != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Not unprovisioning app volume: %s", verr)
+				opErr = errors.Join(opErr, verr)
+				continue
+			}
 			err = svc.PurgeServiceV3(cluster.Name, cluster.Name+"/vol/"+volumename)
 			if err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not unprovision app volume:  %s ", err)
@@ -79,6 +87,11 @@ func (cluster *Cluster) OpenSVCUnprovisionAppService(app *App) error {
 			opErr = errors.Join(opErr, err)
 		}
 		for _, volumename := range app.GetVolumes(true) {
+			if verr := config.ValidateVolumeName(volumename); verr != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Not unprovisioning app volume: %s", verr)
+				opErr = errors.Join(opErr, verr)
+				continue
+			}
 			err = svc.PurgeServiceV2(cluster.Name, cluster.Name+"/vol/"+volumename, app.GetAgent())
 			if err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not unprovision app volume:  %s ", err)
@@ -91,6 +104,9 @@ func (cluster *Cluster) OpenSVCUnprovisionAppService(app *App) error {
 }
 
 func (cluster *Cluster) OpenSVCStopAppService(app *App, node string) error {
+	if err := cluster.refuseMonitorOnlyApp(app); err != nil {
+		return err
+	}
 	svc := cluster.OpenSVCConnect()
 	if cluster.Conf.ProvOpensvcUseCollectorAPI {
 		service, err := svc.GetServiceFromName(cluster.Name + "/svc/" + app.GetName())
@@ -149,6 +165,9 @@ func (cluster *Cluster) OpenSVCStopAppService(app *App, node string) error {
 }
 
 func (cluster *Cluster) OpenSVCStartAppService(app *App, node string) error {
+	if err := cluster.refuseMonitorOnlyApp(app); err != nil {
+		return err
+	}
 	svc := cluster.OpenSVCConnect()
 	if svc.IsV3() {
 		err := cluster.openSVCStartOrRecoverV3(svc, app.GetServiceName())
@@ -298,7 +317,17 @@ func (cluster *Cluster) OpenSVCUpdateAppTemplate(app *App) error {
 	return svc.WaitObjectConfigSettledV3(app.Agent, ns, kind, svcname, openSVCConfigSettleTimeout)
 }
 
+// AppRestartAllNodes: no node, ALL or * restarts every instance.
+func AppRestartAllNodes(node string) bool {
+	return node == "" || strings.ToUpper(node) == "ALL" || node == "*"
+}
+
+// OpenSVCRestartAppService restarts an app: on OpenSVC v3, the instance on node when one is
+// given (#2223), else every instance, which the orchestrator restarts one at a time.
 func (cluster *Cluster) OpenSVCRestartAppService(app *App, node string, rid string) error {
+	if err := cluster.refuseMonitorOnlyApp(app); err != nil {
+		return err
+	}
 	if err := ValidateAppRestartRid(rid); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "App restart validation failed: %s", err)
 		return err
@@ -311,8 +340,22 @@ func (cluster *Cluster) OpenSVCRestartAppService(app *App, node string, rid stri
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "App %s restarts on its current definition, the refresh failed: %s", app.Name, err)
 		}
 		if rid != "" {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "RID restart is not supported in OpenSVC v3, falling back to full service restart")
+			scope := "every instance"
+			if !AppRestartAllNodes(node) {
+				scope = "the instance on " + node
+			}
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "RID restart is not supported in OpenSVC v3, restarting %s of app %s", scope, app.Name)
 		}
+		if !AppRestartAllNodes(node) {
+			// a node given: that instance only (#2223)
+			if err := svc.RestartInstanceV3(node, app.GetServiceName()); err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not restart app %s on %s: %s", app.Name, node, err)
+				return err
+			}
+			return nil
+		}
+		// every instance: the orchestrator restarts them one at a time, each after the
+		// prior instance is back up
 		err := svc.RestartServiceV3(cluster.Name, app.GetServiceName())
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not restart app:  %s ", err)
@@ -321,6 +364,7 @@ func (cluster *Cluster) OpenSVCRestartAppService(app *App, node string, rid stri
 		return nil
 	}
 	agent := app.GetAgent()
+	// not AppRestartAllNodes: on v2 no node means the default agent, not every node
 	if strings.ToUpper(node) == "ALL" || node == "*" {
 		err := svc.RestartServiceV2(cluster.Name, app.GetServiceName(), "*", rid)
 		if err != nil {
@@ -342,6 +386,9 @@ func (cluster *Cluster) OpenSVCRestartAppService(app *App, node string, rid stri
 }
 
 func (cluster *Cluster) OpenSVCAbortAppService(app *App) error {
+	if err := cluster.refuseMonitorOnlyApp(app); err != nil {
+		return err
+	}
 	svc := cluster.OpenSVCConnect()
 	if cluster.Conf.ProvOpensvcUseCollectorAPI || !svc.IsV3() {
 		err := ErrOpenSVCAbortNotSupported
@@ -633,9 +680,21 @@ func (cluster *Cluster) openSVCEnsureSensorPrerequisites(svc opensvc.Collector) 
 		return nil
 	}
 	if k := cluster.GetSystemAPIKey(); k != "" {
-		// V3: create-or-update; V2: an existing key is fine. The value is never logged.
-		if err := svc.CreateSecretKeyValue(cluster.Name, "env", "SENSOR_API_KEY", k); err != nil && !isOpenSVCAlreadyExists(err) {
-			return fmt.Errorf("publish sensor credential key: %w", err)
+		// V3: create-or-update, but only when the key differs: the daemon restarts every
+		// service that reads a rewritten key, everywhere, even on an identical value (live
+		// status app 2026-10-28: each definition refresh restarted all its flex instances).
+		// V2: an existing key is fine. The value is never logged.
+		// A failed read (missing key or not) falls through to the write: converging on the
+		// right value beats skipping it, at the cost of one restart of the readers.
+		published := false
+		if svc.IsV3() {
+			cur, err := svc.GetSecretKeyValueV3(cluster.Name, "env", "SENSOR_API_KEY")
+			published = err == nil && string(cur) == k
+		}
+		if !published {
+			if err := svc.CreateSecretKeyValue(cluster.Name, "env", "SENSOR_API_KEY", k); err != nil && !isOpenSVCAlreadyExists(err) {
+				return fmt.Errorf("publish sensor credential key: %w", err)
+			}
 		}
 	}
 	return cluster.openSVCPublishAppJobScript(svc)
@@ -1075,7 +1134,11 @@ func (cluster *Cluster) OpenSVCGetAppS3MountContainerSection(app *App, s3m *conf
 		svccontainer["secrets_environment"] = appSecretsEnvironment(app)
 		svccontainer["configs_environment"] = app.GetOpenSVCDeploymentAppEnv(config.VariableTypeEnv)
 		diskname := s3m.GetSourceVolumeName()
-		svccontainer["volume_mounts"] = fmt.Sprintf("%s:/mnt:rw,rshared", filepath.Join(diskname, s3m.VolumeDir))
+		if src, err := config.VolumeSource(diskname, s3m.VolumeDir); err == nil {
+			svccontainer["volume_mounts"] = src + ":/mnt:rw,rshared"
+		} else {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlErr, "App %s: refusing S3 mount: %v", app.Name, err)
+		}
 		svccontainer["run_command"] = "-o allow_other -o nonempty --use-content-type --uid " + s3m.MountUid() + " --gid " + s3m.MountGid() + " -f"
 		svccontainer["blocking_post_provision"] = "sleep 3"
 		svccontainer["blocking_post_start"] = "sleep 3"
@@ -1188,7 +1251,13 @@ func (cluster *Cluster) GetOpenSVCDeploymentPathMapping(app *App) string {
 			continue
 		}
 
-		results = append(results, path.GetDockerMapping(vol.Name))
+		mapping, err := path.SafeDockerMapping(vol.Name)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlErr,
+				"App %s: refusing deployment path mapping dockerpath=%q: %v", app.Name, path.DockerPath, err)
+			continue
+		}
+		results = append(results, mapping)
 	}
 
 	return strings.Join(results, " ")
@@ -1230,6 +1299,9 @@ func (cluster *Cluster) OpenSVCCreateAppVariableMaps(agent string, app *App) err
 	for _, v := range app.AppConfig.Deployment.Variables {
 		if v.Type == "secret" {
 			err = svc.CreateSecretKeyValue(cluster.Name, app.Name, v.Name, cluster.Conf.GetDecryptedEmbedded(v.Name, v.Value))
+			if err == nil {
+				cluster.reportOrchestratorSecret(app.Name, v.Name, cluster.Conf.GetDecryptedEmbedded(v.Name, v.Value))
+			}
 			if err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to secret: %s %s ", v.Name, err)
 				addKeyErr(fmt.Errorf("secret key %q: %w", v.Name, err))
@@ -1238,6 +1310,9 @@ func (cluster *Cluster) OpenSVCCreateAppVariableMaps(agent string, app *App) err
 			for _, cd := range v.Conditional {
 				cdname := fmt.Sprintf("%s@%s", v.Name, cd.Agent)
 				err = svc.CreateSecretKeyValue(cluster.Name, app.Name, cdname, cluster.Conf.GetDecryptedEmbedded(cdname, cd.Value))
+				if err == nil {
+					cluster.reportOrchestratorSecret(app.Name, cdname, cluster.Conf.GetDecryptedEmbedded(cdname, cd.Value))
+				}
 				if err != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add conditional key to secret: %s %s ", cdname, err)
 					addKeyErr(fmt.Errorf("secret key %q: %w", cdname, err))
@@ -1287,6 +1362,9 @@ func (cluster *Cluster) OpenSVCCreateAppVariableMaps(agent string, app *App) err
 		}
 
 		err = svc.CreateSecretKeyValue(cluster.Name, app.Name, prefix+config.GitVarSuffixPass, cluster.Conf.GetDecryptedPassword(gc.Name, gc.GitPass))
+		if err == nil {
+			cluster.reportOrchestratorSecret(app.Name, prefix+config.GitVarSuffixPass, cluster.Conf.GetDecryptedPassword(gc.Name, gc.GitPass))
+		}
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to secret: %s %s ", prefix+config.GitVarSuffixPass, err)
 			addKeyErr(fmt.Errorf("secret key %q: %w", prefix+config.GitVarSuffixPass, err))
@@ -1327,6 +1405,9 @@ func (cluster *Cluster) OpenSVCCreateAppVariableMaps(agent string, app *App) err
 		}
 
 		err = svc.CreateSecretKeyValue(cluster.Name, app.Name, prefix+config.S3VarSuffixSecretKey, cluster.Conf.GetDecryptedPassword(s3m.Name, s3m.SecretKey))
+		if err == nil {
+			cluster.reportOrchestratorSecret(app.Name, prefix+config.S3VarSuffixSecretKey, cluster.Conf.GetDecryptedPassword(s3m.Name, s3m.SecretKey))
+		}
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to secret: %s %s ", prefix+config.S3VarSuffixSecretKey, err)
 			addKeyErr(fmt.Errorf("secret key %q: %w", prefix+config.S3VarSuffixSecretKey, err))
@@ -1465,6 +1546,13 @@ func normalizeRouteCNAME(cname string) string {
 // all host routes sharing the same destination port.  Multiple CNAMEs produce
 // multiple use_backend rules in the shared 'frontend https' block.  All CNAMEs
 // are normalized before being emitted.
+//
+// A host route is always served over https by the gateway, so its backend tells the
+// app with X-Forwarded-Proto (set, never added: a client cannot inject its own). An
+// app that rebuilds its URL from the request otherwise believes it is plain http:
+// Mattermost sent an http redirect_uri to its OAuth provider at the code exchange
+// and every GitLab sign-in failed with invalid_grant (#2252). The gateway's head
+// template may set it too; the backend does not depend on it.
 func buildGroupedHostRouteFragment(routes []config.Route, opensvcDNS string, numBE int) (fragmentKey, haproxyfragment string, err error) {
 	if len(routes) == 0 {
 		return "", "", errors.New("buildGroupedHostRouteFragment: no routes provided")
@@ -1487,6 +1575,7 @@ backend %s
     balance roundrobin
     dynamic-cookie-key mysecretphrase
     option http-server-close
+    http-request set-header X-Forwarded-Proto https
     timeout connect 10s
     timeout server 5m
     timeout tunnel 1h

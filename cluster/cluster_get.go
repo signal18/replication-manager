@@ -22,10 +22,9 @@ import (
 	"strings"
 
 	vault "github.com/hashicorp/vault/api"
-	auth "github.com/hashicorp/vault/api/auth/approle"
-	"github.com/iancoleman/strcase"
 	"github.com/siddontang/go/log"
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/config/credstore"
 	"github.com/signal18/replication-manager/opensvc"
 	"github.com/signal18/replication-manager/peer"
 	"github.com/signal18/replication-manager/utils/backupmgr"
@@ -624,6 +623,20 @@ func (cluster *Cluster) GetConfigSnapshotForWire() *config.Config {
 	return &confCopy
 }
 
+// GetConfigJSONForWire is the cluster's configuration as an API sends it: the wire
+// snapshot with every secret masked.
+func (cluster *Cluster) GetConfigJSONForWire() ([]byte, error) {
+	conf := cluster.GetConfigSnapshotForWire()
+	if conf == nil {
+		return nil, fmt.Errorf("cluster %s has no configuration", cluster.Name)
+	}
+	doc, err := json.Marshal(conf)
+	if err != nil {
+		return nil, err
+	}
+	return conf.MaskSecretsJSON(doc, "")
+}
+
 func (cluster *Cluster) GetWaitTrx() int64 {
 	return cluster.Conf.SwitchWaitTrx
 }
@@ -890,22 +903,28 @@ func (cluster *Cluster) GetIgnoredROList() string {
 	return strings.Join(prevIgnoredRO, ",")
 }
 
-func (cluster *Cluster) GetGComm() string {
+// GetGComm is the member list server joins (wsrep_cluster_address, group replication seeds).
+// On Galera it is empty, which bootstraps a new cluster, only for the bootstrap node
+// (isGaleraBootstrapNode, the node --wsrep_new_cluster starts): every other node gets the
+// full list and waits for the Primary component. A list emptied whenever every server was
+// down bootstrapped each node rendered then, and the cluster came up split (#2191).
+// server nil (a proxy) always gets the full list. Group replication has no bootstrap node
+// here (isGaleraBootstrapNode is false off Galera): always the full seed list.
+func (cluster *Cluster) GetGComm(server *ServerMonitor) string {
 	var gcomms []string
 	if len(cluster.Servers) == 0 {
 		return ""
 	}
 
-	for _, server := range cluster.Servers {
+	for _, member := range cluster.Servers {
 		if cluster.Conf.MultiMasterWsrep {
-			gcomms = append(gcomms, server.Host+":"+strconv.Itoa(cluster.Conf.MultiMasterWsrepPort))
+			gcomms = append(gcomms, member.Host+":"+strconv.Itoa(cluster.Conf.MultiMasterWsrepPort))
 		} else {
-			gcomms = append(gcomms, server.Host+":"+strconv.Itoa(cluster.Conf.MultiMasterGrouprepPort))
+			gcomms = append(gcomms, member.Host+":"+strconv.Itoa(cluster.Conf.MultiMasterGrouprepPort))
 		}
 
 	}
-	//	For bootrap galera cluster on first node
-	if cluster.AllServersFailed() && cluster.GetTopology() == config.TopoMultiMasterWsrep {
+	if cluster.isGaleraBootstrapNode(server) {
 		return ""
 	}
 	if cluster.GetTopology() == config.TopoMultiMasterWsrep {
@@ -1495,149 +1514,74 @@ func (cluster *Cluster) GetClientCertificates() (map[string]string, error) {
 	return certs, nil
 }
 
-func (cluster *Cluster) GetVaultMonitorCredentials(client *vault.Client) (string, string, error) {
-	if cluster.Conf.VaultMode == VaultConfigStoreV2 {
-		secret, err := client.KVv2(cluster.Conf.VaultMount).Get(context.Background(), cluster.GetConf().User)
-
-		if err != nil {
-			return "", "", err
-		}
-		user, pass := misc.SplitPair(secret.Data["db-servers-credential"].(string))
-		return user, pass, nil
-	} else {
-		secret, err := client.KVv1("").Get(context.Background(), cluster.GetConf().User)
-		if err != nil {
-			return "", "", err
-		}
-		return secret.Data["username"].(string), secret.Data["password"].(string), nil
-	}
+// primaryVault is the cluster's primary Vault (#2227): the Vault* fields, the projection of
+// its primary secret_kv-vault entry.
+func (cluster *Cluster) primaryVault() *credstore.VaultKV {
+	return credstore.NewPrimaryVault(cluster.Conf)
 }
-func (cluster *Cluster) GetVaultShardProxyCredentials(client *vault.Client) (string, string, error) {
-	if cluster.Conf.VaultMode == VaultConfigStoreV2 {
-		user, pass := misc.SplitPair(cluster.Conf.Secrets.Get("shardproxy-credential").Value)
-		if savedConf.IsPath(cluster.Conf.MdbsProxyCredential) {
 
-			secret, err := client.KVv2(cluster.Conf.VaultMount).Get(context.Background(), cluster.Conf.MdbsProxyCredential)
-
-			if err != nil {
-				return "", "", err
-			}
-			user, pass = misc.SplitPair(secret.Data["shardproxy-credential"].(string))
-		}
-
-		return user, pass, nil
-	} else {
-		secret, err := client.KVv1("").Get(context.Background(), cluster.GetConf().MdbsProxyCredential)
-		if err != nil {
-			return "", "", err
-		}
-		return secret.Data["username"].(string), secret.Data["password"].(string), nil
+// vaultPair reads key at path in the primary Vault: user and password.
+func (cluster *Cluster) vaultPair(client *vault.Client, path, key string) (string, string, error) {
+	v, err := cluster.primaryVault().Read(context.Background(), client, path, key)
+	if err != nil {
+		return "", "", err
 	}
+	user, pass := misc.SplitPair(v)
+	return user, pass, nil
+}
+
+func (cluster *Cluster) GetVaultMonitorCredentials(client *vault.Client) (string, string, error) {
+	return cluster.vaultPair(client, cluster.GetConf().User, "db-servers-credential")
+}
+
+func (cluster *Cluster) GetVaultShardProxyCredentials(client *vault.Client) (string, string, error) {
+	if cluster.Conf.VaultMode == VaultConfigStoreV2 && !savedConf.IsPath(cluster.Conf.MdbsProxyCredential) {
+		user, pass := misc.SplitPair(cluster.Conf.Secrets.Get("shardproxy-credential").Value)
+		return user, pass, nil
+	}
+	return cluster.vaultPair(client, cluster.Conf.MdbsProxyCredential, "shardproxy-credential")
 }
 
 func (cluster *Cluster) GetVaultProxySQLCredentials(client *vault.Client) (string, string, error) {
-	if cluster.Conf.VaultMode == VaultConfigStoreV2 {
-		user := cluster.Conf.Secrets.Get("proxysql-user").Value
-		pass := cluster.Conf.Secrets.Get("proxysql-password").Value
-		if savedConf.IsPath(cluster.Conf.ProxysqlUser) {
-			secret, err := client.KVv2(cluster.Conf.VaultMount).Get(context.Background(), cluster.Conf.ProxysqlUser)
-
-			if err != nil {
-				return "", "", err
-			}
-			user = secret.Data["proxysql-user"].(string)
-		}
-
-		if savedConf.IsPath(cluster.Conf.ProxysqlPassword) {
-			secret, err := client.KVv2(cluster.Conf.VaultMount).Get(context.Background(), cluster.GetConf().ProxysqlPassword)
-			if err != nil {
-				return "", "", err
-			}
-			pass = secret.Data["proxysql-password"].(string)
-		}
-
-		return user, pass, nil
-	} else {
-		secret, err := client.KVv1("").Get(context.Background(), cluster.GetConf().ProxysqlPassword)
-		if err != nil {
+	if cluster.Conf.VaultMode != VaultConfigStoreV2 {
+		return cluster.vaultPair(client, cluster.GetConf().ProxysqlPassword, "proxysql-password")
+	}
+	vkv := cluster.primaryVault()
+	user := cluster.Conf.Secrets.Get("proxysql-user").Value
+	pass := cluster.Conf.Secrets.Get("proxysql-password").Value
+	var err error
+	if savedConf.IsPath(cluster.Conf.ProxysqlUser) {
+		if user, err = vkv.Read(context.Background(), client, cluster.Conf.ProxysqlUser, "proxysql-user"); err != nil {
 			return "", "", err
 		}
-		return secret.Data["username"].(string), secret.Data["password"].(string), nil
 	}
+	if savedConf.IsPath(cluster.Conf.ProxysqlPassword) {
+		if pass, err = vkv.Read(context.Background(), client, cluster.GetConf().ProxysqlPassword, "proxysql-password"); err != nil {
+			return "", "", err
+		}
+	}
+	return user, pass, nil
 }
 
 func (cluster *Cluster) GetVaultReplicationCredentials(client *vault.Client) (string, string, error) {
-	if cluster.Conf.VaultMode == VaultConfigStoreV2 {
-		secret, err := client.KVv2(cluster.Conf.VaultMount).Get(context.Background(), cluster.GetConf().RplUser)
-
-		if err != nil {
-			return "", "", err
-		}
-		user, pass := misc.SplitPair(secret.Data["replication-credential"].(string))
-		return user, pass, nil
-	} else {
-		secret, err := client.KVv1("").Get(context.Background(), cluster.GetConf().RplUser)
-		if err != nil {
-			return "", "", err
-		}
-		return secret.Data["username"].(string), secret.Data["password"].(string), nil
-	}
+	return cluster.vaultPair(client, cluster.GetConf().RplUser, "replication-credential")
 }
 
+// GetVaultConnection signs in to the primary Vault (approle or jwt); a failure raises ERR00089.
 func (cluster *Cluster) GetVaultConnection() (*vault.Client, error) {
-	if cluster.Conf.IsVaultUsed() {
-
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, config.LvlDbg, "Vault AppRole Authentification")
-		vconfig := vault.DefaultConfig()
-
-		vconfig.Address = cluster.Conf.VaultServerAddr
-
-		client, err := vault.NewClient(vconfig)
-		if err != nil {
-			cluster.SetState("ERR00089", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00089"], err), ErrFrom: "TOPO"})
-			cluster.CanConnectVault = false
-			cluster.errorConnectVault = err
-			return nil, err
-		}
-
-		roleID := cluster.Conf.VaultRoleId
-		secretid := cluster.Conf.GetDecryptedPassword("vault-secret-id", cluster.Conf.VaultSecretId)
-		if roleID == "" || secretid == "" {
-			cluster.SetState("ERR00089", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00089"], err), ErrFrom: "TOPO"})
-			cluster.CanConnectVault = false
-			cluster.errorConnectVault = err
-			return nil, err
-		}
-
-		secretID := &auth.SecretID{FromString: secretid}
-		appRoleAuth, err := auth.NewAppRoleAuth(
-			roleID,
-			secretID,
-		)
-		if err != nil {
-			cluster.SetState("ERR00089", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00089"], err), ErrFrom: "TOPO"})
-			cluster.CanConnectVault = false
-			cluster.errorConnectVault = err
-			return nil, err
-		}
-
-		authInfo, err := client.Auth().Login(context.Background(), appRoleAuth)
-		if err != nil {
-			cluster.SetState("ERR00089", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00089"], err), ErrFrom: "TOPO"})
-			cluster.CanConnectVault = false
-			cluster.errorConnectVault = err
-			return nil, err
-		}
-		if authInfo == nil {
-			cluster.SetState("ERR00089", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00089"], err), ErrFrom: "TOPO"})
-			cluster.CanConnectVault = false
-			cluster.errorConnectVault = err
-			return nil, err
-		}
-		cluster.CanConnectVault = true
-		return client, err
+	if !cluster.Conf.IsVaultUsed() {
+		return nil, errors.New("Not using Vault")
 	}
-	return nil, errors.New("Not using Vault")
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, config.LvlDbg, "Vault authentication (%s)", cluster.Conf.VaultAuth)
+	client, err := cluster.primaryVault().Connect(context.Background())
+	if err != nil {
+		cluster.SetState("ERR00089", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00089"], err), ErrFrom: "TOPO"})
+		cluster.CanConnectVault = false
+		cluster.errorConnectVault = err
+		return nil, err
+	}
+	cluster.CanConnectVault = true
+	return client, nil
 }
 
 func (cluster *Cluster) GetCloudSubDomain() string {
@@ -1650,38 +1594,17 @@ func (cluster *Cluster) GetUniqueId() uint64 {
 	return sid
 }
 
+// GetVaultToken keeps the primary Vault's session token (vault-token), sent by mail on demand.
 func (cluster *Cluster) GetVaultToken() {
-	if cluster.Conf.IsVaultUsed() {
-
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, config.LvlDbg, "Vault AppRole Authentification")
-		vconfig := vault.DefaultConfig()
-
-		vconfig.Address = cluster.Conf.VaultServerAddr
-
-		client, err := vault.NewClient(vconfig)
-		if err != nil {
-			return
-		}
-
-		roleID := cluster.Conf.VaultRoleId
-		secretID := &auth.SecretID{FromString: cluster.Conf.VaultSecretId}
-
-		appRoleAuth, err := auth.NewAppRoleAuth(
-			roleID,
-			secretID,
-		)
-		if err != nil {
-			return
-		}
-
-		authInfo, err := client.Auth().Login(context.Background(), appRoleAuth)
-		if err != nil {
-			return
-		}
-		cluster.Conf.VaultToken = authInfo.Auth.ClientToken
-		cluster.Conf.SetDynamicFlag("vault-token", authInfo.Auth.ClientToken)
-		//cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlInfo, "COUCOU test %s", authInfo.Auth.ClientToken)
+	if !cluster.Conf.IsVaultUsed() {
+		return
 	}
+	client, err := cluster.primaryVault().Connect(context.Background())
+	if err != nil {
+		return
+	}
+	cluster.Conf.VaultToken = client.Token()
+	cluster.Conf.SetDynamicFlag("vault-token", client.Token())
 }
 
 // initResticLocalDir resolves the default local restic archive directory used
@@ -1981,11 +1904,9 @@ func (cluster *Cluster) GetCompactJson() ([]byte, error) {
 		return nil, err
 	}
 
-	for crkey := range cluster.Conf.Secrets.Snapshot() {
-		result, err = sjson.SetBytes(result, fmt.Sprintf("config.%s", strcase.ToLowerCamel(crkey)), "*:*")
-		if err != nil {
-			return nil, err
-		}
+	result, err = cluster.Conf.MaskSecretsJSON(result, "config.")
+	if err != nil {
+		return nil, err
 	}
 
 	// Overwrite clusterS3Providers with a safe snapshot acquired under the mutex

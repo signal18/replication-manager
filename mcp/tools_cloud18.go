@@ -99,7 +99,7 @@ func (s *MCPServer) registerCloud18Tools() {
 
 	s.addTool(
 		mcp.NewTool("list-cloud18-archive-offers",
-			mcp.WithDescription("The archive offers of the Cloud18 marketplace: each partner's storage sold for backup archives (S3 or Proxmox Backup Server), with its data center and location, how it is reached (Cloud18 sign-in or keys delivered per cluster), and its price per size unit and per BAU (20 GiB) per month; and the S3 storages behind the S3 offers. Published by Signal18 to every instance. A client can also archive on its own S3 storage, not listed here."),
+			mcp.WithDescription("The archive offers of the Cloud18 marketplace: each partner's storage sold for backup archives (S3 or Proxmox Backup Server), with its data center and location, how it is reached (Cloud18 sign-in or keys delivered per cluster), and its price per size unit and per BAU (20 GiB) per month; and the S3 storages behind the S3 offers; and the vault offers, the vaults a registered instance writes its clusters' secrets to with its Cloud18 identity (each cluster gets one as a credential store entry, off until its sponsor turns it on). Published by Signal18 to every instance. A client can also archive on its own S3 storage, not listed here."),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			c := s.repman.MarketplaceCatalogue()
@@ -108,6 +108,9 @@ func (s *MCPServer) registerCloud18Tools() {
 			}
 			if c.Archives == nil {
 				c.Archives = []config.MarketplaceArchiveOffer{}
+			}
+			if c.Vaults == nil {
+				c.Vaults = []config.MarketplaceVaultOffer{}
 			}
 			return mcp.NewToolResultText(toJSON(c)), nil
 		},
@@ -209,7 +212,7 @@ func (s *MCPServer) registerCloud18Tools() {
 
 	s.addTool(
 		mcp.NewTool("get-cloud18-cluster-quote",
-			mcp.WithDescription("Quote a database cluster on every infrastructure of the Cloud18 marketplace, as yourself, before creating it. The answer is a list of CHOICES, one per partner infrastructure, each with the partner, its zone and its infrastructure description (platform, CPU, data centers, geo localizations, bandwidth, certifications, SLA, dbops/sysops offered), then the units the request needs (DBU = db_count x dbu per database node, APU for the proxies and apps, the default BKU), whether they fit the free pool, whether you may create it there (or why not), and three MONTHLY PRICES from that infrastructure's own unit prices: minimal (every database node, proxy, app and the backups back to 1 unit, never under, the unused plan units at the under-commit price), plan (the plan fully used the whole month, with its breakdown) and overcommit (the database borrowing up to the over-commit cap the whole month, the borrowed units at the over-commit unit price), with the over-commit and under-commit unit prices. A partner that does not answer for your identity stays a described choice, with the reason and no price. Infrastructures where the creation is possible come first, cheapest first. Then create on the chosen one with cloud18-create-cluster and the same parameters."),
+			mcp.WithDescription("Quote a database cluster on every infrastructure of the Cloud18 marketplace, as yourself, before creating it. The answer is a list of CHOICES, one per partner infrastructure, each with the partner, its zone and its infrastructure description (platform, CPU, data centers, geo localizations, bandwidth, certifications, SLA, dbops/sysops offered), then the units the request needs (DBU = db_count x dbu per database node, APU for the proxies and apps, the default BKU), whether they fit the room (the free pool plus what the clusters for sale give back above their floors; roomNote says when the room comes from them), whether you may create it there (or why not), and three MONTHLY PRICES from that infrastructure's own unit prices: minimal (every database node, proxy, app and the backups back to 1 unit, never under, the unused plan units at the under-commit price), plan (the plan fully used the whole month, with its breakdown) and overcommit (the database borrowing up to the over-commit cap the whole month, the borrowed units at the over-commit unit price), with the over-commit and under-commit unit prices. A partner that does not answer for your identity stays a described choice, with the reason and no price. Infrastructures where the creation is possible come first, cheapest first. Then create on the chosen one with cloud18-create-cluster and the same parameters."),
 			mcp.WithString("db_image", mcp.Description("Database docker image, default mariadb:lts")),
 			mcp.WithNumber("db_count", mcp.Description("Number of database nodes, default 2 (a master and a replica), max 5; multi-master (Galera, group replication) 3, 5 or 7, default 3")),
 			mcp.WithNumber("dbu", mcp.Description("DBU per database node; default each infrastructure's (prov-db-dbu)")),

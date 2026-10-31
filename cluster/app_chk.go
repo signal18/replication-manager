@@ -75,7 +75,7 @@ func buildLocalCheckKey(appHost string, route config.Route) string {
 func (app *App) GetMonitoringStatus() string {
 	cluster := app.ClusterGroup
 	routes := app.GetAppConfig().Deployment.Routes
-	appErrKeys := []string{ErrAppConnectFailed, ErrAppUnexpectedStatus, ErrAppTCPConnectFailed, ErrAppUnsupportedProto, ErrAppGatewayConflict, ErrAppDbProvision, ErrAppPingFailed}
+	appErrKeys := []string{ErrAppConnectFailed, ErrAppUnexpectedStatus, ErrAppTCPConnectFailed, ErrAppUnsupportedProto, ErrAppGatewayConflict, ErrAppDbProvision, ErrAppPingFailed, ErrAppCertificate}
 	errStates := make(map[string]state.State)
 
 	// Database auto-create (#1870): a refused provision stays visible until one goes through.
@@ -128,7 +128,9 @@ func (app *App) GetMonitoringStatus() string {
 		// No route: the app lives on the cluster network only (a database, a cache). It
 		// is up when its port answers, probed over TCP on the app host; a process that
 		// listens on nothing (app-monitor-mode = ping, #1919) is up when its host answers
-		// an ICMP echo.
+		// an ICMP echo; a web service (app-monitor-mode = http/https, #2209) when a GET
+		// answers the expected status in time, https-cert also when its certificate is
+		// valid and not about to expire (else AppWarning).
 		app.ResetAppErrConsecutiveCntExcept("app-port") // routes gone: their debounce counters go with them
 		if errKey, err := app.probeNoRoute(time.Duration(cluster.Conf.Timeout) * time.Second); err != nil {
 			debouncedRecordAppErr("app-port", []state.State{{ErrType: "WARN", ErrKey: errKey, ErrDesc: app.noRouteProbeErrDesc(errKey, err), ServerUrl: app.Host}}, err)
@@ -143,6 +145,10 @@ func (app *App) GetMonitoringStatus() string {
 			}
 		}
 		app.SetRouteStatuses(nil)
+		if _, certOnly := errStates[ErrAppCertificate]; certOnly && len(errStates) == 1 {
+			// the service answers, its certificate needs an operator: a warning (#2209)
+			return stateAppWarning
+		}
 		if len(errStates) > 0 {
 			return stateFailed
 		}
@@ -166,7 +172,7 @@ func (app *App) GetMonitoringStatus() string {
 		case "https", "http":
 			status, _, err := app.GetAppLocalHTTPStatus(route, false)
 			res := &localResult{err: err, status: status, errKey: ErrAppConnectFailed}
-			if err != nil && strings.HasPrefix(err.Error(), "unexpected status code") {
+			if isAppUnexpectedStatus(err) {
 				res.errKey = ErrAppUnexpectedStatus
 			}
 			localCache[lKey] = res
@@ -205,7 +211,7 @@ func (app *App) GetMonitoringStatus() string {
 				} else {
 					errKey := ErrAppConnectFailed
 					errDesc := fmt.Sprintf(config.ClusterError[ErrAppConnectFailed], app.GetId(), extErr)
-					if strings.HasPrefix(extErr.Error(), "unexpected status code") {
+					if isAppUnexpectedStatus(extErr) {
 						errKey = ErrAppUnexpectedStatus
 						errDesc = fmt.Sprintf(config.ClusterError[ErrAppUnexpectedStatus], app.GetId(), extStatus)
 					}
@@ -319,6 +325,23 @@ func (app *App) GetDeploymentRoutesSnapshot() []config.Route {
 	return cp
 }
 
+// appUnexpectedStatusError: the HTTP check got an answer outside the accepted codes
+// (APPERR002), told from a failed connection (APPERR001) with errors.As, never by its text.
+type appUnexpectedStatusError struct{ Code int }
+
+func (e *appUnexpectedStatusError) Error() string {
+	return fmt.Sprintf("unexpected status code %d", e.Code)
+}
+
+// isAppUnexpectedStatus: err is an answer outside the accepted codes.
+func isAppUnexpectedStatus(err error) bool {
+	var statusErr *appUnexpectedStatusError
+	return errors.As(err, &statusErr)
+}
+
+// appHTTPCheckMaxBody: the most of a response body an HTTP check reads.
+const appHTTPCheckMaxBody = 1 << 20
+
 func (app *App) GetAppHTTPStatus(route config.Route, getBody bool) (int, []byte, error) {
 	cluster := app.ClusterGroup
 
@@ -386,7 +409,9 @@ func (app *App) GetAppHTTPStatus(route config.Route, getBody bool) (int, []byte,
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	// The body is read up to appHTTPCheckMaxBody (F4): a check decides on the status, and
+	// a service that runs elsewhere (#2209) may answer a page of any size on every tick.
+	body, err := io.ReadAll(io.LimitReader(resp.Body, appHTTPCheckMaxBody))
 	if err != nil {
 		return resp.StatusCode, nil, fmt.Errorf("error reading response body from %s: %v", urlpost, err)
 	}
@@ -406,7 +431,7 @@ func (app *App) GetAppHTTPStatus(route config.Route, getBody bool) (int, []byte,
 		}
 	}
 	if !accepted {
-		return resp.StatusCode, body, errors.New("unexpected status code")
+		return resp.StatusCode, body, &appUnexpectedStatusError{Code: resp.StatusCode}
 	}
 
 	if !getBody {

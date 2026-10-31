@@ -268,7 +268,11 @@ func (app *App) SetSetting(key, value string) error {
 	case "prov-app-template":
 		app.AppConfig.ProvAppTemplate = value
 	case "app-port":
-		app.AppConfig.AppPort = value
+		// the identity of the app and the port of its checks: a number, never empty (#2209)
+		if err := config.ValidatePort(strings.TrimSpace(value)); err != nil {
+			return fmt.Errorf("app-port: %w", err)
+		}
+		app.AppConfig.AppPort = strings.TrimSpace(value)
 	case "app-db-user":
 		app.AppConfig.AppDbUser = value
 	case "app-db-pass":
@@ -386,13 +390,38 @@ func (app *App) SetSetting(key, value string) error {
 	case "prov-app-ha-topology":
 		app.AppConfig.ProvAppHATopology = value
 	case "app-monitor-mode":
-		// How an app without a route is probed: port (TCP connect to app-port) or ping
-		// (ICMP echo to the host, for a process that listens on nothing, #1919).
+		// How an app without a route is probed: port (TCP connect to app-port), ping
+		// (ICMP echo to the host, for a process that listens on nothing, #1919), or http /
+		// https (a GET that must answer app-monitor-expect-status, #2209).
 		mode := strings.ToLower(strings.TrimSpace(value))
-		if mode != "" && mode != "port" && mode != "ping" {
-			return fmt.Errorf("app-monitor-mode: %q is not port or ping", value)
+		if mode != "" && mode != "port" && mode != "ping" && mode != "http" && mode != "https" && mode != "https-cert" {
+			return fmt.Errorf("app-monitor-mode: %q is not port, ping, http, https or https-cert", value)
 		}
 		app.AppConfig.AppMonitorMode = mode
+	case "app-monitor-path":
+		path := strings.TrimSpace(value)
+		if path != "" && !strings.HasPrefix(path, "/") {
+			return fmt.Errorf("app-monitor-path: %q must start with /", value)
+		}
+		app.AppConfig.AppMonitorPath = path
+	case "app-monitor-expect-status":
+		status := strings.TrimSpace(value)
+		if status != "" {
+			if _, err := config.ParseExpectStatus(status); err != nil {
+				return fmt.Errorf("app-monitor-expect-status: %w", err)
+			}
+		}
+		app.AppConfig.AppMonitorExpectStatus = status
+	case "app-monitor-cert-expire-days":
+		days := 0
+		if v := strings.TrimSpace(value); v != "" {
+			n, err := strconv.Atoi(v)
+			if err != nil || n < 0 {
+				return fmt.Errorf("app-monitor-cert-expire-days: %q is not a number of days", value)
+			}
+			days = n
+		}
+		app.AppConfig.AppMonitorCertExpireDays = days
 	case "app-stateful":
 		// Stateful app (minio and the like): accounted as DBU, not APU. The plan and the
 		// billing re-project on the spot; the sensor's next push lands on the DBU track.

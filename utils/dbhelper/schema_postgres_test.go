@@ -59,7 +59,7 @@ func TestPostgresStandbyStatusQueryShape(t *testing.T) {
 	for _, col := range []string{"Connection_name", "Master_Host", "Master_Port", "Master_User", "Master_Log_File",
 		"Read_Master_Log_Pos", "Relay_Master_Log_File", "Slave_IO_Running", "Slave_SQL_Running", "Exec_Master_Log_Pos",
 		"Seconds_Behind_Master", "Last_IO_Errno", "Last_SQL_Errno", "Last_SQL_Error", "Master_Server_Id", "Using_Gtid",
-		"Gtid_IO_Pos", "Gtid_Slave_Pos", "Slave_Heartbeat_Period", "Slave_SQL_Running_State"} {
+		"Gtid_IO_Pos", "Gtid_Slave_Pos", "Slave_heartbeat_period", "Slave_SQL_Running_State"} {
 		if !strings.Contains(postgresStandbyStatusQuery, `"`+col+`"`) {
 			t.Fatalf("column %s missing from the standby status", col)
 		}

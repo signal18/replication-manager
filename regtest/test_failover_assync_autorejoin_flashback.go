@@ -45,7 +45,7 @@ func (regtest *RegTest) TestFailoverAssyncAutoRejoinFlashback(cluster *cluster.C
 	cluster.StartDatabaseService(SaveMaster)
 	wg2.Wait()
 
-	if cluster.CheckTableConsistency("test.sbtest") != true {
+	if cluster.CheckTableConsistency(cluster.BenchTable()) != true {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Inconsitant slave")
 		return false
 	}

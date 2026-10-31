@@ -1,6 +1,6 @@
 import { createSlice, createAsyncThunk, isAnyOf } from '@reduxjs/toolkit'
 import { clusterService } from '../services/clusterService'
-import { handleError, showErrorBanner, showSuccessBanner } from '../utility/common'
+import { handleError, showErrorBanner, showSuccessBanner, showWarningBanner } from '../utility/common'
 import { get, isEqual } from 'lodash'
 
 const pendingKeySelectors = {
@@ -1889,10 +1889,10 @@ export const stagingProxy = createGuardedAsyncThunk(
   }
 )
 
-export const runSysBench = createGuardedAsyncThunk('cluster/runSysBench', async ({ clusterName, thread, test, time }, thunkAPI) => {
+export const runSysBench = createGuardedAsyncThunk('cluster/runSysBench', async ({ clusterName, thread, test, time, tables }, thunkAPI) => {
   try {
     const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
-    const { data, status } = await clusterService.runSysbench(clusterName, thread, baseURL, test, time)
+    const { data, status } = await clusterService.runSysbench(clusterName, thread, baseURL, test, time, tables)
     showSuccessBanner('Sysbench ran successfuly!', status, thunkAPI)
     return { data, status }
   } catch (error) {
@@ -1901,10 +1901,10 @@ export const runSysBench = createGuardedAsyncThunk('cluster/runSysBench', async 
   }
 })
 
-export const cleanupSysBench = createGuardedAsyncThunk('cluster/cleanupSysBench', async ({ clusterName, test }, thunkAPI) => {
+export const cleanupSysBench = createGuardedAsyncThunk('cluster/cleanupSysBench', async ({ clusterName, test, tables }, thunkAPI) => {
   try {
     const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
-    const { data, status } = await clusterService.cleanupSysbench(clusterName, test, baseURL)
+    const { data, status } = await clusterService.cleanupSysbench(clusterName, test, baseURL, tables)
     showSuccessBanner('Sysbench cleanup completed!', status, thunkAPI)
     return { data, status }
   } catch (error) {
@@ -1919,7 +1919,14 @@ export const runRegressionTests = createGuardedAsyncThunk(
     try {
       const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
       const { data, status } = await clusterService.runRegressionTests(clusterName, testName, baseURL)
-      showSuccessBanner('Regression test ran successfuly!', status, thunkAPI)
+      // the API answers 200 whatever the result: the banner follows the result
+      if (data?.result === 'PASS') {
+        showSuccessBanner(`Regression test ${testName} passed`, status, thunkAPI)
+      } else if (data?.result === 'SKIP') {
+        showWarningBanner(`Regression test ${testName} skipped: ${data?.['skip-reason'] || 'the cluster does not match its targets'}`, status, thunkAPI)
+      } else {
+        showErrorBanner(`Regression test ${testName} ended with ${data?.result || 'no result'}`, '', thunkAPI)
+      }
       return { data, status }
     } catch (error) {
       showErrorBanner('Regression test failed!', error, thunkAPI)

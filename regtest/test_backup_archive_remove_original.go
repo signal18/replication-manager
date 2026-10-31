@@ -214,10 +214,14 @@ func (regtest *RegTest) TestBackupArchiveRemoveOriginal(cl *clusterpkg.Cluster, 
 	// consistent: once sysbench ended, the replicas hold the master's sysbench table and
 	// replicate.
 	consistent := func(kind string) bool {
+		// the last attempt's results, not a second checksum that could disagree with them
+		var running, same bool
 		if !physReseedWait(5*time.Minute, func() bool {
-			return cl.CheckSlavesRunning() && cl.CheckTableConsistency("replication_manager_schema.sbtest1")
+			running = cl.CheckSlavesRunning()
+			same = running && cl.CheckTableConsistency(cl.BenchTable())
+			return same
 		}) {
-			return fail("after the %s reseed under sysbench: replicas running %v, replication_manager_schema.sbtest1 consistent %v", kind, cl.CheckSlavesRunning(), cl.CheckTableConsistency("replication_manager_schema.sbtest1"))
+			return fail("after the %s reseed under sysbench: replicas running %v, %s consistent %v", kind, running, cl.BenchTable(), same)
 		}
 		return true
 	}

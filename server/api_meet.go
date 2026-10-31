@@ -90,18 +90,34 @@ func extractToken(r *http.Request) (string, error) {
 }
 
 func (repman *ReplicationManager) getUserIDFromHeader(r *http.Request) (string, error) {
-	tokString, err := extractToken(r)
+	userInfo, err := repman.getUserInfoFromHeader(r)
 	if err != nil {
-		fmt.Printf("Error extracting token: %v\n", err)
-		return "", err
-	}
-	userInfo, err := repman.ParseWebSocketJWT(tokString)
-	if err != nil {
-		fmt.Printf("Error parsing JWT: %v\n", err)
 		return "", err
 	}
 	return userInfo["MeetUserID"], nil
 }
+
+// getUserInfoFromHeader is the session of the request's bearer token (GetUserInfoMap).
+func (repman *ReplicationManager) getUserInfoFromHeader(r *http.Request) (map[string]string, error) {
+	tokString, err := extractToken(r)
+	if err != nil {
+		fmt.Printf("Error extracting token: %v\n", err)
+		return nil, err
+	}
+	userInfo, err := repman.ParseWebSocketJWT(tokString)
+	if err != nil {
+		fmt.Printf("Error parsing JWT: %v\n", err)
+		return nil, err
+	}
+	return userInfo, nil
+}
+
+// chatNeedsPassword marks a session repman cannot open the support chat for: a Sign in with
+// Cloud18 login gives repman neither the person's password nor a GitLab session, and the chat
+// signs in through GitLab. The GUI sends the person to the chat's web app instead, where they
+// sign in themselves. The instance's account is not used: every such session on a repman would
+// read the same channels and history, one client the other's.
+const chatNeedsPassword = "password"
 
 // @Summary Retrieve Meet user information.
 // @Description Fetch user-related information, including available channels and unread messages.
@@ -110,6 +126,7 @@ func (repman *ReplicationManager) getUserIDFromHeader(r *http.Request) (string, 
 // @Param X-User-ID header string true "User ID for authentication"
 // @Success 200 {array} map[string]interface{} "User information retrieved successfully"
 // @Failure 401 {string} string "Unauthorized user"
+// @Failure 409 {object} map[string]string "A Sign in with Cloud18 session: open the chat's web app at url"
 // @Failure 500 {string} string "Internal Server Error"
 // @Router /meet/info [get]
 func (repman *ReplicationManager) MeetInfoHandler(w http.ResponseWriter, r *http.Request) {
@@ -117,8 +134,14 @@ func (repman *ReplicationManager) MeetInfoHandler(w http.ResponseWriter, r *http
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 
-	userID, err := repman.getUserIDFromHeader(r)
+	userInfo, err := repman.getUserInfoFromHeader(r)
+	userID := userInfo["MeetUserID"]
 
+	if err == nil && userInfo["Chat"] == chatNeedsPassword {
+		w.WriteHeader(http.StatusConflict)
+		json.NewEncoder(w).Encode(map[string]string{"url": meethelper.MeetURL})
+		return
+	}
 	if userID == "" || err != nil {
 		http.Error(w, "Missing user ID in header", http.StatusInternalServerError)
 		if repman.Conf.LogSupport {

@@ -13,8 +13,8 @@ import (
 
 const testCloud18Realm = "https://identity.example/realms/cloud18"
 
-// connectCloud18ForTest writes the Cloud18 login file of the cluster's instance (#2159), as a
-// person's device login does: the offline token encrypted, in a working directory of its own.
+// connectCloud18ForTest writes the Cloud18 login file of the cluster's instance (#2159), as the
+// sign-in with the registered account does: the offline token encrypted, in a working directory of its own.
 func connectCloud18ForTest(t *testing.T, cl *Cluster) {
 	t.Helper()
 	cl.Conf.WorkingDir = t.TempDir()

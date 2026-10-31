@@ -699,6 +699,9 @@ func TestSetClusterSetting_HaproxyPassword(t *testing.T) {
 	cl := newTestClusterForAPI(t)
 	cl.Conf.Secrets = config.NewSecrets(nil)
 	cl.ConfigManager = newConfigManagerForTest()
+	// the default (#2227): versioning on, with the key, the change is a version kept encrypted
+	cl.Conf.MonitoringSecretVersioning = true
+	cl.Conf.SecretKey = []byte("0123456789abcdef")
 	repman := newTestRepmanWithCluster(t, cl.Name, cl)
 
 	encoded := base64.StdEncoding.EncodeToString([]byte("s3cr3t"))
@@ -2241,5 +2244,31 @@ func TestValidateS3ProviderAPIRequest_Cloud18SSOWithoutKeys(t *testing.T) {
 	p.Cloud18SSO = false
 	if err := validateS3ProviderAPIRequest(p, cl); err == nil {
 		t.Error("a custom provider without SSO needs its keys")
+	}
+}
+
+// The sysbench settings resolve in setClusterSetting (#2239): set when valid, refused and
+// unchanged otherwise.
+func TestSetClusterSetting_Sysbench(t *testing.T) {
+	cl := newTestClusterForAPI(t)
+	cl.Conf.Secrets = config.NewSecrets(nil)
+	cl.ConfigManager = newConfigManagerForTest()
+	repman := newTestRepmanWithCluster(t, cl.Name, cl)
+
+	for name, value := range map[string]string{"sysbench-test": "oltp_point_select", "sysbench-time": "100", "sysbench-threads": "40", "sysbench-tables": "8", "sysbench-scale": "4"} {
+		if err := repman.setClusterSetting(cl, name, value); err != nil {
+			t.Fatalf("setClusterSetting(%s, %s): %v", name, value, err)
+		}
+	}
+	if c := cl.Conf; c.SysbenchTest != "oltp_point_select" || c.SysbenchTime != 100 || c.SysbenchThreads != 40 || c.SysbenchTables != 8 || c.SysbenchScale != 4 {
+		t.Fatalf("settings not applied: %s %d %d %d %d", c.SysbenchTest, c.SysbenchTime, c.SysbenchThreads, c.SysbenchTables, c.SysbenchScale)
+	}
+	for name, value := range map[string]string{"sysbench-test": "oltp_nope", "sysbench-time": "0", "sysbench-threads": "-1", "sysbench-tables": "x", "sysbench-scale": ""} {
+		if err := repman.setClusterSetting(cl, name, value); err == nil {
+			t.Fatalf("setClusterSetting(%s, %q): expected an error", name, value)
+		}
+	}
+	if c := cl.Conf; c.SysbenchTest != "oltp_point_select" || c.SysbenchTime != 100 || c.SysbenchThreads != 40 || c.SysbenchTables != 8 || c.SysbenchScale != 4 {
+		t.Fatalf("refused values changed the settings: %s %d %d %d %d", c.SysbenchTest, c.SysbenchTime, c.SysbenchThreads, c.SysbenchTables, c.SysbenchScale)
 	}
 }

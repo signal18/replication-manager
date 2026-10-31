@@ -553,7 +553,7 @@ type SlaveStatus struct {
 	UsingGtid                sql.NullString `db:"Using_Gtid" json:"usingGtid"`
 	GtidIOPos                sql.NullString `db:"Gtid_IO_Pos" json:"gtidIoPos"`
 	GtidSlavePos             sql.NullString `db:"Gtid_Slave_Pos" json:"gtidSlavePos"`
-	SlaveHeartbeatPeriod     float64        `db:"Slave_Heartbeat_Period" json:"slaveHeartbeatPeriod"`
+	SlaveHeartbeatPeriod     float64        `db:"Slave_heartbeat_period" json:"slaveHeartbeatPeriod"`
 	ExecutedGtidSet          sql.NullString `db:"Executed_Gtid_Set" json:"executedGtidSet"`
 	RetrievedGtidSet         sql.NullString `db:"Retrieved_Gtid_Set" json:"retrievedGtidSet"`
 	SlaveSQLRunningState     sql.NullString `db:"Slave_SQL_Running_State" json:"slaveSQLRunningState"`
@@ -576,6 +576,10 @@ type SlaveStatus struct {
 	MasterSSLCAFile           sql.NullString `db:"Master_SSL_CA_File" json:"masterSslCaFile"`
 	MasterSSLCAPath           sql.NullString `db:"Master_SSL_CA_Path" json:"masterSslCaPath"`
 	MasterSSLVerifyServerCert sql.NullString `db:"Master_SSL_Verify_Server_Cert" json:"masterSslVerifyServerCert"`
+
+	// MariaDB only, in SHOW ALL SLAVES STATUS (not in SHOW SLAVE '<name>' STATUS): the
+	// heartbeats this channel received (#2208)
+	SlaveReceivedHeartbeats sql.NullInt64 `db:"Slave_received_heartbeats" json:"slaveReceivedHeartbeats"`
 }
 
 // ImportFromReplicaStatus converts ReplicaStatus to SlaveStatus format

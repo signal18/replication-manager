@@ -13,10 +13,12 @@ export const selectMeetUIState = createSelector(
     (state) => state?.meet?.meetInfo,
     (state) => state?.meet?.unreadMessagesByChannel,
     (state) => state?.meet?.meetError,
+    (state) => state?.meet?.meetWebURL,
   ],
-  (meetInfo, unreadMessagesByChannel, meetError) => ({
+  (meetInfo, unreadMessagesByChannel, meetError, meetWebURL) => ({
     meetInfo,
     unreadMessagesByChannel,
     meetError,
+    meetWebURL,
   })
 );

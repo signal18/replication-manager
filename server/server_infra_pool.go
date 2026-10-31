@@ -21,6 +21,7 @@ type infraCapacityInputs struct {
 	Cores, MemMB, DiskGB, Iops, NetMbps float64
 	Src                                 map[string]string  // axis -> "config" | "agents"
 	AgentCores                          map[string]float64 // per-agent physical cores
+	AgentsCores, AgentsMemMB            float64            // the agents' sums, whatever the override
 }
 
 func (repman *ReplicationManager) sortedClusters() []*cluster.Cluster {
@@ -65,6 +66,7 @@ func (repman *ReplicationManager) infraCapacityInputs(clusters []*cluster.Cluste
 		in.Src[axis] = "agents"
 		return agents
 	}
+	in.AgentsCores, in.AgentsMemMB = sumCores, sumMemMB
 	in.Cores = pick("cpu", repman.Conf.ResourceManagerInfraCpuCores, sumCores)
 	in.MemMB = pick("mem", repman.Conf.ResourceManagerInfraMemoryMB, sumMemMB)
 	in.DiskGB = pick("disk", repman.Conf.ResourceManagerInfraDiskGB, 0)
@@ -84,6 +86,8 @@ func (repman *ReplicationManager) infraCapacityInputs(clusters []*cluster.Cluste
 // plan rules, 1 DBU per node, 1 APU per proxy and per running app instance, an admin-locked
 // plan whole), so it stays on sale with a lower plan instead of losing an app. Its BKU plan
 // stays counted whole by the ledger. Over-commit is measured on resources, not plans.
+// With cloud18-self-service-clusters-can-consume-for-sale off, a self-service client may take
+// nothing from the offers: ForSale is 0.
 type InfraUnitPool struct {
 	Known      bool    `json:"known"`
 	UsableDbu  float64 `json:"usableDbu"`
@@ -95,6 +99,13 @@ type InfraUnitPool struct {
 	FreeApu    float64 `json:"freeApu"`
 	ForSaleApu float64 `json:"forSaleApu"`
 }
+
+// RoomDbu and RoomApu are what a self-service creation can take: the free pool plus what
+// the clusters for sale give back. The creation check and the Cloud18 quote both read the
+// room here, so a quote never refuses what a creation accepts (#2212).
+func (p InfraUnitPool) RoomDbu() float64 { return p.FreeDbu + p.ForSaleDbu }
+
+func (p InfraUnitPool) RoomApu() float64 { return p.FreeApu + p.ForSaleApu }
 
 func (repman *ReplicationManager) infraUnitPool() InfraUnitPool {
 	rm := repman.resourceManager
@@ -120,7 +131,7 @@ func (repman *ReplicationManager) infraUnitPool() InfraUnitPool {
 		dbu, apu := float64(cl.GetPlanDbu()), rm.AppPlanByCluster(cl.Name).Apu
 		pool.PlannedDbu += dbu
 		pool.PlannedApu += apu
-		if cl.Conf.Cloud18Shared {
+		if cl.Conf.Cloud18Shared && repman.Conf.Cloud18SelfServiceClustersCanConsumeForSale {
 			floorDbu, floorApu := cl.PlanFloorUnits()
 			pool.ForSaleDbu += math.Max(0, dbu-floorDbu)
 			pool.ForSaleApu += math.Max(0, apu-floorApu)

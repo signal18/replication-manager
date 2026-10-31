@@ -172,6 +172,21 @@ type ServerMonitor struct {
 	ReplicationGroupCommitSize  float64                     `json:"replicationGroupCommitSize"` // avg binlog group commit size over the last tick (Binlog_commits / Binlog_group_commits deltas): the commit concurrency a slave can apply in parallel; 0 when no commit in the tick
 	ReplicationParallelThreads  int64                       `json:"replicationParallelThreads"` // slave_parallel_threads (MariaDB) / slave_parallel_workers (MySQL) as the server runs it -- the workers, to compare with the group commit size
 	lastParallelModeEnforce     time.Time                   `json:"-"`                          // last STOP/SET/START of slave_parallel_mode by CheckSlaveSettings (rate limit)
+
+	// when the managed channel last received from its source and its heartbeat period, for
+	// the false-positive heartbeat check (#2208, srv_heartbeat.go)
+	ReplicationLastReceivedAt     time.Time `json:"replicationLastReceivedAt"`
+	ReplicationHeartbeatPeriod    float64   `json:"replicationHeartbeatPeriod"`
+	replicationHeartbeatKnown     bool
+	replicationReceivedHeartbeats int64
+	replicationReceivedPosition   string
+	replicationReceivedSource     string
+	replicationReceivedMutex      sync.Mutex // the fields above: written by Refresh, read by the failover check
+	// force-slave-heartbeat's last failure: read and written by CheckSlaveSettings only, on
+	// the monitor goroutine, so outside replicationReceivedMutex
+	heartbeatEnforceFailed       bool
+	heartbeatEnforceFailedPeriod float64
+
 	ReplicationHealth           string                      `json:"replicationHealth"`
 	EventStatus                 []dbhelper.Event            `json:"eventStatus"`
 	FullProcessList             []dbhelper.Processlist      `json:"-"`
@@ -414,7 +429,7 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	server.Domain = domain
 	server.TLSConfigUsed = ConstTLSCurrentConfig
 	server.ClusterGroup = cluster
-	server.DBVersion, _ = version.NewMySQLVersion("Unknowed-0.0.0", "")
+	server.DBVersion, _ = version.NewMySQLVersion(serverVersionPlaceholder, "")
 	server.Name, server.Port, server.PostgressDB = misc.SplitHostPortDB(url)
 	if server.PostgressDB != "" {
 		// host:port/database is the PostgreSQL form of a host entry: this server is opened
@@ -1045,6 +1060,8 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 				}
 			}
 			server.FailCount = 0
+			// back after a failure: a new event, owed its rejoin attempt (#2226)
+			cluster.forgetRejoinMarker(server.URL)
 			cluster.backendStateChangeProxies()
 			server.SendAlert()
 
@@ -1620,6 +1637,7 @@ func (server *ServerMonitor) Refresh() error {
 
 	// select a replication status get an err if repliciations array is empty
 	server.SlaveStatus, err = server.GetSlaveStatus(server.ReplicationSourceName)
+	server.refreshReplicationLastReceived()
 	if err != nil {
 		// Do not reset  server.MasterServerID = 0 as we may need it for recovery
 		if server.IsGroupReplicationSlave {

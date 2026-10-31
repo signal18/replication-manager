@@ -19,8 +19,8 @@ import (
 // replicas), makes another member PRIMARY on a switchover and leaves a lost PRIMARY to the
 // group's own election. These tests read the group live on every member
 // (performance_schema.replication_group_members, through the dbhelper reads the monitor
-// uses) and check replication-manager's view against it (F5). FUNCTIONAL: they gate on the
-// topology, never on the orchestrator.
+// uses) and check replication-manager's view against it (F5). FUNCTIONAL: their targets
+// (testTargets) are the topology, never the orchestrator.
 
 // groupReplicationMembers reads the group on each server: the ONLINE PRIMARY members and
 // the ONLINE SECONDARY ones. A server that answers neither is not an online member.
@@ -81,23 +81,12 @@ func groupReplicationProbeEverywhere(cl *cluster.Cluster, primary *cluster.Serve
 	return nil
 }
 
-func groupReplicationGate(cl *cluster.Cluster, name string) bool {
-	if cl.GetTopology() != config.TopoMultiMasterGrouprep {
-		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Skipping %s: requires topology %s, cluster is %s", name, config.TopoMultiMasterGrouprep, cl.GetTopology())
-		return false
-	}
-	return true
-}
-
 // TestGroupReplicationBootstrap checks a bootstrapped group: every server an ONLINE member,
 // one PRIMARY, replication-manager's master that PRIMARY, and a write on it reaching every
 // member.
 func (regtest *RegTest) TestGroupReplicationBootstrap(cl *cluster.Cluster, conf string, test *cluster.Test) bool {
 	logf := func(format string, args ...interface{}) {
 		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", format, args...)
-	}
-	if !groupReplicationGate(cl, "GroupReplicationBootstrap") {
-		return true
 	}
 	var primary *cluster.ServerMonitor
 	var err error
@@ -121,9 +110,6 @@ func (regtest *RegTest) TestGroupReplicationBootstrap(cl *cluster.Cluster, conf 
 func (regtest *RegTest) TestGroupReplicationSwitchover(cl *cluster.Cluster, conf string, test *cluster.Test) bool {
 	logf := func(format string, args ...interface{}) {
 		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", format, args...)
-	}
-	if !groupReplicationGate(cl, "GroupReplicationSwitchover") {
-		return true
 	}
 	before, err := groupReplicationHealthy(cl)
 	if err != nil {
@@ -158,9 +144,6 @@ func (regtest *RegTest) TestGroupReplicationSwitchover(cl *cluster.Cluster, conf
 func (regtest *RegTest) TestGroupReplicationPrimaryLoss(cl *cluster.Cluster, conf string, test *cluster.Test) bool {
 	logf := func(format string, args ...interface{}) {
 		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", format, args...)
-	}
-	if !groupReplicationGate(cl, "GroupReplicationPrimaryLoss") {
-		return true
 	}
 	lost, err := groupReplicationHealthy(cl)
 	if err != nil {

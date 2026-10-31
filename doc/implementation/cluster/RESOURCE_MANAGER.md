@@ -204,7 +204,12 @@ from it). `RefreshBackupUnits` (every 30 ticks, `cluster_bku.go`) measures **loc
 the restic archive when its repository is a local path; a backup kept after its push to the
 archive counts TWICE, it uses the disk twice; never a catalog sum) and **remote** = the restic
 repository raw-data size (`restic stats --mode raw-data`, refreshed by `ResticFetchRepo`) ONLY when
-that repository is S3/SFTP (`resticRepositoryIsRemote`; a local restic repository is local disk),
+the repository restic runs is S3/SFTP (`resticRepositoryIsRemote` on `resticRepoPathFor`, not on
+`backup-restic-repository`, whose default is an S3 URL; a local restic repository is local disk),
+or an external plugin's archive at its last size read; **priced** at the BAU price of the offer the
+attached archive runs on (`MarketplaceCatalogue.ArchiveOffer`, the `priceEurBauMonth` the archive
+offers show), else `cloud18-marketplace-bau-price`, 0 on the client's own storage (fixed 2026-10-29:
+what is billed is what was shown),
 converts local at the Storage-profile ratio (20 GB/BKU) into `BKUReading` (`backupUnits` in
 the cluster JSON) and asserts **WARN0225** when local BKU is over the plan (over-commit, billed
 never blocked; in `pstates30`), and remote at the same ratio into `BAUReading`
@@ -306,6 +311,36 @@ Per **agent** (physical, capping — an agent is NOT a contract):
 - `AgentCapacity` — monitored + modifiable per axis (cores/mem/disk from node stats;
   iops from a multi-core sysbench calibration, #1779). `UsableCeilingDBU` = metal ×
   `cap%` (`resource-manager-infra-quota-pct`), which protects non-repman workloads.
+
+## The discovered capacity in the config (2026-10-28)
+
+The infrastructure capacity is picked per axis by `infraCapacityInputs` (`server/server_infra_pool.go`):
+the `resource-manager-infra-*` override when set, else what the agents show (cores × SMT gain,
+memory; disk and IOPS have no agent value). The agents' part only lived in memory, so tools reading
+the config repository could not see the capacity unless it was typed in by hand. Decided 2026-10-28:
+the capacity discovered from the agents goes into the config, not into a separate state file.
+
+- `resource-manager-discovered-cpu-cores` / `resource-manager-discovered-memory-mb` (server scope):
+  the agents' sums as `infraCapacityInputs` makes them (each physical agent once), whatever the
+  override (`AgentsCores` / `AgentsMemMB`). **Output only**: replication-manager never reads them
+  back; the capacity, the ledger and the Resource Manager page are unchanged, the overrides still win.
+- `SaveDiscoveredResources` (`server/server_resources_discovered.go`) updates a value only when it is
+  > 0 and differs (cores rounded to 0.01, MB to 1, so a stable hardware never rewrites the config),
+  then `Save()`: the config-sync gate writes `default.toml` and pushes it. An axis the agents do not
+  show keeps its last value (no flap at a restart). It writes only through `Save()`, never a file
+  itself (T25: the config-sync gate is the one writer of `default.toml`).
+- A key set in a config file (immutable, `IsVariableImmutable`) is the operator's: the loop never
+  rewrites it (logged once). Without this, the agents' value would replace it in memory, `SaveDynamic`
+  would drop it from `default.toml` (immutable keys are never saved there), and the file value would
+  come back at each restart only to be replaced again.
+- Its own timer, `discoveredResourcesLoop`, not the monitoring loop: after a start it retries every
+  `monitoring-ticker` until the agents have been read, then every `resource-manager-discovered-interval`
+  (default 3600 s; read again before each wait, so a change applies without a restart; 0 = off). It
+  stops within a second of replication-manager stopping.
+- Instance-local (`instanceLocalConfigKeys`): each instance writes what its own agents show; peers
+  never replicate the two values.
+- Concurrency: like the settings API (`setRepmanSetting`), it writes `Conf` fields from its own
+  goroutine while the config-sync goroutine may be saving; `Conf` has no lock of its own.
 
 ## Restore on reload (the graph flap)
 
@@ -1119,7 +1154,7 @@ sponsor, emails for SSO), captured with every tick so a cluster dropped on the 1
 
 **Consumed units of the logged user:** `GET /api/me/units` (any logged user; `handlerMuxMyUnits`) answers, for the clusters the user sponsors or has access to, invoice lines per unit family: reserved (the plan, debit), borrowed (over the plan, debit), unused (under the plan, credit), in unit-months so far with the end-of-month projection, subtotal per cluster and totals per unit kind; on a Cloud18 instance (`cloud18` on) each line also carries the amount in EUR at the cluster's unit price, + debit / - credit, and its projection; elsewhere units only (the money is the provider's). Shown in the GUI under the user pill, *Consumed* tab (`UserInfoPanel`).
 
-**Statement file = the record for the back office:** `<working dir>/Units.log` (JSON; the running month, rewritten every minute, never staged by the periodic git sync; at the month rollover the closed month is committed and pushed ONCE to the git sync repository, "Units statement YYYY-MM final", then the file starts the new month — past months are the git history of `Units.log`; `GET /api/global/price/{month}` serves the current month only), formerly `billing/billing-YYYY-MM.json`
+**Statement file = the record for the back office:** `<working dir>/Units.log` (JSON; the running month, rewritten every minute, never staged by the periodic git sync; at the month rollover the closed month is committed and pushed ONCE to the git sync repository, "Units statement YYYY-MM final", then the file starts the new month — past months are the git history of `Units.log`; `GET /api/global/price/{month}` serves the current month only); before each push the closed month is copied to `usage_<MM>.log`, committed with it and kept: a yearly rotating buffer (the same month a year later replaces it), so the month stays on disk whether or not it was pushed; formerly `billing/billing-YYYY-MM.json`
 (`MonthStatement`: month, prices, per cluster partner / sponsors / rows with the unit-months and
 EUR, totals, projection), written atomically every minute (`Tick`, from
 ProduceContractedCapacityState) and reloaded at start; at the month change the file is closed

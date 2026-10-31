@@ -144,6 +144,31 @@ func (server *ServerMonitor) WaitSyncToTarget(target ReplicationTarget, timeout 
 	return reached, err
 }
 
+// waitReplicaReachTarget waits, with no timer, for the replica url to reach target in
+// WaitSyncToTarget turns of 30 s: true once reached. It ends without it (false, nil) when the
+// replica is gone or keepWaiting says so before a turn, and with an error on an SQL error of the
+// wait or when the replica's applied position did not move for replicaNoProgressFor. Read by URL
+// at each turn: a configuration reload rebuilds the ServerMonitor.
+func (cluster *Cluster) waitReplicaReachTarget(url string, target ReplicationTarget, keepWaiting func(sl *ServerMonitor) bool) (bool, error) {
+	var progress replicaProgress
+	for {
+		sl := cluster.GetServerFromURL(url)
+		if sl == nil || sl.Conn == nil || !keepWaiting(sl) {
+			return false, nil
+		}
+		reached, err := sl.WaitSyncToTarget(target, 30)
+		if err != nil {
+			return false, err
+		}
+		if reached {
+			return true, nil
+		}
+		if stalled, still := progress.stalled(sl.AppliedPosition()); stalled {
+			return false, fmt.Errorf("no progress (still at %s for %s)", progress.applied, still.Round(time.Second))
+		}
+	}
+}
+
 func (server *ServerMonitor) WaitDatabaseStart() error {
 	cluster := server.ClusterGroup
 	exitloop := 0

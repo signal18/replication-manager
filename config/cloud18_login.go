@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -437,4 +438,105 @@ func (conf *Config) Cloud18LoginAccess(refresh string) (string, error) {
 		e.refreshEnd = end
 	}
 	return e.token, nil
+}
+
+// Sign in with Cloud18 (#2185): on a registered repman with a public https address, the browser
+// signs in at the realm itself (authorization code, PKCE) and comes back to the repman's callback;
+// the realm's session then signs the person in on every other such repman without a password. No
+// repman talks to another. The other repmans keep the Sign in form only (Cloud18Login).
+
+// Cloud18SSOCallbackPath is the callback route of the browser sign-in, under api-public-url (the
+// realm's client lists it for each such repman).
+const Cloud18SSOCallbackPath = "/api/auth/cloud18/callback"
+
+// Cloud18SSO says whether this repman offers Sign in with Cloud18, and if not why: registered to
+// Cloud18 (whatever its plan), a public https address (api-public-url, not the loopback default nor
+// a private address), a realm, and cloud18-sso-login on. It returns the public address.
+func (conf *Config) Cloud18SSO() (string, error) {
+	switch {
+	case !conf.Cloud18SSOLogin:
+		return "", errors.New("off (cloud18-sso-login)")
+	case !conf.Cloud18 || conf.Cloud18GitUser == "":
+		return "", errors.New("not registered to Cloud18")
+	}
+	if _, err := conf.cloud18Issuer(); err != nil {
+		return "", err
+	}
+	public := strings.TrimRight(strings.TrimSpace(conf.APIPublicURL), "/")
+	u, err := url.Parse(public)
+	if err != nil || u.Scheme != "https" || u.Hostname() == "" {
+		return "", errors.New("no public https address (api-public-url)")
+	}
+	if ip := net.ParseIP(u.Hostname()); u.Hostname() == "localhost" || (ip != nil && (ip.IsLoopback() || ip.IsPrivate() || ip.IsUnspecified())) {
+		return "", errors.New("api-public-url is not a public address")
+	}
+	return public, nil
+}
+
+// Cloud18SSOMode is how the browser goes to the realm: to sign in (the email prefilled when the
+// person typed it), silently (prompt=none: signed in only if the person already has a realm session,
+// the realm answers login_required otherwise, nothing shown), or to sign up (the realm's own form).
+type Cloud18SSOMode struct {
+	Hint   string // login_hint: the email typed on repman's login page, never a password
+	Silent bool
+	SignUp bool
+}
+
+// Cloud18SSOAuthorizeURL is where the browser goes: the realm's authorization (or sign-up) for the
+// login client, back to this repman's callback.
+func (conf *Config) Cloud18SSOAuthorizeURL(public, state, challenge string, mode Cloud18SSOMode) (string, error) {
+	issuer, err := conf.cloud18Issuer()
+	if err != nil {
+		return "", err
+	}
+	q := url.Values{"client_id": {ConstCloud18LoginClientID}, "redirect_uri": {public + Cloud18SSOCallbackPath}, "response_type": {"code"},
+		"scope": {"openid email profile"}, "state": {state}, "code_challenge": {challenge}, "code_challenge_method": {"S256"}}
+	if mode.Hint != "" {
+		q.Set("login_hint", mode.Hint)
+	}
+	endpoint := "/protocol/openid-connect/auth?"
+	switch {
+	case mode.SignUp:
+		endpoint = "/protocol/openid-connect/registrations?"
+	case mode.Silent:
+		q.Set("prompt", "none")
+	}
+	return issuer + endpoint + q.Encode(), nil
+}
+
+// Cloud18SSOExchange trades the code of the browser sign-in for the realm tokens.
+func (conf *Config) Cloud18SSOExchange(public, code, verifier string) (*Cloud18Login, error) {
+	issuer, err := conf.cloud18Issuer()
+	if err != nil {
+		return nil, err
+	}
+	status, body, err := postCloud18Realm(issuer+"/protocol/openid-connect/token", url.Values{"grant_type": {"authorization_code"},
+		"code": {code}, "redirect_uri": {public + Cloud18SSOCallbackPath}, "client_id": {ConstCloud18LoginClientID}, "code_verifier": {verifier}})
+	if err != nil {
+		return nil, err
+	}
+	if status != http.StatusOK {
+		return nil, cloud18Status("the realm", status, ": "+cloud18RealmError(body))
+	}
+	var a cloud18TokenAnswer
+	if err := json.Unmarshal(body, &a); err != nil || a.AccessToken == "" {
+		return nil, errors.New("the realm gave no token")
+	}
+	return &Cloud18Login{Access: a.AccessToken, Refresh: a.RefreshToken}, nil
+}
+
+// Cloud18SSOLogoutURL ends the person's realm session (every such repman asks again) and comes back to
+// this repman's login page.
+func (conf *Config) Cloud18SSOLogoutURL(public string) (string, error) {
+	issuer, err := conf.cloud18Issuer()
+	if err != nil {
+		return "", err
+	}
+	q := url.Values{"client_id": {ConstCloud18LoginClientID}, "post_logout_redirect_uri": {public + "/login"}}
+	return issuer + "/protocol/openid-connect/logout?" + q.Encode(), nil
+}
+
+// Cloud18PKCE is a PKCE verifier and its S256 challenge, for the browser sign-in.
+func Cloud18PKCE() (string, string, error) {
+	return pkcePair()
 }

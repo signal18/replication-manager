@@ -102,7 +102,8 @@ func proxyReadBackendWaitFor(timeout time.Duration, cond func() bool) bool {
 // (HAProxy, ProxySQL) via backendReadEligible; any other attached proxy type
 // is left alone rather than guessed at. Fails with a specific reason rather
 // than a false pass if no recognized proxy is attached or there's no
-// replica to test against — this framework has no "skip" result.
+// replica to test against — a prerequisite its targets (testTargets) do not
+// declare fails, it is not skipped.
 func (regtest *RegTest) TestProxyReadBackendReconciliation(cl *cluster.Cluster, conf string, test *cluster.Test) bool {
 	logf := func(level, format string, args ...interface{}) {
 		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModProxy, level, format, args...)

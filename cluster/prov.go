@@ -139,7 +139,12 @@ func (cluster *Cluster) ProvisionServices() error {
 	path := cluster.WorkingDir + ".json"
 	os.Remove(path)
 	cluster.ResetCrashes()
-	for _, server := range cluster.Servers {
+	cluster.addMySQLGTIDTag()
+	// Galera: the bootstrap node first, the joiners wait for its Primary component; the
+	// node is kept for the whole provision, the order and the rendered configs agree
+	defer cluster.pinGaleraBootstrap()()
+	servers := cluster.galeraProvisionOrder()
+	for _, server := range servers {
 		hasConfigPath[server.HostCnf] = server.HasConfigPathCookie()
 		server.DelConfigPathCookie() // remove the config path cookie since we are going to provision it
 		server.WipeDeltaConfig()
@@ -159,7 +164,7 @@ func (cluster *Cluster) ProvisionServices() error {
 
 		}
 		cluster.ProvisionDatabaseScript(server)
-		// Galera is always serialized: the first node bootstraps, then each joiner takes
+		// Galera is always serialized: the bootstrap node first, then each joiner takes
 		// its SST alone; started together, two joiners raced for the one donor and Galera
 		// aborted the second ("Will never receive state", dev3 galera-sst 2026-10-10)
 		if cluster.GetConf().ProvSerialized || cluster.GetTopologyTarget() == config.TopoMultiMasterWsrep {
@@ -168,7 +173,7 @@ func (cluster *Cluster) ProvisionServices() error {
 
 	}
 
-	for _, server := range cluster.Servers {
+	for _, server := range servers {
 		err := <-cluster.errorChan
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Provisionning error %s on  %s", err, cluster.Name+"/svc/"+server.Name)
@@ -309,7 +314,20 @@ func (cluster *Cluster) InitProxyService(prx DatabaseProxy) error {
 	return nil
 }
 
+// refuseMonitorOnlyApp: a monitor-only app (#2209, app-monitor-only) runs elsewhere;
+// provision, unprovision and the service actions refuse it instead of failing half-way
+// in the template builder or acting on a service that is not ours.
+func (cluster *Cluster) refuseMonitorOnlyApp(app *App) error {
+	if app != nil && app.AppConfig.IsMonitorOnly() {
+		return fmt.Errorf("app %s is monitor-only (app-monitor-only): it runs elsewhere and has no service here", app.GetId())
+	}
+	return nil
+}
+
 func (cluster *Cluster) InitAppService(app *App) error {
+	if err := cluster.refuseMonitorOnlyApp(app); err != nil {
+		return err
+	}
 	// Serialise errorChan use against other provision/unprovision ops (#1769).
 	cluster.provisioningMutex.Lock()
 	defer cluster.provisioningMutex.Unlock()
@@ -1306,6 +1324,9 @@ func (cluster *Cluster) ProvisionRotatePasswords(password string) error {
 	case config.ConstOrchestratorOpenSVC:
 		svc := cluster.OpenSVCConnect()
 		err := svc.CreateSecretKeyValueV2(cluster.Name, "env", "MYSQL_ROOT_PASSWORD", password)
+		if err == nil {
+			cluster.reportOrchestratorSecret("env", "MYSQL_ROOT_PASSWORD", password)
+		}
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "ProvisionRotatePasswords error: Can not add key to secret: %s %s ", "MYSQL_ROOT_PASSWORD", err)
 		}

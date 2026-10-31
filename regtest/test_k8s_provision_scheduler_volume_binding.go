@@ -38,11 +38,6 @@ import (
 //     real cluster), which is exactly the T13 gap this test is meant to close
 //     once a Kubernetes-capable CI harness exists.
 func (regtest *RegTest) TestK8SProvisionSchedulerVolumeBinding(cl *cluster.Cluster, conf string, test *cluster.Test) bool {
-	if cl.GetOrchestrator() != config.ConstOrchestratorKubernetes {
-		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Skipping: requires Kubernetes orchestrator")
-		return true
-	}
-
 	// Prefer a slave, to avoid disrupting a live master — but the
 	// scheduling/PVC-binding behavior under test is per-server and doesn't
 	// depend on replication role, so fall back to any server if no

@@ -7,9 +7,12 @@
 package cluster
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
+	"github.com/go-sql-driver/mysql"
+	"github.com/lib/pq"
 	"github.com/signal18/replication-manager/utils/state"
 )
 
@@ -39,6 +42,12 @@ func (cluster *Cluster) startInjectProxiesTraffic() {
 		cluster.SetState("WARN0230", state.State{ErrType: "WARNING",
 			ErrDesc: fmt.Sprintf(clusterError["WARN0230"], forced), ErrFrom: "TOPO"})
 	}
+	// The marker returns in the background at any point of a tick: its error is re-asserted
+	// here, on the tick, so ERR00050 stays open until an injection succeeds instead of
+	// opening and resolving with the moment the goroutine returns (#2195).
+	if msg := cluster.injectTrafficErr.Load(); msg != nil {
+		cluster.SetState("ERR00050", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00050"], *msg), ErrFrom: "TOPO"})
+	}
 	if !cluster.tryStartInjectTraffic(time.Now()) {
 		since := time.Unix(cluster.injectTrafficSince.Load(), 0)
 		cluster.SetState("WARN0229", state.State{ErrType: "WARNING",
@@ -63,4 +72,34 @@ func (cluster *Cluster) tryStartInjectTraffic(now time.Time) bool {
 
 func (cluster *Cluster) endInjectTraffic() {
 	cluster.injectTrafficInFlight.Store(false)
+}
+
+// stopInjectProxiesTraffic is a tick with no traffic to inject. The next start creates the
+// marker schema and table again (CREATE ... IF NOT EXISTS, never OR REPLACE), whatever
+// happened to them while the traffic was off: a test, a restore or a user may drop
+// replication_manager_schema (#2195).
+func (cluster *Cluster) stopInjectProxiesTraffic() {
+	cluster.injectTrafficStopped.Store(true)
+	cluster.injectTrafficErr.Store(nil)
+}
+
+// recordInjectTrafficResult keeps the last injection error for the tick (nil: success).
+func (cluster *Cluster) recordInjectTrafficResult(err error) {
+	if err == nil {
+		cluster.injectTrafficErr.Store(nil)
+		return
+	}
+	msg := err.Error()
+	cluster.injectTrafficErr.Store(&msg)
+}
+
+// markerTableMissing is the marker table gone: MySQL/MariaDB error 1146 (table doesn't
+// exist), PostgreSQL 42P01 (undefined table).
+func markerTableMissing(err error) bool {
+	var me *mysql.MySQLError
+	if errors.As(err, &me) {
+		return me.Number == 1146
+	}
+	var pe *pq.Error
+	return errors.As(err, &pe) && pe.Code == "42P01"
 }

@@ -12,6 +12,7 @@ import (
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/jmoiron/sqlx"
+	"github.com/signal18/replication-manager/utils/version"
 )
 
 func TestChecksumTableQualified(t *testing.T) {
@@ -199,5 +200,29 @@ func TestTableShapeOfReportsAFailedQuery(t *testing.T) {
 	mock.ExpectQuery(regexp.QuoteMeta("STORED GENERATED")).WithArgs("app", "child").WillReturnError(errors.New("columns down"))
 	if _, err := TableShapeOf(sqlxdb, "app", "child"); err == nil || !strings.Contains(err.Error(), "columns down") {
 		t.Fatalf("a failed generated-columns query must be returned, got %v", err)
+	}
+}
+
+// replication_manager_schema is created as a database on MySQL/MariaDB and as a schema on
+// PostgreSQL, when missing (#2228).
+func TestCreateReplicationManagerSchema(t *testing.T) {
+	for _, c := range []struct {
+		v    *version.Version
+		want string
+	}{
+		{&version.Version{Flavor: "MySQL", Major: 8, Minor: 4}, "CREATE DATABASE IF NOT EXISTS replication_manager_schema"},
+		{mariaDBVersionForTest(), "CREATE DATABASE IF NOT EXISTS replication_manager_schema"},
+		{&version.Version{Flavor: "PostgreSQL", Major: 16}, "CREATE SCHEMA IF NOT EXISTS replication_manager_schema"},
+	} {
+		db, mock, err := sqlmock.New()
+		if err != nil {
+			t.Fatal(err)
+		}
+		mock.ExpectExec(regexp.QuoteMeta(c.want)).WillReturnResult(sqlmock.NewResult(0, 0))
+		got, err := CreateReplicationManagerSchema(sqlx.NewDb(db, "sqlmock"), c.v)
+		db.Close()
+		if err != nil || got != c.want {
+			t.Errorf("%s: %q %v, want %q", c.v.Flavor, got, err, c.want)
+		}
 	}
 }

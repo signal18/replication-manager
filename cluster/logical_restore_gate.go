@@ -164,31 +164,30 @@ func (server *ServerMonitor) waitReplicasAppliedAll(ctx context.Context, gate *l
 		return
 	}
 	for _, sl := range cluster.GetSlaves() {
-		var progress replicaProgress
-		for sl != nil && sl != server && sl.Conn != nil && replicaTakesPart(sl) {
-			if ctx.Err() != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
-					"Restore on %s cancelled: no longer waiting for the replicas", server.URL)
-				return
+		if sl == nil || sl == server {
+			continue
+		}
+		turns := 0
+		_, err := cluster.waitReplicaReachTarget(sl.URL, target, func(sl *ServerMonitor) bool {
+			if ctx.Err() != nil || !replicaTakesPart(sl) {
+				return false
 			}
-			reached, err := sl.WaitSyncToTarget(target, 30)
-			if err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn,
-					"Restore on %s written: stopped waiting for replica %s to reach %s: %s", server.URL, sl.URL, target, err)
-				break
+			if turns > 0 {
+				// nothing left to hold, the restore is written: the pause only names the
+				// replica it waits for (WARN0254)
+				gate.pause(fmt.Sprintf("restore written, waiting for replica %s to reach %s", sl.URL, target))
 			}
-			if reached {
-				break
-			}
-			if stalled, still := progress.stalled(sl.AppliedPosition()); stalled {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn,
-					"Restore on %s written: stopped waiting for replica %s, no progress (still at %s for %s)", server.URL, sl.URL, progress.applied, still.Round(time.Second))
-				break
-			}
-			// nothing left to hold, the restore is written: the pause only names the replica
-			// it waits for (WARN0254)
-			gate.pause(fmt.Sprintf("restore written, waiting for replica %s to reach %s", sl.URL, target))
-			sl = cluster.GetServerFromURL(sl.URL) // a reload rebuilds the ServerMonitor
+			turns++
+			return true
+		})
+		if ctx.Err() != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
+				"Restore on %s cancelled: no longer waiting for the replicas", server.URL)
+			return
+		}
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn,
+				"Restore on %s written: stopped waiting for replica %s to reach %s: %s", server.URL, sl.URL, target, err)
 		}
 	}
 }

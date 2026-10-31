@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/jmoiron/sqlx"
+	"github.com/signal18/replication-manager/utils/version"
 )
 
 type driver struct {
@@ -338,14 +339,24 @@ func WriteConcurrent2(dsn string, qt int) (string, error) {
 	return result, nil
 }
 
-// BenchCleanup cleans up benchmark tables
+// BenchCleanup drops the benchmark table, never its schema: replication_manager_schema also
+// holds repman's jobs, heartbeat and traffic marker (#2195). PostgreSQL: the same statement,
+// schema.table is valid there.
 func BenchCleanup(db *sqlx.DB) error {
 	_, err := db.Exec("DROP TABLE IF EXISTS replication_manager_schema.bench")
-	if err != nil {
-		return err
-	}
-	_, err = db.Exec("DROP DATABASE IF EXISTS replication_manager_schema")
 	return err
+}
+
+// CreateReplicationManagerSchema creates replication_manager_schema when it is missing:
+// the database on MariaDB and MySQL, the schema on PostgreSQL. Run on the master with the
+// binary log on, so its replicas get it too. Returns the statement run.
+func CreateReplicationManagerSchema(db *sqlx.DB, myver *version.Version) (string, error) {
+	query := "CREATE DATABASE IF NOT EXISTS replication_manager_schema"
+	if myver != nil && myver.IsPostgreSQL() {
+		query = "CREATE SCHEMA IF NOT EXISTS replication_manager_schema"
+	}
+	_, err := db.Exec(query)
+	return query, err
 }
 
 // benchWarmup prepares the database for benchmarking

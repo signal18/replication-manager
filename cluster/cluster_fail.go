@@ -727,7 +727,8 @@ func (cluster *Cluster) FailoverExtraMultiSource(oldMaster *ServerMonitor, NewMa
 			changemasteropt.User = rep.MasterUser.String
 			changemasteropt.Password = myparentrplpassword
 			changemasteropt.Retry = strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatRetry)
-			changemasteropt.Heartbeat = strconv.Itoa(int(rep.SlaveHeartbeatPeriod))
+			// the moved channel keeps its period (read as 0 before #2208: its heartbeats went off)
+			changemasteropt.Heartbeat = strconv.FormatFloat(rep.SlaveHeartbeatPeriod, 'f', -1, 64)
 			changemasteropt.RetryCount = strconv.Itoa(cluster.Conf.MasterRetryCount)
 			changemasteropt.Logfile = rep.MasterLogFile.String
 			changemasteropt.Logpos = rep.ExecMasterLogPos.String
@@ -1558,7 +1559,13 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 		cluster.FailoverCtr++
 		cluster.FailoverTs = time.Now().Unix()
 	}
-	cluster.master = nil
+	// Galera keeps the new virtual master as its master: the discovery sets a wsrep master
+	// only when GetMaster is nil, which the vmaster never lets happen, and CheckFailed skips
+	// a cluster without one, so after a switchover or a failover the loss of the new master
+	// was neither failed over nor reported (no ERR00002 in manual mode, #2191)
+	if cluster.GetTopology() != config.TopoMultiMasterWsrep {
+		cluster.master = nil
+	}
 
 	return true
 }

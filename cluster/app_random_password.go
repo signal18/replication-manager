@@ -12,6 +12,8 @@ import (
 	"strings"
 
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/config/credstore"
+	"github.com/signal18/replication-manager/utils/misc"
 )
 
 // Generated password for any app (#1850). A template that needs a secret of its own, with
@@ -43,6 +45,9 @@ func (cluster *Cluster) ApplyAppRandomPassword(appcnf *config.AppConfig) error {
 		return fmt.Errorf("app %s: generating the password: %w", appcnf.AppHost, err)
 	}
 	appcnf.AppRandomPassword = cluster.Conf.GetEncryptedString(pass)
+	// a version in the credential stores, under apps/<app name> (#2227)
+	name, _ := misc.SplitHostPortApp(appcnf.AppHost)
+	cluster.CopySecret(credstore.KindApps, name, "app-random-password", pass)
 	return nil
 }
 

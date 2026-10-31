@@ -193,7 +193,7 @@ function Settings({ selectedCluster, user, onTabChange, monitor }) {
         body={<GeneralSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} onTabChange={onTabChange} monitor={monitor} />}
       />}
       {isVisible('isCredentialsOpen') && <AccordionComponent
-        heading={'Database Credentials'}
+        heading={'Credentials'}
         onToggle={onCredentialsToggle}
         isOpen={isCredentialsOpen}
         headerClassName={styles.accordionHeader}

@@ -11,14 +11,15 @@ export const getMeetInfo = createAsyncThunk('meet/getMeetInfo', async (_, thunkA
   } catch (error) {
     // Use rejectWithValue instead of throw to avoid console noise for expected
     // failures (e.g. viewer tokens that have no meet user ID).
-    return thunkAPI.rejectWithValue({ errorMessage: error.message, errorStatus: error.errorStatus || 500 })
+    return thunkAPI.rejectWithValue({ errorMessage: error.message, errorStatus: error.errorStatus || 500, webURL: error.errorStatus === 409 ? error.data?.url : null })
   }
 },
 {
   condition: (_, { getState }) => {
     const { meet } = getState();
     // Block if already fetching or Redux state records a previous failure
-    if (meet.isFetchingInfo || meet.meetError) {
+    // meetWebURL: a Sign in with Cloud18 session, the answer is known (409) until logout
+    if (meet.isFetchingInfo || meet.meetError || meet.meetWebURL) {
       return false;
     }
     // Also block if a previous failure was recorded in sessionStorage
@@ -271,6 +272,9 @@ const meetSlice = createSlice({
     loading: false,
     error: null,
     meetError: false,
+    // A Sign in with Cloud18 session: repman cannot open the chat for it (409), Support opens
+    // the chat's web app instead, where the person signs in.
+    meetWebURL: null,
     unreadMessagesByChannel: {},
     channels: [],
   },
@@ -291,6 +295,7 @@ const meetSlice = createSlice({
       .addCase(getMeetInfo.fulfilled, (state, action) => {
         sessionStorage.removeItem(MEET_UNAVAILABLE_KEY);
         state.meetInfo = action.payload.data;
+        state.meetWebURL = null;
         //localStorage.setItem('userID', state.meetInfo?.user_id);
         state.unreadMessagesByChannel = action.payload.data.unread_messages_by_channel || {};
         state.meetError = false;
@@ -303,11 +308,19 @@ const meetSlice = createSlice({
       })
       .addCase(logoutFromMeet.pending, (state) => {
         state.loading = true;
+        // the next session (same tab) asks again: it may open the chat inside repman
+        state.meetWebURL = null;
       })
       .addCase(getMeetInfo.rejected, (state, action) => {
-        state.meetError = true;
         state.meetInfo = null;
         state.isFetchingInfo = false;
+        if (action.payload?.webURL) {
+          state.meetWebURL = action.payload.webURL;
+          state.meetError = false;
+          return;
+        }
+        state.meetWebURL = null;
+        state.meetError = true;
         // Persist failure so re-login/Redux-reset cycles don't retry needlessly
         sessionStorage.setItem(MEET_UNAVAILABLE_KEY, 'true');
       })

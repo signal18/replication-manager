@@ -78,3 +78,14 @@ func TestStageIfChanged_SkipStatusStagesAndUnchangedIsSkipped(t *testing.T) {
 		t.Fatalf("a missing file must not be staged")
 	}
 }
+
+// #2227 rule 2: the local versioned file of the secrets is in the config push, with the other
+// cluster JSON files
+func TestSecretStoreFileStaged(t *testing.T) {
+	for _, f := range ClusterStagedJSONFiles {
+		if f == "secret_store.json" {
+			return
+		}
+	}
+	t.Fatalf("secret_store.json not in %v", ClusterStagedJSONFiles)
+}

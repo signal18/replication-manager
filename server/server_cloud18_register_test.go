@@ -50,16 +50,17 @@ type registerFakes struct {
 	failCreate int                     // the next project token creations that fail
 	tokens     map[string][]*fakeToken // ".../projects/<id>/access_tokens" -> the project's tokens
 	// the realm's login client (#2182)
-	noLoginClient bool              // the realm has no replication-manager-login client (not set up yet)
-	realmKey      *rsa.PrivateKey   // signs the realm tokens, published at .../certs
-	issuer        string            // the realm's issuer
-	loginCodes    map[string]string // code -> PKCE challenge|email
-	refreshes     int               // refresh grants answered
-	refreshTries  int               // refresh grants asked, refused ones included
-	certFetches   int               // fetches of the realm's keys
-	rotate        bool              // each refresh gives a new refresh token and revokes the used one
-	shortTokens   bool              // access tokens of 30 s: every call refreshes
-	liveRefresh   map[string]bool   // refresh tokens still valid, when rotating
+	noLoginClient  bool              // the realm has no replication-manager-login client (not set up yet)
+	realmKey       *rsa.PrivateKey   // signs the realm tokens, published at .../certs
+	issuer         string            // the realm's issuer
+	loginCodes     map[string]string // code -> PKCE challenge|email
+	refreshes      int               // refresh grants answered
+	refreshTries   int               // refresh grants asked, refused ones included
+	passwordGrants int               // password grants answered: the Cloud18 login of a registration
+	certFetches    int               // fetches of the realm's keys
+	rotate         bool              // each refresh gives a new refresh token and revokes the used one
+	shortTokens    bool              // access tokens of 30 s: every call refreshes
+	liveRefresh    map[string]bool   // refresh tokens still valid, when rotating
 }
 
 type fakeToken struct {
@@ -124,6 +125,16 @@ func newRegisterFakes(t *testing.T) (*registerFakes, string) {
 				}
 				delete(f.loginCodes, r.Form.Get("code"))
 				email = parts[1]
+			case "password": // the instance's Cloud18 login, made by the registration (KeepCloud18Login)
+				pw, ok := f.accounts[r.Form.Get("username")]
+				if !ok || pw == "" || pw != r.Form.Get("password") || r.Form.Get("client_id") != config.ConstCloud18IdentityClientID ||
+					!strings.Contains(r.Form.Get("scope"), "offline_access") {
+					w.WriteHeader(http.StatusUnauthorized)
+					fmt.Fprint(w, `{"error":"invalid_grant","error_description":"Invalid user credentials"}`)
+					return
+				}
+				f.passwordGrants++
+				email = r.Form.Get("username")
 			case "refresh_token":
 				f.refreshTries++
 				rt := r.Form.Get("refresh_token")
@@ -387,6 +398,10 @@ func TestCloud18Register(t *testing.T) {
 	}
 	if c.GetDecryptedValue("cloud18-gitlab-password") != "" || strings.HasPrefix(main, "gl-") {
 		t.Fatal("neither the Cloud18 password nor the person's GitLab token may be kept")
+	}
+	// the registration made the instance's Cloud18 login with the password given, not kept
+	if f.passwordGrants != 1 || c.Cloud18IdentityStatus().State != "connected" {
+		t.Fatalf("the Cloud18 login of the registration: %d sign-ins, %+v", f.passwordGrants, c.Cloud18IdentityStatus())
 	}
 
 	f.mu.Lock()
