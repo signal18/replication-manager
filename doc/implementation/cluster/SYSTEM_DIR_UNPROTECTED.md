@@ -29,6 +29,9 @@ backup and every mysqldump reseed from such a server failed. mydumper already ra
   `IGNORE_DB_DIRS` variable does not name `.system`. MySQL, Percona and PostgreSQL, and a server
   whose version or variables are not read yet, answer true: an unknown answer keeps the
   configurator's layout, which a provisioned container needs (the datadir is its volume).
+  The value is the one the server reports (`SensitiveVariables`): the monitor stores the values
+  of `Variables` upper-cased (`.SYSTEM`), and folder names are case-sensitive. The configurator's
+  `default_path.cnf` cannot decide it either: a server configured by its owner never loads it.
 - `GetJobDatadir()` returns `/var/lib/replication-manager-jobs`, the `nosplitpath` folder, when
   `.system` is not ignored. The path reaches the script through `%%ENV:SVC_CONF_ENV_JOBS_DATADIR%%`.
 - The script is rendered by `GetDatabaseConfig()`, also at topology load, before the variables are
