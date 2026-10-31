@@ -384,6 +384,32 @@ switched off. A successful run writes one line in the security log too. API:
 `settings/actions/switch/scheduler-rotate-passwords` and
 `settings/actions/set-cron/scheduler-rotate-passwords-cron/{value}`, under the cluster
 settings grant like the other scheduler settings; GUI: Settings > Scheduler, Rotate Passwords.
+A cron that does not parse is refused by the setter (API, GUI: HTTP 400 from `set-cron`), the
+former cron kept. One read from a config file at start cannot be scheduled (`SetScheduler`
+returns the parse error) and opens WARN0274, while the schedule is on. The skip reason is in
+memory: after a failover the new active monitor shows WARN0274 from its own first skipped run,
+up to one cron period later.
+
+Saved before the databases change: `RotatePasswords` sets the new values through the chain
+(`SetAllRevertible`), then `WaitConfigSaved` asks for a save and waits for the config-sync gate
+to complete one that started after the ask (`ConfigSavedAsOf`, the start of the last save
+completed; a save whose version file was not written does not count). Only then does it change
+the master's users, the replicas' channels, the proxies and the orchestrator secret. The
+rotation writes no file itself (T25): the gate is still the only writer. A save that does not
+come within two gate periods (30 s at least: a standby repman never saves, a busy cycle skips a
+gate) puts the former values back (the stores, `Conf.Secrets` with its `OldValue`, the copies)
+and the run is abandoned, nothing changed, a skipped run for the schedule. So a repman stopped
+before the save starts on the former credential, and after it on the new one, which the master
+holds as soon as the rotation reaches it. A stop while the servers are changed leaves the ones
+not reached yet on the former password, as a failed step does (`OldValue` is in memory only). One rotation at a time (`inPasswordRotation`): the wait can outlast a cron period,
+and `CanRotatePasswords` refuses a second one while it runs. Left: a save that started before
+the deadline and completes after the revert writes the new values, the next save the former
+ones; repman stopped between those two saves starts on a password no database took.
+
+Outcome: a step that fails after the save (a user on the master, a replica's channel, the
+orchestrator secret) is logged and the next steps still run; `RotatePasswords` then returns
+`ErrRotatedWithErrors` listing them, and the scheduled run logs "done with errors" in the
+security log. Not a skipped run: the new credentials are in force.
 
 Old backups: `backupPasswordHistory` (`srv_job_backup_encryption.go`) reads the old root
 passwords from the local file to open an encrypted backup taken before a rotation.
@@ -395,7 +421,9 @@ Regtest (T13): `testCredentialConfigRotationScheduled` (MariaDB and MySQL, in th
 list; versioning off and the scheduler on for the test): the schedule on with a cron of every
 minute rotates the database credential; every server logs in with the new password, the
 previous one is kept in memory, a config reload and a start from the files on disk run on the
-new one, and `<cluster>.toml` holds it encrypted.
+new one, and `<cluster>.toml` holds it encrypted. The test waits for the run to end
+(`IsInPasswordRotation`, up to two gate periods for the save) and fails when the new
+credential was put back.
 
 ## What changes in code
 

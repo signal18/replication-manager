@@ -113,17 +113,9 @@ func (repman *ReplicationManager) regtestReporting(cl *cluster.Cluster) bool {
 // Empty when the gate did not save within two of its periods: no configuration is
 // better than one that is not the test's.
 func (repman *ReplicationManager) regtestStartConfig(cl *cluster.Cluster) string {
-	asked := time.Now()
-	cl.Save()
-	wait := 2 * time.Duration(repman.Conf.MonitoringTicker) * 60 * time.Second
-	if wait < 30*time.Second {
-		wait = 30 * time.Second
-	}
-	for deadline := asked.Add(wait); !cl.ConfigSaveDoneAt().After(asked); time.Sleep(500 * time.Millisecond) {
-		if time.Now().After(deadline) {
-			cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "TEST : the configuration is not sent with the results: no config save completed within %s", wait)
-			return ""
-		}
+	if err := cl.WaitConfigSaved(); err != nil {
+		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "TEST : the configuration is not sent with the results: %s", err)
+		return ""
 	}
 	return regtestFileTOML(filepath.Join(cl.Conf.WorkingDir, cl.Name, cl.Name+".toml"))
 }
