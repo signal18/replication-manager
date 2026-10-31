@@ -8,6 +8,7 @@
 package cluster
 
 import (
+	"container/heap"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
@@ -59,38 +60,70 @@ const (
 // posts a few bodies a minute.
 const jobNonceMax = 65536
 
+// jobNonceClusterMax is one cluster's share of the store: a cluster whose jobs post too many
+// bodies (or a compromised container of it) is refused alone, never the job logins of the
+// others.
+const jobNonceClusterMax = 8192
+
 // legacyJobLoginShown is how long WARN0276 stays open after the last legacy body of a server.
 const legacyJobLoginShown = 10 * time.Minute
 
-// jobNonces are the nonces of the one-time bodies seen, with when they can be forgotten. One
-// store for the process: a nonce is random, a replay to another cluster fails its key anyway.
+// jobNonce is a nonce seen, its cluster and when it can be forgotten.
+type jobNonce struct {
+	key     string
+	cluster string
+	until   time.Time
+}
+
+// jobNonceExpiry orders the nonces by their end (container/heap), the first to forget first.
+type jobNonceExpiry []jobNonce
+
+func (h jobNonceExpiry) Len() int            { return len(h) }
+func (h jobNonceExpiry) Less(i, j int) bool  { return h[i].until.Before(h[j].until) }
+func (h jobNonceExpiry) Swap(i, j int)       { h[i], h[j] = h[j], h[i] }
+func (h *jobNonceExpiry) Push(x interface{}) { *h = append(*h, x.(jobNonce)) }
+func (h *jobNonceExpiry) Pop() interface{} {
+	old := *h
+	n := old[len(old)-1]
+	*h = old[:len(old)-1]
+	return n
+}
+
+// jobNonces are the nonces of the one-time bodies and stream headers seen, per cluster, with
+// when they can be forgotten: expired ones leave from the front of expiry, so a request never
+// scans the store.
 var jobNonces = struct {
 	sync.Mutex
-	seen map[string]time.Time
-}{seen: make(map[string]time.Time)}
+	seen       map[string]time.Time
+	expiry     jobNonceExpiry
+	perCluster map[string]int
+}{seen: make(map[string]time.Time), perCluster: make(map[string]int)}
 
-// errJobNoncesFull: more bodies within the window than the store holds, refused until the
-// oldest expire (never an unbounded store, F4).
+// errJobNoncesFull: more bodies within the window than the store (or the cluster's share)
+// holds, refused until the oldest expire (never an unbounded store, F4).
 var errJobNoncesFull = fmt.Errorf("too many job bodies in the replay window")
 
-// useJobNonce records nonce until keep, false when it was already seen.
-func useJobNonce(nonce string, now, keep time.Time) (bool, error) {
+// useJobNonce records the nonce of cluster until keep, false when it was already seen.
+func useJobNonce(cluster string, nonce string, now, keep time.Time) (bool, error) {
 	jobNonces.Lock()
 	defer jobNonces.Unlock()
-	if until, ok := jobNonces.seen[nonce]; ok && now.Before(until) {
+	for len(jobNonces.expiry) > 0 && !now.Before(jobNonces.expiry[0].until) {
+		e := heap.Pop(&jobNonces.expiry).(jobNonce)
+		delete(jobNonces.seen, e.key)
+		if jobNonces.perCluster[e.cluster]--; jobNonces.perCluster[e.cluster] <= 0 {
+			delete(jobNonces.perCluster, e.cluster)
+		}
+	}
+	key := cluster + "/" + nonce
+	if _, ok := jobNonces.seen[key]; ok {
 		return false, nil
 	}
-	if len(jobNonces.seen) >= jobNonceMax {
-		for n, until := range jobNonces.seen {
-			if !now.Before(until) {
-				delete(jobNonces.seen, n)
-			}
-		}
-		if len(jobNonces.seen) >= jobNonceMax {
-			return false, errJobNoncesFull
-		}
+	if len(jobNonces.seen) >= jobNonceMax || jobNonces.perCluster[cluster] >= jobNonceClusterMax {
+		return false, errJobNoncesFull
 	}
-	jobNonces.seen[nonce] = keep
+	jobNonces.seen[key] = keep
+	jobNonces.perCluster[cluster]++
+	heap.Push(&jobNonces.expiry, jobNonce{key: key, cluster: cluster, until: keep})
 	return true, nil
 }
 
@@ -250,9 +283,6 @@ func (server *ServerMonitor) OpenJobBody(raw []byte, now time.Time, legacyAllowe
 			key = crypto.GetSHA256Hash(jobsKey)
 			mode = JobKeyJobs
 		}
-	} else if !legacyAllowed {
-		atomic.StoreInt64(&server.legacyJobLoginAt, now.Unix())
-		return nil, JobKeyLegacy, 401, fmt.Errorf("Legacy job body refused: an older jobs script may only fetch the new one (jobs upgrade)")
 	} else if auth, _ := server.jobStream.Load().(jobStreamAuth); auth.Key != "" {
 		// its script signs since this start: a legacy body now is a captured one replayed
 		return nil, JobKeyLegacy, 401, fmt.Errorf("Legacy job body refused: the jobs script of this server posts one-time bodies (replay)")
@@ -262,7 +292,14 @@ func (server *ServerMonitor) OpenJobBody(raw []byte, now time.Time, legacyAllowe
 		return nil, mode, 500, fmt.Errorf("Error decrypting data : %s", err.Error())
 	}
 	if mode == JobKeyLegacy {
+		// noted once it decrypts: an older script (or its body replayed), never a stranger
 		atomic.StoreInt64(&server.legacyJobLoginAt, now.Unix())
+		// a PostgreSQL sidecar has no script to fetch: its client comes from its init
+		// container, at its start; refused, its backups would stop until then (F12), so it is
+		// accepted, under WARN0278, until its first one-time body
+		if !legacyAllowed && !server.IsPostgreSQLHost() {
+			return nil, JobKeyLegacy, 401, fmt.Errorf("Legacy job body refused: an older jobs script may only fetch the new one (jobs upgrade)")
+		}
 		return data, mode, 200, nil
 	}
 	var fresh struct {
@@ -270,22 +307,30 @@ func (server *ServerMonitor) OpenJobBody(raw []byte, now time.Time, legacyAllowe
 		Nonce  string `json:"nonce"`
 		Server string `json:"server"`
 	}
+	// refused once decrypted: the script of this server (the key is its own), whose jobs stop
+	// until the cause is fixed, noted for ERR00120; a body that does not decrypt is not noted,
+	// anyone can post one
+	refused := func(code int, err error) ([]byte, string, int, error) {
+		server.jobLoginRefused.Store(jobStreamRefusal{At: now, Reason: err.Error()})
+		return nil, mode, code, err
+	}
 	if err := json.Unmarshal(jobJSONObject(data), &fresh); err != nil || fresh.Ts == 0 || len(fresh.Nonce) < 16 {
-		return nil, mode, 401, fmt.Errorf("One-time job body without timestamp or nonce")
+		return refused(401, fmt.Errorf("One-time job body without timestamp or nonce"))
 	}
 	if mode == JobKeyJobs && !server.namedBy(fresh.Server) {
-		return nil, mode, 401, fmt.Errorf("Job body for %q posted for %s", fresh.Server, server.URL)
+		return refused(401, fmt.Errorf("Job body for %q posted for %s", fresh.Server, server.URL))
 	}
 	window := cluster.secretLoginWindow()
 	ts := time.Unix(fresh.Ts, 0)
 	if ts.Before(now.Add(-window)) || ts.After(now.Add(window)) {
-		return nil, mode, 401, fmt.Errorf("Job body outside the %s window (clock skew or replay)", window)
+		return refused(401, fmt.Errorf("Job body outside the %s window: the clocks of the database host and replication-manager differ by %s (or a replay)", window, now.Sub(ts).Round(time.Second)))
 	}
-	ok, err := useJobNonce(fresh.Nonce, now, now.Add(2*window))
+	ok, err := useJobNonce(cluster.Name, fresh.Nonce, now, now.Add(2*window))
 	if err != nil {
-		return nil, mode, 503, err
+		return refused(503, err)
 	}
 	if !ok {
+		// a replay of a captured body, not the script's fault: refused, not noted
 		return nil, mode, 401, fmt.Errorf("Job body already used (replay)")
 	}
 	server.jobStream.Store(jobStreamAuth{Key: mode, Name: fresh.Server})
@@ -311,24 +356,33 @@ func jobJSONObject(data []byte) []byte {
 
 // CheckSecretLoginLegacy runs every tick: WARN0276, a security state (T3), naming the servers
 // whose jobs script used the legacy job body within legacyJobLoginShown, until their script is
-// upgraded.
+// upgraded; WARN0278 for the PostgreSQL ones, whose older client only a sidecar restart
+// replaces.
 func (cluster *Cluster) CheckSecretLoginLegacy() {
 	now := time.Now()
-	var urls []string
+	var urls, pg []string
 	for _, s := range cluster.Servers {
 		if s == nil {
 			continue
 		}
 		at := atomic.LoadInt64(&s.legacyJobLoginAt)
-		if at != 0 && now.Sub(time.Unix(at, 0)) <= legacyJobLoginShown {
+		if at == 0 || now.Sub(time.Unix(at, 0)) > legacyJobLoginShown {
+			continue
+		}
+		if s.IsPostgreSQLHost() {
+			pg = append(pg, s.URL)
+		} else {
 			urls = append(urls, s.URL)
 		}
 	}
-	if len(urls) == 0 {
-		return
+	if len(urls) > 0 {
+		cluster.SecurityStateMachine.AddState("WARN0276", state.State{ErrType: "WARNING", ErrKey: "WARN0276", ErrFrom: "SECURITY",
+			ErrDesc: fmt.Sprintf(clusterError["WARN0276"], strings.Join(urls, ", "))})
 	}
-	cluster.SecurityStateMachine.AddState("WARN0276", state.State{ErrType: "WARNING", ErrKey: "WARN0276", ErrFrom: "SECURITY",
-		ErrDesc: fmt.Sprintf(clusterError["WARN0276"], strings.Join(urls, ", "))})
+	if len(pg) > 0 {
+		cluster.SecurityStateMachine.AddState("WARN0278", state.State{ErrType: "WARNING", ErrKey: "WARN0278", ErrFrom: "SECURITY",
+			ErrDesc: fmt.Sprintf(clusterError["WARN0278"], strings.Join(pg, ", "))})
+	}
 }
 
 // The job stream header (jobapi.StreamHeader): the first line of every stream between
@@ -395,8 +449,8 @@ func (server *ServerMonitor) CheckJobStream(conn net.Conn) error {
 	if err != nil || secret == "" {
 		return err
 	}
-	// a connection that sends nothing must not hold the receiver
-	conn.SetReadDeadline(time.Now().Add(30 * time.Second))
+	// a connection that sends nothing is closed (acceptJobStream checks each on its own)
+	conn.SetReadDeadline(time.Now().Add(10 * time.Second))
 	defer conn.SetReadDeadline(time.Time{})
 	line, err := jobapi.ReadStreamHeader(conn)
 	if err != nil {
@@ -408,7 +462,7 @@ func (server *ServerMonitor) CheckJobStream(conn net.Conn) error {
 	if err != nil {
 		return err
 	}
-	ok, err := useJobNonce("stream:"+nonce, now, now.Add(2*window))
+	ok, err := useJobNonce(server.ClusterGroup.Name, "stream:"+nonce, now, now.Add(2*window))
 	if err != nil {
 		return err
 	}
@@ -424,23 +478,83 @@ type jobStreamRefusal struct {
 	Reason string
 }
 
-// acceptJobStream accepts the stream of the server's jobs on the receiver's listener: a
-// connection whose header CheckJobStream refuses is closed, noted for WARN0277, and the next
-// one awaited until the listener's deadline, so whoever connects first can neither write the
-// backup or log nor block the real transfer.
+// jobStreamChecking bounds the connections of one receiver whose header is being read (T18): a
+// connection past it is closed at once, noted for WARN0277.
+const jobStreamChecking = 8
+
+// acceptJobStream accepts the stream of the server's jobs on the receiver's listener. Each
+// connection has its header checked on its own (CheckJobStream), so a connection that sends
+// nothing holds itself only, never the real transfer; the first one checked is the stream, a
+// refused one is closed and noted for WARN0277. The accepting ends with the listener (closed by
+// the receiver's cleanup, or its deadline); a connection checked after the stream was taken is
+// closed.
 func (sst *SST) acceptJobStream(server *ServerMonitor, task string) (net.Conn, error) {
-	for {
-		conn, err := sst.listener.Accept()
-		if err != nil || server == nil {
-			return conn, err
-		}
-		if err = server.CheckJobStream(conn); err == nil {
-			return conn, nil
-		}
+	if server == nil {
+		return sst.listener.Accept()
+	}
+	checked := make(chan net.Conn)
+	failed := make(chan error, 1)
+	taken := make(chan struct{})
+	defer close(taken)
+	refuse := func(conn net.Conn, err error) {
 		server.jobStreamRefused.Store(jobStreamRefusal{At: time.Now(), Reason: fmt.Sprintf("%s from %s: %s", task, conn.RemoteAddr(), err)})
 		sst.cluster.LogModulePrintf(sst.cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "Stream for task %s of %s refused from %s: %s", task, server.URL, conn.RemoteAddr(), err)
 		conn.Close()
 	}
+	go func() {
+		var checking int32
+		for {
+			conn, err := sst.listener.Accept()
+			if err != nil {
+				failed <- err
+				return
+			}
+			if atomic.AddInt32(&checking, 1) > jobStreamChecking {
+				atomic.AddInt32(&checking, -1)
+				refuse(conn, fmt.Errorf("more than %d connections waiting for their header", jobStreamChecking))
+				continue
+			}
+			go func(conn net.Conn) {
+				defer atomic.AddInt32(&checking, -1)
+				if err := server.CheckJobStream(conn); err != nil {
+					refuse(conn, err)
+					return
+				}
+				select {
+				case checked <- conn:
+				case <-taken:
+					conn.Close()
+				}
+			}(conn)
+		}
+	}()
+	select {
+	case conn := <-checked:
+		return conn, nil
+	case err := <-failed:
+		return nil, err
+	}
+}
+
+// CheckJobLoginRefused runs every tick: ERR00120, a security state (an ERROR, T3: the jobs of these servers, backups included, cannot run), naming the servers whose
+// one-time job bodies were refused once decrypted within legacyJobLoginShown, and why: their
+// jobs (backups included) stop until the cause (a clock, the script's server name) is fixed.
+func (cluster *Cluster) CheckJobLoginRefused() {
+	now := time.Now()
+	var refused []string
+	for _, s := range cluster.Servers {
+		if s == nil {
+			continue
+		}
+		if r, ok := s.jobLoginRefused.Load().(jobStreamRefusal); ok && now.Sub(r.At) <= legacyJobLoginShown {
+			refused = append(refused, s.URL+" ("+r.Reason+")")
+		}
+	}
+	if len(refused) == 0 {
+		return
+	}
+	cluster.SecurityStateMachine.AddState("ERR00120", state.State{ErrType: "ERROR", ErrKey: "ERR00120", ErrFrom: "SECURITY",
+		ErrDesc: fmt.Sprintf(clusterError["ERR00120"], strings.Join(refused, ", "))})
 }
 
 // CheckJobStreamRefused runs every tick: WARN0277, a security state, naming the servers whose

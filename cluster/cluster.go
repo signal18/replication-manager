@@ -1541,6 +1541,7 @@ func (cluster *Cluster) tickBody() {
 		cluster.CheckReplicationTLS()
 		cluster.CheckSecretLoginLegacy()
 		cluster.CheckJobStreamRefused()
+		cluster.CheckJobLoginRefused()
 		// the credential store entries: full passes, stores behind, queue drops (#2227)
 		cluster.CheckSecretKvStores()
 		// a skipped scheduled password rotation (#2269)

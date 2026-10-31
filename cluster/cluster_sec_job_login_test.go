@@ -145,21 +145,36 @@ func TestOpenJobBodyBadIVAndBound(t *testing.T) {
 	}
 
 	now := time.Now()
-	jobNonces.Lock()
-	saved := jobNonces.seen
-	jobNonces.seen = make(map[string]time.Time, jobNonceMax)
-	for i := 0; i < jobNonceMax; i++ {
-		jobNonces.seen[fmt.Sprintf("n%d", i)] = now.Add(time.Minute)
+	resetJobNonces := func() {
+		jobNonces.Lock()
+		jobNonces.seen = make(map[string]time.Time)
+		jobNonces.expiry = nil
+		jobNonces.perCluster = make(map[string]int)
+		jobNonces.Unlock()
 	}
-	jobNonces.Unlock()
-	defer func() { jobNonces.Lock(); jobNonces.seen = saved; jobNonces.Unlock() }()
-
+	resetJobNonces()
+	defer resetJobNonces()
+	// the cluster's share full: its bodies refused, another cluster's still accepted
+	for i := 0; i < jobNonceClusterMax; i++ {
+		if ok, err := useJobNonce(s.ClusterGroup.Name, fmt.Sprintf("n%d", i), now, now.Add(time.Minute)); !ok || err != nil {
+			t.Fatalf("nonce %d: %v %v", i, ok, err)
+		}
+	}
 	body := scriptJobBody(t, `{"server":"db1:3306","secret":"pw"}`, s.Pass)
 	if _, _, code, _ := s.OpenJobBody(body, now, false); code != 503 {
-		t.Fatalf("a full store must refuse 503, got %d", code)
+		t.Fatalf("a full cluster share must refuse 503, got %d", code)
+	}
+	if ok, err := useJobNonce("other-cluster", "n0", now, now.Add(time.Minute)); !ok || err != nil {
+		t.Fatalf("another cluster must not be refused by this one's share: %v %v", ok, err)
 	}
 	if _, _, code, err := s.OpenJobBody(body, now.Add(2*time.Minute), false); code != 200 {
-		t.Fatalf("expired nonces are purged when full, got %d %v", code, err)
+		t.Fatalf("expired nonces leave the store, got %d %v", code, err)
+	}
+	jobNonces.Lock()
+	n, left := len(jobNonces.seen), len(jobNonces.expiry)
+	jobNonces.Unlock()
+	if n != 1 || left != 1 {
+		t.Fatalf("only the last nonce stays, got %d seen %d in expiry", n, left)
 	}
 }
 
@@ -474,5 +489,125 @@ func TestJobAPIClientOneTime(t *testing.T) {
 		if err := check(bytes.NewReader(append(append([]byte{}, h...), "data"...))); err == nil {
 			t.Fatal("the sidecar must refuse a header twice")
 		}
+	}
+}
+
+// A body that does not decrypt is no older script: refused, never noted (no WARN0276 raised by
+// whoever reaches the endpoint).
+func TestOpenJobBodyLegacyStrangerNotNoted(t *testing.T) {
+	s := jobLoginServer()
+	body := legacyJobBody(t, `{"server":"db1:3306","secret":"pw"}`, "not-the-password")
+	if _, _, code, _ := s.OpenJobBody(body, time.Now(), false); code == 200 {
+		t.Fatal("a body under another password must be refused")
+	}
+	if atomic.LoadInt64(&s.legacyJobLoginAt) != 0 {
+		t.Fatal("a body that does not decrypt must not be noted")
+	}
+	s.ClusterGroup.CheckSecretLoginLegacy()
+	if len(s.ClusterGroup.SecurityStateMachine.GetOpenStates()) != 0 {
+		t.Fatalf("no state for a stranger: %+v", s.ClusterGroup.SecurityStateMachine.GetOpenStates())
+	}
+}
+
+// A PostgreSQL sidecar with an older client cannot fetch a new one: its legacy bodies are
+// accepted everywhere (its backups go on, F12) under WARN0278, until its first one-time body.
+func TestOpenJobBodyLegacyPostgreSQL(t *testing.T) {
+	s := jobLoginServer()
+	s.postgresDeclared = true
+	body := legacyJobBody(t, `{"server":"db1:3306","secret":"pw"}`, s.Pass)
+	if _, mode, code, err := s.OpenJobBody(body, time.Now(), false); code != 200 || mode != JobKeyLegacy {
+		t.Fatalf("an older PostgreSQL client must keep its jobs: %d %s %v", code, mode, err)
+	}
+	s.ClusterGroup.CheckSecretLoginLegacy()
+	open := s.ClusterGroup.SecurityStateMachine.GetOpenStates()
+	if len(open) != 1 || open[0].ErrKey != "WARN0278" || !strings.Contains(open[0].ErrDesc, s.URL) {
+		t.Fatalf("WARN0278 on the PostgreSQL server: %+v", open)
+	}
+	if _, _, code, err := s.OpenJobBody(scriptJobBody(t, `{"server":"db1:3306","secret":"pw"}`, s.Pass), time.Now(), false); code != 200 {
+		t.Fatalf("one-time body of the new client: %d %v", code, err)
+	}
+	if _, _, code, _ := s.OpenJobBody(body, time.Now(), false); code != 401 {
+		t.Fatalf("once the new client answered, its legacy body is a replay, got %d", code)
+	}
+}
+
+// A connection that sends nothing holds itself only: the signed stream sent after it is taken
+// at once, not after the header deadline.
+func TestJobStreamSilentConnectionDoesNotBlock(t *testing.T) {
+	s := jobLoginServer()
+	c := s.ClusterGroup
+	c.Conf.SecretKey = []byte("0123456789abcdef0123456789abcdef")
+	jk := c.GetJobsKey()
+	if _, _, code, err := s.OpenJobBody(scriptJobBodyKey(t, `{"server":"db1:3306"}`, s.Pass, jk), time.Now(), false); code != 200 {
+		t.Fatalf("jobs key body: %d %v", code, err)
+	}
+	payload := "backup bytes\n"
+	signed, _ := scriptStream(t, "job_stream_signed", t.TempDir(), []byte(payload), s.Pass, jk)
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	sst := &SST{cluster: c, listener: ln}
+	got := make(chan string, 1)
+	go func() {
+		conn, err := sst.acceptJobStream(s, "mariabackup")
+		if err != nil {
+			got <- "accept: " + err.Error()
+			return
+		}
+		b, _ := io.ReadAll(conn)
+		conn.Close()
+		got <- string(b)
+	}()
+	for i := 0; i < 3; i++ {
+		silent, err := net.Dial("tcp", ln.Addr().String())
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer silent.Close()
+	}
+	conn, err := net.Dial("tcp", ln.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	conn.Write([]byte(signed))
+	conn.Close()
+	select {
+	case r := <-got:
+		if r != payload {
+			t.Fatalf("the receiver must take the signed stream, got %q", r)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("silent connections held the receiver")
+	}
+}
+
+// A one-time body of the server's own script refused once decrypted (its clock off) opens
+// ERR00120, its jobs stop; a replay of a captured body does not.
+func TestOpenJobBodyRefusedIsAState(t *testing.T) {
+	s := jobLoginServer()
+	body := scriptJobBody(t, `{"server":"db1:3306","secret":"pw"}`, s.Pass)
+	if _, _, code, _ := s.OpenJobBody(body, time.Now().Add(time.Hour), false); code != 401 {
+		t.Fatalf("a body an hour off must be refused, got %d", code)
+	}
+	s.ClusterGroup.CheckJobLoginRefused()
+	open := s.ClusterGroup.SecurityStateMachine.GetOpenStates()
+	if len(open) != 1 || open[0].ErrKey != "ERR00120" || !strings.Contains(open[0].ErrDesc, "clocks") {
+		t.Fatalf("ERR00120 naming the clock: %+v", open)
+	}
+
+	r := jobLoginServer()
+	fresh := scriptJobBody(t, `{"server":"db1:3306","secret":"pw"}`, r.Pass)
+	if _, _, code, _ := r.OpenJobBody(fresh, time.Now(), false); code != 200 {
+		t.Fatalf("first use: %d", code)
+	}
+	if _, _, code, _ := r.OpenJobBody(fresh, time.Now(), false); code != 401 {
+		t.Fatalf("replay: %d", code)
+	}
+	r.ClusterGroup.CheckJobLoginRefused()
+	if len(r.ClusterGroup.SecurityStateMachine.GetOpenStates()) != 0 {
+		t.Fatal("a replay is not the script's fault: no state")
 	}
 }
