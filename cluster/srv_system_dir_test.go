@@ -2,6 +2,7 @@ package cluster
 
 import (
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
@@ -28,15 +29,19 @@ func TestIsSystemDirIgnored(t *testing.T) {
 		{"MariaDB ignoring it after another", v("MariaDB", 10, 11), ignoreDbDirs("lost+found, .system"), true},
 		{"MariaDB ignoring nothing", v("MariaDB", 10, 11), ignoreDbDirs(""), false},
 		{"MariaDB ignoring another folder", v("MariaDB", 10, 6), ignoreDbDirs("lost+found"), false},
+		{"MariaDB ignoring .System, another folder", v("MariaDB", 10, 11), ignoreDbDirs(".System"), false},
 		{"MySQL 5.7 skips hidden folders", v("MySQL", 5, 7), ignoreDbDirs(""), true},
 		{"MySQL 8.0 lists no folder", v("MySQL", 8, 0), nil, true},
 		{"Percona 8.4 lists no folder", v("Percona", 8, 4), nil, true},
 	} {
 		_, server := newTestClusterServer(t)
 		server.DBVersion = c.ver
+		// as Refresh() fills them: Variables upper-cased, SensitiveVariables as reported
 		server.Variables = config.NewStringsMap()
+		server.SensitiveVariables = config.NewStringsMap()
 		if c.dirs != nil {
-			server.Variables.Set("IGNORE_DB_DIRS", *c.dirs)
+			server.Variables.Set("IGNORE_DB_DIRS", strings.ToUpper(*c.dirs))
+			server.SensitiveVariables.Set("IGNORE_DB_DIRS", *c.dirs)
 		}
 		if got := server.IsSystemDirIgnored(); got != c.ignored {
 			t.Errorf("%s: ignored %t, want %t", c.name, got, c.ignored)

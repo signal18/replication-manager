@@ -544,12 +544,13 @@ func (server *ServerMonitor) GetJobDatadir() string {
 // databases. MariaDB lists every folder ignore_db_dirs does not name (the configurator's
 // default_path.cnf names .system), as #mysql50#.system; MySQL and Percona list no hidden folder
 // (5.7 skips it, 8.0 lists no folder at all). Unknown, before the version and variables are read,
-// it keeps the configurator's layout.
+// it keeps the configurator's layout. The value is read as the server reports it
+// (SensitiveVariables): the values of Variables are upper-cased, and folder names are not.
 func (server *ServerMonitor) IsSystemDirIgnored() bool {
-	if server.DBVersion == nil || server.Variables == nil || !server.DBVersion.IsMariaDB() {
+	if server.DBVersion == nil || server.SensitiveVariables == nil || !server.DBVersion.IsMariaDB() {
 		return true
 	}
-	dirs, ok := server.Variables.CheckAndGet("IGNORE_DB_DIRS")
+	dirs, ok := server.SensitiveVariables.CheckAndGet("IGNORE_DB_DIRS")
 	if !ok {
 		return true
 	}
