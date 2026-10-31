@@ -15,7 +15,8 @@ import (
 )
 
 // #2262: on an instance registered to Cloud18 (mcp-server-auth auto), /api/login takes the
-// admin account (the admin zone) and refuses the other local accounts, whatever their password;
+// admin account (the admin zone) and refuses the other local accounts with the 401 of a wrong
+// password (never an oracle of it);
 // mcp-server-auth = any (the recovery in config.toml) lets them in again.
 func TestLoginCloud18OnlyRefusesLocalAccounts(t *testing.T) {
 	_, issuer := newRegisterFakes(t)
@@ -42,11 +43,11 @@ func TestLoginCloud18OnlyRefusesLocalAccounts(t *testing.T) {
 	if code := login("admin", "admin-pw"); code != http.StatusOK {
 		t.Fatalf("the admin zone's login must pass, got %d", code)
 	}
-	if code := login("bob", "bob-pw"); code != http.StatusForbidden {
-		t.Fatalf("a local account other than the admin must be refused 403, got %d", code)
+	if code := login("bob", "bob-pw"); code != http.StatusUnauthorized {
+		t.Fatalf("a local account other than an admin account must be refused 401, got %d", code)
 	}
 	if code := login("bob", "wrong"); code != http.StatusUnauthorized {
-		t.Fatalf("a wrong password stays 401, got %d", code)
+		t.Fatalf("a wrong password: the same 401 (no oracle of the local password), got %d", code)
 	}
 	repman.Conf.MCPServerAuth = config.ConstMCPAuthAny
 	if code := login("bob", "bob-pw"); code != http.StatusOK {

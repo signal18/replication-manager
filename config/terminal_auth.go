@@ -41,8 +41,8 @@ func (conf *Config) MCPAuthAllows(authMethod string, cloud18 bool) error {
 // Cloud18LoginOnly says whether this repman takes Cloud18 logins only (mcp-server-auth resolves
 // to cloud18: auto on an instance registered to Cloud18). Its MCP refuses local password
 // sessions (MCPAuthAllows); its login page offers Sign in with Cloud18, the user and password
-// form only behind the admin zone, and /api/login refuses the local accounts but the admin ones
-// and `system` (#2262). API tokens stay valid. Recovery: mcp-server-auth = "any" in config.toml.
+// form only behind the admin zone, and /api/login refuses local accounts other
+// than admin accounts and `system` (#2262). API tokens stay valid. Recovery: mcp-server-auth = "any" in config.toml.
 func (conf *Config) Cloud18LoginOnly() bool {
 	switch strings.ToLower(strings.TrimSpace(conf.MCPServerAuth)) {
 	case "", ConstMCPAuthAuto:

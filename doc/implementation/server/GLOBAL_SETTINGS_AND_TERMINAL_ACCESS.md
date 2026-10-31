@@ -74,8 +74,9 @@ so by default an instance registered to Cloud18). No setting of its own: one rul
 login.
 
 - `/api/login` (`loginHandler`): the admin accounts (global-admin-show) and `system` log in with
-  their local password as before; every other local account is refused **403** with "sign in with
-  Cloud18", whatever its password, logged in the security log as `api_auth_failure`. The local
+  their local password as before; every other local account is refused with the **401** of a wrong
+  password and "sign in with Cloud18", whatever its password (never an oracle of it), the real reason
+  in the security log only (`api_auth_failure`). The local
   password is never tried first for them (no session, no asynchronous SSO upgrade); their Cloud18
   login (password grant, second factor per `cloud18-login-acr`) and Sign in with Cloud18 stay. A
   wrong password stays 401. API tokens and realm tokens are unchanged.
