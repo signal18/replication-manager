@@ -683,6 +683,9 @@ func (collector *Collector) CreateSecretKeyValueV2(namespace string, service str
 	req.Close = true
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("o-node", "ANY")
+	ctx, cancel := context.WithTimeout(req.Context(), 10*time.Second)
+	defer cancel()
+	req = req.WithContext(ctx)
 	resp, err := client.Do(req)
 	if err != nil {
 		if collector.isLoggable(config.ConstLogModOrchestrator, config.LvlErr) {

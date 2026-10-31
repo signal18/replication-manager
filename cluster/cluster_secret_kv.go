@@ -75,10 +75,14 @@ type secretKvStores struct {
 	offers          map[string]config.MarketplaceVaultOffer // offer name -> the catalogue's offer
 	dropsSeen       uint64
 	dropsUnresolved bool
-	// orchestratorBehind: why the OpenSVC env secret kept an old MYSQL_ROOT_PASSWORD (never
-	// a value), "" when it has the current one; orchestratorTried: the last write of it
+	// orchestratorBehind: why the OpenSVC env secret keeps an old MYSQL_ROOT_PASSWORD (never
+	// a value), "" when it has the current one; orchestratorTried: the last write of it;
+	// orchestratorWrites numbers the writes, so a write overlapped by a later one does not
+	// close the state; orchestratorChecked: the secret was read once since the start
 	orchestratorBehind  string
 	orchestratorTried   time.Time
+	orchestratorWrites  uint64
+	orchestratorChecked bool
 	orchestratorWriting atomic.Bool
 }
 
@@ -1066,35 +1070,70 @@ func (cluster *Cluster) reportOrchestratorSecret(object, key, value string) {
 // writeOpenSVCRootPassword writes the database root password in the cluster's OpenSVC env
 // secret, through the v2 or v3 API the agent speaks, and reports it to the stores. A failure
 // keeps WARN0275 open (checkOpenSVCRootPassword writes the key again), a success closes it:
-// a reprovision would otherwise start the databases with the old password (#2255).
+// a reprovision would otherwise start the databases with the old password (#2255). A write
+// overlapped by a later one (a rotation during a retry) leaves the state open: which value
+// the agent kept is unknown, the retry writes the current one.
 func (cluster *Cluster) writeOpenSVCRootPassword(svc opensvc.Collector, password string) error {
-	err := svc.CreateSecretKeyValue(cluster.Name, "env", "MYSQL_ROOT_PASSWORD", password)
 	c := &cluster.secretKv
 	c.mu.Lock()
+	c.orchestratorWrites++
+	write := c.orchestratorWrites
+	c.mu.Unlock()
+	err := svc.CreateSecretKeyValue(cluster.Name, "env", "MYSQL_ROOT_PASSWORD", password)
+	c.mu.Lock()
+	wasBehind := c.orchestratorBehind != ""
 	c.orchestratorTried = time.Now()
-	if err != nil {
+	switch {
+	case err != nil:
 		c.orchestratorBehind = err.Error()
-	} else {
+	case write != c.orchestratorWrites:
+		c.orchestratorBehind = "a later write overlapped this one"
+	default:
 		c.orchestratorBehind = ""
 	}
 	c.mu.Unlock()
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not write MYSQL_ROOT_PASSWORD in the OpenSVC secret %s/sec/env: %s", cluster.Name, err)
+		// once per state: the retries of an open WARN0275 log at debug
+		level := config.LvlErr
+		if wasBehind {
+			level = config.LvlDbg
+		}
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, level, "Can not write MYSQL_ROOT_PASSWORD in the OpenSVC secret %s/sec/env: %s", cluster.Name, err)
 		return err
 	}
 	cluster.reportOrchestratorSecret("env", "MYSQL_ROOT_PASSWORD", password)
 	return nil
 }
 
-// checkOpenSVCRootPassword runs at each tick on the active monitor: while the OpenSVC env
-// secret is behind, WARN0275 is raised and, every secret-kv-retry-interval, the current
-// database password is written again in the background. Never blocks the tick.
+// checkOpenSVCRootPassword runs at each tick on the active monitor. Once after the start it
+// reads the env secret (v3 agents) and opens WARN0275 when it holds another password than the
+// current one: a state lost at a restart or a failover is found again. While the secret is
+// behind, WARN0275 is raised and, every secret-kv-retry-interval, the current database
+// password is written again. Both run in the background: never blocks the tick.
 func (cluster *Cluster) checkOpenSVCRootPassword() {
 	c := &cluster.secretKv
+	if cluster.GetOrchestrator() != config.ConstOrchestratorOpenSVC {
+		c.mu.Lock()
+		c.orchestratorBehind, c.orchestratorChecked = "", false
+		c.mu.Unlock()
+		return
+	}
 	c.mu.Lock()
-	why, tried := c.orchestratorBehind, c.orchestratorTried
+	why, tried, checked := c.orchestratorBehind, c.orchestratorTried, c.orchestratorChecked
 	c.mu.Unlock()
-	if why == "" || cluster.GetOrchestrator() != config.ConstOrchestratorOpenSVC {
+	if !checked {
+		if c.orchestratorWriting.CompareAndSwap(false, true) {
+			c.mu.Lock()
+			c.orchestratorChecked = true
+			c.mu.Unlock()
+			go func() {
+				defer c.orchestratorWriting.Store(false)
+				cluster.verifyOpenSVCRootPassword(cluster.OpenSVCConnect())
+			}()
+		}
+		return
+	}
+	if why == "" {
 		return
 	}
 	cluster.SecurityStateMachine.AddState("WARN0275", state.State{ErrType: "WARNING", ErrFrom: "SECURITY",
@@ -1110,6 +1149,31 @@ func (cluster *Cluster) checkOpenSVCRootPassword() {
 		defer c.orchestratorWriting.Store(false)
 		cluster.writeOpenSVCRootPassword(cluster.OpenSVCConnect(), cluster.GetDbPass())
 	}()
+}
+
+// verifyOpenSVCRootPassword compares the env secret's MYSQL_ROOT_PASSWORD with the current
+// database password and marks the secret behind when they differ (the next tick writes it).
+// A v2 agent has no read of a key: nothing is checked. An unreadable secret raises nothing:
+// a cluster monitored, not provisioned, on OpenSVC has none.
+func (cluster *Cluster) verifyOpenSVCRootPassword(svc opensvc.Collector) {
+	if !svc.IsV3() {
+		return
+	}
+	cur, err := svc.GetSecretKeyValueV3(cluster.Name, "env", "MYSQL_ROOT_PASSWORD")
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlDbg, "Can not read MYSQL_ROOT_PASSWORD of the OpenSVC secret %s/sec/env: %s", cluster.Name, err)
+		return
+	}
+	if string(cur) == cluster.GetDbPass() {
+		return
+	}
+	c := &cluster.secretKv
+	c.mu.Lock()
+	if c.orchestratorBehind == "" {
+		c.orchestratorBehind = "found at start: it differs from the current password"
+		c.orchestratorTried = time.Time{}
+	}
+	c.mu.Unlock()
 }
 
 func (cluster *Cluster) setStoreWritten(entry string) {

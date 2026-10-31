@@ -144,7 +144,14 @@ settings (secrets encrypted, F9), on/off, forms drawn from the manifest.
    The rotation writes `MYSQL_ROOT_PASSWORD` in the OpenSVC `env` secret through the v2 or
    v3 API the agent speaks (`CreateSecretKeyValue`). A failed write is WARN0275 (security):
    the active monitor writes the current password again every `secret-kv-retry-interval`,
-   in the background, and the state closes once it is written (#2255).
+   in the background, and the state closes once it is written (#2255). Each write is
+   numbered: a write overlapped by a later one (a rotation during a retry) leaves the state
+   open, since the agent may have kept the older value, and the retry writes the current
+   one. The state lives in memory: once after each start (a restart, a failover to this
+   monitor) the active monitor reads the secret on a v3 agent and opens WARN0275 when it
+   differs from the current password. A secret it cannot read raises nothing (a cluster
+   monitored, not provisioned, on OpenSVC has none); a v2 agent has no read of a key, so
+   on v2 a state open at a restart is lost until the next rotation.
 8. **`database_engine`** is a vault store that generates: a rotation asks Vault
    (`rotate-role`); the value it returns is written as a new version to the other active
    stores; it is read from the engine first.
