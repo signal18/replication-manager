@@ -16,6 +16,7 @@ import (
 	"io"
 	"net"
 	"net/smtp"
+	"runtime/debug"
 	"slices"
 	"strings"
 	"time"
@@ -227,11 +228,32 @@ func (cluster *Cluster) IsInPasswordRotation() bool {
 	return cluster.inPasswordRotation.Load()
 }
 
-func (cluster *Cluster) RotatePasswords() error {
+func (cluster *Cluster) RotatePasswords() (err error) {
+	// the rotation runs in its own goroutine: a panic in it fails the rotation, never the
+	// monitor (F2)
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("internal error: %v", r)
+			stack := debug.Stack()
+			if len(stack) > 4096 {
+				stack = stack[:4096]
+			}
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Password rotation panicked: %v\n%s", r, stack)
+		}
+	}()
 	if err := cluster.CanRotatePasswords(); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Password rotation refused: %s", err)
 		return err
 	}
+	// the master and the replicas are taken once: a config reload or a topology change
+	// during the rotation (it waits for a config save) resets cluster.master and the slaves
+	master := cluster.GetMaster()
+	if master == nil {
+		err := errors.New("no master")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Password rotation refused: %s", err)
+		return err
+	}
+	slaves := append([]*ServerMonitor(nil), cluster.slaves...)
 	// one rotation at a time: it waits for a config save, a cron or a button can start another
 	if !cluster.inPasswordRotation.CompareAndSwap(false, true) {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Password rotation refused: %s", errPasswordRotationRunning)
@@ -303,9 +325,9 @@ func (cluster *Cluster) RotatePasswords() error {
 	// from here the rotation goes on step by step: a step that fails is logged and kept for
 	// the outcome (ErrRotatedWithErrors), the next steps still run
 	var failed []error
-	for _, u := range cluster.master.Users.ToNewMap() {
+	for _, u := range master.Users.ToNewMap() {
 		if u.User == cluster.GetDbUser() {
-			if _, err := dbhelper.SetUserPassword(cluster.master.Conn, cluster.master.DBVersion, u.Host, u.User, new_password_db); err != nil {
+			if _, err := dbhelper.SetUserPassword(master.Conn, master.DBVersion, u.Host, u.User, new_password_db); err != nil {
 				// a driver error can quote the statement (F10)
 				msg := dbhelper.MaskAppPassword(err.Error(), new_password_db)
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Fail of SetUserPassword %s@%s during rotation password: %s", u.User, u.Host, msg)
@@ -313,7 +335,7 @@ func (cluster *Cluster) RotatePasswords() error {
 			}
 		}
 		if u.User == cluster.GetRplUser() {
-			if _, err := dbhelper.SetUserPassword(cluster.master.Conn, cluster.master.DBVersion, u.Host, u.User, new_password_rpl); err != nil {
+			if _, err := dbhelper.SetUserPassword(master.Conn, master.DBVersion, u.Host, u.User, new_password_rpl); err != nil {
 				// a driver error can quote the statement (F10)
 				msg := dbhelper.MaskAppPassword(err.Error(), new_password_rpl)
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Fail of SetUserPassword %s@%s during rotation password: %s", u.User, u.Host, msg)
@@ -321,8 +343,10 @@ func (cluster *Cluster) RotatePasswords() error {
 			}
 		}
 	}
-	for _, s := range cluster.slaves {
-
+	for _, s := range slaves {
+		if s == nil {
+			continue
+		}
 		for _, ss := range s.Replications {
 			err := s.rejoinSlaveChangePassword(&ss)
 			if err != nil {
