@@ -74,7 +74,13 @@ func (s *VersionStore) Generates() bool { return false }
 
 // Persistent: a change survives a restart when an active store keeps it, else when the config
 // is saved (monitoring-save-config on, #2269).
-func (s *VersionStore) Persistent() bool { return s.keepsVersions() || s.conf().ConfRewrite }
+func (s *VersionStore) Persistent() bool {
+	if s.keepsVersions() {
+		return true
+	}
+	conf := s.conf()
+	return conf != nil && conf.ConfRewrite
+}
 
 // keepsVersions: an active store keeps the versions (the local file with versioning on, or a
 // vault entry). Otherwise the config is the store (#2269).
@@ -382,6 +388,9 @@ func (s *VersionStore) snapshot(key string) (interface{}, bool) {
 	return snap, true
 }
 
+// restore puts back the versions of key as snapshot saw them, whole: the chain calls snapshot
+// and restore under its lock, and every write of a version goes through the chain, so no
+// version is added in between.
 func (s *VersionStore) restore(key string, raw interface{}, present bool) {
 	snap, _ := raw.(versionSnapshot)
 	conf := s.conf()

@@ -372,6 +372,15 @@ switched off. A successful run writes one line in the security log too. API:
 `settings/actions/switch/scheduler-rotate-passwords` and
 `settings/actions/set-cron/scheduler-rotate-passwords-cron/{value}`, under the cluster
 settings grant like the other scheduler settings; GUI: Settings > Scheduler, Rotate Passwords.
+A cron that cannot be scheduled (`SetScheduler` returns the parse error) opens WARN0274 too,
+while the schedule is on. The skip reason is in memory: after a failover the new active monitor
+shows WARN0274 from its own first skipped run, up to one cron period later.
+
+Known window: the new value is durable once the config-sync gate has run the save callback
+(every 60 ticks): the rotation does not write a file itself (T25). If repman stops after the
+databases took the new password and before that save, the next start reads the previous one
+and is denied access. The version file (versioning on) has the same window, it is written by
+the same gate. Recovery is by hand: set the credential to the password the databases hold.
 
 Old backups: `backupPasswordHistory` (`srv_job_backup_encryption.go`) reads the old root
 passwords from the local file to open an encrypted backup taken before a rotation.

@@ -11,6 +11,7 @@ import (
 
 	"github.com/jmoiron/sqlx"
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/cron"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/state"
 )
@@ -169,5 +170,36 @@ func TestScheduledPasswordRotationSkipped(t *testing.T) {
 	cl.GetRotatePasswordsFunction()()
 	if cl.scheduledRotationSkipped != "" {
 		t.Fatal("a standby ran the scheduled rotation")
+	}
+}
+
+// #2269: a cron that cannot be scheduled never stops the rotation silently: WARN0274 opens
+// while the schedule is on, and closes once a valid cron is set
+func TestScheduledPasswordRotationInvalidCron(t *testing.T) {
+	cl := rotateGateCluster()
+	cl.Status = ConstMonitorActif
+	cl.SecurityStateMachine = new(state.StateMachine)
+	cl.SecurityStateMachine.Init()
+	cl.scheduler = cron.New()
+	cl.Schedule = map[string]cron.Entry{}
+	cl.Conf.SchedulerRotatePasswords = true
+
+	if err := cl.SetSchedulerRotatePasswordsCron("not a cron"); err == nil {
+		t.Fatal("an invalid cron was accepted")
+	}
+	cl.CheckScheduledPasswordRotation()
+	if !hasState(cl.SecurityStateMachine, "WARN0274") {
+		t.Fatal("an invalid cron must open WARN0274")
+	}
+	if err := cl.SetSchedulerRotatePasswordsCron("0 0 3 * * 0"); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := cl.Schedule["rotatepasswords"]; !ok {
+		t.Fatal("the valid cron is not scheduled")
+	}
+	cl.SecurityStateMachine.ClearState()
+	cl.CheckScheduledPasswordRotation()
+	if hasState(cl.SecurityStateMachine, "WARN0274") {
+		t.Fatal("a valid cron must close the state")
 	}
 }

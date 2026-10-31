@@ -161,8 +161,10 @@ func (cluster *Cluster) StartPasswordRotation() error {
 
 // ScheduledPasswordRotation is the run of the scheduled rotation (#2269): RotatePasswords, as
 // the button. A run CanRotatePasswords refuses (a database down, replication stopped, a
-// credential set in a config file with no store keeping versions) is skipped: one line in the security log, and a security
-// state (WARN0274) until a scheduled rotation succeeds or the schedule is switched off.
+// credential set in a config file with no store keeping versions) is skipped: one line in the
+// security log, and a security state (WARN0274) until a scheduled rotation succeeds or the
+// schedule is switched off. The reason is kept in memory: after a failover the new active
+// monitor shows the state from its own first skipped run.
 func (cluster *Cluster) ScheduledPasswordRotation() {
 	if err := cluster.RotatePasswords(); err != nil {
 		reason := credstore.Reason(err)
@@ -182,8 +184,18 @@ func (cluster *Cluster) setScheduledRotationSkipped(reason string) {
 	cluster.scheduledRotationMu.Unlock()
 }
 
+// clearScheduledRotationCronError closes a cron error once the schedule is set; a skipped
+// run's reason stays until a run succeeds.
+func (cluster *Cluster) clearScheduledRotationCronError() {
+	cluster.scheduledRotationMu.Lock()
+	if strings.HasPrefix(cluster.scheduledRotationSkipped, "invalid cron ") {
+		cluster.scheduledRotationSkipped = ""
+	}
+	cluster.scheduledRotationMu.Unlock()
+}
+
 // CheckScheduledPasswordRotation opens WARN0274, at each tick, while the last scheduled
-// rotation was skipped (security domain, T3).
+// rotation was skipped or the schedule cannot be set (security domain, T3).
 func (cluster *Cluster) CheckScheduledPasswordRotation() {
 	if !cluster.Conf.SchedulerRotatePasswords || cluster.SecurityStateMachine == nil || !cluster.IsActive() {
 		return
