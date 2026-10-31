@@ -387,13 +387,22 @@ func (c *Chain) Set(key, value string) error {
 // A key given twice is written twice, in order: the last value wins, and a rollback still
 // puts back the value from before the call (every key is snapshot before any write).
 func (c *Chain) SetAll(changes ...Change) error {
+	_, err := c.SetAllRevertible(changes...)
+	return err
+}
+
+// SetAllRevertible is SetAll, and returns what puts every key back as it was before the call,
+// the stores, the cache (current and previous value) and the copies: for a caller that must
+// see the change saved before acting on it (a rotation, #2269), and gives up when it is not.
+// The revert overwrites a change another writer made to the same keys in between.
+func (c *Chain) SetAllRevertible(changes ...Change) (func() error, error) {
 	c.mu.Lock()
 	writers := make([]CredentialStore, len(changes))
 	for i, ch := range changes {
 		w, err := c.writer(ch.Key)
 		if err != nil {
 			c.mu.Unlock()
-			return err
+			return nil, err
 		}
 		writers[i] = w
 	}
@@ -403,29 +412,36 @@ func (c *Chain) SetAll(changes ...Change) error {
 	type before struct {
 		raw     interface{}
 		present bool
+		secret  config.Secret
 	}
 	befores := make([]before, len(changes))
 	for i, ch := range changes {
 		if r, ok := writers[i].(restorer); ok {
 			befores[i].raw, befores[i].present = r.snapshot(ch.Key)
 		}
+		befores[i].secret = c.conf.Secrets.Get(ch.Key)
+	}
+	// putBack puts the keys written before n back, the last first. Call it under the lock.
+	putBack := func(n int) []error {
+		var errs []error
+		for j := n - 1; j >= 0; j-- {
+			if r, ok := writers[j].(restorer); ok {
+				r.restore(changes[j].Key, befores[j].raw, befores[j].present)
+				continue
+			}
+			if uerr := writers[j].Set(changes[j].Key, befores[j].secret.Value); uerr != nil {
+				errs = append(errs, fmt.Errorf("%s: %s not put back: %w", writers[j].Name(), changes[j].Key, uerr))
+			}
+		}
+		return errs
 	}
 	for i, ch := range changes {
 		if err := writers[i].Set(ch.Key, ch.Value); err != nil {
-			errs := []error{fmt.Errorf("%s: %s: %w", writers[i].Name(), ch.Key, err)}
-			for j := i - 1; j >= 0; j-- {
-				if r, ok := writers[j].(restorer); ok {
-					r.restore(changes[j].Key, befores[j].raw, befores[j].present)
-					continue
-				}
-				// the cache still holds the former value
-				if uerr := writers[j].Set(changes[j].Key, c.conf.Secrets.Get(changes[j].Key).Value); uerr != nil {
-					errs = append(errs, fmt.Errorf("%s: %s not put back: %w", writers[j].Name(), changes[j].Key, uerr))
-				}
-			}
+			// the cache still holds the former value
+			errs := append([]error{fmt.Errorf("%s: %s: %w", writers[i].Name(), ch.Key, err)}, putBack(i)...)
 			c.mu.Unlock()
 			c.saveEvents(writers[:i])
-			return errors.Join(errs...)
+			return nil, errors.Join(errs...)
 		}
 	}
 	for _, ch := range changes {
@@ -439,7 +455,27 @@ func (c *Chain) SetAll(changes ...Change) error {
 	if copies != nil {
 		copies(changes)
 	}
-	return nil
+	revert := func() error {
+		c.mu.Lock()
+		errs := putBack(len(changes))
+		for i := len(changes) - 1; i >= 0; i-- {
+			c.conf.Secrets.Set(changes[i].Key, befores[i].secret)
+		}
+		copies := c.copies
+		c.mu.Unlock()
+		c.saveEvents(writers)
+		if copies != nil {
+			var former []Change
+			for i, ch := range changes {
+				if befores[i].secret.Value != "" {
+					former = append(former, Change{Key: ch.Key, Value: befores[i].secret.Value})
+				}
+			}
+			copies(former)
+		}
+		return errors.Join(errs...)
+	}
+	return revert, nil
 }
 
 // saveEvents calls each written store's save event once. Call it without the lock.

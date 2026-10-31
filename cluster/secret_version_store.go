@@ -75,14 +75,15 @@ func (cluster *Cluster) MarkSecretVersionStoreDirty() {
 // secret becomes a version when it differs from the last one (a secret without a version gets
 // version 1: the starting value); the versions the chain made at each change are already
 // there, with their own time and writer. Then the file is written, atomically, from the
-// version store. Encrypted values only (F9). Nothing when versioning is off.
-func (cluster *Cluster) ReconcileSecretVersionStore() {
+// version store. Encrypted values only (F9). Nothing when versioning is off. The error is the
+// file's write: the save is then not complete (ConfigSavedAsOf).
+func (cluster *Cluster) ReconcileSecretVersionStore() error {
 	if cluster == nil || cluster.Conf == nil {
-		return
+		return nil
 	}
 
 	if !cluster.Conf.IsMonitoringSecretVersioningEnabled() {
-		return
+		return nil
 	}
 
 	vs := cluster.versionStore()
@@ -100,7 +101,9 @@ func (cluster *Cluster) ReconcileSecretVersionStore() {
 	if err := cluster.writeSecretVersionFile(); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
 			"Failed to persist secret version store %s: %v", SecretVersionStorePath(cluster.Conf.WorkingDir, cluster.Name), err)
+		return err
 	}
+	return nil
 }
 
 func (cluster *Cluster) getSecretVersionStoreAutoPruneSettings() (bool, int) {

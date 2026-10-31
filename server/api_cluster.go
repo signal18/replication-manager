@@ -3586,6 +3586,8 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.SwitchSchedulerDatabaseAnalyze()
 	case "scheduler-alert-disable":
 		mycluster.SwitchSchedulerAlertDisable()
+	case "scheduler-rotate-passwords":
+		mycluster.SwitchSchedulerRotatePasswords()
 	case "graphite-metrics":
 		mycluster.SwitchGraphiteMetrics()
 	case "graphite-embedded":
@@ -4057,6 +4059,7 @@ func (repman *ReplicationManager) handlerMuxChangePlanUnits(w http.ResponseWrite
 // @Param settingName path string true "Setting Name"
 // @Param settingValue path string true "Setting Value"
 // @Success 200 {string} string "Successfully set cron job"
+// @Failure 400 {string} string "Bad or refused cron pattern"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "No cluster"
 // @Router /api/clusters/{clusterName}/settings/actions/set-cron/{settingName}/{settingValue} [post]
@@ -4073,8 +4076,12 @@ func (repman *ReplicationManager) handlerMuxSetCron(w http.ResponseWriter, r *ht
 		cronValue, err := url.QueryUnescape(vars["settingValue"])
 		if err != nil {
 			http.Error(w, "Bad cron pattern", http.StatusBadRequest)
+			return
 		}
-		repman.setClusterSetting(mycluster, setting, cronValue)
+		// a cron the setter refuses (scheduler-rotate-passwords-cron) keeps the former one
+		if err := repman.setClusterSetting(mycluster, setting, cronValue); err != nil {
+			http.Error(w, "Failed to set cron: "+err.Error(), http.StatusBadRequest)
+		}
 		return
 	} else {
 		http.Error(w, "No cluster", http.StatusInternalServerError)
@@ -4891,6 +4898,10 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.ParseJobsExecOverrides()
 	case "scheduler-alert-disable-cron":
 		mycluster.SetSchedulerAlertDisableCron(value)
+	case "scheduler-rotate-passwords-cron":
+		if err := mycluster.SetSchedulerRotatePasswordsCron(value); err != nil {
+			return err
+		}
 	case "monitoring-schema-scheduler-cron":
 		mycluster.SetMonitoringSchemaSchedulerCron(value)
 	case "monitoring-checksum-scheduler-cron":
@@ -5763,6 +5774,10 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		}
 	case "scheduler-alert-disable":
 		mycluster.Conf.SchedulerAlertDisable = applyIsActive(mycluster.Conf.SchedulerAlertDisable, isactive)
+	case "scheduler-rotate-passwords":
+		if applyIsActive(mycluster.Conf.SchedulerRotatePasswords, isactive) != mycluster.Conf.SchedulerRotatePasswords {
+			mycluster.SwitchSchedulerRotatePasswords()
+		}
 	case "graphite-metrics":
 		mycluster.Conf.GraphiteMetrics = applyIsActive(mycluster.Conf.GraphiteMetrics, isactive)
 	case "graphite-embedded":

@@ -403,6 +403,16 @@ func (cluster *Cluster) SwitchSchedulerRollingReprov() {
 	cluster.SetSchedulerRollingReprov()
 }
 
+// SwitchSchedulerRotatePasswords turns the scheduled rotation on or off (#2269); off, a skipped
+// run's state closes.
+func (cluster *Cluster) SwitchSchedulerRotatePasswords() {
+	cluster.Conf.SchedulerRotatePasswords = !cluster.Conf.SchedulerRotatePasswords
+	if !cluster.Conf.SchedulerRotatePasswords {
+		cluster.setScheduledRotationSkipped("")
+	}
+	cluster.SetSchedulerRotatePasswords()
+}
+
 func (cluster *Cluster) SwitchSchedulerAlertDisable() {
 	cluster.Conf.SchedulerAlertDisable = !cluster.Conf.SchedulerAlertDisable
 	cluster.SetSchedulerAlertDisable()

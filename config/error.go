@@ -380,6 +380,7 @@ var ClusterError = map[string]string{
 	"WARN0271":  "Credential store %s is behind the other stores (%s) -- it gets the newest version at the next pass, every secret-kv-retry-interval; check the entry's address and sign-in",
 	"WARN0272":  "Credential stores: %d secret version(s) dropped, the queue (secret-kv-queue-limit %d) was full -- once the queue drains, a full pass writes the newest version of every secret again",
 	"WARN0273":  "Credential %s is a Vault path pinned in a config file: it is read from Vault at each start -- remove it from the file, its value now lives in the credential stores",
+	"WARN0274":  "Scheduled password rotation skipped: %s -- the next scheduled run tries again; the state closes when a scheduled rotation succeeds or the schedule is switched off",
 	"WARN0264":  "Binlog budget of %s at its floor, %s (%s): the data leaves no room, each closed binlog is purged at once, its copy and lagging replicas with it -- grow the disk or free data",
 	"WARN0265":  "Replica %s, disconnected, needs binlog %s of %s, beyond its binlog size limit %s (oldest kept %s): MariaDB purges it by size, the replica will need a reseed unless it reconnects first",
 	"WARN0263":  "Archive %s keeps its snapshots unencrypted on %s: no client encryption-key -- set one to encrypt its next snapshots (those taken stay as they are), or no-encrypt to keep it so",

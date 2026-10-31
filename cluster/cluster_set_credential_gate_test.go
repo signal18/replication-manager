@@ -22,17 +22,27 @@ func TestCanSetCredential(t *testing.T) {
 		want   string // "" = allowed, else a part of the refusal
 	}{
 		{"allowed", "db-servers-credential", func(*Cluster) {}, ""},
-		// #2227 rule 9: a credential set in a config file takes a change as a version
+		// #2227 rule 9: a credential set in a config file takes a change as a version; #2269:
+		// refused when no store keeps versions
 		{"db credential in a file", "db-servers-credential", func(c *Cluster) { c.Conf.ImmuableFlagMap["db-servers-credential"] = "root:x" }, ""},
 		{"replication credential in a file", "replication-credential", func(c *Cluster) { c.Conf.ImmuableFlagMap["replication-credential"] = "repl:x" }, ""},
 		{"credential in a file, no versioned store", "replication-credential", func(c *Cluster) {
 			c.Conf.ImmuableFlagMap["replication-credential"] = "repl:x"
 			c.Conf.MonitoringSecretVersioning = false
-		}, "no credential store keeps versions"},
+		}, "immutable"},
 		{"another credential in a file", "db-servers-credential", func(c *Cluster) { c.Conf.ImmuableFlagMap["replication-credential"] = "repl:x" }, ""},
 		// #2227 rule 1: the change is a version in the versioned stores, never in the config
 		{"config not saved, versioning on", "replication-credential", func(c *Cluster) { c.Conf.ConfRewrite = false }, ""},
-		{"no versioned store", "replication-credential", func(c *Cluster) { c.Conf.MonitoringSecretVersioning = false }, "no credential store keeps versions"},
+		// #2269: no store keeps versions: the config is the store, while it is saved
+		{"no versioned store", "replication-credential", func(c *Cluster) { c.Conf.MonitoringSecretVersioning = false }, ""},
+		{"no versioned store, config not saved", "replication-credential", func(c *Cluster) {
+			c.Conf.MonitoringSecretVersioning = false
+			c.Conf.ConfRewrite = false
+		}, "monitoring-save-config is off"},
+		{"no versioned store, no encryption key", "replication-credential", func(c *Cluster) {
+			c.Conf.MonitoringSecretVersioning = false
+			c.Conf.SecretKey = nil
+		}, "no encryption key"},
 		{"no versioned store, a vault entry", "replication-credential", func(c *Cluster) {
 			c.Conf.MonitoringSecretVersioning = false
 			c.Conf.SecretKvs = []config.SecretKvConfig{{Name: "vault-a", Plugin: config.ConstSecretKvPluginVault, Enabled: true}}
