@@ -973,6 +973,27 @@ func (server *ServerMonitor) ReadPreservedVariables() error {
 	return nil
 }
 
+// isWritableConfigKey reports whether name is a valid option name safe to write to a
+// my.cnf. A line built from an empty or malformed key — e.g. the "loose_" prefix with
+// nothing after it — becomes "loose_=<value>", which mariadbd rejects at startup as a
+// fatal ambiguous option ("--loose-=...", "variable prefix ... is not unique"), so the
+// server never starts and no server error log is produced. Any preserved/delta variable
+// whose real name (after stripping a loose_/loose- prefix) is empty or carries a
+// character outside [A-Za-z0-9_-] is skipped rather than written (#2278).
+func isWritableConfigKey(name string) bool {
+	name = strings.TrimPrefix(name, "loose_")
+	name = strings.TrimPrefix(name, "loose-")
+	if name == "" {
+		return false
+	}
+	for _, r := range name {
+		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '_' || r == '-') {
+			return false
+		}
+	}
+	return true
+}
+
 func (server *ServerMonitor) WriteDeltaVariables() error {
 	cluster := server.ClusterGroup
 	deltapath := filepath.Join(server.Datadir, "02_delta.cnf")
@@ -1009,6 +1030,15 @@ func (server *ServerMonitor) WriteDeltaVariables() error {
 		managed = cluster.Configurator.TagManagedVariables()
 	}
 	for _, v := range delta {
+		// Never write a line from an empty/malformed name: it would become a fatal bare
+		// "loose_=" that stops mariadbd from starting (#2278).
+		if !isWritableConfigKey(v.VariableName) {
+			if cluster != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+					"Delta of %s: skipping invalid variable name %q (would emit a fatal bare loose_= line, #2278)", server.URL, v.VariableName)
+			}
+			continue
+		}
 		// A variable of replication-manager's own tag rulesets that the generated config
 		// no longer carries is a pending tag change (a dropped tag still deployed until
 		// the restart): preserving it would bring the dropped tag back at every start
@@ -1125,6 +1155,13 @@ func (server *ServerMonitor) WritePreservedVariables() error {
 	agreedContent.WriteString("[mysqld]\n")
 
 	for key, v := range server.VariablesMap.ToNewMap() {
+		// Never write a line from an empty/malformed key: it would become a fatal bare
+		// "loose_=" that stops mariadbd from starting (#2278).
+		if !isWritableConfigKey(key) {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+				"Preserved variables of %s: skipping invalid key %q (would emit a fatal bare loose_= line, #2278)", server.URL, key)
+			continue
+		}
 		if v.Preserved != nil {
 			// Prefix with loose_ if the variable has no config counterpart
 			varKey := key
