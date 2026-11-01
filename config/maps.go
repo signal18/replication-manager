@@ -1303,6 +1303,28 @@ func NormalizeConfigVarName(name string) string {
 	return strings.TrimSpace(strings.TrimPrefix(strings.ReplaceAll(name, "-", "_"), "loose_"))
 }
 
+// IsValidConfigVarName reports whether name is a usable MariaDB/MySQL option name, i.e.
+// safe to read into the variables map and later write to a my.cnf. A name that is empty,
+// or the bare "loose_"/"loose-" prefix with nothing after it, would be written as
+// "loose_=<value>", which mariadbd rejects at startup as a fatal ambiguous option
+// ("--loose-=...", "variable prefix ... is not unique") during its config check, so the
+// server never starts and emits no server error log (#2278). A name is accepted when,
+// after stripping a loose_/loose- prefix, it is non-empty and made only of letters,
+// digits, underscore, dot or hyphen (dot covers plugin-qualified options).
+func IsValidConfigVarName(name string) bool {
+	name = strings.TrimPrefix(name, "loose_")
+	name = strings.TrimPrefix(name, "loose-")
+	if name == "" {
+		return false
+	}
+	for _, r := range name {
+		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '_' || r == '.' || r == '-') {
+			return false
+		}
+	}
+	return true
+}
+
 func LoadMySQLConfigSection(path string) (*ini.Section, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
@@ -1360,6 +1382,12 @@ func (m *VariablesMap) loadFromSection(section *ini.Section, cnftype string) {
 
 		for _, key := range section.Keys() {
 			varname := NormalizeConfigVarName(key.Name())
+			// Drop an empty/malformed name (e.g. a "loose_=true" line whose loose_ prefix
+			// strips to nothing) so the junk never enters the map and cannot later be
+			// written back as a fatal bare "loose_=" (#2278).
+			if !IsValidConfigVarName(varname) {
+				continue
+			}
 			// Use INI shadows to honor MySQL last-wins behavior for non-repeat options.
 			values := key.ValueWithShadows()
 			if len(values) == 0 {
