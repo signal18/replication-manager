@@ -101,12 +101,13 @@ func clearCloud18SSOCookie(w http.ResponseWriter) {
 // @Description On a partner repman with a public address (cloud18 on, plan partner, a public https api-public-url, cloud18-sso-login on), the login page offers Sign in with Cloud18 (#2185). Public.
 // @Tags Auth
 // @Produce json
-// @Success 200 {object} map[string]interface{} "enabled, and the reason when it is not"
+// @Success 200 {object} map[string]interface{} "enabled, cloud18Only (the user and password form only in the admin zone), and the reason when it is not enabled"
 // @Router /api/auth/cloud18 [get]
 func (repman *ReplicationManager) handlerMuxCloud18SSO(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	_, err := repman.Conf.Cloud18SSO()
-	out := map[string]interface{}{"enabled": err == nil}
+	// cloud18Only: the user and password form is the admin zone's only (Cloud18LoginRequired, #2262)
+	out := map[string]interface{}{"enabled": err == nil, "cloud18Only": repman.Conf.Cloud18LoginRequired()}
 	if err != nil {
 		out["reason"] = err.Error()
 	}
@@ -122,27 +123,29 @@ func (repman *ReplicationManager) handlerMuxCloud18SSO(w http.ResponseWriter, r 
 // @Param login_hint query string false "the email typed on the login page, prefilled on the realm's page"
 // @Param silent query string false "1: sign in only if the person has a realm session, nothing shown"
 // @Param signup query string false "1: the realm's sign-up form"
-// @Success 302 {string} string "to the realm"
+// @Success 302 {string} string "to the realm, or back to /login?cloud18_error= when it cannot start"
 // @Router /api/auth/cloud18/start [get]
 func (repman *ReplicationManager) handlerMuxCloud18SSOStart(w http.ResponseWriter, r *http.Request) {
+	// every failure goes back to the login page with its reason, never a bare error page: on a
+	// Cloud18-only instance the login page comes here first, and its admin zone link must stay (#2262)
 	public, err := repman.Conf.Cloud18SSO()
 	if err != nil {
-		http.Error(w, "Sign in with Cloud18 is not offered here: "+err.Error(), http.StatusNotFound)
+		repman.cloud18SSOFail(w, r, "", cloud18SSOFailed, "not offered here: "+err.Error())
 		return
 	}
 	state, err := newUpgradeID()
 	if err != nil {
-		http.Error(w, "Sign in with Cloud18: no random state", http.StatusInternalServerError)
+		repman.cloud18SSOFail(w, r, public, cloud18SSOFailed, "no random state")
 		return
 	}
 	nonce, err := newUpgradeID()
 	if err != nil {
-		http.Error(w, "Sign in with Cloud18: no random state", http.StatusInternalServerError)
+		repman.cloud18SSOFail(w, r, public, cloud18SSOFailed, "no random state")
 		return
 	}
 	verifier, challenge, err := config.Cloud18PKCE()
 	if err != nil {
-		http.Error(w, "Sign in with Cloud18: no PKCE verifier", http.StatusInternalServerError)
+		repman.cloud18SSOFail(w, r, public, cloud18SSOFailed, "no PKCE verifier")
 		return
 	}
 	q := r.URL.Query()
@@ -152,7 +155,7 @@ func (repman *ReplicationManager) handlerMuxCloud18SSOStart(w http.ResponseWrite
 	}
 	target, err := repman.Conf.Cloud18SSOAuthorizeURL(public, state, challenge, mode)
 	if err != nil {
-		http.Error(w, "Sign in with Cloud18: "+err.Error(), http.StatusInternalServerError)
+		repman.cloud18SSOFail(w, r, public, cloud18SSOFailed, err.Error())
 		return
 	}
 	now := time.Now()

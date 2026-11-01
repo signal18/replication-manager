@@ -191,8 +191,9 @@ func TestCloud18SSORefusals(t *testing.T) {
 	off.Conf.APIPublicURL = "https://10.0.0.1"
 	w = httptest.NewRecorder()
 	off.handlerMuxCloud18SSOStart(w, httptest.NewRequest(http.MethodGet, "/api/auth/cloud18/start", nil))
-	if w.Code != http.StatusNotFound {
-		t.Fatalf("not offered: %d", w.Code)
+	// #2262: back to the login page with its reason (and its admin zone link), never the realm
+	if w.Code != http.StatusFound || w.Header().Get("Location") != "/login?cloud18_error=failed" {
+		t.Fatalf("not offered: %d %q", w.Code, w.Header().Get("Location"))
 	}
 }
 

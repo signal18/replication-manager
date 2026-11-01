@@ -2568,6 +2568,8 @@ definitions:
         type: boolean
       apiUserTokensDefaultExpireDays:
         type: integer
+      apiV3Server:
+        type: boolean
       app:
         type: boolean
       appApiTokenExpireDays:
@@ -3039,6 +3041,8 @@ definitions:
           Cloud18LicenseFile, when set, is the single switch for offline-license mode:
           the instance sources its plan from this signed file instead of the CRM (for
           air-gapped/PCI instances). Empty = normal online CRM path.
+        type: string
+      cloud18LoginAcr:
         type: string
       cloud18MarketplaceApuPrice:
         type: number
@@ -3616,6 +3620,8 @@ definitions:
         type: string
       mcpServer:
         type: boolean
+      mcpServerAuth:
+        type: string
       mcpTransport:
         type: string
       measurement:
@@ -4640,6 +4646,8 @@ definitions:
         type: boolean
       templateVarMaxDepth:
         type: integer
+      terminalSessionAuth:
+        type: string
       terminalSessionEnabled:
         type: boolean
       terminalSessionManager:
@@ -6133,7 +6141,8 @@ paths:
       - application/json
       responses:
         "200":
-          description: enabled, and the reason when it is not
+          description: enabled, cloud18Only (the user and password form only in the
+            admin zone), and the reason when it is not enabled
           schema:
             additionalProperties: true
             type: object
@@ -6223,7 +6232,8 @@ paths:
         type: string
       responses:
         "302":
-          description: to the realm
+          description: to the realm, or back to /login?cloud18_error= when it cannot
+            start
           schema:
             type: string
       summary: 'Sign in with Cloud18: start'

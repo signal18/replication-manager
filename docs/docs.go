@@ -111,7 +111,7 @@ const docTemplate = `{
                 "summary": "Sign in with Cloud18: offered or not",
                 "responses": {
                     "200": {
-                        "description": "enabled, and the reason when it is not",
+                        "description": "enabled, cloud18Only (the user and password form only in the admin zone), and the reason when it is not enabled",
                         "schema": {
                             "type": "object",
                             "additionalProperties": true
@@ -240,7 +240,7 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "302": {
-                        "description": "to the realm",
+                        "description": "to the realm, or back to /login?cloud18_error= when it cannot start",
                         "schema": {
                             "type": "string"
                         }
@@ -29778,6 +29778,9 @@ const docTemplate = `{
                 "apiUserTokensDefaultExpireDays": {
                     "type": "integer"
                 },
+                "apiV3Server": {
+                    "type": "boolean"
+                },
                 "app": {
                     "type": "boolean"
                 },
@@ -30463,6 +30466,9 @@ const docTemplate = `{
                 },
                 "cloud18LicenseFile": {
                     "description": "Cloud18LicenseFile, when set, is the single switch for offline-license mode:\nthe instance sources its plan from this signed file instead of the CRM (for\nair-gapped/PCI instances). Empty = normal online CRM path.",
+                    "type": "string"
+                },
+                "cloud18LoginAcr": {
                     "type": "string"
                 },
                 "cloud18MarketplaceApuPrice": {
@@ -31323,6 +31329,9 @@ const docTemplate = `{
                 },
                 "mcpServer": {
                     "type": "boolean"
+                },
+                "mcpServerAuth": {
+                    "type": "string"
                 },
                 "mcpTransport": {
                     "type": "string"
@@ -32818,6 +32827,9 @@ const docTemplate = `{
                 },
                 "templateVarMaxDepth": {
                     "type": "integer"
+                },
+                "terminalSessionAuth": {
+                    "type": "string"
                 },
                 "terminalSessionEnabled": {
                     "type": "boolean"
