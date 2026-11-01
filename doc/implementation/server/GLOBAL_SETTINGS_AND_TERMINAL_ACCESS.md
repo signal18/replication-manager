@@ -67,11 +67,15 @@ grants narrowed), never the session of a local password login; `any` = every log
 checked in `AuthenticateMCP`, refusals in the security log as `mcp_auth_failure`). Local accounts keep
 the API and the admin zone, not the MCP; clients on API tokens (the website assistant) are unchanged. The value is matched without case or spaces; an unknown value (a typo) acts as `cloud18`: it fails closed, never open. The stdio transport carries no login and starts only with `mcp-auth-enabled=false`, so it is outside this gate by construction.
 
-## The login: Cloud18 only, the admin zone for local accounts (`Cloud18LoginOnly`)
+## The login: Cloud18 only, the admin zone for local accounts (`Cloud18LoginRequired`)
 
-The same setting sets the login (`config.Cloud18LoginOnly`: `mcp-server-auth` resolved to `cloud18`,
-so by default an instance registered to Cloud18). No setting of its own: one rule for the MCP and the
-login.
+The login follows the MCP's rule (`config.Cloud18LoginOnly`: `mcp-server-auth` resolved to `cloud18`,
+so by default an instance registered to Cloud18) only where Sign in with Cloud18 is on
+(`config.Cloud18LoginRequired`: `cloud18-sso-login` and a public https address, `Cloud18SSO`). No
+setting of its own. An on-premise repman (no Sign in with Cloud18, registered to Cloud18 or not)
+keeps its local accounts and their ACL: a company shares one repman between local users with their
+own grants. On our public instances those local accounts are refused; their owners sign in with
+Cloud18.
 
 - `/api/login` (`loginHandler`): the admin accounts (global-admin-show) and `system` log in with
   their local password as before; every other local account is refused with the **401** of a wrong
@@ -80,13 +84,10 @@ login.
   password is never tried first for them (no session, no asynchronous SSO upgrade); their Cloud18
   login (password grant, second factor per `cloud18-login-acr`) and Sign in with Cloud18 stay. A
   wrong password stays 401. API tokens and realm tokens are unchanged.
-- `/api/auth/cloud18` answers `cloud18Only` when Sign in with Cloud18 is offered and the rule
-  holds. The login page then goes straight to the Cloud18 sign-in (the realm's page offers Sign
+- `/api/auth/cloud18` answers `cloud18Only` when the rule holds (`Cloud18LoginRequired`). The login page then goes straight to the Cloud18 sign-in (the realm's page offers Sign
   up; an open realm session comes straight back, signed in). The admin zone is `/login?admin`: the
   user and password form (the local admin), with a way back to Cloud18. A failed Cloud18 return
   shows its reason, a Sign in with Cloud18 button and the Admin zone link, never a redirect loop.
-  Where Sign in with Cloud18
-  is not offered (no public address), the form stays: the server rule still applies.
 
 ## Recovery: the configuration file
 

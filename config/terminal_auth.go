@@ -40,9 +40,8 @@ func (conf *Config) MCPAuthAllows(authMethod string, cloud18 bool) error {
 
 // Cloud18LoginOnly says whether this repman takes Cloud18 logins only (mcp-server-auth resolves
 // to cloud18: auto on an instance registered to Cloud18). Its MCP refuses local password
-// sessions (MCPAuthAllows); its login page offers Sign in with Cloud18, the user and password
-// form only behind the admin zone, and /api/login refuses local accounts other
-// than admin accounts and `system` (#2262). API tokens stay valid. Recovery: mcp-server-auth = "any" in config.toml.
+// sessions (MCPAuthAllows); the login follows it only where Sign in with Cloud18 is on
+// (Cloud18LoginRequired). API tokens stay valid. Recovery: mcp-server-auth = "any" in config.toml.
 func (conf *Config) Cloud18LoginOnly() bool {
 	switch strings.ToLower(strings.TrimSpace(conf.MCPServerAuth)) {
 	case "", ConstMCPAuthAuto:
@@ -52,6 +51,19 @@ func (conf *Config) Cloud18LoginOnly() bool {
 	default:
 		return true // cloud18, or an unknown value (a typo): fails closed, never open
 	}
+}
+
+// Cloud18LoginRequired says whether the login takes Cloud18 logins only (#2262): Cloud18LoginOnly
+// on a repman that offers Sign in with Cloud18 (cloud18-sso-login, a public address: Cloud18SSO).
+// The login page goes straight to Cloud18, the user and password form is the admin zone's
+// (/login?admin), and /api/login refuses local accounts other than admin accounts and `system`.
+// A repman without Sign in with Cloud18 (an on-premise one, registered or not) keeps its local
+// accounts and their ACL.
+func (conf *Config) Cloud18LoginRequired() bool {
+	if _, err := conf.Cloud18SSO(); err != nil {
+		return false
+	}
+	return conf.Cloud18LoginOnly()
 }
 
 // TerminalAuthAllows says whether a session may open a terminal: authType is the session's

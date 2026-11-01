@@ -953,9 +953,9 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	// Cloud18 logins only (Cloud18LoginOnly, #2262): a local account other than the admin
+	// Cloud18 logins only (Cloud18LoginRequired, #2262): a local account other than the admin
 	// accounts and `system` is refused, whatever its password; the person signs in with Cloud18.
-	cloud18Only := repman.Conf.Cloud18LoginOnly()
+	cloud18Only := repman.Conf.Cloud18LoginRequired()
 
 	// Non-admin Cloud18 path: try local auth first.
 	localInfo, localOK := tryLocalAuth()

@@ -106,8 +106,8 @@ func clearCloud18SSOCookie(w http.ResponseWriter) {
 func (repman *ReplicationManager) handlerMuxCloud18SSO(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	_, err := repman.Conf.Cloud18SSO()
-	// cloud18Only: the user and password form is the admin zone's only (Cloud18LoginOnly, #2262)
-	out := map[string]interface{}{"enabled": err == nil, "cloud18Only": err == nil && repman.Conf.Cloud18LoginOnly()}
+	// cloud18Only: the user and password form is the admin zone's only (Cloud18LoginRequired, #2262)
+	out := map[string]interface{}{"enabled": err == nil, "cloud18Only": repman.Conf.Cloud18LoginRequired()}
 	if err != nil {
 		out["reason"] = err.Error()
 	}
