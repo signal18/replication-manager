@@ -1,4 +1,4 @@
-FROM golang:1.25-bookworm AS builder
+FROM golang:1.26-bookworm AS builder
 
 RUN mkdir -p /go/src/github.com/signal18/replication-manager
 WORKDIR /go/src/github.com/signal18/replication-manager
@@ -34,7 +34,7 @@ FROM debian:bookworm-slim AS sysbench
 COPY docker/build-sysbench.sh /build-sysbench.sh
 RUN sh /build-sysbench.sh && rm -rf /var/lib/apt/lists/*
 
-FROM golang:1.25-bookworm AS final
+FROM golang:1.26-bookworm AS final
 
 ENV PROXYSQL_VERSION=2.7.3
 ENV MARIADB_VERSION=11.4
