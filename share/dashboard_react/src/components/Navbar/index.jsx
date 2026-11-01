@@ -173,6 +173,9 @@ function Navbar({ username, user }) {
     dispatch(clearCluster())
     if (viaCloud18) {
       window.location.assign('/api/auth/cloud18/logout')
+    } else {
+      // a local session (the admin zone on a Cloud18-only instance, #2262) goes back to its form
+      window.location.assign('/login?admin')
     }
   }
   const openAddUserModal = () => {

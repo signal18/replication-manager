@@ -24,8 +24,9 @@ func TestLoginCloud18OnlyRefusesLocalAccounts(t *testing.T) {
 	repman := ssoRepman(t, issuer)
 	cl := &cluster.Cluster{Name: "c1", Conf: &config.Config{}, WorkingDir: t.TempDir()}
 	cl.APIUsers = map[string]cluster.APIUser{
-		"admin": {User: "admin", Password: "admin-pw", Grants: map[string]bool{config.GrantGlobalAdminShow: true}},
-		"bob":   {User: "bob", Password: "bob-pw", Grants: map[string]bool{config.GrantDBShowVariables: true}},
+		"admin":  {User: "admin", Password: "admin-pw", Grants: map[string]bool{config.GrantGlobalAdminShow: true}},
+		"bob":    {User: "bob", Password: "bob-pw", Grants: map[string]bool{config.GrantDBShowVariables: true}},
+		"system": {User: "system", Password: "system-pw", Grants: map[string]bool{config.GrantDBShowVariables: true}},
 	}
 	repman.Clusters = map[string]*cluster.Cluster{cl.Name: cl}
 	repman.ClusterList = []string{cl.Name}
@@ -44,11 +45,29 @@ func TestLoginCloud18OnlyRefusesLocalAccounts(t *testing.T) {
 	if code := login("admin", "admin-pw"); code != http.StatusOK {
 		t.Fatalf("the admin zone's login must pass, got %d", code)
 	}
+	if code := login("system", "system-pw"); code != http.StatusOK {
+		t.Fatalf("system keeps its local password, got %d", code)
+	}
 	if code := login("bob", "bob-pw"); code != http.StatusUnauthorized {
 		t.Fatalf("a local account other than an admin account must be refused 401, got %d", code)
 	}
 	if code := login("bob", "wrong"); code != http.StatusUnauthorized {
 		t.Fatalf("a wrong password: the same 401 (no oracle of the local password), got %d", code)
+	}
+	// one answer for every refusal: an admin account's wrong password says the same as a refused
+	// local account (no oracle of which accounts are admin accounts)
+	body := func(user, pw string) string {
+		req := httptest.NewRequest(http.MethodPost, "/api/login", strings.NewReader(`{"username":"`+user+`","password":"`+pw+`"}`))
+		w := httptest.NewRecorder()
+		repman.loginHandler(w, req)
+		repman.UserAuthTry.Delete(user)
+		return w.Body.String()
+	}
+	if a, b := body("admin", "wrong"), body("bob", "bob-pw"); a != b {
+		t.Fatalf("refusals differ: admin %q, bob %q", a, b)
+	}
+	if code := login("system", "wrong"); code != http.StatusUnauthorized {
+		t.Fatalf("system keeps its local password only: a wrong one is 401, got %d", code)
 	}
 	repman.Conf.Cloud18SSOLogin = false
 	if code := login("bob", "bob-pw"); code != http.StatusOK {

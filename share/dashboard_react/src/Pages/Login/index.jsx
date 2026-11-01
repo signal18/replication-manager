@@ -21,8 +21,8 @@ function Login({ dashboard = false }) {
   const [passwordError, setPasswordError] = useState('')
   const [errorMessage, setErrorMessage] = useState('')
   const [cloud18Enabled, setCloud18Enabled] = useState(false)
-  // Cloud18 logins only (#2262): the user and password form is the admin zone's, opened on demand
-  // and the login goes straight to Cloud18; the admin zone is /login?admin
+  // Cloud18 logins only (#2262): the login goes straight to Cloud18; the user and password form is
+  // the admin zone's, at /login?admin
   const [cloud18Only, setCloud18Only] = useState(false)
   const [adminZone] = useState(() => new URLSearchParams(window.location.search).has('admin'))
   const [cloud18Loading, setCloud18Loading] = useState(false)
@@ -262,70 +262,70 @@ function Login({ dashboard = false }) {
                   </Text>
                 </>
               ) : (
-              <>
-              {cloud18Only && (
-                <Text fontSize='sm'>Admin zone: the local admin account of this replication-manager. Other accounts sign in with Cloud18.</Text>
-              )}
-              <Stack spacing='5'>
-                <FormControl isInvalid={usernameError}>
-                  <FormLabel className={theme === 'dark' ? styles.darkLoginText : ""} htmlFor='username'>Username or Email</FormLabel>
-                  <Input id='username' type='text' value={username} className={theme === 'dark' ? styles.darkLoginText : ""} onChange={(e) => setUsername(e.target.value)} />
-                  <FormErrorMessage sx={styles.errorMessage}>{usernameError}</FormErrorMessage>
-                </FormControl>
-                <PasswordControl
-                  passwordError={passwordError}
-                  inputClassName={theme === 'dark' ? styles.darkLoginText : ""}
-                  labelClassName={theme === 'dark' ? styles.darkLoginText : ""}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className={`${styles.revealButton} ${styles.errorMessage} ${theme === 'dark' ? styles.darkLoginText : ""}`}
-                />
-              </Stack>
-              {errorMessage && <Message message={errorMessage} />}
-
-              <Stack spacing='6'>
-                <RMButton
-                  id='btnLogin'
-                  type='submit'
-                  size='medium'
-                  onClick={onButtonClick}
-                  isLoading={loading || cloud18Loading}
-                  loadingText={'Signing in'}>
-                  Sign in
-                </RMButton>
-                {cloud18Enabled && !cloud18Only && (
-                  <>
-                    {/* the fields above serve Sign in only: the Cloud18 password is typed on the
-                        Cloud18 page (#2185); an email already typed is prefilled there */}
-                    <HStack spacing='3'>
-                      <Divider />
-                      <Text fontSize='sm' color='gray.500' whiteSpace='nowrap'>or</Text>
-                      <Divider />
-                    </HStack>
-                    <RMButton
-                      id='btnCloud18Login'
-                      type='button'
-                      size='medium'
-                      onClick={() => window.location.assign('/api/auth/cloud18/start' + (username.includes('@') ? '?login_hint=' + encodeURIComponent(username.trim()) : ''))}>
-                      Sign in with Cloud18
-                    </RMButton>
-                    <RMButton
-                      id='btnCloud18Register'
-                      type='button'
-                      size='medium'
-                      onClick={() => window.location.assign('/api/auth/cloud18/start?signup=1')}>
-                      Sign up with Cloud18
-                    </RMButton>
-                  </>
-                )}
+                <>
                 {cloud18Only && (
-                  <Text fontSize='sm' textAlign='center'>
-                    <Link id='lnkCloud18Back' color='teal.500' href='/api/auth/cloud18/start'>
-                      Back to Sign in with Cloud18
-                    </Link>
-                  </Text>
+                  <Text fontSize='sm'>Admin zone: the local admin account of this replication-manager. Other accounts sign in with Cloud18.</Text>
                 )}
-              </Stack>
-              </>
+                <Stack spacing='5'>
+                  <FormControl isInvalid={usernameError}>
+                    <FormLabel className={theme === 'dark' ? styles.darkLoginText : ""} htmlFor='username'>Username or Email</FormLabel>
+                    <Input id='username' type='text' value={username} className={theme === 'dark' ? styles.darkLoginText : ""} onChange={(e) => setUsername(e.target.value)} />
+                    <FormErrorMessage sx={styles.errorMessage}>{usernameError}</FormErrorMessage>
+                  </FormControl>
+                  <PasswordControl
+                    passwordError={passwordError}
+                    inputClassName={theme === 'dark' ? styles.darkLoginText : ""}
+                    labelClassName={theme === 'dark' ? styles.darkLoginText : ""}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className={`${styles.revealButton} ${styles.errorMessage} ${theme === 'dark' ? styles.darkLoginText : ""}`}
+                  />
+                </Stack>
+                {errorMessage && <Message message={errorMessage} />}
+
+                <Stack spacing='6'>
+                  <RMButton
+                    id='btnLogin'
+                    type='submit'
+                    size='medium'
+                    onClick={onButtonClick}
+                    isLoading={loading || cloud18Loading}
+                    loadingText={'Signing in'}>
+                    Sign in
+                  </RMButton>
+                  {cloud18Enabled && !cloud18Only && (
+                    <>
+                      {/* the fields above serve Sign in only: the Cloud18 password is typed on the
+                          Cloud18 page (#2185); an email already typed is prefilled there */}
+                      <HStack spacing='3'>
+                        <Divider />
+                        <Text fontSize='sm' color='gray.500' whiteSpace='nowrap'>or</Text>
+                        <Divider />
+                      </HStack>
+                      <RMButton
+                        id='btnCloud18Login'
+                        type='button'
+                        size='medium'
+                        onClick={() => window.location.assign('/api/auth/cloud18/start' + (username.includes('@') ? '?login_hint=' + encodeURIComponent(username.trim()) : ''))}>
+                        Sign in with Cloud18
+                      </RMButton>
+                      <RMButton
+                        id='btnCloud18Register'
+                        type='button'
+                        size='medium'
+                        onClick={() => window.location.assign('/api/auth/cloud18/start?signup=1')}>
+                        Sign up with Cloud18
+                      </RMButton>
+                    </>
+                  )}
+                  {cloud18Only && (
+                    <Text fontSize='sm' textAlign='center'>
+                      <Link id='lnkCloud18Back' color='teal.500' href='/api/auth/cloud18/start'>
+                        Back to Sign in with Cloud18
+                      </Link>
+                    </Text>
+                  )}
+                </Stack>
+                </>
               )}
             </Stack>
           </Box>

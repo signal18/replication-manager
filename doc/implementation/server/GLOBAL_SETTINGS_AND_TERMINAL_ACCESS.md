@@ -78,9 +78,11 @@ own grants. On our public instances those local accounts are refused; their owne
 Cloud18.
 
 - `/api/login` (`loginHandler`): the admin accounts (global-admin-show) and `system` log in with
-  their local password as before; every other local account is refused with the **401** of a wrong
-  password and "sign in with Cloud18", whatever its password (never an oracle of it), the real reason
-  in the security log only (`api_auth_failure`). The local
+  their local password as before; every other local account is refused with a **401**, whatever
+  its password. Every refusal there, a wrong admin or `system` password included, has the same
+  status and the same text ("Invalid credentials… sign in with Cloud18"): never an oracle of the
+  local password or of which accounts are admin accounts. The real reason is in the security log
+  only (`api_auth_failure`). The local
   password is never tried first for them (no session, no asynchronous SSO upgrade); their Cloud18
   login (password grant, second factor per `cloud18-login-acr`) and Sign in with Cloud18 stay. A
   wrong password stays 401. API tokens and realm tokens are unchanged.
@@ -88,6 +90,12 @@ Cloud18.
   up; an open realm session comes straight back, signed in). The admin zone is `/login?admin`: the
   user and password form (the local admin), with a way back to Cloud18. A failed Cloud18 return
   shows its reason, a Sign in with Cloud18 button and the Admin zone link, never a redirect loop.
+  `/api/auth/cloud18/start` never ends on a bare error page: when it cannot start it sends back to
+  `/login?cloud18_error=failed`. A local session's logout lands on `/login?admin`; a Cloud18
+  session's logout ends the realm session. On a Cloud18-only instance `/login` does not run the
+  autologin (`/api/autologin`); `/login?admin` still does.
+  With the realm unreachable the browser stops on the realm's address: the admin zone is reached
+  by its address, `/login?admin`.
 
 ## Recovery: the configuration file
 

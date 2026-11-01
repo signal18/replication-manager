@@ -240,7 +240,7 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "302": {
-                        "description": "to the realm",
+                        "description": "to the realm, or back to /login?cloud18_error= when it cannot start",
                         "schema": {
                             "type": "string"
                         }

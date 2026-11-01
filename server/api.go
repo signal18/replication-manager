@@ -855,9 +855,18 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 	resetAuthTry := func() {
 		repman.UserAuthTry.Store(user.Username, authTry{User: user.Username, Try: 0, Time: time.Now()})
 	}
+	// Cloud18 logins only (Cloud18LoginRequired, #2262): a local account other than the admin
+	// accounts and `system` is refused, whatever its password; the person signs in with Cloud18.
+	// Every refusal there is one answer, admin accounts included: never an oracle of the local
+	// password or of which accounts are admin accounts.
+	cloud18Only := repman.Conf.Cloud18LoginRequired()
+	invalid := "Error logging in: Invalid credentials"
+	if cloud18Only {
+		invalid += ". This replication-manager takes Cloud18 logins only: sign in with Cloud18 (local accounts other than admin accounts sign in through the admin zone only)"
+	}
 	authFail := func() {
 		repman.logSecurityEvent("api_auth_failure", user.Username, r.RemoteAddr, "API authentication failure: invalid credentials")
-		http.Error(w, "Error logging in: Invalid credentials", http.StatusUnauthorized)
+		http.Error(w, invalid, http.StatusUnauthorized)
 	}
 
 	// tryLocalAuth validates credentials against cluster ACLs and returns
@@ -953,10 +962,6 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	// Cloud18 logins only (Cloud18LoginRequired, #2262): a local account other than the admin
-	// accounts and `system` is refused, whatever its password; the person signs in with Cloud18.
-	cloud18Only := repman.Conf.Cloud18LoginRequired()
-
 	// Non-admin Cloud18 path: try local auth first.
 	localInfo, localOK := tryLocalAuth()
 	if localOK && !cloud18Only {
@@ -1007,7 +1012,7 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 				reason = "API login refused: a local account other than an admin account, on an instance that takes Cloud18 logins only (mcp-server-auth)"
 			}
 			repman.logSecurityEvent("api_auth_failure", user.Username, r.RemoteAddr, reason)
-			http.Error(w, "Error logging in: Invalid credentials. This replication-manager takes Cloud18 logins only: sign in with Cloud18 (local accounts other than admin accounts sign in through the admin zone only)", http.StatusUnauthorized)
+			http.Error(w, invalid, http.StatusUnauthorized)
 			return
 		}
 		authFail()
