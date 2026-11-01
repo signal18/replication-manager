@@ -1009,6 +1009,15 @@ func (server *ServerMonitor) WriteDeltaVariables() error {
 		managed = cluster.Configurator.TagManagedVariables()
 	}
 	for _, v := range delta {
+		// Never write a line from an empty/malformed name: it would become a fatal bare
+		// "loose_=" that stops mariadbd from starting (#2278).
+		if !config.IsValidConfigVarName(v.VariableName) {
+			if cluster != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+					"Delta of %s: skipping invalid variable name %q (would emit a fatal bare loose_= line, #2278)", server.URL, v.VariableName)
+			}
+			continue
+		}
 		// A variable of replication-manager's own tag rulesets that the generated config
 		// no longer carries is a pending tag change (a dropped tag still deployed until
 		// the restart): preserving it would bring the dropped tag back at every start
@@ -1125,6 +1134,15 @@ func (server *ServerMonitor) WritePreservedVariables() error {
 	agreedContent.WriteString("[mysqld]\n")
 
 	for key, v := range server.VariablesMap.ToNewMap() {
+		// Never write a line from an empty/malformed key: it would become a fatal bare
+		// "loose_=" that stops mariadbd from starting (#2278).
+		if !config.IsValidConfigVarName(key) {
+			if cluster != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+					"Preserved variables of %s: skipping invalid key %q (would emit a fatal bare loose_= line, #2278)", server.URL, key)
+			}
+			continue
+		}
 		if v.Preserved != nil {
 			// Prefix with loose_ if the variable has no config counterpart
 			varKey := key
@@ -1160,7 +1178,9 @@ func (server *ServerMonitor) WritePreservedVariables() error {
 	droppedpath := filepath.Join(server.Datadir, "dropped_variables.json")
 	var droppedVars []string
 	for key, v := range server.VariablesMap.ToNewMap() {
-		if v.Dropped {
+		// An invalid/empty key must not be persisted either, so the poisoned state does
+		// not survive restarts (#2278).
+		if v.Dropped && config.IsValidConfigVarName(key) {
 			droppedVars = append(droppedVars, key)
 		}
 	}
