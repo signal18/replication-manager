@@ -157,6 +157,7 @@ var tests = []string{
 	"testAppWarningDebounceAndRecovery",
 	"testAppMonitorHTTP",
 	"testAppConditionalVariablesOpenSVC",
+	"testAppConditionalProxiesOpenSVC",
 	"testReplicationTLSAutoCertificate",
 	"testReplicationTLSStaleCAEmptied",
 	"testReplicationTLSVerifyOffWarns",
@@ -303,8 +304,9 @@ var testTargets = map[string][]TestTarget{
 	"testSchemaPlugin":                                                         anyCluster,
 	// its own local web service: any cluster
 	"testAppMonitorHTTP": anyCluster,
-	// #2282: provisions a two-agent app; reads the live service definition (OpenSVC v3)
+	// #2282: provision a two-agent app (OpenSVC v3); the proxies one also needs two proxies on two app agents
 	"testAppConditionalVariablesOpenSVC":                                       {{OrchestratorTarget: []string{config.ConstOrchestratorOpenSVC}}},
+	"testAppConditionalProxiesOpenSVC":                                         {{OrchestratorTarget: []string{config.ConstOrchestratorOpenSVC}}},
 	"testGraphiteMetricsQueueBound":                                            anyCluster,
 	"testDirectReseedSystemAllEmptyDestination":                                anyCluster,
 	"testDirectReseedSystemAllPluginAlreadyActive":                             anyCluster,

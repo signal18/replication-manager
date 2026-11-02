@@ -94,3 +94,25 @@ As #2282 states it: update-opensvc-config plus a recreate of the container.
    refreshes the definition first), or any restart of the instance (`om ... restart`, a
    crash). The container (`rm=true`) is recreated with the new environment. A stop/start of
    the existing container keeps its old environment.
+
+## Regtests (OpenSVC v3)
+
+- `testAppConditionalVariablesOpenSVC`: one flex app on two agents, an env and a secret
+  variable with a value per agent; checks the cfg/sec keys, the scoped keywords and each
+  node's container environment, then removes one agent's values and applies them as above.
+- `testAppConditionalProxiesOpenSVC`, the issue's "Observed" case: a flex app on two agents
+  reaches its database through `{{proxies.0.host}}` by default and, by a per-agent value of
+  `DB_HOST`, through the proxy placed on its own agent. The app answers each HTTP request with
+  one query through its proxy: 200 with the client address the primary saw (the proxy the
+  connection came through), 503 when the query fails. Checked: each instance answers through
+  its own proxy; with one agent's app instance and proxy stopped, the other instance answers
+  200 through its proxy for 30 s, both ways; with one proxy only stopped, the instance of that
+  agent answers 503 (no fallback proxy) while the other holds, and it answers through its
+  proxy again once the proxy is started.
+  - Needs two proxies placed on two app agents (`prov-proxy-agents`), else it SKIPs.
+  - The checks call each instance's address, not the app name: the orchestrator lists a
+    restarted instance in the app name only about 45 s after it is up.
+  - The app has a fixed name, `rtcondprx`, with `app-db-auto-create` and `app-db-owned`: its
+    schema and user, which repman never drops, are reused by the next run.
+  - `{{proxies.0.host}}` is resolved before the test takes the app lock: the substitution
+    view takes that lock itself.
