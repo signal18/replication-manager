@@ -21,6 +21,7 @@ import { RiSpeedFill } from 'react-icons/ri'
 import InterventionPanel from '../Modals/InterventionPanel'
 import UserInfoPanel from '../Modals/UserInfoPanel'
 import { clusterService } from '../../services/clusterService'
+import { authService } from '../../services/authService'
 import { getApi } from '../../services/apiHelper'
 import styles from './styles.module.scss'
 import RMButton from '../RMButton'
@@ -161,9 +162,18 @@ function Navbar({ username, user }) {
   }
 
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     // Signed in with Cloud18 (#2185): the realm's session ends too, so every partner asks again.
     const viaCloud18 = localStorage.getItem('login_method') === 'cloud18'
+    // repman ends the realm session with this session before the dashboard drops it (#2292): the
+    // realm's logout then has nothing to confirm; on any failure, the realm's logout asks as before
+    let cloud18Logout = '/api/auth/cloud18/logout'
+    if (viaCloud18) {
+      try {
+        const resp = await authService.cloud18SSOLogoutEnd()
+        if (resp?.status === 200 && resp?.data?.url) cloud18Logout = resp.data.url
+      } catch (e) {}
+    }
     dispatch(logoutFromMeet())
     localStorage.removeItem('chatOpen');
     localStorage.removeItem('selectedChannel');
@@ -172,7 +182,7 @@ function Navbar({ username, user }) {
     dispatch(clearClusters())
     dispatch(clearCluster())
     if (viaCloud18) {
-      window.location.assign('/api/auth/cloud18/logout')
+      window.location.assign(cloud18Logout)
     } else {
       // a local session (the admin zone on a Cloud18-only instance, #2262) goes back to its form
       window.location.assign('/login?admin')

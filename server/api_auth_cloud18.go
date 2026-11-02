@@ -290,25 +290,57 @@ func (repman *ReplicationManager) handlerMuxCloud18SSOSession(w http.ResponseWri
 	repman.jsonResponse(map[string]string{"token": c.jwt, "username": c.user, "loginMethod": "cloud18"}, w)
 }
 
+// cloud18SSOLogoutTarget is where the browser goes at logout: the realm's logout, back to this
+// repman's login page (that page alone when Sign in with Cloud18 is off).
+func (repman *ReplicationManager) cloud18SSOLogoutTarget() string {
+	public, err := repman.Conf.Cloud18SSO()
+	if err != nil {
+		return "/login"
+	}
+	target, err := repman.Conf.Cloud18SSOLogoutURL(public)
+	if err != nil {
+		return public + "/login"
+	}
+	return target
+}
+
 // handlerMuxCloud18SSOLogout ends the person's Cloud18 session at the realm (every partner asks
 // again) and comes back to this repman's login page. The dashboard dropped its sessions before.
+// The dashboard calls the POST first (#2292); this is its fallback: the realm asks the person to
+// confirm when its session is still open.
 // @Summary Sign in with Cloud18: logout
 // @Description Redirects the browser to the realm's logout, back to /login (#2185). Public.
 // @Tags Auth
 // @Success 302 {string} string "to the realm's logout"
 // @Router /api/auth/cloud18/logout [get]
 func (repman *ReplicationManager) handlerMuxCloud18SSOLogout(w http.ResponseWriter, r *http.Request) {
-	public, err := repman.Conf.Cloud18SSO()
-	if err != nil {
-		http.Redirect(w, r, "/login", http.StatusFound)
-		return
+	http.Redirect(w, r, repman.cloud18SSOLogoutTarget(), http.StatusFound)
+}
+
+// handlerMuxCloud18SSOLogoutEnd ends the realm session of the request's Cloud18 session, server to
+// server with its refresh token (#2292): without it, the realm's logout (no id token hint) stops on
+// a confirmation page, and a person who leaves it stays signed in at the realm, so signed in again
+// at the next visit. It never fails the logout: without a bearer, a session with no Cloud18 login,
+// or a realm refusal, it answers the same address and the realm asks, as before.
+// @Summary Sign in with Cloud18: end the realm session at logout
+// @Description With the bearer of a Cloud18 session, ends its realm session (its refresh token) so the realm's logout asks nothing, and answers the realm's logout address for the browser (#2292). Without a bearer or a Cloud18 login, or when the realm refuses, the same address (the realm then asks the person to confirm). Public.
+// @Tags Auth
+// @Produce json
+// @Param Authorization header string false "the session's bearer (Bearer <token>)"
+// @Success 200 {object} map[string]interface{} "url: where the browser goes, ended: the realm session was ended"
+// @Router /api/auth/cloud18/logout [post]
+func (repman *ReplicationManager) handlerMuxCloud18SSOLogoutEnd(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	ended := false
+	if info, err := repman.GetJWTClaims(r); err == nil && info["Cloud18Login"] != "" {
+		if err := repman.Conf.Cloud18LoginEnd(repman.Conf.GetDecryptedPassword("cloud18-login", info["Cloud18Login"])); err != nil {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+				"Cloud18 logout of %s: the realm session was not ended, the realm asks the person: %s", info["User"], err)
+		} else {
+			ended = true
+		}
 	}
-	target, err := repman.Conf.Cloud18SSOLogoutURL(public)
-	if err != nil {
-		http.Redirect(w, r, public+"/login", http.StatusFound)
-		return
-	}
-	http.Redirect(w, r, target, http.StatusFound)
+	repman.jsonResponse(map[string]interface{}{"url": repman.cloud18SSOLogoutTarget(), "ended": ended}, w)
 }
 
 // registerCloud18SSORoutes adds the Sign in with Cloud18 routes (public, both routers).
@@ -318,4 +350,5 @@ func (repman *ReplicationManager) registerCloud18SSORoutes(router *mux.Router) {
 	router.HandleFunc(config.Cloud18SSOCallbackPath, repman.handlerMuxCloud18SSOCallback).Methods(http.MethodGet)
 	router.HandleFunc("/api/auth/cloud18/session", repman.handlerMuxCloud18SSOSession).Methods(http.MethodPost)
 	router.HandleFunc("/api/auth/cloud18/logout", repman.handlerMuxCloud18SSOLogout).Methods(http.MethodGet)
+	router.HandleFunc("/api/auth/cloud18/logout", repman.handlerMuxCloud18SSOLogoutEnd).Methods(http.MethodPost)
 }

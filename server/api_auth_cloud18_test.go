@@ -62,7 +62,7 @@ var noFollow = &http.Client{CheckRedirect: func(*http.Request, []*http.Request) 
 // code, traded once for an SSO session of the email; logout goes to the realm's logout, back to
 // the login page.
 func TestCloud18SSORoundTrip(t *testing.T) {
-	_, issuer := newRegisterFakes(t)
+	fakes, issuer := newRegisterFakes(t)
 	repman := ssoRepman(t, issuer)
 	public := "https://repman.partner.example"
 
@@ -155,6 +155,47 @@ func TestCloud18SSORoundTrip(t *testing.T) {
 	out, _ := url.Parse(w.Header().Get("Location"))
 	if !strings.HasPrefix(out.String(), issuer+"/protocol/openid-connect/logout?") || out.Query().Get("post_logout_redirect_uri") != public+"/login" {
 		t.Fatalf("logout: %s", out)
+	}
+
+	// #2292: the dashboard's logout ends the realm session with the session's refresh token, so the
+	// realm's logout page has nothing to ask; without a bearer, the same address and nothing ended
+	logoutEnd := func(bearer string) (string, bool) {
+		req := httptest.NewRequest(http.MethodPost, "/api/auth/cloud18/logout", nil)
+		if bearer != "" {
+			req.Header.Set("Authorization", "Bearer "+bearer)
+		}
+		rec := httptest.NewRecorder()
+		repman.handlerMuxCloud18SSOLogoutEnd(rec, req)
+		var a struct {
+			URL   string
+			Ended bool
+		}
+		if rec.Code != http.StatusOK || json.Unmarshal(rec.Body.Bytes(), &a) != nil {
+			t.Fatalf("logout end: %d %s", rec.Code, rec.Body.String())
+		}
+		return a.URL, a.Ended
+	}
+	if u, ended := logoutEnd(""); ended || u != out.String() {
+		t.Fatalf("no bearer: nothing ended, the realm's logout (%v %s)", ended, u)
+	}
+	info, err := repman.getUserInfoFromHeader(r)
+	if err != nil || repman.cloud18TokenFor("", info["Cloud18Login"]) == "" {
+		t.Fatalf("before the logout, the session gets realm tokens from its login: %v", err)
+	}
+	if u, ended := logoutEnd(s.Token); !ended || u != out.String() {
+		t.Fatalf("a Cloud18 session: its realm session ended, the realm's logout (%v %s)", ended, u)
+	}
+	fakes.mu.Lock()
+	endedAtRealm := fakes.ended["rt-person@partner.example"]
+	fakes.mu.Unlock()
+	if !endedAtRealm {
+		t.Fatal("the realm session must be ended with the session's refresh token")
+	}
+	if repman.cloud18TokenFor("", info["Cloud18Login"]) != "" {
+		t.Fatal("after the logout, no realm token of that login (the kept one dropped, the realm refuses the refresh)")
+	}
+	if u, ended := logoutEnd(s.Token); ended || u != out.String() {
+		t.Fatalf("a realm refusal never fails the logout: the same address (%v %s)", ended, u)
 	}
 }
 
