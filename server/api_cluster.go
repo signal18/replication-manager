@@ -3668,6 +3668,8 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 	case "prov-proxy-start-fetch-config":
 		mycluster.Conf.ProvProxyStartFetchConfig = !mycluster.Conf.ProvProxyStartFetchConfig
 		mycluster.CheckNeedConfigFetch()
+	case "prov-proxy-single-failover":
+		mycluster.Conf.ProvProxySingleFailover = !mycluster.Conf.ProvProxySingleFailover
 	case "prov-db-apply-dynamic-config":
 		if err := mycluster.SwitchDBApplyDynamicConfig(); err != nil {
 			return err
@@ -5837,6 +5839,8 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "prov-proxy-start-fetch-config":
 		mycluster.Conf.ProvProxyStartFetchConfig = applyIsActive(mycluster.Conf.ProvProxyStartFetchConfig, isactive)
 		mycluster.CheckNeedConfigFetch()
+	case "prov-proxy-single-failover":
+		mycluster.Conf.ProvProxySingleFailover = applyIsActive(mycluster.Conf.ProvProxySingleFailover, isactive)
 	case "prov-db-apply-dynamic-config":
 		if err := mycluster.SetProvDBApplyDynamicConfig(applyIsActive(mycluster.Conf.ProvDBApplyDynamicConfig, isactive)); err != nil {
 			return err

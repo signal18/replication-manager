@@ -66,6 +66,19 @@ function ProxyConfig({ selectedCluster, user }) {
       )
     },
     {
+      key: 'Single Proxy Failover',
+      value: (
+        <RMSwitch
+          isChecked={selectedCluster?.config?.provProxySingleFailover}
+          isDisabled={user?.grants['cluster-settings'] == false}
+          confirmTitle={'Confirm switch settings for prov-proxy-single-failover? It applies when the proxy is provisioned.'}
+          onChange={() =>
+            dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'prov-proxy-single-failover' }))
+          }
+        />
+      )
+    },
+    {
       key: 'Manage Tags',
       value: (
         <VStack className={styles.configTagContainer}>
