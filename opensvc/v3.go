@@ -678,15 +678,24 @@ func (collector *Collector) DeleteConfigKeyValueV3(namespace, service, key strin
 
 // ListConfigKeysV3 returns all key names stored in a cfg data store object.
 func (collector *Collector) ListConfigKeysV3(namespace, service string) ([]string, error) {
+	return collector.listObjectKeysV3(namespace, "cfg", service)
+}
+
+// ListSecretKeysV3 returns all key names stored in a sec data store object.
+func (collector *Collector) ListSecretKeysV3(namespace, service string) ([]string, error) {
+	return collector.listObjectKeysV3(namespace, "sec", service)
+}
+
+func (collector *Collector) listObjectKeysV3(namespace, kind, service string) ([]string, error) {
 	client, err := collector.GetClientV3()
 	if err != nil {
 		return nil, err
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(collector.ContextTimeoutSecond)*time.Second)
 	defer cancel()
-	resp, err := client.GetObjectDataKeys(ctx, apiv3.InPathNamespace(namespace), "cfg", apiv3.InPathName(service), nil, collector.RequestCloserV3())
+	resp, err := client.GetObjectDataKeys(ctx, apiv3.InPathNamespace(namespace), apiv3.InPathKind(kind), apiv3.InPathName(service), nil, collector.RequestCloserV3())
 	if err != nil {
-		return nil, fmt.Errorf("failed to list cfg keys for %s/%s: %w", namespace, service, err)
+		return nil, fmt.Errorf("failed to list %s keys for %s/%s: %w", kind, namespace, service, err)
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)

@@ -1079,8 +1079,91 @@ func (cluster *Cluster) OpenSVCGetAppContainerSection(app *App) map[string]strin
 		svccontainer["volume_mounts"] = strings.TrimSpace(cluster.GetOpenSVCDeploymentPathMapping(app) + " " + postgresWalArchiveMount(app))
 		svccontainer["configs_environment"] = app.GetOpenSVCDeploymentAppEnv("env")
 		svccontainer["secrets_environment"] = appSecretsEnvironment(app)
+		// per-agent values (#2282): OpenSVC scopes keywords to a node, not the keys of a
+		// cfg/sec object, so the <NAME>@<agent> key is mapped onto <NAME> by a keyword
+		// scoped to that agent, which replaces the default keyword on that node
+		for agent, m := range appConditionalEnvironment(app) {
+			if len(m.cfg) > 0 {
+				svccontainer["configs_environment@"+agent] = strings.Join(append([]string{svccontainer["configs_environment"]}, m.cfg...), " ")
+			}
+			if len(m.sec) > 0 {
+				svccontainer["secrets_environment@"+agent] = strings.Join(append([]string{svccontainer["secrets_environment"]}, m.sec...), " ")
+			}
+		}
 	}
 	return svccontainer
+}
+
+// appConditionalMappings holds, for one agent, the environment mappings that apply the
+// agent's own value of each variable: <NAME>=<app>/<NAME>@<agent>.
+type appConditionalMappings struct {
+	cfg []string
+	sec []string
+}
+
+// appConditionalEnvironment returns, per agent, the mappings for the app's variables that
+// carry a per-agent value (Conditional). The keys themselves are written by
+// OpenSVCCreateAppVariableMaps.
+func appConditionalEnvironment(app *App) map[string]*appConditionalMappings {
+	res := make(map[string]*appConditionalMappings)
+	if app == nil || app.Name == "" || app.AppConfig == nil || app.AppConfig.Deployment == nil {
+		return res
+	}
+	for _, v := range app.AppConfig.Deployment.Variables {
+		if v.Name == "" || strings.ContainsAny(v.Name, " \t\n=@") {
+			continue // not mappable in a space-separated keyword
+		}
+		for _, cd := range v.Conditional {
+			if cd.Agent == "" || strings.ContainsAny(cd.Agent, " \t\n=@/") {
+				continue
+			}
+			m := res[cd.Agent]
+			if m == nil {
+				m = &appConditionalMappings{}
+				res[cd.Agent] = m
+			}
+			mapping := fmt.Sprintf("%s=%s/%s@%s", v.Name, app.Name, v.Name, cd.Agent)
+			if v.Type == config.VariableTypeSecret {
+				m.sec = append(m.sec, mapping)
+			} else {
+				m.cfg = append(m.cfg, mapping)
+			}
+		}
+	}
+	return res
+}
+
+// staleConditionalKeys returns the keys of a cfg (secret=false) or sec (secret=true) object
+// that hold a per-agent value no longer set: <NAME>@<agent> where <NAME> is a variable of
+// that type and <agent> is not in its Conditional. Any other key, including one that is a
+// variable name itself, is left alone.
+func staleConditionalKeys(vars config.VariableMaps, existing []string, secret bool) []string {
+	names := make(map[string]bool, len(vars))
+	current := make(map[string]map[string]bool)
+	for _, v := range vars {
+		names[v.Name] = true
+		if (v.Type == config.VariableTypeSecret) != secret {
+			continue
+		}
+		agents := make(map[string]bool, len(v.Conditional))
+		for _, cd := range v.Conditional {
+			agents[cd.Agent] = true
+		}
+		current[v.Name] = agents
+	}
+	var stale []string
+	for _, key := range existing {
+		i := strings.LastIndex(key, "@")
+		if i <= 0 || names[key] {
+			continue
+		}
+		agents, ok := current[key[:i]]
+		if !ok || agents[key[i+1:]] {
+			continue
+		}
+		stale = append(stale, key)
+	}
+	return stale
 }
 
 func (cluster *Cluster) OpenSVCGetAppGitInitDefaultSection(app *App) map[string]string {
@@ -1338,6 +1421,32 @@ func (cluster *Cluster) OpenSVCCreateAppVariableMaps(agent string, app *App) err
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add conditional key to config: %s %s ", cdname, err)
 					addKeyErr(fmt.Errorf("config key %q: %w", cdname, err))
 				}
+			}
+		}
+	}
+
+	// A per-agent value removed from a variable leaves its <NAME>@<agent> key behind
+	// (#2282). The key is inert once the template no longer maps it, so a failed cleanup
+	// is a warning, never a map error: it must not block a provisioning.
+	for _, obj := range []struct {
+		kind   string
+		secret bool
+		list   func(namespace, service string) ([]string, error)
+		del    func(namespace, service, key string) error
+	}{
+		{"secret", true, svc.ListSecretKeys, svc.DeleteSecretKeyValue},
+		{"config", false, svc.ListConfigKeys, svc.DeleteConfigKeyValue},
+	} {
+		keys, err := obj.list(cluster.Name, app.Name)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "Can not list %s keys of app %s, removed per-agent values stay in place: %s", obj.kind, app.Name, err)
+			continue
+		}
+		for _, key := range staleConditionalKeys(app.AppConfig.Deployment.Variables, keys, obj.secret) {
+			if err := obj.del(cluster.Name, app.Name, key); err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "Can not remove per-agent %s key %s of app %s: %s", obj.kind, key, app.Name, err)
+			} else {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Removed per-agent %s key %s of app %s", obj.kind, key, app.Name)
 			}
 		}
 	}

@@ -464,11 +464,23 @@ func (collector *Collector) DeleteConfigKeyValue(namespace, service, key string)
 	return collector.DeleteConfigKeyValueV2(namespace, service, key)
 }
 
+// DeleteSecretKeyValue deletes a single key from a sec data store object.
+func (collector *Collector) DeleteSecretKeyValue(namespace, service, key string) error {
+	if collector.IsV3() {
+		return collector.DeleteSecretKeyValueV3(namespace, service, key)
+	}
+	return collector.deleteObjectKeyV2(namespace, "sec", service, key)
+}
+
 // DeleteConfigKeyValueV2 deletes a key from a V2 cfg object via DELETE /key.
 func (collector *Collector) DeleteConfigKeyValueV2(namespace, service, key string) error {
+	return collector.deleteObjectKeyV2(namespace, "cfg", service, key)
+}
+
+func (collector *Collector) deleteObjectKeyV2(namespace, kind, service, key string) error {
 	urldelete := fmt.Sprintf("https://%s:%s/key", collector.Host, collector.Port)
 	requestData := ConfigKeyValueRequest{
-		Path: fmt.Sprintf("%s/cfg/%s", namespace, service),
+		Path: fmt.Sprintf("%s/%s/%s", namespace, kind, service),
 		Key:  key,
 	}
 	jsonData, err := json.Marshal(requestData)
@@ -503,9 +515,21 @@ func (collector *Collector) ListConfigKeys(namespace, service string) ([]string,
 	return collector.ListConfigKeysV2(namespace, service)
 }
 
+// ListSecretKeys returns all key names stored in a sec data store object.
+func (collector *Collector) ListSecretKeys(namespace, service string) ([]string, error) {
+	if collector.IsV3() {
+		return collector.ListSecretKeysV3(namespace, service)
+	}
+	return collector.listObjectKeysV2(namespace, "sec", service)
+}
+
 // ListConfigKeysV2 lists keys in a V2 cfg object via GET /object_keys.
 func (collector *Collector) ListConfigKeysV2(namespace, service string) ([]string, error) {
-	path := fmt.Sprintf("%s/cfg/%s", namespace, service)
+	return collector.listObjectKeysV2(namespace, "cfg", service)
+}
+
+func (collector *Collector) listObjectKeysV2(namespace, kind, service string) ([]string, error) {
+	path := fmt.Sprintf("%s/%s/%s", namespace, kind, service)
 	urlget := fmt.Sprintf("https://%s:%s/object_keys?path=%s", collector.Host, collector.Port, url.QueryEscape(path))
 	client := collector.GetHttpClient()
 	req, err := http.NewRequest("GET", urlget, nil)
