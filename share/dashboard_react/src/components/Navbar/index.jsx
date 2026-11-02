@@ -172,7 +172,9 @@ function Navbar({ username, user }) {
       try {
         const resp = await authService.cloud18SSOLogoutEnd()
         if (resp?.status === 200 && resp?.data?.url) cloud18Logout = resp.data.url
-      } catch (e) {}
+      } catch (e) {
+        console.warn('Cloud18 logout: the realm session was not ended, the realm asks to confirm', e)
+      }
     }
     dispatch(logoutFromMeet())
     localStorage.removeItem('chatOpen');

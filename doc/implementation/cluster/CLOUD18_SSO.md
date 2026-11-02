@@ -61,7 +61,11 @@ meeting a map being written, which would stop the process.
    with the session's bearer: repman ends the realm session server to server with the refresh token the
    session carries (`cloud18` claim; the newest one kept for that login when the realm rotates them),
    `POST <issuer>/protocol/openid-connect/logout` with `client_id` + `refresh_token`, and drops its kept
-   realm token of that login (no other instance gets one any more). It answers `{url, ended}`. The
+   realm token of that login (no other instance gets one any more) once the realm session is gone (ended,
+   or the realm no longer knows the refresh token): after a network error or a 5xx the entry stays, with
+   its newest refresh token. An expired session is accepted (signature checked, expiry not: a tab left
+   open past the session's end still ends its realm session; the session can do nothing else there).
+   It answers `{url, ended}`. The
    dashboard then drops its sessions as before and goes to `url`, the realm's logout (`client_id`,
    `post_logout_redirect_uri = <api-public-url>/login`): with no session left there, the realm sends the
    browser straight back to `/login`, every such repman asks again.

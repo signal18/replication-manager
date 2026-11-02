@@ -486,10 +486,12 @@ func (conf *Config) Cloud18LoginAccess(refresh string) (string, error) {
 }
 
 // Cloud18LoginEnd ends the realm session of a login at logout (#2292), server to server with its
-// refresh token (the newest one kept for it, a realm rotating them refuses the first), and drops the
+// refresh token (the newest one kept for it, a realm rotating them refuses the first), then drops the
 // kept realm token: the realm's logout page then has no session to ask about, and no instance gets a
-// token of that login any more. An error leaves the realm session as it was (the realm's logout page
-// then asks the person, as before).
+// token of that login any more. The kept token is dropped only once the session is gone (ended now,
+// or the realm says the refresh token is no longer valid): after a network error or a 5xx, the realm
+// session lives on, and so does the entry with its newest refresh token, for the next try. An error
+// leaves the realm session as it was (the realm's logout page then asks the person, as before).
 func (conf *Config) Cloud18LoginEnd(refresh string) error {
 	if refresh == "" {
 		return errors.New("no Cloud18 login")
@@ -501,7 +503,6 @@ func (conf *Config) Cloud18LoginEnd(refresh string) error {
 	key := cloud18LoginKey(refresh)
 	cloud18LoginTokens.Lock()
 	e := cloud18LoginTokens.m[key]
-	delete(cloud18LoginTokens.m, key)
 	cloud18LoginTokens.Unlock()
 	if e != nil {
 		e.mu.Lock() // after a refresh in progress, which may have rotated the refresh token
@@ -513,7 +514,14 @@ func (conf *Config) Cloud18LoginEnd(refresh string) error {
 	if err != nil {
 		return err
 	}
-	if code != http.StatusNoContent && code != http.StatusOK {
+	ended := code == http.StatusNoContent || code == http.StatusOK
+	gone := code == http.StatusBadRequest && strings.Contains(string(body), "invalid_grant")
+	if ended || gone {
+		cloud18LoginTokens.Lock()
+		delete(cloud18LoginTokens.m, key)
+		cloud18LoginTokens.Unlock()
+	}
+	if !ended {
 		return cloud18Status("the realm", code, ": "+cloud18RealmError(body))
 	}
 	return nil

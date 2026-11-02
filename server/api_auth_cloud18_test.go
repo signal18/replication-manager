@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	jwt "github.com/golang-jwt/jwt/v5"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/meethelper"
 )
@@ -182,8 +183,20 @@ func TestCloud18SSORoundTrip(t *testing.T) {
 	if err != nil || repman.cloud18TokenFor("", info["Cloud18Login"]) == "" {
 		t.Fatalf("before the logout, the session gets realm tokens from its login: %v", err)
 	}
-	if u, ended := logoutEnd(s.Token); !ended || u != out.String() {
-		t.Fatalf("a Cloud18 session: its realm session ended, the realm's logout (%v %s)", ended, u)
+	if u, ended := logoutEnd("not.a.session"); ended || u != out.String() {
+		t.Fatalf("a bearer that is not a session ends nothing (%v %s)", ended, u)
+	}
+	// the same session expired (a tab left open past its end): Logout still ends its realm session
+	parsed, _, err := jwt.NewParser().ParseUnverified(s.Token, jwt.MapClaims{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	expired, err := repman.issueJWTFor(parsed.Claims.(jwt.MapClaims)["CustomUserInfo"], "", -time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if u, ended := logoutEnd(expired); !ended || u != out.String() {
+		t.Fatalf("an expired Cloud18 session: its realm session ended, the realm's logout (%v %s)", ended, u)
 	}
 	fakes.mu.Lock()
 	endedAtRealm := fakes.ended["rt-person@partner.example"]

@@ -13,6 +13,8 @@ import (
 	"sync"
 	"time"
 
+	jwt "github.com/golang-jwt/jwt/v5"
+	"github.com/golang-jwt/jwt/v5/request"
 	"github.com/gorilla/mux"
 	"github.com/signal18/replication-manager/config"
 )
@@ -330,9 +332,8 @@ func (repman *ReplicationManager) handlerMuxCloud18SSOLogout(w http.ResponseWrit
 // @Success 200 {object} map[string]interface{} "url: where the browser goes, ended: the realm session was ended"
 // @Router /api/auth/cloud18/logout [post]
 func (repman *ReplicationManager) handlerMuxCloud18SSOLogoutEnd(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
 	ended := false
-	if info, err := repman.GetJWTClaims(r); err == nil && info["Cloud18Login"] != "" {
+	if info, err := repman.cloud18LogoutSession(r); err == nil && info["Cloud18Login"] != "" {
 		if err := repman.Conf.Cloud18LoginEnd(repman.Conf.GetDecryptedPassword("cloud18-login", info["Cloud18Login"])); err != nil {
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
 				"Cloud18 logout of %s: the realm session was not ended, the realm asks the person: %s", info["User"], err)
@@ -341,6 +342,20 @@ func (repman *ReplicationManager) handlerMuxCloud18SSOLogoutEnd(w http.ResponseW
 		}
 	}
 	repman.jsonResponse(map[string]interface{}{"url": repman.cloud18SSOLogoutTarget(), "ended": ended}, w)
+}
+
+// cloud18LogoutSession is the session of a logout's bearer, an expired one included: a tab left open
+// past the session's end still ends its realm session at Logout. The signature is checked as for any
+// session (repman's key, RS256); only the expiry is not, and the session opens nothing here, it can
+// only end its own realm session.
+func (repman *ReplicationManager) cloud18LogoutSession(r *http.Request) (map[string]string, error) {
+	token, err := request.ParseFromRequest(r, request.AuthorizationHeaderExtractor, func(token *jwt.Token) (interface{}, error) {
+		return jwt.ParseRSAPublicKeyFromPEM(verificationKey)
+	}, request.WithParser(jwt.NewParser(jwt.WithoutClaimsValidation(), jwt.WithValidMethods([]string{jwt.SigningMethodRS256.Alg()}))))
+	if err != nil {
+		return nil, err
+	}
+	return repman.GetUserInfoMap(token)
 }
 
 // registerCloud18SSORoutes adds the Sign in with Cloud18 routes (public, both routers).

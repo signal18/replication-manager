@@ -149,3 +149,65 @@ func TestCloud18KeyKnown(t *testing.T) {
 		t.Fatalf("after the retry delay, the rotated key is learnt: %v %v", ok, err)
 	}
 }
+
+// #2292: the logout ends the realm session with the newest refresh token kept for the login; the
+// kept realm token goes only once the session is gone (ended, or the realm no longer knows the
+// refresh token), never after a network error or a 5xx (the next try still has the newest one).
+func TestCloud18LoginEnd(t *testing.T) {
+	var mu sync.Mutex
+	status, answer, sent := http.StatusServiceUnavailable, "", ""
+	realm := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.ParseForm()
+		mu.Lock()
+		defer mu.Unlock()
+		if r.URL.Path != "/realms/cloud18/protocol/openid-connect/logout" || r.Method != http.MethodPost || r.Form.Get("client_id") != ConstCloud18LoginClientID {
+			http.Error(w, "unexpected", http.StatusNotFound)
+			return
+		}
+		sent = r.Form.Get("refresh_token")
+		w.WriteHeader(status)
+		fmt.Fprint(w, answer)
+	}))
+	defer realm.Close()
+	conf := &Config{Cloud18IdentityURL: realm.URL + "/realms/cloud18"}
+	kept := func(refresh string) bool {
+		cloud18LoginTokens.Lock()
+		defer cloud18LoginTokens.Unlock()
+		_, ok := cloud18LoginTokens.m[cloud18LoginKey(refresh)]
+		return ok
+	}
+	set := func(s int, a string) { mu.Lock(); status, answer = s, a; mu.Unlock() }
+	got := func() string { mu.Lock(); defer mu.Unlock(); return sent }
+
+	if err := conf.Cloud18LoginEnd(""); err == nil {
+		t.Fatal("no refresh token: an error")
+	}
+	if err := (&Config{}).Cloud18LoginEnd("rt-x"); err == nil {
+		t.Fatal("no realm: an error")
+	}
+
+	e := cloud18LoginEntryFor("rt-first", time.Now())
+	e.mu.Lock()
+	e.refresh = "rt-rotated" // the realm rotated it at a refresh
+	e.mu.Unlock()
+	if err := conf.Cloud18LoginEnd("rt-first"); err == nil || got() != "rt-rotated" {
+		t.Fatalf("a 5xx is an error, the newest refresh token is sent: %v %q", err, got())
+	}
+	if !kept("rt-first") {
+		t.Fatal("after a 5xx the login is kept, with its newest refresh token")
+	}
+	set(http.StatusNoContent, "")
+	if err := conf.Cloud18LoginEnd("rt-first"); err != nil || got() != "rt-rotated" || kept("rt-first") {
+		t.Fatalf("ended: no error, the kept token dropped: %v %q %v", err, got(), kept("rt-first"))
+	}
+
+	cloud18LoginEntryFor("rt-gone", time.Now())
+	set(http.StatusBadRequest, `{"error":"invalid_grant","error_description":"Session not active"}`)
+	if err := conf.Cloud18LoginEnd("rt-gone"); err == nil || kept("rt-gone") {
+		t.Fatalf("a session the realm no longer has: an error, the kept token dropped: %v %v", err, kept("rt-gone"))
+	}
+	set(http.StatusNoContent, "")
+	if err := conf.Cloud18LoginEnd("rt-never-kept"); err != nil || got() != "rt-never-kept" {
+		t.Fatalf("a login not kept (another instance, a restart): its own refresh token: %v %q", err, got())
+	}
+}
