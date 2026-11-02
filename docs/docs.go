@@ -168,6 +168,33 @@ const docTemplate = `{
                         }
                     }
                 }
+            },
+            "post": {
+                "description": "With the bearer of a Cloud18 session, ends its realm session (its refresh token) so the realm's logout asks nothing, and answers the realm's logout address for the browser (#2292). Without a bearer or a Cloud18 login, or when the realm refuses, the same address (the realm then asks the person to confirm). Public.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "Sign in with Cloud18: end the realm session at logout",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "the session's bearer (Bearer \u003ctoken\u003e)",
+                        "name": "Authorization",
+                        "in": "header"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "url: where the browser goes, ended: the realm session was ended",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
             }
         },
         "/api/auth/cloud18/session": {
