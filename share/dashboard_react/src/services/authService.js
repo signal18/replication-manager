@@ -10,6 +10,7 @@ export const authService = {
   pollUpgrade,
   cloud18SSOStatus,
   cloud18SSOSession,
+  cloud18SSOLogoutEnd,
 }
 
 function login(username, password, baseURL) {
@@ -50,6 +51,12 @@ function cloud18SSOStatus() {
 // Trades the one-time code the Cloud18 callback put in the address for the session, once.
 function cloud18SSOSession(code) {
   return publicApi.post('auth/cloud18/session', { code })
+}
+
+// Ends the realm session of this Cloud18 session (its token, read before the dashboard drops it) and
+// answers where the browser goes: the realm's logout then asks nothing (#2292).
+function cloud18SSOLogoutEnd() {
+  return localApi.post('auth/cloud18/logout')
 }
 
 function pollUpgrade(upgradeId) {

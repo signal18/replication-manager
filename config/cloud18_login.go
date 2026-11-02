@@ -393,8 +393,7 @@ var cloud18LoginTokens = struct {
 // cloud18LoginEntryFor returns the entry of a login, created when new; the cache is pruned of
 // ended logins and bounded.
 func cloud18LoginEntryFor(refresh string, now time.Time) *cloud18LoginEntry {
-	sum := sha256.Sum256([]byte(refresh))
-	key := hex.EncodeToString(sum[:])
+	key := cloud18LoginKey(refresh)
 	cloud18LoginTokens.Lock()
 	defer cloud18LoginTokens.Unlock()
 	if e, ok := cloud18LoginTokens.m[key]; ok {
@@ -418,6 +417,12 @@ func cloud18LoginEntryFor(refresh string, now time.Time) *cloud18LoginEntry {
 	e := &cloud18LoginEntry{refresh: refresh, seen: now, refreshEnd: now.Add(cloud18IdentityMaxLifetime)}
 	cloud18LoginTokens.m[key] = e
 	return e
+}
+
+// cloud18LoginKey is the cache key of a login: the hash of its first refresh token.
+func cloud18LoginKey(refresh string) string {
+	sum := sha256.Sum256([]byte(refresh))
+	return hex.EncodeToString(sum[:])
 }
 
 // ForgetCloud18Logins drops the kept logins, as an instance restart does (tests).
@@ -478,6 +483,48 @@ func (conf *Config) Cloud18LoginAccess(refresh string) (string, error) {
 		e.refreshEnd = end
 	}
 	return e.token, nil
+}
+
+// Cloud18LoginEnd ends the realm session of a login at logout (#2292), server to server with its
+// refresh token (the newest one kept for it, a realm rotating them refuses the first), then drops the
+// kept realm token: the realm's logout page then has no session to ask about, and no instance gets a
+// token of that login any more. The kept token is dropped only once the session is gone (ended now,
+// or the realm says the refresh token is no longer valid): after a network error or a 5xx, the realm
+// session lives on, and so does the entry with its newest refresh token, for the next try. An error
+// leaves the realm session as it was (the realm's logout page then asks the person, as before).
+func (conf *Config) Cloud18LoginEnd(refresh string) error {
+	if refresh == "" {
+		return errors.New("no Cloud18 login")
+	}
+	issuer, err := conf.cloud18Issuer()
+	if err != nil {
+		return err
+	}
+	key := cloud18LoginKey(refresh)
+	cloud18LoginTokens.Lock()
+	e := cloud18LoginTokens.m[key]
+	cloud18LoginTokens.Unlock()
+	if e != nil {
+		e.mu.Lock() // after a refresh in progress, which may have rotated the refresh token
+		refresh = e.refresh
+		e.mu.Unlock()
+	}
+	code, body, err := postCloud18Realm(issuer+"/protocol/openid-connect/logout", url.Values{
+		"client_id": {ConstCloud18LoginClientID}, "refresh_token": {refresh}})
+	if err != nil {
+		return err
+	}
+	ended := code == http.StatusNoContent || code == http.StatusOK
+	gone := code == http.StatusBadRequest && strings.Contains(string(body), "invalid_grant")
+	if ended || gone {
+		cloud18LoginTokens.Lock()
+		delete(cloud18LoginTokens.m, key)
+		cloud18LoginTokens.Unlock()
+	}
+	if !ended {
+		return cloud18Status("the realm", code, ": "+cloud18RealmError(body))
+	}
+	return nil
 }
 
 // Sign in with Cloud18 (#2185): on a registered repman with a public https address, the browser
