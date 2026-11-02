@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -976,6 +977,36 @@ func (cluster *Cluster) OpenSVCPushAppVariableMaps(app *App) error {
 		agentName = agent.Node_name
 	}
 	return cluster.OpenSVCCreateAppVariableMaps(agentName, app)
+}
+
+// OpenSVCUpdateAppConfig is update-opensvc-config: it pushes the app's config/secret maps,
+// then, on OpenSVC v3, refreshes the service definition of a provisioned app, so the scoped
+// keywords of per-agent values follow their keys and a recreate of the container applies
+// them, however it is recreated (#2282). An app whose service does not exist yet only gets
+// its maps, as before; v2 has no in-place refresh.
+func (cluster *Cluster) OpenSVCUpdateAppConfig(app *App) error {
+	if err := cluster.OpenSVCPushAppVariableMaps(app); err != nil {
+		return err
+	}
+	svc := cluster.OpenSVCConnect()
+	if cluster.Conf.ProvOpensvcUseCollectorAPI || !svc.IsV3() || app.AppConfig.IsMonitorOnly() {
+		return nil
+	}
+	parts := strings.SplitN(app.ServiceName, "/", 3)
+	if len(parts) != 3 {
+		return fmt.Errorf("config/secret maps updated, service definition not refreshed: invalid service name %q", app.ServiceName)
+	}
+	if _, err := svc.GetObjectConfigFileV3(parts[0], parts[1], parts[2]); err != nil {
+		var se *opensvc.StatusError
+		if errors.As(err, &se) && se.StatusCode == http.StatusNotFound {
+			return nil // not provisioned: the provisioning writes the definition
+		}
+		return fmt.Errorf("config/secret maps updated, service definition not checked: %w", err)
+	}
+	if err := cluster.OpenSVCUpdateAppTemplate(app); err != nil {
+		return fmt.Errorf("config/secret maps updated, service definition not refreshed: %w", err)
+	}
+	return nil
 }
 
 func (cluster *Cluster) FoundAllAppAgents(app *App) ([]opensvc.Host, error) {

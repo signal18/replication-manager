@@ -123,7 +123,7 @@ function AppMenu({ clusterName, row, isDesktop, colorScheme, from = 'tableView',
                   name: 'Push Config/Secret Maps',
                   onClick: () => {
                     openConfirmModal()
-                    setConfirmTitle(`Confirm push config/secret maps for ${appName}?`)
+                    setConfirmTitle(`Confirm push config/secret maps for ${appName}? On OpenSVC v3 the service definition is refreshed too (no restart).`)
                     setConfirmHandler(() => () => dispatch(updateOpenSVCConfigApp({ clusterName, appId: row.id })))
                   }
                 }

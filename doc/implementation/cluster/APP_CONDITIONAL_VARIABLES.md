@@ -50,6 +50,12 @@ keys (`ListConfigKeys`, `ListSecretKeys`) and deletes each `<NAME>@<agent>` key 
 failure or a delete failure is a warning and leaves the key in place: the key is inert once
 no keyword maps it, so it never fails the push nor a provisioning.
 
+On OpenSVC v3 update-opensvc-config refreshes the service definition right after the push
+(below), so the removed value's scoped keyword goes with its key. Where the definition is not
+refreshed (v2, or a failed refresh), the node's scoped keyword still maps the deleted key; if
+the container restarts then, the agent ignores a mapping to a missing key (om3: "ignore env
+from ... has no key matching"; tested) and the node gets the default value.
+
 ## On OpenSVC v2
 
 The keys and the scoped keywords are the same on v2 (tested on agent 2.1-2073). The service
@@ -66,17 +72,25 @@ definition cannot be refreshed in place on v2 (update-opensvc-template is v3 onl
 The scoped keywords are part of the rendered template, so an app that already had per-agent
 values renders a template that differs from the one it was provisioned with, and its
 template hash differs from the provisioned one ("needs reprov"). The values are applied by
-update-opensvc-config and a restart (above). The provisioned hash is read from the template
-file that only a provisioning rewrites, so the restart applies the values without clearing
-that flag.
+update-opensvc-config and a recreate of the container (below). The provisioned hash is read
+from the template file that only a provisioning rewrites, so applying the values does not
+clear that flag.
 
 The template refresh PUTs the whole service configuration, so a scoped keyword that is no
 longer generated disappears with it.
 
 ## Applying a change
 
-1. `POST /api/clusters/{c}/apps/{app}/actions/update-opensvc-config` pushes the keys and
-   removes stale ones.
-2. `POST /api/clusters/{c}/apps/{app}/actions/restart` refreshes the service definition
-   and restarts the app. The container (`rm=true`) is recreated with the new environment.
-   A stop/start of the existing container keeps its old environment.
+As #2282 states it: update-opensvc-config plus a recreate of the container.
+
+1. `POST /api/clusters/{c}/apps/{app}/actions/update-opensvc-config`
+   (`OpenSVCUpdateAppConfig`; GUI: app menu, Push Config/Secret Maps) pushes the keys,
+   removes stale ones, then, on OpenSVC v3, refreshes the service definition of a
+   provisioned app (`OpenSVCUpdateAppTemplate`, as update-opensvc-template does) without
+   restarting it. An app whose service does not exist yet only gets its maps (the
+   provisioning writes the definition); a refresh failure is returned as an error after the
+   maps were pushed.
+2. A recreate of the container applies the values: `POST .../actions/restart` (which also
+   refreshes the definition first), or any restart of the instance (`om ... restart`, a
+   crash). The container (`rm=true`) is recreated with the new environment. A stop/start of
+   the existing container keeps its old environment.

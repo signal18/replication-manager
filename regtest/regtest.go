@@ -304,7 +304,7 @@ var testTargets = map[string][]TestTarget{
 	// its own local web service: any cluster
 	"testAppMonitorHTTP": anyCluster,
 	// #2282: provisions a two-agent app; reads the live service definition (OpenSVC v3)
-	"testAppConditionalVariablesOpenSVC": {{OrchestratorTarget: []string{config.ConstOrchestratorOpenSVC}}},
+	"testAppConditionalVariablesOpenSVC":                                       {{OrchestratorTarget: []string{config.ConstOrchestratorOpenSVC}}},
 	"testGraphiteMetricsQueueBound":                                            anyCluster,
 	"testDirectReseedSystemAllEmptyDestination":                                anyCluster,
 	"testDirectReseedSystemAllPluginAlreadyActive":                             anyCluster,
