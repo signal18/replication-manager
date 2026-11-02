@@ -508,6 +508,11 @@ func (cluster *Cluster) OpenSVCGetProxyTemplateSectionMap(servers string, pri Da
 
 	svcsection["env"] = cluster.OpenSVCGetProxyEnvSection(servers, pri)
 
+	// the cluster's only proxy is placed for failover, like an active-passive database (#2289)
+	if cluster.proxyFailoverPlacement() {
+		cluster.applyProxyFailoverPlacement(svcsection, pri)
+	}
+
 	return svcsection
 }
 
