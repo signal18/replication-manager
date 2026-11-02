@@ -18,30 +18,30 @@ import (
 )
 
 type requestState struct {
-	mu                 sync.Mutex
-	objectKeysCalls    int
-	createCalls        int
-	lastObjectKeysPath string
-	lastObjectKeysNode string
-	lastCreateNode     string
-	lastCreateBody     []byte
+	mu             sync.Mutex
+	statusCalls    int
+	createCalls    int
+	lastStatusPath string
+	lastStatusNode string
+	lastCreateNode string
+	lastCreateBody []byte
 }
 
 type requestSnapshot struct {
-	ObjectKeysCalls    int
-	CreateCalls        int
-	LastObjectKeysPath string
-	LastObjectKeysNode string
-	LastCreateNode     string
-	LastCreateBody     []byte
+	StatusCalls    int
+	CreateCalls    int
+	LastStatusPath string
+	LastStatusNode string
+	LastCreateNode string
+	LastCreateBody []byte
 }
 
-func (s *requestState) recordObjectKeys(path string, node string) {
+func (s *requestState) recordStatus(path string, node string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.objectKeysCalls++
-	s.lastObjectKeysPath = path
-	s.lastObjectKeysNode = node
+	s.statusCalls++
+	s.lastStatusPath = path
+	s.lastStatusNode = node
 }
 
 func (s *requestState) recordCreate(body []byte, node string) {
@@ -56,23 +56,23 @@ func (s *requestState) snapshot() requestSnapshot {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return requestSnapshot{
-		ObjectKeysCalls:    s.objectKeysCalls,
-		CreateCalls:        s.createCalls,
-		LastObjectKeysPath: s.lastObjectKeysPath,
-		LastObjectKeysNode: s.lastObjectKeysNode,
-		LastCreateNode:     s.lastCreateNode,
-		LastCreateBody:     append([]byte(nil), s.lastCreateBody...),
+		StatusCalls:    s.statusCalls,
+		CreateCalls:    s.createCalls,
+		LastStatusPath: s.lastStatusPath,
+		LastStatusNode: s.lastStatusNode,
+		LastCreateNode: s.lastCreateNode,
+		LastCreateBody: append([]byte(nil), s.lastCreateBody...),
 	}
 }
 
-func newOpenSVCTestServer(t *testing.T, state *requestState, objectKeysResponder func(requestSnapshot) (int, string)) *httptest.Server {
+func newOpenSVCTestServer(t *testing.T, state *requestState, statusResponder func(requestSnapshot) (int, string)) *httptest.Server {
 	t.Helper()
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/object_keys", func(w http.ResponseWriter, r *http.Request) {
-		state.recordObjectKeys(r.URL.Query().Get("path"), r.Header.Get("o-node"))
+	mux.HandleFunc("/object_status", func(w http.ResponseWriter, r *http.Request) {
+		state.recordStatus(r.URL.Query().Get("path"), r.Header.Get("o-node"))
 		snapshot := state.snapshot()
-		code, body := objectKeysResponder(snapshot)
+		code, body := statusResponder(snapshot)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(code)
 		_, _ = w.Write([]byte(body))
@@ -154,7 +154,7 @@ func TestCreateV2_SkipsCreateWhenExists(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			state := &requestState{}
 			server := newOpenSVCTestServer(t, state, func(_ requestSnapshot) (int, string) {
-				return http.StatusOK, `{"data":["exists"]}`
+				return http.StatusOK, `{"nodes": {"node-1": {"status": {"kind": "sec"}}}, "status": 0}`
 			})
 			defer server.Close()
 
@@ -170,17 +170,17 @@ func TestCreateV2_SkipsCreateWhenExists(t *testing.T) {
 			}
 
 			snapshot := state.snapshot()
-			if snapshot.ObjectKeysCalls != 1 {
-				t.Fatalf("expected 1 object_keys call, got %d", snapshot.ObjectKeysCalls)
+			if snapshot.StatusCalls != 1 {
+				t.Fatalf("expected %d object_status calls, got %d", 1, snapshot.StatusCalls)
 			}
 			if snapshot.CreateCalls != 0 {
 				t.Fatalf("expected no create calls, got %d", snapshot.CreateCalls)
 			}
-			if snapshot.LastObjectKeysPath != expectedPath {
-				t.Fatalf("unexpected object_keys path %q", snapshot.LastObjectKeysPath)
+			if snapshot.LastStatusPath != expectedPath {
+				t.Fatalf("unexpected object_status path %q", snapshot.LastStatusPath)
 			}
-			if snapshot.LastObjectKeysNode != agent {
-				t.Fatalf("unexpected object_keys node %q", snapshot.LastObjectKeysNode)
+			if snapshot.LastStatusNode != "ANY" {
+				t.Fatalf("unexpected object_status node %q", snapshot.LastStatusNode)
 			}
 		})
 	}
@@ -191,7 +191,7 @@ func TestCreateV2_CreatesWhenMissing(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			state := &requestState{}
 			server := newOpenSVCTestServer(t, state, func(_ requestSnapshot) (int, string) {
-				return http.StatusNotFound, `{"error":"not found"}`
+				return http.StatusOK, `{"error": "unknown service", "status": 1}`
 			})
 			defer server.Close()
 
@@ -206,14 +206,14 @@ func TestCreateV2_CreatesWhenMissing(t *testing.T) {
 			}
 
 			snapshot := state.snapshot()
-			if snapshot.ObjectKeysCalls != 1 {
-				t.Fatalf("expected 1 object_keys call, got %d", snapshot.ObjectKeysCalls)
+			if snapshot.StatusCalls != 2 {
+				t.Fatalf("expected %d object_status calls, got %d", 2, snapshot.StatusCalls)
 			}
 			if snapshot.CreateCalls != 1 {
 				t.Fatalf("expected 1 create call, got %d", snapshot.CreateCalls)
 			}
-			if snapshot.LastObjectKeysPath != expectedPath {
-				t.Fatalf("unexpected object_keys path %q", snapshot.LastObjectKeysPath)
+			if snapshot.LastStatusPath != expectedPath {
+				t.Fatalf("unexpected object_status path %q", snapshot.LastStatusPath)
 			}
 			if snapshot.LastCreateNode != agent {
 				t.Fatalf("unexpected create node %q", snapshot.LastCreateNode)
@@ -223,30 +223,26 @@ func TestCreateV2_CreatesWhenMissing(t *testing.T) {
 	}
 }
 
-func TestCreateV2_TreatsEmptyDataAsMissing(t *testing.T) {
+// An empty nodes map is not "missing" (#2286): it is answered for an existing object while
+// the API node's view lags, and /create would wipe it. Nothing is created, an error is returned.
+func TestCreateV2_EmptyNodesCreatesNothing(t *testing.T) {
 	for _, tc := range createCases() {
 		t.Run(tc.name, func(t *testing.T) {
 			state := &requestState{}
 			server := newOpenSVCTestServer(t, state, func(_ requestSnapshot) (int, string) {
-				return http.StatusOK, `{"data":[]}`
+				return http.StatusOK, `{"nodes": {}, "status": 0}`
 			})
 			defer server.Close()
 
 			collector := newTestCollector(t, server)
-			namespace := "ns1"
-			service := "svc1"
-			agent := "node-1"
-			expectedPath := namespace + "/" + tc.kind + "/" + service
-
-			if err := tc.createFn(collector, namespace, service, agent); err != nil {
-				t.Fatalf("create failed: %v", err)
+			err := tc.createFn(collector, "ns1", "svc1", "node-1")
+			if !errors.Is(err, errObjectStatusV2Unsure) {
+				t.Fatalf("expected errObjectStatusV2Unsure, got: %v", err)
 			}
-
 			snapshot := state.snapshot()
-			if snapshot.CreateCalls != 1 {
-				t.Fatalf("expected 1 create call, got %d", snapshot.CreateCalls)
+			if snapshot.CreateCalls != 0 {
+				t.Fatalf("expected no create call, got %d", snapshot.CreateCalls)
 			}
-			assertCreatePayload(t, snapshot.LastCreateBody, expectedPath)
 		})
 	}
 }
@@ -257,9 +253,9 @@ func TestCreateV2_DoesNotRecreateOnSecondProvision(t *testing.T) {
 			state := &requestState{}
 			server := newOpenSVCTestServer(t, state, func(snapshot requestSnapshot) (int, string) {
 				if snapshot.CreateCalls == 0 {
-					return http.StatusNotFound, `{"error":"not found"}`
+					return http.StatusOK, `{"error": "unknown service", "status": 1}`
 				}
-				return http.StatusOK, `{"data":["exists"]}`
+				return http.StatusOK, `{"nodes": {"node-1": {"status": {"kind": "sec"}}}, "status": 0}`
 			})
 			defer server.Close()
 
@@ -277,14 +273,14 @@ func TestCreateV2_DoesNotRecreateOnSecondProvision(t *testing.T) {
 			}
 
 			snapshot := state.snapshot()
-			if snapshot.ObjectKeysCalls != 2 {
-				t.Fatalf("expected 2 object_keys calls, got %d", snapshot.ObjectKeysCalls)
+			if snapshot.StatusCalls != 3 {
+				t.Fatalf("expected %d object_status calls, got %d", 3, snapshot.StatusCalls)
 			}
 			if snapshot.CreateCalls != 1 {
 				t.Fatalf("expected 1 create call, got %d", snapshot.CreateCalls)
 			}
-			if snapshot.LastObjectKeysPath != expectedPath {
-				t.Fatalf("unexpected object_keys path %q", snapshot.LastObjectKeysPath)
+			if snapshot.LastStatusPath != expectedPath {
+				t.Fatalf("unexpected object_status path %q", snapshot.LastStatusPath)
 			}
 		})
 	}
@@ -301,7 +297,7 @@ func TestCreateV2_ObjectKeysError(t *testing.T) {
 
 			collector := newTestCollector(t, server)
 			if err := tc.createFn(collector, "ns1", "svc1", "node-1"); err == nil {
-				t.Fatalf("expected error from object_keys failure")
+				t.Fatalf("expected error from object_status failure")
 			}
 
 			snapshot := state.snapshot()
@@ -317,7 +313,7 @@ func TestCreateV2_TreatsUnknownServiceAsMissing(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			state := &requestState{}
 			server := newOpenSVCTestServer(t, state, func(_ requestSnapshot) (int, string) {
-				return http.StatusOK, `{"error":"unknown service"}`
+				return http.StatusOK, `{"error": "unknown service", "status": 1}`
 			})
 			defer server.Close()
 
@@ -332,14 +328,14 @@ func TestCreateV2_TreatsUnknownServiceAsMissing(t *testing.T) {
 			}
 
 			snapshot := state.snapshot()
-			if snapshot.ObjectKeysCalls != 1 {
-				t.Fatalf("expected 1 object_keys call, got %d", snapshot.ObjectKeysCalls)
+			if snapshot.StatusCalls != 2 {
+				t.Fatalf("expected %d object_status calls, got %d", 2, snapshot.StatusCalls)
 			}
 			if snapshot.CreateCalls != 1 {
 				t.Fatalf("expected 1 create call, got %d", snapshot.CreateCalls)
 			}
-			if snapshot.LastObjectKeysPath != expectedPath {
-				t.Fatalf("unexpected object_keys path %q", snapshot.LastObjectKeysPath)
+			if snapshot.LastStatusPath != expectedPath {
+				t.Fatalf("unexpected object_status path %q", snapshot.LastStatusPath)
 			}
 			assertCreatePayload(t, snapshot.LastCreateBody, expectedPath)
 		})
@@ -900,8 +896,9 @@ func TestObjectStatusV2Exists(t *testing.T) {
 	}{
 		// user-specified cases
 		{
-			name:       "empty nodes map → not exists",
+			name:       "empty nodes map → unsure, error",
 			body:       []byte(`{"nodes":{}}`),
+			wantErr:    true, // unsure: no node listed, not reported unknown
 			wantExists: false,
 		},
 		{
@@ -916,29 +913,50 @@ func TestObjectStatusV2Exists(t *testing.T) {
 		},
 		{
 			name:    "error field set → error",
-			body:    []byte(`{"error":"unknown service"}`),
+			body:    []byte(`{"error":"permission denied"}`),
 			wantErr: true,
+		},
+		{
+			name:       "unknown service (o-node ANY, missing object) → not exists",
+			body:       []byte(`{"error": "unknown service", "status": 1}`),
+			wantExists: false,
 		},
 		// additional guard cases
 		{
-			name:       "empty body → not exists",
+			name:       "empty body → unsure, error",
 			body:       []byte{},
+			wantErr:    true, // unsure: no node listed, not reported unknown
 			wantExists: false,
 		},
 		{
-			name:       "empty object → not exists",
+			name:       "empty object → unsure, error",
 			body:       []byte(`{}`),
+			wantErr:    true, // unsure: no node listed, not reported unknown
 			wantExists: false,
 		},
 		{
-			name:       "null nodes → not exists",
+			name:       "null nodes → unsure, error",
 			body:       []byte(`{"nodes":null}`),
+			wantErr:    true, // unsure: no node listed, not reported unknown
 			wantExists: false,
 		},
 		{
-			name:       "error empty string → not exists, no error",
+			name:       "error empty string and empty nodes → unsure, error",
 			body:       []byte(`{"error":"","nodes":{}}`),
+			wantErr:    true, // unsure: no node listed, not reported unknown
 			wantExists: false,
+		},
+		// OpenSVC 2.1 answers with a "status" meta-field on every object_status
+		{
+			name:       "status meta-field and empty nodes → unsure, error",
+			body:       []byte(`{"nodes": {}, "status": 0}`),
+			wantErr:    true, // unsure: no node listed, not reported unknown
+			wantExists: false,
+		},
+		{
+			name:       "status meta-field and a node → exists",
+			body:       []byte(`{"nodes": {"node-1": {"status": {"kind": "sec"}}}, "status": 0}`),
+			wantExists: true,
 		},
 	}
 	for _, tt := range tests {
@@ -967,16 +985,18 @@ func TestObjectExistsV2(t *testing.T) {
 		wantErr    bool
 	}{
 		{
-			name:       "404 → not exists",
+			name:       "404 → error (only unknown service is missing)",
 			statusCode: http.StatusNotFound,
 			respBody:   "",
 			wantExists: false,
+			wantErr:    true,
 		},
 		{
-			name:       "200 empty nodes → not exists (real V2 missing-object response)",
+			name:       "200 empty nodes → unsure, error",
 			statusCode: http.StatusOK,
 			respBody:   `{"nodes":{}}`,
 			wantExists: false,
+			wantErr:    true,
 		},
 		{
 			name:       "200 object fields plus empty nodes → exists",
@@ -993,7 +1013,20 @@ func TestObjectExistsV2(t *testing.T) {
 		{
 			name:       "200 error field → error",
 			statusCode: http.StatusOK,
-			respBody:   `{"error":"unknown service"}`,
+			respBody:   `{"error":"permission denied"}`,
+			wantExists: false,
+			wantErr:    true,
+		},
+		{
+			name:       "200 unknown service (o-node ANY) → not exists",
+			statusCode: http.StatusOK,
+			respBody:   `{"error": "unknown service", "status": 1}`,
+			wantExists: false,
+		},
+		{
+			name:       "200 status meta-field and empty nodes → unsure, error",
+			statusCode: http.StatusOK,
+			respBody:   `{"nodes": {}, "status": 0}`,
 			wantExists: false,
 			wantErr:    true,
 		},
@@ -1056,13 +1089,13 @@ func TestCreateObjectV2_BodyErrors(t *testing.T) {
 
 	for _, tt := range tests {
 		tt := tt
-		// object_status returns the real V2 missing-object response {"nodes":{}} so
-		// ObjectExistsV2 correctly reports "not exists" and /create is called.
+		// object_status returns the real V2 missing-object answer to o-node ANY
+		// ("unknown service") so ObjectExistsV2 reports "not exists" and /create is called.
 		setupMux := func(createBody string) *http.ServeMux {
 			mux := http.NewServeMux()
 			mux.HandleFunc("/object_status", func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusOK)
-				fmt.Fprint(w, `{"nodes":{}}`)
+				fmt.Fprint(w, `{"error": "unknown service", "status": 1}`)
 			})
 			mux.HandleFunc("/create", func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusOK)
