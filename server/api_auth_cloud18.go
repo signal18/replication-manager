@@ -7,6 +7,7 @@ package server
 import (
 	"crypto/subtle"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/url"
 	"strings"
@@ -347,8 +348,14 @@ func (repman *ReplicationManager) handlerMuxCloud18SSOLogoutEnd(w http.ResponseW
 // cloud18LogoutSession is the session of a logout's bearer, an expired one included: a tab left open
 // past the session's end still ends its realm session at Logout. The signature is checked as for any
 // session (repman's key, RS256); only the expiry is not, and the session opens nothing here, it can
-// only end its own realm session.
-func (repman *ReplicationManager) cloud18LogoutSession(r *http.Request) (map[string]string, error) {
+// only end its own realm session. A token repman signed in another shape (a service token, no
+// session claims) is an error, never a panic: the logout never fails.
+func (repman *ReplicationManager) cloud18LogoutSession(r *http.Request) (info map[string]string, err error) {
+	defer func() {
+		if recover() != nil {
+			info, err = nil, errors.New("not a session token")
+		}
+	}()
 	token, err := request.ParseFromRequest(r, request.AuthorizationHeaderExtractor, func(token *jwt.Token) (interface{}, error) {
 		return jwt.ParseRSAPublicKeyFromPEM(verificationKey)
 	}, request.WithParser(jwt.NewParser(jwt.WithoutClaimsValidation(), jwt.WithValidMethods([]string{jwt.SigningMethodRS256.Alg()}))))

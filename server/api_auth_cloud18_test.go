@@ -186,6 +186,13 @@ func TestCloud18SSORoundTrip(t *testing.T) {
 	if u, ended := logoutEnd("not.a.session"); ended || u != out.String() {
 		t.Fatalf("a bearer that is not a session ends nothing (%v %s)", ended, u)
 	}
+	other, err := repman.issueJWTFor(map[string]interface{}{"service": "x"}, "", time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if u, ended := logoutEnd(other); ended || u != out.String() {
+		t.Fatalf("a token repman signed in another shape ends nothing, no failure (%v %s)", ended, u)
+	}
 	// the same session expired (a tab left open past its end): Logout still ends its realm session
 	parsed, _, err := jwt.NewParser().ParseUnverified(s.Token, jwt.MapClaims{})
 	if err != nil {
