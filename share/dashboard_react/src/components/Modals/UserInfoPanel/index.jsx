@@ -5,9 +5,10 @@ import {
 } from '@chakra-ui/react'
 import React, { useEffect, useState } from 'react'
 import { globalClustersService } from '../../../services/globalClustersService'
+import { adminMode } from '../../../services/adminMode'
 import { HiMoon, HiSun } from 'react-icons/hi'
 import { FaUserPlus } from 'react-icons/fa'
-import { TbKey } from 'react-icons/tb'
+import { TbKey, TbShieldLock } from 'react-icons/tb'
 import RMButton from '../../RMButton'
 import { useTheme } from '../../../ThemeProvider'
 import parentStyles from '../styles.module.scss'
@@ -70,6 +71,16 @@ function ConsumedUnits({ theme }) {
 
 function UserInfoPanel({ isOpen, closeModal, user, onLogout, canAddUser = false, onAddUser, onApiTokens }) {
   const { theme, toggleTheme } = useTheme()
+
+  // Admin zone (#2262): a Cloud18 (SSO) session enters admin mode — the local admin login kept in
+  // memory — to reach global settings and the host terminal. Reaching it from the user pill replaces
+  // the login-page "Admin zone" link that the Cloud18 auto-redirect used to flash away.
+  const [adminActive, setAdminActive] = useState(adminMode.isActive())
+  useEffect(() => {
+    const refresh = () => setAdminActive(adminMode.isActive())
+    window.addEventListener(adminMode.CHANGED, refresh)
+    return () => window.removeEventListener(adminMode.CHANGED, refresh)
+  }, [])
   const badgeVariant = theme === 'dark' ? 'solid' : 'subtle'
 
   const grants = user?.grants || {}
@@ -152,6 +163,21 @@ function UserInfoPanel({ isOpen, closeModal, user, onLogout, canAddUser = false,
                     </HStack>
                   </RMButton>
                 )}
+                {user?.AuthType === 'SSO' && (adminActive ? (
+                  <RMButton colorScheme='orange' variant='outline' onClick={adminMode.leave}>
+                    <HStack spacing={1}>
+                      <TbShieldLock />
+                      <Text fontSize='sm'>Leave admin zone</Text>
+                    </HStack>
+                  </RMButton>
+                ) : (
+                  <RMButton variant='outline' onClick={() => { closeModal(); adminMode.request().catch(() => {}) }}>
+                    <HStack spacing={1}>
+                      <TbShieldLock />
+                      <Text fontSize='sm'>Admin zone</Text>
+                    </HStack>
+                  </RMButton>
+                ))}
                 <RMButton colorScheme='red' onClick={onLogout}>
                   Logout
                 </RMButton>
