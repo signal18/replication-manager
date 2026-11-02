@@ -1102,7 +1102,8 @@ func (repman *ReplicationManager) handlerMuxAppUpdateOpenSVCConfig(w http.Respon
 		return
 	}
 	if err := mycluster.OpenSVCUpdateAppConfig(node); err != nil {
-		http.Error(w, "Failed to push app config/secret maps: "+err.Error(), http.StatusInternalServerError)
+		// the error says what was done: a failed refresh comes after a successful push
+		http.Error(w, "Failed to update the app's OpenSVC config: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 	fmt.Fprintf(w, "App config/secret maps updated")
