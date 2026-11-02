@@ -447,6 +447,16 @@ func (repman *ReplicationManager) handlerMuxAPITokens(w http.ResponseWriter, r *
 		http.Error(w, "No token-create grant", http.StatusForbidden)
 		return
 	}
+	// A self-registered account still awaiting administrator approval cannot mint a
+	// token either: the token would carry OwnerAuthType=SSO but no pending claim, so
+	// it would escape the clusterAddAuthorize hold (cloud18-self-service-require-approval).
+	// A pending account holds only "show" and so lacks token-create above anyway; this
+	// keeps the hold self-consistent should it ever hold the grant.
+	if r.Method == http.MethodPost && repman.Conf.Cloud18SelfServiceRequireApproval && repman.requestCloud18Pending(r) {
+		repman.logSecurityEvent("cloud18_account_pending_denied", username, r.RemoteAddr, "API token creation refused: account pending administrator approval")
+		http.Error(w, "Account pending administrator approval: API token creation is disabled until an administrator approves this Cloud18 account", http.StatusForbidden)
+		return
+	}
 	switch r.Method {
 	case http.MethodGet:
 		repman.jsonResponse(repman.listAPITokens(username, "", !viaToken), w)

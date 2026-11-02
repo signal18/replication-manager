@@ -160,11 +160,11 @@ type Cloud18User struct {
 }
 
 // cloud18GroupsPending reports whether the token's groups claim carries the
-// "pending" group (RolePending). Keycloak returns group paths ("/pending"), so the
-// leading slash is trimmed before matching.
+// "pending" group (RolePending). Keycloak emits full group paths ("/pending", or
+// "/parent/pending" when the group is nested), so the last path segment is matched.
 func cloud18GroupsPending(groups []string) bool {
 	for _, g := range groups {
-		if strings.TrimPrefix(g, "/") == RolePending {
+		if g[strings.LastIndexByte(g, '/')+1:] == RolePending {
 			return true
 		}
 	}
