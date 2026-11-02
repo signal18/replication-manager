@@ -948,7 +948,7 @@ func TestObjectStatusV2Exists(t *testing.T) {
 		},
 		// OpenSVC 2.1 answers with a "status" meta-field on every object_status
 		{
-			name:       "status meta-field and empty nodes → not exists",
+			name:       "status meta-field and empty nodes → unsure, error",
 			body:       []byte(`{"nodes": {}, "status": 0}`),
 			wantErr:    true, // unsure: no node listed, not reported unknown
 			wantExists: false,

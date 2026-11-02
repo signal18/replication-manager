@@ -8,6 +8,7 @@ import (
 )
 
 // #2286: the confirm delay is shortened for the package's tests; its default is kept to be checked.
+// Package-level variables are initialized before init() runs, so this holds the default.
 var confirmDelayDefault = objectExistsV2ConfirmDelay
 
 func init() { objectExistsV2ConfirmDelay = 10 * time.Millisecond }
