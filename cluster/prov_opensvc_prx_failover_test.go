@@ -31,8 +31,8 @@ func TestProxyFailoverPlacement(t *testing.T) {
 	cluster := setupTestCluster(t, 1)
 	defer cleanupTestCluster(t, cluster)
 	cluster.Conf = &config.Config{ProvType: "docker", ProvProxDiskType: "volume", ProvProxySingleFailover: true,
-		ProvProxAgents: "s18-fr-4,s18-fr-5", ProvAgents: "s18-fr-4,s18-fr-5,s18-fr-6"}
-	prx := &HaproxyProxy{Proxy: Proxy{Id: "prx1", Name: "prx1", Agent: "s18-fr-5", ClusterGroup: cluster}}
+		ProvProxAgents: "node1,node2", ProvAgents: "node1,node2,node3"}
+	prx := &HaproxyProxy{Proxy: Proxy{Id: "prx1", Name: "prx1", Agent: "node2", ClusterGroup: cluster}}
 	cluster.Proxies = []DatabaseProxy{prx}
 
 	if !cluster.proxyFailoverPlacement() {
@@ -44,7 +44,7 @@ func TestProxyFailoverPlacement(t *testing.T) {
 	sections := proxyFailoverTestSections(prx, "tank")
 	cluster.applyProxyFailoverPlacement(sections, prx)
 	def := sections["DEFAULT"]
-	if def["nodes"] != "s18-fr-5 s18-fr-4 s18-fr-6" {
+	if def["nodes"] != "node2 node1 node3" {
 		t.Fatalf("nodes: its agent, the proxy agents, then the database agents, got %q", def["nodes"])
 	}
 	if def["orchestrate"] != "ha" || def["rollback"] != "false" || def["flex_primary"] != "" || def["cluster_type"] != "" {
@@ -65,11 +65,11 @@ func TestProxyFailoverPlacement(t *testing.T) {
 	}
 
 	// one agent only: the proxy stays where it is
-	cluster.Conf.ProvProxAgents = "s18-fr-5"
-	cluster.Conf.ProvAgents = "s18-fr-5"
+	cluster.Conf.ProvProxAgents = "node2"
+	cluster.Conf.ProvAgents = "node2"
 	sections = proxyFailoverTestSections(prx, "")
 	cluster.applyProxyFailoverPlacement(sections, prx)
-	if sections["DEFAULT"]["nodes"] != "s18-fr-5" || sections["DEFAULT"]["flex_primary"] != "s18-fr-5" {
+	if sections["DEFAULT"]["nodes"] != "node2" || sections["DEFAULT"]["flex_primary"] != "node2" {
 		t.Fatalf("one agent: pinned as before, got %v", sections["DEFAULT"])
 	}
 
@@ -85,7 +85,7 @@ func TestProxyFailoverPlacement(t *testing.T) {
 	}
 	cluster.Conf.ProvProxySingleFailover = true
 	cluster.Conf.ProvProxDiskPool = "zpool"
-	cluster.Conf.ProvProxAgentsFailover = "s18-fr-6"
+	cluster.Conf.ProvProxAgentsFailover = "node3"
 	if cluster.proxyFailoverPlacement() {
 		t.Fatal("the legacy zpool failover placement keeps precedence")
 	}
