@@ -1099,6 +1099,7 @@ type Config struct {
 	Cloud18SelfServiceClustersEnabledScript     string  `scope:"server" mapstructure:"cloud18-self-service-clusters-enabled-script" toml:"cloud18-self-service-clusters-enabled-script" json:"cloud18SelfServiceClustersEnabledScript"`
 	Cloud18SelfServiceClustersCanBorrow         bool    `scope:"server" mapstructure:"cloud18-self-service-clusters-can-borrow" toml:"cloud18-self-service-clusters-can-borrow" json:"cloud18SelfServiceClustersCanBorrow"`
 	Cloud18SelfServiceClustersCanConsumeForSale bool    `scope:"server" mapstructure:"cloud18-self-service-clusters-can-consume-for-sale" toml:"cloud18-self-service-clusters-can-consume-for-sale" json:"cloud18SelfServiceClustersCanConsumeForSale"`
+	Cloud18SelfServiceRequireApproval           bool    `scope:"server" mapstructure:"cloud18-self-service-require-approval" toml:"cloud18-self-service-require-approval" json:"cloud18SelfServiceRequireApproval"`
 	Cloud18DisableForSale                       bool    `scope:"server" mapstructure:"cloud18-disable-for-sale" toml:"cloud18-disable-for-sale" json:"cloud18DisableForSale"`
 	Cloud18MarketplacePricingMode               string  `scope:"server" mapstructure:"cloud18-marketplace-pricing-mode" toml:"cloud18-marketplace-pricing-mode" json:"cloud18MarketplacePricingMode"`
 	Cloud18MarketplaceDBUPrice                  float64 `scope:"server" mapstructure:"cloud18-marketplace-dbu-price" toml:"cloud18-marketplace-dbu-price" json:"cloud18MarketplaceDbuPrice"`

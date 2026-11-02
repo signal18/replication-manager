@@ -360,6 +360,18 @@ func (repman *ReplicationManager) requestIdentity(r *http.Request) (identity str
 	return claims["User"], claims["AuthType"] == "SSO" || claims["OwnerAuthType"] == "SSO"
 }
 
+// requestCloud18Pending reports whether the caller is a self-registered Cloud18
+// account still in the realm "pending" group — a native email/password sign-up not
+// yet approved by an administrator. Passkey and Google sign-ups never carry it. The
+// claim rides the session JWT (set in GetUserInfoMap from the verified realm token).
+func (repman *ReplicationManager) requestCloud18Pending(r *http.Request) bool {
+	claims, err := repman.GetJWTClaims(r)
+	if err != nil {
+		return false
+	}
+	return claims["Cloud18Pending"] == "true"
+}
+
 // selfServiceUnitsNeeded is what a self-service cluster reserves on creation:
 // the default plan of a master and a replica (2 × prov-db-dbu) and the default
 // APU (prov-service-plan-apu). BKU is storage only and not pooled.
@@ -459,6 +471,14 @@ func (repman *ReplicationManager) clusterAddAuthorize(r *http.Request) (identity
 	identity, sso = repman.requestIdentity(r)
 	if identity == "" {
 		return "", false, false, http.StatusInternalServerError, "User is not valid"
+	}
+	// A self-registered account still awaiting administrator approval (the realm
+	// "pending" group, carried by a native email/password sign-up, never by passkey
+	// or Google) browses only: it cannot provision, whatever grants or self-service
+	// would otherwise allow (cloud18-self-service-require-approval, off by default).
+	if sso && repman.Conf.Cloud18SelfServiceRequireApproval && repman.requestCloud18Pending(r) {
+		repman.logSecurityEvent("cloud18_account_pending_denied", identity, r.RemoteAddr, "account pending administrator approval")
+		return identity, true, false, http.StatusForbidden, "Account pending administrator approval: cluster creation is disabled until an administrator approves this Cloud18 account"
 	}
 	if repman.UserHasGlobalGrant(r, config.GrantClusterCreate) {
 		return identity, sso, false, 0, ""

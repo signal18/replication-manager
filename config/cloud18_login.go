@@ -152,6 +152,23 @@ type Cloud18User struct {
 	Email   string
 	Name    string
 	Expires time.Time
+	// Pending is a self-registered account still in the realm "pending" group:
+	// a native email/password sign-up awaiting administrator approval. Passkey and
+	// Google sign-ups never carry it. While cloud18-self-service-require-approval is
+	// on, a pending account browses only and cannot provision (clusterAddAuthorize).
+	Pending bool
+}
+
+// cloud18GroupsPending reports whether the token's groups claim carries the
+// "pending" group (RolePending). Keycloak returns group paths ("/pending"), so the
+// leading slash is trimmed before matching.
+func cloud18GroupsPending(groups []string) bool {
+	for _, g := range groups {
+		if strings.TrimPrefix(g, "/") == RolePending {
+			return true
+		}
+	}
+	return false
 }
 
 var cloud18Verifiers = struct {
@@ -339,10 +356,11 @@ func (conf *Config) VerifyCloud18Token(raw string) (Cloud18User, error) {
 		return u, fmt.Errorf("%w: %s", ErrCloud18TokenRefused, err)
 	}
 	var c struct {
-		Email         string `json:"email"`
-		EmailVerified bool   `json:"email_verified"`
-		Name          string `json:"name"`
-		ACR           string `json:"acr"`
+		Email         string   `json:"email"`
+		EmailVerified bool     `json:"email_verified"`
+		Name          string   `json:"name"`
+		ACR           string   `json:"acr"`
+		Groups        []string `json:"groups"`
 	}
 	if err := t.Claims(&c); err != nil {
 		return u, fmt.Errorf("%w: %s", ErrCloud18TokenRefused, err)
@@ -353,7 +371,7 @@ func (conf *Config) VerifyCloud18Token(raw string) (Cloud18User, error) {
 	if want := conf.Cloud18LoginACRValues(); len(want) > 0 && !slices.Contains(want, c.ACR) {
 		return u, fmt.Errorf("%w: authentication level %q, cloud18-login-acr asks %s", ErrCloud18TokenRefused, c.ACR, strings.Join(want, " or "))
 	}
-	return Cloud18User{Email: strings.ToLower(c.Email), Name: c.Name, Expires: t.Expiry}, nil
+	return Cloud18User{Email: strings.ToLower(c.Email), Name: c.Name, Expires: t.Expiry, Pending: cloud18GroupsPending(c.Groups)}, nil
 }
 
 // cloud18LoginEntry is the realm token of one login (by its first refresh token), the newest

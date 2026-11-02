@@ -686,6 +686,11 @@ func (repman *ReplicationManager) GetUserInfoMap(token *jwt.Token) (map[string]s
 			// session came with, both for the other Cloud18 instances
 			UserInfoMap["Cloud18Login"], _ = mycutinfo["cloud18"].(string)
 			UserInfoMap["Cloud18Token"], _ = mycutinfo["cloud18_token"].(string)
+			// a self-registered account still in the realm "pending" group (native
+			// sign-up awaiting administrator approval); passkey/Google never carry it
+			if pending, _ := mycutinfo["cloud18_pending"].(bool); pending {
+				UserInfoMap["Cloud18Pending"] = "true"
+			}
 			UserInfoMap["Chat"], _ = mycutinfo["chat"].(string)
 			return UserInfoMap, nil
 		}

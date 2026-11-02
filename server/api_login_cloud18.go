@@ -184,15 +184,16 @@ func (repman *ReplicationManager) cloud18TokenSession(raw string) (string, confi
 		return "", u, err
 	}
 	info := struct {
-		Name         string
-		DisplayName  string `json:"display_name"`
-		Role         string
-		Password     string
-		Email        string `json:"email"`
-		Profile      string `json:"profile"`
-		MeetUserID   string `json:"meet_user_id"`
-		Cloud18Token string `json:"cloud18_token"`
-	}{u.Email, u.Name, "Member", "", u.Email, repman.Conf.OAuthProvider, "", repman.Conf.GetEncryptedString(raw)}
+		Name           string
+		DisplayName    string `json:"display_name"`
+		Role           string
+		Password       string
+		Email          string `json:"email"`
+		Profile        string `json:"profile"`
+		MeetUserID     string `json:"meet_user_id"`
+		Cloud18Token   string `json:"cloud18_token"`
+		Cloud18Pending bool   `json:"cloud18_pending"`
+	}{u.Email, u.Name, "Member", "", u.Email, repman.Conf.OAuthProvider, "", repman.Conf.GetEncryptedString(raw), u.Pending}
 	jwt, err := repman.issueJWT(info, "")
 	if err != nil {
 		return "", u, err
