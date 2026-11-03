@@ -3,7 +3,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import { login, logout, setUserData } from '../../redux/authSlice'
 import styles from './styles.module.scss'
-import { Box, Container, Divider, Heading, Stack, Text, HStack, Link } from '@chakra-ui/react'
+import { Box, Container, Divider, Heading, Spinner, Stack, Text, HStack, Link } from '@chakra-ui/react'
 import PageContainer from '../PageContainer'
 import { isAuthorized } from '../../utility/common'
 import LoginForm from '../../components/LoginForm'
@@ -247,6 +247,22 @@ function Login({ dashboard = false }) {
   // background rather than flashing the login form that is about to disappear. cloud18Ready flips
   // true only once we know we are staying on this page (the admin zone sets it and shows the form).
   if (!cloud18Ready || cloud18Loading) {
+    // The backend is unreachable (e.g. a restart): say so instead of a silent blank. The whoami
+    // retry (unavailableRetryCount) keeps polling, so the page recovers on its own when the server
+    // is back. Otherwise (the brief decide/redirect window) keep an empty background so the login
+    // form does not flash before the Cloud18 redirect.
+    if (sessionStatus === 'unavailable') {
+      return (
+        <PageContainer>
+          <Container maxWidth='lg' py={{ base: '24', md: '24' }}>
+            <Stack spacing='4' align='center'>
+              <Spinner size='lg' />
+              <Text fontSize='sm' color='gray.500'>Waiting for the server — it is unavailable, retrying…</Text>
+            </Stack>
+          </Container>
+        </PageContainer>
+      )
+    }
     return <PageContainer />
   }
 
