@@ -106,6 +106,9 @@ func (e *edgeRun) result() bool {
 //     own variable name (MariaDB);
 //   - R1: a reseed from it, restored by replication-manager as any logical backup;
 //   - R2/R3: a local backup and a local reseed right after the remote one;
+//   - R8: a reseed from a chosen backup (the API's reseed from a backup id) with
+//     reseedmysqldump, flashbackmysqldump and mydumper listed in scheduler-jobs-exec-remote:
+//     they stay in replication-manager (#2116);
 //   - B2: a remote splitdump backup completes with table files, then a reseed from it, and a
 //     local splitdump backup and a reseed from it.
 //
@@ -129,6 +132,17 @@ func (regtest *RegTest) TestLogicalReseed(cl *clusterpkg.Cluster, conf string, t
 	e.seed()
 	if _, ok := e.backup("R2 local backup", false); ok {
 		e.reseedAndCheck("R2/R3 local reseed after a reseed", gtid)
+	}
+	e.seed()
+	if meta, ok := e.backup("R8 local backup", false); ok {
+		// listed, the logical tasks still run in replication-manager: in api job mode the
+		// reseed from a chosen backup was refused (no cookie for reseedmysqldump, #2116)
+		e.cl.Conf.SchedulerJobsExecRemote = "mysqldump,reseedmysqldump,flashbackmysqldump,mydumper"
+		e.cl.Conf.ParseJobsExecOverrides()
+		id := meta.Id
+		e.reseedWithAndCheck("R8 reseed from the chosen backup, reseedmysqldump listed", gtid, config.ConstBackupLogicalTypeMysqldump, func() error {
+			return e.cl.ReseedFromBackupID(e.r, id)
+		})
 	}
 	cl.Conf.BackupMysqldumpSplitDump = true
 	e.seed()
@@ -412,11 +426,12 @@ func (e *edgeRun) backup(name string, remote bool) (*backupMeta, bool) {
 		return nil, e.check(name, false, fmt.Sprintf("metadata %+v", meta))
 	}
 	e.check(name, true, "")
-	return &backupMeta{Dest: meta.Dest, BinLogGtid: meta.BinLogGtid}, true
+	return &backupMeta{Id: meta.Id, Dest: meta.Dest, BinLogGtid: meta.BinLogGtid}, true
 }
 
 // backupMeta is what the edge cases read back from a backup's metadata.
 type backupMeta struct {
+	Id               int64
 	Dest, BinLogGtid string
 }
 
