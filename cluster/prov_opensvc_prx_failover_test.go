@@ -5,8 +5,9 @@
 package cluster
 
 import (
+	"errors"
+	"strings"
 	"testing"
-	"time"
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/opensvc"
@@ -39,10 +40,9 @@ func TestProxyFailoverPlacement(t *testing.T) {
 		t.Fatal("the only proxy is placed for failover")
 	}
 	// a local pool: a volume on each node, nothing shared
-	cluster.opensvcPoolInfoCache = []opensvc.PoolInfo{{Name: "tank", Capabilities: []string{"snap"}}, {Name: "drbd", Shared: true, Capabilities: []string{"drbd", "shared", "move"}}}
-	cluster.opensvcPoolInfoCacheAt = time.Now()
+	pools := []opensvc.PoolInfo{{Name: "tank", Capabilities: []string{"snap"}}, {Name: "drbd", Shared: true, Capabilities: []string{"drbd", "shared", "move"}}}
 	sections := proxyFailoverTestSections(prx, "tank")
-	cluster.applyProxyFailoverPlacement(sections, prx)
+	cluster.applyProxyFailoverPlacement(sections, prx, pools, nil)
 	def := sections["DEFAULT"]
 	if def["nodes"] != "node2 node1 node3" {
 		t.Fatalf("nodes: its agent, the proxy agents, then the database agents, got %q", def["nodes"])
@@ -59,16 +59,23 @@ func TestProxyFailoverPlacement(t *testing.T) {
 
 	// a failover pool: the volume moves with the proxy, shared, as on the database path
 	sections = proxyFailoverTestSections(prx, "drbd")
-	cluster.applyProxyFailoverPlacement(sections, prx)
+	cluster.applyProxyFailoverPlacement(sections, prx, pools, nil)
 	if sections["volume#01"]["shared"] != "true" || sections["container#prx"]["shared"] != "true" || sections["container#01"]["shared"] != "" {
 		t.Fatalf("drbd volume and its containers shared, the pause container not: %v", sections)
+	}
+
+	// the pool list could not be read: the volume's pool type is unknown, the proxy stays pinned
+	sections = proxyFailoverTestSections(prx, "tank")
+	cluster.applyProxyFailoverPlacement(sections, prx, nil, errors.New("orchestrator unreachable"))
+	if sections["DEFAULT"]["nodes"] != "node2" || sections["DEFAULT"]["flex_primary"] != "node2" || sections["env"]["nodes"] != "" {
+		t.Fatalf("pools unknown: pinned as before, got %v", sections["DEFAULT"])
 	}
 
 	// one agent only: the proxy stays where it is
 	cluster.Conf.ProvProxAgents = "node2"
 	cluster.Conf.ProvAgents = "node2"
 	sections = proxyFailoverTestSections(prx, "")
-	cluster.applyProxyFailoverPlacement(sections, prx)
+	cluster.applyProxyFailoverPlacement(sections, prx, nil, nil)
 	if sections["DEFAULT"]["nodes"] != "node2" || sections["DEFAULT"]["flex_primary"] != "node2" {
 		t.Fatalf("one agent: pinned as before, got %v", sections["DEFAULT"])
 	}
@@ -88,5 +95,17 @@ func TestProxyFailoverPlacement(t *testing.T) {
 	cluster.Conf.ProvProxAgentsFailover = "node3"
 	if cluster.proxyFailoverPlacement() {
 		t.Fatal("the legacy zpool failover placement keeps precedence")
+	}
+}
+
+// failoverNodes: the agent first, then the others, each once, blanks dropped (an empty
+// prov-proxy-agents splits into one empty entry).
+func TestFailoverNodes(t *testing.T) {
+	got := failoverNodes(" node2 ", strings.Split("", ","), []string{"node1", "node2", " ", "node3"}, []string{"node1"})
+	if strings.Join(got, " ") != "node2 node1 node3" {
+		t.Fatalf("got %q", got)
+	}
+	if got := failoverNodes("", nil); len(got) != 0 {
+		t.Fatalf("no agent, no list: no node, got %q", got)
 	}
 }

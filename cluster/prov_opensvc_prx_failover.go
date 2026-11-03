@@ -20,7 +20,8 @@ import (
 // failover pool (DRBD) the volume moves with it, shared, as on the database path. The
 // service name does not change, so <proxy>.<cluster>.svc.<orchestrator cluster> follows it.
 // Two proxies or more keep one pinned per node: they are each other's HA. The legacy
-// zpool + prov-proxy-agents-failover placement keeps precedence.
+// zpool + prov-proxy-agents-failover placement keeps precedence. Applied to the v3 template
+// only, as the database placement.
 
 // proxyFailoverPlacement tells whether the cluster's proxy is placed for failover: its only
 // proxy, prov-proxy-single-failover on, the legacy failover placement not set.
@@ -35,10 +36,11 @@ func (cluster *Cluster) proxyFailoverNodes(agent string) []string {
 	return failoverNodes(agent, strings.Split(cluster.Conf.ProvProxAgents, ","), cluster.GetDatabaseAgentNames(nil))
 }
 
-// applyProxyFailoverPlacement places a rendered single-proxy service for failover. Fewer than
-// two nodes, or a volume pool repman cannot read, keeps the proxy pinned to its agent as
-// before: a cluster on one node still gets its proxy.
-func (cluster *Cluster) applyProxyFailoverPlacement(svcsection map[string]map[string]string, pri DatabaseProxy) {
+// applyProxyFailoverPlacement places a rendered single-proxy service for failover, pools
+// being the OpenSVC pool list (poolsErr its lookup error). Fewer than two nodes, or a pool
+// list repman could not read, keeps the proxy pinned to its agent as before: a cluster on
+// one node still gets its proxy.
+func (cluster *Cluster) applyProxyFailoverPlacement(svcsection map[string]map[string]string, pri DatabaseProxy, pools []opensvc.PoolInfo, poolsErr error) {
 	nodes := cluster.proxyFailoverNodes(pri.GetAgent())
 	if len(nodes) < 2 {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
@@ -47,10 +49,9 @@ func (cluster *Cluster) applyProxyFailoverPlacement(svcsection map[string]map[st
 	}
 	movingVolume := false
 	if vol, ok := svcsection["volume#01"]; ok {
-		pools, err := cluster.OpenSVCGetPoolInfoList()
-		if err != nil {
+		if poolsErr != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn,
-				"Proxy service %s stays on %s: OpenSVC pools unknown (%s)", pri.GetName(), pri.GetAgent(), err)
+				"Proxy service %s stays on %s: OpenSVC pools unknown (%s)", pri.GetName(), pri.GetAgent(), poolsErr)
 			return
 		}
 		poolSet := make(map[string]opensvc.PoolInfo, len(pools))

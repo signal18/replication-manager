@@ -29,8 +29,10 @@ The database path sets the failover pool on `volume#01`, then calls it
 
 ## Single proxy
 
-`cluster/prov_opensvc_prx_failover.go`, applied at the end of
-`OpenSVCGetProxyTemplateSectionMap` (the v2 and v3 templates both carry it).
+`cluster/prov_opensvc_prx_failover.go`, applied in `OpenSVCGetProxyTemplateV3`: on OpenSVC v3
+only, as the database placement (the v3 pool lookup has a deadline; the v2 one has none). It runs
+in the proxy's provisioning goroutine, never in the monitor loop, and the pool list is cached
+5 minutes.
 
 A proxy is stateless: its init container fetches the configuration from repman at every
 start (`prov-proxy-start-fetch-config`), so a local volume on each node is enough and costs no

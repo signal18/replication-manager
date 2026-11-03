@@ -508,11 +508,6 @@ func (cluster *Cluster) OpenSVCGetProxyTemplateSectionMap(servers string, pri Da
 
 	svcsection["env"] = cluster.OpenSVCGetProxyEnvSection(servers, pri)
 
-	// the cluster's only proxy is placed for failover, like an active-passive database (#2289)
-	if cluster.proxyFailoverPlacement() {
-		cluster.applyProxyFailoverPlacement(svcsection, pri)
-	}
-
 	return svcsection
 }
 
@@ -528,6 +523,12 @@ func (cluster *Cluster) OpenSVCGetProxyTemplateV2(servers string, pri DatabasePr
 
 func (cluster *Cluster) OpenSVCGetProxyTemplateV3(servers string, pri DatabaseProxy) ([]byte, error) {
 	svcsection := cluster.OpenSVCGetProxyTemplateSectionMap(servers, pri)
+	// the cluster's only proxy is placed for failover, like an active-passive database (#2289);
+	// on v3 only, as the database placement: its pool lookup has a deadline there
+	if cluster.proxyFailoverPlacement() {
+		pools, err := cluster.OpenSVCGetPoolInfoList()
+		cluster.applyProxyFailoverPlacement(svcsection, pri, pools, err)
+	}
 
 	cfg := ini.Empty()
 
