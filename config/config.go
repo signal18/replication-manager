@@ -771,6 +771,7 @@ type Config struct {
 	ProvDbStartFetchConfig                    bool              `mapstructure:"prov-db-start-fetch-config" toml:"prov-db-start-fetch-config" json:"provDbStartFetchConfig"`
 	ProvProxyStartScript                      string            `mapstructure:"prov-proxy-start-script" toml:"prov-proxy-start-script" json:"provProxyStartScript"`
 	ProvProxyStartFetchConfig                 bool              `mapstructure:"prov-proxy-start-fetch-config" toml:"prov-proxy-start-fetch-config" json:"provProxyStartFetchConfig"`
+	ProvProxySingleFailover                   bool              `mapstructure:"prov-proxy-single-failover" toml:"prov-proxy-single-failover" json:"provProxySingleFailover"`
 	ProvDbStopScript                          string            `mapstructure:"prov-db-stop-script" toml:"prov-db-stop-script" json:"provDbStopScript"`
 	ProvProxyStopScript                       string            `mapstructure:"prov-proxy-stop-script" toml:"prov-proxy-stop-script" json:"provProxyStopScript"`
 	ProvDBCompliance                          string            `mapstructure:"prov-db-compliance" toml:"prov-db-compliance" json:"provDBCompliance"`

@@ -34,9 +34,19 @@ func (cluster *Cluster) dbFailoverPlacement() bool {
 // dbFailoverNodes is the node list of a failover database service: the server's agent
 // first, then the other agents of the server.
 func (server *ServerMonitor) dbFailoverNodes() []string {
+	return failoverNodes(server.Agent, server.ClusterGroup.GetDatabaseAgentNames(server))
+}
+
+// failoverNodes is a failover service's node list: its agent first, then the other agents,
+// each once, in order.
+func failoverNodes(agent string, others ...[]string) []string {
 	nodes := []string{}
 	seen := map[string]bool{}
-	for _, n := range append([]string{server.Agent}, server.ClusterGroup.GetDatabaseAgentNames(server)...) {
+	all := []string{agent}
+	for _, list := range others {
+		all = append(all, list...)
+	}
+	for _, n := range all {
 		if n = strings.TrimSpace(n); n != "" && !seen[n] {
 			seen[n] = true
 			nodes = append(nodes, n)
@@ -59,6 +69,23 @@ func (server *ServerMonitor) applyDBFailoverPlacement(svcsection map[string]map[
 	if len(nodes) < 2 {
 		return fmt.Errorf("failover database service %s needs at least two agents (prov-db-agents), found %q", server.URL, strings.Join(nodes, ","))
 	}
+	if vol, ok := svcsection["volume#01"]; ok {
+		vol["pool"] = server.ClusterGroup.Conf.ProvVolumeDataFailover
+	}
+	placeServiceForFailover(svcsection, nodes, true)
+	server.ClusterGroup.LogModulePrintf(server.ClusterGroup.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
+		"Database service %s placed for failover on %s, data on pool %s", server.URL, svcsection["DEFAULT"]["nodes"], server.ClusterGroup.Conf.ProvVolumeDataFailover)
+	return nil
+}
+
+// placeServiceForFailover places a rendered service on nodes, one instance at a time:
+// OpenSVC starts it on the next node when its node is lost (orchestrate ha). A volume that
+// moves with the instance (movingVolume: a failover pool such as DRBD) is shared, and so are
+// the containers using it; a local volume is provisioned on each node and the containers
+// with it. container#01 is the pause holding the network namespace: like a failover app's,
+// it is not shared, the standby provisions ip#01 (not shared) into it; shared, the standby's
+// provision failed entering a namespace not running there (dev3 cstest).
+func placeServiceForFailover(svcsection map[string]map[string]string, nodes []string, movingVolume bool) {
 	def := svcsection["DEFAULT"]
 	def["nodes"] = strings.Join(nodes, " ")
 	delete(def, "cluster_type")
@@ -67,21 +94,17 @@ func (server *ServerMonitor) applyDBFailoverPlacement(svcsection map[string]map[
 	if env, ok := svcsection["env"]; ok {
 		env["nodes"] = def["nodes"] // informational, the placement is DEFAULT.nodes
 	}
+	if !movingVolume {
+		return
+	}
 	if vol, ok := svcsection["volume#01"]; ok {
-		vol["pool"] = server.ClusterGroup.Conf.ProvVolumeDataFailover
 		vol["shared"] = "true"
 	}
 	for name, section := range svcsection {
-		// container#01 is the pause holding the network namespace: like a failover app's,
-		// it is not shared, the standby provisions ip#01 (not shared) into it; shared, the
-		// standby's provision failed entering a namespace not running there (dev3 cstest)
 		if strings.HasPrefix(name, "container#") && name != "container#01" {
 			section["shared"] = "true"
 		}
 	}
-	server.ClusterGroup.LogModulePrintf(server.ClusterGroup.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
-		"Database service %s placed for failover on %s, data on pool %s", server.URL, def["nodes"], server.ClusterGroup.Conf.ProvVolumeDataFailover)
-	return nil
 }
 
 // openSVCServiceNodes reads the live service's DEFAULT.nodes: a template refresh keeps the
