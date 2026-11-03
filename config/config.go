@@ -1870,11 +1870,13 @@ var TaskRegistry = map[TaskName]TaskDef{
 	ConstTaskPrintDummyConfig:   {Name: ConstTaskPrintDummyConfig, Capability: TaskCapRemoteOnly},
 
 	// Both — user can choose local (repman) or remote (dbjobs)
-	ConstTaskDump:       {Name: ConstTaskDump, Capability: TaskCapBoth, DefaultRemote: false},
-	ConstTaskMydumper:   {Name: ConstTaskMydumper, Capability: TaskCapBoth, DefaultRemote: false},
-	ConstTaskOptimize:   {Name: ConstTaskOptimize, Capability: TaskCapBoth, DefaultRemote: true},
-	ConstTaskReseedDump: {Name: ConstTaskReseedDump, Capability: TaskCapBoth, DefaultRemote: false},
-	ConstTaskFlashDump:  {Name: ConstTaskFlashDump, Capability: TaskCapBoth, DefaultRemote: false},
+	ConstTaskDump:     {Name: ConstTaskDump, Capability: TaskCapBoth, DefaultRemote: false},
+	ConstTaskOptimize: {Name: ConstTaskOptimize, Capability: TaskCapBoth, DefaultRemote: true},
+	// LocalOnly — repman runs the logical restore itself; dbjobs has no path for these
+	// in API mode, so listing them in scheduler-jobs-exec-remote must not dispatch them.
+	ConstTaskMydumper:   {Name: ConstTaskMydumper, Capability: TaskCapLocalOnly},
+	ConstTaskReseedDump: {Name: ConstTaskReseedDump, Capability: TaskCapLocalOnly},
+	ConstTaskFlashDump:  {Name: ConstTaskFlashDump, Capability: TaskCapLocalOnly},
 }
 
 // IsRemoteTask returns true if the task should be dispatched to the dbjobs
