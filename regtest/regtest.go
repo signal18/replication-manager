@@ -153,6 +153,7 @@ var tests = []string{
 	"testDirectReseedSystemAllStrictPasswordValidationIdenticalAccountSkipped",
 	"testHaproxyRuntimeAPIDynamicServerLifecycle",
 	"testProxyReadBackendReconciliation",
+	"testProxySQLStaleOfflineRowRecovery",
 	"testMaintenancePersistReload",
 	"testAppWarningDebounceAndRecovery",
 	"testAppMonitorHTTP",
@@ -316,6 +317,8 @@ var testTargets = map[string][]TestTarget{
 	"testDirectReseedSystemAllStrictPasswordValidationIdenticalAccountSkipped": anyCluster,
 	"testHaproxyRuntimeAPIDynamicServerLifecycle":                              anyCluster,
 	"testProxyReadBackendReconciliation":                                       anyCluster,
+	// #2295: replication-manager owns the ProxySQL rows only with bootstrap on
+	"testProxySQLStaleOfflineRowRecovery": {{ConfigVariableMustHave: map[string]string{"proxysql": "true", "proxysql-bootstrap": "true"}}},
 	"testMaintenancePersistReload":                                             anyCluster,
 	"testAppWarningDebounceAndRecovery":                                        anyCluster,
 	"testReplicationTLSAutoCertificate":                                        anyCluster,

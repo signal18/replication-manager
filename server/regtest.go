@@ -465,6 +465,9 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 		if test.Name == "testProxyReadBackendReconciliation" {
 			res = regtest.TestProxyReadBackendReconciliation(cl, test.ConfigFile, &test)
 		}
+		if test.Name == "testProxySQLStaleOfflineRowRecovery" {
+			res = regtest.TestProxySQLStaleOfflineRowRecovery(cl, test.ConfigFile, &test)
+		}
 		if test.Name == "testProxySQLPostgresRouting" {
 			res = regtest.TestProxySQLPostgresRouting(cl, test.ConfigFile, &test)
 		}
