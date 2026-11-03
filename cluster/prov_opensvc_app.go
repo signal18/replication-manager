@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -978,6 +979,110 @@ func (cluster *Cluster) OpenSVCPushAppVariableMaps(app *App) error {
 	return cluster.OpenSVCCreateAppVariableMaps(agentName, app)
 }
 
+// OpenSVCUpdateAppConfig is update-opensvc-config: it pushes the app's config/secret maps,
+// then, on OpenSVC v3, refreshes the service definition of a provisioned app, so the scoped
+// keywords of per-agent values follow their keys and a recreate of the container applies
+// them, however it is recreated (#2282). An app whose service does not exist yet only gets
+// its maps, as before. On v2, which has no in-place refresh, the environment keywords are
+// set on the live object instead (openSVCUpdateAppEnvironmentV2).
+func (cluster *Cluster) OpenSVCUpdateAppConfig(app *App) error {
+	if err := cluster.OpenSVCPushAppVariableMaps(app); err != nil {
+		return err
+	}
+	svc := cluster.OpenSVCConnect()
+	if cluster.Conf.ProvOpensvcUseCollectorAPI || app.AppConfig.IsMonitorOnly() {
+		return nil
+	}
+	if !svc.IsV3() {
+		return cluster.openSVCUpdateAppEnvironmentV2(svc, app)
+	}
+	parts := strings.SplitN(app.ServiceName, "/", 3)
+	if len(parts) != 3 {
+		return fmt.Errorf("config/secret maps updated, service definition not refreshed: invalid service name %q", app.ServiceName)
+	}
+	if _, err := svc.GetObjectConfigFileV3(parts[0], parts[1], parts[2]); err != nil {
+		var se *opensvc.StatusError
+		if errors.As(err, &se) && se.StatusCode == http.StatusNotFound {
+			return nil // not provisioned: the provisioning writes the definition
+		}
+		return fmt.Errorf("config/secret maps updated, service definition not checked: %w", err)
+	}
+	if err := cluster.OpenSVCUpdateAppTemplate(app); err != nil {
+		return fmt.Errorf("config/secret maps updated, service definition not refreshed: %w", err)
+	}
+	return nil
+}
+
+// openSVCUpdateAppEnvironmentV2 is the v2 counterpart of the definition refresh of
+// update-opensvc-config: the environment keywords of container#app, the default and the
+// per-agent ones as the template renders them, are set on the live object, and the
+// per-agent ones of the other cluster nodes unset. The agent of o-node ANY writes them and
+// copies them to the other nodes; the next start of an instance uses them (#2282).
+func (cluster *Cluster) openSVCUpdateAppEnvironmentV2(svc opensvc.Collector, app *App) error {
+	exists, err := svc.ObjectExistsV2(app.ServiceName, app.Agent)
+	if err != nil {
+		return fmt.Errorf("config/secret maps updated, service definition not checked: %w", err)
+	}
+	if !exists {
+		return nil // not provisioned: the provisioning writes the definition
+	}
+	hosts, err := svc.GetNodes()
+	if err != nil {
+		return fmt.Errorf("config/secret maps updated, service definition not refreshed: %w", err)
+	}
+	nodes := make([]string, 0, len(hosts))
+	for _, h := range hosts {
+		nodes = append(nodes, h.Node_name)
+	}
+	set, unset := appEnvironmentKeywordsV2(cluster.OpenSVCGetAppContainerSection(app), nodes)
+	if len(set) == 0 {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Environment keywords of %s left as they are: none rendered for prov-db-service-type %q", app.ServiceName, cluster.Conf.ProvType)
+		return nil
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Setting the environment keywords of %s", app.ServiceName)
+	if err := svc.SetServiceConfigKeysCheckedV2(app.ServiceName, "ANY", set); err != nil {
+		return fmt.Errorf("config/secret maps updated, service definition not refreshed: %w", err)
+	}
+	if len(unset) > 0 {
+		if err := svc.UnsetServiceConfigKeysCheckedV2(app.ServiceName, "ANY", unset); err != nil {
+			return fmt.Errorf("config/secret maps updated, service definition not refreshed: %w", err)
+		}
+	}
+	return nil
+}
+
+// appEnvironmentKeywordsV2 returns, from a rendered container#app section, the set entries
+// of its environment keywords (section.keyword=value) and the unset entries of the
+// per-agent keywords that nodes without a value of their own may still carry. A keyword the
+// section does not render (no container environment for a prov-db-service-type other than
+// docker or podman) is neither set nor unset, so the live one stays as it is.
+func appEnvironmentKeywordsV2(section map[string]string, nodes []string) (set, unset []string) {
+	const prefix = "container#app."
+	for _, kw := range []string{"configs_environment", "secrets_environment"} {
+		def, ok := section[kw]
+		if !ok {
+			continue
+		}
+		set = append(set, prefix+kw+"="+def)
+		var scoped []string
+		for k := range section {
+			if strings.HasPrefix(k, kw+"@") {
+				scoped = append(scoped, k)
+			}
+		}
+		sort.Strings(scoped)
+		for _, k := range scoped {
+			set = append(set, prefix+k+"="+section[k])
+		}
+		for _, n := range nodes {
+			if _, ok := section[kw+"@"+n]; !ok {
+				unset = append(unset, prefix+kw+"@"+n)
+			}
+		}
+	}
+	return set, unset
+}
+
 func (cluster *Cluster) FoundAllAppAgents(app *App) ([]opensvc.Host, error) {
 	svc := cluster.OpenSVCConnect()
 	svc.ProvAppAgents = cluster.GetAppAgents(app.AppConfig)
@@ -1079,8 +1184,91 @@ func (cluster *Cluster) OpenSVCGetAppContainerSection(app *App) map[string]strin
 		svccontainer["volume_mounts"] = strings.TrimSpace(cluster.GetOpenSVCDeploymentPathMapping(app) + " " + postgresWalArchiveMount(app))
 		svccontainer["configs_environment"] = app.GetOpenSVCDeploymentAppEnv("env")
 		svccontainer["secrets_environment"] = appSecretsEnvironment(app)
+		// per-agent values (#2282): OpenSVC scopes keywords to a node, not the keys of a
+		// cfg/sec object, so the <NAME>@<agent> key is mapped onto <NAME> by a keyword
+		// scoped to that agent, which replaces the default keyword on that node
+		for agent, m := range appConditionalEnvironment(app) {
+			if len(m.cfg) > 0 {
+				svccontainer["configs_environment@"+agent] = strings.Join(append([]string{svccontainer["configs_environment"]}, m.cfg...), " ")
+			}
+			if len(m.sec) > 0 {
+				svccontainer["secrets_environment@"+agent] = strings.Join(append([]string{svccontainer["secrets_environment"]}, m.sec...), " ")
+			}
+		}
 	}
 	return svccontainer
+}
+
+// appConditionalMappings holds, for one agent, the environment mappings that apply the
+// agent's own value of each variable: <NAME>=<app>/<NAME>@<agent>.
+type appConditionalMappings struct {
+	cfg []string
+	sec []string
+}
+
+// appConditionalEnvironment returns, per agent, the mappings for the app's variables that
+// carry a per-agent value (Conditional). The keys themselves are written by
+// OpenSVCCreateAppVariableMaps.
+func appConditionalEnvironment(app *App) map[string]*appConditionalMappings {
+	res := make(map[string]*appConditionalMappings)
+	if app == nil || app.Name == "" || app.AppConfig == nil || app.AppConfig.Deployment == nil {
+		return res
+	}
+	for _, v := range app.AppConfig.Deployment.Variables {
+		if v.Name == "" || strings.ContainsAny(v.Name, " \t\n=@") {
+			continue // not mappable in a space-separated keyword
+		}
+		for _, cd := range v.Conditional {
+			if cd.Agent == "" || strings.ContainsAny(cd.Agent, " \t\n=@/") {
+				continue
+			}
+			m := res[cd.Agent]
+			if m == nil {
+				m = &appConditionalMappings{}
+				res[cd.Agent] = m
+			}
+			mapping := fmt.Sprintf("%s=%s/%s@%s", v.Name, app.Name, v.Name, cd.Agent)
+			if v.Type == config.VariableTypeSecret {
+				m.sec = append(m.sec, mapping)
+			} else {
+				m.cfg = append(m.cfg, mapping)
+			}
+		}
+	}
+	return res
+}
+
+// staleConditionalKeys returns the keys of a cfg (secret=false) or sec (secret=true) object
+// that hold a per-agent value no longer set: <NAME>@<agent> where <NAME> is a variable of
+// that type and <agent> is not in its Conditional. Any other key, including one that is a
+// variable name itself, is left alone.
+func staleConditionalKeys(vars config.VariableMaps, existing []string, secret bool) []string {
+	names := make(map[string]bool, len(vars))
+	current := make(map[string]map[string]bool)
+	for _, v := range vars {
+		names[v.Name] = true
+		if (v.Type == config.VariableTypeSecret) != secret {
+			continue
+		}
+		agents := make(map[string]bool, len(v.Conditional))
+		for _, cd := range v.Conditional {
+			agents[cd.Agent] = true
+		}
+		current[v.Name] = agents
+	}
+	var stale []string
+	for _, key := range existing {
+		i := strings.LastIndex(key, "@")
+		if i <= 0 || names[key] {
+			continue
+		}
+		agents, ok := current[key[:i]]
+		if !ok || agents[key[i+1:]] {
+			continue
+		}
+		stale = append(stale, key)
+	}
+	return stale
 }
 
 func (cluster *Cluster) OpenSVCGetAppGitInitDefaultSection(app *App) map[string]string {
@@ -1338,6 +1526,32 @@ func (cluster *Cluster) OpenSVCCreateAppVariableMaps(agent string, app *App) err
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add conditional key to config: %s %s ", cdname, err)
 					addKeyErr(fmt.Errorf("config key %q: %w", cdname, err))
 				}
+			}
+		}
+	}
+
+	// A per-agent value removed from a variable leaves its <NAME>@<agent> key behind
+	// (#2282). The key is inert once the template no longer maps it, so a failed cleanup
+	// is a warning, never a map error: it must not block a provisioning.
+	for _, obj := range []struct {
+		kind   string
+		secret bool
+		list   func(namespace, service string) ([]string, error)
+		del    func(namespace, service, key string) error
+	}{
+		{"secret", true, svc.ListSecretKeys, svc.DeleteSecretKeyValue},
+		{"config", false, svc.ListConfigKeys, svc.DeleteConfigKeyValue},
+	} {
+		keys, err := obj.list(cluster.Name, app.Name)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "Can not list %s keys of app %s, removed per-agent values stay in place: %s", obj.kind, app.Name, err)
+			continue
+		}
+		for _, key := range staleConditionalKeys(app.AppConfig.Deployment.Variables, keys, obj.secret) {
+			if err := obj.del(cluster.Name, app.Name, key); err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "Can not remove per-agent %s key %s of app %s: %s", obj.kind, key, app.Name, err)
+			} else {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Removed per-agent %s key %s of app %s", obj.kind, key, app.Name)
 			}
 		}
 	}

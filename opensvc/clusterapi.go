@@ -365,13 +365,80 @@ func (collector *Collector) UnsetServiceConfigKeysV2(srv string, node string, kw
 	return collector.postServiceAction(reqparams, node)
 }
 
+// SetServiceConfigKeysCheckedV2 is SetServiceConfigKeysV2 that reads the agent's answer:
+// an error unless at least one node ran the set and every node that ran it succeeded.
+func (collector *Collector) SetServiceConfigKeysCheckedV2(srv string, node string, kw []string) error {
+	return collector.postServiceActionChecked(ActionRequest{
+		Path:    srv,
+		Action:  "set",
+		Sync:    true,
+		Options: map[string]interface{}{"kw": kw},
+	}, node)
+}
+
+// UnsetServiceConfigKeysCheckedV2 is UnsetServiceConfigKeysV2 that reads the agent's
+// answer as SetServiceConfigKeysCheckedV2 does. Unsetting a keyword the object does not
+// have succeeds (2.1-2073).
+func (collector *Collector) UnsetServiceConfigKeysCheckedV2(srv string, node string, kw []string) error {
+	return collector.postServiceActionChecked(ActionRequest{
+		Path:    srv,
+		Action:  "unset",
+		Sync:    true,
+		Options: map[string]interface{}{"kw": kw},
+	}, node)
+}
+
+func (collector *Collector) postServiceActionChecked(reqparams ActionRequest, node string) error {
+	status, body, err := collector.postServiceActionBody(reqparams, node)
+	if err != nil {
+		return err
+	}
+	if status < 200 || status >= 300 {
+		return fmt.Errorf("%s %s: HTTP %d: %s", reqparams.Action, reqparams.Path, status, strings.TrimSpace(string(body)))
+	}
+	if err := checkServiceActionV2Body(body); err != nil {
+		return fmt.Errorf("%s %s: %w", reqparams.Action, reqparams.Path, err)
+	}
+	return nil
+}
+
+// checkServiceActionV2Body reads a v2 /service_action answer. Two answers seen on
+// 2.1-2073 applied nothing yet carry status 0: {"nodes": {}} for an o-node holding no
+// such object, {"info": "empty node selection"} for an unknown o-node. A node's own
+// failure is in nodes.<node>.status and nodes.<node>.data.ret.
+func checkServiceActionV2Body(body []byte) error {
+	if err := checkV2ResponseBody(body); err != nil {
+		return err
+	}
+	nodes := gjson.GetBytes(body, "nodes").Map()
+	if len(nodes) == 0 {
+		if info := strings.TrimSpace(gjson.GetBytes(body, "info").String()); info != "" {
+			return fmt.Errorf("no node ran the action: %s", info)
+		}
+		return fmt.Errorf("no node ran the action")
+	}
+	for name, n := range nodes {
+		if st, ret := n.Get("status").Int(), n.Get("data.ret").Int(); st != 0 || ret != 0 {
+			return fmt.Errorf("node %s: status %d, ret %d: %s", name, st, ret, strings.TrimSpace(n.Get("data.err").String()))
+		}
+	}
+	return nil
+}
+
 func (collector *Collector) postServiceAction(reqparams ActionRequest, node string) error {
+	_, _, err := collector.postServiceActionBody(reqparams, node)
+	return err
+}
+
+// postServiceActionBody posts a /service_action and returns the HTTP status and the body
+// unjudged; postServiceAction's callers ignore them.
+func (collector *Collector) postServiceActionBody(reqparams ActionRequest, node string) (int, []byte, error) {
 	jsondata, err := json.Marshal(reqparams)
 	if err != nil {
 		if collector.isLoggable(config.ConstLogModOrchestrator, config.LvlErr) {
 			collector.Logrus.WithField("FROM", "OpenSVC").Errorln("JSON Marshal Error: ", err)
 		}
-		return fmt.Errorf("failed to marshal JSON: %w", err)
+		return 0, nil, fmt.Errorf("failed to marshal JSON: %w", err)
 	}
 
 	urlpost := "https://" + collector.Host + ":" + collector.Port + "/service_action"
@@ -382,7 +449,7 @@ func (collector *Collector) postServiceAction(reqparams ActionRequest, node stri
 
 	req, err := http.NewRequest("POST", urlpost, bytes.NewBuffer(jsondata))
 	if err != nil {
-		return err
+		return 0, nil, err
 	}
 	req.Close = true
 	req.Header.Set("Content-Type", "application/json")
@@ -391,7 +458,7 @@ func (collector *Collector) postServiceAction(reqparams ActionRequest, node stri
 	client := collector.GetHttpClient()
 	resp, err := client.Do(req)
 	if err != nil {
-		return err
+		return 0, nil, err
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
@@ -399,7 +466,7 @@ func (collector *Collector) postServiceAction(reqparams ActionRequest, node stri
 	if collector.isLoggable(config.ConstLogModOrchestrator, config.LvlInfo) {
 		collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Response: ", string(body))
 	}
-	return nil
+	return resp.StatusCode, body, nil
 }
 
 func (collector *Collector) PurgeServiceV2(cluster string, srv string, node string) error {
@@ -464,11 +531,23 @@ func (collector *Collector) DeleteConfigKeyValue(namespace, service, key string)
 	return collector.DeleteConfigKeyValueV2(namespace, service, key)
 }
 
+// DeleteSecretKeyValue deletes a single key from a sec data store object.
+func (collector *Collector) DeleteSecretKeyValue(namespace, service, key string) error {
+	if collector.IsV3() {
+		return collector.DeleteSecretKeyValueV3(namespace, service, key)
+	}
+	return collector.deleteObjectKeyV2(namespace, "sec", service, key)
+}
+
 // DeleteConfigKeyValueV2 deletes a key from a V2 cfg object via DELETE /key.
 func (collector *Collector) DeleteConfigKeyValueV2(namespace, service, key string) error {
+	return collector.deleteObjectKeyV2(namespace, "cfg", service, key)
+}
+
+func (collector *Collector) deleteObjectKeyV2(namespace, kind, service, key string) error {
 	urldelete := fmt.Sprintf("https://%s:%s/key", collector.Host, collector.Port)
 	requestData := ConfigKeyValueRequest{
-		Path: fmt.Sprintf("%s/cfg/%s", namespace, service),
+		Path: fmt.Sprintf("%s/%s/%s", namespace, kind, service),
 		Key:  key,
 	}
 	jsonData, err := json.Marshal(requestData)
@@ -503,9 +582,21 @@ func (collector *Collector) ListConfigKeys(namespace, service string) ([]string,
 	return collector.ListConfigKeysV2(namespace, service)
 }
 
+// ListSecretKeys returns all key names stored in a sec data store object.
+func (collector *Collector) ListSecretKeys(namespace, service string) ([]string, error) {
+	if collector.IsV3() {
+		return collector.ListSecretKeysV3(namespace, service)
+	}
+	return collector.listObjectKeysV2(namespace, "sec", service)
+}
+
 // ListConfigKeysV2 lists keys in a V2 cfg object via GET /object_keys.
 func (collector *Collector) ListConfigKeysV2(namespace, service string) ([]string, error) {
-	path := fmt.Sprintf("%s/cfg/%s", namespace, service)
+	return collector.listObjectKeysV2(namespace, "cfg", service)
+}
+
+func (collector *Collector) listObjectKeysV2(namespace, kind, service string) ([]string, error) {
+	path := fmt.Sprintf("%s/%s/%s", namespace, kind, service)
 	urlget := fmt.Sprintf("https://%s:%s/object_keys?path=%s", collector.Host, collector.Port, url.QueryEscape(path))
 	client := collector.GetHttpClient()
 	req, err := http.NewRequest("GET", urlget, nil)

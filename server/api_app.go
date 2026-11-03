@@ -1068,7 +1068,7 @@ func (repman *ReplicationManager) handlerMuxAppUpdateRoutes(w http.ResponseWrite
 }
 
 // @Summary Push OpenSVC config/secret maps for an app
-// @Description Upserts the latest OpenSVC app config and secret variable maps to the live OpenSVC objects
+// @Description Upserts the latest OpenSVC app config and secret variable maps to the live OpenSVC objects, then updates the service definition of a provisioned app without restarting it (OpenSVC v3: the whole definition, as update-opensvc-template does; v2: its environment keywords), so a restart of the instance, which recreates its container, applies per-agent variable values.
 // @Tags Apps
 // @Accept json
 // @Produce json
@@ -1101,8 +1101,9 @@ func (repman *ReplicationManager) handlerMuxAppUpdateOpenSVCConfig(w http.Respon
 		http.Error(w, "App Not Found", http.StatusNotFound)
 		return
 	}
-	if err := mycluster.OpenSVCPushAppVariableMaps(node); err != nil {
-		http.Error(w, "Failed to push app config/secret maps: "+err.Error(), http.StatusInternalServerError)
+	if err := mycluster.OpenSVCUpdateAppConfig(node); err != nil {
+		// the error says what was done: a failed refresh comes after a successful push
+		http.Error(w, "Failed to update the app's OpenSVC config: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 	fmt.Fprintf(w, "App config/secret maps updated")

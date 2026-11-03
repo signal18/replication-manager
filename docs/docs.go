@@ -4994,7 +4994,7 @@ const docTemplate = `{
         },
         "/api/clusters/{clusterName}/apps/{appName}/actions/update-opensvc-config": {
             "post": {
-                "description": "Upserts the latest OpenSVC app config and secret variable maps to the live OpenSVC objects",
+                "description": "Upserts the latest OpenSVC app config and secret variable maps to the live OpenSVC objects, then updates the service definition of a provisioned app without restarting it (OpenSVC v3: the whole definition, as update-opensvc-template does; v2: its environment keywords), so a restart of the instance, which recreates its container, applies per-agent variable values.",
                 "consumes": [
                     "application/json"
                 ],

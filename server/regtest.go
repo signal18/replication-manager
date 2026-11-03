@@ -477,6 +477,12 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 		if test.Name == "testAppMonitorHTTP" {
 			res = regtest.TestAppMonitorHTTP(cl, test.ConfigFile, &test)
 		}
+		if test.Name == "testAppConditionalVariablesOpenSVC" {
+			res = regtest.TestAppConditionalVariablesOpenSVC(cl, test.ConfigFile, &test)
+		}
+		if test.Name == "testAppConditionalProxiesOpenSVC" {
+			res = regtest.TestAppConditionalProxiesOpenSVC(cl, test.ConfigFile, &test)
+		}
 
 		// A test that finds nothing to exercise on this cluster says why (test.SkipReason):
 		// SKIP, not reported, as a target missed (a rolling upgrade with no newer release
