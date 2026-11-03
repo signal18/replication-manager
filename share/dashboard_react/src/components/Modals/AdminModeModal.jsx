@@ -1,11 +1,7 @@
 import {
   Badge,
   Box,
-  FormControl,
-  FormErrorMessage,
-  FormLabel,
   HStack,
-  Input,
   Modal,
   ModalBody,
   ModalCloseButton,
@@ -18,6 +14,7 @@ import {
 } from '@chakra-ui/react'
 import React, { useEffect, useState } from 'react'
 import RMButton from '../RMButton'
+import LoginForm from '../LoginForm'
 import { useTheme } from '../../ThemeProvider'
 import { adminMode } from '../../services/adminMode'
 import { authService } from '../../services/authService'
@@ -56,6 +53,7 @@ function AdminModeModal() {
   }
 
   const enter = async () => {
+    if (loading) return // Enter-key and the footer button share this path: don't fire two logins
     setError('')
     if (!username || !password) {
       setError('The local admin user and password are required')
@@ -100,20 +98,16 @@ function AdminModeModal() {
           <ModalBody>
             <Stack spacing='5'>
               <Text>Global settings and the host terminal are changed with the local admin account of this replication-manager.</Text>
-              <FormControl isInvalid={!!error}>
-                <FormLabel htmlFor='admin-mode-user'>User</FormLabel>
-                <Input id='admin-mode-user' type='text' autoComplete='username' value={username} onChange={(e) => setUsername(e.target.value)} />
-                <FormLabel htmlFor='admin-mode-password' mt='3'>Password</FormLabel>
-                <Input
-                  id='admin-mode-password'
-                  type='password'
-                  autoComplete='current-password'
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && enter()}
-                />
-                <FormErrorMessage>{error}</FormErrorMessage>
-              </FormControl>
+              <LoginForm
+                username={username}
+                password={password}
+                onUsernameChange={(e) => setUsername(e.target.value)}
+                onPasswordChange={(e) => setPassword(e.target.value)}
+                usernameLabel='User'
+                passwordError={error}
+                onSubmit={enter}
+                idPrefix='admin-mode'
+              />
             </Stack>
           </ModalBody>
           <ModalFooter gap={3} margin='auto'>

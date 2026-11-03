@@ -1,12 +1,11 @@
 import React, { useCallback, useEffect, useRef, useState, Suspense } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { useNavigate } from 'react-router-dom'
 import { login, logout, setUserData } from '../../redux/authSlice'
 import styles from './styles.module.scss'
-import { Box, Container, Divider, FormControl, FormLabel, FormErrorMessage, Heading, Input, Stack, Text, HStack, Link } from '@chakra-ui/react'
+import { Box, Container, Divider, Heading, Spinner, Stack, Text, HStack, Link } from '@chakra-ui/react'
 import PageContainer from '../PageContainer'
 import { isAuthorized } from '../../utility/common'
-import PasswordControl from '../../components/PasswordControl'
+import LoginForm from '../../components/LoginForm'
 import RMButton from '../../components/RMButton'
 import Message from '../../components/Message'
 import { useTheme } from '../../ThemeProvider'
@@ -15,7 +14,9 @@ import { clearClusters } from '../../redux/globalClustersSlice'
 import { authService } from '../../services/authService'
 
 function Login({ dashboard = false }) {
-  const [username, setUsername] = useState('')
+  // The admin zone (/login?admin) is the API (local) login only, with the local admin pre-filled.
+  const [adminZone] = useState(() => new URLSearchParams(window.location.search).has('admin'))
+  const [username, setUsername] = useState(adminZone ? 'admin' : '')
   const [password, setPassword] = useState('')
   const [usernameError, setUsernameError] = useState('')
   const [passwordError, setPasswordError] = useState('')
@@ -24,13 +25,12 @@ function Login({ dashboard = false }) {
   // Cloud18 logins only (#2262): the login goes straight to Cloud18; the user and password form is
   // the admin zone's, at /login?admin
   const [cloud18Only, setCloud18Only] = useState(false)
-  const [adminZone] = useState(() => new URLSearchParams(window.location.search).has('admin'))
   const [cloud18Loading, setCloud18Loading] = useState(false)
   // the Cloud18 status is known and no silent check is under way: autologin may run
   const [cloud18Ready, setCloud18Ready] = useState(false)
+  const [cloud18Retrying, setCloud18Retrying] = useState(false)
   const { theme } = useTheme()
 
-  const navigate = useNavigate()
   const dispatch = useDispatch()
   const {
     auth: { isLogged, loading, loadingGitLogin, user, error, sessionStatus }
@@ -51,7 +51,7 @@ function Login({ dashboard = false }) {
           localStorage.setItem('user_token', data.token)
           localStorage.setItem('username', data.username || 'admin')
           dispatch(setUserData())
-          navigate('/')
+          window.location.assign('/')
         } else {
           // Server is up but autologin is not configured — no retry.
           dispatch(logout())
@@ -72,7 +72,7 @@ function Login({ dashboard = false }) {
           setAutologinRetryCount((c) => c + 1)
         }, 10_000)
       })
-  }, [dispatch, navigate])
+  }, [dispatch])
 
   // Sign in with Cloud18 (#2185) on a partner repman: the silent check on opening (already signed in
   // at Cloud18 in this browser: straight in, nothing shown), and the way back from the realm, a
@@ -83,39 +83,70 @@ function Login({ dashboard = false }) {
   const cloud18Traded = useRef(false) // the one-time code is sent once (StrictMode runs effects twice)
   useEffect(() => {
     if (dashboard) return
-    authService.cloud18SSOStatus()
-      .then((resp) => {
-        const enabled = resp?.status === 200 && resp?.data?.enabled === true
-        setCloud18Enabled(enabled)
-        setCloud18Only(enabled && resp?.data?.cloud18Only === true)
-        // Cloud18 logins only: straight to the Cloud18 sign-in (its page offers Sign up; an open
-        // Cloud18 session comes straight back), except the admin zone and a return from Cloud18
-        if (enabled && resp?.data?.cloud18Only === true && !cloud18Back && !adminZone && !isAuthorized()) {
-          window.location.assign('/api/auth/cloud18/start')
-          return
-        }
-        // once per tab: after a Logout (which ends the Cloud18 session) or a check that found none,
-        // the page shows its form and does not try again
-        if (enabled && !cloud18Back && !isAuthorized() && sessionStorage.getItem('cloud18_silent_tried') !== '1') {
-          sessionStorage.setItem('cloud18_silent_tried', '1')
-          window.location.assign('/api/auth/cloud18/start?silent=1')
-          return
-        }
-        // no silent check: the page's usual autologin (not after a Cloud18 return with a code)
-        setCloud18Ready(true)
-        if (!cloud18Code && !isAuthorized()) doAutologin()
-      })
-      .catch(() => {
-        setCloud18Enabled(false)
-        setCloud18Ready(true)
-        if (!cloud18Code && !isAuthorized()) doAutologin()
-      })
+    let statusRetry = null
+    let stopped = false
+    let statusAttempts = 0
+    // The Cloud18 status decides whether to go to Cloud18 or show the local form. If the server is
+    // starting/unreachable (restart) the check gets a 5xx or a network error: RETRY on the
+    // "connecting" screen instead of concluding "not Cloud18" and dropping to the API form — a
+    // marketplace instance must still reach Cloud18 once the server is back. Capped (~1 min) so a
+    // genuinely dead backend eventually falls through to the form rather than spinning forever.
+    function fallBackToForm() {
+      setCloud18Retrying(false)
+      setCloud18Enabled(false)
+      setCloud18Ready(true)
+      if (!cloud18Code && !isAuthorized() && !adminZone) doAutologin()
+    }
+    function scheduleStatusRetry() {
+      if (stopped) return
+      if (statusAttempts++ >= 24) { fallBackToForm(); return }
+      setCloud18Retrying(true) // show the "retrying" screen (not a blank) while the server is down
+      statusRetry = setTimeout(checkCloud18Status, 2500)
+    }
+    function checkCloud18Status() {
+      authService.cloud18SSOStatus()
+        .then((resp) => {
+          if (stopped) return
+          if (!resp?.status || resp.status >= 500) { scheduleStatusRetry(); return }
+          const enabled = resp.status === 200 && resp?.data?.enabled === true
+          setCloud18Enabled(enabled)
+          setCloud18Only(enabled && resp?.data?.cloud18Only === true)
+          // Cloud18 logins only: straight to the Cloud18 sign-in (its page offers Sign up; an open
+          // Cloud18 session comes straight back), except the admin zone and a return from Cloud18
+          if (enabled && resp?.data?.cloud18Only === true && !cloud18Back && !adminZone && !isAuthorized()) {
+            window.location.assign('/api/auth/cloud18/start')
+            return
+          }
+          // once per tab: after a Logout (which ends the Cloud18 session) or a check that found none,
+          // the page shows its form and does not try again
+          if (enabled && !cloud18Back && !adminZone && !isAuthorized() && sessionStorage.getItem('cloud18_silent_tried') !== '1') {
+            sessionStorage.setItem('cloud18_silent_tried', '1')
+            window.location.assign('/api/auth/cloud18/start?silent=1')
+            return
+          }
+          // no silent check: the page's usual autologin (not after a Cloud18 return with a code)
+          setCloud18Retrying(false)
+          setCloud18Ready(true)
+          if (!cloud18Code && !isAuthorized() && !adminZone) doAutologin()
+        })
+        .catch(() => { if (!stopped) scheduleStatusRetry() }) // network failure: retry, not the API form
+    }
+    checkCloud18Status()
     const params = new URLSearchParams(window.location.search)
     if (params.get('cloud18_silent')) {
       window.history.replaceState(null, '', '/login')
     }
     const failed = params.get('cloud18_error')
     if (failed) {
+      // 'expired' = the sign-in's one-time state was lost (most often a server restart wiped the
+      // in-memory state, or a stale attempt) — a fresh sign-in just works, so retry once instead of
+      // dead-ending on the error. The session guard prevents a redirect loop if it keeps failing;
+      // it is cleared on a successful sign-in below.
+      if (failed === 'expired' && sessionStorage.getItem('cloud18_expired_retried') !== '1') {
+        sessionStorage.setItem('cloud18_expired_retried', '1')
+        window.location.assign('/api/auth/cloud18/start')
+        return
+      }
       // only the server's fixed reasons are shown, never text from the address
       const reasons = {
         expired: 'the sign-in expired or was not started in this browser, try again',
@@ -127,24 +158,27 @@ function Login({ dashboard = false }) {
       setErrorMessage('Sign in with Cloud18: ' + (reasons[failed] || 'failed, try again'))
       window.history.replaceState(null, '', '/login')
     }
-    if (!cloud18Code || cloud18Traded.current) return
-    cloud18Traded.current = true
-    window.history.replaceState(null, '', '/login')
-    setCloud18Loading(true)
-    authService.cloud18SSOSession(cloud18Code)
-      .then((resp) => {
-        if (resp?.status === 200 && resp?.data?.token) {
-          localStorage.setItem('user_token', resp.data.token)
-          localStorage.setItem('username', resp.data.username)
-          localStorage.setItem('login_method', 'cloud18')
-          dispatch(setUserData())
-          navigate('/')
-        } else {
-          setErrorMessage('Sign in with Cloud18: the sign-in expired, try again')
-        }
-      })
-      .catch(() => setErrorMessage('Sign in with Cloud18: no answer, try again'))
-      .finally(() => setCloud18Loading(false))
+    if (cloud18Code && !cloud18Traded.current) {
+      cloud18Traded.current = true
+      window.history.replaceState(null, '', '/login')
+      setCloud18Loading(true)
+      authService.cloud18SSOSession(cloud18Code)
+        .then((resp) => {
+          if (resp?.status === 200 && resp?.data?.token) {
+            localStorage.setItem('user_token', resp.data.token)
+            localStorage.setItem('username', resp.data.username)
+            localStorage.setItem('login_method', 'cloud18')
+            sessionStorage.removeItem('cloud18_expired_retried')
+            dispatch(setUserData())
+            window.location.assign('/')
+          } else {
+            setErrorMessage('Sign in with Cloud18: the sign-in expired, try again')
+          }
+        })
+        .catch(() => setErrorMessage('Sign in with Cloud18: no answer, try again'))
+        .finally(() => setCloud18Loading(false))
+    }
+    return () => { stopped = true; if (statusRetry) clearTimeout(statusRetry) }
   }, [])
 
   useEffect(() => {
@@ -167,7 +201,7 @@ function Login({ dashboard = false }) {
             localStorage.setItem('user_token', data.token)
             localStorage.setItem('username', data.username || 'viewer')
             dispatch(setUserData())
-            navigate('/slideshow')
+            window.location.assign('/slideshow')
           } else {
             // Server not ready yet or no dashboard token configured — retry.
             retryTimer = setTimeout(tryDashboardToken, 3000)
@@ -193,6 +227,7 @@ function Login({ dashboard = false }) {
     // not before the Cloud18 status is known (a silent check may be under way), never on a
     // Cloud18 return with a code (#2185)
     if (!cloud18Ready || cloud18Code) return
+    if (adminZone) return // the admin zone always shows the local-admin form, never autologins
     if (sessionStatus !== 'unauthenticated') return
     if (isAuthorized()) return
     doAutologin()
@@ -202,7 +237,8 @@ function Login({ dashboard = false }) {
     if (!loading || !loadingGitLogin) {
       if (isLogged && user) {
         // Navigate to the right destination after manual login regardless of mode.
-        navigate(dashboard ? '/slideshow' : '/')
+        try { sessionStorage.removeItem('cloud18_expired_retried') } catch (e) {} // any login clears the one-shot guard
+        window.location.assign(dashboard ? '/slideshow' : '/')
       }
       if (error) {
         setErrorMessage(error)
@@ -230,6 +266,31 @@ function Login({ dashboard = false }) {
 
   const logIn = () => {
     dispatch(login({ username, password }))
+  }
+
+  // While deciding whether to redirect to Cloud18 (or exchanging a returned code), show an empty
+  // background rather than flashing the login form that is about to disappear. cloud18Ready flips
+  // true only once we know we are staying on this page (the admin zone sets it and shows the form).
+  if (!dashboard && (!cloud18Ready || cloud18Loading)) {
+    // The backend is unreachable (e.g. a restart): say so instead of a silent blank. Show the
+    // "retrying" spinner while the Cloud18 status check is retrying (cloud18Retrying) — even for a
+    // visitor with no token, where whoami never runs — or when whoami reported the server
+    // unavailable. It recovers on its own once the status check resolves (form or Cloud18) or whoami
+    // succeeds. Otherwise (the brief decide/redirect window) keep an empty background so the login
+    // form does not flash before the Cloud18 redirect.
+    if (cloud18Retrying || sessionStatus === 'unavailable') {
+      return (
+        <PageContainer>
+          <Container maxWidth='lg' py={{ base: '24', md: '24' }}>
+            <Stack spacing='4' align='center'>
+              <Spinner size='lg' />
+              <Text fontSize='sm' color='gray.500'>Waiting for the server — it is unavailable, retrying…</Text>
+            </Stack>
+          </Container>
+        </PageContainer>
+      )
+    }
+    return <PageContainer />
   }
 
   return (
@@ -266,20 +327,19 @@ function Login({ dashboard = false }) {
                 {cloud18Only && (
                   <Text fontSize='sm'>Admin zone: the local admin account of this replication-manager. Other accounts sign in with Cloud18.</Text>
                 )}
-                <Stack spacing='5'>
-                  <FormControl isInvalid={usernameError}>
-                    <FormLabel className={theme === 'dark' ? styles.darkLoginText : ""} htmlFor='username'>Username or Email</FormLabel>
-                    <Input id='username' type='text' value={username} className={theme === 'dark' ? styles.darkLoginText : ""} onChange={(e) => setUsername(e.target.value)} />
-                    <FormErrorMessage sx={styles.errorMessage}>{usernameError}</FormErrorMessage>
-                  </FormControl>
-                  <PasswordControl
-                    passwordError={passwordError}
-                    inputClassName={theme === 'dark' ? styles.darkLoginText : ""}
-                    labelClassName={theme === 'dark' ? styles.darkLoginText : ""}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className={`${styles.revealButton} ${styles.errorMessage} ${theme === 'dark' ? styles.darkLoginText : ""}`}
-                  />
-                </Stack>
+                <LoginForm
+                  username={username}
+                  password={password}
+                  onUsernameChange={(e) => setUsername(e.target.value)}
+                  onPasswordChange={(e) => setPassword(e.target.value)}
+                  usernameError={usernameError}
+                  passwordError={passwordError}
+                  onSubmit={onButtonClick}
+                  inputClassName={theme === 'dark' ? styles.darkLoginText : ""}
+                  labelClassName={theme === 'dark' ? styles.darkLoginText : ""}
+                  errorClassName={styles.errorMessage}
+                  revealClassName={`${styles.revealButton} ${styles.errorMessage} ${theme === 'dark' ? styles.darkLoginText : ""}`}
+                />
                 {errorMessage && <Message message={errorMessage} />}
 
                 <Stack spacing='6'>
@@ -317,7 +377,7 @@ function Login({ dashboard = false }) {
                       </RMButton>
                     </>
                   )}
-                  {cloud18Only && (
+                  {cloud18Only && !adminZone && (
                     <Text fontSize='sm' textAlign='center'>
                       <Link id='lnkCloud18Back' color='teal.500' href='/api/auth/cloud18/start'>
                         Back to Sign in with Cloud18
