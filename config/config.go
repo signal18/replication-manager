@@ -25,6 +25,7 @@ import (
 
 	"os"
 	"reflect"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -1872,8 +1873,9 @@ var TaskRegistry = map[TaskName]TaskDef{
 	// Both — user can choose local (repman) or remote (dbjobs)
 	ConstTaskDump:     {Name: ConstTaskDump, Capability: TaskCapBoth, DefaultRemote: false},
 	ConstTaskOptimize: {Name: ConstTaskOptimize, Capability: TaskCapBoth, DefaultRemote: true},
-	// LocalOnly — repman runs the logical restore itself; dbjobs has no path for these
-	// in API mode, so listing them in scheduler-jobs-exec-remote must not dispatch them.
+	// LocalOnly — repman runs these itself (the mydumper backup, the logical reseed and
+	// flashback restore); dbjobs has no path for them, so listing them in
+	// scheduler-jobs-exec-remote must not dispatch them (WARN0279 says it is ignored).
 	ConstTaskMydumper:   {Name: ConstTaskMydumper, Capability: TaskCapLocalOnly},
 	ConstTaskReseedDump: {Name: ConstTaskReseedDump, Capability: TaskCapLocalOnly},
 	ConstTaskFlashDump:  {Name: ConstTaskFlashDump, Capability: TaskCapLocalOnly},
@@ -1906,18 +1908,41 @@ func IsRemoteTask(task TaskName, overrides map[TaskName]bool) bool {
 // remote (true). Call this after config is loaded.
 func (conf *Config) ParseJobsExecOverrides() {
 	conf.SchedulerJobsExecOverrides = make(map[TaskName]bool)
-	if conf.SchedulerJobsExecRemote == "" {
-		return
-	}
-	for _, s := range strings.Split(conf.SchedulerJobsExecRemote, ",") {
-		task := TaskName(strings.TrimSpace(s))
-		if task == "" {
-			continue
-		}
+	for _, task := range conf.jobsExecRemoteTasks() {
 		if def, ok := TaskRegistry[task]; ok && def.Capability == TaskCapBoth {
 			conf.SchedulerJobsExecOverrides[task] = true
 		}
 	}
+}
+
+// jobsExecRemoteTasks returns the task names listed in SchedulerJobsExecRemote.
+func (conf *Config) jobsExecRemoteTasks() []TaskName {
+	var tasks []TaskName
+	for _, s := range strings.Split(conf.SchedulerJobsExecRemote, ",") {
+		if task := TaskName(strings.TrimSpace(s)); task != "" {
+			tasks = append(tasks, task)
+		}
+	}
+	return tasks
+}
+
+// JobsExecRemoteIgnored returns the tasks listed in SchedulerJobsExecRemote that
+// ParseJobsExecOverrides ignores (unknown, local-only or remote-only: listing them
+// changes nothing), and the tasks that can be listed (TaskCapBoth), both sorted.
+func (conf *Config) JobsExecRemoteIgnored() (ignored []string, allowed []string) {
+	for _, task := range conf.jobsExecRemoteTasks() {
+		if def, ok := TaskRegistry[task]; !ok || def.Capability != TaskCapBoth {
+			ignored = append(ignored, string(task))
+		}
+	}
+	for name, def := range TaskRegistry {
+		if def.Capability == TaskCapBoth {
+			allowed = append(allowed, string(name))
+		}
+	}
+	sort.Strings(ignored)
+	sort.Strings(allowed)
+	return ignored, allowed
 }
 
 /*
