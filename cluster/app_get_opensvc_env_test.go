@@ -201,3 +201,33 @@ func TestStaleConditionalKeys(t *testing.T) {
 		t.Fatalf("sec: expected stale %q, got %q", want, got)
 	}
 }
+
+// #2282 on OpenSVC v2: the environment keywords set on the live object are the ones the
+// template renders; the per-agent keywords of nodes without a value are unset.
+func TestAppEnvironmentKeywordsV2(t *testing.T) {
+	section := map[string]string{
+		"configs_environment":    "app1/*",
+		"configs_environment@n1": "app1/* X=app1/X@n1",
+		"configs_environment@n3": "app1/* X=app1/X@n3", // an agent that is not a cluster node
+		"secrets_environment":    "app1/*",
+		"image":                  "{env.app_img}",
+	}
+	set, unset := appEnvironmentKeywordsV2(section, []string{"n1", "n2"})
+	wantSet := []string{
+		"container#app.configs_environment=app1/*",
+		"container#app.configs_environment@n1=app1/* X=app1/X@n1",
+		"container#app.configs_environment@n3=app1/* X=app1/X@n3",
+		"container#app.secrets_environment=app1/*",
+	}
+	wantUnset := []string{
+		"container#app.configs_environment@n2",
+		"container#app.secrets_environment@n1",
+		"container#app.secrets_environment@n2",
+	}
+	if strings.Join(set, "\n") != strings.Join(wantSet, "\n") {
+		t.Fatalf("set:\n%s\nwant:\n%s", strings.Join(set, "\n"), strings.Join(wantSet, "\n"))
+	}
+	if strings.Join(unset, "\n") != strings.Join(wantUnset, "\n") {
+		t.Fatalf("unset:\n%s\nwant:\n%s", strings.Join(unset, "\n"), strings.Join(wantUnset, "\n"))
+	}
+}

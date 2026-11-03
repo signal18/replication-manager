@@ -50,22 +50,37 @@ keys (`ListConfigKeys`, `ListSecretKeys`) and deletes each `<NAME>@<agent>` key 
 failure or a delete failure is a warning and leaves the key in place: the key is inert once
 no keyword maps it, so it never fails the push nor a provisioning.
 
-On OpenSVC v3 update-opensvc-config refreshes the service definition right after the push
-(below), so the removed value's scoped keyword goes with its key. Where the definition is not
-refreshed (v2, or a failed refresh), the node's scoped keyword still maps the deleted key; if
-the container restarts then, the agent ignores a mapping to a missing key (om3: "ignore env
-from ... has no key matching"; tested) and the node gets the default value.
+update-opensvc-config updates the service definition right after the push (below), so the
+removed value's scoped keyword goes with its key. Where the definition is not updated (a
+failed update), the node's scoped keyword still maps the deleted key; if the container
+restarts then, the agent ignores a mapping to a missing key (om3: "ignore env from ... has
+no key matching"; v2: "ignored cfg environment mapping ... does not exist"; both tested) and
+the node gets the default value.
 
 ## On OpenSVC v2
 
-The keys and the scoped keywords are the same on v2 (tested on agent 2.1-2073). The service
-definition cannot be refreshed in place on v2 (update-opensvc-template is v3 only), so:
+The keys and the scoped keywords are the same on v2 (tested on agent 2.1-2073). v2 cannot
+replace a service definition in place (update-opensvc-template is v3 only), so
+update-opensvc-config sets the keywords on the live object instead
+(`openSVCUpdateAppEnvironmentV2`):
 
-- Removing a per-agent value: the map push deletes its key; the node's scoped keyword still
-  maps it, the agent ignores a mapping to a missing key ("ignored cfg environment mapping ...
-  does not exist") and the node gets the default value after its restart.
-- Adding a value for an agent that had none needs the new scoped keyword, which on v2 only a
-  reprovisioning writes (not tested).
+- It renders `container#app` as the template does and sends one `set` of
+  `configs_environment`, `secrets_environment` and their `@<agent>` keywords, then one
+  `unset` of the `@<node>` keywords of every cluster node without a value
+  (`appEnvironmentKeywordsV2`). Unsetting a keyword the object does not have succeeds.
+- Both go to `/service_action` with o-node `ANY`: one node holding the object runs it and
+  the agent copies the definition to the other nodes (seen on the second node in under 1 s).
+- An app whose object does not exist (`ObjectExistsV2`) only gets its maps, as on v3.
+- `SetServiceConfigKeysCheckedV2` / `UnsetServiceConfigKeysCheckedV2` read the agent's
+  answer (`checkServiceActionV2Body`). Answers that applied nothing still carry status 0 on
+  2.1-2073: `{"nodes": {}}` (the o-node holds no such object) and
+  `{"info": "empty node selection"}` (unknown o-node); both are errors, as are a top-level
+  error or status and a node whose `status` or `data.ret` is not 0. The agent writes an
+  unknown keyword with only a warning in `data.err`, so keyword names are not checked there.
+- Tested through the API on two agents: a stale `@<node>` keyword removed; a value added
+  for an agent that had none reaches its container after a restart of that instance, without
+  a reprovisioning; a removed value leaves the default; an app never provisioned gets its
+  maps only.
 
 ## After an upgrade
 
@@ -85,9 +100,10 @@ As #2282 states it: update-opensvc-config plus a recreate of the container.
 
 1. `POST /api/clusters/{c}/apps/{app}/actions/update-opensvc-config`
    (`OpenSVCUpdateAppConfig`; GUI: app menu, Push Config/Secret Maps) pushes the keys,
-   removes stale ones, then, on OpenSVC v3, refreshes the service definition of a
-   provisioned app (`OpenSVCUpdateAppTemplate`, as update-opensvc-template does) without
-   restarting it. An app whose service does not exist yet only gets its maps (the
+   removes stale ones, then updates the service definition of a provisioned app without
+   restarting it: on OpenSVC v3 the whole definition (`OpenSVCUpdateAppTemplate`, as
+   update-opensvc-template does), on v2 its environment keywords (above). An app whose
+   service does not exist yet only gets its maps (the
    provisioning writes the definition); a refresh failure is returned as an error after the
    maps were pushed.
 2. A recreate of the container applies the values: `POST .../actions/restart` (which also

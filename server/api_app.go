@@ -1068,7 +1068,7 @@ func (repman *ReplicationManager) handlerMuxAppUpdateRoutes(w http.ResponseWrite
 }
 
 // @Summary Push OpenSVC config/secret maps for an app
-// @Description Upserts the latest OpenSVC app config and secret variable maps to the live OpenSVC objects, then, on OpenSVC v3, refreshes the service definition of a provisioned app (as update-opensvc-template does) without restarting it, so a recreate of the container applies per-agent variable values.
+// @Description Upserts the latest OpenSVC app config and secret variable maps to the live OpenSVC objects, then updates the service definition of a provisioned app without restarting it (OpenSVC v3: the whole definition, as update-opensvc-template does; v2: its environment keywords), so a recreate of the container applies per-agent variable values.
 // @Tags Apps
 // @Accept json
 // @Produce json

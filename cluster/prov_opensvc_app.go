@@ -983,14 +983,18 @@ func (cluster *Cluster) OpenSVCPushAppVariableMaps(app *App) error {
 // then, on OpenSVC v3, refreshes the service definition of a provisioned app, so the scoped
 // keywords of per-agent values follow their keys and a recreate of the container applies
 // them, however it is recreated (#2282). An app whose service does not exist yet only gets
-// its maps, as before; v2 has no in-place refresh.
+// its maps, as before. On v2, which has no in-place refresh, the environment keywords are
+// set on the live object instead (openSVCUpdateAppEnvironmentV2).
 func (cluster *Cluster) OpenSVCUpdateAppConfig(app *App) error {
 	if err := cluster.OpenSVCPushAppVariableMaps(app); err != nil {
 		return err
 	}
 	svc := cluster.OpenSVCConnect()
-	if cluster.Conf.ProvOpensvcUseCollectorAPI || !svc.IsV3() || app.AppConfig.IsMonitorOnly() {
+	if cluster.Conf.ProvOpensvcUseCollectorAPI || app.AppConfig.IsMonitorOnly() {
 		return nil
+	}
+	if !svc.IsV3() {
+		return cluster.openSVCUpdateAppEnvironmentV2(svc, app)
 	}
 	parts := strings.SplitN(app.ServiceName, "/", 3)
 	if len(parts) != 3 {
@@ -1007,6 +1011,66 @@ func (cluster *Cluster) OpenSVCUpdateAppConfig(app *App) error {
 		return fmt.Errorf("config/secret maps updated, service definition not refreshed: %w", err)
 	}
 	return nil
+}
+
+// openSVCUpdateAppEnvironmentV2 is the v2 counterpart of the definition refresh of
+// update-opensvc-config: the environment keywords of container#app, the default and the
+// per-agent ones as the template renders them, are set on the live object, and the
+// per-agent ones of the other cluster nodes unset. The agent of o-node ANY writes them and
+// copies them to the other nodes; the next start of an instance uses them (#2282).
+func (cluster *Cluster) openSVCUpdateAppEnvironmentV2(svc opensvc.Collector, app *App) error {
+	exists, err := svc.ObjectExistsV2(app.ServiceName, app.Agent)
+	if err != nil {
+		return fmt.Errorf("config/secret maps updated, service definition not checked: %w", err)
+	}
+	if !exists {
+		return nil // not provisioned: the provisioning writes the definition
+	}
+	hosts, err := svc.GetNodes()
+	if err != nil {
+		return fmt.Errorf("config/secret maps updated, service definition not refreshed: %w", err)
+	}
+	nodes := make([]string, 0, len(hosts))
+	for _, h := range hosts {
+		nodes = append(nodes, h.Node_name)
+	}
+	set, unset := appEnvironmentKeywordsV2(cluster.OpenSVCGetAppContainerSection(app), nodes)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Setting the environment keywords of %s", app.ServiceName)
+	if err := svc.SetServiceConfigKeysCheckedV2(app.ServiceName, "ANY", set); err != nil {
+		return fmt.Errorf("config/secret maps updated, service definition not refreshed: %w", err)
+	}
+	if len(unset) > 0 {
+		if err := svc.UnsetServiceConfigKeysCheckedV2(app.ServiceName, "ANY", unset); err != nil {
+			return fmt.Errorf("config/secret maps updated, service definition not refreshed: %w", err)
+		}
+	}
+	return nil
+}
+
+// appEnvironmentKeywordsV2 returns, from a rendered container#app section, the set entries
+// of its environment keywords (section.keyword=value) and the unset entries of the
+// per-agent keywords that nodes without a value of their own may still carry.
+func appEnvironmentKeywordsV2(section map[string]string, nodes []string) (set, unset []string) {
+	const prefix = "container#app."
+	for _, kw := range []string{"configs_environment", "secrets_environment"} {
+		set = append(set, prefix+kw+"="+section[kw])
+		var scoped []string
+		for k := range section {
+			if strings.HasPrefix(k, kw+"@") {
+				scoped = append(scoped, k)
+			}
+		}
+		sort.Strings(scoped)
+		for _, k := range scoped {
+			set = append(set, prefix+k+"="+section[k])
+		}
+		for _, n := range nodes {
+			if _, ok := section[kw+"@"+n]; !ok {
+				unset = append(unset, prefix+kw+"@"+n)
+			}
+		}
+	}
+	return set, unset
 }
 
 func (cluster *Cluster) FoundAllAppAgents(app *App) ([]opensvc.Host, error) {
