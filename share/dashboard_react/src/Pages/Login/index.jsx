@@ -243,6 +243,13 @@ function Login({ dashboard = false }) {
     dispatch(login({ username, password }))
   }
 
+  // While deciding whether to redirect to Cloud18 (or exchanging a returned code), show an empty
+  // background rather than flashing the login form that is about to disappear. cloud18Ready flips
+  // true only once we know we are staying on this page (the admin zone sets it and shows the form).
+  if (!cloud18Ready || cloud18Loading) {
+    return <PageContainer />
+  }
+
   return (
     <PageContainer>
       {/* <Suspense fallback={<div>Loading...</div>}> */}
