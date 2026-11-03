@@ -153,7 +153,13 @@ function UserInfoPanel({ isOpen, closeModal, user, onLogout, canAddUser = false,
                   </RMButton>
                 )}
                 {user?.AuthType === 'SSO' && (
-                  <RMButton variant='outline' onClick={() => window.location.assign('/login?admin')}>
+                  <RMButton variant='outline' onClick={() => {
+                    // The admin zone is a re-login as the local admin, so end the current (Cloud18)
+                    // session first: /login?admin then loads unauthenticated and shows the API form
+                    // instead of SessionGuard re-validating the token and bouncing back to the dashboard.
+                    try { localStorage.removeItem('user_token'); localStorage.removeItem('username') } catch (e) {}
+                    window.location.assign('/login?admin')
+                  }}>
                     <HStack spacing={1}>
                       <TbShieldLock />
                       <Text fontSize='sm'>Admin zone</Text>
