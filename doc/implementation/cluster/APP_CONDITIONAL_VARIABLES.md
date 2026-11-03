@@ -68,9 +68,15 @@ update-opensvc-config sets the keywords on the live object instead
   `configs_environment`, `secrets_environment` and their `@<agent>` keywords, then one
   `unset` of the `@<node>` keywords of every cluster node without a value
   (`appEnvironmentKeywordsV2`). Unsetting a keyword the object does not have succeeds.
+  A keyword the template does not render is neither set nor unset: a
+  `prov-db-service-type` other than docker or podman renders no container environment, and
+  the live keywords are then left as they are, not set empty.
 - Both go to `/service_action` with o-node `ANY`: one node holding the object runs it and
   the agent copies the definition to the other nodes (seen on the second node in under 1 s).
 - An app whose object does not exist (`ObjectExistsV2`) only gets its maps, as on v3.
+  `ObjectExistsV2` reads an object as missing only after a second answer 10 s later, so on a
+  never-provisioned app update-opensvc-config takes 10 s more on v2 than the map push alone
+  (31 s measured, the map push's own cfg and sec checks included); v3 answers 404 at once.
 - `SetServiceConfigKeysCheckedV2` / `UnsetServiceConfigKeysCheckedV2` read the agent's
   answer (`checkServiceActionV2Body`). Answers that applied nothing still carry status 0 on
   2.1-2073: `{"nodes": {}}` (the o-node holds no such object) and

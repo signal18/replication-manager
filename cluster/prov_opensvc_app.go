@@ -1035,6 +1035,10 @@ func (cluster *Cluster) openSVCUpdateAppEnvironmentV2(svc opensvc.Collector, app
 		nodes = append(nodes, h.Node_name)
 	}
 	set, unset := appEnvironmentKeywordsV2(cluster.OpenSVCGetAppContainerSection(app), nodes)
+	if len(set) == 0 {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Environment keywords of %s left as they are: none rendered for prov-db-service-type %q", app.ServiceName, cluster.Conf.ProvType)
+		return nil
+	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Setting the environment keywords of %s", app.ServiceName)
 	if err := svc.SetServiceConfigKeysCheckedV2(app.ServiceName, "ANY", set); err != nil {
 		return fmt.Errorf("config/secret maps updated, service definition not refreshed: %w", err)
@@ -1049,11 +1053,17 @@ func (cluster *Cluster) openSVCUpdateAppEnvironmentV2(svc opensvc.Collector, app
 
 // appEnvironmentKeywordsV2 returns, from a rendered container#app section, the set entries
 // of its environment keywords (section.keyword=value) and the unset entries of the
-// per-agent keywords that nodes without a value of their own may still carry.
+// per-agent keywords that nodes without a value of their own may still carry. A keyword the
+// section does not render (no container environment for a prov-db-service-type other than
+// docker or podman) is neither set nor unset, so the live one stays as it is.
 func appEnvironmentKeywordsV2(section map[string]string, nodes []string) (set, unset []string) {
 	const prefix = "container#app."
 	for _, kw := range []string{"configs_environment", "secrets_environment"} {
-		set = append(set, prefix+kw+"="+section[kw])
+		def, ok := section[kw]
+		if !ok {
+			continue
+		}
+		set = append(set, prefix+kw+"="+def)
 		var scoped []string
 		for k := range section {
 			if strings.HasPrefix(k, kw+"@") {

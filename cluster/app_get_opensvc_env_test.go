@@ -231,3 +231,23 @@ func TestAppEnvironmentKeywordsV2(t *testing.T) {
 		t.Fatalf("unset:\n%s\nwant:\n%s", strings.Join(unset, "\n"), strings.Join(wantUnset, "\n"))
 	}
 }
+
+// #2282 review: a prov-db-service-type other than docker or podman renders no container
+// environment; the v2 update must then leave the live keywords alone, not set them empty.
+func TestAppEnvironmentKeywordsV2NotRendered(t *testing.T) {
+	for _, pt := range []string{"package", "oci", "docker"} {
+		cl := &Cluster{Conf: &config.Config{ProvType: pt}}
+		app := &App{Name: "app1", ClusterGroup: cl, AppConfig: &config.AppConfig{Deployment: config.NewDeploymentConfig()}}
+		app.AppConfig.Deployment.Variables = config.VariableMaps{{Name: "X", Type: config.VariableTypeEnv, Value: "d", Conditional: config.AVSlice{{Agent: "n1", Value: "v1"}}}}
+		set, unset := appEnvironmentKeywordsV2(cl.OpenSVCGetAppContainerSection(app), []string{"n1", "n2"})
+		if pt == "docker" {
+			if len(set) == 0 || len(unset) == 0 {
+				t.Fatalf("docker: expected keywords to set and unset, got set=%q unset=%q", set, unset)
+			}
+			continue
+		}
+		if len(set) != 0 || len(unset) != 0 {
+			t.Fatalf("%s: expected nothing to set or unset, got set=%q unset=%q", pt, set, unset)
+		}
+	}
+}
