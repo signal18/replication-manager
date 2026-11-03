@@ -562,7 +562,7 @@ func (server *ServerMonitor) CheckPrivileges() {
 		for _, sv2 := range cluster.Servers {
 			if sv2.URL != server.URL && !sv2.IsRelay && !sv2.IsDown() {
 				rplhost, _ := misc.GetIPSafe(misc.Unbracket(sv2.Host))
-				rpriv, logs, err := dbhelper.GetPrivileges(server.Conn, cluster.GetDbUser(), sv2.Host, rplhost, server.DBVersion)
+				rpriv, logs, err := dbhelper.GetPrivileges(server.Conn, cluster.GetRplUser(), sv2.Host, rplhost, server.DBVersion)
 				cluster.LogSQL(logs, err, server.URL, "Monitor", config.LvlDbg, clusterError["ERR00015"], cluster.GetRplUser(), sv2.URL, err)
 				if err != nil {
 					cluster.SetState("ERR00015", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00015"], cluster.GetRplUser(), sv2.URL, err), ErrFrom: "CONF", ServerUrl: sv2.URL})
