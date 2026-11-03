@@ -7,6 +7,7 @@ import { Box, Container, Divider, FormControl, FormLabel, FormErrorMessage, Head
 import PageContainer from '../PageContainer'
 import { isAuthorized } from '../../utility/common'
 import PasswordControl from '../../components/PasswordControl'
+import LoginForm from '../../components/LoginForm'
 import RMButton from '../../components/RMButton'
 import Message from '../../components/Message'
 import { useTheme } from '../../ThemeProvider'
@@ -266,20 +267,19 @@ function Login({ dashboard = false }) {
                 {cloud18Only && (
                   <Text fontSize='sm'>Admin zone: the local admin account of this replication-manager. Other accounts sign in with Cloud18.</Text>
                 )}
-                <Stack spacing='5'>
-                  <FormControl isInvalid={usernameError}>
-                    <FormLabel className={theme === 'dark' ? styles.darkLoginText : ""} htmlFor='username'>Username or Email</FormLabel>
-                    <Input id='username' type='text' value={username} className={theme === 'dark' ? styles.darkLoginText : ""} onChange={(e) => setUsername(e.target.value)} />
-                    <FormErrorMessage sx={styles.errorMessage}>{usernameError}</FormErrorMessage>
-                  </FormControl>
-                  <PasswordControl
-                    passwordError={passwordError}
-                    inputClassName={theme === 'dark' ? styles.darkLoginText : ""}
-                    labelClassName={theme === 'dark' ? styles.darkLoginText : ""}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className={`${styles.revealButton} ${styles.errorMessage} ${theme === 'dark' ? styles.darkLoginText : ""}`}
-                  />
-                </Stack>
+                <LoginForm
+                  username={username}
+                  password={password}
+                  onUsernameChange={(e) => setUsername(e.target.value)}
+                  onPasswordChange={(e) => setPassword(e.target.value)}
+                  usernameError={usernameError}
+                  passwordError={passwordError}
+                  onSubmit={onButtonClick}
+                  inputClassName={theme === 'dark' ? styles.darkLoginText : ""}
+                  labelClassName={theme === 'dark' ? styles.darkLoginText : ""}
+                  errorClassName={styles.errorMessage}
+                  revealClassName={`${styles.revealButton} ${styles.errorMessage} ${theme === 'dark' ? styles.darkLoginText : ""}`}
+                />
                 {errorMessage && <Message message={errorMessage} />}
 
                 <Stack spacing='6'>
