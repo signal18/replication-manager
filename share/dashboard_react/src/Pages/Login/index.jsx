@@ -16,7 +16,9 @@ import { clearClusters } from '../../redux/globalClustersSlice'
 import { authService } from '../../services/authService'
 
 function Login({ dashboard = false }) {
-  const [username, setUsername] = useState('')
+  // The admin zone (/login?admin) is the API (local) login only, with the local admin pre-filled.
+  const [adminZone] = useState(() => new URLSearchParams(window.location.search).has('admin'))
+  const [username, setUsername] = useState(adminZone ? 'admin' : '')
   const [password, setPassword] = useState('')
   const [usernameError, setUsernameError] = useState('')
   const [passwordError, setPasswordError] = useState('')
@@ -25,7 +27,6 @@ function Login({ dashboard = false }) {
   // Cloud18 logins only (#2262): the login goes straight to Cloud18; the user and password form is
   // the admin zone's, at /login?admin
   const [cloud18Only, setCloud18Only] = useState(false)
-  const [adminZone] = useState(() => new URLSearchParams(window.location.search).has('admin'))
   const [cloud18Loading, setCloud18Loading] = useState(false)
   // the Cloud18 status is known and no silent check is under way: autologin may run
   const [cloud18Ready, setCloud18Ready] = useState(false)
@@ -317,7 +318,7 @@ function Login({ dashboard = false }) {
                       </RMButton>
                     </>
                   )}
-                  {cloud18Only && (
+                  {cloud18Only && !adminZone && (
                     <Text fontSize='sm' textAlign='center'>
                       <Link id='lnkCloud18Back' color='teal.500' href='/api/auth/cloud18/start'>
                         Back to Sign in with Cloud18

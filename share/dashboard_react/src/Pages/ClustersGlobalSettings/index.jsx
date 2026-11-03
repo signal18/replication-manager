@@ -1,7 +1,6 @@
 import { Flex } from '@chakra-ui/react'
-import React, { useState, useEffect } from 'react'
+import React, { useState } from 'react'
 import styles from './styles.module.scss'
-import { adminMode } from '../../services/adminMode'
 
 import ConfirmModal from '../../components/Modals/ConfirmModal'
 
@@ -25,17 +24,7 @@ function ClustersGlobalSettings({ user }) {
     globalClusters: { monitor }
   } = useSelector((state) => state)
 
-  // Admin mode (#2262) unlocks the admin zone: a Cloud18 session that has entered admin mode (the
-  // local admin login held in memory) may edit global settings even without its own cluster-settings
-  // grant — the edit then carries the admin token (apiHelper retries on X-Repman-Admin-Required).
-  const [adminActive, setAdminActive] = useState(adminMode.isActive())
-  useEffect(() => {
-    const refresh = () => setAdminActive(adminMode.isActive())
-    window.addEventListener(adminMode.CHANGED, refresh)
-    return () => window.removeEventListener(adminMode.CHANGED, refresh)
-  }, [])
-
-  const canEditGlobalSettings = adminActive || (user?.grants?.['cluster-settings'] !== false && (user?.User === 'admin' || user?.grants?.['cluster-settings'] !== undefined))
+  const canEditGlobalSettings = user?.grants?.['cluster-settings'] !== false && (user?.User === 'admin' || user?.grants?.['cluster-settings'] !== undefined)
 
   const openConfirmModal = (title, handler) => {
     setIsConfirmModalOpen(true)
