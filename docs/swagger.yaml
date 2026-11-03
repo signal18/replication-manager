@@ -6184,6 +6184,29 @@ paths:
       summary: 'Sign in with Cloud18: logout'
       tags:
       - Auth
+    post:
+      description: With the bearer of a Cloud18 session, ends its realm session (its
+        refresh token) so the realm's logout asks nothing, and answers the realm's
+        logout address for the browser (#2292). Without a bearer or a Cloud18 login,
+        or when the realm refuses, the same address (the realm then asks the person
+        to confirm). Public.
+      parameters:
+      - description: the session's bearer (Bearer <token>)
+        in: header
+        name: Authorization
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 'url: where the browser goes, ended: the realm session was
+            ended'
+          schema:
+            additionalProperties: true
+            type: object
+      summary: 'Sign in with Cloud18: end the realm session at logout'
+      tags:
+      - Auth
   /api/auth/cloud18/session:
     post:
       consumes:

@@ -57,10 +57,26 @@ meeting a map being written, which would stop the process.
    `/login?cloud18=<one-time code>` (60 s, bounded).
 4. **Session** `POST /api/auth/cloud18/session {code}`: the dashboard trades the code for the session,
    once; it keeps `login_method = cloud18`.
-5. **Logout**: the dashboard drops its sessions as before, then, for a Cloud18 session, goes to
-   `GET /api/auth/cloud18/logout`, redirected to the realm's logout (`client_id`,
-   `post_logout_redirect_uri = <api-public-url>/login`): the realm session ends, every such repman asks again.
-   Without an `id_token_hint` the realm asks the person to confirm the logout.
+5. **Logout** (#2292): for a Cloud18 session, the dashboard first calls `POST /api/auth/cloud18/logout`
+   with the session's bearer: repman ends the realm session server to server with the refresh token the
+   session carries (`cloud18` claim; the newest one kept for that login when the realm rotates them),
+   `POST <issuer>/protocol/openid-connect/logout` with `client_id` + `refresh_token`, and drops its kept
+   realm token of that login (no other instance gets one any more) once the realm session is gone (ended,
+   or the realm no longer knows the refresh token): after a network error or a 5xx the entry stays, with
+   its newest refresh token. An expired session is accepted (signature checked, expiry not: a tab left
+   open past the session's end still ends its realm session; the session can do nothing else there).
+   It answers `{url, ended}`. The
+   dashboard then drops its sessions as before and goes to `url`, the realm's logout (`client_id`,
+   `post_logout_redirect_uri = <api-public-url>/login`): with no session left there, the realm sends the
+   browser straight back to `/login`, every such repman asks again.
+   Why server side: repman keeps no id token, and without an `id_token_hint` the realm's logout stops on
+   "Do you want to log out?"; a person who left that page kept the realm session, and a Cloud18-only
+   `/login` signed them in again at once (Logout seemed to do nothing). The POST never fails the logout:
+   without a bearer, with a session that has no refresh token (one made from a realm token alone), or
+   when the realm refuses, it answers the same address and the realm asks, as before (a warning names
+   the user and the realm's reason). `GET /api/auth/cloud18/logout` stays the dashboard's fallback.
+   Not ended by a logout: the repman session token itself (valid until it expires), and the identity
+   provider's own session behind the realm (Google, GitLab), so a new sign-in with it asks no password.
 
 Refusals (unknown or reused state, another browser, realm error, refused token, unknown/used/expired
 code) go to the security log (`api_auth_failure`, user `cloud18-sso`, with the detail) and back to the

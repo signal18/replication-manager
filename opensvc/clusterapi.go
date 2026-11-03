@@ -741,32 +741,34 @@ type CreateRequest struct {
 var ErrObjectAlreadyExists = errors.New("opensvc object already exists")
 var ErrUnknownService = errors.New("unknown service")
 
-// ObjectExistsV2 checks whether a secret or config object exists on the V2 collector
-// by querying the /object_status endpoint. Returns (true, nil) when the object exists,
-// (false, nil) when it is absent (404 or status!=0), and (false, err) on server errors.
-// objectStatusV2Exists inspects a 2xx object_status body and reports whether
-// the object actually exists. Upstream b2.1 returns 200 {"nodes":{}} for a
-// missing object — HTTP 200 alone is not a sufficient existence signal.
-//
-// An object is considered to exist when:
-//   - the top-level JSON contains fields other than "nodes" (e.g. "kind",
-//     "updated", "placement"), indicating a real object record; OR
-//   - the "nodes" map contains at least one entry.
-//
-// A non-empty "error" field is returned as an error regardless of existence.
+// errObjectStatusV2Unsure is an object_status answer that neither lists a node holding the
+// object nor says no node holds it: the object may exist, so it must not be created.
+var errObjectStatusV2Unsure = errors.New("opensvc object_status lists no node and does not report the object unknown: existence not certain, object not created")
+
+// objectStatusV2Exists reads an object_status answer to o-node ANY (#2286):
+//   - "unknown service": no node holds the object, missing (false, nil). It is the only
+//     answer read as missing: /create on an object that exists wipes its keys.
+//   - a node in the "nodes" map, or object fields (e.g. "kind", "updated"): exists.
+//   - any other error: that error.
+//   - anything else, an empty "nodes" map included (answered for an existing object, a
+//     peer's view lagging after its agent restarted): errObjectStatusV2Unsure.
 func objectStatusV2Exists(body []byte) (bool, error) {
 	if errField := gjson.GetBytes(body, "error"); errField.Exists() {
 		if msg := strings.TrimSpace(errField.String()); msg != "" {
+			if msg == "unknown service" {
+				// the answer to o-node: ANY for an object no node holds
+				return false, nil
+			}
 			return false, fmt.Errorf("opensvc object_status error: %s", msg)
 		}
 	}
-	// Any top-level field other than "nodes" or "error" means the object is
-	// recorded (e.g. "kind", "updated", "placement"). "error" is a response
-	// meta-field, not object data.
+	// Any top-level field other than "nodes", "error" or "status" means the
+	// object is recorded (e.g. "kind", "updated", "placement"). "error" and
+	// "status" are response meta-fields, not object data.
 	hasObjectFields := false
 	gjson.ParseBytes(body).ForEach(func(key, _ gjson.Result) bool {
 		k := key.String()
-		if k != "nodes" && k != "error" {
+		if k != "nodes" && k != "error" && k != "status" {
 			hasObjectFields = true
 			return false
 		}
@@ -776,10 +778,41 @@ func objectStatusV2Exists(body []byte) (bool, error) {
 		return true, nil
 	}
 	// Non-empty nodes map means the object is provisioned on at least one node.
-	return len(gjson.GetBytes(body, "nodes").Map()) > 0, nil
+	if len(gjson.GetBytes(body, "nodes").Map()) > 0 {
+		return true, nil
+	}
+	return false, errObjectStatusV2Unsure
 }
 
+// objectExistsV2ConfirmDelay is the wait before ObjectExistsV2 asks again about an object
+// first found missing (a variable so tests can shorten it). After an agent restart its
+// API answers "unknown service" for existing objects until its monitor has published them:
+// up to 3.3 s measured on 2.1-2073; 10 s keeps the second answer out of that window.
+var objectExistsV2ConfirmDelay = 10 * time.Second
+
+// ObjectExistsV2 tells whether a v2 object exists anywhere in the cluster (#2286). The
+// answer guards a /create, which wipes the keys of an object that already exists, so it
+// must never report an existing object as missing:
+//   - it asks with o-node ANY, whatever the agent: an answer for a named node lists only
+//     the nodes that hold the object and match, and is the same empty answer for an
+//     object held by another node as for a missing one; with ANY the agent answers
+//     "unknown service" only when its view lists no node holding the object.
+//   - missing is two "unknown service" answers objectExistsV2ConfirmDelay apart; any
+//     other answer (exists, an error, an unsure answer) ends the check, and an error
+//     creates nothing.
+//
+// agent is kept for the callers' signature; the create that follows still uses it.
 func (collector *Collector) ObjectExistsV2(path string, agent string) (bool, error) {
+	exists, err := collector.objectStatusV2(path)
+	if err != nil || exists {
+		return exists, err
+	}
+	time.Sleep(objectExistsV2ConfirmDelay)
+	return collector.objectStatusV2(path)
+}
+
+// objectStatusV2 asks the cluster once, with o-node ANY, whether path exists.
+func (collector *Collector) objectStatusV2(path string) (bool, error) {
 	urlget := fmt.Sprintf("https://%s:%s/object_status?path=%s", collector.Host, collector.Port, url.QueryEscape(path))
 
 	client := collector.GetHttpClient()
@@ -788,11 +821,7 @@ func (collector *Collector) ObjectExistsV2(path string, agent string) (bool, err
 		return false, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	myagent := "ANY"
-	if agent != "" {
-		myagent = agent
-	}
-	req.Header.Set("o-node", myagent)
+	req.Header.Set("o-node", "ANY")
 
 	ctx, cancel := context.WithTimeout(req.Context(), 10*time.Second)
 	defer cancel()
@@ -809,9 +838,7 @@ func (collector *Collector) ObjectExistsV2(path string, agent string) (bool, err
 		return false, err
 	}
 
-	if resp.StatusCode == http.StatusNotFound {
-		return false, nil
-	}
+	// no status is read as missing, a 404 included: only "unknown service" is
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return false, fmt.Errorf("object_status HTTP %d: %s", resp.StatusCode, string(body))
 	}

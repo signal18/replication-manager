@@ -64,6 +64,7 @@ type registerFakes struct {
 	acr            string            // the authentication level (acr) of the tokens the realm gives
 	otp            bool              // an authorization asking a level (acr_values) gets the one-time code page
 	otpAtLogin     bool              // the password post itself gets the one-time code page (OTP required for everyone)
+	ended          map[string]bool   // refresh tokens whose session a logout ended (#2292): refused afterwards
 }
 
 type fakeToken struct {
@@ -147,7 +148,7 @@ func newRegisterFakes(t *testing.T) (*registerFakes, string) {
 			case "refresh_token":
 				f.refreshTries++
 				rt := r.Form.Get("refresh_token")
-				if !strings.HasPrefix(rt, "rt-") || (f.rotate && f.liveRefresh != nil && !f.liveRefresh[rt] && f.refreshes > 0) {
+				if !strings.HasPrefix(rt, "rt-") || f.ended[rt] || (f.rotate && f.liveRefresh != nil && !f.liveRefresh[rt] && f.refreshes > 0) {
 					http.Error(w, `{"error":"invalid_grant","error_description":"Invalid refresh token"}`, 400)
 					return
 				}
@@ -174,6 +175,17 @@ func newRegisterFakes(t *testing.T) (*registerFakes, string) {
 			}
 			fmt.Fprintf(w, `{"access_token":%q,"expires_in":%d,"refresh_token":%q,"refresh_expires_in":1800}`,
 				f.realmToken(email, config.ConstCloud18APIAudience, true, time.Duration(life)*time.Second), life, "rt-"+email)
+		case "/realms/cloud18/protocol/openid-connect/logout": // the session's end with its refresh token (#2292)
+			rt := r.Form.Get("refresh_token")
+			if r.Method != http.MethodPost || r.Form.Get("client_id") != config.ConstCloud18LoginClientID || !strings.HasPrefix(rt, "rt-") || f.ended[rt] {
+				http.Error(w, `{"error":"invalid_grant","error_description":"Invalid refresh token"}`, 400)
+				return
+			}
+			if f.ended == nil {
+				f.ended = map[string]bool{}
+			}
+			f.ended[rt] = true
+			w.WriteHeader(http.StatusNoContent)
 		case "/realms/cloud18/protocol/openid-connect/certs":
 			f.certFetches++
 			pub := f.realmKey.PublicKey
