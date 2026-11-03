@@ -98,7 +98,7 @@ function Login({ dashboard = false }) {
         }
         // once per tab: after a Logout (which ends the Cloud18 session) or a check that found none,
         // the page shows its form and does not try again
-        if (enabled && !cloud18Back && !isAuthorized() && sessionStorage.getItem('cloud18_silent_tried') !== '1') {
+        if (enabled && !cloud18Back && !adminZone && !isAuthorized() && sessionStorage.getItem('cloud18_silent_tried') !== '1') {
           sessionStorage.setItem('cloud18_silent_tried', '1')
           window.location.assign('/api/auth/cloud18/start?silent=1')
           return
