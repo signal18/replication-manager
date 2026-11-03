@@ -186,8 +186,10 @@ function Navbar({ username, user }) {
     if (viaCloud18) {
       window.location.assign(cloud18Logout)
     } else {
-      // a local session (the admin zone on a Cloud18-only instance, #2262) goes back to its form
-      window.location.assign('/login?admin')
+      // a local session (e.g. the admin zone on a Cloud18-only instance, #2262) logs out to the
+      // normal login, not back to the admin form: on a marketplace instance /login goes to Cloud18,
+      // so leaving admin returns to the Cloud18 sign-in rather than the API login.
+      window.location.assign('/login')
     }
   }
   const openAddUserModal = () => {
