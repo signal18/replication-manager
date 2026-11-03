@@ -308,6 +308,9 @@ func (psql *ProxySQL) moveToHostgroup(host, port, target, other string) error {
 
 // dropShadowed deletes the server's row in hostgroup drop when it also has one in
 // hostgroup keep, so a following move into keep cannot hit the primary key.
+// The delete and the move are two statements, not a transaction: if the move fails
+// after the delete, the server is left with its row in keep alone, which is the state
+// the move was heading to anyway, and the caller's next tick retries the move.
 func (psql *ProxySQL) dropShadowed(host, port, drop, keep string) error {
 	t := psql.table("servers")
 	sql := fmt.Sprintf("DELETE FROM %s WHERE hostgroup_id='%s' AND hostname='%s' AND port='%s' AND EXISTS (SELECT 1 FROM %s WHERE hostgroup_id='%s' AND hostname='%s' AND port='%s')", t, drop, host, port, t, keep, host, port)
