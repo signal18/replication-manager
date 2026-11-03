@@ -53,6 +53,7 @@ function AdminModeModal() {
   }
 
   const enter = async () => {
+    if (loading) return // Enter-key and the footer button share this path: don't fire two logins
     setError('')
     if (!username || !password) {
       setError('The local admin user and password are required')
@@ -105,6 +106,7 @@ function AdminModeModal() {
                 usernameLabel='User'
                 passwordError={error}
                 onSubmit={enter}
+                idPrefix='admin-mode'
               />
             </Stack>
           </ModalBody>

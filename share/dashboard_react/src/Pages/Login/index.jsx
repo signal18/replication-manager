@@ -28,6 +28,7 @@ function Login({ dashboard = false }) {
   const [cloud18Loading, setCloud18Loading] = useState(false)
   // the Cloud18 status is known and no silent check is under way: autologin may run
   const [cloud18Ready, setCloud18Ready] = useState(false)
+  const [cloud18Retrying, setCloud18Retrying] = useState(false)
   const { theme } = useTheme()
 
   const dispatch = useDispatch()
@@ -91,6 +92,7 @@ function Login({ dashboard = false }) {
     // marketplace instance must still reach Cloud18 once the server is back. Capped (~1 min) so a
     // genuinely dead backend eventually falls through to the form rather than spinning forever.
     function fallBackToForm() {
+      setCloud18Retrying(false)
       setCloud18Enabled(false)
       setCloud18Ready(true)
       if (!cloud18Code && !isAuthorized() && !adminZone) doAutologin()
@@ -98,6 +100,7 @@ function Login({ dashboard = false }) {
     function scheduleStatusRetry() {
       if (stopped) return
       if (statusAttempts++ >= 24) { fallBackToForm(); return }
+      setCloud18Retrying(true) // show the "retrying" screen (not a blank) while the server is down
       statusRetry = setTimeout(checkCloud18Status, 2500)
     }
     function checkCloud18Status() {
@@ -122,6 +125,7 @@ function Login({ dashboard = false }) {
             return
           }
           // no silent check: the page's usual autologin (not after a Cloud18 return with a code)
+          setCloud18Retrying(false)
           setCloud18Ready(true)
           if (!cloud18Code && !isAuthorized() && !adminZone) doAutologin()
         })
@@ -233,6 +237,7 @@ function Login({ dashboard = false }) {
     if (!loading || !loadingGitLogin) {
       if (isLogged && user) {
         // Navigate to the right destination after manual login regardless of mode.
+        try { sessionStorage.removeItem('cloud18_expired_retried') } catch (e) {} // any login clears the one-shot guard
         window.location.assign(dashboard ? '/slideshow' : '/')
       }
       if (error) {
@@ -267,12 +272,13 @@ function Login({ dashboard = false }) {
   // background rather than flashing the login form that is about to disappear. cloud18Ready flips
   // true only once we know we are staying on this page (the admin zone sets it and shows the form).
   if (!dashboard && (!cloud18Ready || cloud18Loading)) {
-    // The backend is unreachable (e.g. a restart): say so instead of a silent blank. It recovers on
-    // its own — the Cloud18 status check's catch flips cloud18Ready and renders the form (where the
-    // person can sign in again), and while a token is still present SessionGuard's whoami retry
-    // (unavailableRetryCount) also re-polls. Otherwise (the brief decide/redirect window) keep an
-    // empty background so the login form does not flash before the Cloud18 redirect.
-    if (sessionStatus === 'unavailable') {
+    // The backend is unreachable (e.g. a restart): say so instead of a silent blank. Show the
+    // "retrying" spinner while the Cloud18 status check is retrying (cloud18Retrying) — even for a
+    // visitor with no token, where whoami never runs — or when whoami reported the server
+    // unavailable. It recovers on its own once the status check resolves (form or Cloud18) or whoami
+    // succeeds. Otherwise (the brief decide/redirect window) keep an empty background so the login
+    // form does not flash before the Cloud18 redirect.
+    if (cloud18Retrying || sessionStatus === 'unavailable') {
       return (
         <PageContainer>
           <Container maxWidth='lg' py={{ base: '24', md: '24' }}>

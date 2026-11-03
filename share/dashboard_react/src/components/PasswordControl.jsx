@@ -17,6 +17,9 @@ const PasswordControl = forwardRef((props, ref) => {
   const inputRef = useRef(null)
 
   const mergeRef = useMergeRefs(inputRef, ref)
+  // Keep the component's presentational props off the DOM <input> (used below for styling and the
+  // error message); only real input attributes (value, id, onKeyDown, …) are spread onto Input.
+  const { passwordError, inputClassName, labelClassName, errorMessage, className, noControl, onChange, ...inputProps } = props
   const onClickReveal = () => {
     onToggle()
     if (inputRef.current) {
@@ -43,7 +46,7 @@ const PasswordControl = forwardRef((props, ref) => {
           type={isOpen ? 'text' : 'password'}
           autoComplete='current-password'
           required
-          {...props}
+          {...inputProps}
           className={props.inputClassName}
         />
       </InputGroup>

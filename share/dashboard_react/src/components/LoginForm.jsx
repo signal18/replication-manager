@@ -22,7 +22,8 @@ function LoginForm({
   inputClassName,
   labelClassName,
   errorClassName,
-  revealClassName
+  revealClassName,
+  idPrefix = 'login'
 }) {
   // Pass the event through: the login page's handler calls e.preventDefault(); the modal's
   // handler ignores the argument.
@@ -34,9 +35,9 @@ function LoginForm({
   return (
     <Stack spacing='5'>
       <FormControl isInvalid={!!usernameError}>
-        <FormLabel className={labelClassName} htmlFor='username'>{usernameLabel}</FormLabel>
+        <FormLabel className={labelClassName} htmlFor={`${idPrefix}-username`}>{usernameLabel}</FormLabel>
         <Input
-          id='username'
+          id={`${idPrefix}-username`}
           type='text'
           autoComplete='username'
           value={username}
@@ -47,6 +48,7 @@ function LoginForm({
         <FormErrorMessage className={errorClassName}>{usernameError}</FormErrorMessage>
       </FormControl>
       <PasswordControl
+        id={`${idPrefix}-password`}
         value={password}
         passwordError={passwordError}
         inputClassName={inputClassName}
