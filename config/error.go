@@ -137,6 +137,7 @@ var ClusterError = map[string]string{
 	"ERR00116":  "Server %s: the system tables lag the server's release (a logical backup or the error log says so): run the server action upgrade-system-tables (mariadb-upgrade, mysql_upgrade before MySQL 8.0.16)",
 	"ERR00118":  "Server %s: the last logical backup (%s, ended %s UTC) failed: %s -- the next logical backup of this server that ends OK closes this",
 	"ERR00119":  "Dynamic config with the disk set in /etc (%s): it is never followed nor resized, and each start reads it back whatever the volume holds, the binlog limits with it -- remove it from cluster.d to let the dynamic config own the disk",
+	"ERR00121":  "ProxySQL %s could not bring the OFFLINE_SOFT reader row of master %s back in line (%s)",
 	"ERR00120":  "Job logins refused for %s: their jobs (backups included) stop until fixed -- check the database host's clock and that its jobs name their server as replication-manager does",
 	"ERR00117":  "Backup verification failed on %s: %s backup %d (%s level): %s -- a restore from it would fail; take a new backup",
 	"ERR00114":  "Cluster %s: the Galera SST account mysql@localhost (unix_socket) cannot be created on %s: %s -- an SST from a donor without it fails authentication (the root password is never written in the database configuration)",

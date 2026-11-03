@@ -445,6 +445,9 @@ func (proxy *ProxySQLProxy) Refresh() error {
 				}
 			}
 		} else if cluster.Conf.ProxysqlBootstrap && cluster.IsDiscovered() { // nothing should be done if no bootstrap
+			// the configuration wants the master in the reader hostgroup: always, or while no
+			// replica can serve reads
+			leaderReadWanted := cluster.Configurator.HasProxyReadLeader() || (cluster.Configurator.HasProxyReadLeaderNoSlave() && (cluster.HasNoValidSlave() || !proxy.HasAvailableReader()))
 			// if ProxySQL and replication-manager states differ, resolve the conflict
 			if bke.PrxStatus == "OFFLINE_HARD" && s.State == stateSlave && !s.IsIgnored() {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlDbg, "Monitor ProxySQL setting online as reader rejoining server %s", s.URL)
@@ -539,7 +542,25 @@ func (proxy *ProxySQLProxy) Refresh() error {
 				}
 				updated = true
 
-			} else if s.IsLeader() && !IsBackendReader && (cluster.Configurator.HasProxyReadLeader() || (cluster.Configurator.HasProxyReadLeaderNoSlave() && (cluster.HasNoValidSlave() || !proxy.HasAvailableReader()))) {
+			} else if s.IsLeader() && IsBackendReader && bkeread.PrxStatus == "OFFLINE_SOFT" && !s.IsMaintenance && !cluster.IsInFailover() {
+				// The master's own reader row is drained while it is not in maintenance: left so by
+				// the standalone drain before the server became master again (#2298). The branches
+				// below only add a missing row or drop an ONLINE one, so settle it here: back
+				// ONLINE if the master should serve reads, dropped otherwise (other readers are
+				// ONLINE then, or leaderReadWanted would hold).
+				if leaderReadWanted {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlInfo, "Monitor ProxySQL setting OFFLINE_SOFT master %s back online as reader", s.URL)
+					err = psql.SetReaderOnlineSoft(misc.Unbracket(s.Host), s.Port)
+				} else {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlInfo, "Monitor ProxySQL dropping OFFLINE_SOFT master %s from the reader group", s.URL)
+					err = psql.DropReader(misc.Unbracket(s.Host), s.Port)
+				}
+				if err != nil {
+					cluster.SetState("ERR00121", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00121"], proxy.Name, s.URL, err), ErrFrom: "PRX", ServerUrl: proxy.Name})
+				}
+				updated = true
+
+			} else if s.IsLeader() && !IsBackendReader && leaderReadWanted {
 				// Add  leader in reader group if not found and setup
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlDbg, "Monitor ProxySQL add leader in reader group in %s", s.URL)
 				err = psql.AddServerAsReader(misc.Unbracket(s.Host), s.Port, "1", strconv.Itoa(s.ClusterGroup.Conf.PRXServersBackendMaxReplicationLag), strconv.Itoa(s.ClusterGroup.Conf.PRXServersBackendMaxConnections), strconv.Itoa(misc.Bool2Int(s.ClusterGroup.Conf.PRXServersBackendCompression)), proxy.UseSSL())

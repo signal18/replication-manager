@@ -204,3 +204,15 @@ func TestSetReaderOfflineSoftLeavesWriter(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// #2298: bringing a master's drained reader row back leaves its writer row alone.
+func TestSetReaderOnlineSoftLeavesWriter(t *testing.T) {
+	psql, mock := newMock(t, FlavorMySQL)
+	expectExec(mock, "UPDATE mysql_servers SET status='ONLINE' WHERE hostname='db1' AND port='3306' AND hostgroup_id in ('1')")
+	if err := psql.SetReaderOnlineSoft("db1", "3306"); err != nil {
+		t.Fatal(err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}

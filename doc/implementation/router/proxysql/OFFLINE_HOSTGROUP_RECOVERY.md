@@ -2,6 +2,7 @@
 
 Tracks: https://github.com/signal18/replication-manager/issues/2295
 PR: https://github.com/signal18/replication-manager/pull/2296
+Follow-up: https://github.com/signal18/replication-manager/issues/2298 (the master's own reader row)
 Related: #2171 (same UNIQUE class of bug in `SetWriter` / `SetReader`)
 
 ## Problem
@@ -123,17 +124,51 @@ which sets `OFFLINE_SOFT` on both hostgroups and is respected
 (`!s.IsMaintenance`). Without `proxysql-bootstrap`, the branch is unreachable,
 because the whole block is guarded by `cluster.Conf.ProxysqlBootstrap`.
 
+### The master's own reader row (#2298)
+
+The StandAlone tick drains the server's reader row (`SetReaderOfflineSoft`),
+which is right while it is standalone. Once it is master again, no branch
+settled that row: "add leader in reader group" only fires when the row is
+missing, and "drop leader from reader group" keeps it in
+`proxy-servers-read-on-master-no-slave` mode unless it is `ONLINE`
+(`HasLeaderInReader`). The row stayed `OFFLINE_SOFT` and `ERR00091` stayed
+open.
+
+`Refresh()` computes once per server:
+
+```go
+leaderReadWanted := HasProxyReadLeader() ||
+    (HasProxyReadLeaderNoSlave() && (HasNoValidSlave() || !proxy.HasAvailableReader()))
+```
+
+This is the condition "add leader in reader group" already used. A new branch,
+placed before the add and drop branches, handles `s.IsLeader() &&
+IsBackendReader && bkeread.PrxStatus == "OFFLINE_SOFT" && !s.IsMaintenance &&
+!cluster.IsInFailover()`:
+
+| `leaderReadWanted` | Action |
+|---|---|
+| true | `SetReaderOnlineSoft`: `status='ONLINE'` on the reader row only |
+| false | `DropReader`. Another reader is `ONLINE` then: if none were, `!HasAvailableReader()` would make it true. |
+
+A failure raises `ERR00121`. The writer row is never touched here. When both rows
+are `OFFLINE_SOFT`, the writer branch runs first and the reader row is settled
+on the next tick. The operator trade-off is the same as for the writer: a manual
+drain in ProxySQL outside repman maintenance is undone.
+
 ## Tests
 
 - Unit (sqlmock, `router/proxysql/proxysql_test.go`):
   `TestSetOnlineWithStaleOfflineRow`, `TestSetOfflineWithStaleOfflineRow`,
-  `TestSetReaderOfflineSoftLeavesWriter`.
+  `TestSetReaderOfflineSoftLeavesWriter`, `TestSetReaderOnlineSoftLeavesWriter`.
 - Regtest `testProxySQLStaleOfflineRowRecovery`
   (`regtest/test_proxysql_stale_offline_row.go`, targets `proxysql = true` and
   `proxysql-bootstrap = true`). On every ProxySQL of the cluster, it adds a
-  stale 666 row for the master and drains its writer row, then expects the
-  writer back `ONLINE` with no 666 row within 60 s. Cleanup sets back `ONLINE`
-  the rows the seed drained (an UPDATE, so it never adds a reader row).
+  stale 666 row for the master and drains its writer and reader rows. Within
+  60 s, it expects the writer back `ONLINE` with no 666 row, and the reader
+  row either `ONLINE` or dropped. With `proxy-servers-read-on-master` it must
+  be `ONLINE` (#2298). Cleanup sets back `ONLINE` whatever a failed run left
+  drained (an UPDATE, so it never adds a reader row).
 - Lab verification (PR #2296, OpenSVC, MariaDB 10.6.28, ProxySQL 3.0.11 ×1 and
   2.4.8 ×2): the stuck state left by develop was repaired in 1–2 s, the
   full-outage replay showed no UNIQUE error and the writer was back `ONLINE` in
@@ -141,9 +176,6 @@ because the whole block is guarded by `cluster.Conf.ProxysqlBootstrap`.
 
 ## Not covered
 
-- The master's own reader row (`proxy-servers-read-on-master`) drained by the
-  StandAlone tick stays `OFFLINE_SOFT`; no branch brings it back, and
-  `ERR00091` stays open. Tracked in #2298.
 - The staging topology was not exercised in the lab.
 - The new statements are built with `fmt.Sprintf`, like the rest of the
   driver. Parameterized queries are a separate change.
