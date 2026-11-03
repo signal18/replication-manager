@@ -157,7 +157,7 @@ function UserInfoPanel({ isOpen, closeModal, user, onLogout, canAddUser = false,
                     // The admin zone is a re-login as the local admin, so end the current (Cloud18)
                     // session first: /login?admin then loads unauthenticated and shows the API form
                     // instead of SessionGuard re-validating the token and bouncing back to the dashboard.
-                    try { localStorage.removeItem('user_token'); localStorage.removeItem('username') } catch (e) {}
+                    try { localStorage.removeItem('user_token'); localStorage.removeItem('username'); localStorage.removeItem('login_method') } catch (e) {}
                     window.location.assign('/login?admin')
                   }}>
                     <HStack spacing={1}>

@@ -102,12 +102,12 @@ function Login({ dashboard = false }) {
         }
         // no silent check: the page's usual autologin (not after a Cloud18 return with a code)
         setCloud18Ready(true)
-        if (!cloud18Code && !isAuthorized()) doAutologin()
+        if (!cloud18Code && !isAuthorized() && !adminZone) doAutologin()
       })
       .catch(() => {
         setCloud18Enabled(false)
         setCloud18Ready(true)
-        if (!cloud18Code && !isAuthorized()) doAutologin()
+        if (!cloud18Code && !isAuthorized() && !adminZone) doAutologin()
       })
     const params = new URLSearchParams(window.location.search)
     if (params.get('cloud18_silent')) {
@@ -202,6 +202,7 @@ function Login({ dashboard = false }) {
     // not before the Cloud18 status is known (a silent check may be under way), never on a
     // Cloud18 return with a code (#2185)
     if (!cloud18Ready || cloud18Code) return
+    if (adminZone) return // the admin zone always shows the local-admin form, never autologins
     if (sessionStatus !== 'unauthenticated') return
     if (isAuthorized()) return
     doAutologin()
@@ -244,11 +245,12 @@ function Login({ dashboard = false }) {
   // While deciding whether to redirect to Cloud18 (or exchanging a returned code), show an empty
   // background rather than flashing the login form that is about to disappear. cloud18Ready flips
   // true only once we know we are staying on this page (the admin zone sets it and shows the form).
-  if (!cloud18Ready || cloud18Loading) {
-    // The backend is unreachable (e.g. a restart): say so instead of a silent blank. The whoami
-    // retry (unavailableRetryCount) keeps polling, so the page recovers on its own when the server
-    // is back. Otherwise (the brief decide/redirect window) keep an empty background so the login
-    // form does not flash before the Cloud18 redirect.
+  if (!dashboard && (!cloud18Ready || cloud18Loading)) {
+    // The backend is unreachable (e.g. a restart): say so instead of a silent blank. It recovers on
+    // its own — the Cloud18 status check's catch flips cloud18Ready and renders the form (where the
+    // person can sign in again), and while a token is still present SessionGuard's whoami retry
+    // (unavailableRetryCount) also re-polls. Otherwise (the brief decide/redirect window) keep an
+    // empty background so the login form does not flash before the Cloud18 redirect.
     if (sessionStatus === 'unavailable') {
       return (
         <PageContainer>
