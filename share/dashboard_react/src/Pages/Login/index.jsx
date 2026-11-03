@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState, Suspense } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { useNavigate } from 'react-router-dom'
 import { login, logout, setUserData } from '../../redux/authSlice'
 import styles from './styles.module.scss'
 import { Box, Container, Divider, Heading, Spinner, Stack, Text, HStack, Link } from '@chakra-ui/react'
@@ -31,7 +30,6 @@ function Login({ dashboard = false }) {
   const [cloud18Ready, setCloud18Ready] = useState(false)
   const { theme } = useTheme()
 
-  const navigate = useNavigate()
   const dispatch = useDispatch()
   const {
     auth: { isLogged, loading, loadingGitLogin, user, error, sessionStatus }
@@ -52,7 +50,7 @@ function Login({ dashboard = false }) {
           localStorage.setItem('user_token', data.token)
           localStorage.setItem('username', data.username || 'admin')
           dispatch(setUserData())
-          navigate('/')
+          window.location.assign('/')
         } else {
           // Server is up but autologin is not configured — no retry.
           dispatch(logout())
@@ -73,7 +71,7 @@ function Login({ dashboard = false }) {
           setAutologinRetryCount((c) => c + 1)
         }, 10_000)
       })
-  }, [dispatch, navigate])
+  }, [dispatch])
 
   // Sign in with Cloud18 (#2185) on a partner repman: the silent check on opening (already signed in
   // at Cloud18 in this browser: straight in, nothing shown), and the way back from the realm, a
@@ -149,7 +147,7 @@ function Login({ dashboard = false }) {
           localStorage.setItem('login_method', 'cloud18')
           sessionStorage.removeItem('cloud18_expired_retried')
           dispatch(setUserData())
-          navigate('/')
+          window.location.assign('/')
         } else {
           setErrorMessage('Sign in with Cloud18: the sign-in expired, try again')
         }
@@ -178,7 +176,7 @@ function Login({ dashboard = false }) {
             localStorage.setItem('user_token', data.token)
             localStorage.setItem('username', data.username || 'viewer')
             dispatch(setUserData())
-            navigate('/slideshow')
+            window.location.assign('/slideshow')
           } else {
             // Server not ready yet or no dashboard token configured — retry.
             retryTimer = setTimeout(tryDashboardToken, 3000)
@@ -213,7 +211,7 @@ function Login({ dashboard = false }) {
     if (!loading || !loadingGitLogin) {
       if (isLogged && user) {
         // Navigate to the right destination after manual login regardless of mode.
-        navigate(dashboard ? '/slideshow' : '/')
+        window.location.assign(dashboard ? '/slideshow' : '/')
       }
       if (error) {
         setErrorMessage(error)
