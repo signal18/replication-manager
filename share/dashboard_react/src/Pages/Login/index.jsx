@@ -118,6 +118,15 @@ function Login({ dashboard = false }) {
     }
     const failed = params.get('cloud18_error')
     if (failed) {
+      // 'expired' = the sign-in's one-time state was lost (most often a server restart wiped the
+      // in-memory state, or a stale attempt) — a fresh sign-in just works, so retry once instead of
+      // dead-ending on the error. The session guard prevents a redirect loop if it keeps failing;
+      // it is cleared on a successful sign-in below.
+      if (failed === 'expired' && sessionStorage.getItem('cloud18_expired_retried') !== '1') {
+        sessionStorage.setItem('cloud18_expired_retried', '1')
+        window.location.assign('/api/auth/cloud18/start')
+        return
+      }
       // only the server's fixed reasons are shown, never text from the address
       const reasons = {
         expired: 'the sign-in expired or was not started in this browser, try again',
@@ -139,6 +148,7 @@ function Login({ dashboard = false }) {
           localStorage.setItem('user_token', resp.data.token)
           localStorage.setItem('username', resp.data.username)
           localStorage.setItem('login_method', 'cloud18')
+          sessionStorage.removeItem('cloud18_expired_retried')
           dispatch(setUserData())
           navigate('/')
         } else {
