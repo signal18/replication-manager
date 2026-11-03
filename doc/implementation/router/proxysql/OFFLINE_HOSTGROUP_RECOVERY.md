@@ -143,7 +143,7 @@ because the whole block is guarded by `cluster.Conf.ProxysqlBootstrap`.
 
 - The master's own reader row (`proxy-servers-read-on-master`) drained by the
   StandAlone tick stays `OFFLINE_SOFT`; no branch brings it back, and
-  `ERR00091` stays open. Tracked in #2297.
+  `ERR00091` stays open. Tracked in #2298.
 - The staging topology was not exercised in the lab.
 - The new statements are built with `fmt.Sprintf`, like the rest of the
   driver. Parameterized queries are a separate change.
