@@ -39,6 +39,10 @@ secrets_environment@<agent> = <default secrets_environment> <NAME>=<app>/<NAME>@
   configuration, and a cfg import of the same name wins over it.
 - Only `container#app` is scoped. The git-clone and S3 init containers and the jobs sidecar
   keep the default import.
+- Per-agent values need `prov-db-service-type` docker or podman: only those types render the
+  environment of `container#app`, the default keywords included. With any other type no
+  per-agent value reaches a container; on v2 update-opensvc-config then answers 200 and
+  leaves the definition as it is (below).
 
 ## Removing a per-agent value
 
