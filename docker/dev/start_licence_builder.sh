@@ -36,8 +36,9 @@ ln -sf build/binaries/replication-manager-pro replication-manager-pro
 CFG=/etc/replication-manager/config.toml
 grep -q '^prov-orchestrator' "$CFG" 2>/dev/null || echo 'prov-orchestrator = "local"' >> "$CFG"
 ./run.sh "$@"
-# The build writes share/plugins as root; license-pull later re-writes each package's .sig there
-# as the monitor's --user (repman). Make the directory writable so the extractor's unlink+recreate
-# succeeds for that less-privileged user.
-chmod -R a+rwX share/plugins 2>/dev/null || true
+# The root build owns share/plugins (the .sig dir, where license-pull re-writes each package's
+# signatures) and build/plugins (the shared plugin dir the monitor's DataDir/plugins symlinks to,
+# where license-pull copies the verified plugins). license-pull runs as the monitor's --user
+# (repman), so make both writable or every plugin is "refused" — it verifies but cannot be copied.
+chmod -R a+rwX share/plugins build/plugins 2>/dev/null || true
 exec ./replication-manager-pro license-builder
