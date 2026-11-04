@@ -2245,6 +2245,12 @@ func (conf *Config) GetStableEncryptedValue(key string, value string) string {
 // are never handed to the decryptor (it panics on a short input).
 var encryptedTokenRe = regexp.MustCompile(`hash_[0-9a-fA-F]{34,}`)
 
+// HasEncryptedToken reports whether value holds an encrypted token, whole or embedded,
+// as GetDecryptedEmbedded finds it.
+func HasEncryptedToken(value string) bool {
+	return encryptedTokenRe.MatchString(value)
+}
+
 // GetDecryptedEmbedded decrypts a value that IS an encrypted string, like
 // GetDecryptedPassword, and also every encrypted token EMBEDDED in a longer value: a
 // template renders {{app.db.password}} inside a connection string

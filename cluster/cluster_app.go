@@ -1846,17 +1846,18 @@ func (cluster *Cluster) SetAppVariableValue(app *App, v config.VariableMapping) 
 
 // EncryptDeploymentSecrets encrypts the secret values a deployment copied from a template
 // or a peer holds in clear (#2248): secret variables and their per-agent values, git clone
-// passwords and S3 mount secret keys. A value that already carries a hash_ token is left as
-// it is: either it is a ciphertext, or a template placeholder put the ciphertext inside it
-// (a DSN with {{app.db.password}}), which provisioning decrypts in place. It reports whether
-// a value was encrypted.
+// passwords and S3 mount secret keys. A ciphertext is left as it is: a value that starts with
+// hash_ (decrypted whole, as GetDecryptedPassword does; an encrypted empty value has only 32
+// hex digits), or a value with an encrypted token inside it, which a template placeholder put
+// there (a DSN with {{app.db.password}}) and provisioning decrypts in place. A clear value
+// that merely contains "hash_" is encrypted. It reports whether a value was encrypted.
 func (cluster *Cluster) EncryptDeploymentSecrets(d *config.Deployment) bool {
 	if d == nil {
 		return false
 	}
 	changed := false
 	encrypt := func(value *string) {
-		if *value == "" || strings.Contains(*value, "hash_") {
+		if *value == "" || strings.HasPrefix(*value, "hash_") || config.HasEncryptedToken(*value) {
 			return
 		}
 		if encrypted := cluster.Conf.GetEncryptedString(*value); encrypted != *value { // no key: unchanged

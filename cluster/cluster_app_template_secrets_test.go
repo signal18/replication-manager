@@ -105,6 +105,7 @@ func TestEncryptDeploymentSecrets(t *testing.T) {
 	cl := &Cluster{Conf: conf}
 	whole := conf.GetEncryptedString("already-encrypted")
 	dsn := "postgres://app:" + conf.GetEncryptedString("dbpass") + "@proxy:5432/app"
+	encryptedEmpty := conf.GetEncryptedString("") // what the modify route stores for an emptied secret: 32 hex digits
 	d := config.NewDeploymentConfig()
 	d.Variables = config.VariableMaps{
 		{Name: "LITERAL", Type: config.VariableTypeSecret, Value: "literal",
@@ -113,6 +114,9 @@ func TestEncryptDeploymentSecrets(t *testing.T) {
 		{Name: "DSN", Type: config.VariableTypeSecret, Value: dsn},
 		{Name: "EMPTY", Type: config.VariableTypeSecret, Value: ""},
 		{Name: "ENV", Type: config.VariableTypeEnv, Value: "env-literal"},
+		{Name: "HASHLIKE", Type: config.VariableTypeSecret, Value: "my_hash_pw"},
+		{Name: "ENCRYPTED_EMPTY", Type: config.VariableTypeSecret, Value: encryptedEmpty},
+		{Name: "FAILED_ENCRYPTION", Type: config.VariableTypeSecret, Value: "hash_"}, // Encrypt failed: no ciphertext
 	}
 	d.Storages.GitClones = config.GitClones{{Name: "g", GitPass: "gitpass"}, {Name: "nopass"}}
 	d.Storages.S3Mounts = config.S3Mounts{{Name: "s", SecretKey: "s3secret"}}
@@ -144,6 +148,15 @@ func TestEncryptDeploymentSecrets(t *testing.T) {
 	}
 	if d.Variables[4].Value != "env-literal" {
 		t.Fatalf("env variable changed: %q", d.Variables[4].Value)
+	}
+	if v := d.Variables[5].Value; !strings.HasPrefix(v, "hash_") || conf.GetDecryptedPassword("", v) != "my_hash_pw" {
+		t.Fatalf("a clear value containing hash_ was not encrypted: %q", v)
+	}
+	if d.Variables[6].Value != encryptedEmpty {
+		t.Fatalf("an encrypted empty value was encrypted again: %q", d.Variables[6].Value)
+	}
+	if d.Variables[7].Value != "hash_" {
+		t.Fatalf("a value starting with hash_ was encrypted: %q", d.Variables[7].Value)
 	}
 
 	before := lit.Value

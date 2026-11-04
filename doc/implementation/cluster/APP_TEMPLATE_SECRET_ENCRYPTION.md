@@ -25,11 +25,17 @@ before this change): the importer does not keep it in clear.
 
 - Encrypted: `secret` variables (value and each per-agent value), `GitClone.GitPass`,
   `S3Mount.SecretKey`. Other variable types and the S3 access key are left as they are.
-- Skipped: an empty value, and any value that already contains `hash_`. A whole `hash_…` value
-  is a ciphertext already. A value with a ciphertext inside it comes from a placeholder:
-  `{{app.db.password}}` in a DSN renders `postgres://user:hash_…@proxy/db`. Encrypting that
-  value again would wrap the ciphertext, and provisioning (`GetDecryptedEmbedded`) decrypts one
-  level only, so the container would get the inner ciphertext instead of the password.
+- Skipped: an empty value, a value that starts with `hash_`, and a value with an encrypted token
+  inside it (`config.HasEncryptedToken`: `hash_` and at least 34 hex digits).
+  - A value starting with `hash_` is a ciphertext, decrypted whole by `GetDecryptedPassword`. Its
+    length is not checked: the ciphertext is the hex of a 16-byte IV and the plaintext, so an
+    encrypted empty value (what the modify route stores for an emptied secret) has 32 hex digits,
+    and a failed encryption leaves `hash_` alone.
+  - A token inside a longer value comes from a placeholder: `{{app.db.password}}` in a DSN
+    renders `postgres://user:hash_…@proxy/db`. Encrypting that value again would wrap the
+    ciphertext, and provisioning (`GetDecryptedEmbedded`, same 34-digit matcher) decrypts one
+    level only, so the container would get the inner ciphertext instead of the password.
+  - A clear value that merely contains `hash_` (`my_hash_pw`) is encrypted.
 - Without an encryption key, `GetEncryptedString` returns the value unchanged and nothing is
   reported as encrypted.
 - Provisioning is unchanged: `OpenSVCCreateAppVariableMaps` decrypts a whole `hash_…` value, as
@@ -44,7 +50,8 @@ so a template saved from an app created after this change holds ciphertext.
 ## Tests
 
 - `cluster/cluster_app_template_secrets_test.go`: the function (literals, per-agent values, empty,
-  whole ciphertext, DSN with an embedded ciphertext, second pass, nil), `AddSeededApp` from a
+  whole ciphertext, encrypted empty value, bare `hash_`, clear value containing `hash_`, DSN with an
+  embedded ciphertext, second pass, nil), `AddSeededApp` from a
   template with every literal, `ImportAppConfig` of a peer export holding the literals (memory
   and saved file).
 - `server/api_app_template_secrets_test.go`: reset from a template with every literal.
