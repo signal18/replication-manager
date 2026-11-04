@@ -390,6 +390,8 @@ var globalSettingsACLRules = []ACLRule{
 	{"/api/clusters/settings/actions/reload-clusters-plan-info", nil, []string{config.GrantGlobalSettings, config.GrantGlobalAdminConf}},
 	// the Cloud18 login of the instance (#2159): status, connect, disconnect
 	{"/api/clusters/settings/actions/cloud18-identity", nil, []string{config.GrantGlobalSettings, config.GrantGlobalAdminConf}},
+	// load a -pull package from a file (#2309)
+	{"/api/clusters/settings/actions/license-pull", nil, []string{config.GrantGlobalSettings, config.GrantGlobalAdminConf}},
 }
 
 // terminalACLRules defines ACL rules for terminal access

@@ -4212,6 +4212,8 @@ definitions:
         type: string
       provProxyServiceType:
         type: string
+      provProxySingleFailover:
+        type: boolean
       provProxyStartFetchConfig:
         type: boolean
       provProxyStartScript:
@@ -5379,6 +5381,23 @@ definitions:
       usableDbu:
         type: number
     type: object
+  server.LicensePullResult:
+    properties:
+      checksum:
+        type: string
+      loaded:
+        items:
+          type: string
+        type: array
+      package:
+        type: string
+      refused:
+        items:
+          type: string
+        type: array
+      unchanged:
+        type: boolean
+    type: object
   server.MeetAlertMessage:
     properties:
       message:
@@ -5924,6 +5943,11 @@ definitions:
       usableGwu:
         description: '= capacity: the uplink has no quota'
         type: number
+    type: object
+  server.licensePullRequest:
+    properties:
+      path:
+        type: string
     type: object
   server.pfsJoinLink:
     properties:
@@ -22530,6 +22554,47 @@ paths:
           schema:
             type: string
       summary: The Cloud18 login of this replication-manager
+      tags:
+      - GlobalSetting
+  /api/clusters/settings/actions/license-pull:
+    post:
+      consumes:
+      - application/json
+      description: 'For a replication-manager without internet access: the package
+        (tar.gz with a manifest.json) is read from the datadir, its files are placed
+        where a git pull of the -pull repo puts them, then the steps of a pull run
+        (cloud18.toml applied even when cloud18 is off, plugins verified with plugin-signing-public-key
+        and loaded). Refused on a replication-manager that pulls its -pull repo (git-url-pull
+        set). A refused package opens GWARN023.'
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: path of the package, absolute or relative to the datadir
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/server.licensePullRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/server.LicensePullResult'
+        "400":
+          description: Package refused
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+      summary: Load a -pull package from a file (license-pull)
       tags:
       - GlobalSetting
   /api/clusters/settings/actions/reload-clusters-plan-info:

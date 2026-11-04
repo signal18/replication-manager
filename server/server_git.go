@@ -733,7 +733,6 @@ func (repman *ReplicationManager) PullCloud18Configs() {
 	}()
 
 	pullDir := repman.Conf.WorkingDir + "/.pull"
-	filePath := pullDir + "/cloud18.toml"
 
 	if repman.Conf.GitUrlPull != "" {
 		// Self-heal a pre-symlink upgrade: a legacy real .pull/<cluster>/plugins
@@ -752,22 +751,7 @@ func (repman *ReplicationManager) PullCloud18Configs() {
 			}
 		}
 
-		//to check cloud18.toml for the first time
-		if repman.Conf.Cloud18 {
-			repman.CheckCloud18Config(filePath)
-			repman.LoadPeerJson()
-			repman.UpdateLocalPeer()
-			repman.LoadPartnersJson()
-			repman.LoadMarketplaceCatalogue()
-		}
-
-		// Copy plugin binaries from pull repo into each cluster's working dir
-		// so ReloadLogPlugins can find them.
-		repman.syncPluginsFromPull(pullDir)
-
-		// Copy global plugin data files (e.g. enterprise-security-issues.json)
-		// from pull repo root plugins/data/ → ShareDir/plugins/data/.
-		repman.syncPluginDataFromPull(pullDir)
+		repman.applyPullDir(pullDir, false)
 	}
 
 	// A standby also imports the clusters created on the active since it
@@ -839,6 +823,30 @@ func (repman *ReplicationManager) PullCloud18Configs() {
 			}
 		}
 	}
+}
+
+// applyPullDir runs what follows a pull of the -pull repo into pullDir: cloud18.toml, the
+// peer, partner and marketplace files, the plugins and their data. The git pull and
+// license-pull (#2309) share it. withCloud18Config applies cloud18.toml even when cloud18 is
+// off, as it is on an air-gapped instance; the git pull applies it only when cloud18 is on.
+func (repman *ReplicationManager) applyPullDir(pullDir string, withCloud18Config bool) {
+	if repman.Conf.Cloud18 || withCloud18Config {
+		repman.CheckCloud18Config(pullDir + "/cloud18.toml")
+	}
+	if repman.Conf.Cloud18 {
+		repman.LoadPeerJson()
+		repman.UpdateLocalPeer()
+		repman.LoadPartnersJson()
+		repman.LoadMarketplaceCatalogue()
+	}
+
+	// Copy plugin binaries from pull repo into each cluster's working dir
+	// so ReloadLogPlugins can find them.
+	repman.syncPluginsFromPull(pullDir)
+
+	// Copy global plugin data files (e.g. enterprise-security-issues.json)
+	// from pull repo root plugins/data/ → ShareDir/plugins/data/.
+	repman.syncPluginDataFromPull(pullDir)
 }
 
 // syncPluginsFromPull copies plugin binaries from the pull repo root
