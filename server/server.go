@@ -195,7 +195,6 @@ type ReplicationManager struct {
 	termlength                  int
 	exitMsg                     string
 	exit                        atomic.Bool
-	licenseExpired              atomic.Bool      // Cloud18 enterprise licence past its expiry (#2309): arbitration off, standby paused
 	cloud18GitRotating          atomic.Bool      // a rotation of the Cloud18 project tokens runs (#2159)
 	cloud18PasswordRefused      atomic.Bool      // GitLab refused the password of an instance registered with it (#2159)
 	cloud18Pull                 cloud18PullState // the back office's answer, pull repository cloud18.toml (#2159)
@@ -3191,10 +3190,6 @@ func (repman *ReplicationManager) Run() error {
 		// Liveness signal for the GUI: a frozen loop cannot report itself
 		// through states, so the dashboard watches this tick advance instead.
 		repman.LoopTick = counter
-		// Cloud18 enterprise licence expiry (#2309): re-evaluated every tick so the WARNING/blocker
-		// state stays open while the condition holds (and auto-resolves when it clears), arbitration
-		// is forced off past expiry, and the standby's monitoring is paused.
-		repman.checkLicenseExpiry()
 		if repman.Conf.Arbitration {
 			repman.Heartbeat()
 		}

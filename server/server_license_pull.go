@@ -154,6 +154,14 @@ func (repman *ReplicationManager) licensePull(path string) (LicensePullResult, e
 	}
 	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModPlugin, config.LvlInfo,
 		"license-pull: package %s, plugins loaded %v, refused %v", pkg, res.Loaded, res.Refused)
+	// Cloud18 enterprise licence renewal (#2309): a freshly pulled licence plugin may be back in
+	// date. Clear the expired flag on every cluster so a paused passive node's tick resumes; the
+	// next tick re-runs the signed plugin-licence and re-asserts the flag if the new plugin is
+	// itself still expired. This runs in the pull's HTTP goroutine, so it reaches a passive node
+	// whose tick is paused.
+	for _, cl := range repman.Clusters {
+		cl.SetLicenseExpired(false)
+	}
 	return res, nil
 }
 

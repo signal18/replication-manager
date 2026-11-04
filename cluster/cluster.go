@@ -155,8 +155,7 @@ type Cluster struct {
 	IsValidRejoinBackupLogical   bool                `json:"isValidRejoinBackupLogical" groups:"web"`
 	IsValidRejoinBackupPhysical  bool                `json:"isValidRejoinBackupPhysical" groups:"web"`
 	IsNotMonitoring              bool                `json:"isNotMonitoring" groups:"web"`
-	LicenseExpired               bool                `json:"licenseExpired" groups:"web"` // Cloud18 enterprise licence past expiry (#2309): arbitration off
-	LicensePaused                bool                `json:"-"`                           // monitoring paused by us for an expired licence (standby), vs an operator pause
+	LicenseExpired               bool                `json:"licenseExpired" groups:"web"` // Cloud18 enterprise licence past expiry (#2309): from the signed plugin-licence's ERR00122
 	HaveSSHKeyChecked            bool                `json:"-"`
 	IsCapturing                  bool                `json:"isCapturing" groups:"web"`
 	IsGitPull                    bool                `json:"isGitPull" groups:"web"`
@@ -1190,7 +1189,14 @@ func (cluster *Cluster) Run() {
 	cluster.MarkSecretVersionStoreDirty()
 
 	for !cluster.exit.Load() {
-		if !cluster.Conf.MonitorPause {
+		// Cloud18 enterprise licence expired (#2309): the PASSIVE (standby) monitor stands down — its
+		// tick is paused so that, with arbitration lapsed, two un-arbitrated repman never both act on
+		// the cluster. The ACTIVE monitor is never gated here: it keeps monitoring and failover, so
+		// the client's DB HA is untouched (F2). The HTTP/GUI runs outside this tick, so the expired
+		// state stays visible even on the paused node. Renewal (a freshly pulled, in-date licence)
+		// clears the flag via the license-pull path and the tick resumes — no restart, no cookie.
+		licencePause := cluster.LicenseExpired && !cluster.IsActive()
+		if !cluster.Conf.MonitorPause && !licencePause {
 			// See reloadMu's declaration: serializes this tick's synchronous
 			// work against a concurrent ReloadConfig() rebuild. Wrapped in a
 			// func() purely so a panic anywhere in the tick still releases

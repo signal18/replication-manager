@@ -162,6 +162,24 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 
 		result := p.Evaluate(src)
 
+		// Cloud18 enterprise licence (#2309): the signed plugin-licence is the sole authority on
+		// expiry — its date is baked in at build and the ed25519 signature covers the binary, so it
+		// is unforgeable (neither the client config nor a hex-edit of the date can move it). Drive
+		// the cluster's expired flag from its ERR00122 finding, re-evaluated each time it runs. The
+		// flag gates the passive node's tick (cluster.Run) and the active's arbitration
+		// (isActiveArbitration). A paused passive stops re-evaluating; renewal lifts it via the
+		// license-pull path (clearLicenseExpiredOnPull), not the tick.
+		if p.Name() == "plugin-licence" {
+			expired := false
+			for _, f := range result.Findings {
+				if f.ErrKey == "ERR00122" {
+					expired = true
+					break
+				}
+			}
+			cluster.SetLicenseExpired(expired)
+		}
+
 		// Determine result type for log routing.
 		// isSecurityPlugin covers score plugins AND pure-security plugins
 		// (hardening, local-infile, no-password-user, weak-auth) that emit

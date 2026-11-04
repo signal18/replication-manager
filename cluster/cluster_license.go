@@ -5,22 +5,17 @@
 
 package cluster
 
-// Cloud18 enterprise licence expiry hooks (#2309). The server-side expiry check drives these:
-// past expiry, arbitration is treated as off (SetLicenseExpired) and the arbitration standby's
-// monitoring is paused (SetLicensePause). See server/license_expiry.go.
+// Cloud18 enterprise licence expiry (#2309). The authority is the signed plugin-licence: its
+// expiry date is baked in at build and the ed25519 signature covers the binary, so it is
+// unforgeable. RunLogPlugins drives LicenseExpired from the plugin's ERR00122 finding. The flag
+// has two effects, both re-derived, never a shutdown or an on-disk cookie:
+//   - the PASSIVE (standby) monitor's tick is paused (cluster.Run) so two un-arbitrated repman
+//     never both act;
+//   - the ACTIVE monitor treats arbitration as off (isActiveArbitration) so it keeps failover
+//     without the lapsed external arbitrator — safe because the passive stood down.
 
-// SetLicenseExpired records whether this cluster's Cloud18 enterprise licence is past its expiry;
-// isActiveArbitration then behaves as arbitration-off (the paid tiebreaker lapses, failover does
-// not).
+// SetLicenseExpired records the signed plugin-licence's verdict for this cluster.
 func (cluster *Cluster) SetLicenseExpired(expired bool) { cluster.LicenseExpired = expired }
 
-// IsLicensePaused reports that monitoring was paused by the licence-expiry enforcement (the
-// standby), as opposed to an operator's own monitoring-pause.
-func (cluster *Cluster) IsLicensePaused() bool { return cluster.LicensePaused }
-
-// SetLicensePause pauses or resumes monitoring for the licence-expiry enforcement, tracking that
-// it was us (not the operator) so a renewal only un-pauses what we paused.
-func (cluster *Cluster) SetLicensePause(pause bool) {
-	cluster.LicensePaused = pause
-	cluster.Conf.MonitorPause = pause
-}
+// IsLicenseExpired reports whether the signed plugin-licence last evaluated as expired.
+func (cluster *Cluster) IsLicenseExpired() bool { return cluster.LicenseExpired }
