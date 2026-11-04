@@ -59,7 +59,14 @@ func (p *Password) Encrypt() {
 }
 
 func (p *Password) Decrypt() error {
-	ciphertext, _ := hex.DecodeString(p.CipherText)
+	ciphertext, err := hex.DecodeString(p.CipherText)
+	if err != nil {
+		return fmt.Errorf("ciphertext is not hex: %w", err)
+	}
+	// The first block is the IV, so a valid ciphertext holds at least one block.
+	if len(ciphertext) < aes.BlockSize {
+		return errors.New("ciphertext is shorter than one AES block")
+	}
 
 	block, err := aes.NewCipher(p.Key)
 	if err != nil {

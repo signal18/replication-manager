@@ -2276,6 +2276,7 @@ func (conf *Config) GetDecryptedEmbedded(key string, value string) string {
 func (conf *Config) GetDecryptedPassword(key string, value string) string {
 
 	if conf.SecretKey != nil && strings.HasPrefix(value, "hash_") {
+		original := value
 		value = strings.TrimPrefix(value, "hash_")
 		p := crypto.Password{Key: conf.SecretKey}
 		if conf.IsEligibleForPrinting(ConstLogModConfigLoad, LvlDbg) {
@@ -2286,7 +2287,8 @@ func (conf *Config) GetDecryptedPassword(key string, value string) string {
 			p.CipherText = value
 			err := p.Decrypt()
 			if err != nil {
-				return value
+				// Not a ciphertext (too short or not hex): keep the value as it was written.
+				return original
 			} else {
 				value = p.PlainText
 				return value
