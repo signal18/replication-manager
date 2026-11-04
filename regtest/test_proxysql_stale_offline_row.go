@@ -22,8 +22,11 @@ import (
 //
 // The test puts every ProxySQL of the cluster in that state for the current
 // master, as the bootstrap and the standalone drain did, and expects
-// replication-manager to bring the writer row back ONLINE and drop the 666 row
-// within 60s. The master's reader row, drained too, is restored at the end.
+// replication-manager within 60s to bring the writer row back ONLINE and drop
+// the 666 row. The master's reader row, drained too, must be settled (#2298):
+// ONLINE when the configuration wants the master to serve reads
+// (proxy-servers-read-on-master), otherwise ONLINE or dropped, never left
+// OFFLINE_SOFT.
 func (regtest *RegTest) TestProxySQLStaleOfflineRowRecovery(cl *cluster.Cluster, conf string, test *cluster.Test) bool {
 	logf := func(level, format string, args ...interface{}) {
 		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModProxySQL, level, "TEST proxysql-stale-offline-row: "+format, args...)
@@ -96,7 +99,15 @@ func (regtest *RegTest) TestProxySQLStaleOfflineRowRecovery(cl *cluster.Cluster,
 					return false
 				}
 				_, status, _, _, _, _, err := psql.GetStatsForHostWrite(host, port)
-				return err == nil && status == "ONLINE"
+				if err != nil || status != "ONLINE" {
+					return false
+				}
+				// the reader row: dropped (gone from the configuration), or ONLINE
+				if !psql.HasRowInHostgroup(host, port, psql.ReaderHG) {
+					return !cl.Configurator.HasProxyReadLeader()
+				}
+				_, rstatus, _, _, _, _, err := psql.GetStatsForHostRead(host, port)
+				return err == nil && rstatus == "ONLINE"
 			}) {
 				return false
 			}
@@ -104,7 +115,7 @@ func (regtest *RegTest) TestProxySQLStaleOfflineRowRecovery(cl *cluster.Cluster,
 		return true
 	})
 
-	// --- cleanup: the master's reader row was drained by the seed ---
+	// --- cleanup: on a failed run, rows the seed drained may still be OFFLINE_SOFT ---
 	for _, p := range proxies {
 		withConn(p, func(psql *proxysql.ProxySQL) bool {
 			if err := psql.SetOnlineSoft(host, port); err != nil {
@@ -116,8 +127,8 @@ func (regtest *RegTest) TestProxySQLStaleOfflineRowRecovery(cl *cluster.Cluster,
 	}
 
 	if !recovered {
-		return fail("master %s was not back ONLINE as writer, without an offline row, on every ProxySQL within 60s", master.URL)
+		return fail("master %s was not back ONLINE as writer, without an offline row and with its reader row ONLINE or dropped, on every ProxySQL within 60s", master.URL)
 	}
-	logf("TEST", "master %s back ONLINE as writer on every ProxySQL, stale offline row dropped — OK", master.URL)
+	logf("TEST", "master %s back ONLINE as writer on every ProxySQL, stale offline row dropped, reader row settled — OK", master.URL)
 	return true
 }

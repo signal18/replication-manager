@@ -277,6 +277,14 @@ func (psql *ProxySQL) SetReaderOfflineSoft(host string, port string) error {
 	return err
 }
 
+// SetReaderOnlineSoft undoes SetReaderOfflineSoft: the reader row only, its writer row
+// is left as it is.
+func (psql *ProxySQL) SetReaderOnlineSoft(host string, port string) error {
+	sql := fmt.Sprintf("UPDATE "+psql.table("servers")+" SET status='ONLINE' WHERE hostname='%s' AND port='%s' AND hostgroup_id in ('%s')", host, port, psql.ReaderHG)
+	_, err := psql.Connection.Exec(sql)
+	return err
+}
+
 func (psql *ProxySQL) SetOfflineSoft(host string, port string) error {
 	sql := fmt.Sprintf("UPDATE "+psql.table("servers")+" SET status='OFFLINE_SOFT' WHERE hostname='%s' AND port='%s' AND hostgroup_id in ('%s','%s')", host, port, psql.ReaderHG, psql.WriterHG)
 	_, err := psql.Connection.Exec(sql)
