@@ -25,5 +25,9 @@ fi
 for s in run.sh stop.sh restart.sh wait.sh; do
 	[ -e "$s" ] || ln -s "docker/dev/$s" "$s"
 done
+# run.sh and the exec below launch ./replication-manager-pro, which `make cli pro` builds to
+# build/binaries/; a fresh clone has no WORKDIR symlink for it (dev instances carry one from an
+# earlier build). Create it now — it dangles until run.sh's make builds the target, then resolves.
+ln -sf build/binaries/replication-manager-pro replication-manager-pro
 ./run.sh "$@"
 exec ./replication-manager-pro license-builder
