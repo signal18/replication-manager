@@ -739,6 +739,7 @@ func (server *ServerMonitor) TrySetInReseedBackup(task string) (bool, string) {
 
 	server.IsReseeding = task
 	server.physicalJobDispatched.Store(false) // a new reseed: its backup is not streamed yet
+	server.clearRestoreKeptTables()           // WARN0280 was about the previous restore
 	return true, ""
 }
 

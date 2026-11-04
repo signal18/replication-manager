@@ -1055,6 +1055,9 @@ func TestExecSplitdumpSingleSystemTableDDLKept(t *testing.T) {
 		if progressed.Load() {
 			t.Errorf("%s: a skipped statement must not mark progress", firstLine(stmt))
 		}
+		if kept := server.restoreKept; len(kept) != 1 || kept[0] != "mysql.innodb_index_stats" {
+			t.Errorf("%s: the kept table is recorded for WARN0280: %v", firstLine(stmt), kept)
+		}
 		if err := mock.ExpectationsWereMet(); err != nil {
 			t.Errorf("unmet sqlmock expectations: %v", err)
 		}
