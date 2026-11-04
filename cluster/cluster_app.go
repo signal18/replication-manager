@@ -1044,6 +1044,7 @@ func (cluster *Cluster) AddSeededApp(srv, port, dockerImg, template string, moni
 			rollbackAddedApp()
 			return err
 		}
+		cluster.EncryptDeploymentSecrets(appcnf.Deployment) // template literals (#2248)
 
 		if appcnf.Deployment != nil {
 			if resolveErrs := appcnf.Deployment.ResolvePaths(); len(resolveErrs) > 0 {
@@ -1841,6 +1842,48 @@ func (cluster *Cluster) SetAppVariableValue(app *App, v config.VariableMapping) 
 	}
 	app.AppConfig.Deployment.Variables = append(app.AppConfig.Deployment.Variables, newVar)
 	return nil
+}
+
+// EncryptDeploymentSecrets encrypts the secret values a deployment copied from a template
+// or a peer holds in clear (#2248): secret variables and their per-agent values, git clone
+// passwords and S3 mount secret keys. A value that already carries a hash_ token is left as
+// it is: either it is a ciphertext, or a template placeholder put the ciphertext inside it
+// (a DSN with {{app.db.password}}), which provisioning decrypts in place. It reports whether
+// a value was encrypted.
+func (cluster *Cluster) EncryptDeploymentSecrets(d *config.Deployment) bool {
+	if d == nil {
+		return false
+	}
+	changed := false
+	encrypt := func(value *string) {
+		if *value == "" || strings.Contains(*value, "hash_") {
+			return
+		}
+		if encrypted := cluster.Conf.GetEncryptedString(*value); encrypted != *value { // no key: unchanged
+			*value = encrypted
+			changed = true
+		}
+	}
+	for i := range d.Variables {
+		if d.Variables[i].Type != config.VariableTypeSecret {
+			continue
+		}
+		encrypt(&d.Variables[i].Value)
+		for j := range d.Variables[i].Conditional {
+			encrypt(&d.Variables[i].Conditional[j].Value)
+		}
+	}
+	for _, gc := range d.Storages.GitClones {
+		if gc != nil {
+			encrypt(&gc.GitPass)
+		}
+	}
+	for _, s3 := range d.Storages.S3Mounts {
+		if s3 != nil {
+			encrypt(&s3.SecretKey)
+		}
+	}
+	return changed
 }
 
 func normalizeTemplateIdentifier(template string) (string, error) {

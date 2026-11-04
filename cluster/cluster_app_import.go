@@ -106,6 +106,9 @@ func (cluster *Cluster) ImportAppConfig(host, port, tomlContent string) error {
 	// can neither renew nor revoke it. Forget it here; the saved file is rewritten below.
 	peerToken := loaded.AppAPITokenID != "" || loaded.AppAPIToken != ""
 	loaded.AppAPIToken, loaded.AppAPITokenID, loaded.AppAPITokenExpires = "", "", ""
+	// A secret the peer holds in clear (an app it created from a template before #2248) is
+	// encrypted here, and the saved file is rewritten below.
+	clearSecrets := cluster.EncryptDeploymentSecrets(loaded.Deployment)
 	cluster.Unlock()
 
 	// newAppList() locks internally, so run it outside the section above. On
@@ -122,10 +125,10 @@ func (cluster *Cluster) ImportAppConfig(host, port, tomlContent string) error {
 	if !cluster.HasAppHostPort(host, port) {
 		return fmt.Errorf("app host %q port %q was concurrently removed during import", host, port)
 	}
-	if peerToken {
+	if peerToken || clearSecrets {
 		if app := cluster.GetAppByConfig(loaded); app != nil {
 			if _, err := cluster.SaveApp(app, ""); err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn, "App %s imported: the peer's API token is not removed from its saved config: %s", host, err)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn, "App %s imported: its saved config is not rewritten (peer API token, clear secrets): %s", host, err)
 			}
 		}
 	}
