@@ -268,7 +268,10 @@ test counts from what the file holds when it starts.
   active vault entry with `Compare` (written only where the entry holds another value, so a
   value provisioning already reported makes no new vault version). It covers every writer of
   an app (API add and modify, create and reset from a template, peer import, provisioning):
-  the version is made at the save that follows the write, not at the write. The secrets
+  the version is made at the save that follows the write, not at the write. This is the path
+  the secrets outside the chain already take (`ReconcileSecretVersionStore` → `Record` at the
+  save), without its dirty mark: every save compares the app secrets, so no writer needs a call
+  and a writer added later cannot miss one. The secrets
   (`appSecretValues`): secret variables (`<name>`, a per-agent value `<name>@<agent>`), git
   clone passwords and S3 secret keys under the names provisioning writes, `app-random-password`
   and `app-db-pass`; never `SENSOR_API_KEY`. A value is encrypted whole (`GetEncryptedString`):
