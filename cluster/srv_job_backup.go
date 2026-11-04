@@ -2176,10 +2176,16 @@ func planAndExecSplitdump(reader io.Reader, batchSize int, exec splitdumpExecuto
 func (server *ServerMonitor) streamSplitdumpStatements(ctx context.Context, conn *sqlx.Conn, reader io.Reader, path string, progressed *atomic.Bool) error {
 	// every statement passes here, batched (the data) or single: a logical restore with the
 	// binlog on pauses here, between two transactions, on each rotation (logicalRestoreGate)
+	rewrite := server.splitdumpGeneratedColumnsRewrite(path)
 	return planAndExecSplitdump(reader, splitdumpBatchStatements, splitdumpExecutor{
 		batch: func(stmts []string) error {
 			if err := server.waitLogicalRestoreGate(); err != nil {
 				return err
+			}
+			if rewrite != nil {
+				for i := range stmts {
+					stmts[i] = rewrite(stmts[i])
+				}
 			}
 			return server.execSplitdumpBatch(ctx, conn, stmts, path, progressed)
 		},
@@ -2190,6 +2196,47 @@ func (server *ServerMonitor) streamSplitdumpStatements(ctx context.Context, conn
 			return server.execSplitdumpSingle(ctx, conn, stmt, path, progressed)
 		},
 	})
+}
+
+// splitdumpGeneratedColumnsRewrite returns, for a data file of a table with generated
+// columns (its -schema file in the backup says so), the rewrite of its INSERTs without
+// those columns (splitdump.InsertWithoutGeneratedColumns): a dump without a column list
+// carries their values, which the server refuses (MySQL 3105), a MariaDB client dumping a
+// MySQL server (mysql.engine_cost, mysql.server_cost) or any table of the kind. nil for any
+// other file. A statement the rewrite does not parse is sent unchanged: the server's error
+// fails the restore as before.
+func (server *ServerMonitor) splitdumpGeneratedColumnsRewrite(path string) func(string) string {
+	base := filepath.Base(path)
+	if splitdump.IsSchemaFile(base) || splitdump.IsPostFile(base) {
+		return nil
+	}
+	cluster := server.ClusterGroup
+	columns, generated, ok, err := splitdump.TableGeneratedColumns(path)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlWarn,
+			"Splitdump restore could not read the columns of %s, its rows are loaded as dumped: %s", base, err)
+		return nil
+	}
+	if !ok {
+		return nil
+	}
+	var names []string
+	for i, c := range columns {
+		if generated[i] {
+			names = append(names, c)
+		}
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlInfo,
+		"Splitdump restore loads the rows of %s without its generated column(s) %s: the server computes them", base, strings.Join(names, ", "))
+	return func(stmt string) string {
+		out, err := splitdump.InsertWithoutGeneratedColumns(stmt, columns, generated)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlWarn,
+				"Splitdump restore sends a statement of %s as dumped: %s", base, err)
+			return stmt
+		}
+		return out
+	}
 }
 
 // execSplitdumpBatch runs stmts inside a single transaction and retries the whole
@@ -2455,6 +2502,19 @@ func (server *ServerMonitor) execSplitdumpSingle(ctx context.Context, conn *sqlx
 					return wrapped
 				}
 			}
+			// MySQL 8 owns some tables of the mysql schema (the InnoDB statistics tables
+			// mysql.innodb_table_stats and mysql.innodb_index_stats) and refuses any DDL on
+			// them with ER_NO_SYSTEM_TABLE_ACCESS (3554): the DROP TABLE and CREATE TABLE a
+			// dump writes for them can never apply, and the destination's own table, created
+			// by the server for its version, is the one to keep. Gated on that error AND a
+			// DROP/CREATE TABLE statement: any other statement or error still fails the
+			// restore (the single-file restore only passed through `mysql --force`).
+			if isSystemTableAccessError(err) && isTableDDLStatement(stmt) {
+				server.markRestoreKeptTable(splitdump.SchemaFromFilename(path) + "." + splitdump.TableFromFilename(path))
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlInfo,
+					"Splitdump restore kept the server's own table, %s refused by the server for %s: %s", firstLine(stmt), filepath.Base(path), err)
+				return nil
+			}
 			lastErr = err
 			if isRetryableDBError(err) {
 				continue
@@ -2467,6 +2527,24 @@ func (server *ServerMonitor) execSplitdumpSingle(ctx context.Context, conn *sqlx
 		return nil
 	}
 	return lastErr
+}
+
+// isSystemTableAccessError reports whether err is ER_NO_SYSTEM_TABLE_ACCESS (3554), the
+// error MySQL 8 raises for DDL on a table of the mysql schema the server owns ("Access to
+// system table 'mysql.innodb_index_stats' is rejected").
+func isSystemTableAccessError(err error) bool {
+	var me *mysql.MySQLError
+	if errors.As(err, &me) {
+		return me.Number == 3554
+	}
+	return false
+}
+
+// isTableDDLStatement reports whether stmt, a terminator-stripped statement without its
+// leading comments (forEachSplitdumpStatement), is a DROP TABLE or a CREATE TABLE.
+func isTableDDLStatement(stmt string) bool {
+	up := strings.ToUpper(strings.TrimSpace(stmt))
+	return strings.HasPrefix(up, "DROP TABLE ") || strings.HasPrefix(up, "CREATE TABLE ")
 }
 
 // createUserStatementInfo holds everything execSplitdumpSingle needs to
@@ -2865,6 +2943,7 @@ func (server *ServerMonitor) restoreSplitdumpWithMysql(ctx context.Context, back
 		ctx = context.Background()
 	}
 
+	server.clearRestoreKeptTables() // WARN0280 is about this restore from now on
 	resolvedPath, cleanup, rerr := server.resolveRestoreArtifactPath(backupPath)
 	if rerr != nil {
 		return fmt.Errorf("[%s] Failed to resolve backup artifact for reseed: %s", server.URL, rerr)

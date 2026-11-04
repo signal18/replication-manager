@@ -385,6 +385,8 @@ var ClusterError = map[string]string{
 	"WARN0273":  "Credential %s is a Vault path pinned in a config file: it is read from Vault at each start -- remove it from the file, its value now lives in the credential stores",
 	"WARN0276":  "Database jobs of %s still run an older jobs script (replayable job body): only fetching the new script is accepted from them, everything else is refused until it runs",
 	"WARN0277":  "Job streams refused (no valid stream header: sent by something else than the jobs or replication-manager, or replayed): %s",
+	"WARN0280":  "Last restore of %s kept the server's own %s instead of the backup's: the server refuses to replace them (MySQL owns these tables of the mysql schema), they differ from the backup until the next restore",
+	"WARN0279":  "scheduler-jobs-exec-remote lists %s: ignored, these tasks can not be forced to run through dbjobs (only %s can)",
 	"WARN0278":  "PostgreSQL jobs of %s run an older replication-manager-cli (replayable job body): still accepted so their backups go on, until the jobs sidecar restarts and its init container fetches the new client -- restart it to close the replay",
 	"WARN0274":  "Scheduled password rotation skipped: %s -- the next scheduled run tries again; the state closes when a scheduled rotation succeeds or the schedule is switched off",
 	"WARN0264":  "Binlog budget of %s at its floor, %s (%s): the data leaves no room, each closed binlog is purged at once, its copy and lagging replicas with it -- grow the disk or free data",

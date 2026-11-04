@@ -1036,3 +1036,68 @@ func TestExecSplitdumpSingleGrantWithoutIdentifiedClauseUnaffected(t *testing.T)
 		t.Error("expected progress to be marked after GRANT PROXY committed")
 	}
 }
+
+// MySQL 8 refuses DDL on the InnoDB statistics tables it owns (3554): the dump's DROP TABLE
+// and CREATE TABLE for them are skipped, the destination's own table kept, nothing counted
+// as progress.
+func TestExecSplitdumpSingleSystemTableDDLKept(t *testing.T) {
+	for _, stmt := range []string{
+		"DROP TABLE IF EXISTS `innodb_index_stats`",
+		"CREATE TABLE `innodb_index_stats` (\n  `database_name` varchar(64) NOT NULL\n) ENGINE=InnoDB",
+	} {
+		server, mock, conn, closeFn := newSystemReseedTestServer(t)
+		mock.ExpectExec(regexp.QuoteMeta(stmt)).
+			WillReturnError(&mysql.MySQLError{Number: 3554, Message: "Access to system table 'mysql.innodb_index_stats' is rejected."})
+		var progressed atomic.Bool
+		if err := server.execSplitdumpSingle(context.Background(), conn, stmt, "mysql.innodb_index_stats-schema.sql.gz", &progressed); err != nil {
+			t.Errorf("%s: expected the refused DDL to be skipped, got %v", firstLine(stmt), err)
+		}
+		if progressed.Load() {
+			t.Errorf("%s: a skipped statement must not mark progress", firstLine(stmt))
+		}
+		if kept := server.restoreKept; len(kept) != 1 || kept[0] != "mysql.innodb_index_stats" {
+			t.Errorf("%s: the kept table is recorded for WARN0280: %v", firstLine(stmt), kept)
+		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet sqlmock expectations: %v", err)
+		}
+		closeFn()
+	}
+}
+
+// 3554 on anything else than a DROP/CREATE TABLE, and another error on that DDL, still fail
+// the restore.
+func TestExecSplitdumpSingleSystemTableAccessOtherwiseFatal(t *testing.T) {
+	for _, c := range []struct {
+		stmt string
+		err  *mysql.MySQLError
+	}{
+		{"INSERT INTO `innodb_index_stats` VALUES ('a','b','c',NOW(),'n',1,1,'d')", &mysql.MySQLError{Number: 3554, Message: "Access to system table 'mysql.innodb_index_stats' is rejected."}},
+		{"ALTER TABLE `innodb_index_stats` ENGINE=InnoDB", &mysql.MySQLError{Number: 3554, Message: "Access to system table 'mysql.innodb_index_stats' is rejected."}},
+		{"DROP TABLE IF EXISTS `user`", &mysql.MySQLError{Number: 1142, Message: "DROP command denied to user"}},
+	} {
+		server, mock, conn, closeFn := newSystemReseedTestServer(t)
+		mock.ExpectExec(regexp.QuoteMeta(c.stmt)).WillReturnError(c.err)
+		if err := server.execSplitdumpSingle(context.Background(), conn, c.stmt, "mysql.x-schema.sql.gz", nil); err == nil {
+			t.Errorf("%s: expected error %d to fail the restore", firstLine(c.stmt), c.err.Number)
+		}
+		closeFn()
+	}
+}
+
+func TestIsTableDDLStatement(t *testing.T) {
+	for stmt, want := range map[string]bool{
+		"DROP TABLE IF EXISTS `innodb_index_stats`": true,
+		"drop table `t`":                          true,
+		"CREATE TABLE `innodb_table_stats` (":     true,
+		"CREATE TABLE IF NOT EXISTS `t` (a int)":  true,
+		"DROP TABLESPACE ts":                      false,
+		"CREATE TABLESPACE ts":                    false,
+		"INSERT INTO `innodb_index_stats` VALUES": false,
+		"ALTER TABLE `t` ENGINE=InnoDB":           false,
+	} {
+		if got := isTableDDLStatement(stmt); got != want {
+			t.Errorf("isTableDDLStatement(%q) = %v, want %v", stmt, got, want)
+		}
+	}
+}

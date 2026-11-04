@@ -1446,6 +1446,7 @@ func (cluster *Cluster) tickBody() {
 					goRun(cluster.CheckConfiguratorPrerequisites)
 					goRun(cluster.CheckGlobalDeprecatedKeys)
 					goRun(cluster.CheckClusterDeprecatedKeys)
+					goRun(cluster.CheckJobsExecRemoteIgnored)
 					goRun(cluster.CheckClusterServiceAgents)
 				}
 				if cluster.Conf.GraphiteMetrics && heartbeats%5 == 0 {
@@ -1474,7 +1475,7 @@ func (cluster *Cluster) tickBody() {
 				}
 				if heartbeats%30 != 0 {
 					cluster.StateMachine.PreserveState(pstates30...)
-					cluster.ConfigStateMachine.PreserveState("WARN0159", "WARN0160", "WARN0178")
+					cluster.ConfigStateMachine.PreserveState("WARN0159", "WARN0160", "WARN0178", "WARN0279")
 				}
 				if heartbeats%3600 != 0 {
 					cluster.StateMachine.PreserveState(pstates3600...)

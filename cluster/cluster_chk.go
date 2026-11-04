@@ -1419,6 +1419,16 @@ func (cluster *Cluster) CheckClusterDeprecatedKeys() {
 	}
 }
 
+// CheckJobsExecRemoteIgnored raises WARN0279 when scheduler-jobs-exec-remote lists a
+// task it can not force remote (#2116): the task runs where it always runs, and the
+// operator learns it from the config state rather than from a job that is not remote.
+func (cluster *Cluster) CheckJobsExecRemoteIgnored() {
+	ignored, allowed := cluster.Conf.JobsExecRemoteIgnored()
+	if len(ignored) > 0 {
+		cluster.ConfigStateMachine.AddState("WARN0279", state.State{ErrType: "WARNING", ErrKey: "WARN0279", ErrDesc: fmt.Sprintf(clusterError["WARN0279"], strings.Join(ignored, ","), strings.Join(allowed, ",")), ErrFrom: "CONF"})
+	}
+}
+
 func (cluster *Cluster) CheckClusterServiceAgents() {
 	if cluster.Conf.ProvOrchestrator != "opensvc" {
 		return

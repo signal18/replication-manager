@@ -3,6 +3,16 @@
 User doc: `doc/backup_remote_dump.md`.
 
 `mysqldump` is a `TaskCapBoth` task (`config.TaskRegistry`), local by default.
+`mydumper`, `reseedmysqldump` and `flashbackmysqldump` are `TaskCapLocalOnly`
+(#2116): dbjobs has no path for them, and in api mode a listed one failed at the
+cookie step (`setTaskCookie` has no case for it). `ParseJobsExecOverrides` ignores
+them, so listing them in `scheduler-jobs-exec-remote` has no effect. A listed task
+that is not `TaskCapBoth` (unknown, local-only or remote-only) raises WARN0279 in the
+config state machine (`CheckJobsExecRemoteIgnored`, every 30 ticks, preserved between
+checks); `Config.JobsExecRemoteIgnored` shares the parsing with
+`ParseJobsExecOverrides`.
+`TestBothCapabilityTasksHaveACookie` keeps every `TaskCapBoth` task in step with
+`setTaskCookie`.
 Listing it in `scheduler-jobs-exec-remote` makes the logical backup run the
 dump client on the database node through dbjobs, streaming back to a receiver
 in replication-manager. Everything after the dump client (compression or
