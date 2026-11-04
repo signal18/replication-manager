@@ -60,7 +60,8 @@ func TestExtractPackage(t *testing.T) {
 	writeTestPackage(t, pkg, entries, files)
 
 	base := filepath.Join(dir, "datadir")
-	man, err := ExtractPackage(pkg, base)
+	baseByKind := map[string]string{"plugin": base, "plugin-sig": base, "license": base, "license-sig": base, "pubkey": base}
+	man, err := ExtractPackage(pkg, baseByKind)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,7 +88,7 @@ func TestExtractPackageTraversalRejected(t *testing.T) {
 	writeTestPackage(t, pkg,
 		[]ManifestEntry{{Path: "evil", Dest: "../../etc/evil", Kind: "plugin"}},
 		map[string][]byte{"evil": []byte("x")})
-	if _, err := ExtractPackage(pkg, filepath.Join(dir, "base")); err == nil {
+	if _, err := ExtractPackage(pkg, map[string]string{"plugin": filepath.Join(dir, "base")}); err == nil {
 		t.Fatal("expected path-traversal destination to be rejected")
 	}
 }

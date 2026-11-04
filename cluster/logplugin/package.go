@@ -62,18 +62,22 @@ func safeJoin(baseDir, dest string) (string, error) {
 }
 
 // ExtractPackage opens the licence package tar.gz and writes each file its manifest
-// lists to the destination under baseDir — plugins (made executable) and their
-// .sig, license.json / license.sig, and the master public key. Returns the manifest.
-// It does NOT verify signatures or load plugins; the caller runs LoadPluginsFromDir
-// (which verifies against the shipped master public key) afterwards.
-func ExtractPackage(tarGzPath, baseDir string) (*PackageManifest, error) {
+// lists to its destination. baseByKind maps a manifest Kind (plugin, plugin-sig,
+// license, license-sig, pubkey) to the base directory for that kind; a file whose
+// kind has no base is skipped. This lets repman place enterprise plugin binaries
+// in the pull dir (so syncPluginsFromPull runs unchanged), their .sig where the
+// verify already looks (ShareDir/plugins), and the licence at its path — the
+// channel delivers only enterprise plugins + licences. Plugin binaries are made
+// executable. Returns the manifest. It does NOT verify or load; the caller runs
+// the usual sync/verify afterwards.
+func ExtractPackage(tarGzPath string, baseByKind map[string]string) (*PackageManifest, error) {
 	man, err := readManifest(tarGzPath)
 	if err != nil {
 		return nil, err
 	}
 	want := make(map[string]ManifestEntry, len(man.Entries))
 	for _, e := range man.Entries {
-		if e.Dest != "" {
+		if e.Dest != "" && baseByKind[e.Kind] != "" {
 			want[e.Path] = e
 		}
 	}
@@ -102,7 +106,7 @@ func ExtractPackage(tarGzPath, baseDir string) (*PackageManifest, error) {
 		if !ok {
 			continue
 		}
-		full, err := safeJoin(baseDir, e.Dest)
+		full, err := safeJoin(baseByKind[e.Kind], e.Dest)
 		if err != nil {
 			return nil, err
 		}
