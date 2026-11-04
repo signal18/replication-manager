@@ -408,6 +408,9 @@ func (cluster *Cluster) addUser(userform UserForm, delegator string, reloadACL b
 		} else {
 			cluster.Conf.APIUsersACLAllowExternal = cluster.Conf.APIUsersACLAllowExternal + "," + new_acl
 		}
+		if discard := cluster.alertMailDiscard(user, grants); discard != "" {
+			cluster.Conf.APIUsersACLDiscardExternal = strings.Trim(cluster.Conf.APIUsersACLDiscardExternal+","+discard, ",")
+		}
 
 		if reloadACL {
 			cluster.LoadAPIUsers()
@@ -502,6 +505,9 @@ func (cluster *Cluster) UpdateUser(userform UserForm, delegator string, reloadAC
 			if useracl != user {
 				new_acls = append(new_acls, xacl)
 			}
+		}
+		if discard := cluster.alertMailDiscard(user, grants); discard != "" {
+			new_acls = append(new_acls, discard)
 		}
 
 		cluster.Conf.APIUsersACLDiscardExternal = strings.Join(new_acls, ",")

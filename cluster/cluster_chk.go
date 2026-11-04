@@ -611,7 +611,7 @@ func (cluster *Cluster) SendAlert(alert alert.Alert) error {
 		return nil
 	}
 
-	if cluster.Conf.MailTo != "" {
+	if to := cluster.GetAlertRecipients(AlertRecipient{To: cluster.Conf.MailTo, All: true}); to != "" {
 		if cluster.Mailer == nil {
 			if err := cluster.InitMailer(); err != nil {
 				return err
@@ -619,7 +619,7 @@ func (cluster *Cluster) SendAlert(alert alert.Alert) error {
 		}
 
 		go func() {
-			err := alert.EmailMessage(cluster.GetAlertRecipients(AlertRecipient{To: cluster.Conf.MailTo, All: true}), cluster.Mailer)
+			err := alert.EmailMessage(to, cluster.Mailer)
 			if err != nil {
 				if cluster.failSendCount < 3 {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModMailer, config.LvlErr, "Could not send mail alert: %s", err)

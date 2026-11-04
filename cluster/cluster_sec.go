@@ -393,10 +393,10 @@ func (cluster *Cluster) RotatePasswords() (err error) {
 		msg := "A password rotation has been made on Replication-Manager " + cluster.Name + " cluster: the new versions are in the cluster's credential stores."
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ALERT", msg)
 	}
-	if cluster.Conf.MailTo != "" {
+	if to := cluster.GetAlertRecipients(AlertRecipient{To: cluster.Conf.MailTo, All: true}); to != "" {
 		msg := "A password rotation has been made on cluster " + cluster.Name + "\nThe new versions are in the cluster's credential stores."
 		subj := "Password Rotation Replication-Manager"
-		go cluster.SendEMailMessage(cluster.ToAlertMessage(msg), subj, cluster.GetAlertRecipients(AlertRecipient{To: cluster.Conf.MailTo, All: true}))
+		go cluster.SendEMailMessage(cluster.ToAlertMessage(msg), subj, to)
 	}
 
 	cluster.ConfigManager.SaveConfig(cluster, false)
