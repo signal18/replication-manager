@@ -153,6 +153,7 @@ var tests = []string{
 	"testDirectReseedSystemAllStrictPasswordValidationIdenticalAccountSkipped",
 	"testHaproxyRuntimeAPIDynamicServerLifecycle",
 	"testProxyReadBackendReconciliation",
+	"testProxySQLStaleOfflineRowRecovery",
 	"testMaintenancePersistReload",
 	"testAppWarningDebounceAndRecovery",
 	"testAppMonitorHTTP",
@@ -336,6 +337,8 @@ var testTargets = map[string][]TestTarget{
 	"testCredentialVersionsRotation": {{FlavorTarget: []string{"mariadb", "mysql"}, ConfigVariableMustHave: map[string]string{"monitoring-secret-versioning": "true"}}},
 	// #2269: the config is the store (versioning off), the rotation run by the scheduler
 	"testCredentialConfigRotationScheduled": {{FlavorTarget: []string{"mariadb", "mysql"}, ConfigVariableMustSet: map[string]string{"monitoring-secret-versioning": "false", "monitoring-scheduler": "true"}}},
+	// #2295: replication-manager owns the ProxySQL rows only with bootstrap on
+	"testProxySQLStaleOfflineRowRecovery": {{ConfigVariableMustHave: map[string]string{"proxysql": "true", "proxysql-bootstrap": "true"}}},
 }
 
 // TestResultSkip is the result of a test whose targets the cluster does not match: it did

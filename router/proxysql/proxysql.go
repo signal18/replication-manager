@@ -172,26 +172,44 @@ func (psql *ProxySQL) AddShardServer(host string, port string, use_ssl string) e
 	return err
 }
 func (psql *ProxySQL) AddOfflineServer(host string, port string, use_ssl string) error {
-	sql := fmt.Sprintf("REPLACE INTO "+psql.table("servers")+" (hostgroup_id, hostname, port,use_ssl) VALUES('666', '%s','%s','%s')", host, port, use_ssl)
+	sql := fmt.Sprintf("REPLACE INTO "+psql.table("servers")+" (hostgroup_id, hostname, port,use_ssl) VALUES('%s', '%s','%s','%s')", OfflineHG, host, port, use_ssl)
 	_, err := psql.Connection.Exec(sql)
 	return err
 }
 
+// OfflineHG is the hostgroup replication-manager parks a writer in while its server
+// is not allowed to take writes (standalone, failed over, ignored). No user routes to it.
+const OfflineHG = "666"
+
+// SetOffline parks the server's writer row in OfflineHG. A server already holding a row
+// in OfflineHG (left by a bootstrap that saw it standalone) would end up with two
+// identical rows, which ProxySQL refuses: the stale OfflineHG row goes first, the writer
+// row (with its tuned weight, max_connections, use_ssl) is the one kept.
 func (psql *ProxySQL) SetOffline(host string, port string) error {
-	sql := fmt.Sprintf("UPDATE "+psql.table("servers")+" SET hostgroup_id='666' WHERE hostname='%s' AND port='%s'  AND hostgroup_id in ('%s')", host, port, psql.WriterHG)
+	if err := psql.dropShadowed(host, port, OfflineHG, psql.WriterHG); err != nil {
+		return err
+	}
+	sql := fmt.Sprintf("UPDATE "+psql.table("servers")+" SET hostgroup_id='%s' WHERE hostname='%s' AND port='%s' AND hostgroup_id in ('%s')", OfflineHG, host, port, psql.WriterHG)
 	_, err := psql.Connection.Exec(sql)
 	return err
 }
 
 func (psql *ProxySQL) ExistAsWriterOrOffline(host string, port string) bool {
 	var exist int
-	sql := fmt.Sprintf("SELECT 1 FROM "+psql.table("servers")+" WHERE hostname='%s' AND port='%s' AND hostgroup_id in (666,'%s')", host, port, psql.WriterHG)
+	sql := fmt.Sprintf("SELECT 1 FROM "+psql.table("servers")+" WHERE hostname='%s' AND port='%s' AND hostgroup_id in ('%s','%s')", host, port, OfflineHG, psql.WriterHG)
 	row := psql.Connection.QueryRow(sql)
 	err := row.Scan(&exist)
 	if err == nil {
 		return true
 	}
 	return false
+}
+
+// HasRowInHostgroup reports whether the server has a row in hostgroup hg.
+func (psql *ProxySQL) HasRowInHostgroup(host, port, hg string) bool {
+	var exist int
+	sql := fmt.Sprintf("SELECT 1 FROM "+psql.table("servers")+" WHERE hostname='%s' AND port='%s' AND hostgroup_id='%s'", host, port, hg)
+	return psql.Connection.QueryRow(sql).Scan(&exist) == nil
 }
 
 func (psql *ProxySQL) GetHostgroupFromJanitorDomain(domain string) int {
@@ -239,8 +257,22 @@ func (psql *ProxySQL) GetHostgroupFromJanitorDomain(domain string) int {
 	return int(wg.Int32)
 }
 
+// SetOnline puts the server back in the writer hostgroup, ONLINE, whether its row sits in
+// OfflineHG, in the writer hostgroup (OFFLINE_SOFT or not), or in both. With both, the
+// stale OfflineHG row goes first: moving it onto the writer row would make two identical
+// rows (UNIQUE constraint failed: ...hostgroup_id, hostname, port).
 func (psql *ProxySQL) SetOnline(host string, port string) error {
-	sql := fmt.Sprintf("UPDATE "+psql.table("servers")+" SET hostgroup_id='%s' WHERE hostname='%s' AND port='%s'  AND hostgroup_id in (666)", psql.WriterHG, host, port)
+	if err := psql.dropShadowed(host, port, OfflineHG, psql.WriterHG); err != nil {
+		return err
+	}
+	sql := fmt.Sprintf("UPDATE "+psql.table("servers")+" SET status='ONLINE', hostgroup_id='%s' WHERE hostname='%s' AND port='%s' AND hostgroup_id in ('%s','%s')", psql.WriterHG, host, port, OfflineHG, psql.WriterHG)
+	_, err := psql.Connection.Exec(sql)
+	return err
+}
+
+// SetReaderOfflineSoft drains the server's reader row only; its writer row is SetOffline's.
+func (psql *ProxySQL) SetReaderOfflineSoft(host string, port string) error {
+	sql := fmt.Sprintf("UPDATE "+psql.table("servers")+" SET status='OFFLINE_SOFT' WHERE hostname='%s' AND port='%s' AND hostgroup_id in ('%s')", host, port, psql.ReaderHG)
 	_, err := psql.Connection.Exec(sql)
 	return err
 }
@@ -266,12 +298,22 @@ func (psql *ProxySQL) SetWriter(host string, port string) error {
 // identical rows, which ProxySQL refuses (UNIQUE constraint failed: ...hostgroup_id,
 // hostname, port): its row in the other hostgroup goes first, then the move.
 func (psql *ProxySQL) moveToHostgroup(host, port, target, other string) error {
-	t := psql.table("servers")
-	sql := fmt.Sprintf("DELETE FROM %s WHERE hostgroup_id='%s' AND hostname='%s' AND port='%s' AND EXISTS (SELECT 1 FROM %s WHERE hostgroup_id='%s' AND hostname='%s' AND port='%s')", t, other, host, port, t, target, host, port)
-	if _, err := psql.Connection.Exec(sql); err != nil {
+	if err := psql.dropShadowed(host, port, other, target); err != nil {
 		return err
 	}
-	sql = fmt.Sprintf("UPDATE "+t+" SET status='ONLINE', hostgroup_id='%s' WHERE hostname='%s' AND port='%s' AND hostgroup_id in ('%s','%s')", target, host, port, psql.ReaderHG, psql.WriterHG)
+	sql := fmt.Sprintf("UPDATE "+psql.table("servers")+" SET status='ONLINE', hostgroup_id='%s' WHERE hostname='%s' AND port='%s' AND hostgroup_id in ('%s','%s')", target, host, port, psql.ReaderHG, psql.WriterHG)
+	_, err := psql.Connection.Exec(sql)
+	return err
+}
+
+// dropShadowed deletes the server's row in hostgroup drop when it also has one in
+// hostgroup keep, so a following move into keep cannot hit the primary key.
+// The delete and the move are two statements, not a transaction: if the move fails
+// after the delete, the server is left with its row in keep alone, which is the state
+// the move was heading to anyway, and the caller's next tick retries the move.
+func (psql *ProxySQL) dropShadowed(host, port, drop, keep string) error {
+	t := psql.table("servers")
+	sql := fmt.Sprintf("DELETE FROM %s WHERE hostgroup_id='%s' AND hostname='%s' AND port='%s' AND EXISTS (SELECT 1 FROM %s WHERE hostgroup_id='%s' AND hostname='%s' AND port='%s')", t, drop, host, port, t, keep, host, port)
 	_, err := psql.Connection.Exec(sql)
 	return err
 }

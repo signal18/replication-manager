@@ -470,7 +470,10 @@ func (proxy *ProxySQLProxy) Refresh() error {
 				}
 				updated = true
 			} else if s.State == stateUnconn {
-				if bke.PrxStatus == "ONLINE" && isBackendWriter {
+				// Any live writer row, not only ONLINE: one ProxySQL still SHUNNED after the
+				// outage must also leave the writer hostgroup. OFFLINE_HARD is a row already
+				// removed that the connection pool still lists.
+				if isBackendWriter && bke.PrxStatus != "OFFLINE_HARD" {
 					if cluster.Conf.TopologyStaging { // Need to be dropped since standalone should not be writing in staging topology
 						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlDbg, "Monitor Non Staging ProxySQL: drop standalone in writer group from %s", s.URL)
 						err = psql.DropWriter(misc.Unbracket(s.Host), s.Port)
@@ -495,9 +498,11 @@ func (proxy *ProxySQLProxy) Refresh() error {
 							cluster.SetState("ERR00070", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00070"], err, s.URL), ErrFrom: "PRX", ServerUrl: proxy.Name})
 						}
 					} else {
-						// if server is Standalone, and reader shunned it in ProxySQL
+						// if server is Standalone, and reader shunned it in ProxySQL; the reader row
+						// only: draining the writer row too would leave it OFFLINE_SOFT in the writer
+						// hostgroup, where SetOnline would not bring it back when the server is master again
 						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlInfo, "Monitor ProxySQL setting reader offline standalone server %s", s.URL)
-						err = psql.SetOfflineSoft(misc.Unbracket(s.Host), s.Port)
+						err = psql.SetReaderOfflineSoft(misc.Unbracket(s.Host), s.Port)
 						if err != nil {
 							cluster.SetState("ERR00070", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00070"], err, s.URL), ErrFrom: "PRX", ServerUrl: proxy.Name})
 						}
@@ -512,14 +517,25 @@ func (proxy *ProxySQLProxy) Refresh() error {
 				if psql.ExistAsWriterOrOffline(misc.Unbracket(s.Host), s.Port) {
 					err = psql.SetOnline(misc.Unbracket(s.Host), s.Port)
 					if err != nil {
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlErr, "Monitor ProxySQL setting online failed server %s: %s", s.URL, err.Error())
+						cluster.SetState("ERR00071", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00071"], proxy.Name, s.URL, err), ErrFrom: "PRX", ServerUrl: proxy.Name})
 					}
 				} else {
 					//scenario restart with failed leader
 					err = psql.AddServerAsWriter(misc.Unbracket(s.Host), s.Port, proxy.UseSSL())
 					if err != nil {
-						cluster.SetState("ERR00071", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00071"], proxy.Name, s.URL), ErrFrom: "PRX", ServerUrl: proxy.Name})
+						cluster.SetState("ERR00071", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00071"], proxy.Name, s.URL, err), ErrFrom: "PRX", ServerUrl: proxy.Name})
 					}
+				}
+				updated = true
+
+			} else if s.IsLeader() && isBackendWriter && bke.PrxStatus == "OFFLINE_SOFT" && !s.IsMaintenance && !cluster.IsInFailover() {
+				// The master's writer row is drained while replication-manager has no reason to:
+				// the reintroduction above ran once and failed, or something else drained it.
+				// Nothing else ever brings it back, so retry every tick until it is ONLINE.
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlInfo, "Monitor ProxySQL setting OFFLINE_SOFT master %s back online as writer", s.URL)
+				err = psql.SetOnline(misc.Unbracket(s.Host), s.Port)
+				if err != nil {
+					cluster.SetState("ERR00071", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00071"], proxy.Name, s.URL, err), ErrFrom: "PRX", ServerUrl: proxy.Name})
 				}
 				updated = true
 

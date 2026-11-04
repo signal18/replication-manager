@@ -164,3 +164,43 @@ func TestSetReaderWhenAlreadyReader(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// #2295: a recovered master whose writer row is still in the writer hostgroup
+// (OFFLINE_SOFT) while a stale offline row also exists. The offline row goes first,
+// then the writer row is set ONLINE in place, so no two identical rows are ever made.
+func TestSetOnlineWithStaleOfflineRow(t *testing.T) {
+	psql, mock := newMock(t, FlavorMySQL)
+	expectExec(mock, "DELETE FROM mysql_servers WHERE hostgroup_id='666' AND hostname='db1' AND port='3306' AND EXISTS (SELECT 1 FROM mysql_servers WHERE hostgroup_id='0' AND hostname='db1' AND port='3306')")
+	expectExec(mock, "UPDATE mysql_servers SET status='ONLINE', hostgroup_id='0' WHERE hostname='db1' AND port='3306' AND hostgroup_id in ('666','0')")
+	if err := psql.SetOnline("db1", "3306"); err != nil {
+		t.Fatal(err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// The mirror case: parking a writer whose server already has a stale offline row.
+func TestSetOfflineWithStaleOfflineRow(t *testing.T) {
+	psql, mock := newMock(t, FlavorMySQL)
+	expectExec(mock, "DELETE FROM mysql_servers WHERE hostgroup_id='666' AND hostname='db1' AND port='3306' AND EXISTS (SELECT 1 FROM mysql_servers WHERE hostgroup_id='0' AND hostname='db1' AND port='3306')")
+	expectExec(mock, "UPDATE mysql_servers SET hostgroup_id='666' WHERE hostname='db1' AND port='3306' AND hostgroup_id in ('0')")
+	if err := psql.SetOffline("db1", "3306"); err != nil {
+		t.Fatal(err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Draining a standalone's reader row leaves its writer row alone.
+func TestSetReaderOfflineSoftLeavesWriter(t *testing.T) {
+	psql, mock := newMock(t, FlavorMySQL)
+	expectExec(mock, "UPDATE mysql_servers SET status='OFFLINE_SOFT' WHERE hostname='db1' AND port='3306' AND hostgroup_id in ('1')")
+	if err := psql.SetReaderOfflineSoft("db1", "3306"); err != nil {
+		t.Fatal(err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
