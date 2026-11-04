@@ -105,7 +105,28 @@ func (r *Request) Validate() error {
 	case !r.AirGapped:
 		return fmt.Errorf("delivery to a -pull repo (registered client) is not built yet: only air-gapped requests")
 	}
+	// Never build a born-expired licence: a mis-created contract (a past or too-short term) must
+	// fail HERE, on our side, not after it ships and the client is the one who hits ERR00122. A
+	// licence valid only through a month already gone would install already expired (#2309).
+	if end, err := licenceExpiryEnd(r.URI); err == nil && !time.Now().Before(end) {
+		return fmt.Errorf("uri %q expires %s, already in the past: fix the contract term before building — a born-expired licence must never ship", r.URI, end.AddDate(0, 0, -1).Format("2006-01-02"))
+	}
 	return nil
+}
+
+// licenceExpiryEnd parses <company>.<YYYYMM>.<seat> and returns the first instant after the expiry
+// month. It mirrors plugin-licence's own parse (kept local for the build-time guardrail; folding
+// both onto one shared helper is the T2 follow-up).
+func licenceExpiryEnd(uri string) (time.Time, error) {
+	p := strings.Split(uri, ".")
+	if len(p) != 3 {
+		return time.Time{}, fmt.Errorf("uri %q is not <company>.<YYYYMM>.<seat>", uri)
+	}
+	m, err := time.Parse("200601", p[1])
+	if err != nil {
+		return time.Time{}, err
+	}
+	return m.AddDate(0, 1, 0), nil
 }
 
 // Enqueue adds a verified request; refused when the queue is full (bounded, F4).
