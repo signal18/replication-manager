@@ -107,6 +107,7 @@ var tests = []string{
 	"testConfigPersistBackupOption",
 	"testCredentialPersistTagReload",
 	"testCredentialVersionsRotation",
+	"testAppSecretVersions",
 	"testCredentialConfigRotationScheduled",
 	"testConfigCookiePushBasic",
 	"testConfigCookiePushLifecycle",
@@ -335,6 +336,10 @@ var testTargets = map[string][]TestTarget{
 	// entry, testCredentialVersionsRotationVault, is run by name on a cluster whose config enables
 	// a [[<cluster>.secret-kv]] on a Vault or OpenBao dev container.
 	"testCredentialVersionsRotation": {{FlavorTarget: []string{"mariadb", "mysql"}, ConfigVariableMustHave: map[string]string{"monitoring-secret-versioning": "true"}}},
+	// #2306: the app secrets as versions, the versioned file on. Its variant with a vault entry,
+	// testAppSecretVersionsVault, is run by name on a cluster whose config enables a
+	// [[<cluster>.secret-kv]] on a Vault or OpenBao dev container.
+	"testAppSecretVersions": {{ConfigVariableMustHave: map[string]string{"monitoring-secret-versioning": "true"}}},
 	// #2269: the config is the store (versioning off), the rotation run by the scheduler
 	"testCredentialConfigRotationScheduled": {{FlavorTarget: []string{"mariadb", "mysql"}, ConfigVariableMustSet: map[string]string{"monitoring-secret-versioning": "false", "monitoring-scheduler": "true"}}},
 	// #2295: replication-manager owns the ProxySQL rows only with bootstrap on

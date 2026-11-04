@@ -420,6 +420,8 @@ func (cluster *Cluster) secretFullPass() {
 			cluster.queueVersions(r.entry, key, []string{r.folder}, winner, true)
 		}
 	}
+	// the app secrets (#2306): never read back (rule 7), each entry gets the current value
+	cluster.queueAppSecrets()
 }
 
 func isEngineKey(key string) bool {
@@ -860,6 +862,12 @@ func (cluster *Cluster) SecretVersionsInFile(key string) ([]string, error) {
 // SecretKvRead reads key under a database server's folder in an active vault entry: for a
 // test's comparison only.
 func (cluster *Cluster) SecretKvRead(e config.SecretKvConfig, server, key string) (string, bool, error) {
+	return cluster.SecretKvReadObject(e, credstore.KindDatabases, server, key)
+}
+
+// SecretKvReadObject reads key under an object's folder (<kind>/<object>: databases/<server>,
+// apps/<app name>, ...) in an active vault entry: for a test's comparison only.
+func (cluster *Cluster) SecretKvReadObject(e config.SecretKvConfig, kind, object, key string) (string, bool, error) {
 	kv := cluster.vaultStore(e)
 	timeout := time.Duration(cluster.storeTimeout())
 	if timeout <= 0 {
@@ -871,7 +879,7 @@ func (cluster *Cluster) SecretKvRead(e config.SecretKvConfig, server, key string
 	if err != nil {
 		return "", false, err
 	}
-	it := credstore.StoreItem{Path: cluster.Conf.SecretKvFolder(e, cluster.Name) + "/" + credstore.KindDatabases + "/" + server, Key: key}
+	it := credstore.StoreItem{Path: cluster.Conf.SecretKvFolder(e, cluster.Name) + "/" + kind + "/" + object, Key: key}
 	v, found, err := kv.ReadItem(ctx, client, it, "")
 	return v.Value, found, err
 }
@@ -1049,7 +1057,9 @@ func (cluster *Cluster) reportOrchestratorSecret(object, key, value string) {
 		return
 	}
 	if object != "env" {
-		cluster.CopySecret(credstore.KindApps, object, key, value)
+		// an app secret is written where the entry holds another value only (#2306): the save
+		// already versioned it, and a provisioning that sets an unchanged value makes no version
+		cluster.queueVersions("", key, []string{credstore.KindApps + "/" + object}, cluster.selfVersion(value), true)
 		return
 	}
 	switch orchestratorSecretKind[key] {
@@ -1064,6 +1074,121 @@ func (cluster *Cluster) reportOrchestratorSecret(object, key, value string) {
 			if prx != nil && prx.GetType() == config.ConstProxySpider {
 				cluster.CopySecret(credstore.KindProxies, prx.GetName(), key, value)
 			}
+		}
+	}
+}
+
+// IsAppSecretVersionKey reports whether key is an app secret's key in the version store
+// (apps/<app name>/<key>, #2306), not a setting of the cluster's config.
+func IsAppSecretVersionKey(key string) bool {
+	return strings.HasPrefix(key, credstore.KindApps+"/")
+}
+
+// appSecretValues are an app's secrets (rule 6) by their key in the stores, each value in
+// clear: the names provisioning writes to the orchestrator and reports (rule 7), so both land
+// on apps/<app name>/<key>, plus the generated password and the database password under their
+// setting's name. Every value is decrypted with GetDecryptedEmbedded: a secret variable as
+// provisioning hands it to the container (its embedded ciphertexts too: a DSN), the others
+// whole. It decrypts only a token of a valid ciphertext's length; a value that starts with
+// hash_ without being one is kept as it is, where GetDecryptedPassword would panic on it (a
+// too short ciphertext), every save. The instance's system API key is never copied (rule 6,
+// as reportOrchestratorSecret).
+func (cluster *Cluster) appSecretValues(app *App) map[string]string {
+	out := make(map[string]string)
+	if app == nil || app.AppConfig == nil {
+		return out
+	}
+	conf := cluster.Conf
+	put := func(key, value string) {
+		if value != "" && key != "SENSOR_API_KEY" {
+			out[key] = value
+		}
+	}
+	put("app-random-password", conf.GetDecryptedEmbedded("app-random-password", app.AppConfig.AppRandomPassword))
+	put("app-db-pass", conf.GetDecryptedEmbedded("app-db-pass", app.AppConfig.AppDbPass))
+	d := app.AppConfig.Deployment
+	if d == nil {
+		return out
+	}
+	for _, v := range d.Variables {
+		if v.Type != config.VariableTypeSecret {
+			continue
+		}
+		put(v.Name, conf.GetDecryptedEmbedded(v.Name, v.Value))
+		for _, cd := range v.Conditional {
+			name := config.AgentVariableName(v.Name, cd.Agent)
+			put(name, conf.GetDecryptedEmbedded(name, cd.Value))
+		}
+	}
+	for _, gc := range d.Storages.GitClones {
+		if gc != nil {
+			put(gc.GetVariablePrefix()+config.GitVarSuffixPass, conf.GetDecryptedEmbedded(gc.Name, gc.GitPass))
+		}
+	}
+	for _, s3m := range d.Storages.S3Mounts {
+		if s3m != nil {
+			put(s3m.GetVariablePrefix()+config.S3VarSuffixSecretKey, conf.GetDecryptedEmbedded(s3m.Name, s3m.SecretKey))
+		}
+	}
+	return out
+}
+
+// versionAppSecrets makes each app secret whose value changed since its last version a new
+// version (#2227 rules 2 and 6, #2306): in the version store under apps/<app name>/<key>,
+// which this save writes to the local file, and queued to every active vault entry (written
+// there only when it holds another value). The save callback runs it, so it covers every
+// writer of an app (API, template, reset, peer import, provisioning): the version is made at
+// the save that follows the write. The value is encrypted whole: an app secret is any string,
+// never a user:password list, which EncryptSecretValue would leave partly in clear. Without the
+// key nothing is recorded (F9). Without the file, memory keeps the last two values of a key
+// (F4). A removed app or secret keeps its versions (rule 10).
+func (cluster *Cluster) versionAppSecrets() {
+	if cluster.Conf == nil || cluster.Conf.SecretKey == nil {
+		return
+	}
+	vs := cluster.versionStore()
+	fileKeeps := cluster.Conf.IsMonitoringSecretVersioningEnabled()
+	for _, app := range cluster.GetAppsCopy() {
+		if app == nil {
+			continue
+		}
+		folder := credstore.KindApps + "/" + app.Name
+		for key, plain := range cluster.appSecretValues(app) {
+			vkey := folder + "/" + key
+			// Latest decrypts with DecryptSecretValue, which splits a stored value on ',' and
+			// ':': the comparison holds because every app version is stored as one hash_<hex>
+			// token (GetEncryptedString below), never as a user:password list
+			if last, ok := vs.Latest(vkey); ok && last.Value == plain {
+				continue
+			}
+			stored := cluster.Conf.GetEncryptedString(plain)
+			if !strings.HasPrefix(stored, "hash_") || !vs.Record(vkey, stored, plain) {
+				continue
+			}
+			if !fileKeeps {
+				vs.KeepConfigValues(vkey)
+			}
+			cluster.queueVersions("", key, []string{folder}, cluster.selfVersion(plain), true)
+		}
+	}
+}
+
+// queueAppSecrets queues the current value of every app secret to every active vault entry,
+// written only where it holds another value: the full pass's part for the apps (rule 4), so an
+// entry turned on later gets them.
+func (cluster *Cluster) queueAppSecrets() {
+	vs := cluster.versionStore()
+	for _, app := range cluster.GetAppsCopy() {
+		if app == nil {
+			continue
+		}
+		folder := credstore.KindApps + "/" + app.Name
+		for key, plain := range cluster.appSecretValues(app) {
+			ver := cluster.selfVersion(plain)
+			if last, ok := vs.Latest(folder + "/" + key); ok && last.Value == plain {
+				ver = last
+			}
+			cluster.queueVersions("", key, []string{folder}, ver, true)
 		}
 	}
 }

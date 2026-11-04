@@ -1279,6 +1279,12 @@ type AgentVariable struct {
 	Value string `mapstructure:"value" toml:"value" json:"value"`
 }
 
+// AgentVariableName is the key of a variable's per-agent value in the orchestrator's secret
+// and config objects and in the credential stores: <name>@<agent>.
+func AgentVariableName(name, agent string) string {
+	return name + "@" + agent
+}
+
 type AVSlice []AgentVariable
 
 func (old AVSlice) Merge(new AVSlice, addFunc func(new AgentVariable) AgentVariable, updateFunc func(old, new AgentVariable) AgentVariable) AVSlice {

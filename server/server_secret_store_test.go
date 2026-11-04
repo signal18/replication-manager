@@ -430,3 +430,42 @@ func TestRestoreSecretStoreForClusterWithLegacyKeyPath(t *testing.T) {
 		t.Fatalf("unexpected decrypted restored value: %s", plaintext)
 	}
 }
+
+// #2306: an app secret's versions are history, never restored into the cluster's config:
+// --all leaves them out, an explicit app key is refused
+func TestRestoreSecretStoreForClusterSkipsAppSecrets(t *testing.T) {
+	root := t.TempDir()
+	clusterName := "cluster-a"
+	workingDir := filepath.Join(root, "data")
+	confDir := filepath.Join(root, "etc", "replication-manager")
+	storePath := filepath.Join(workingDir, clusterName, "secret_store.json")
+	if err := os.MkdirAll(filepath.Dir(storePath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	seedStore := []byte(`{
+	  "mail-smtp-password": [
+	    {"version": 1, "hash_value": "hash_mail_v1", "rotated_at": "2026-01-01T00:00:00Z"}
+	  ],
+	  "apps/web/APP_SECRET": [
+	    {"version": 1, "hash_value": "hash_app_v1", "rotated_at": "2026-01-01T00:00:00Z"}
+	  ]
+	}`)
+	if err := os.WriteFile(storePath, seedStore, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	repman := &ReplicationManager{Confs: map[string]config.Config{clusterName: {WorkingDir: workingDir, ConfDir: confDir}}}
+
+	if _, err := restoreSecretStoreForCluster(repman, clusterName, nil, true, "1", nil, "", false, false); err != nil {
+		t.Fatalf("restore all-secrets failed: %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(confDir, "cluster.d", clusterName+".toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), `mail-smtp-password = "hash_mail_v1"`) || strings.Contains(string(data), "APP_SECRET") || strings.Contains(string(data), "apps") {
+		t.Fatalf("restored config: %s", data)
+	}
+	if _, err := restoreSecretStoreForCluster(repman, clusterName, []string{"apps/web/APP_SECRET"}, false, "1", nil, "", true, false); err == nil {
+		t.Fatal("an app secret key was accepted for restore")
+	}
+}

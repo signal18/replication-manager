@@ -178,6 +178,12 @@ func (s *VersionStore) trim(key string, n int) {
 	}
 }
 
+// KeepConfigValues keeps the values of key a config store keeps in memory (configKeeps): the
+// bound of a secret recorded while no file keeps its versions (#2306).
+func (s *VersionStore) KeepConfigValues(key string) {
+	s.trim(key, configKeeps)
+}
+
 func (s *VersionStore) add(key, stored string, at time.Time, by int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
