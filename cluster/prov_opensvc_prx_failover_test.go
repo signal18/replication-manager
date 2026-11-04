@@ -105,6 +105,9 @@ func TestFailoverNodes(t *testing.T) {
 	if strings.Join(got, " ") != "node2 node1 node3" {
 		t.Fatalf("got %q", got)
 	}
+	if got := failoverNodes("", []string{"node1", "node2"}); strings.Join(got, " ") != "node1 node2" {
+		t.Fatalf("no agent: the lists in order, got %q", got)
+	}
 	if got := failoverNodes("", nil); len(got) != 0 {
 		t.Fatalf("no agent, no list: no node, got %q", got)
 	}

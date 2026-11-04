@@ -44,14 +44,14 @@ func (cluster *Cluster) applyProxyFailoverPlacement(svcsection map[string]map[st
 	nodes := cluster.proxyFailoverNodes(pri.GetAgent())
 	if len(nodes) < 2 {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
-			"Proxy service %s stays on %s: a single proxy needs a second agent to fail over", pri.GetName(), pri.GetAgent())
+			"Proxy service %s stays pinned on %s: a single proxy needs a second agent to fail over", pri.GetName(), pri.GetAgent())
 		return
 	}
 	movingVolume := false
 	if vol, ok := svcsection["volume#01"]; ok {
 		if poolsErr != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn,
-				"Proxy service %s stays on %s: OpenSVC pools unknown (%s)", pri.GetName(), pri.GetAgent(), poolsErr)
+				"Proxy service %s stays pinned on %s: OpenSVC pools unknown (%s)", pri.GetName(), pri.GetAgent(), poolsErr)
 			return
 		}
 		poolSet := make(map[string]opensvc.PoolInfo, len(pools))
