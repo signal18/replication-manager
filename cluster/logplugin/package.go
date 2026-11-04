@@ -27,9 +27,13 @@ type PackageManifest struct {
 	// Wire is the log plugin protocol the plugins were built for (wire.WireVersion, the
 	// wire-v<N> of the plugin publishing) and Platform their GOOS/GOARCH: license-pull
 	// refuses a package built for another replication-manager.
-	Wire     int             `json:"wire"`
-	Platform string          `json:"platform"`
-	Entries  []ManifestEntry `json:"entries"`
+	Wire     int    `json:"wire"`
+	Platform string `json:"platform"`
+	// URI is the licence of the package (<company>.<expiry YYYYMM>.<seat>), Built when it was
+	// made (RFC3339): two builds of one seat are two packages for license-pull's checksum.
+	URI     string          `json:"uri,omitempty"`
+	Built   string          `json:"built,omitempty"`
+	Entries []ManifestEntry `json:"entries"`
 }
 
 // ManifestEntry maps one file in the tar.gz to its destination under the base dir.

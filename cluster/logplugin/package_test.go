@@ -26,7 +26,7 @@ func writeTestPackage(t *testing.T, path string, entries []ManifestEntry, files 
 	for name, data := range files {
 		add(name, data)
 	}
-	man := PackageManifest{Format: "cloud18-license-package/v1", Company: "tnsi", Entries: entries}
+	man := PackageManifest{Format: "cloud18-license-package/v1", Company: "company", Entries: entries}
 	mj, _ := json.Marshal(man)
 	add("manifest.json", mj)
 	if err := tw.Close(); err != nil {
@@ -46,7 +46,7 @@ func TestExtractPackage(t *testing.T) {
 	files := map[string][]byte{
 		"plugins/plugin-demo":     []byte("BINARY"),
 		"plugins/plugin-demo.sig": []byte("SIG"),
-		"license.json":            []byte(`{"domain":"tnsi"}`),
+		"license.json":            []byte(`{"domain":"company"}`),
 		"license.sig":             []byte("LICSIG"),
 		"master.pub":              []byte("PUB"),
 	}
@@ -65,7 +65,7 @@ func TestExtractPackage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if man.Company != "tnsi" || len(man.Entries) != 5 {
+	if man.Company != "company" || len(man.Entries) != 5 {
 		t.Fatalf("manifest: %+v", man)
 	}
 	for rel, want := range files {
