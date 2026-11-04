@@ -36,9 +36,18 @@ ln -sf build/binaries/replication-manager-pro replication-manager-pro
 CFG=/etc/replication-manager/config.toml
 grep -q '^prov-orchestrator' "$CFG" 2>/dev/null || echo 'prov-orchestrator = "local"' >> "$CFG"
 ./run.sh "$@"
-# The root build owns share/plugins (the .sig dir, where license-pull re-writes each package's
-# signatures) and build/plugins (the shared plugin dir the monitor's DataDir/plugins symlinks to,
-# where license-pull copies the verified plugins). license-pull runs as the monitor's --user
-# (repman), so make both writable or every plugin is "refused" — it verifies but cannot be copied.
-chmod -R a+rwX share/plugins build/plugins 2>/dev/null || true
+# license-pull runs as the monitor's --user (repman) and writes two places the root build owns:
+#  1) the .sig dir (share/plugins) — it re-writes each package's signatures there. Not rebuilt
+#     per build, so a one-time chmod holds (ExtractPackage replaces files via unlink+create).
+chmod -R a+rwX share/plugins 2>/dev/null || true
+#  2) the shared plugin dir — run.sh symlinks DataDir/plugins -> the root-built build/plugins, and
+#     the builder RemoveAll's build/plugins every build (resetting it to root). license-pull copies
+#     the VERIFIED plugins there; as repman it cannot write a root dir, so every plugin verifies but
+#     is "refused" (not copied). Re-point DataDir/plugins to a repman-owned dir — build/plugins
+#     stays as the root build output that collectPlugins packages from.
+DATADIR=/var/lib/replication-manager
+rm -rf "$DATADIR/plugins"
+mkdir -p "$DATADIR/plugins"
+chown repman:repman "$DATADIR/plugins" 2>/dev/null || true
+chmod 0775 "$DATADIR/plugins"
 exec ./replication-manager-pro license-builder
