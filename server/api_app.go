@@ -3772,6 +3772,7 @@ func buildValidatedTempAppConfigFromTemplate(mycluster *cluster.Cluster, node *c
 		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn, "Error unmarshalling parsed template file %s: %s", templateName, err)
 		return nil, err
 	}
+	mycluster.EncryptDeploymentSecrets(tempConfig.Deployment) // template literals (#2248)
 
 	if tempConfig.Deployment != nil {
 		if resolveErrs := tempConfig.Deployment.ResolvePaths(); len(resolveErrs) > 0 {

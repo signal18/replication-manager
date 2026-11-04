@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 
+	toml "github.com/pelletier/go-toml"
 	"github.com/signal18/replication-manager/config"
 )
 
@@ -66,6 +67,12 @@ func (cluster *Cluster) ImportAppConfig(host, port, tomlContent string) error {
 		return fmt.Errorf("app config file already exists for host %q", host)
 	}
 
+	// A secret the peer holds in clear (an app it created from a template before #2248) is
+	// encrypted before the file is written: the file never holds it in clear.
+	tomlContent, err := cluster.encryptImportedSecrets(tomlContent)
+	if err != nil {
+		return err
+	}
 	if err := os.WriteFile(filePath, []byte(tomlContent), 0640); err != nil {
 		return err
 	}
@@ -131,4 +138,23 @@ func (cluster *Cluster) ImportAppConfig(host, port, tomlContent string) error {
 	}
 
 	return nil
+}
+
+// encryptImportedSecrets returns the peer's app config with its clear deployment secrets
+// encrypted (#2248). The content is the peer's toml.Marshal of its AppConfig, returned as it
+// came when nothing needs encrypting. A content that cannot be checked or written back is
+// refused rather than written with a secret in clear (F9).
+func (cluster *Cluster) encryptImportedSecrets(tomlContent string) (string, error) {
+	var appcnf config.AppConfig
+	if err := toml.Unmarshal([]byte(tomlContent), &appcnf); err != nil {
+		return "", fmt.Errorf("reading the imported app config: %w", err)
+	}
+	if !cluster.EncryptDeploymentSecrets(appcnf.Deployment) {
+		return tomlContent, nil
+	}
+	out, err := toml.Marshal(appcnf)
+	if err != nil {
+		return "", fmt.Errorf("encrypting the imported app's secrets: %w", err)
+	}
+	return string(out), nil
 }
