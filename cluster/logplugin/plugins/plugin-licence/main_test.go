@@ -18,7 +18,9 @@ func TestEvaluate(t *testing.T) {
 	}{
 		{"company.202612.1", "2026-11-01", ""},          // valid
 		{"company.202612.1", "2026-12-15", "WARN0315"},  // within 30 days of 2026-12-31
-		{"company.202612.1", "2027-01-01", "ERR00122"},  // expired
+		{"company.202612.1", "2027-01-01", "WARN0316"},  // just expired — within the 2-month grace
+		{"company.202612.1", "2027-02-28", "WARN0316"},  // still within grace (ends 2027-03-01)
+		{"company.202612.1", "2027-03-15", "ERR00122"},  // grace elapsed — enforcement
 		{"", "2026-11-01", "ERR00122"},                  // built without a URI
 		{"company.2026-12.1", "2026-11-01", "ERR00122"}, // expiry not YYYYMM
 	}

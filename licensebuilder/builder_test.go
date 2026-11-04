@@ -68,7 +68,9 @@ func TestProcess(t *testing.T) {
 		return []string{"plugin-a", "plugin-b", "plugin-licence"}, nil
 	}
 
-	r := Request{Company: "company", URI: "company.202612.1", Seat: 1, Expiry: "202612", AirGapped: true, Version: "v3.1.48"}
+	exp := time.Now().AddDate(1, 0, 0).Format("200601") // a year out, so the born-expired guardrail never ages these tests out
+	uri := "company." + exp + ".1"
+	r := Request{Company: "company", URI: uri, Seat: 1, Expiry: exp, AirGapped: true, Version: "v3.1.48"}
 	if err := r.Validate(); err != nil {
 		t.Fatal(err)
 	}
@@ -79,7 +81,7 @@ func TestProcess(t *testing.T) {
 	if licenceURI != r.URI {
 		t.Errorf("plugin-licence built with LICENCE_URI %q, want %q", licenceURI, r.URI)
 	}
-	if tested != "company.202612.1.tar.gz" || res.Package != tested || len(res.Loaded) != 3 {
+	if tested != uri+".tar.gz" || res.Package != tested || len(res.Loaded) != 3 {
 		t.Fatalf("result %+v, tested %q", res, tested)
 	}
 	for _, dir := range []string{filepath.Join(release, "build", "plugins"), filepath.Join(cfg.SourceDir, "build", "plugins")} {
@@ -106,7 +108,8 @@ func TestProcessWireMismatch(t *testing.T) {
 	fakeTree(t, filepath.Join(cfg.WorkDir, "replication-manager-v3.1.40"), "4")
 	b := New(cfg, nil)
 	b.run = func(string, []string, string, ...string) error { return nil }
-	res := Result{Request: Request{Company: "company", URI: "company.202612.1", AirGapped: true, Version: "v3.1.40", Platform: "linux/amd64"}}
+	uri := "company." + time.Now().AddDate(1, 0, 0).Format("200601") + ".1"
+	res := Result{Request: Request{Company: "company", URI: uri, AirGapped: true, Version: "v3.1.40", Platform: "linux/amd64"}}
 	if err := b.process(&res); err == nil || !strings.Contains(err.Error(), "wire") {
 		t.Fatalf("wire mismatch: err %v", err)
 	}
@@ -118,6 +121,7 @@ func TestValidate(t *testing.T) {
 		{Company: "other", URI: "company.202612.1", AirGapped: true, Version: "v1"},
 		{Company: "company", URI: "company.202612.1", AirGapped: true, Version: "../x"},
 		{Company: "company", URI: "company.202612.1", AirGapped: false, Version: "v1"},
+		{Company: "company", URI: "company.202001.1", AirGapped: true, Version: "v1"}, // born-expired: the guardrail must reject
 	} {
 		if err := r.Validate(); err == nil {
 			t.Errorf("Validate(%+v) accepted", r)
