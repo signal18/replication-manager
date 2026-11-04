@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 
+	toml "github.com/pelletier/go-toml"
 	"github.com/signal18/replication-manager/config"
 )
 
@@ -66,6 +67,12 @@ func (cluster *Cluster) ImportAppConfig(host, port, tomlContent string) error {
 		return fmt.Errorf("app config file already exists for host %q", host)
 	}
 
+	// A secret the peer holds in clear (an app it created from a template before #2248) is
+	// encrypted before the file is written: the file never holds it in clear.
+	tomlContent, err := cluster.encryptImportedSecrets(tomlContent)
+	if err != nil {
+		return err
+	}
 	if err := os.WriteFile(filePath, []byte(tomlContent), 0640); err != nil {
 		return err
 	}
@@ -106,9 +113,6 @@ func (cluster *Cluster) ImportAppConfig(host, port, tomlContent string) error {
 	// can neither renew nor revoke it. Forget it here; the saved file is rewritten below.
 	peerToken := loaded.AppAPITokenID != "" || loaded.AppAPIToken != ""
 	loaded.AppAPIToken, loaded.AppAPITokenID, loaded.AppAPITokenExpires = "", "", ""
-	// A secret the peer holds in clear (an app it created from a template before #2248) is
-	// encrypted here, and the saved file is rewritten below.
-	clearSecrets := cluster.EncryptDeploymentSecrets(loaded.Deployment)
 	cluster.Unlock()
 
 	// newAppList() locks internally, so run it outside the section above. On
@@ -125,13 +129,32 @@ func (cluster *Cluster) ImportAppConfig(host, port, tomlContent string) error {
 	if !cluster.HasAppHostPort(host, port) {
 		return fmt.Errorf("app host %q port %q was concurrently removed during import", host, port)
 	}
-	if peerToken || clearSecrets {
+	if peerToken {
 		if app := cluster.GetAppByConfig(loaded); app != nil {
 			if _, err := cluster.SaveApp(app, ""); err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn, "App %s imported: its saved config is not rewritten (peer API token, clear secrets): %s", host, err)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn, "App %s imported: the peer's API token is not removed from its saved config: %s", host, err)
 			}
 		}
 	}
 
 	return nil
+}
+
+// encryptImportedSecrets returns the peer's app config with its clear deployment secrets
+// encrypted (#2248). The content is the peer's toml.Marshal of its AppConfig, returned as it
+// came when nothing needs encrypting. A content that cannot be checked or written back is
+// refused rather than written with a secret in clear (F9).
+func (cluster *Cluster) encryptImportedSecrets(tomlContent string) (string, error) {
+	var appcnf config.AppConfig
+	if err := toml.Unmarshal([]byte(tomlContent), &appcnf); err != nil {
+		return "", fmt.Errorf("reading the imported app config: %w", err)
+	}
+	if !cluster.EncryptDeploymentSecrets(appcnf.Deployment) {
+		return tomlContent, nil
+	}
+	out, err := toml.Marshal(appcnf)
+	if err != nil {
+		return "", fmt.Errorf("encrypting the imported app's secrets: %w", err)
+	}
+	return string(out), nil
 }

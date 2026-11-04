@@ -234,3 +234,59 @@ func TestImportAppConfig_EncryptsPeerClearSecrets(t *testing.T) {
 		}
 	}
 }
+
+// TestEncryptImportedSecrets: the peer's content is written back with only its secrets
+// changed (they decrypt to the peer's values, every other field is kept), and a content with
+// nothing to encrypt is written as it came.
+func TestEncryptImportedSecrets(t *testing.T) {
+	cl := newTestClusterForAppImport(t, "c1")
+	cl.Conf.SecretKey = templateSecretsKey
+	tree, err := toml.Load(exportTOMLForImport(t, cl, "peerapp1", "8080"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	secrets, err := toml.Load(templateSecretsTOML)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tree.Set("deployment", secrets.Get("deployment"))
+	in := tree.String()
+
+	out, err := cl.encryptImportedSecrets(in)
+	if err != nil {
+		t.Fatalf("encryptImportedSecrets: %v", err)
+	}
+	var before, after config.AppConfig
+	if err := toml.Unmarshal([]byte(in), &before); err != nil {
+		t.Fatal(err)
+	}
+	if err := toml.Unmarshal([]byte(out), &after); err != nil {
+		t.Fatal(err)
+	}
+	checkDeploymentSecretsEncrypted(t, cl.Conf, after.Deployment)
+	// put the decrypted values back: the rest must be what the peer sent
+	d := after.Deployment
+	for i := range d.Variables {
+		if d.Variables[i].Type == config.VariableTypeSecret {
+			d.Variables[i].Value = cl.Conf.GetDecryptedPassword("", d.Variables[i].Value)
+			for j := range d.Variables[i].Conditional {
+				d.Variables[i].Conditional[j].Value = cl.Conf.GetDecryptedPassword("", d.Variables[i].Conditional[j].Value)
+			}
+		}
+	}
+	d.Storages.GitClones[0].GitPass = cl.Conf.GetDecryptedPassword("", d.Storages.GitClones[0].GitPass)
+	d.Storages.S3Mounts[0].SecretKey = cl.Conf.GetDecryptedPassword("", d.Storages.S3Mounts[0].SecretKey)
+	beforeTOML, _ := toml.Marshal(before)
+	afterTOML, _ := toml.Marshal(after)
+	if string(beforeTOML) != string(afterTOML) {
+		t.Fatalf("fields other than the secrets changed:\n--- peer\n%s\n--- written\n%s", beforeTOML, afterTOML)
+	}
+
+	plain := exportTOMLForImport(t, cl, "peerapp2", "8080")
+	if got, err := cl.encryptImportedSecrets(plain); err != nil || got != plain {
+		t.Fatalf("content without secrets rewritten (err %v)", err)
+	}
+	if _, err := cl.encryptImportedSecrets("not = [valid"); err == nil {
+		t.Fatalf("a content that does not parse must be refused")
+	}
+}

@@ -16,7 +16,7 @@ called on every path that copies a deployment from outside the app:
 |---|---|
 | App created from a template | `AddSeededApp`, after the parsed template is unmarshalled |
 | `settings/actions/reset-from-template` and its `/preview` | `buildValidatedTempAppConfigFromTemplate`, before the projection |
-| Peer import (`apps/peer-import/apply`) | `ImportAppConfig`, after the load; the saved file is rewritten when a value was encrypted |
+| Peer import (`apps/peer-import/apply`) | `ImportAppConfig`, on the peer's content before the file is written (`encryptImportedSecrets`): the file never holds the value in clear; a content that cannot be read back is refused |
 
 The peer import case covers an app the peer still holds in clear (created from a template
 before this change): the importer does not keep it in clear.
@@ -36,6 +36,9 @@ before this change): the importer does not keep it in clear.
     ciphertext, and provisioning (`GetDecryptedEmbedded`, same 34-digit matcher) decrypts one
     level only, so the container would get the inner ciphertext instead of the password.
   - A clear value that merely contains `hash_` (`my_hash_pw`) is encrypted.
+  - A clear value that starts with `hash_` (`hash_mypass`) cannot be told from a ciphertext and
+    stays as it is: the storage format treats any `hash_` prefix as encrypted, provisioning
+    included.
 - Without an encryption key, `GetEncryptedString` returns the value unchanged and nothing is
   reported as encrypted.
 - Provisioning is unchanged: `OpenSVCCreateAppVariableMaps` decrypts a whole `hash_…` value, as
@@ -53,5 +56,6 @@ so a template saved from an app created after this change holds ciphertext.
   whole ciphertext, encrypted empty value, bare `hash_`, clear value containing `hash_`, DSN with an
   embedded ciphertext, second pass, nil), `AddSeededApp` from a
   template with every literal, `ImportAppConfig` of a peer export holding the literals (memory
-  and saved file).
+  and the file it writes), `encryptImportedSecrets` (only the secrets change, a content without
+  secrets is written as it came, a content that does not parse is refused).
 - `server/api_app_template_secrets_test.go`: reset from a template with every literal.
