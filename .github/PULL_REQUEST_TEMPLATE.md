@@ -38,6 +38,17 @@ for a feature — not a Go unit test. State what you ran.
 - [ ] Real regtest / Docker coverage for the behavior — T13
 - [ ] No unbounded buffer/queue; producer→sink buffers are bounded + drops tracked as state — T18
 
+## Contributor License Agreement
+
+<!--
+External contributors: the CLA bot will ask you to sign by posting a comment on
+this PR; the PR cannot merge until every commit author has signed. If your
+employer owns the code you write (CPI L113-9 in France, similar rules elsewhere),
+they must also sign the Corporate CLA. Signal18 staff are exempt.
+-->
+
+- [ ] I have read and accept the [replication-manager Individual CLA v1.0](https://github.com/signal18/replication-manager/blob/develop/CLA.md), and, where my employer owns this work, it has signed the [Corporate CLA](https://github.com/signal18/replication-manager/blob/develop/CLA-CORPORATE.md) or authorised this contribution in writing
+
 <!-- The milestone is assigned by the maintainer when the fix actually lands (merged/ready), not speculatively (T12). Closing keyword above carries this PR's milestone to the issue on merge. -->
 
 > Reference: `doc/implementation/DEVELOPMENT_LAWS.md` (F1–F11 functional, T1–T25 technical).

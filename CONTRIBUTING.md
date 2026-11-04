@@ -1,31 +1,50 @@
-# Replication Manager Contributor Agreement
+# Contributing to replication-manager
 
-This Contributor Agreement (the "Agreement") is entered into between SIGNAL18 CLOUD SAS ("Maintainer") and the individual or legal entity identified below ("Contributor").
+Thank you for your interest in replication-manager. This page explains the
+legal terms that apply to contributions, and the process for submitting one.
 
-1. **Contributor Grant of License.**
+## Contributor License Agreement
 
-    a. **License Grant.** Contributor hereby grants to Maintainer a non-exclusive, worldwide, royalty-free, irrevocable license under the Contributor's copyrights, patent rights, and any other intellectual property rights with respect to the code, documentation, or any other materials contributed by the Contributor to the [Project Name] project (the "Contribution"), to reproduce, prepare derivative works of, publicly display, publicly perform, sublicense, and distribute the Contribution and such derivative works.
+replication-manager is published under the GNU General Public License,
+version 3. SIGNAL18 CLOUD SAS also distributes it under commercial terms, for
+example Cloud18 subscriptions and signed plugins. For this reason, every
+external contribution is covered by a Contributor License Agreement (CLA)
+governed by French law.
 
-    b. **License to the Public.** Contributor agrees that the Contribution will be made available to the public under the terms of the GNU General Public License, Version 3.0 ("GPL") as published by the Free Software Foundation, or any later version, and that Maintainer may sublicense the Contribution under the terms of the GPL.
+| Agreement | Who accepts it |
+|---|---|
+| [Individual CLA](CLA.md) | Every contributor |
+| [Corporate CLA](CLA-CORPORATE.md) | Your employer, if the code you write belongs to them. Under French law (CPI L113-9) and most other jurisdictions, this is usually the case for code written as part of your job. |
 
-2. **Contributor's Representations.**
+What the CLA means for you, in short:
 
-    a. **Ownership.** Contributor represents that they are the sole owner of the Contribution and have the right to grant the licenses provided in this Agreement.
+- **You keep your copyright.** You give Signal18 a non-exclusive licence. You do
+  not transfer ownership.
+- **Your contribution is published under the GPL v3.** It stays available under
+  that licence in the public repository.
+- **Signal18 may also license it under other terms,** including commercial
+  terms.
+- **Your authorship is kept** in the git history and in any author notices you
+  add.
 
-    b. **No Conflicts.** Contributor represents that the Contribution is their original work, and to their knowledge, the Contribution does not infringe the intellectual property rights of any third party and is not subject to any third-party license or agreement that would affect its use as contemplated herein.
+To accept the individual CLA, post the comment that the CLA bot asks for on
+your first pull request. The pull request cannot be merged until every commit
+author has signed. The bot records your GitHub account, the date and the CLA
+version. You only need to sign once per CLA version. Contributions are governed
+by the CLA version you accepted at the time you submitted them.
 
-3. **Miscellaneous.**
+If your employer needs to sign the corporate CLA, send the signed document to
+<contact@signal18.io> before you open your pull request.
 
-    a. **Governing Law.** This Agreement shall be governed by and construed in accordance with the laws of the French Republic.
+Signal18 employees contributing as part of their job are not required to sign
+the CLA.
 
-    b. **Entire Agreement.** This Agreement constitutes the entire understanding between the parties concerning the subject matter hereof and supersedes all prior and contemporaneous agreements, whether oral or written, between the parties relating thereto.
+## Process
 
-IN WITNESS WHEREOF, the parties hereto have executed this Contributor Agreement as of the Effective Date.
+1. Open a GitHub issue, or find an existing one, that describes the problem or
+   the feature.
+2. Create a branch from `develop` and open a pull request against `develop`.
+3. Fill in the pull request template, including the issue link and the CLA box.
 
-**Maintainer:**
-SIGNAL18 CLOUD SAS
-contact@signal18.io
-
-**Contributor:**
-[Contributor's Full Name or Legal Entity Name]
-[Contributor's Contact Information]
+The engineering rules for changes are in
+[doc/implementation/DEVELOPMENT_LAWS.md](doc/implementation/DEVELOPMENT_LAWS.md).
