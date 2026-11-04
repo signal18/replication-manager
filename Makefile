@@ -95,7 +95,9 @@ emb:
 #         make plugins GOOS=linux GOARCH=amd64
 
 PLUGIN_SRC_DIRS := $(shell find cluster/logplugin/plugins -mindepth 2 -maxdepth 2 -name "main.go" -exec dirname {} \; 2>/dev/null)
-PLUGIN_NAMES    := $(notdir $(PLUGIN_SRC_DIRS))
+# plugin-licence carries one seat's licence URI: built per seat by `make plugin-licence`, never
+# by `make plugins` (a build without a URI raises ERR00122).
+PLUGIN_NAMES    := $(filter-out plugin-licence,$(notdir $(PLUGIN_SRC_DIRS)))
 # Common sources shared by all plugins — any change here triggers a full rebuild.
 PLUGIN_COMMON_SRCS := $(wildcard cluster/logplugin/*.go) $(wildcard cluster/logplugin/plugins/wire/*.go)
 PLUGIN_BINDIR   := build/plugins
@@ -218,6 +220,22 @@ plugins: $(PLUGIN_SIGNER_BIN)
 		echo "PLUGIN_PUSH not ON -- skipping publish. Publishing is opt-in and single-owner:"; \
 		echo "  only the tagged release build sets PLUGIN_PUSH=ON. All other builds skip."; \
 	fi
+
+# The licence plugin of one seat (#2309), its URI <company>.<expiry YYYYMM>.<seat> set at build
+# time so the signature covers it, then signed with the key resolved by plugin-keys.
+# Usage:  make plugin-licence LICENCE_URI=company.202612.1 [GOOS=linux GOARCH=amd64]
+.PHONY: plugin-licence
+plugin-licence: $(PLUGIN_SIGNER_BIN) plugin-keys
+	@if ! echo "$(LICENCE_URI)" | grep -Eq '^[a-z0-9][a-z0-9-]*\.[0-9]{6}\.[0-9]+$$'; then \
+		echo "ERROR: set LICENCE_URI=<company>.<YYYYMM>.<seat>"; exit 1; \
+	fi
+	@mkdir -p $(PLUGIN_BINDIR) $(PLUGIN_SIG_DIR)
+	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) \
+	  go build \
+	    --ldflags "-extldflags '-static' -w -s -X main.licenceURI=$(LICENCE_URI)" \
+	    -o $(PLUGIN_BINDIR)/plugin-licence \
+	    ./cluster/logplugin/plugins/plugin-licence/...
+	$(PLUGIN_SIGNER_BIN) sign --private-key "$(PLUGIN_SIGNING_KEY)" --sig-dir "$(PLUGIN_SIG_DIR)" $(PLUGIN_BINDIR)/plugin-licence
 
 $(PLUGIN_SIGNER_BIN):
 	@mkdir -p $(dir $(PLUGIN_SIGNER_BIN))
