@@ -1,0 +1,52 @@
+name: CLA
+
+# Contributor License Agreement check (#2318).
+# Blocks a PR until every commit author has signed CLA.md by posting the sign
+# comment below. Signatures (GitHub login, id, date, PR) are stored in
+# signatures/cla-v1.json on the unprotected `cla-signatures` branch, which is the
+# acceptance record required by CLA.md §7.1.
+#
+# Uses pull_request_target so the check also runs for fork PRs with a token that
+# can write the signature file. Safe: this workflow never checks out PR code.
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_target:
+    types: [opened, closed, synchronize]
+
+permissions:
+  actions: write
+  contents: write
+  pull-requests: write
+  statuses: write
+
+jobs:
+  cla:
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'pull_request_target' ||
+      (github.event.issue.pull_request &&
+        (github.event.comment.body == 'recheck' ||
+         github.event.comment.body == 'I have read the replication-manager CLA v1.0 and I hereby sign it.'))
+    steps:
+      - name: CLA Assistant
+        # v2.6.1, pinned by commit
+        uses: contributor-assistant/github-action@ca4a40a7d1004f18d9960b404b97e5f30a505a08
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          path-to-document: https://github.com/signal18/replication-manager/blob/develop/CLA.md
+          path-to-signatures: signatures/cla-v1.json
+          branch: cla-signatures
+          # Signal18 staff (work owned by Signal18 under CPI L113-9) and bots.
+          allowlist: tanji,svaroqui,caffeinated92,dependabot[bot],github-actions[bot],claude[bot],bot*
+          custom-pr-sign-comment: I have read the replication-manager CLA v1.0 and I hereby sign it.
+          custom-notsigned-prcomment: |
+            Thank you for your contribution. Before we can merge it, each commit author must accept the
+            [replication-manager Individual Contributor License Agreement v1.0](https://github.com/signal18/replication-manager/blob/develop/CLA.md)
+            by posting the comment below on this pull request. You keep your copyright; the CLA gives
+            SIGNAL18 CLOUD SAS a non-exclusive licence. If your employer owns the code you write, they also need to sign the
+            [Corporate CLA](https://github.com/signal18/replication-manager/blob/develop/CLA-CORPORATE.md).
+          custom-allsigned-prcomment: All contributors have signed the replication-manager CLA v1.0.
+          lock-pullrequest-aftermerge: false
