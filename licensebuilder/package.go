@@ -34,17 +34,21 @@ type ManifestItem struct {
 	Kind string `json:"kind"` // license | license-sig | seat-cert | pubkey | plugin | plugin-sig
 }
 
-// Plugin is a built plugin binary to be signed per seat and shipped in the package.
+// Plugin is a built, master-signed plugin shipped in the package. The binary and
+// its detached signature come straight from the existing Makefile / signer flow
+// (signed with the master key); the licence-builder does NOT re-sign plugins.
 type Plugin struct {
-	Name string
-	Data []byte
+	Name      string
+	Data      []byte // the compiled binary (from `make plugins` / build-sign-enterprise.sh)
+	MasterSig []byte // its detached signature, made by that flow with the master key
 }
 
-// BuildPackage produces the company licence package tar.gz: for each of the N
-// seats it derives the seat key from the master (chain), signs the seat licence,
-// and signs every plugin with that seat key; plugin binaries are shipped once and
-// each seat carries its own detached signatures. The master public key is included
-// so the instance can verify master -> seat -> licence/plugin offline.
+// BuildPackage produces the company licence package tar.gz: the master-signed
+// plugins (binary + .sig from the Makefile flow) shipped once, plus for each of
+// the N seats a per-seat licence signed by its seat key (derived from the master
+// and master-signed into a cert). The master public key is included so the
+// instance verifies the plugins (master sig) and the licences (master -> seat)
+// offline.
 func BuildPackage(masterPriv ed25519.PrivateKey, company, expiry, plan string, seats int, repmanVersion string, plugins []Plugin) ([]byte, error) {
 	if len(masterPriv) != ed25519.PrivateKeySize {
 		return nil, fmt.Errorf("master key size %d, want %d", len(masterPriv), ed25519.PrivateKeySize)
@@ -87,6 +91,11 @@ func BuildPackage(masterPriv ed25519.PrivateKey, company, expiry, plan string, s
 		if err := add("plugins/"+p.Name, p.Data, "plugins/"+p.Name, "plugin"); err != nil {
 			return nil, err
 		}
+		if len(p.MasterSig) > 0 {
+			if err := add("plugins/"+p.Name+".sig", p.MasterSig, "plugins/"+p.Name+".sig", "plugin-sig"); err != nil {
+				return nil, err
+			}
+		}
 	}
 
 	// the master public key, so the instance can verify the chain offline
@@ -118,16 +127,7 @@ func BuildPackage(masterPriv ed25519.PrivateKey, company, expiry, plan string, s
 		if err := add(base+"seat-cert.json", certJSON, "seat-cert.json", "seat-cert"); err != nil {
 			return nil, err
 		}
-		// per-seat plugin signatures
-		for _, p := range plugins {
-			psig, err := SignBlob(seatPriv, p.Data)
-			if err != nil {
-				return nil, err
-			}
-			if err := add(base+"sigs/"+p.Name+".sig", psig, "plugins/"+p.Name+".sig", "plugin-sig"); err != nil {
-				return nil, err
-			}
-		}
+		_ = seatPriv // seat key signed the licence above; plugins are master-signed, not re-signed
 	}
 
 	manJSON, err := json.MarshalIndent(man, "", "  ")
