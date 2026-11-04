@@ -2,6 +2,7 @@ package cluster
 
 import (
 	"fmt"
+	"net/mail"
 	"sort"
 	"strings"
 
@@ -36,7 +37,7 @@ type AlertRecipient struct {
 
 // GetAlertRecipients returns the addresses of an email, comma separated (issue #2313):
 // recipient.To, then, for an alert (All), every user of the cluster holding alert-mail-receiver
-// (the user name is the address) and, on Cloud18, the owner and ops addresses of the config that
+// (the user name is the address, when it parses as one) and, on Cloud18, the owner and ops addresses of the config that
 // are not users of the cluster (no user carries a grant for them). A role flag adds that role's
 // address for a message meant for that role, whatever its grants.
 func (cluster *Cluster) GetAlertRecipients(recipient AlertRecipient) string {
@@ -54,7 +55,7 @@ func (cluster *Cluster) GetAlertRecipients(recipient AlertRecipient) string {
 	users := cluster.APIUsers
 	if recipient.All {
 		for name, u := range users {
-			if u.Grants[config.GrantAlertMailReceiver] && strings.Contains(name, "@") {
+			if _, err := mail.ParseAddress(name); u.Grants[config.GrantAlertMailReceiver] && err == nil {
 				add(name)
 			}
 		}

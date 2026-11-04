@@ -17,6 +17,7 @@ func TestAlertRecipientsByGrant(t *testing.T) {
 		"alice@example.com": {User: "alice@example.com", Grants: map[string]bool{config.GrantAlertMailReceiver: true}},
 		"bob@example.com":   {User: "bob@example.com", Grants: map[string]bool{config.GrantClusterSwitchover: true}},
 		"admin":             {User: "admin", Grants: map[string]bool{config.GrantAlertMailReceiver: true}},
+		"foo@":              {User: "foo@", Grants: map[string]bool{config.GrantAlertMailReceiver: true}},
 	}
 	if got := c.GetAlertRecipients(AlertRecipient{To: c.Conf.MailTo, All: true}); got != "alice@example.com,ops@example.com" {
 		t.Fatalf("recipients %q", got)
@@ -116,6 +117,74 @@ func TestAlertMailReceiverAddUserWithout(t *testing.T) {
 	c.LoadAPIUsers()
 	if !c.APIUsers["ops@example.com"].Grants[config.GrantAlertMailReceiver] {
 		t.Fatal("added with the alert family: receives")
+	}
+}
+
+// Re-applying a role's defaults (the Cloud18 forms through AppendGrants then UpdateUser) keeps the
+// alert decision of a user already holding an alerted role; a first alerted role brings the grant.
+func TestAlertMailReceiverAppendGrantsKeepsDecision(t *testing.T) {
+	c := newTestClusterForUsers(t)
+	c.Conf.Cloud18 = true
+	c.Conf.Secrets.Set("api-credentials-external", config.Secret{Value: "ext@example.com:pw,new@example.com:pw"})
+	c.Conf.APIUsersACLAllowExternal = "ext@example.com:db show:c1:extsysops,new@example.com:show:c1:pending-extsysops"
+	c.Conf.APIUsersACLDiscardExternal = "ext@example.com:alert-mail-receiver"
+	c.LoadAPIUsers()
+	if c.APIUsers["ext@example.com"].Grants[config.GrantAlertMailReceiver] {
+		t.Fatal("fixture: the External SysOps removed the grant")
+	}
+
+	for _, name := range []string{"ext@example.com", "new@example.com"} {
+		u := c.APIUsers[name]
+		form := UserForm{Username: name, Roles: config.RoleExtSysOps, Grants: config.GetDefaultGrants(config.RoleExtSysOps)}
+		form.Grants = c.AppendGrants(form.Grants, &u)
+		form.Roles = c.AppendRoles(form.Roles, &u)
+		if err := c.UpdateUser(form, "admin", false); err != nil {
+			t.Fatal(err)
+		}
+	}
+	c.LoadAPIUsers()
+	c.SaveAcls()
+	c.LoadAPIUsers()
+	if c.APIUsers["ext@example.com"].Grants[config.GrantAlertMailReceiver] {
+		t.Fatal("the role re-applied must not undo the removal")
+	}
+	if !c.APIUsers["new@example.com"].Grants[config.GrantAlertMailReceiver] {
+		t.Fatal("a first alerted role brings the grant")
+	}
+}
+
+// A user dropped then added again (attachSelfServiceSponsor: DropUser without reload, then
+// AddSSOOnlyUser) is not stripped by the discard entry of its earlier account.
+func TestAlertMailReceiverReAddClearsStaleDiscard(t *testing.T) {
+	c := newTestClusterForUsers(t)
+	c.Conf.Cloud18 = true
+	c.Conf.Secrets.Set("api-credentials-external", config.Secret{Value: "sponsor@example.com:pw"})
+	c.Conf.APIUsersACLDiscardExternal = "sponsor@example.com:alert db"
+	c.LoadAPIUsers()
+
+	if err := c.DropUser(UserForm{Username: "sponsor@example.com"}, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.AddSSOOnlyUser(UserForm{Username: "sponsor@example.com", Roles: config.RoleSponsor, Grants: "db show alert"}, "admin", false); err != nil {
+		t.Fatal(err)
+	}
+	c.LoadAPIUsers()
+	u := c.APIUsers["sponsor@example.com"]
+	if !u.Grants[config.GrantAlertMailReceiver] || !u.Grants[config.GrantDBStart] {
+		t.Fatalf("the stale discard entry stripped the new grants: alert %v, db-start %v (discard %q)",
+			u.Grants[config.GrantAlertMailReceiver], u.Grants[config.GrantDBStart], c.Conf.APIUsersACLDiscardExternal)
+	}
+
+	// Added twice without the grant, the user has one discard entry.
+	for i := 0; i < 2; i++ {
+		c.DropUser(UserForm{Username: "sponsor@example.com"}, false)
+		if err := c.AddUser(UserForm{Username: "sponsor@example.com", Grants: "show", Password: "pw"}, "admin", false); err != nil {
+			t.Fatal(err)
+		}
+		c.LoadAPIUsers()
+	}
+	if got := c.Conf.APIUsersACLDiscardExternal; got != "sponsor@example.com:alert-mail-receiver" {
+		t.Fatalf("one discard entry per user: %q", got)
 	}
 }
 

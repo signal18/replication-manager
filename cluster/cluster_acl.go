@@ -464,7 +464,8 @@ func (cluster *Cluster) checkAPITokenIssuers() {
 }
 
 // aclsDecideGrant says whether one of a user's allow or discard lists names the grant, in full or
-// by a prefix (the rule of SetUserGrants and DiscardUserGrants).
+// by a prefix (the rule of SetUserGrants and DiscardUserGrants: any prefix, "alert" as well as
+// "a"). "*" is not special in an ACL string, so it decides nothing.
 func aclsDecideGrant(grant string, lists ...string) bool {
 	for _, list := range lists {
 		for _, acl := range strings.Fields(list) {

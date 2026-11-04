@@ -160,9 +160,9 @@ const (
 	GrantTokenCreate string = "token-create" // Can issue API tokens for own account
 	GrantTokenManage string = "token-manage" // Can list and revoke other users' tokens on the cluster
 
-	// Alert receivers (issue #2313): who gets the cluster's alerts, per user. The family is
-	// explicit: no other family's "all grants" implies it, so admin and the operators get the
-	// alerts only when they hold it.
+	// Alert receivers (issue #2313): who gets the cluster's alerts, per user. In an ACL string the
+	// family is explicit: no other family name implies it (cluster, db, ...). The role defaults
+	// whose allow list is * (GetDefaultGrants: sysops, dbops, extsysops) do include it.
 	GrantAlertMailReceiver string = "alert-mail-receiver" // Receives the cluster's alert emails
 )
 

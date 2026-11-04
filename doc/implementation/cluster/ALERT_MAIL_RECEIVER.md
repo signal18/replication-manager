@@ -12,8 +12,8 @@ A role meant every alert; a user could be added to the alerts only through `mail
 `GetAlertRecipients` (`cluster/cluster_mail.go`), for an alert (`All`):
 
 1. `mail-to`;
-2. every user of the cluster holding `alert-mail-receiver` whose name is an address (contains `@`:
-   `admin`, `system` never are);
+2. every user of the cluster holding `alert-mail-receiver` whose name is an address
+   (`net/mail.ParseAddress`: `admin`, `system` never are);
 3. on Cloud18, the owner and ops addresses of the config that are **not** users of the cluster:
    there is no user to carry a grant for them, they keep receiving as before.
 
@@ -42,9 +42,20 @@ user's ACL lists decides it (`aclsDecideGrant`: an allow or discard entry naming
 prefix of it). The next `SaveAcls` writes `alert` in the user's allow list: decided.
 
 A user added or updated without the grant gets a discard entry `user:alert-mail-receiver`
-(`alertMailDiscard`, in `addUser` and `UpdateUser`): `UpdateUser` drops the user's discard entries
-then reloads, so without it the upgrade would give the grant back at once. `SaveAcls` then writes
-the family in the discard list (`GetCompactGrants`).
+(`alertMailDiscard`): `UpdateUser` drops the user's discard entries then reloads, so without it the
+upgrade would give the grant back at once. `SaveAcls` then writes the family in the discard list
+(`GetCompactGrants`).
+
+`replaceUserDiscard` rebuilds the external discard list for both `UpdateUser` and `addUser`: the
+user's earlier entries go, its alert entry is added. In `addUser` this clears the entries of an
+earlier account of the same name: `DropUser` keeps them, and `attachSelfServiceSponsor` drops then
+re-adds the sponsor, whose new grants the stale entry would strip at the reload.
+
+The Cloud18 paths re-apply a role's default grants through `AppendGrants` (a subscription accepted,
+the External Ops forms, a DbOps set again). A user already holding an alerted role (sysops, dbops,
+extsysops, extdbops, sponsor) keeps its `alert-mail-receiver` decision there, so a removal is not
+undone; a user taking its first alerted role (a pending or quoted External Ops activated, a visitor
+made sponsor) gets the role's default, the grant.
 
 ## Not in this change
 
@@ -54,5 +65,6 @@ the user's identifier on that channel.
 ## Tests
 
 `cluster/cluster_alert_receiver_test.go`: recipients by grant with and without `mail-to`, Cloud18
-config addresses, the upgrade, a removal kept across reloads, a user added without the grant, the
-role defaults.
+config addresses, the upgrade, a removal kept across reloads, a user added without the grant, a
+role re-applied keeping the decision, a re-added user not stripped by a stale discard entry (one
+entry per user), the role defaults.
