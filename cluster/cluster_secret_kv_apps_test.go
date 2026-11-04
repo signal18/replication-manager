@@ -252,3 +252,71 @@ func TestReportOrchestratorAppSecretWritesOnChangeOnly(t *testing.T) {
 		t.Fatalf("changed value: %d versions, %v", v.Versions(path), d)
 	}
 }
+
+// A value that starts with hash_ without being a ciphertext (too short, not hex) is kept as it
+// is: reading it every save never panics, and it is versioned once (F2: the save callback
+// runs this on the monitor's path)
+func TestVersionAppSecretsMalformedHashNoPanic(t *testing.T) {
+	cl := secretKvTestCluster(t)
+	cl.Conf.MonitoringSecretVersioning = true
+	app := newTestAppForAddApp("web", "8080", "")
+	app.AppConfig.AppRandomPassword = "hash_abc"
+	app.AppConfig.AppDbPass = "hash_zz"
+	app.AppConfig.Deployment.Storages.GitClones = config.GitClones{{Name: "site", GitPass: "hash_1"}}
+	app.AppConfig.Deployment.Storages.S3Mounts = config.S3Mounts{{Name: "assets", SecretKey: "hash_abcd"}}
+	cl.Apps = []*App{app}
+	gc, s3m := app.AppConfig.Deployment.Storages.GitClones[0], app.AppConfig.Deployment.Storages.S3Mounts[0]
+	want := map[string]string{
+		"apps/web/app-random-password":                                      "hash_abc",
+		"apps/web/app-db-pass":                                              "hash_zz",
+		"apps/web/" + gc.GetVariablePrefix() + config.GitVarSuffixPass:      "hash_1",
+		"apps/web/" + s3m.GetVariablePrefix() + config.S3VarSuffixSecretKey: "hash_abcd",
+	}
+
+	for i := 0; i < 2; i++ {
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					t.Fatalf("save %d panicked: %v", i+1, r)
+				}
+			}()
+			cl.versionAppSecrets()
+		}()
+	}
+	vs := cl.versionStore()
+	for key, value := range want {
+		if n := vs.Count(key); n != 1 {
+			t.Fatalf("%s: %d versions after two saves, want 1", key, n)
+		}
+		if v, _ := vs.Latest(key); v.Value != value {
+			t.Fatalf("%s: latest %q, want the value kept as it is %q", key, v.Value, value)
+		}
+	}
+}
+
+// After the encryption key changes (offline: keygen --overwrite re-encrypts nothing), the
+// stored values decrypt to other bytes: the next save makes one version, the saves after it
+// none
+func TestVersionAppSecretsKeyChangeOneVersion(t *testing.T) {
+	cl := secretKvTestCluster(t)
+	cl.Conf.MonitoringSecretVersioning = true
+	cl.Apps = []*App{appSecretsTestApp(cl.Conf)}
+	cl.versionAppSecrets()
+	vs := cl.versionStore()
+	if n := vs.Count("apps/web/APP_SECRET"); n != 1 {
+		t.Fatalf("before the key change: %d versions", n)
+	}
+
+	cl.Conf.SecretKey = []byte("fedcba9876543210")
+	cl.versionAppSecrets()
+	after := vs.Count("apps/web/APP_SECRET")
+	if after != 2 {
+		t.Fatalf("first save after the key change: %d versions, want 2", after)
+	}
+	for i := 0; i < 3; i++ {
+		cl.versionAppSecrets()
+	}
+	if n := vs.Count("apps/web/APP_SECRET"); n != after {
+		t.Fatalf("saves after the key change kept adding versions: %d, want %d", n, after)
+	}
+}

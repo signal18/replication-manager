@@ -1087,9 +1087,12 @@ func IsAppSecretVersionKey(key string) bool {
 // appSecretValues are an app's secrets (rule 6) by their key in the stores, each value in
 // clear: the names provisioning writes to the orchestrator and reports (rule 7), so both land
 // on apps/<app name>/<key>, plus the generated password and the database password under their
-// setting's name. A secret variable is decrypted as provisioning hands it to the container
-// (its embedded ciphertexts too: a DSN), the others whole. The instance's system API key is
-// never copied (rule 6, as reportOrchestratorSecret).
+// setting's name. Every value is decrypted with GetDecryptedEmbedded: a secret variable as
+// provisioning hands it to the container (its embedded ciphertexts too: a DSN), the others
+// whole. It decrypts only a token of a valid ciphertext's length; a value that starts with
+// hash_ without being one is kept as it is, where GetDecryptedPassword would panic on it (a
+// too short ciphertext), every save. The instance's system API key is never copied (rule 6,
+// as reportOrchestratorSecret).
 func (cluster *Cluster) appSecretValues(app *App) map[string]string {
 	out := make(map[string]string)
 	if app == nil || app.AppConfig == nil {
@@ -1101,8 +1104,8 @@ func (cluster *Cluster) appSecretValues(app *App) map[string]string {
 			out[key] = value
 		}
 	}
-	put("app-random-password", conf.GetDecryptedPassword("app-random-password", app.AppConfig.AppRandomPassword))
-	put("app-db-pass", conf.GetDecryptedPassword("app-db-pass", app.AppConfig.AppDbPass))
+	put("app-random-password", conf.GetDecryptedEmbedded("app-random-password", app.AppConfig.AppRandomPassword))
+	put("app-db-pass", conf.GetDecryptedEmbedded("app-db-pass", app.AppConfig.AppDbPass))
 	d := app.AppConfig.Deployment
 	if d == nil {
 		return out
@@ -1119,12 +1122,12 @@ func (cluster *Cluster) appSecretValues(app *App) map[string]string {
 	}
 	for _, gc := range d.Storages.GitClones {
 		if gc != nil {
-			put(gc.GetVariablePrefix()+config.GitVarSuffixPass, conf.GetDecryptedPassword(gc.Name, gc.GitPass))
+			put(gc.GetVariablePrefix()+config.GitVarSuffixPass, conf.GetDecryptedEmbedded(gc.Name, gc.GitPass))
 		}
 	}
 	for _, s3m := range d.Storages.S3Mounts {
 		if s3m != nil {
-			put(s3m.GetVariablePrefix()+config.S3VarSuffixSecretKey, conf.GetDecryptedPassword(s3m.Name, s3m.SecretKey))
+			put(s3m.GetVariablePrefix()+config.S3VarSuffixSecretKey, conf.GetDecryptedEmbedded(s3m.Name, s3m.SecretKey))
 		}
 	}
 	return out
@@ -1152,6 +1155,9 @@ func (cluster *Cluster) versionAppSecrets() {
 		folder := credstore.KindApps + "/" + app.Name
 		for key, plain := range cluster.appSecretValues(app) {
 			vkey := folder + "/" + key
+			// Latest decrypts with DecryptSecretValue, which splits a stored value on ',' and
+			// ':': the comparison holds because every app version is stored as one hash_<hex>
+			// token (GetEncryptedString below), never as a user:password list
 			if last, ok := vs.Latest(vkey); ok && last.Value == plain {
 				continue
 			}
