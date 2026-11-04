@@ -371,6 +371,13 @@ func (cluster *Cluster) isActiveArbitration() bool {
 	if !cluster.Conf.Arbitration {
 		return true
 	}
+	// Cloud18 enterprise licence expired (#2309): the paid external arbitration lapses, so the
+	// failover gate proceeds as if arbitration were off — HA is never gated, only the arbitrated
+	// split-brain tiebreaker is lost (the standby monitor is paused separately so two un-arbitrated
+	// repman cannot both act).
+	if cluster.LicenseExpired {
+		return true
+	}
 	// Split-brain simulator: arbitrator link cut — cannot confirm we are the winner, so the
 	// failover gate must fail (fail-safe: no promotion when isolated).
 	if cluster.IsArbitratorFailureSimulated() {

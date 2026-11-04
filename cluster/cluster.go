@@ -155,6 +155,8 @@ type Cluster struct {
 	IsValidRejoinBackupLogical   bool                `json:"isValidRejoinBackupLogical" groups:"web"`
 	IsValidRejoinBackupPhysical  bool                `json:"isValidRejoinBackupPhysical" groups:"web"`
 	IsNotMonitoring              bool                `json:"isNotMonitoring" groups:"web"`
+	LicenseExpired               bool                `json:"licenseExpired" groups:"web"` // Cloud18 enterprise licence past expiry (#2309): arbitration off
+	LicensePaused                bool                `json:"-"`                           // monitoring paused by us for an expired licence (standby), vs an operator pause
 	HaveSSHKeyChecked            bool                `json:"-"`
 	IsCapturing                  bool                `json:"isCapturing" groups:"web"`
 	IsGitPull                    bool                `json:"isGitPull" groups:"web"`
