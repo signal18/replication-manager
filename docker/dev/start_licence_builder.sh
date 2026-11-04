@@ -17,7 +17,11 @@ cd "$WORKDIR"
 # run.sh's monitor build and the builder's own per-version `make plugins` (it inherits the
 # environment). A newer toolchain builds older go.mod directives, so this is a safe floor;
 # bump it with the repo's Go line. The toolchain is already in the image's module cache.
-export GOTOOLCHAIN=${GOTOOLCHAIN:-go1.26.10}
+# The image sets GOTOOLCHAIN=local (non-empty), so override that explicitly; respect only a
+# deliberate non-"local" value an operator may have set.
+if [ -z "$GOTOOLCHAIN" ] || [ "$GOTOOLCHAIN" = "local" ]; then
+	export GOTOOLCHAIN=go1.26.10
+fi
 for s in run.sh stop.sh restart.sh wait.sh; do
 	[ -e "$s" ] || ln -s "docker/dev/$s" "$s"
 done
