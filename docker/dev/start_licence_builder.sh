@@ -12,6 +12,12 @@
 set -e
 WORKDIR=/go/src/github.com/signal18/replication-manager
 cd "$WORKDIR"
+# The dev image ships Go with GOTOOLCHAIN=local, which refuses the newer toolchain some
+# releases (and develop) require in go.mod. Exporting a concrete toolchain here covers both
+# run.sh's monitor build and the builder's own per-version `make plugins` (it inherits the
+# environment). A newer toolchain builds older go.mod directives, so this is a safe floor;
+# bump it with the repo's Go line. The toolchain is already in the image's module cache.
+export GOTOOLCHAIN=${GOTOOLCHAIN:-go1.26.10}
 for s in run.sh stop.sh restart.sh wait.sh; do
 	[ -e "$s" ] || ln -s "docker/dev/$s" "$s"
 done
