@@ -121,6 +121,11 @@ func ExtractPackage(tarGzPath string, baseByKind map[string]string) (*PackageMan
 		if e.Kind == "plugin" {
 			mode = 0o755 // plugin binaries must be executable for LoadPluginsFromDir
 		}
+		// Replace (unlink + create) rather than truncate in place: an existing destination may
+		// be owned by another user or read-only (e.g. a .sig the build wrote as root into a
+		// ShareDir the monitor now writes as a less-privileged user). Unlink needs only a
+		// writable directory, so the fresh file is created owned by us.
+		_ = os.Remove(full)
 		out, err := os.OpenFile(full, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, mode)
 		if err != nil {
 			return nil, err
