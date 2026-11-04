@@ -29,5 +29,11 @@ done
 # build/binaries/; a fresh clone has no WORKDIR symlink for it (dev instances carry one from an
 # earlier build). Create it now — it dangles until run.sh's make builds the target, then resolves.
 ln -sf build/binaries/replication-manager-pro replication-manager-pro
+# The beside-monitor orchestrates nothing. Force the local orchestrator in its config so it does
+# not try to load the OpenSVC cluster certificate (/etc/replication-manager/s18.p12) and fatal at
+# start. This is a scope:server setting read from the config file (the env var is not honored for
+# it). git-url-pull stays empty so license-pull is accepted.
+CFG=/etc/replication-manager/config.toml
+grep -q '^prov-orchestrator' "$CFG" 2>/dev/null || echo 'prov-orchestrator = "local"' >> "$CFG"
 ./run.sh "$@"
 exec ./replication-manager-pro license-builder
