@@ -151,6 +151,12 @@ type ReplicationManager struct {
 	// logged again at the next pull (#2233). Only syncPluginsFromPull uses it,
 	// and the git manager runs one pull at a time.
 	pullPluginRefused map[string]string `json:"-"`
+	// licensePullRefused is why the last license-pull was refused, kept as GWARN023 until
+	// the next license-pull, and licensePullChecksum the checksum of the last package loaded
+	// (#2309); licensePullMu guards both and runs one license-pull at a time.
+	licensePullMu       sync.Mutex `json:"-"`
+	licensePullRefused  string     `json:"-"`
+	licensePullChecksum string     `json:"-"`
 	//Adding default flags from AddFlags
 	CommandLineFlag             []string                    `json:"-"`
 	ConfigPathList              []string                    `json:"-"`
@@ -3344,6 +3350,7 @@ func (repman *ReplicationManager) Run() error {
 		repman.ProduceGitSupervisionStates()
 		repman.ProduceClusterAggregateStates()
 		repman.ProduceContractedCapacityState()
+		repman.ProduceLicensePullState()
 		if counter%60 == 0 {
 			repman.ProduceCloud18ConnectivityStates()
 		} else {

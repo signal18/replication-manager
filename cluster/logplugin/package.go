@@ -16,25 +16,27 @@ import (
 	"strings"
 )
 
-// A Cloud18 licence package is a tar.gz built back-office (reusing the Makefile /
-// signer flow to compile + master-sign the plugins) and delivered into the
-// instance datadir on the existing git-pull / deposit. repman EXTRACTS it here —
-// it no longer pulls the plugins from GitLab; the manifest says where each file
-// goes. Signature verification + loading stays LoadPluginsFromDir's job, against
-// the master public key repman already reads from config (PluginSigningPublicKey),
-// injected via inject.toml — so the package need only ship the plugins + licence,
-// not the key.
+// A licence package is a tar.gz of plugins signed by the Signal18 key, with settings
+// files (cloud18.toml, a cluster's inject.toml), loaded by license-pull (#2309) on a
+// replication-manager without internet access: what a git pull of its -pull repo would
+// bring. The manifest says where each file goes. Signature verification + loading stay
+// the pull's job (syncPluginsFromPull), against plugin-signing-public-key.
 type PackageManifest struct {
-	Format  string          `json:"format"`
-	Company string          `json:"company"`
-	Entries []ManifestEntry `json:"entries"`
+	Format  string `json:"format"`
+	Company string `json:"company"`
+	// Wire is the log plugin protocol the plugins were built for (wire.WireVersion, the
+	// wire-v<N> of the plugin publishing) and Platform their GOOS/GOARCH: license-pull
+	// refuses a package built for another replication-manager.
+	Wire     int             `json:"wire"`
+	Platform string          `json:"platform"`
+	Entries  []ManifestEntry `json:"entries"`
 }
 
 // ManifestEntry maps one file in the tar.gz to its destination under the base dir.
 type ManifestEntry struct {
 	Path string `json:"path"` // name inside the tar.gz
 	Dest string `json:"dest"` // relative destination under the base dir (no abs, no ..)
-	Kind string `json:"kind"` // plugin | plugin-sig | license | license-sig | pubkey
+	Kind string `json:"kind"` // plugin | plugin-sig | config | pubkey
 }
 
 // maxPackageFileBytes bounds a single extracted file (F3/F4: never extract to
@@ -63,15 +65,13 @@ func safeJoin(baseDir, dest string) (string, error) {
 
 // ExtractPackage opens the licence package tar.gz and writes each file its manifest
 // lists to its destination. baseByKind maps a manifest Kind (plugin, plugin-sig,
-// license, license-sig, pubkey) to the base directory for that kind; a file whose
-// kind has no base is skipped. This lets repman place enterprise plugin binaries
-// in the pull dir (so syncPluginsFromPull runs unchanged), their .sig where the
-// verify already looks (ShareDir/plugins), and the licence at its path — the
-// channel delivers only enterprise plugins + licences. Plugin binaries are made
-// executable. Returns the manifest. It does NOT verify or load; the caller runs
+// config, pubkey) to the base directory for that kind; a file whose kind has no base
+// is skipped. This lets repman place the plugin binaries and the settings files in
+// the pull dir (so the pull's steps run unchanged), and their .sig where the verify
+// already looks (ShareDir/plugins). Plugin binaries are made executable. Returns the manifest. It does NOT verify or load; the caller runs
 // the usual sync/verify afterwards.
 func ExtractPackage(tarGzPath string, baseByKind map[string]string) (*PackageManifest, error) {
-	man, err := readManifest(tarGzPath)
+	man, err := ReadPackageManifest(tarGzPath)
 	if err != nil {
 		return nil, err
 	}
@@ -137,7 +137,8 @@ func ExtractPackage(tarGzPath string, baseByKind map[string]string) (*PackageMan
 	return man, nil
 }
 
-func readManifest(tarGzPath string) (*PackageManifest, error) {
+// ReadPackageManifest reads the manifest.json of a package, without extracting anything.
+func ReadPackageManifest(tarGzPath string) (*PackageManifest, error) {
 	f, err := os.Open(tarGzPath)
 	if err != nil {
 		return nil, err

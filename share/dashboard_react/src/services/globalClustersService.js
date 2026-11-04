@@ -25,6 +25,7 @@ export const globalClustersService = {
   calibrateSmtGain,
   calibrateIops,
   getCloud18Identity,
+  licensePull,
   refreshAppTemplateRepo,
   getAppTemplateStructureGuide,
   register,
@@ -136,6 +137,12 @@ function calibrateSmtGain(apply = true) {
 // The Cloud18 login of this replication-manager (#2159): device login, no token ever returned
 function getCloud18Identity() {
   return getApi().get(`clusters/settings/actions/cloud18-identity`)
+}
+
+// license-pull (#2309): load from a package file in the datadir what a git pull of the -pull
+// repo would bring, for a replication-manager without internet access
+function licensePull(path) {
+  return getApi().post(`clusters/settings/actions/license-pull`, { path })
 }
 
 function reloadClustersPlanInfo(download = true) {

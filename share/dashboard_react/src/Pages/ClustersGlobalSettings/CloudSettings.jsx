@@ -25,6 +25,7 @@ import remarkGfm from 'remark-gfm'
 import SignupForm from '../../components/Auth/SignupForm'
 import { authService } from '../../services/authService'
 import Cloud18Identity from './Cloud18Identity'
+import { globalClustersService } from '../../services/globalClustersService'
 
 function CloudSettings({ config }) {
   const dispatch = useDispatch()
@@ -106,6 +107,21 @@ function CloudSettings({ config }) {
     // on the server; we need to pull that state now.
     await dispatch(getMonitoredData({}))
     setIsConnecting(false)
+  }
+
+  // license-pull (#2309): the package path, relative to the datadir or absolute
+  const [packagePath, setPackagePath] = useState('')
+  const [isLoadingPackage, setIsLoadingPackage] = useState(false)
+  const [packageResult, setPackageResult] = useState('')
+  const handleLicensePull = () => {
+    setIsLoadingPackage(true)
+    setPackageResult('')
+    globalClustersService.licensePull(packagePath)
+      .then(({ data }) => setPackageResult(data?.unchanged
+        ? 'Unchanged: this package is already loaded'
+        : `Loaded: ${(data?.loaded || []).join(', ') || 'no plugin'}${data?.refused?.length ? ` — refused: ${data.refused.join(', ')}` : ''}`))
+      .catch((e) => setPackageResult(`Refused: ${e?.response?.data || e?.message || e}`))
+      .finally(() => setIsLoadingPackage(false))
   }
 
   const handleDisconnect = async () => {
@@ -461,6 +477,7 @@ Start create an account in https://gitlab.signal18.io
   const hSubscription = `**Subscription Plan**\n\nYour Signal18 Cloud18 subscription level. Clicking **Change** verifies your registration with the CRM using your GitLab token and lets you switch plan.\n\nIf CRM is unreachable (for example behind a firewall), replication-manager can still queue known plans locally for later git-based processing.\n\n| Plan | Description |\n|------|-------------|\n| Free | Community access, config backup, basic alerting |\n| Contributing under Support | Support tickets, SLA |\n| Contributing under Support and Services | Full support + managed services |\n| Market Place Partner | Marketplace listing, revenue sharing, partner API |\n| Developer | Developer-focused self-managed plan |\n\nConfig: \`cloud18-subscription-plan\``
 
   const isConnected = !!config?.cloud18
+  const hLicensePull = `**Load licence package**\n\nFor a replication-manager without internet access: copy the package (tar.gz) you received into the datadir and give its path, relative to the datadir or absolute. The package is loaded as a git pull of the -pull repo would load it: its plugins are verified with the Signal18 key and loaded, its settings applied. The same package loaded again changes nothing. A refused package raises the GWARN023 warning.\n\nNot available when this replication-manager pulls its -pull repo (\`git-url-pull\`): the package comes through it.`
 
   // Reset URI unlock when connection is re-established (new registration completed)
   useEffect(() => {
@@ -567,6 +584,21 @@ Start create an account in https://gitlab.signal18.io
         </HStack>
       )
     },
+    ...(!config?.gitUrlPull ? [{
+      key: 'Licence package',
+      help: h(hLicensePull, 'Load licence package'),
+      value: (
+        <VStack align='flex-start' spacing={1}>
+          <HStack>
+            <Input size='sm' w='20rem' placeholder='package.tar.gz (in the datadir)' value={packagePath} onChange={(e) => setPackagePath(e.target.value)} />
+            <RMButton isLoading={isLoadingPackage} isDisabled={!packagePath.trim()} onClick={handleLicensePull} title='Load the package as a git pull would'>
+              Load
+            </RMButton>
+          </HStack>
+          {packageResult && <Text fontSize='sm'>{packageResult}</Text>}
+        </VStack>
+      )
+    }] : []),
     ...(config?.cloud18 ? [{
       key: 'Subscription',
       help: h(hSubscription, 'Subscription Plan'),

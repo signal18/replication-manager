@@ -785,6 +785,60 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/settings/actions/license-pull": {
+            "post": {
+                "description": "For a replication-manager without internet access: the package (tar.gz with a manifest.json) is read from the datadir, its files are placed where a git pull of the -pull repo puts them, then the steps of a pull run (cloud18.toml applied even when cloud18 is off, plugins verified with plugin-signing-public-key and loaded). Refused on a replication-manager that pulls its -pull repo (git-url-pull set). A refused package opens GWARN023.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "GlobalSetting"
+                ],
+                "summary": "Load a -pull package from a file (license-pull)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "path of the package, absolute or relative to the datadir",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/server.licensePullRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/server.LicensePullResult"
+                        }
+                    },
+                    "400": {
+                        "description": "Package refused",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/settings/actions/reload-clusters-plan-info": {
             "post": {
                 "description": "This endpoint reloads the cluster plan information for all clusters without reapplying plans.",
@@ -32217,6 +32271,9 @@ const docTemplate = `{
                 "provProxyServiceType": {
                     "type": "string"
                 },
+                "provProxySingleFailover": {
+                    "type": "boolean"
+                },
                 "provProxyStartFetchConfig": {
                     "type": "boolean"
                 },
@@ -33902,6 +33959,32 @@ const docTemplate = `{
                 }
             }
         },
+        "server.LicensePullResult": {
+            "type": "object",
+            "properties": {
+                "checksum": {
+                    "type": "string"
+                },
+                "loaded": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "package": {
+                    "type": "string"
+                },
+                "refused": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "unchanged": {
+                    "type": "boolean"
+                }
+            }
+        },
         "server.MeetAlertMessage": {
             "type": "object",
             "properties": {
@@ -34684,6 +34767,14 @@ const docTemplate = `{
                 "usableGwu": {
                     "description": "= capacity: the uplink has no quota",
                     "type": "number"
+                }
+            }
+        },
+        "server.licensePullRequest": {
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string"
                 }
             }
         },
