@@ -1,5 +1,5 @@
 {
-  "description": "Cloud18 licence — WARN0315, ERR00122\n\nCarries the instance's Cloud18 licence: its URI <company>.<expiry YYYYMM>.<seat> is set when the plugin is built, so the plugin's signature covers it. Delivered in the licence package (git pull of the -pull repo, or license-pull on an air-gapped instance).\n\n1. WARN0315: the licence expires within warn-days (default 30) of the end of its expiry month\n2. ERR00122: the licence has expired, or the plugin was built without a URI",
+  "description": "Cloud18 licence — WARN0315, WARN0316, ERR00122\n\nCarries the instance's Cloud18 licence: its URI <company>.<expiry YYYYMM>.<seat> is set when the plugin is built, so the plugin's signature covers it. Delivered in the licence package (git pull of the -pull repo, or license-pull on an air-gapped instance).\n\n1. WARN0315: the licence expires within warn-days (default 30) of the end of its expiry month\n2. WARN0316: the licence has expired but is within the 2-month renewal grace — full function, renew before enforcement\n3. ERR00122: the renewal grace has elapsed (or the plugin was built without a URI) — enforcement applies",
   "tier": "enterprise",
   "prerequisites": [],
   "config_keys": [
