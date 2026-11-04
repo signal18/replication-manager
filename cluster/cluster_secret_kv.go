@@ -1113,7 +1113,7 @@ func (cluster *Cluster) appSecretValues(app *App) map[string]string {
 		}
 		put(v.Name, conf.GetDecryptedEmbedded(v.Name, v.Value))
 		for _, cd := range v.Conditional {
-			name := v.Name + "@" + cd.Agent
+			name := config.AgentVariableName(v.Name, cd.Agent)
 			put(name, conf.GetDecryptedEmbedded(name, cd.Value))
 		}
 	}

@@ -1502,7 +1502,7 @@ func (cluster *Cluster) OpenSVCCreateAppVariableMaps(agent string, app *App) err
 			}
 
 			for _, cd := range v.Conditional {
-				cdname := fmt.Sprintf("%s@%s", v.Name, cd.Agent)
+				cdname := config.AgentVariableName(v.Name, cd.Agent)
 				err = svc.CreateSecretKeyValue(cluster.Name, app.Name, cdname, cluster.Conf.GetDecryptedEmbedded(cdname, cd.Value))
 				if err == nil {
 					cluster.reportOrchestratorSecret(app.Name, cdname, cluster.Conf.GetDecryptedEmbedded(cdname, cd.Value))
@@ -1520,7 +1520,7 @@ func (cluster *Cluster) OpenSVCCreateAppVariableMaps(agent string, app *App) err
 			}
 
 			for _, cd := range v.Conditional {
-				cdname := fmt.Sprintf("%s@%s", v.Name, cd.Agent)
+				cdname := config.AgentVariableName(v.Name, cd.Agent)
 				err = svc.CreateConfigKeyValue(cluster.Name, app.Name, cdname, cluster.Conf.GetDecryptedEmbedded(cdname, cd.Value))
 				if err != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add conditional key to config: %s %s ", cdname, err)
