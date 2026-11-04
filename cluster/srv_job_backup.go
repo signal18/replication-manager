@@ -2455,6 +2455,18 @@ func (server *ServerMonitor) execSplitdumpSingle(ctx context.Context, conn *sqlx
 					return wrapped
 				}
 			}
+			// MySQL 8 owns some tables of the mysql schema (the InnoDB statistics tables
+			// mysql.innodb_table_stats and mysql.innodb_index_stats) and refuses any DDL on
+			// them with ER_NO_SYSTEM_TABLE_ACCESS (3554): the DROP TABLE and CREATE TABLE a
+			// dump writes for them can never apply, and the destination's own table, created
+			// by the server for its version, is the one to keep. Gated on that error AND a
+			// DROP/CREATE TABLE statement: any other statement or error still fails the
+			// restore (the single-file restore only passed through `mysql --force`).
+			if isSystemTableAccessError(err) && isTableDDLStatement(stmt) {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlInfo,
+					"Splitdump restore kept the server's own table, %s refused by the server for %s: %s", firstLine(stmt), filepath.Base(path), err)
+				return nil
+			}
 			lastErr = err
 			if isRetryableDBError(err) {
 				continue
@@ -2467,6 +2479,24 @@ func (server *ServerMonitor) execSplitdumpSingle(ctx context.Context, conn *sqlx
 		return nil
 	}
 	return lastErr
+}
+
+// isSystemTableAccessError reports whether err is ER_NO_SYSTEM_TABLE_ACCESS (3554), the
+// error MySQL 8 raises for DDL on a table of the mysql schema the server owns ("Access to
+// system table 'mysql.innodb_index_stats' is rejected").
+func isSystemTableAccessError(err error) bool {
+	var me *mysql.MySQLError
+	if errors.As(err, &me) {
+		return me.Number == 3554
+	}
+	return false
+}
+
+// isTableDDLStatement reports whether stmt, a terminator-stripped statement without its
+// leading comments (forEachSplitdumpStatement), is a DROP TABLE or a CREATE TABLE.
+func isTableDDLStatement(stmt string) bool {
+	up := strings.ToUpper(strings.TrimSpace(stmt))
+	return strings.HasPrefix(up, "DROP TABLE ") || strings.HasPrefix(up, "CREATE TABLE ")
 }
 
 // createUserStatementInfo holds everything execSplitdumpSingle needs to
