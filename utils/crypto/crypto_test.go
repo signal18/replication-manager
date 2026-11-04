@@ -24,3 +24,16 @@ func TestEncryptDecrypt(t *testing.T) {
 		t.Fatalf("Decrypted password %s differs from initial password", p.PlainText)
 	}
 }
+
+func TestDecryptRejectsInvalidCiphertext(t *testing.T) {
+	key, err := Keygen()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, ct := range []string{"abc", "mypass", "", "00ff", "zz" + "00112233445566778899aabbccddeeff"} {
+		p := Password{Key: key, CipherText: ct}
+		if err := p.Decrypt(); err == nil {
+			t.Errorf("Decrypt(%q) returned no error", ct)
+		}
+	}
+}
