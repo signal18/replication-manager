@@ -206,6 +206,17 @@ in-process as `testCredentialPersistTagReload` does: the config the server build
 files on disk, and the chain a start builds over it with the local file
 (`Cluster.ChainAtStart`). A credential set in a config file is rotated as well (rule 9).
 
+The app secret versions (#2306) are covered by `testAppSecretVersions` (in the default list,
+`monitoring-secret-versioning` on) and `testAppSecretVersionsVault` (run by name on a cluster
+whose config enables a KV `[[<cluster>.secret-kv]]`), in `regtest/test_app_secret_versions.go`.
+Through repman's API, a monitor-only app (no plan reservation, so the test runs on any cluster)
+gets a secret variable, a per-agent value of it, a new value, then the variable and the app are
+dropped; after each save the local file holds one more version per changed secret under
+`apps/<app>/<key>`, stored as one ciphertext, an unchanged value adds none, a dropped variable
+or app keeps its versions, and with a vault entry each value is read back from
+`apps/<app>/<key>` (`Cluster.SecretKvReadObject`). Versions persist across runs (rule 10): the
+test counts from what the file holds when it starts.
+
 ### Implementation (#2227)
 
 | Piece | Where |
@@ -241,12 +252,31 @@ files on disk, and the chain a start builds over it with the local file
   its save), never into `cluster.d/<cluster>.toml`, so the config keeps its starting value;
   the other secrets go to the config file as before. `secret-store-prune` prunes a loaded
   cluster's version store (the save writes the file), offline the file as before.
-  `secret-store-copy` is unchanged (an export copy).
+  `secret-store-copy` is unchanged (an export copy). An app secret's versions
+  (`apps/<app>/<key>`) are history: `--all` leaves them out, an explicit app key is refused.
 - **Orchestrator and app writers** (rule 7): `reportOrchestratorSecret` after each
   successful OpenSVC `CreateSecretKeyValue*` and `k8sPatchSecretValues` (the root password
   under every database server, the shard proxy password under every shard proxy, an app's
   secret variables, git and S3 secrets under `apps/<app>`), and the app's generated password
-  (`apps/<app>/app-random-password`). The instance's secrets are never copied.
+  (`apps/<app>/app-random-password`). The instance's secrets are never copied. An app's
+  secrets are reported with `Compare` (#2306): written only where an entry holds another
+  value, so a provisioning that sets an unchanged value makes no vault version.
+- **App secret versions** (rules 2, 6 and 10 for apps, #2306): the save callback runs
+  `versionAppSecrets` before `ReconcileSecretVersionStore`. Each app secret whose value
+  differs from its last version becomes a new version in the version store under
+  `apps/<app name>/<key>`, written to the local file by the same save, and is queued to every
+  active vault entry with `Compare` (written only where the entry holds another value, so a
+  value provisioning already reported makes no new vault version). It covers every writer of
+  an app (API add and modify, create and reset from a template, peer import, provisioning):
+  the version is made at the save that follows the write, not at the write. The secrets
+  (`appSecretValues`): secret variables (`<name>`, a per-agent value `<name>@<agent>`), git
+  clone passwords and S3 secret keys under the names provisioning writes, `app-random-password`
+  and `app-db-pass`; never `SENSOR_API_KEY`. A value is encrypted whole (`GetEncryptedString`):
+  an app secret is any string, and `EncryptSecretValue` would leave the part before a `:` in
+  clear. Without the encryption key nothing is recorded; without the local file (versioning
+  off) memory keeps the last two values of a key. The full pass queues the current app secrets
+  too (`queueAppSecrets`), so an entry turned on later gets them. A removed app or secret keeps
+  its versions.
 - **API** (`server/api_secret_kv.go`, T6): `GET /api/clusters/{cluster}/secret-kv-list`
   (entries with `secretsSet` only, per-entry state: last write and behind/WARN0271, the
   queue's drops/WARN0272, the manifests, the copy settings, the credentials' initial source,

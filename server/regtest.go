@@ -426,6 +426,12 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 		if test.Name == "testCredentialVersionsRotationVault" {
 			res = regtest.TestCredentialVersionsRotationVault(cl, test.ConfigFile, &test)
 		}
+		if test.Name == "testAppSecretVersions" {
+			res = regtest.TestAppSecretVersions(cl, test.ConfigFile, &test)
+		}
+		if test.Name == "testAppSecretVersionsVault" {
+			res = regtest.TestAppSecretVersionsVault(cl, test.ConfigFile, &test)
+		}
 		if test.Name == "testGraphiteMetricsQueueBound" {
 			res = regtest.TestGraphiteMetricsQueueBound(cl, test.ConfigFile, &test)
 		}

@@ -291,14 +291,26 @@ func restoreSecretStoreForCluster(repman *ReplicationManager, clusterName string
 		if err != nil {
 			return secretStoreRestoreSummary{}, err
 		}
-		if len(storeKeys) == 0 {
+		// an app secret's versions (apps/<app>/<key>, #2306) are history, not a setting of
+		// the cluster's config: never restored into it
+		keys = make([]string, 0, len(storeKeys))
+		for _, key := range storeKeys {
+			if !cluster.IsAppSecretVersionKey(key) {
+				keys = append(keys, key)
+			}
+		}
+		if len(keys) == 0 {
 			return secretStoreRestoreSummary{}, fmt.Errorf("no secrets found in secret store for cluster %s", clusterName)
 		}
-		keys = storeKeys
 		selection = "all secrets from store"
 	}
 	if len(keys) == 0 {
 		return secretStoreRestoreSummary{}, fmt.Errorf("at least one key is required")
+	}
+	for _, key := range keys {
+		if cluster.IsAppSecretVersionKey(key) {
+			return secretStoreRestoreSummary{}, fmt.Errorf("%s is an app secret's version: app secrets are not restored into the cluster's config", key)
+		}
 	}
 
 	if applyRuntime {

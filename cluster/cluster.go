@@ -2230,7 +2230,9 @@ func (cluster *Cluster) SaveCallBack() error {
 		return err
 	}
 
-	// the local versioned file of the secrets, written here only (#2227 rule 2, T25)
+	// the app secrets changed since the last save become versions (#2306), then the local
+	// versioned file of the secrets, written here only (#2227 rule 2, T25)
+	cluster.versionAppSecrets()
 	versionErr := cluster.ReconcileSecretVersionStore()
 
 	has_changed := false
