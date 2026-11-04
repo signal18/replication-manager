@@ -2,6 +2,8 @@ package cluster
 
 import (
 	"fmt"
+	"net/mail"
+	"sort"
 	"strings"
 
 	"github.com/signal18/replication-manager/config"
@@ -33,48 +35,60 @@ type AlertRecipient struct {
 	All       bool
 }
 
+// GetAlertRecipients returns the addresses of an email, comma separated (issue #2313):
+// recipient.To, then, for an alert (All), every user of the cluster holding alert-mail-receiver
+// (the user name is the address, when it parses as one) and, on Cloud18, the owner and ops addresses of the config that
+// are not users of the cluster (no user carries a grant for them). A role flag adds that role's
+// address for a message meant for that role, whatever its grants.
 func (cluster *Cluster) GetAlertRecipients(recipient AlertRecipient) string {
 	list := make(map[string]struct{})
-
-	// Add initial recipients
-	for _, email := range strings.Split(recipient.To, ",") {
-		email = strings.TrimSpace(email)
-		if email != "" {
+	add := func(email string) {
+		if email = strings.TrimSpace(email); email != "" {
 			list[email] = struct{}{}
 		}
 	}
 
-	if cluster.Conf.Cloud18 {
-		if recipient.All || (recipient.SysOps && cluster.Conf.Cloud18GitUser != "") {
-			list[cluster.Conf.Cloud18GitUser] = struct{}{}
-		}
-		if recipient.All || (recipient.ExtSysOps && cluster.Conf.Cloud18ExternalSysOps != "" && cluster.Conf.Cloud18ExternalSysOps != cluster.Conf.Cloud18GitUser) {
-			list[cluster.Conf.Cloud18ExternalSysOps] = struct{}{}
-		}
-		if recipient.All || (recipient.DbOps && cluster.Conf.Cloud18DbOps != "" && cluster.Conf.Cloud18DbOps != cluster.Conf.Cloud18GitUser) {
-			list[cluster.Conf.Cloud18DbOps] = struct{}{}
-		}
-		if recipient.All || (recipient.ExtDbOps && cluster.Conf.Cloud18ExternalDbOps != "" && cluster.Conf.Cloud18ExternalDbOps != cluster.Conf.Cloud18GitUser) {
-			list[cluster.Conf.Cloud18ExternalDbOps] = struct{}{}
-		}
-		if recipient.All || recipient.Sponsor {
-			email := cluster.GetSponsorEmail()
-			if email != "" {
-				list[email] = struct{}{}
+	for _, email := range strings.Split(recipient.To, ",") {
+		add(email)
+	}
+
+	users := cluster.APIUsers
+	if recipient.All {
+		for name, u := range users {
+			if _, err := mail.ParseAddress(name); u.Grants[config.GrantAlertMailReceiver] && err == nil {
+				add(name)
 			}
 		}
 	}
 
-	// Build final recipient list
-	var to []string
-	for email := range list {
-		if email == "" {
-			continue
+	if cluster.Conf.Cloud18 {
+		// For an alert, an address that is a user of the cluster is decided by its grant above.
+		configAddress := func(email string, role bool) {
+			if email == "" {
+				return
+			}
+			if role {
+				add(email)
+				return
+			}
+			if _, isUser := users[email]; recipient.All && !isUser {
+				add(email)
+			}
 		}
-
-		to = append(to, email)
+		configAddress(cluster.Conf.Cloud18GitUser, recipient.SysOps)
+		configAddress(cluster.Conf.Cloud18ExternalSysOps, recipient.ExtSysOps)
+		configAddress(cluster.Conf.Cloud18DbOps, recipient.DbOps)
+		configAddress(cluster.Conf.Cloud18ExternalDbOps, recipient.ExtDbOps)
+		if recipient.Sponsor {
+			add(cluster.GetSponsorEmail())
+		}
 	}
 
+	to := make([]string, 0, len(list))
+	for email := range list {
+		to = append(to, email)
+	}
+	sort.Strings(to)
 	return strings.Join(to, ",")
 }
 

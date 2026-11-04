@@ -41,7 +41,7 @@ import (
 // rules below.
 
 const (
-	selfServiceSponsorGrants = "cluster-create-monitor cluster-settings cluster-delete cluster-show prov app-deployment db show proxy grant-show extrole token-create"
+	selfServiceSponsorGrants = "cluster-create-monitor cluster-settings cluster-delete cluster-show prov app-deployment db show proxy grant-show extrole token-create alert"
 )
 
 // selfServiceCapable reports whether this instance can host self-service clusters.

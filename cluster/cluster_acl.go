@@ -388,6 +388,13 @@ func (cluster *Cluster) LoadAPIUsers() error {
 			cluster.DiscardUserGrants(&newapiuser, discardACL.ACLs)
 		}
 
+		// Upgrade (issue #2313): a user who got the alert emails through a role keeps them, until
+		// an ACL of the user decides alert-mail-receiver.
+		if !aclsDecideGrant(config.GrantAlertMailReceiver, listACLs[newapiuser.User].ACLs, listDiscard[newapiuser.User].ACLs,
+			listACLsExt[newapiuser.User].ACLs, listDiscardExt[newapiuser.User].ACLs) && cluster.receivedAlertsByRole(newapiuser) {
+			newapiuser.Grants[config.GrantAlertMailReceiver] = true
+		}
+
 		// No Roles
 		visitor := true
 		for role, v := range newapiuser.Roles {
@@ -454,6 +461,46 @@ func (cluster *Cluster) checkAPITokenIssuers() {
 	}
 	cluster.ConfigStateMachine.AddState("WARN0251", state.State{ErrType: "WARNING", ErrKey: "WARN0251", ErrFrom: "CONF",
 		ErrDesc: clusterError["WARN0251"]})
+}
+
+// aclsDecideGrant says whether one of a user's allow or discard lists names the grant, in full or
+// by a prefix (the rule of SetUserGrants and DiscardUserGrants: any prefix, "alert" as well as
+// "a"). "*" is not special in an ACL string, so it decides nothing.
+func aclsDecideGrant(grant string, lists ...string) bool {
+	for _, list := range lists {
+		for _, acl := range strings.Fields(list) {
+			if strings.HasPrefix(grant, acl) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// receivedAlertsByRole says whether the alert emails went to the user through its role before
+// alert-mail-receiver (issue #2313): on Cloud18, the owner, the DbOps, the External Ops and the
+// sponsor.
+func (cluster *Cluster) receivedAlertsByRole(u APIUser) bool {
+	if !cluster.Conf.Cloud18 {
+		return false
+	}
+	switch u.User {
+	case cluster.Conf.Cloud18GitUser, cluster.Conf.Cloud18DbOps, cluster.Conf.Cloud18ExternalDbOps, cluster.Conf.Cloud18ExternalSysOps:
+		return true
+	}
+	return u.Roles[config.RoleSponsor]
+}
+
+// alertMailDiscard returns the discard entry that records "no alert email" for a user added or
+// updated with grants that do not hold alert-mail-receiver, so that the upgrade of LoadAPIUsers
+// never gives it back (issue #2313); empty when the grants hold it.
+func (cluster *Cluster) alertMailDiscard(user, grants string) string {
+	granted := APIUser{}
+	cluster.SetUserGrants(&granted, grants)
+	if granted.Grants[config.GrantAlertMailReceiver] {
+		return ""
+	}
+	return user + ":" + config.GrantAlertMailReceiver
 }
 
 // DiscardUserGrants removes a discard list from a user's grants. A full grant name

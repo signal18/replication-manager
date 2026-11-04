@@ -159,6 +159,11 @@ const (
 	// account: a machine identity must not mint or manage bearer credentials.
 	GrantTokenCreate string = "token-create" // Can issue API tokens for own account
 	GrantTokenManage string = "token-manage" // Can list and revoke other users' tokens on the cluster
+
+	// Alert receivers (issue #2313): who gets the cluster's alerts, per user. In an ACL string the
+	// family is explicit: no other family name implies it (cluster, db, ...). The role defaults
+	// whose allow list is * (GetDefaultGrants: sysops, dbops, extsysops) do include it.
+	GrantAlertMailReceiver string = "alert-mail-receiver" // Receives the cluster's alert emails
 )
 
 // GetGrantType returns the full map of all known grant identifiers.
@@ -266,6 +271,7 @@ func GetGrantType() map[string]string {
 		GrantTerminalGlobal:              GrantTerminalGlobal,
 		GrantTokenCreate:                 GrantTokenCreate,
 		GrantTokenManage:                 GrantTokenManage,
+		GrantAlertMailReceiver:           GrantAlertMailReceiver,
 	}
 }
 
@@ -508,6 +514,21 @@ func HasAllTokenGrants(grants map[string]bool) bool {
 	return true
 }
 
+func GetGrantAlert() []string {
+	return []string{
+		GrantAlertMailReceiver,
+	}
+}
+
+func HasAllAlertGrants(grants map[string]bool) bool {
+	for _, grant := range GetGrantAlert() {
+		if !grants[grant] {
+			return false
+		}
+	}
+	return true
+}
+
 func GetCompactGrants(grants map[string]bool) ([]string, []string) {
 	var compactGrants []string
 	var compactDiscardGrants []string
@@ -722,6 +743,27 @@ func GetCompactGrants(grants map[string]bool) ([]string, []string) {
 		}
 	}
 
+	// Alert
+	tmp = make([]string, 0)
+	counter = 0
+	if HasAllAlertGrants(grants) {
+		compactGrants = append(compactGrants, "alert")
+	} else {
+		for _, grant := range GetGrantAlert() {
+			if grants[grant] {
+				compactGrants = append(compactGrants, grant)
+				counter++
+			} else {
+				tmp = append(tmp, grant)
+			}
+		}
+		if counter == 0 {
+			compactDiscardGrants = append(compactDiscardGrants, "alert")
+		} else {
+			compactDiscardGrants = append(compactDiscardGrants, tmp...)
+		}
+	}
+
 	if grants["show"] {
 		compactGrants = append(compactGrants, "show")
 	} else {
@@ -775,9 +817,9 @@ func GetDefaultAllowDiscardACL(role string) (string, string) {
 	case RoleDBOps:
 		return "*", "cluster prov sales global"
 	case RoleSponsor:
-		return "db show proxy grant extrole sales-unsubscribe app token-create", ""
+		return "db show proxy grant extrole sales-unsubscribe app token-create alert", ""
 	case RoleExtDBOps:
-		return "db show proxy grant token-create", "extrole"
+		return "db show proxy grant token-create alert", "extrole"
 	default:
 		return "show", ""
 	}

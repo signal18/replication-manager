@@ -316,10 +316,40 @@ func (cluster *Cluster) FilterGrants(grants string, delegator *APIUser) string {
 	return strings.Join(allow, " ")
 }
 
+// replaceUserDiscard returns the external discard list without the user's entries, plus the entry
+// that records "no alert email" when the user's new grants do not hold alert-mail-receiver
+// (alertMailDiscard).
+func (cluster *Cluster) replaceUserDiscard(list, user, grants string) string {
+	entries := make([]string, 0)
+	for _, entry := range strings.Split(list, ",") {
+		if entry == "" {
+			continue
+		}
+		if useracl, _, _, _ := misc.SplitAcls(entry); useracl != user {
+			entries = append(entries, entry)
+		}
+	}
+	if discard := cluster.alertMailDiscard(user, grants); discard != "" {
+		entries = append(entries, discard)
+	}
+	return strings.Join(entries, ",")
+}
+
+// alertedRoles are the roles whose defaults grant alert-mail-receiver (issue #2313).
+var alertedRoles = []string{config.RoleSysOps, config.RoleDBOps, config.RoleExtSysOps, config.RoleExtDBOps, config.RoleSponsor}
+
+// AppendGrants adds a role's grants to a user's. A user already holding one of the alerted roles
+// keeps its alert-mail-receiver decision (issue #2313): re-applying role defaults (a subscription
+// accepted again, a DbOps set again) must not undo a removal; a first alerted role brings the
+// role's default.
 func (cluster *Cluster) AppendGrants(grants string, user *APIUser) string {
 	// the user may be an entry read from APIUsers: its map is the live one, readers check it
 	user.Grants = maps.Clone(user.Grants)
+	alertDecision, alerted := user.Grants[config.GrantAlertMailReceiver], slices.ContainsFunc(alertedRoles, func(r string) bool { return user.Roles[r] })
 	cluster.SetUserGrants(user, grants)
+	if alerted {
+		user.Grants[config.GrantAlertMailReceiver] = alertDecision
+	}
 	allow, _ := config.GetCompactGrants(user.Grants)
 	return strings.Join(allow, " ")
 }
@@ -408,6 +438,9 @@ func (cluster *Cluster) addUser(userform UserForm, delegator string, reloadACL b
 		} else {
 			cluster.Conf.APIUsersACLAllowExternal = cluster.Conf.APIUsersACLAllowExternal + "," + new_acl
 		}
+		// A discard entry left by an earlier account of the same name (DropUser keeps them) would
+		// strip the new grants at the reload.
+		cluster.Conf.APIUsersACLDiscardExternal = cluster.replaceUserDiscard(cluster.Conf.APIUsersACLDiscardExternal, user, grants)
 
 		if reloadACL {
 			cluster.LoadAPIUsers()
@@ -493,18 +526,7 @@ func (cluster *Cluster) UpdateUser(userform UserForm, delegator string, reloadAC
 
 		cluster.Conf.APIUsersACLAllowExternal = strings.Join(new_acls, ",")
 
-		new_acls = make([]string, 0)
-		for _, xacl := range strings.Split(xlist, ",") {
-			if xacl == "" {
-				continue
-			}
-			useracl, _, _, _ := misc.SplitAcls(xacl)
-			if useracl != user {
-				new_acls = append(new_acls, xacl)
-			}
-		}
-
-		cluster.Conf.APIUsersACLDiscardExternal = strings.Join(new_acls, ",")
+		cluster.Conf.APIUsersACLDiscardExternal = cluster.replaceUserDiscard(xlist, user, grants)
 
 		// the entry's maps are the live map's: readers check them, so they are copied first
 		auser.Grants, auser.Roles = maps.Clone(auser.Grants), maps.Clone(auser.Roles)
