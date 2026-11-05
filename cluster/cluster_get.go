@@ -813,6 +813,16 @@ func (cluster *Cluster) GetRplUser() string {
 	return user
 }
 
+// GetProxysqlUser is the ProxySQL admin login replication-manager uses, read where its password
+// is read: the proxysql-user secret, which keeps a user set at runtime (proxysql-servers-credential)
+// across a restart or a reload, else the configured user.
+func (cluster *Cluster) GetProxysqlUser() string {
+	if user := cluster.Conf.Secrets.Get("proxysql-user").Value; user != "" {
+		return user
+	}
+	return cluster.Conf.ProxysqlUser
+}
+
 func (cluster *Cluster) GetRplPass() string {
 	_, pass := misc.SplitPair(cluster.Conf.Secrets.Get("replication-credential").Value)
 	return pass

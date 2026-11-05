@@ -1161,7 +1161,7 @@ func (cluster *Cluster) CheckCredentialRotation() {
 	if cluster.HasProxyCredentialsRotation() {
 		cluster.SetClusterProxyCredentialsFromConfig()
 		if cluster.Conf.ProxysqlOn {
-			cluster.SetProxyServersCredential(cluster.Conf.ProxysqlUser+":"+cluster.Conf.Secrets.Get("proxysql-password").Value, config.ConstProxySqlproxy)
+			cluster.SetProxyServersCredential(cluster.GetProxysqlUser()+":"+cluster.Conf.Secrets.Get("proxysql-password").Value, config.ConstProxySqlproxy)
 		}
 		if cluster.Conf.MdbsProxyOn {
 			cluster.SetProxyServersCredential(cluster.Conf.Secrets.Get("shardproxy-credential").Value, config.ConstProxySpider)

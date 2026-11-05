@@ -96,7 +96,7 @@ func childProxyType(parent *cluster.Cluster) string {
 func childProxyCredential(parent *cluster.Cluster, proxyType string) (key, cred, user, confPass string) {
 	switch proxyType {
 	case config.ConstProxySqlproxy:
-		return "proxysql-servers-credential", parent.Conf.ProxysqlUser + ":" + parent.Conf.Secrets.Get("proxysql-password").Value, parent.Conf.ProxysqlUser, parent.Conf.ProxysqlPassword
+		return "proxysql-servers-credential", parent.GetProxysqlUser() + ":" + parent.Conf.Secrets.Get("proxysql-password").Value, parent.GetProxysqlUser(), parent.Conf.ProxysqlPassword
 	case config.ConstProxyMaxscale:
 		return "maxscale-servers-credential", parent.Conf.MxsUser + ":" + parent.Conf.Secrets.Get("maxscale-pass").Value, parent.Conf.MxsUser, parent.Conf.MxsPass
 	}
