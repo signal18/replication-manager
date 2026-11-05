@@ -39,7 +39,7 @@ function Configs({ selectedCluster, user }) {
           <TabItems
             key='db'
             variant='line'
-            options={['System Resources', 'Available Fragments', 'Used Fragments', 'Config Pinning', 'Scaling', 'Provision']}
+            options={['System Resources', 'Available Fragments', 'Used Fragments', 'Config Pinning', 'Scaling', 'Provisioning']}
             tabIndex={dbTab}
             onChange={setDbTab}
             tabContents={[
@@ -58,7 +58,7 @@ function Configs({ selectedCluster, user }) {
           <TabItems
             key='proxy'
             variant='line'
-            options={['System Resources', 'Available Fragments', 'Used Fragments', 'Provision']}
+            options={['System Resources', 'Available Fragments', 'Used Fragments', 'Provisioning']}
             tabIndex={proxyTab}
             onChange={setProxyTab}
             tabContents={[
