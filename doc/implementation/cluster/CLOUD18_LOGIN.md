@@ -71,8 +71,9 @@ issuer is the realm): an instance not registered to Cloud18 never trusts the rea
   (`peerLoginAsIdentity`), got from the session (`cloud18TokenFor`: the token it came with, or one
   refreshed from its `cloud18` refresh token, one refresh per token lifetime, `Cloud18LoginAccess`). The
   password is sent only when that instance refuses the token (an older release) and the session has one.
-- The instance acting as itself (#2327: a local admin entering a peer, `DynamicPeerHandler`; the MCP tools
-  as the instance, `peerLoginAs` in `instance` mode): logged in with a realm token of the account the
+- The instance acting as itself (#2327: the peer poll, `peer.PeerManager` through `SetPeerBearer`, at every
+  interval for every peer; a local admin entering a peer, `DynamicPeerHandler`; the MCP tools as the
+  instance, `peerLoginAs` in `instance` mode): logged in with a realm token of the account the
   instance is registered with (`cloud18-gitlab-user`), never with that account's password alone. Before
   #2327 the password went to the peer, which could check it only when it knew it locally (a peer
   registered with the same account) or through the realm login of a person; a peer registered with

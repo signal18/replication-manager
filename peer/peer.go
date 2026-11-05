@@ -95,6 +95,7 @@ type PeerManager struct {
 	mu                sync.RWMutex
 	PeerUser          string
 	PeerPassword      string
+	PeerBearer        func() string `json:"-"` // the instance's Cloud18 realm token (#2327), tried before the password
 	ApiURL            string
 	PeerURL           map[string]*PeerNodeStatus
 	PeerClusters      map[string]*PeerCluster
@@ -128,6 +129,12 @@ func (pm *PeerManager) SetInterval(interval int) {
 func (pm *PeerManager) SetPeerCredentials(username, password string) {
 	pm.PeerUser = username
 	pm.PeerPassword = password
+}
+
+// SetPeerBearer sets where the poll gets the instance's Cloud18 realm token (#2327): sent to a
+// peer before the password, which goes only to a peer refusing the token (an older release).
+func (pm *PeerManager) SetPeerBearer(bearer func() string) {
+	pm.PeerBearer = bearer
 }
 
 func (pm *PeerManager) SetApiPublicURL(apiURL string) {
@@ -612,7 +619,13 @@ func (pm *PeerManager) pollPeerHealth(url string) {
 		// being provisioned on the peer, a wrong password, etc. — must NOT block the
 		// health/connectivity check, which needs no token. Login only matters for
 		// richer authenticated calls (e.g. /api/clusters).
-		_ = pclient.PeerLogin(pm.PeerUser, pm.PeerPassword)
+		// The instance's realm token first (#2327): a peer that does not know the password
+		// (registered with another account) refused it at every poll and locked the account.
+		bearer := ""
+		if pm.PeerBearer != nil {
+			bearer = pm.PeerBearer()
+		}
+		_ = pclient.PeerLoginWithBearer(bearer, pm.PeerUser, pm.PeerPassword)
 	}
 	if err := pm.GetHealthStatus(pclient); err != nil {
 		pm.setNodeError(nodestat, fmt.Sprintf("failed to get health status: %s", err))
