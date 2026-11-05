@@ -2133,19 +2133,24 @@ func (conf *Config) ImmuableFlagValues() map[string]string {
 		values[k] = fmt.Sprint(v)
 	}
 	flagMapMu.RUnlock()
-	for k := range values {
-		if _, secret := conf.Secrets.Lookup(k); secret || looksLikeSecretKey(k) {
+	for k, v := range values {
+		if _, secret := conf.Secrets.Lookup(k); secret || looksLikeSecretKey(k) || urlWithPassword.MatchString(v) {
 			values[k] = SecretMask
 		}
 	}
 	return values
 }
 
-// looksLikeSecretKey: a key whose name says it holds a secret, masked even when the secret
-// registry does not know it (defence in depth for the lock tooltips).
+// urlWithPassword: a value carrying a password in a URL (scheme://user:password@host), masked
+// whatever its key.
+var urlWithPassword = regexp.MustCompile(`://[^/@\s]*:[^/@\s]*@`)
+
+// looksLikeSecretKey: a key whose name says it holds a secret (password, pass, pwd, credential,
+// secret, token, auth...), masked even when the secret registry does not know it (defence in depth
+// for the lock tooltips: over-masking is cheap).
 func looksLikeSecretKey(key string) bool {
 	k := strings.ToLower(key)
-	for _, word := range []string{"password", "credential", "secret", "token", "passphrase", "private-key", "api-key"} {
+	for _, word := range []string{"pass", "pwd", "credential", "secret", "token", "auth", "private-key", "api-key"} {
 		if strings.Contains(k, word) {
 			return true
 		}

@@ -4873,7 +4873,7 @@ func (repman *ReplicationManager) SaveDynamic() (bool, error) {
 	}
 
 	s.WriteTo(&file)
-	if err := misc.WriteFileDurable(filePath, file.Bytes(), 0666, ".default.toml-*.tmp"); err != nil {
+	if err := misc.WriteFileDurable(filePath, file.Bytes(), 0o640, ".default.toml-*.tmp"); err != nil {
 		if os.IsPermission(err) {
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "File permission denied: %s", filePath)
 		} else {

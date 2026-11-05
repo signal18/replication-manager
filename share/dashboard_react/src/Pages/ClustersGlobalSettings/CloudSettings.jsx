@@ -680,7 +680,9 @@ Start create an account in https://gitlab.signal18.io
           <RMSwitch
             confirmTitle='Confirm switch settings for cloud18-disable-for-sale?'
             onChange={() => dispatch(switchGlobalSetting({ setting: 'cloud18-disable-for-sale' }))}
-            isChecked={config?.cloud18DisableForSale}
+            // shown off when the plan does not allow it: the server ignores a value kept from a
+            // former plan, the switch must not say it hides anything
+            isChecked={forSaleOptOutAllowed && config?.cloud18DisableForSale}
             isDisabled={!forSaleOptOutAllowed}
           />
           {!forSaleOptOutAllowed && (

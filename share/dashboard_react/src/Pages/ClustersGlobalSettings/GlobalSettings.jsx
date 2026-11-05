@@ -9,6 +9,7 @@ import RMSwitch from '../../components/RMSwitch'
 import TextForm from '../../components/TextForm'
 import { TbApi } from 'react-icons/tb'
 import RMIconButton from '../../components/RMIconButton'
+import CopyToClipboard from '../../components/CopyToClipboard'
 import NumberInput from '../../components/NumberInput'
 import InterventionModal from '../../components/Modals/InterventionModal'
 import ConfirmModal from '../../components/Modals/ConfirmModal'
@@ -426,7 +427,26 @@ function GlobalSettings({ config, cards }) {
     },
   ]
 
+  // the MCP's address through the API: the public address when set, else the page's own
+  const mcpBase = (config?.apiPublicUrl || window.location.origin).replace(/\/+$/, '')
+  const mcpConnectUrl = `${mcpBase}/api/mcp/sse`
+  const hMcpConnectUrl = `**Connect URL**\n\nThe address an AI assistant (an MCP client: Claude, an IDE, a website assistant) uses to join this replication-manager, through its API:\n\n\`${mcpConnectUrl}\`\n\nThe client sends a token as \`Authorization: Bearer <token>\`: with **MCP Authentication** on, an API token of this instance (Access > API tokens), or a Cloud18 login when \`mcp-server-auth\` is \`cloud18\`.\n\nThe address is \`api-public-url\` when it is set, else the address of this page. With the \`sse\` transport, the MCP listens on its own port instead (MCP Port, MCP Advertise Address).`
+
   const mcpData = [
+    // how an AI assistant joins this repman (#2268): the MCP served by the API (transport api)
+    ...(config?.mcpTransport === 'sse'
+      ? []
+      : [
+          {
+            key: 'Connect URL',
+            help: h(hMcpConnectUrl, 'Connect URL'),
+            value: config?.mcpServer ? (
+              <CopyToClipboard text={mcpConnectUrl} textType='MCP URL' />
+            ) : (
+              <Box as='span' opacity={0.7} fontStyle='italic'>Turn MCP Server on to get the URL</Box>
+            )
+          }
+        ]),
     {
       globalSetting: 'mcp-server',
       key: 'MCP Server',

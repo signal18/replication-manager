@@ -319,7 +319,7 @@ func (cluster *Cluster) saveConfigArtifact(filePath string, content []byte, sect
 	// current credential when versioning is off (#2269): a power loss after a rotation must not
 	// bring the previous file back, nor leave it empty. The temp name does not end in .toml, so the
 	// config push never stages it.
-	if err := misc.WriteFileDurable(filePath, content, 0666, "."+filepath.Base(filePath)+"-*.tmp"); err != nil {
+	if err := misc.WriteFileDurable(filePath, content, 0o640, "."+filepath.Base(filePath)+"-*.tmp"); err != nil {
 		if os.IsPermission(err) {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "File permission denied: %s", filePath)
 		} else {

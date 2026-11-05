@@ -1275,12 +1275,16 @@ func (repman *ReplicationManager) handlerMuxReplicationManager(w http.ResponseWr
 	}
 
 	res, err = sjson.SetBytes(res, "clusters", cl)
+	if err != nil {
+		http.Error(w, "Encoding error", http.StatusInternalServerError)
+		return
+	}
 
 	// the global settings the GUI shows locked (#2268): set in the configuration file, the command
 	// line or the environment, refused by the API (immutableGlobalSetting). Each with its value in
 	// the system config, secrets masked, and only to a logged-in caller: the route also answers
 	// without a token.
-	if _, cerr := repman.GetJWTClaims(r); err == nil && cerr == nil {
+	if _, cerr := repman.GetJWTClaims(r); cerr == nil {
 		res, err = sjson.SetBytes(res, "immutableSettings", repman.Conf.ImmuableFlagValues())
 	}
 

@@ -15,6 +15,9 @@ func TestImmuableFlagValues(t *testing.T) {
 		"api-credentials":          "admin:secret",
 		"cloud18-gitlab-password":  "pass",
 		"backup-restic-aws-secret": "s3cr3t",
+		"maxscale-pass":            "mx",
+		"git-url":                  "https://user:t0ken@git.acme.example/repo.git",
+		"api-public-url":           "https://repman.acme.example",
 	}}
 	got := conf.ImmuableFlagValues()
 	want := map[string]string{
@@ -23,6 +26,9 @@ func TestImmuableFlagValues(t *testing.T) {
 		"api-credentials":          SecretMask,
 		"cloud18-gitlab-password":  SecretMask,
 		"backup-restic-aws-secret": SecretMask,
+		"maxscale-pass":            SecretMask, // "pass" in the name
+		"git-url":                  SecretMask, // a password in the URL
+		"api-public-url":           "https://repman.acme.example",
 	}
 	for k, v := range want {
 		if got[k] != v {

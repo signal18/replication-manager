@@ -221,7 +221,7 @@ function OrchestratorImages({ selectedCluster, scope }) {
       )
     },
     {
-      clusterSetting: 'prov-sphinx-img',
+      clusterSetting: 'prov-sphinx-docker-img',
       key: 'Sphinx',
       value: (
         <Dropdown
