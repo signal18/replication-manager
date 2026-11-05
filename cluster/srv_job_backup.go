@@ -5095,6 +5095,9 @@ func (server *ServerMonitor) JobBackupMyDumper(ctx context.Context, outputdir st
 	// exec.Command + Wait() would block forever, holding the backup slot (WARN0175) and blocking every
 	// later backup. The watchdog kills it when the output folder stops growing for
 	// backup-write-stall-timeout.
+	if ctx == nil { // context.WithCancel panics on a nil parent; JobBackupMysqldump guards it the same way
+		ctx = context.Background()
+	}
 	dumpCtx, dumpCancel := context.WithCancel(ctx)
 	defer dumpCancel()
 	dumpCmd := exec.CommandContext(dumpCtx, cluster.GetMyDumperPath(), myargs...)
@@ -5120,9 +5123,14 @@ func (server *ServerMonitor) JobBackupMyDumper(ctx context.Context, outputdir st
 	var stalled atomic.Bool
 	stallDone := make(chan struct{})
 	stallFired := make(chan struct{})
+	stallErr := fmt.Errorf("mydumper backup of %s stalled: no output growth for %s, aborted (hung backup volume?)", server.URL, stallTimeout)
 	// mydumper writes the dump files itself (no stream to count), so the progress the watchdog
-	// watches is the output folder's total size, polled. A stat that hangs on a dead mount simply
-	// freezes the counter — which is itself the stall the watchdog then fires on.
+	// watches is the output folder's total size, polled. A stat that hangs on a dead mount freezes
+	// the counter — which is itself the stall the watchdog then fires on — and leaks this one poller
+	// goroutine stuck in dirBytes: bounded (one per stalled backup) and the deliberate price of not
+	// blocking the monitor (F2), never unbounded growth (F3/F4). Called inline so a hung walk cannot
+	// pile up overlapping walks. Note: the watchdog fires from the start, so backup-write-stall-timeout
+	// must exceed mydumper's quiet startup (lock wait, metadata, chunk planning before the first file).
 	if stallTimeout > 0 {
 		go func() {
 			t := time.NewTicker(checkInterval)
@@ -5160,8 +5168,11 @@ func (server *ServerMonitor) JobBackupMyDumper(ctx context.Context, outputdir st
 	// leaked rather than hang the backup slot forever — as the mysqldump path does (boundedWait).
 	if stallTimeout > 0 {
 		if boundedWait(&wg, stallFired, backupStallLeakGrace) {
+			// Leaked, as the mysqldump path: a process wedged on a hard-hung mount that SIGKILL
+			// cannot free means dumpCmd.Wait() is never called and a zombie remains until the mount
+			// recovers — better than hanging the backup slot forever.
 			close(stallDone)
-			return fmt.Errorf("mydumper backup of %s stalled: no output growth for %s, aborted (hung backup volume?)", server.URL, stallTimeout)
+			return stallErr
 		}
 	} else {
 		wg.Wait()
@@ -5169,7 +5180,7 @@ func (server *ServerMonitor) JobBackupMyDumper(ctx context.Context, outputdir st
 	close(stallDone)
 	if err = dumpCmd.Wait(); err != nil {
 		if stalled.Load() {
-			return fmt.Errorf("mydumper backup of %s stalled: no output growth for %s, aborted (hung backup volume?)", server.URL, stallTimeout)
+			return stallErr
 		}
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error mydumper:  %s", err)
 		return err
