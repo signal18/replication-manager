@@ -25,8 +25,8 @@ import { useDispatch } from 'react-redux'
 // the Setup tab's sub-tabs (#2268): each a group of the cluster's settings sections, in order. The
 // Scheduler, Backup, Archive and S3 Providers settings live in the Maintenance tab.
 const SETUP_GROUPS = [
-  { name: 'General', sections: ['isGeneralOpen', 'isCredentialsOpen', 'isAlertsOpen', 'isDynamicConfigOpen', 'isCloud18Open', 'isAppTemplateRepoOpen'] },
-  { name: 'High Availability', sections: ['isRepFailOverOpen', 'isRejoinOpen', 'isRepConfigOpen', 'isProxiesOpen'] },
+  { name: 'General', sections: ['isCredentialsOpen', 'isAlertsOpen', 'isDynamicConfigOpen', 'isCloud18Open', 'isAppTemplateRepoOpen'] },
+  { name: 'High Availability', sections: ['isGeneralOpen', 'isRepFailOverOpen', 'isRejoinOpen', 'isRepConfigOpen', 'isProxiesOpen'] },
   { name: 'Collecting', sections: ['isMonitoringOpen', 'isLogsOpen', 'isGraphsOpen'] },
   { name: 'Plugins', sections: ['isPluginsOpen'] }
 ]
