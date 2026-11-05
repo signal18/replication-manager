@@ -9,6 +9,7 @@ import RMSwitch from '../../components/RMSwitch'
 import TextForm from '../../components/TextForm'
 import { TbApi } from 'react-icons/tb'
 import RMIconButton from '../../components/RMIconButton'
+import CopyToClipboard from '../../components/CopyToClipboard'
 import NumberInput from '../../components/NumberInput'
 import InterventionModal from '../../components/Modals/InterventionModal'
 import ConfirmModal from '../../components/Modals/ConfirmModal'
@@ -18,9 +19,12 @@ import modalStyles from '../../components/Modals/styles.module.scss'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { HiQuestionMarkCircle } from 'react-icons/hi'
-import AccordionComponent from '../../components/AccordionComponent'
+import SectionFrame from '../../components/SectionFrame'
 
-function GlobalSettings({ config }) {
+// cards (#2268): which of its cards to show, by title (Monitoring Units, HTTP & API, Alerts, Logs, AI
+// Assistant (MCP)); none = all. The Alerts card is shown in Cloud18 > Support.
+function GlobalSettings({ config, cards }) {
+  const showsCard = (title) => !cards || cards.includes(title)
   const dispatch = useDispatch()
   const monitor = useSelector((state) => state?.globalClusters?.monitor)
   const baseURL = useSelector((state) => state?.auth?.baseURL)
@@ -83,6 +87,7 @@ function GlobalSettings({ config }) {
 
   const generalData = [
     {
+      globalSetting: 'backup-concurrent-slots',
       key: 'Concurrent Backup Slots',
       help: h(hBackupSlots, 'Concurrent Backup Slots'),
       value: (
@@ -93,6 +98,18 @@ function GlobalSettings({ config }) {
           showConfirmModal={true}
           confirmTitle={`Confirm change 'backup-concurrent-slots' to: `}
           onConfirm={(value) => dispatch(setGlobalSetting({ setting: 'backup-concurrent-slots', value: value }))}
+        />
+      )
+    },
+    {
+      globalSetting: 'monitoring-save-config',
+      key: 'Save Config',
+      help: h(hSaveConfig, 'Save Config'),
+      value: (
+        <RMSwitch
+          confirmTitle='Confirm switch global settings for monitoring-save-config?'
+          onChange={(_v, setRefresh) => dispatch(switchGlobalSetting({ setting: 'monitoring-save-config', setRefresh }))}
+          isChecked={config?.monitoringSaveConfig}
         />
       )
     },
@@ -116,6 +133,7 @@ function GlobalSettings({ config }) {
       )
     },
     {
+      globalSetting: 'api-token-timeout',
       key: 'API Token Timeout in Hours',
       help: h(hTokenTimeout, 'API Token Timeout'),
       value: (
@@ -129,10 +147,38 @@ function GlobalSettings({ config }) {
         />
       )
     },
+    {
+      globalSetting: 'api-swagger-enabled',
+      key: 'Enable API Swagger',
+      help: h(hSwagger, 'Enable API Swagger'),
+      value: (
+        <HStack>
+          <RMSwitch
+            confirmTitle={'Confirm switch global settings for API Swagger?'}
+            onChange={(_v, setRefresh) => dispatch(switchGlobalSetting({ setting: 'api-swagger-enabled', setRefresh }))}
+            isChecked={config?.apiSwaggerEnabled}
+          />
+          { config?.apiSwaggerEnabled && (<RMIconButton icon={TbApi} onClick={() => { window.open("/api-docs/", "_blank") }} />) }
+        </HStack>
+      )
+    },
+    {
+      globalSetting: 'api-v3-server',
+      key: 'Enable API v3',
+      help: h(hApiV3, 'Enable API v3'),
+      value: (
+        <RMSwitch
+          confirmTitle={'Confirm switch global settings for API v3?'}
+          onChange={(_v, setRefresh) => dispatch(switchGlobalSetting({ setting: 'api-v3-server', setRefresh }))}
+          isChecked={config?.apiV3Server}
+        />
+      )
+    },
   ]
 
   const alertsData = [
     {
+      globalSetting: 'mail-from',
       key: 'Mail From',
       help: h(hMailFrom, 'Mail From'),
       value: (
@@ -146,6 +192,7 @@ function GlobalSettings({ config }) {
       )
     },
     {
+      globalSetting: 'mail-to',
       key: 'Mail To',
       help: h(hMailTo, 'Mail To'),
       value: (
@@ -159,6 +206,7 @@ function GlobalSettings({ config }) {
       )
     },
     {
+      globalSetting: 'mail-smtp-addr',
       key: 'Mail SMTP Address',
       help: h(hMailSmtp, 'Mail SMTP Address'),
       value: (
@@ -172,6 +220,7 @@ function GlobalSettings({ config }) {
       )
     },
     {
+      globalSetting: 'mail-smtp-user',
       key: 'Mail SMTP User',
       help: h(hMailUser, 'Mail SMTP User'),
       value: (
@@ -185,6 +234,7 @@ function GlobalSettings({ config }) {
       )
     },
     {
+      globalSetting: 'mail-smtp-password',
       key: 'Mail SMTP Password',
       help: h(hMailPass, 'Mail SMTP Password'),
       value: (
@@ -198,6 +248,7 @@ function GlobalSettings({ config }) {
       )
     },
     {
+      globalSetting: 'mail-smtp-tls-skip-verify',
       key: 'Mail SMTP TLS (Skip Verify)',
       help: h(hMailTls, 'Mail SMTP TLS'),
       value: (
@@ -209,6 +260,7 @@ function GlobalSettings({ config }) {
       )
     },
     {
+      globalSetting: 'mail-max-pool',
       key: 'Max Pool Connections',
       help: h(hMailPool, 'Max Pool Connections'),
       value: (
@@ -223,6 +275,7 @@ function GlobalSettings({ config }) {
       )
     },
     {
+      globalSetting: 'mail-timeout',
       key: 'Mail Timeout in Seconds (0 = no timeout)',
       help: h(hMailTimeout, 'Mail Timeout'),
       value: (
@@ -240,6 +293,7 @@ function GlobalSettings({ config }) {
 
   const logsData = [
     {
+      globalSetting: 'log-level-file',
       key: 'Log File Level',
       help: h(hLogFile, 'Log File Level'),
       value: (
@@ -258,6 +312,7 @@ function GlobalSettings({ config }) {
       )
     },
     {
+      globalSetting: 'log-level-git',
       key: 'Log GIT',
       help: h(hLogGit, 'Log GIT'),
       value: (
@@ -276,6 +331,7 @@ function GlobalSettings({ config }) {
       )
     },
     {
+      globalSetting: 'log-support',
       key: 'Log Support',
       help: h(hLogSupport, 'Log Support'),
       value: (
@@ -287,6 +343,7 @@ function GlobalSettings({ config }) {
       )
     },
     {
+      globalSetting: 'log-level-support',
       key: 'Log Support Level',
       help: h(hLogSupportLevel, 'Log Support Level'),
       value: (
@@ -305,6 +362,7 @@ function GlobalSettings({ config }) {
       )
     },
     {
+      globalSetting: 'log-level-stats',
       key: 'Log Stats Level',
       help: h(hLogStats, 'Log Stats Level'),
       value: (
@@ -323,6 +381,7 @@ function GlobalSettings({ config }) {
       )
     },
     {
+      globalSetting: 'log-heartbeat',
       key: 'Log HeartBeat',
       help: h(hLogHeartbeat, 'Log HeartBeat'),
       value: (
@@ -334,6 +393,7 @@ function GlobalSettings({ config }) {
       )
     },
     {
+      globalSetting: 'log-level-heartbeat',
       key: 'Log HeartBeat Level',
       help: h(hLogHeartbeatLevel, 'Log HeartBeat Level'),
       value: (
@@ -352,31 +412,7 @@ function GlobalSettings({ config }) {
       )
     },
     {
-      key: 'Enable API Swagger',
-      help: h(hSwagger, 'Enable API Swagger'),
-      value: (
-        <HStack>
-          <RMSwitch
-            confirmTitle={'Confirm switch global settings for API Swagger?'}
-            onChange={(_v, setRefresh) => dispatch(switchGlobalSetting({ setting: 'api-swagger-enabled', setRefresh }))}
-            isChecked={config?.apiSwaggerEnabled}
-          />
-          { config?.apiSwaggerEnabled && (<RMIconButton icon={TbApi} onClick={() => { window.open("/api-docs/", "_blank") }} />) }
-        </HStack>
-      )
-    },
-    {
-      key: 'Enable API v3',
-      help: h(hApiV3, 'Enable API v3'),
-      value: (
-        <RMSwitch
-          confirmTitle={'Confirm switch global settings for API v3?'}
-          onChange={(_v, setRefresh) => dispatch(switchGlobalSetting({ setting: 'api-v3-server', setRefresh }))}
-          isChecked={config?.apiV3Server}
-        />
-      )
-    },
-    {
+      globalSetting: 'monitoring-log-api-login',
       key: 'Log API Login',
       help: h(hLogApiLogin, 'Log API Login'),
       value: (
@@ -388,6 +424,7 @@ function GlobalSettings({ config }) {
       )
     },
     {
+      globalSetting: 'monitoring-log-api-login-silent-users',
       key: 'Log API Login Silent Users',
       help: h(hLogApiSilent, 'Log API Login Silent Users'),
       value: (
@@ -402,8 +439,28 @@ function GlobalSettings({ config }) {
     },
   ]
 
+  // the MCP's address through the API: the public address when set, else the page's own
+  const mcpBase = (config?.apiPublicUrl || window.location.origin).replace(/\/+$/, '')
+  const mcpConnectUrl = `${mcpBase}/api/mcp/sse`
+  const hMcpConnectUrl = `**Connect URL**\n\nThe address an AI assistant (an MCP client: Claude, an IDE, a website assistant) uses to join this replication-manager, through its API:\n\n\`${mcpConnectUrl}\`\n\nThe client sends a token as \`Authorization: Bearer <token>\`: with **MCP Authentication** on, an API token of this instance (Access > API tokens), or a Cloud18 login when \`mcp-server-auth\` is \`cloud18\`.\n\nThe address is \`api-public-url\` when it is set, else the address of this page. With the \`sse\` transport, the MCP listens on its own port instead (MCP Port, MCP Advertise Address).`
+
   const mcpData = [
+    // how an AI assistant joins this repman (#2268): the MCP served by the API (transport api)
+    ...(config?.mcpTransport === 'sse'
+      ? []
+      : [
+          {
+            key: 'Connect URL',
+            help: h(hMcpConnectUrl, 'Connect URL'),
+            value: config?.mcpServer ? (
+              <CopyToClipboard text={mcpConnectUrl} textType='MCP URL' />
+            ) : (
+              <Box as='span' opacity={0.7} fontStyle='italic'>Turn MCP Server on to get the URL</Box>
+            )
+          }
+        ]),
     {
+      globalSetting: 'mcp-server',
       key: 'MCP Server',
       help: h(hMcpServer, 'MCP Server'),
       value: (
@@ -415,6 +472,7 @@ function GlobalSettings({ config }) {
       )
     },
     {
+      globalSetting: 'mcp-auth-enabled',
       key: 'MCP Authentication',
       help: h(hMcpAuth, 'MCP Authentication'),
       value: (
@@ -426,6 +484,7 @@ function GlobalSettings({ config }) {
       )
     },
     {
+      globalSetting: 'mcp-transport',
       key: 'MCP Transport',
       help: h(hMcpTransport, 'MCP Transport'),
       value: (
@@ -437,6 +496,7 @@ function GlobalSettings({ config }) {
       )
     },
     {
+      globalSetting: 'mcp-port',
       key: 'MCP Port (sse transport)',
       help: h(hMcpPort, 'MCP Port'),
       value: (
@@ -448,6 +508,7 @@ function GlobalSettings({ config }) {
       )
     },
     {
+      globalSetting: 'mcp-bind-address',
       key: 'MCP Bind Address (sse transport)',
       help: h(hMcpPort, 'MCP Bind Address'),
       value: (
@@ -459,6 +520,7 @@ function GlobalSettings({ config }) {
       )
     },
     {
+      globalSetting: 'mcp-advertise-address',
       key: 'MCP Advertise Address (sse transport)',
       help: h(hMcpPort, 'MCP Advertise Address'),
       value: (
@@ -471,25 +533,32 @@ function GlobalSettings({ config }) {
     },
   ]
 
+  // the global Setup tabs (#2268): the monitor's own units of work, then the HTTP server and its API
+  // Save Config: an instance setting (scope server), for every cluster of this repman (#2268)
+  const hSaveConfig = `**Save Config**\n\nWhen enabled, a setting changed through the API or the GUI is written at once to the configuration files of this replication-manager (each cluster's and the instance's).\nWhen disabled, changes apply at runtime only and are lost on the next restart.\n\nAn instance setting: it applies to every cluster.\n\nConfig: \`monitoring-save-config\``
+  const MONITORING_UNITS_ROWS = ['Save Config', 'Concurrent Backup Slots', 'Global Intervention']
+  const API_LOG_ROWS = ['Log API Login', 'Log API Login Silent Users']
+  const monitoringUnitsData = generalData.filter((row) => MONITORING_UNITS_ROWS.includes(row.key))
+  const httpApiData = [
+    ...generalData.filter((row) => !MONITORING_UNITS_ROWS.includes(row.key)),
+    ...logsData.filter((row) => API_LOG_ROWS.includes(row.key))
+  ]
+
   const settingsCard = (heading, data) => (
-    <AccordionComponent
-      heading={heading}
-      headerClassName={styles.accordionHeader}
-      panelClassName={styles.accordionPanel}
-      body={
-        <Flex justify='space-between' gap='0'>
-          <TableType2 dataArray={data} className={styles.tableWithHelp} helpColumn={true} />
-        </Flex>
-      }
-    />
+    <SectionFrame title={heading}>
+      <Flex justify='space-between' gap='0'>
+        <TableType2 dataArray={data} className={styles.tableWithHelp} helpColumn={true} />
+      </Flex>
+    </SectionFrame>
   )
 
   return (
     <>
-      {settingsCard('Global Settings', generalData)}
-      {settingsCard('Alerts', alertsData)}
-      {settingsCard('Logs', logsData)}
-      {settingsCard('AI Assistant (MCP)', mcpData)}
+      {showsCard('Monitoring Units') && settingsCard('Monitoring Units', monitoringUnitsData)}
+      {showsCard('HTTP & API') && settingsCard('HTTP & API', httpApiData)}
+      {showsCard('Alerts') && settingsCard('Alerts', alertsData)}
+      {showsCard('Logs') && settingsCard('Logs', logsData.filter((row) => !API_LOG_ROWS.includes(row.key)))}
+      {showsCard('AI Assistant (MCP)') && settingsCard('AI Assistant (MCP)', mcpData)}
       <CommonModal isOpen={isCommonModalOpen} closeModal={() => setIsCommonModalOpen(false)} title={action.title} body={action.body} size='xl' />
       {isInterventionModalOpen && (
         <InterventionModal

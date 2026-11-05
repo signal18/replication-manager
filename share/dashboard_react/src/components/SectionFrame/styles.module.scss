@@ -1,0 +1,32 @@
+// a settings section in a frame, even when alone in its sub-tab (#2268): space above and on the
+// sides, a rounded border with a light shadow, the heading like the configurator's open sections.
+// Theme variables only, so the dark theme follows.
+.sectionFrame {
+  width: calc(100% - 16px);
+  margin: 12px 8px 8px 8px;
+  border: 1px solid var(--tertiary-color);
+  border-radius: 8px;
+  overflow: hidden;
+  background-color: var(--body-bg-color);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+}
+.sectionFrameTitle {
+  background-color: var(--secondary-color);
+  color: var(--white-color);
+  font-weight: bold;
+  font-size: 0.9rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 8px 16px;
+}
+.sectionFrameBody {
+  padding: 12px 16px 16px 16px;
+}
+
+// the message of a frame with nothing to set
+.sectionFrameEmpty {
+  color: var(--text-color);
+  opacity: 0.7;
+  font-style: italic;
+  padding: 4px 0;
+}

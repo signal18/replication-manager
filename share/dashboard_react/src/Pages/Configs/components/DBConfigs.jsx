@@ -90,7 +90,13 @@ function DBUSlider({ value, isDisabled, onChange, nbNodes = 1 }) {
   )
 }
 
-function DBConfigs({ selectedCluster, user }) {
+// part (#2268), the Databases tab's sub-tabs: 'resources' = System Resources (the settings);
+// 'available' / 'used' = the config fragments to add / in use; 'pinning' = Config Pinning (the
+// override files, the preserved variables); 'dynamic' = Dynamic Config. No part shows them all.
+const FRAGMENT_PARTS = ['available', 'used', 'pinning']
+function DBConfigs({ selectedCluster, user, part }) {
+  const showResources = !part || part === 'resources'
+  const showFragments = !part || FRAGMENT_PARTS.includes(part)
   const [replicationTags, setReplicationTags] = useState([])
   const [logTags, setLogsTags] = useState([])
   const [engineTags, setEngineTags] = useState([])
@@ -262,18 +268,36 @@ function DBConfigs({ selectedCluster, user }) {
     selectedCluster?.configurator?.dbServersTags
   ])
 
-  const hFetchConfig = `**Fetch Config on Start**\n\nWhen enabled (default), a database server fetches fresh configuration from replication-manager on startup.\n\nOn Kubernetes, disabling this skips that fetch entirely and starts from whatever configuration was already persisted on the server's own volume from a previous boot — nothing is re-fetched as a fallback. On other orchestrators, disabling it skips the on-start refresh the same way.\n\nThis is checked live on every startup, not baked into the server's spec at provision time — toggling it takes effect on the server's next restart.\n\nConfig: \`prov-db-start-fetch-config\``
+  const hFetchConfig = `**Pull Config On Start**\n\nWhen enabled (default), a database server fetches fresh configuration from replication-manager on startup.\n\nOn Kubernetes, disabling this skips that fetch entirely and starts from whatever configuration was already persisted on the server's own volume from a previous boot — nothing is re-fetched as a fallback. On other orchestrators, disabling it skips the on-start refresh the same way.\n\nThis is checked live on every startup, not baked into the server's spec at provision time — toggling it takes effect on the server's next restart.\n\nConfig: \`prov-db-start-fetch-config\``
   const hDynamicConfig = `**Apply Dynamic Config**\n\nWhen enabled, replication-manager applies configuration changes dynamically using \`SET GLOBAL\` statements without requiring a database restart.\n\nOnly variables that support dynamic changes are applied this way. Variables requiring a restart are written to the config file for the next restart.\n\nConfig: \`prov-db-apply-dynamic-config\``
-  const hRefreshConfig = `**Refresh Variables and DB Config**\n\nRegenerates the configuration files for all database servers in this cluster from the compliance module and the current tag selection.\n\nThis rebuilds the config tarball at \`{datadir}/config.tar.gz\` with all tag-specific cnf files merged with preserved variables and defaults.`
-  const hAutoUpdateCompliance = `**Auto-Update Compliance**\n\nThe compliance module contains replication-manager's best practices for database and proxy configuration. It defines which variables are set for each configuration tag.\n\nWhen enabled (default), compliance updates from the back office or new replication-manager releases are **applied automatically**. Your preserved variables are never overwritten — they always take priority over compliance defaults.\n\nWhen disabled, a warning (WARN0168) is raised when new compliance is available. You can review the changes (added, removed, or modified tags) and accept when ready. This is recommended for production environments where you want to review best practice changes before they take effect.\n\nConfig: \`prov-auto-update-compliance\``
+  const hRefreshConfig = `**Refresh Variables and DB Config**\n\nRegenerates the configuration files for all database servers in this cluster from the compliance module and the current config fragment selection.\n\nThis rebuilds the config tarball at \`{datadir}/config.tar.gz\` with all tag-specific cnf files merged with preserved variables and defaults.`
+  const hAutoUpdateCompliance = `**Auto-Update Compliance**\n\nThe compliance module contains replication-manager's best practices for database and proxy configuration. It defines which variables are set for each config fragment.\n\nWhen enabled (default), compliance updates from the back office or new replication-manager releases are **applied automatically**. Your preserved variables are never overwritten — they always take priority over compliance defaults.\n\nWhen disabled, a warning (WARN0168) is raised when new compliance is available. You can review the changes (added, removed, or modified config fragments) and accept when ready. This is recommended for production environments where you want to review best practice changes before they take effect.\n\nConfig: \`prov-auto-update-compliance\``
   const hAutoAgreeCompliance = `**Auto-Agree Compliance**\n\nControls what happens to a config **delta** — a variable whose value on the database differs from the compliance value — that is neither preserved (operator-forced) nor already agreed.\n\nWhen **disabled (default)**, every value delta waits for a manual review and agree in the config editor before it is written to the database. Recommended for production.\n\nWhen **enabled**, a value delta is automatically agreed to the compliance value (written to \`03_agreed.cnf\` and pushed to the database). Scoped to **value changes only** — variables that are dropped, deprecated, or not recognized by the database are **never** auto-agreed and always stay for manual review (they would crash the database on restart).\n\nIndependent of Auto-Update Compliance: that one regenerates the config from a new module (repman side), this one applies value deltas to the running database (DB side).\n\nConfig: \`prov-db-compliance-auto-agree\``
 
   const hDynamicResource = `**Dynamic Resource Resize**\n\nWhen enabled, a change to the provisioned memory (\`prov-db-memory\`, e.g. from a DBU/plan resize) is applied to the **running** database live instead of a full restart: the buffer pool and other dynamically-settable variables via \`SET GLOBAL\`, and the container cgroup via the orchestrator (OpenSVC \`pg update\`) or a client hook. Restart-only variables still schedule a restart. \`max_connections\` is never touched (client workload).\n\nTwo optional client hooks refine it: \`prov-db-dynamic-resource-can-change-script\` (feasibility — prints yes / no / migration) runs first, and \`prov-db-dynamic-resource-change-script\` (does the infra resize, overrides the native path in every orchestrator case).\n\nOff by default.\n\nConfig: \`prov-db-dynamic-resource\``
 
+  const hEnableConfigurator = `**Enable Configurator**\n\nWhen enabled, replication-manager generates each database's configuration from the cluster's config fragments and deploys it to the servers.\n\nWhen disabled, no configuration is deployed to the databases; the tracking (preserved variables, override files, compliance) stays visible.\n\nConfig: \`prov-db-config\``
+
   const dataObject = [
     {
-      key: 'Pull Config On DB Start',
-      help: h(hFetchConfig, 'Pull Config On DB Start'),
+      clusterSetting: 'prov-db-config',
+      key: 'Enable Configurator',
+      help: h(hEnableConfigurator, 'Enable Configurator'),
+      value: (
+        <RMSwitch
+          isChecked={selectedCluster?.config?.provDbConfig}
+          isDisabled={user?.grants['cluster-settings'] == false}
+          confirmTitle={'Confirm switch settings for prov-db-config? When disabled, no config is deployed to databases but tracking remains visible.'}
+          onChange={() =>
+            dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'prov-db-config' }))
+          }
+        />
+      )
+    },
+    {
+      clusterSetting: 'prov-db-start-fetch-config',
+      key: 'Pull Config On Start',
+      help: h(hFetchConfig, 'Pull Config On Start'),
       value: (
         <RMSwitch
           isChecked={selectedCluster?.config?.provDbStartFetchConfig}
@@ -630,104 +654,172 @@ function DBConfigs({ selectedCluster, user }) {
     setConfirmHandler(null)
   }
 
+  if (part === 'dynamic') {
+    return <DynamicConfigSettings selectedCluster={selectedCluster} user={user} />
+  }
+
   return (
     <VStack>
-      {hasPendingCompliance && (
-        <Alert status='warning' borderRadius='md' w='100%'>
-          <AlertIcon />
-          <Text fontSize='sm' flex='1'>
-            A new compliance update is available from the back office. Review the changes before accepting.
-          </Text>
-          <HStack spacing={2}>
-            <Button size='sm' variant='outline' colorScheme='orange' onClick={handleReviewCompliance}>
-              Review Changes
-            </Button>
-            <Button size='sm' colorScheme='blue' isLoading={acceptLoading} onClick={handleAcceptCompliance}>
-              Accept
-            </Button>
-          </HStack>
-        </Alert>
-      )}
-      <TableType2 dataArray={dataObject} className={styles.tableWithHelp} helpColumn={true} />
-      <AccordionComponent
-        heading={'Dynamic Config'}
-        className={styles.accordion}
-        headerClassName={styles.accordionHeader}
-        panelClassName={styles.accordionBody}
-        body={<DynamicConfigSettings selectedCluster={selectedCluster} user={user} />}
-      />
-      {user?.grants['db-config-flag'] && (
-        <HStack className={styles.configTagContainer}>
-          <VStack className={styles.availableTags}>
-            <h4 className={styles.sectionTitle}>{'Available Tags'}</h4>
-            {configTagData.map((tagData) => {
-              return (
-                <AccordionComponent
-                  heading={tagData.key}
-                  className={styles.accordion}
-                  headerClassName={styles.accordionHeader}
-                  panelClassName={styles.accordionBody}
-                  body={
-                    <HStack className={styles.tags}>
-                      {tagData.value.map((tag) => {
-                        const isAdded = usingDBServerTags?.find((x) => x?.name === tag.name)
-                        if (isAdded) {
-                          return null
-                        }
-                        return (
-                          <AddRemovePill
-                            isDisabled={user?.grants['proxy-config-flag'] == false}
-                            key={tag.name}
-                            text={tag.name}
-                            onAdd={(title) => {
-                              setConfirmTitle(title)
-                              setIsConfirmModalOpen(true)
-                              setConfirmHandler(
-                                () => () => dispatch(addDBTag({ clusterName: selectedCluster?.name, tag: tag.name }))
-                              )
-                            }}
-                            onViewContent={handleViewContent}
-                          />
-                        )
-                      })}
-                    </HStack>
-                  }
-                />
-              )
-            })}
-          </VStack>
-          <VStack className={styles.addedTags}>
-            <h4 className={styles.sectionTitle}>{'Using Tags'}</h4>
-            <HStack className={`${styles.tags} `}>
-              {usingDBServerTags
-                .filter((tag) => tag?.name)
-                .map((tag) => (
-                  <AddRemovePill
-                    key={tag?.name}
-                    text={tag?.name}
-                    onViewContent={handleViewContent}
-                    onRemove={(title) => {
-                      setConfirmTitle(title)
-                      setIsConfirmModalOpen(true)
-                      setConfirmHandler(
-                        () => () => dispatch(dropDBTag({ clusterName: selectedCluster?.name, tag: tag?.name }))
-                      )
-                    }}
-                    used={true}
-                    category={tag?.category}
-                  />
-                ))}
+      {showResources && (
+        <>
+        {hasPendingCompliance && (
+          <Alert status='warning' borderRadius='md' w='100%'>
+            <AlertIcon />
+            <Text fontSize='sm' flex='1'>
+              A new compliance update is available from the back office. Review the changes before accepting.
+            </Text>
+            <HStack spacing={2}>
+              <Button size='sm' variant='outline' colorScheme='orange' onClick={handleReviewCompliance}>
+                Review Changes
+              </Button>
+              <Button size='sm' colorScheme='blue' isLoading={acceptLoading} onClick={handleAcceptCompliance}>
+                Accept
+              </Button>
             </HStack>
-            <ConfigFilesPanel selectedCluster={selectedCluster} />
-            <AccordionComponent
+          </Alert>
+        )}
+        <TableType2 dataArray={dataObject} className={styles.tableWithHelp} helpColumn={true} />
+        {!part && (
+          <AccordionComponent
+            heading={'Dynamic Config'}
+            className={styles.accordion}
+            headerClassName={styles.accordionHeader}
+            panelClassName={styles.accordionBody}
+            body={<DynamicConfigSettings selectedCluster={selectedCluster} user={user} />}
+          />
+        )}
+        </>
+      )}
+      {showFragments && user?.grants['db-config-flag'] && (
+        <Box className={styles.configTagContainer}>
+          {part === 'used' ? (
+              <HStack key='used' className={`${styles.tags} ${styles.usedFragments}`}>
+                  {usingDBServerTags
+                    .filter((tag) => tag?.name)
+                    .map((tag) => (
+                      <AddRemovePill
+                        key={tag?.name}
+                        text={tag?.name}
+                        onViewContent={handleViewContent}
+                        onRemove={(title) => {
+                          setConfirmTitle(title)
+                          setIsConfirmModalOpen(true)
+                          setConfirmHandler(
+                            () => () => dispatch(dropDBTag({ clusterName: selectedCluster?.name, tag: tag?.name }))
+                          )
+                        }}
+                        used={true}
+                        category={tag?.category}
+                      />
+                    ))}
+                </HStack>
+          ) : part === 'pinning' ? (
+              <VStack key='pinning' className={styles.fragmentCategories}>
+                <ConfigFilesPanel selectedCluster={selectedCluster} accordionClassName={styles.accordion} headerClassName={styles.accordionHeader} panelClassName={styles.accordionBody} />
+                <AccordionComponent
                   heading={'Cluster Preserved Variables (Table & Editor)'}
                   className={styles.accordion}
                   headerClassName={styles.accordionHeader}
                   panelClassName={styles.accordionBody}
                   body={<PreservedVariablesEditor clusterName={selectedCluster?.name} user={user} />}
-                />
-          </VStack>
-        </HStack>
+                    />
+              </VStack>
+          ) : part === 'available' ? (
+              <VStack key='available' className={styles.fragmentCategories}>
+                {configTagData.map((tagData) => (
+                  <Box key={tagData.key} className={styles.fragmentCategory}>
+                    <Box as='h5' className={styles.fragmentCategoryTitle}>{tagData.key}</Box>
+                        <HStack className={styles.tags}>
+                          {tagData.value.map((tag) => {
+                            const isAdded = usingDBServerTags?.find((x) => x?.name === tag.name)
+                            if (isAdded) {
+                              return null
+                            }
+                            return (
+                              <AddRemovePill
+                                isDisabled={user?.grants['proxy-config-flag'] == false}
+                                key={tag.name}
+                                text={tag.name}
+                                onAdd={(title) => {
+                                  setConfirmTitle(title)
+                                  setIsConfirmModalOpen(true)
+                                  setConfirmHandler(
+                                    () => () => dispatch(addDBTag({ clusterName: selectedCluster?.name, tag: tag.name }))
+                                  )
+                                }}
+                                onViewContent={handleViewContent}
+                              />
+                            )
+                          })}
+                        </HStack>
+                  </Box>
+                ))}
+              </VStack>
+          ) : (
+            <>
+              <VStack key='available' className={styles.fragmentCategories}>
+                {configTagData.map((tagData) => (
+                  <Box key={tagData.key} className={styles.fragmentCategory}>
+                    <Box as='h5' className={styles.fragmentCategoryTitle}>{tagData.key}</Box>
+                        <HStack className={styles.tags}>
+                          {tagData.value.map((tag) => {
+                            const isAdded = usingDBServerTags?.find((x) => x?.name === tag.name)
+                            if (isAdded) {
+                              return null
+                            }
+                            return (
+                              <AddRemovePill
+                                isDisabled={user?.grants['proxy-config-flag'] == false}
+                                key={tag.name}
+                                text={tag.name}
+                                onAdd={(title) => {
+                                  setConfirmTitle(title)
+                                  setIsConfirmModalOpen(true)
+                                  setConfirmHandler(
+                                    () => () => dispatch(addDBTag({ clusterName: selectedCluster?.name, tag: tag.name }))
+                                  )
+                                }}
+                                onViewContent={handleViewContent}
+                              />
+                            )
+                          })}
+                        </HStack>
+                  </Box>
+                ))}
+              </VStack>
+              <HStack key='used' className={`${styles.tags} ${styles.usedFragments}`}>
+                  {usingDBServerTags
+                    .filter((tag) => tag?.name)
+                    .map((tag) => (
+                      <AddRemovePill
+                        key={tag?.name}
+                        text={tag?.name}
+                        onViewContent={handleViewContent}
+                        onRemove={(title) => {
+                          setConfirmTitle(title)
+                          setIsConfirmModalOpen(true)
+                          setConfirmHandler(
+                            () => () => dispatch(dropDBTag({ clusterName: selectedCluster?.name, tag: tag?.name }))
+                          )
+                        }}
+                        used={true}
+                        category={tag?.category}
+                      />
+                    ))}
+                </HStack>
+              <VStack key='pinning' className={styles.fragmentCategories}>
+                <ConfigFilesPanel selectedCluster={selectedCluster} accordionClassName={styles.accordion} headerClassName={styles.accordionHeader} panelClassName={styles.accordionBody} />
+                <AccordionComponent
+                  heading={'Cluster Preserved Variables (Table & Editor)'}
+                  className={styles.accordion}
+                  headerClassName={styles.accordionHeader}
+                  panelClassName={styles.accordionBody}
+                  body={<PreservedVariablesEditor clusterName={selectedCluster?.name} user={user} />}
+                    />
+              </VStack>
+            </>
+          )}
+        </Box>
       )}
 
       {isConfirmModalOpen && (

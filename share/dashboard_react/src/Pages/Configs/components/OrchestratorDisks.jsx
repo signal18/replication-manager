@@ -14,7 +14,13 @@ import { HiQuestionMarkCircle } from 'react-icons/hi'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
-function OrchestratorDisks({ selectedCluster, user }) {
+// the configurator's Databases / Proxies tabs (#2268): scope 'proxy' keeps the proxy rows, 'db' the
+// others (the database rows and those both share); no scope keeps every row
+const PROXY_ROWS = ['Proxy']
+const scopedRows = (rows, scope) =>
+  !scope ? rows : rows.filter((row) => (scope === 'proxy') === PROXY_ROWS.includes(row.key))
+
+function OrchestratorDisks({ selectedCluster, user, scope }) {
   const dispatch = useDispatch()
   const [helpAction, setHelpAction] = useState({ title: '', body: <></> })
   const [isHelpModalOpen, setIsHelpModalOpen] = useState(false)
@@ -66,6 +72,7 @@ function OrchestratorDisks({ selectedCluster, user }) {
       key: 'Database',
       value: [
         {
+          clusterSetting: 'prov-db-disk-type',
           key: 'Database Disk Type',
           value: (
             <Dropdown
@@ -88,6 +95,7 @@ function OrchestratorDisks({ selectedCluster, user }) {
         ...(showRunAs
           ? [
               {
+                clusterSetting: 'prov-db-run-as-uid',
                 key: 'Database Run As UID[:GID]',
                 help: h(hRunAs, 'Database Run As UID[:GID]'),
                 value: (
@@ -113,6 +121,7 @@ function OrchestratorDisks({ selectedCluster, user }) {
                 )
               },
               {
+                clusterSetting: 'prov-db-volume-uid',
                 key: 'Database Volume UID[:GID]',
                 help: h(hVolume, 'Database Volume UID[:GID]'),
                 value: (
@@ -142,6 +151,7 @@ function OrchestratorDisks({ selectedCluster, user }) {
         ...(selectedCluster?.config?.provDbDiskType === 'volume'
           ? [
               {
+                clusterSetting: 'prov-db-volume-data',
                 key: 'Volume Data',
                 value: (
                   <TextForm
@@ -165,6 +175,7 @@ function OrchestratorDisks({ selectedCluster, user }) {
         ...(selectedCluster?.config?.provDbDiskType !== 'volume'
           ? [
               {
+                clusterSetting: 'prov-db-disk-fs',
                 key: 'Database Disk FS',
                 value: (
                   <Dropdown
@@ -189,6 +200,7 @@ function OrchestratorDisks({ selectedCluster, user }) {
         ...(selectedCluster?.config?.provDbDiskType !== 'volume'
           ? [
               {
+                clusterSetting: 'prov-db-disk-pool',
                 key: 'Database Disk Pool',
                 value: (
                   <Dropdown
@@ -213,6 +225,7 @@ function OrchestratorDisks({ selectedCluster, user }) {
         ...(selectedCluster?.config?.provDbDiskType !== 'volume'
           ? [
               {
+                clusterSetting: 'prov-db-disk-device',
                 key: 'Name',
                 value: (
                   <TextForm
@@ -239,6 +252,7 @@ function OrchestratorDisks({ selectedCluster, user }) {
       key: 'Proxy',
       value: [
         {
+          clusterSetting: 'prov-proxy-disk-type',
           key: 'Proxy Disk Type',
           value: (
             <Dropdown
@@ -261,6 +275,7 @@ function OrchestratorDisks({ selectedCluster, user }) {
         ...(selectedCluster?.config?.provProxyDiskType === 'volume'
           ? [
               {
+                clusterSetting: 'prov-proxy-volume-data',
                 key: 'Volume Data',
                 value: (
                   <TextForm
@@ -284,6 +299,7 @@ function OrchestratorDisks({ selectedCluster, user }) {
         ...(selectedCluster?.config?.provProxyDiskType !== 'volume'
           ? [
               {
+                clusterSetting: 'prov-proxy-disk-fs',
                 key: 'Proxy Disk FS',
                 value: (
                   <Dropdown
@@ -308,6 +324,7 @@ function OrchestratorDisks({ selectedCluster, user }) {
         ...(selectedCluster?.config?.provProxyDiskType !== 'volume'
           ? [
               {
+                clusterSetting: 'prov-proxy-disk-pool',
                 key: 'Proxy Disk Pool',
                 value: (
                   <Dropdown
@@ -332,6 +349,7 @@ function OrchestratorDisks({ selectedCluster, user }) {
         ...(selectedCluster?.config?.provProxyDiskType !== 'volume'
           ? [
               {
+                clusterSetting: 'prov-proxy-disk-device',
                 key: 'Name',
                 value: (
                   <TextForm
@@ -357,7 +375,7 @@ function OrchestratorDisks({ selectedCluster, user }) {
   ]
   return (
     <VStack>
-      <TableType2 dataArray={dataObject} className={parentStyles.tableWithHelp} helpColumn={true} />
+      <TableType2 dataArray={scopedRows(dataObject, scope)} className={parentStyles.tableWithHelp} helpColumn={true} />
       <CommonModal
         isOpen={isHelpModalOpen}
         closeModal={() => setIsHelpModalOpen(false)}

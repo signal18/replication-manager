@@ -7685,6 +7685,12 @@ func buildClusterAPIPayload(mycluster *cluster.Cluster) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("mask secrets: %w", err)
 	}
+	// the cluster settings set in the system config (#2268), with their value there, secrets
+	// masked: the GUI shows a rollback lock, a change through the API lasts until the restart
+	cl, err = sjson.SetBytes(cl, "immutableSettings", mycluster.Conf.ImmuableFlagValues())
+	if err != nil {
+		return nil, fmt.Errorf("immutable settings: %w", err)
+	}
 
 	// Reduce the content of the cluster object. "apps" is the harmless
 	// placeholder from the shadow field above (never touched live Apps

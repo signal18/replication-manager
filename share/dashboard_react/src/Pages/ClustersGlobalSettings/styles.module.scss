@@ -154,3 +154,11 @@ div.settingsContainer {
     border-radius: $border-radius-sm;
   }
 }
+
+// the global settings' tabs (#2268): the whole width
+.fullWidthTabs {
+  width: 100%;
+  [role='tabpanel'] {
+    width: 100%;
+  }
+}

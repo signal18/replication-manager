@@ -11,7 +11,13 @@ import { getKubeStorageClasses } from '../../../redux/clusterSlice'
 import { convertObjectToArrayForDropdown } from '../../../utility/common'
 import RMSwitch from '../../../components/RMSwitch'
 
-function OrchestratorDbVM({ selectedCluster, user }) {
+// the configurator's Databases / Proxies tabs (#2268): scope 'proxy' keeps the proxy rows, 'db' the
+// others (the database rows and those both share); no scope keeps every row
+const PROXY_ROWS = ['Proxy Start Timeout', 'Proxy VM', 'Kubernetes Proxy Storage Class']
+const scopedRows = (rows, scope) =>
+  !scope ? rows : rows.filter((row) => (scope === 'proxy') === PROXY_ROWS.includes(row.key))
+
+function OrchestratorDbVM({ selectedCluster, user, scope }) {
   const dispatch = useDispatch()
   const {
     globalClusters: { monitor }
@@ -33,6 +39,7 @@ function OrchestratorDbVM({ selectedCluster, user }) {
 
   const dataObject = [
     {
+      clusterSetting: 'prov-db-start-timeout',
       key: 'Database Start Timeout',
       value: (
         <TextForm
@@ -45,6 +52,7 @@ function OrchestratorDbVM({ selectedCluster, user }) {
       )
     },
     {
+      clusterSetting: 'prov-proxy-start-timeout',
       key: 'Proxy Start Timeout',
       value: (
         <TextForm
@@ -57,6 +65,7 @@ function OrchestratorDbVM({ selectedCluster, user }) {
       )
     },
     {
+      clusterSetting: 'prov-db-service-type',
       key: 'Database VM',
       value: (
         <Dropdown
@@ -77,6 +86,7 @@ function OrchestratorDbVM({ selectedCluster, user }) {
       )
     },
     {
+      clusterSetting: 'prov-proxy-service-type',
       key: 'Proxy VM',
       value: (
         <Dropdown
@@ -97,6 +107,7 @@ function OrchestratorDbVM({ selectedCluster, user }) {
       )
     },
     {
+      clusterSetting: 'prov-net-cni',
       key: 'Provisioning CNI',
       value: (
         <RMSwitch
@@ -108,6 +119,7 @@ function OrchestratorDbVM({ selectedCluster, user }) {
       )
     },
     selectedCluster?.config?.provOrchestrator === 'kube' && {
+      clusterSetting: 'prov-kube-storage-class',
       key: 'Kubernetes Storage Class',
       value: (
         <Dropdown
@@ -128,6 +140,7 @@ function OrchestratorDbVM({ selectedCluster, user }) {
       )
     },
     selectedCluster?.config?.provOrchestrator === 'kube' && {
+      clusterSetting: 'prov-kube-proxy-storage-class',
       key: 'Kubernetes Proxy Storage Class',
       value: (
         <Dropdown
@@ -148,6 +161,7 @@ function OrchestratorDbVM({ selectedCluster, user }) {
       )
     },
     selectedCluster?.config?.provOrchestrator === 'kube' && {
+      clusterSetting: 'prov-kube-image-force-pull',
       key: 'Kubernetes Force Image Pull',
       value: (
         <RMSwitch
@@ -161,6 +175,7 @@ function OrchestratorDbVM({ selectedCluster, user }) {
       )
     },
     {
+      clusterSetting: 'prov-docker-daemon-private',
       key: 'Provisioning Private Docker Daemon',
       value: (
         <RMSwitch
@@ -174,6 +189,7 @@ function OrchestratorDbVM({ selectedCluster, user }) {
       )
     },
     {
+      clusterSetting: 'prov-object-allow-overwrite',
       key: 'Provisioning Allow Overwrite Config/Secret Objects',
       value: (
         <RMSwitch
@@ -189,7 +205,7 @@ function OrchestratorDbVM({ selectedCluster, user }) {
   ].filter(Boolean)
   return (
     <VStack>
-      <TableType2 dataArray={dataObject} className={parentStyles.table} />
+      <TableType2 dataArray={scopedRows(dataObject, scope)} className={parentStyles.table} />
     </VStack>
   )
 }

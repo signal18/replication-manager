@@ -89,7 +89,19 @@ function PageContainer({ children }) {
       <Box as='footer' className={styles.footer} textAlign={(location.pathname === '/login' || location.pathname === '/signup') ? 'right' : 'left'}>
         {(location.pathname === '/login' || location.pathname === '/signup')
           ? monitor?.config?.apiSwaggerEnabled && (<Link href='/api-docs/index.html' target='_blank' rel='noreferrer'>API Swagger</Link>)
-          : (<Text>{`Replication-Manager ${fullVersion} © 2017-${new Date().getFullYear()} SIGNAL18 CLOUD SAS`}</Text>)}
+          : (
+            // signed in: the version, and the Swagger link too, since a Cloud18-only login never shows
+            // the sign-in page that carried it (#2262)
+            <Text>
+              {`Replication-Manager ${fullVersion} © 2017-${new Date().getFullYear()} SIGNAL18 CLOUD SAS`}
+              {monitor?.config?.apiSwaggerEnabled && (
+                <>
+                  {' · '}
+                  <Link href='/api-docs/index.html' target='_blank' rel='noreferrer'>API Swagger</Link>
+                </>
+              )}
+            </Text>
+          )}
       </Box>
     </Box>
   )

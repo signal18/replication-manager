@@ -137,24 +137,23 @@ function CloudSettings({ selectedCluster, user }) {
   const hSysOps = `**Cloud18 External Sys Ops**\n\nAssigns an external SysOps partner to manage system operations for this cluster.\nUse the action buttons to quote, accept, reject, or end the external SysOps role.\n\nConfig: \`cloud18-external-sysops\``
   const hDbOps = `**Cloud18 External DB Ops**\n\nAssigns an external DbOps partner to manage database operations for this cluster.\nUse the action buttons to quote, accept, reject, or end the external DbOps role.\n\nConfig: \`cloud18-external-dbops\``
   const hSponsor = `**Cloud18 Sponsor User Credentials**\n\nCredentials for the Cloud18 sponsor user account.\nUsed to authenticate with the Cloud18 marketplace on behalf of this cluster.\n\nConfig: \`cloud18-sponsor-user-credentials\``
-  const hAlert = `**Cloud18 Alert**\n\nEnables Cloud18 alert notifications via Slack.\nWhen enabled, cluster events are forwarded to the configured Slack channel.\n\nConfig: \`cloud18-alert\``
-  const hAlertChannel = `**Cloud18 Alert Channel**\n\nSlack channel for Cloud18 alert notifications.\nExample: \`#cloud18-alerts\`\n\nConfig: \`cloud18-alert-slack-channel\``
-  const hAlertUrl = `**Cloud18 Alert URL**\n\nSlack incoming webhook URL for Cloud18 alerts.\n\nConfig: \`cloud18-alert-slack-url\``
-  const hAlertUser = `**Cloud18 Alert User**\n\nSlack display name used as the sender for Cloud18 alert messages.\n\nConfig: \`cloud18-alert-slack-user\``
 
   const dataObject = [
     ...(selectedCluster?.config?.cloud18 ? [
       {
+        clusterSetting: 'cloud18-shared',
         key: 'For Sale',
         help: h(hForSale, 'For Sale'),
         value: (<RMSwitch confirmTitle={'Confirm switch settings for cloud18-shared?'} onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'cloud18-shared' }))} isDisabled={user?.grants['cluster-settings'] == false} isChecked={selectedCluster?.config?.cloud18Shared} />)
       },
       {
+        clusterSetting: 'cloud18-marketplace-bau-client-storage',
         key: 'Remote Archive On Client Storage',
         help: h(hBauClientStorage, 'Remote Archive On Client Storage'),
         value: (<RMSwitch confirmTitle={'Confirm switch settings for cloud18-marketplace-bau-client-storage?'} onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'cloud18-marketplace-bau-client-storage' }))} isDisabled={user?.grants['sales-pricing'] == false} isChecked={selectedCluster?.config?.cloud18MarketplaceBauClientStorage} />)
       },
       {
+        clusterSetting: 'prov-service-plan',
         key: 'Cluster Plan',
         help: h(hPlan, 'Cluster Plan'),
         value: (
@@ -165,9 +164,9 @@ function CloudSettings({ selectedCluster, user }) {
           </HStack>
         )
       },
-      { key: 'Cloud18 Database Read-Write-Split SRV Record', help: h(hRWSplit, 'Cloud18 Database Read-Write-Split SRV Record'), value: (<TextForm value={selectedCluster?.config?.cloud18DatabaseReadWriteSplitSrvRecord} confirmTitle={`Confirm cloud18-database-read-write-split-srv-record to `} maxLength={1024} className={styles.textbox} onSave={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'cloud18-database-read-write-split-srv-record', value }))} />) },
-      { key: 'Cloud18 Database Read-Write SRV Record', help: h(hRW, 'Cloud18 Database Read-Write SRV Record'), value: (<TextForm value={selectedCluster?.config?.cloud18DatabaseReadWriteSrvRecord} confirmTitle={`Confirm cloud18-database-read-write-srv-record to `} maxLength={1024} className={styles.textbox} onSave={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'cloud18-database-read-write-srv-record', value }))} />) },
-      { key: 'Cloud18 Database Read SRV Record', help: h(hRead, 'Cloud18 Database Read SRV Record'), value: (<TextForm value={selectedCluster?.config?.cloud18DatabaseReadSrvRecord} confirmTitle={`Confirm cloud18-database-read-srv-record to `} maxLength={1024} className={styles.textbox} onSave={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'cloud18-database-read-srv-record', value }))} />) },
+      { clusterSetting: 'cloud18-database-read-write-split-srv-record', key: 'Cloud18 Database Read-Write-Split SRV Record', help: h(hRWSplit, 'Cloud18 Database Read-Write-Split SRV Record'), value: (<TextForm value={selectedCluster?.config?.cloud18DatabaseReadWriteSplitSrvRecord} confirmTitle={`Confirm cloud18-database-read-write-split-srv-record to `} maxLength={1024} className={styles.textbox} onSave={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'cloud18-database-read-write-split-srv-record', value }))} />) },
+      { clusterSetting: 'cloud18-database-read-write-srv-record', key: 'Cloud18 Database Read-Write SRV Record', help: h(hRW, 'Cloud18 Database Read-Write SRV Record'), value: (<TextForm value={selectedCluster?.config?.cloud18DatabaseReadWriteSrvRecord} confirmTitle={`Confirm cloud18-database-read-write-srv-record to `} maxLength={1024} className={styles.textbox} onSave={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'cloud18-database-read-write-srv-record', value }))} />) },
+      { clusterSetting: 'cloud18-database-read-srv-record', key: 'Cloud18 Database Read SRV Record', help: h(hRead, 'Cloud18 Database Read SRV Record'), value: (<TextForm value={selectedCluster?.config?.cloud18DatabaseReadSrvRecord} confirmTitle={`Confirm cloud18-database-read-srv-record to `} maxLength={1024} className={styles.textbox} onSave={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'cloud18-database-read-srv-record', value }))} />) },
       {
         key: 'Cloud18 External Sys Ops',
         help: h(hSysOps, 'Cloud18 External Sys Ops'),
@@ -200,10 +199,6 @@ function CloudSettings({ selectedCluster, user }) {
         )
       },
       { key: 'Cloud18 Sponsor User Credentials', help: h(hSponsor, 'Cloud18 Sponsor User Credentials'), value: (<RMIconButton icon={HiKey} onClick={() => { setCredentialType('cloud18-sponsor-user-credentials'); setIsCredentialModalOpen(true) }} />) },
-      { key: 'Cloud18 Alert', help: h(hAlert, 'Cloud18 Alert'), value: (<RMSwitch confirmTitle={'Confirm switch settings for cloud18-alert?'} onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'cloud18-alert' }))} isDisabled={user?.grants['cluster-settings'] == false} isChecked={selectedCluster?.config?.cloud18Alert} />) },
-      { key: 'Cloud18 Alert Channel', help: h(hAlertChannel, 'Cloud18 Alert Channel'), value: (<TextForm value={selectedCluster?.config?.cloud18AlertSlackChannel} confirmTitle={`Confirm slack channel to `} className={styles.textbox} onSave={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'cloud18-alert-slack-channel', value }))} />) },
-      { key: 'Cloud18 Alert URL', help: h(hAlertUrl, 'Cloud18 Alert URL'), value: (<TextForm value={selectedCluster?.config?.cloud18AlertSlackUrl} confirmTitle={`Confirm slack url to `} className={styles.textbox} onSave={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'cloud18-alert-slack-url', value: btoa(value) }))} />) },
-      { key: 'Cloud18 Alert User', help: h(hAlertUser, 'Cloud18 Alert User'), value: (<TextForm value={selectedCluster?.config?.cloud18AlertSlackUser} confirmTitle={`Confirm slack user to `} className={styles.textbox} onSave={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'cloud18-alert-slack-user', value }))} />) },
     ] : [])
   ]
 

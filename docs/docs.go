@@ -24437,7 +24437,7 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "Replication manager runtime state (dynamic)",
+                        "description": "Replication manager runtime state (dynamic); immutableSettings: the global settings set in the configuration file, the command line or the environment, with their value there, secrets masked (logged-in callers only)",
                         "schema": {
                             "type": "object",
                             "additionalProperties": true

@@ -65,21 +65,25 @@ function DynamicConfigSettings({ selectedCluster, user }) {
 
   const dataObject = [
     {
+      clusterSetting: 'prov-db-apply-dynamic-config',
       key: 'Apply Dynamic Config On Change Tags',
       help: h(`**Apply Dynamic Config**\n\nWhen enabled, config changes are applied dynamically via \`SET GLOBAL\` (no restart); restart-only variables are written for the next restart.\n\nConfig: \`prov-db-apply-dynamic-config\``, 'Apply Dynamic Config'),
       value: (<RMSwitch confirmTitle={'Confirm switch settings for prov-db-apply-dynamic-config?'} onChange={() => dispatch(switchSetting({ clusterName, setting: 'prov-db-apply-dynamic-config' }))} isDisabled={disabled} isChecked={cfg.provDBApplyDynamicConfig} />)
     },
     {
+      clusterSetting: 'prov-db-dynamic-resource',
       key: 'Apply Dynamic Config On Resource Resize',
       help: h(`**Dynamic Resource Resize**\n\nWhen on, a provisioned-memory change (e.g. a DBU/plan resize) is applied to the RUNNING database live (SET GLOBAL + cgroup via orchestrator/client hook) instead of a restart. Restart-only vars still schedule a restart. Optional hooks: \`prov-db-dynamic-resource-can-change-script\` (feasibility) and \`prov-db-dynamic-resource-change-script\` (does the infra resize).\n\nConfig: \`prov-db-dynamic-resource\``, 'Apply Dynamic Config On Resource Resize'),
       value: (<RMSwitch confirmTitle={'Confirm switch settings for prov-db-dynamic-resource?'} onChange={() => dispatch(switchSetting({ clusterName, setting: 'prov-db-dynamic-resource' }))} isDisabled={disabled} isChecked={cfg.provDbDynamicResource} />)
     },
     {
+      clusterSetting: 'prov-orchestrator-deployment-upgrade-on-start',
       key: 'Reapply Deployment On Start',
       help: h(`**Reapply Deployment On Start**\n\nOn each node (re)start during a rolling restart/upgrade, re-render and push the full deployment (service config: the plan-driven container memory cap, image, run_args, env) to the orchestrator BEFORE start, so the recreated container comes up on the CURRENT config instead of the one written at the last provision. This is how a plan/cap change actually lands on restart. The IMAGE is never changed by a restart: the service keeps the image it runs, only the rolling upgrade moves it to prov-db-image. The live in-plan resize (pg_mem_limit + MySQL SET GLOBAL) is separate and unaffected; this only raises the outer ceiling. On by default.\n\nConfig: \`prov-orchestrator-deployment-upgrade-on-start\``, 'Reapply Deployment On Start'),
       value: (<RMSwitch confirmTitle={'Confirm switch settings for prov-orchestrator-deployment-upgrade-on-start?'} onChange={() => dispatch(switchSetting({ clusterName, setting: 'prov-orchestrator-deployment-upgrade-on-start' }))} isDisabled={disabled} isChecked={cfg.provOrchestratorDeploymentUpgradeOnStart} />)
     },
     {
+      clusterSetting: 'prov-db-upgrade-major-reprov',
       key: 'Reprovision On Major Upgrade',
       help: h(`**Reprovision On Major Upgrade**
 
@@ -89,6 +93,7 @@ Config: \`prov-db-upgrade-major-reprov\``, 'Reprovision On Major Upgrade'),
       value: (<RMSwitch confirmTitle={'Confirm switch settings for prov-db-upgrade-major-reprov?'} onChange={() => dispatch(switchSetting({ clusterName, setting: 'prov-db-upgrade-major-reprov' }))} isDisabled={disabled} isChecked={cfg.provDbUpgradeMajorReprov} />)
     },
     {
+      clusterSetting: 'prov-db-dynamic-resize-policy',
       key: 'Dynamic Resize Policy',
       help: h(`**Dynamic Resize Policy**\n\nWHEN a live memory resize (Apply Dynamic Config On Resource Resize) is applied:\n\n- **scale-speed** (default): as saturation dictates, throttled by the Scale Speeds below.\n- **daily-time**: deferred to a fixed daily clock time (Dynamic Resize Daily Time), so any InnoDB buffer-pool-resize stall is contained to an off-peak hour.\n\nCPU/IO tuning is unaffected (no stall).\n\nConfig: \`prov-db-dynamic-resize-policy\``, 'Dynamic Resize Policy'),
       value: (
@@ -101,21 +106,25 @@ Config: \`prov-db-upgrade-major-reprov\``, 'Reprovision On Major Upgrade'),
       )
     },
     {
+      clusterSetting: 'prov-db-dynamic-resize-daily-time',
       key: 'Dynamic Resize Daily Time',
       help: h(`**Dynamic Resize Daily Time**\n\nDaily clock time HH:MM (24h, server-local) at which the live memory resize is applied when Dynamic Resize Policy = **daily-time**. Ignored under scale-speed.\n\nConfig: \`prov-db-dynamic-resize-daily-time\``, 'Dynamic Resize Daily Time'),
       value: num('prov-db-dynamic-resize-daily-time', cfg.provDBDynamicResizeDailyTime, '03:00')
     },
     {
+      clusterSetting: 'prov-auto-update-compliance',
       key: 'Auto-Update Compliance',
       help: h(`**Auto-Update Compliance**\n\nWhen enabled, repman regenerates the config from a new compliance module automatically (repman side).\n\nConfig: \`prov-auto-update-compliance\``, 'Auto-Update Compliance'),
       value: (<RMSwitch confirmTitle={'Confirm switch settings for prov-auto-update-compliance?'} onChange={() => dispatch(switchSetting({ clusterName, setting: 'prov-auto-update-compliance' }))} isDisabled={disabled} isChecked={cfg.provAutoUpdateCompliance} />)
     },
     {
+      clusterSetting: 'prov-db-compliance-auto-agree',
       key: 'Auto-Agree Compliance',
       help: h(`**Auto-Agree Compliance**\n\nWhen enabled, a config VALUE delta is auto-agreed to the compliance value and pushed to the DB (value changes only; dropped/deprecated/unknown vars always stay for manual review). Disabled = manual review. DB side.\n\nConfig: \`prov-db-compliance-auto-agree\``, 'Auto-Agree Compliance'),
       value: (<RMSwitch confirmTitle={'Confirm switch settings for prov-db-compliance-auto-agree?'} onChange={() => dispatch(switchSetting({ clusterName, setting: 'prov-db-compliance-auto-agree' }))} isDisabled={disabled} isChecked={cfg.provDbComplianceAutoAgree} />)
     },
     {
+      clusterSetting: 'prov-db-resource-align',
       key: 'Resource Alignment On Start',
       help: h(`**Resource Alignment On Start**\n\nAligns the container memory cap (the outer ceiling, applied when the container is (re)started) to the DBU tier.\n\n- **plan** (default): tier = the plan / node count\n- **up**: tier = max-axis config DBU (coherence/debug)\n- **off**: cap = prov-db-memory (legacy)\n\nConfig: \`prov-db-resource-align\``, 'Resource Alignment On Start'),
       value: (
@@ -128,41 +137,49 @@ Config: \`prov-db-upgrade-major-reprov\``, 'Reprovision On Major Upgrade'),
       )
     },
     {
+      clusterSetting: 'prov-db-cap-safety-pct',
       key: 'Saturation Margin %',
       help: h(`**Saturation safety margin (high-water)**\n\nA server is "over" a reference (config or plan) on an axis when it consumes >= (1 - pct/100) of it. Drives raise-resources & cap-up.\n\nConfig: \`prov-db-cap-safety-pct\` (default 15 -> fires at 85%)`, 'Saturation Margin'),
       value: num('prov-db-cap-safety-pct', cfg.provDbCapSafetyPct, '15')
     },
     {
+      clusterSetting: 'prov-db-cap-shrink-pct',
       key: 'Shrink Margin %',
       help: h(`**Shrink margin (low-water)**\n\nA server is "under" a reference when it consumes <= (pct/100) of it. Drives shrink-resources & cap-down. The dead-band between shrink-pct and (100 - safety-pct) is status quo.\n\nConfig: \`prov-db-cap-shrink-pct\` (default 50)`, 'Shrink Margin'),
       value: num('prov-db-cap-shrink-pct', cfg.provDbCapShrinkPct, '50')
     },
     {
+      clusterSetting: 'prov-db-overcommit-pct',
       key: 'Overcommit % (scale-up ceiling)',
       help: h(`**Commercial scalability-up barrier**\n\nMax percent the dynamic resource change may auto-grow the plan (plan x (1 + pct/100)) before a manual plan raise is required.\n\nConfig: \`prov-db-overcommit-pct\` (default 50)`, 'Overcommit %'),
       value: num('prov-db-overcommit-pct', cfg.provDbOvercommitPct, '50')
     },
     {
+      clusterSetting: 'prov-db-undercommit-pct',
       key: 'Undercommit % (scale-down floor)',
       help: h(`**Commercial scalability-down floor**\n\nThe pendant of the overcommit ceiling: max percent the dynamic resource change may auto-shrink resources UNDER the plan (down to floor(plan x (1 - pct/100)) DBU per node, never under 1 DBU).\n\nConfig: \`prov-db-undercommit-pct\` (default 50)`, 'Undercommit %'),
       value: num('prov-db-undercommit-pct', cfg.provDbUndercommitPct, '50')
     },
     {
+      clusterSetting: 'prov-db-scale-up-config-in-plan-speed',
       key: 'Scale-Up Speed (resources, in-plan)',
       help: h(`**Scale-up speed — resources within the plan**\n\nHow long a server's config saturation must persist before repman scales its resources UP (free within the plan). A duration.\n\nConfig: \`prov-db-scale-up-config-in-plan-speed\` (default 1m)`, 'Scale-Up Speed (resources)'),
       value: num('prov-db-scale-up-config-in-plan-speed', cfg.scaleUpConfigInPlanSpeed, '1m')
     },
     {
+      clusterSetting: 'prov-db-scale-down-config-in-plan-speed',
       key: 'Scale-Down Speed (resources, in-plan)',
       help: h(`**Scale-down speed — resources within the plan**\n\nHow long under-use must persist before repman scales resources DOWN (slower than up, avoids thrashing). A duration.\n\nConfig: \`prov-db-scale-down-config-in-plan-speed\` (default 5m)`, 'Scale-Down Speed (resources)'),
       value: num('prov-db-scale-down-config-in-plan-speed', cfg.scaleDownConfigInPlanSpeed, '5m')
     },
     {
+      clusterSetting: 'prov-db-scale-up-plan-speed',
       key: 'Scale-Up Speed (plan / cap up)',
       help: h(`**Scale-up speed — the plan (cap up)**\n\nHow long consumption must persist against the plan before repman raises the plan. Commercial, so slower than in-plan. A duration.\n\nConfig: \`prov-db-scale-up-plan-speed\` (default 30m)`, 'Scale-Up Speed (plan)'),
       value: num('prov-db-scale-up-plan-speed', cfg.scaleUpPlanSpeed, '30m')
     },
     {
+      clusterSetting: 'prov-db-scale-down-plan-speed',
       key: 'Scale-Down Speed (plan / cap down)',
       help: h(`**Scale-down speed — the plan (cap down)**\n\nHow long under-use must persist before repman lowers the plan. Most conservative (don't yo-yo the billed plan). A duration.\n\nConfig: \`prov-db-scale-down-plan-speed\` (default 1h)`, 'Scale-Down Speed (plan)'),
       value: num('prov-db-scale-down-plan-speed', cfg.scaleDownPlanSpeed, '1h')

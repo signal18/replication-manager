@@ -12,7 +12,7 @@ function AddRemovePill({ text, used = false, onAdd, onRemove, onViewContent, cat
       <RMButton
         isDisabled={isDisabled}
         className={`${styles.addRemovePill} ${used ? styles.used : styles.unused}`}
-        onClick={used ? () => onRemove(`Confirm drop tag ${text}?`) : () => onAdd(`Confirm add tag ${text}?`)}>
+        onClick={used ? () => onRemove(`Confirm drop config fragment ${text}?`) : () => onAdd(`Confirm add config fragment ${text}?`)}>
         {category && <Text className={styles.category}>{category}</Text>}
 
         <HStack className={styles.tagData}>
@@ -26,9 +26,9 @@ function AddRemovePill({ text, used = false, onAdd, onRemove, onViewContent, cat
         </HStack>
       </RMButton>
       {onViewContent && (
-        <Tooltip label='View tag content' placement='top' hasArrow>
+        <Tooltip label='View config fragment content' placement='top' hasArrow>
           <IconButton
-            aria-label='View tag content'
+            aria-label='View config fragment content'
             icon={<FiEye />}
             size='xs'
             variant='ghost'

@@ -28,6 +28,50 @@ it in memory until then. `setServerSetting` and `switchServerSetting` now refuse
 (`errImmutableGlobalSetting`, a 403 logged as `global_setting_denied`), for every caller, the
 admin included: such a setting is changed on the host, in the file.
 
+### In the GUI: a lock, and a rollback lock for the cluster settings (#2268)
+
+`/api/monitor` (the global settings) and `/api/clusters/{name}` (the cluster's) carry
+`immutableSettings`: each key the system config sets (the configuration file, the command line,
+the environment) with its value there, as text (`Conf.ImmuableFlagValues`). A secret's value is
+never sent: it is `SecretMask`, as on every API path, for a key the secret registry knows or whose
+name says it holds one (password, credential, secret, token...). `/api/monitor` sends it only to a
+logged-in caller (the route also answers without a token); the cluster route is behind its ACL.
+
+The settings pages tag each row of the settings table with the key its control changes:
+`globalSetting` on the global pages, `clusterSetting` on the cluster pages (`components/TableType2`,
+`components/SettingLock`):
+
+- a **global** setting set in the system config gets a lock, its controls disabled: the API refuses
+  the change (`immutableGlobalSetting`). Tooltip: "Locked from system config", and its value there;
+- a **cluster** setting set in the system config gets a rollback lock, its controls editable: the
+  API accepts the change, for a test, and the next restart rolls it back to the system config
+  (`setClusterSetting` logs a warning). Tooltip: "Set in system config: a change here is rolled back
+  at the next restart", and the value it rolls back to.
+
+A row whose control goes through a helper that does not take the key as its first `setting`
+argument is not tagged yet.
+
+### Durable config writes (`misc.WriteFileDurable`)
+
+The secret store, each cluster's toml and `default.toml` are written through
+`misc.WriteFileDurable`: a hidden `.<name>-*.tmp` file in the same directory, fsynced, renamed
+over the file, then the directory fsynced. After a crash the file is the old one or the new one,
+whole.
+
+- An existing file keeps its mode and owner; a new one is `0640` (`0600` for the secret store).
+- A symlink is followed (a dangling one is replaced by a regular file).
+- A single-file bind mount cannot be renamed over (`EBUSY`/`EXDEV`): the file is written in place
+  and fsynced. Durable, but not atomic: a crash between the truncate and the fsync leaves a short
+  file.
+- A temp file a crash left (it may hold secrets) is removed by the next write of the same file
+  once older than 10 minutes.
+
+### Not Interested in Clusters For Sale
+
+`Config.Cloud18ForSaleOptOutAllowed`: a Developer, Support or Support and Services plan, or a
+licence. After a downgrade, `cloud18-disable-for-sale` stays `true` in the saved config but the API
+and the MCP ignore it, and the GUI shows it off and locked; it applies again if the plan returns.
+
 ## Terminal: the logins `terminal-session-auth` names
 
 `terminal-session-auth` (scope server, default `local`) lists the logins that open a terminal:

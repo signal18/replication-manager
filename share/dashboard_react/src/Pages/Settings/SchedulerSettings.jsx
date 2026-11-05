@@ -57,9 +57,9 @@ function SchedulerSettings({ selectedCluster, user, openConfirmModal }) {
   )
 
   const dataObject = [
-    { key: 'Scheduler', help: h(hScheduler, 'Scheduler'), value: (<RMSwitch confirmTitle={'Confirm switch settings for monitoring-scheduler?'} onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-scheduler' }))} isDisabled={user?.grants['cluster-settings'] == false} isChecked={selectedCluster?.config?.monitoringScheduler} />) },
+    { clusterSetting: 'monitoring-scheduler', key: 'Scheduler', help: h(hScheduler, 'Scheduler'), value: (<RMSwitch confirmTitle={'Confirm switch settings for monitoring-scheduler?'} onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-scheduler' }))} isDisabled={user?.grants['cluster-settings'] == false} isChecked={selectedCluster?.config?.monitoringScheduler} />) },
     { key: 'Run Jobs via SSH', help: h(hSSH, 'Run Jobs via SSH'), value: sc('scheduler-jobs-ssh', 'schedulerJobsSsh', 'schedulerJobsSshCron', 'scheduler-jobs-ssh-cron', 'Run Jobs via SSH') },
-    { key: 'Job Dispatch Mode', help: h(hJobsMode, 'Job Dispatch Mode'), value: (
+    { clusterSetting: 'scheduler-jobs-mode', key: 'Job Dispatch Mode', help: h(hJobsMode, 'Job Dispatch Mode'), value: (
       <Dropdown
         options={[
           { value: 'api', label: 'API (cookie-based)' },
@@ -70,7 +70,7 @@ function SchedulerSettings({ selectedCluster, user, openConfirmModal }) {
         onChange={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'scheduler-jobs-mode', value: value }))}
       />
     )},
-    { key: 'Force Remote Execution', help: h(hExecRemote, 'Force Remote Execution'), value: (
+    { clusterSetting: 'scheduler-jobs-exec-remote', key: 'Force Remote Execution', help: h(hExecRemote, 'Force Remote Execution'), value: (
       <HStack>
         <Input
           size='sm'
@@ -99,8 +99,8 @@ function SchedulerSettings({ selectedCluster, user, openConfirmModal }) {
         )}
       </HStack>
     )},
-    { key: 'Enable Configurator', help: h(`**Enable Configurator**\n\nWhen enabled, dbjobs tracks and deploys database configuration from compliance tags.\nWhen disabled, dbjobs still runs backups, optimize, and other jobs but skips all config tracking and deployment.\n\nDisable this if you manage your own my.cnf and don't use the configurator.\n\nConfig: \`prov-db-config\``, 'Enable Configurator'), value: (<RMSwitch confirmTitle={'Confirm switch settings for prov-db-config? When disabled, no config is tracked or pushed to databases.'} onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'prov-db-config' }))} isDisabled={user?.grants['cluster-settings'] == false} isChecked={selectedCluster?.config?.provDbConfig} />) },
-    { key: 'Analyze Tables Use PERSISTENT', help: h(hPersistent, 'Analyze Tables Use PERSISTENT'), value: (<RMSwitch confirmTitle={'Confirm switch settings for analyze-use-persistent?'} onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'analyze-use-persistent' }))} isDisabled={user?.grants['cluster-settings'] == false} isChecked={selectedCluster?.config?.analyzeUsePersistent} />) },
+    { clusterSetting: 'prov-db-config', key: 'Enable Configurator', help: h(`**Enable Configurator**\n\nWhen enabled, dbjobs tracks and deploys database configuration from compliance tags.\nWhen disabled, dbjobs still runs backups, optimize, and other jobs but skips all config tracking and deployment.\n\nDisable this if you manage your own my.cnf and don't use the configurator.\n\nConfig: \`prov-db-config\``, 'Enable Configurator'), value: (<RMSwitch confirmTitle={'Confirm switch settings for prov-db-config? When disabled, no config is tracked or pushed to databases.'} onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'prov-db-config' }))} isDisabled={user?.grants['cluster-settings'] == false} isChecked={selectedCluster?.config?.provDbConfig} />) },
+    { clusterSetting: 'analyze-use-persistent', key: 'Analyze Tables Use PERSISTENT', help: h(hPersistent, 'Analyze Tables Use PERSISTENT'), value: (<RMSwitch confirmTitle={'Confirm switch settings for analyze-use-persistent?'} onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'analyze-use-persistent' }))} isDisabled={user?.grants['cluster-settings'] == false} isChecked={selectedCluster?.config?.analyzeUsePersistent} />) },
     ...(selectedCluster?.config?.monitoringScheduler ? [
       { key: 'Logical Backup', help: h(hLogical, 'Logical Backup'), value: sc('scheduler-db-servers-logical-backup', 'schedulerDbServersLogicalBackup', 'schedulerDbServersLogicalBackupCron', 'scheduler-db-servers-logical-backup-cron', 'Logical Backup') },
       { key: 'Physical Backup', help: h(hPhysical, 'Physical Backup'), value: sc('scheduler-db-servers-physical-backup', 'schedulerDbServersPhysicalBackup', 'schedulerDbServersPhysicalBackupCron', 'scheduler-db-servers-physical-backup-cron', 'Physical Backup') },

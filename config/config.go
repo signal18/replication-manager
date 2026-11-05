@@ -2112,6 +2112,54 @@ func (conf *Config) GetImmuableFlag(key string) (interface{}, bool) {
 	return v, ok
 }
 
+// Cloud18ForSaleOptOutAllowed tells whether this instance may hide the clusters for sale
+// (cloud18-disable-for-sale, the "no noise" option): a paying customer only, a Developer, Support or
+// Support and Services plan, or a licence (#2268). The free and partner plans see what the
+// marketplace sells (a partner may get its own "only my clusters for sale" switch one day).
+func (conf *Config) Cloud18ForSaleOptOutAllowed() bool {
+	switch conf.Cloud18SubscriptionPlan {
+	case "developer", "support", "support-services":
+		return true
+	}
+	return strings.TrimSpace(conf.Cloud18LicenseFile) != ""
+}
+
+// ImmuableFlagValues maps each key the immutable configuration sets to the value it sets there,
+// as text, for the GUI's lock tooltips (#2268). A secret's value is never sent (F10): it is
+// SecretMask, as on every API path, and so is a key whose name says it holds one.
+func (conf *Config) ImmuableFlagValues() map[string]string {
+	flagMapMu.RLock()
+	values := make(map[string]string, len(conf.ImmuableFlagMap))
+	for k, v := range conf.ImmuableFlagMap {
+		values[k] = fmt.Sprint(v)
+	}
+	flagMapMu.RUnlock()
+	for k, v := range values {
+		if _, secret := conf.Secrets.Lookup(k); secret || looksLikeSecretKey(k) || urlWithPassword.MatchString(v) {
+			values[k] = SecretMask
+		}
+	}
+	return values
+}
+
+// urlWithPassword: a value carrying credentials in a URL (scheme://user:password@host, or a
+// token alone, scheme://TOKEN@host), masked whatever its key; a user@host URL is masked too
+// (over-masking is cheap).
+var urlWithPassword = regexp.MustCompile(`://[^/@\s]+@`)
+
+// looksLikeSecretKey: a key whose name says it holds a secret (password, pass, pwd, credential,
+// secret, token, auth...), masked even when the secret registry does not know it (defence in depth
+// for the lock tooltips: over-masking is cheap).
+func looksLikeSecretKey(key string) bool {
+	k := strings.ToLower(key)
+	for _, word := range []string{"pass", "pwd", "credential", "secret", "token", "auth", "private-key", "api-key"} {
+		if strings.Contains(k, word) {
+			return true
+		}
+	}
+	return false
+}
+
 // SetImmuableFlag writes key into the immutable config map, created when there is none.
 func (conf *Config) SetImmuableFlag(key string, value interface{}) {
 	flagMapMu.Lock()

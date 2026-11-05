@@ -8,7 +8,13 @@ import { useDispatch, useSelector } from 'react-redux'
 import { setSetting } from '../../../redux/settingsSlice'
 import RMButton from '../../../components/RMButton'
 
-function OrchestratorImages({ selectedCluster }) {
+// the configurator's Databases / Proxies tabs (#2268): scope 'proxy' keeps the proxy rows, 'db' the
+// others (the database rows and those both share); no scope keeps every row
+const PROXY_ROWS = ['ProxySQL', 'Maxscale', 'HaProxy', 'Sphinx', 'ShardProxy']
+const scopedRows = (rows, scope) =>
+  !scope ? rows : rows.filter((row) => (scope === 'proxy') === PROXY_ROWS.includes(row.key))
+
+function OrchestratorImages({ selectedCluster, scope }) {
   const dispatch = useDispatch()
   const {
     globalClusters: { monitor }
@@ -126,6 +132,7 @@ function OrchestratorImages({ selectedCluster }) {
       )
     },
     {
+      clusterSetting: 'prov-proxy-docker-proxysql-img',
       key: 'ProxySQL',
       value: (
         <Dropdown
@@ -146,6 +153,7 @@ function OrchestratorImages({ selectedCluster }) {
       )
     },
     {
+      clusterSetting: 'prov-proxy-docker-maxscale-img',
       key: 'Maxscale',
       value: (
         <Dropdown
@@ -166,6 +174,7 @@ function OrchestratorImages({ selectedCluster }) {
       )
     },
     {
+      clusterSetting: 'prov-proxy-docker-haproxy-img',
       key: 'HaProxy',
       value: (
         <Dropdown
@@ -212,6 +221,7 @@ function OrchestratorImages({ selectedCluster }) {
       )
     },
     {
+      clusterSetting: 'prov-sphinx-docker-img',
       key: 'Sphinx',
       value: (
         <Dropdown
@@ -232,6 +242,7 @@ function OrchestratorImages({ selectedCluster }) {
       )
     },
     {
+      clusterSetting: 'prov-proxy-docker-shardproxy-img',
       key: 'ShardProxy',
       value: (
         <Dropdown
@@ -262,7 +273,7 @@ function OrchestratorImages({ selectedCluster }) {
         <TagPill colorScheme={'green'} text={selectedCluster?.config?.provSphinxDockerImg} />
         <TagPill colorScheme={'green'} text={selectedCluster?.config?.provProxyDockerShardproxyImg} />
       </HStack>
-      <TableType2 dataArray={dataObject} className={parentStyles.table} />
+      <TableType2 dataArray={scopedRows(dataObject, scope)} className={parentStyles.table} />
     </VStack>
   )
 }

@@ -126,6 +126,31 @@
     flex-wrap: wrap;
     width: 100%;
   }
+  // level 2 under a level-1 section (Available Config Fragments): a fixed light-blue header,
+  // not retractable, the pills below. Theme variables only, so the dark theme follows.
+  .fragmentCategories {
+    width: 100%;
+    gap: rem(8);
+    align-items: stretch !important;
+    padding: rem(4);
+  }
+  .usedFragments {
+    padding: rem(8);
+  }
+  .fragmentCategory {
+    width: 100%;
+    border: 1px solid var(--tertiary-color);
+    border-radius: $border-radius-sm;
+    .tags {
+      padding: rem(8);
+    }
+  }
+  .fragmentCategoryTitle {
+    background-color: var(--tertiary-color);
+    padding: rem(4) rem(8);
+    font-weight: bold;
+    font-size: 0.9rem;
+  }
 }
 .guage {
   height: rem(140);
@@ -137,5 +162,15 @@
   gap: rem(16);
   @include breakpoint('md') {
     flex-direction: row;
+  }
+}
+
+// the tabs (#2268): the whole width, whatever their content's width (a narrow tab, Proxies or
+// Certificates, shrank to its content)
+.fullWidthTabs {
+  width: 100%;
+  > div[role='tabpanel'],
+  [role='tabpanel'] {
+    width: 100%;
   }
 }

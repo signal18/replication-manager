@@ -1337,7 +1337,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.IntVar(&conf.Cloud18HealthRefreshInterval, "cloud18-health-refresh-interval", 30, "Health refresh interval in seconds")
 	flags.StringVar(&conf.Cloud18PeerHealthMode, "cloud18-peer-health-mode", "pulling", "Peer health polling scope. pulling (DEFAULT) and smart both serve the for-sale catalog from the BO-aggregated peer.json and live-poll ONLY clusters this instance has a relationship to — own fleet (registering user) + delegated + active-session users' clusters + sale workflows. An instance with no such relationship (a fresh/browsing client) opens no peer connections. peering is a legacy full-mesh that live-polls EVERY peer incl. the for-sale catalog (O(N^2); opt-in only, never for clients). partner plan auto-promotes pulling->smart.")
 	flags.BoolVar(&conf.Cloud18DisablePeers, "cloud18-disable-peers", false, "Hide peer clusters from dashboard")
-	flags.BoolVar(&conf.Cloud18DisableForSale, "cloud18-disable-for-sale", false, "Hide clusters for sale from marketplace (paid plans only)")
+	flags.BoolVar(&conf.Cloud18DisableForSale, "cloud18-disable-for-sale", false, "Hide clusters for sale from the marketplace (a Developer, Support or Support and Services plan, or a licence)")
 	flags.StringVar(&conf.Cloud18MarketplacePricingMode, "cloud18-marketplace-pricing-mode", config.ConstMarketplacePricingModeCsvServicePlan, "Marketplace pricing model. csv-service-plan (DEFAULT) uses a per-cluster service plan downloaded as CSV. global-unit-pricing prices clusters globally from cloud18-marketplace-dbu-price and cloud18-marketplace-apu-price (both in Eur), with no per-cluster plan.")
 	flags.Float64Var(&conf.Cloud18MarketplaceDBUPrice, "cloud18-marketplace-dbu-price", 0, "Price per Database Unit in Eur, used when cloud18-marketplace-pricing-mode is global-unit-pricing")
 	flags.Float64Var(&conf.Cloud18MarketplaceAPUPrice, "cloud18-marketplace-apu-price", 0, "Price per APU (Application Unit: 1 core, 2 GB RAM, 10 GB disk, no IOPS) in Eur, used when cloud18-marketplace-pricing-mode is global-unit-pricing")
@@ -4831,17 +4831,10 @@ func (repman *ReplicationManager) SaveDynamic() (bool, error) {
 	keys := t.Keys()
 	keys = misc.SortKeysAsc(keys)
 
-	// Write sorted values to file
-	file, err := os.OpenFile(filePath, os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
-	if err != nil {
-		if os.IsPermission(err) {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "File permission denied: %s", filePath)
-		} else {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Error opening file: %s", err)
-		}
-		return false, err
-	}
-	defer file.Close()
+	// The content is built in memory, then written durably (misc.WriteFileDurable): the file
+	// holds the instance's secrets, encrypted, and was truncated then written in place, so a
+	// crash in the middle left it cut.
+	var file bytes.Buffer
 
 	// Write header
 	file.WriteString(header)
@@ -4880,13 +4873,21 @@ func (repman *ReplicationManager) SaveDynamic() (bool, error) {
 		}
 	}
 
-	s.WriteTo(file)
+	s.WriteTo(&file)
+	if err := misc.WriteFileDurable(filePath, file.Bytes(), 0o640, ".default.toml-*.tmp"); err != nil {
+		if os.IsPermission(err) {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "File permission denied: %s", filePath)
+		} else {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Error writing file %s: %s", filePath, err)
+		}
+		return false, err
+	}
 	//fmt.Printf("SAVE repman IMMUABLE MAP : %s", repman.Conf.ImmuableFlagMap)
 	//fmt.Printf("SAVE repman DYNAMIC MAP : %s", repman.Conf.DynamicFlagMap)
+	// Kept as it was: the former code copied from the file's end (after its writes), so this hash
+	// never covers the content and "changed" is true only at the first save. Out of the scope of
+	// the durable write; to be fixed on its own.
 	new_h := md5.New()
-	if _, err := io.Copy(new_h, file); err != nil {
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "Error during Overwriting: %s", err)
-	}
 
 	h, ok := repman.CheckSumConfig["saved"]
 	if !ok {

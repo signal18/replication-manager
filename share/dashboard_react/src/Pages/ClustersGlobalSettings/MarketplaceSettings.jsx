@@ -15,7 +15,12 @@ import modalStyles from '../../components/Modals/styles.module.scss'
 import remarkGfm from 'remark-gfm'
 import ConfirmModal from '../../components/Modals/ConfirmModal'
 
-function MarketplaceSettings({ config }) {
+// part (#2268), the Marketplace tabs of the global Setup: 'pricing' (the unit ratios and prices,
+// the gateway units, over/under-commit, the plans) or 'gateway' (the platform description, the
+// gateway and the domain); none shows every row
+const GATEWAY_ROWS = ['Platform Description', 'Gateway Domain Name', 'Gateway Service', 'Gateway Bandwidth (Mb/s)', 'Domain Add Script', 'Domain Drop Script', 'Domain User', 'Domain Secret']
+
+function MarketplaceSettings({ config, part }) {
   const dispatch = useDispatch()
   const [action, setAction] = useState({ title: '', body: <></> })
   const [isInfoModalOpen, setIsInfoModalOpen] = useState(false)
@@ -68,21 +73,25 @@ function MarketplaceSettings({ config }) {
 
   const dataObject = [
     {
+      globalSetting: 'resource-manager-ratio-dbu',
       key: 'DBU ratio',
       help: h(hRatio('DBU', 'resource-manager-ratio-dbu'), 'DBU ratio'),
       value: (<TextForm value={config?.resourceManagerRatioDbu} confirmTitle='Confirm DBU ratio to ' onSave={(value) => dispatch(setGlobalSetting({ setting: 'resource-manager-ratio-dbu', value }))} />)
     },
     {
+      globalSetting: 'resource-manager-ratio-apu',
       key: 'APU ratio',
       help: h(hRatio('APU', 'resource-manager-ratio-apu'), 'APU ratio'),
       value: (<TextForm value={config?.resourceManagerRatioApu} confirmTitle='Confirm APU ratio to ' onSave={(value) => dispatch(setGlobalSetting({ setting: 'resource-manager-ratio-apu', value }))} />)
     },
     {
+      globalSetting: 'resource-manager-ratio-bku',
       key: 'BKU / BAU ratio',
       help: h(hRatio('BKU', 'resource-manager-ratio-bku'), 'BKU ratio'),
       value: (<TextForm value={config?.resourceManagerRatioBku} confirmTitle='Confirm BKU ratio to ' onSave={(value) => dispatch(setGlobalSetting({ setting: 'resource-manager-ratio-bku', value }))} />)
     },
     {
+      globalSetting: 'cloud18-marketplace-pricing-mode',
       key: 'Marketplace Pricing Mode',
       help: h(hPricingMode, 'Marketplace Pricing Mode'),
       value: (
@@ -99,6 +108,7 @@ function MarketplaceSettings({ config }) {
     },
     ...(isUnitPricing ? [
       {
+        globalSetting: 'cloud18-marketplace-dbu-price',
         key: 'DBU Price (EUR)',
         help: h(hDbuPrice, 'DBU Price'),
         value: (
@@ -111,6 +121,7 @@ function MarketplaceSettings({ config }) {
         )
       },
       {
+        globalSetting: 'cloud18-marketplace-apu-price',
         key: 'APU Price (EUR)',
         help: h(hApuPrice, 'APU Price'),
         value: (
@@ -124,6 +135,7 @@ function MarketplaceSettings({ config }) {
       },
     ] : []),
     {
+      globalSetting: 'cloud18-marketplace-bku-price',
       key: 'BKU Price (Eur / month)',
       help: h(hBkuPrice, 'BKU Price'),
       value: (
@@ -136,6 +148,7 @@ function MarketplaceSettings({ config }) {
       )
     },
     {
+      globalSetting: 'cloud18-marketplace-bau-price',
       key: 'BAU Price (Eur / month)',
       help: h(hBauPrice, 'BAU Price'),
       value: (
@@ -148,6 +161,7 @@ function MarketplaceSettings({ config }) {
       )
     },
     {
+      globalSetting: 'cloud18-marketplace-gwu-price',
       key: 'GWU Price (Eur / month)',
       help: h(hGwuPrice, 'GWU Price'),
       value: (
@@ -160,6 +174,7 @@ function MarketplaceSettings({ config }) {
       )
     },
     {
+      globalSetting: 'cloud18-marketplace-gwu-free-units',
       key: 'Free GWU per cluster (bandwidth)',
       help: h(hGwuFree, 'Free GWU'),
       value: (
@@ -172,6 +187,7 @@ function MarketplaceSettings({ config }) {
       )
     },
     {
+      globalSetting: 'cloud18-marketplace-gwu-unit-mbit',
       key: 'GWU Size (Mb/s per unit)',
       help: h(hGwuUnit, 'GWU Size'),
       value: (
@@ -184,6 +200,7 @@ function MarketplaceSettings({ config }) {
       )
     },
     {
+      globalSetting: 'cloud18-marketplace-overcommit-price-pct',
       key: 'Over-commit Surcharge (%)',
       help: h(hOverPct, 'Over-commit Price Ratio'),
       value: (
@@ -196,6 +213,7 @@ function MarketplaceSettings({ config }) {
       )
     },
     {
+      globalSetting: 'cloud18-marketplace-undercommit-price-pct',
       key: 'Under-commit Reduction (%)',
       help: h(hUnderPct, 'Under-commit Price Ratio'),
       value: (
@@ -208,6 +226,7 @@ function MarketplaceSettings({ config }) {
       )
     },
     {
+      globalSetting: 'cloud18-platform-description',
       key: 'Platform Description',
       help: h(hPlatformDesc, 'Platform Description'),
       value: (
@@ -219,6 +238,7 @@ function MarketplaceSettings({ config }) {
       )
     },
     {
+      globalSetting: 'cloud18-gateway-domain-name',
       key: 'Gateway Domain Name',
       help: h(hGatewayDomain, 'Gateway Domain Name'),
       value: (
@@ -230,6 +250,7 @@ function MarketplaceSettings({ config }) {
       )
     },
     {
+      globalSetting: 'cloud18-gateway-service',
       key: 'Gateway Service',
       help: h(hGatewayService, 'Gateway Service'),
       value: (
@@ -241,6 +262,7 @@ function MarketplaceSettings({ config }) {
       )
     },
     {
+      globalSetting: 'cloud18-gateway-bandwidth-mbit',
       key: 'Gateway Bandwidth (Mb/s)',
       help: h(hGatewayBandwidth, 'Gateway Bandwidth'),
       value: (
@@ -253,6 +275,7 @@ function MarketplaceSettings({ config }) {
       )
     },
     {
+      globalSetting: 'cloud18-domain-add-script',
       key: 'Domain Add Script',
       help: h(hDomainAdd, 'Domain Add Script'),
       value: (
@@ -264,6 +287,7 @@ function MarketplaceSettings({ config }) {
       )
     },
     {
+      globalSetting: 'cloud18-domain-drop-script',
       key: 'Domain Drop Script',
       help: h(hDomainDrop, 'Domain Drop Script'),
       value: (
@@ -275,6 +299,7 @@ function MarketplaceSettings({ config }) {
       )
     },
     {
+      globalSetting: 'cloud18-domain-user',
       key: 'Domain User',
       help: h(hDomainUser, 'Domain User'),
       value: (
@@ -286,6 +311,7 @@ function MarketplaceSettings({ config }) {
       )
     },
     {
+      globalSetting: 'cloud18-domain-secret',
       key: 'Domain Secret',
       help: h(hDomainSecret, 'Domain Secret'),
       value: (
@@ -330,7 +356,11 @@ function MarketplaceSettings({ config }) {
   return (
     <>
       <Flex justify='space-between' gap='0'>
-        <TableType2 dataArray={dataObject} className={styles.tableWithHelp} helpColumn />
+        <TableType2
+          dataArray={!part ? dataObject : dataObject.filter((row) => (part === 'gateway') === GATEWAY_ROWS.includes(row.key))}
+          className={styles.tableWithHelp}
+          helpColumn
+        />
       </Flex>
       <CommonModal
         isOpen={isInfoModalOpen}

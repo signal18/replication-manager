@@ -1236,7 +1236,7 @@ func (repman *ReplicationManager) dashboardTokenHandler(w http.ResponseWriter, r
 // @Accept  json
 // @Produce  json
 // @Param Authorization header string false "Insert your access token" default(Bearer <Add access token here>)
-// @Success 200 {object} map[string]interface{} "Replication manager runtime state (dynamic)"
+// @Success 200 {object} map[string]interface{} "Replication manager runtime state (dynamic); immutableSettings: the global settings set in the configuration file, the command line or the environment, with their value there, secrets masked (logged-in callers only)"
 // @Failure 500 {string} string "Internal Server Error"
 // @Router /api/monitor [get]
 // GetToolsVersions returns the command line tools found on this replication-manager host
@@ -1275,6 +1275,18 @@ func (repman *ReplicationManager) handlerMuxReplicationManager(w http.ResponseWr
 	}
 
 	res, err = sjson.SetBytes(res, "clusters", cl)
+	if err != nil {
+		http.Error(w, "Encoding error", http.StatusInternalServerError)
+		return
+	}
+
+	// the global settings the GUI shows locked (#2268): set in the configuration file, the command
+	// line or the environment, refused by the API (immutableGlobalSetting). Each with its value in
+	// the system config, secrets masked, and only to a logged-in caller: the route also answers
+	// without a token.
+	if _, cerr := repman.GetJWTClaims(r); cerr == nil {
+		res, err = sjson.SetBytes(res, "immutableSettings", repman.Conf.ImmuableFlagValues())
+	}
 
 	if err == nil {
 		res, err = repman.Conf.MaskSecretsJSON(res, "config.")
@@ -1707,10 +1719,9 @@ func (repman *ReplicationManager) handlerMuxPeerClustersForSale(w http.ResponseW
 		return
 	}
 
-	// Paid plans can disable the for-sale marketplace view.
-	// Free plans cannot — marketplace visibility is the trade-off for the free tier.
-	plan := repman.Conf.Cloud18SubscriptionPlan
-	if repman.Conf.Cloud18DisableForSale && plan != "" && plan != "free" {
+	// A paying customer (a Support plan or a licence) may hide the clusters for sale; any other
+	// plan sees them: marketplace visibility is the trade-off (Cloud18ForSaleOptOutAllowed).
+	if repman.Conf.Cloud18DisableForSale && repman.Conf.Cloud18ForSaleOptOutAllowed() {
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte("[]"))
 		return

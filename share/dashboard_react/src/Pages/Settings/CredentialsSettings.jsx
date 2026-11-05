@@ -127,8 +127,9 @@ function CredentialsSettings({ selectedCluster, user, openConfirmModal }) {
         </Flex>
       )
     },
-    { key: 'Replication Use TLS', help: h(hTls, 'Replication Use TLS'), value: sw('replication-use-ssl', config.replicationUseSsl) },
+    { clusterSetting: 'replication-use-ssl', key: 'Replication Use TLS', help: h(hTls, 'Replication Use TLS'), value: sw('replication-use-ssl', config.replicationUseSsl) },
     {
+      clusterSetting: 'db-servers-tls-ssl-mode',
       key: 'Database TLS Mode',
       help: h(hSslMode, 'Database TLS Mode'),
       value: (
@@ -158,6 +159,7 @@ function CredentialsSettings({ selectedCluster, user, openConfirmModal }) {
       )
     },
     {
+      clusterSetting: 'monitoring-save-config',
       key: 'Store: Dynamic Config',
       help: h(hDynamic, 'Store: Dynamic Config'),
       value: (
@@ -168,6 +170,7 @@ function CredentialsSettings({ selectedCluster, user, openConfirmModal }) {
       )
     },
     {
+      clusterSetting: 'monitoring-secret-versioning',
       key: 'Store: Local Encrypted',
       help: h(hLocal, 'Store: Local Encrypted'),
       value: (

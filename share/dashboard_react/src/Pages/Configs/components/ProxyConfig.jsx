@@ -12,7 +12,12 @@ import { setSetting, switchSetting, changePlanUnits } from '../../../redux/setti
 import RMSlider from '../../../components/Sliders/RMSlider'
 import { convertSize } from '../../../utility/common'
 
-function ProxyConfig({ selectedCluster, user }) {
+// the Proxies tab's sub-tabs (#2268): part 'resources' = System Resources (every row but the config
+// fragments), 'available' / 'used' = the config fragments to add / in use; no part shows it all
+const FRAGMENT_ROWS = ['Manage Config Fragments']
+const partRows = (rows, part) => (!part ? rows : rows.filter((row) => !FRAGMENT_ROWS.includes(row.key)))
+
+function ProxyConfig({ selectedCluster, user, part }) {
   const dispatch = useDispatch()
   const clusterProxies = useSelector((state) => state.cluster.clusterProxies)
   const nProx = clusterProxies?.length || 1
@@ -51,8 +56,54 @@ function ProxyConfig({ selectedCluster, user }) {
   //   )
   // },
 
+  // the config fragments (proxy tags): the Proxies tab's Available / Used Fragments sub-tabs (#2268)
+  const availableFragments = (
+    <HStack className={styles.tags}>
+      {availableTags.map((tag) => {
+        const isAdded = usingTags.find((x) => x.name === tag.name)
+        if (isAdded) {
+          return null
+        }
+        return (
+          <AddRemovePill
+            isDisabled={user?.grants['proxy-config-flag'] == false}
+            text={tag.name}
+            onAdd={(title) => {
+              setConfirmTitle(title)
+              setIsConfirmModalOpen(true)
+              setConfirmHandler(
+                () => () => dispatch(addProxyTag({ clusterName: selectedCluster?.name, tag: tag.name }))
+              )
+            }}
+          />
+        )
+      })}
+    </HStack>
+  )
+  const usedFragments = (
+    <HStack className={`${styles.tags} `}>
+      {usingTags.map((tag) => {
+        return (
+          <AddRemovePill
+            isDisabled={user?.grants['proxy-config-flag'] == false}
+            text={tag}
+            onRemove={(title) => {
+              setConfirmTitle(title)
+              setIsConfirmModalOpen(true)
+              setConfirmHandler(
+                () => () => dispatch(dropProxyTag({ clusterName: selectedCluster?.name, tag: tag }))
+              )
+            }}
+            used={true}
+          />
+        )
+      })}
+    </HStack>
+  )
+
   const dataObject = [
     {
+      clusterSetting: 'prov-proxy-start-fetch-config',
       key: 'Proxy Start Fetch Config',
       value: (
         <RMSwitch
@@ -66,6 +117,7 @@ function ProxyConfig({ selectedCluster, user }) {
       )
     },
     {
+      clusterSetting: 'prov-proxy-single-failover',
       key: 'Single Proxy Failover',
       value: (
         <RMSwitch
@@ -79,53 +131,16 @@ function ProxyConfig({ selectedCluster, user }) {
       )
     },
     {
-      key: 'Manage Tags',
+      key: 'Manage Config Fragments',
       value: (
         <VStack className={styles.configTagContainer}>
           <VStack className={`${styles.availableTags} ${styles.proxyTags}`}>
-            <h4 className={styles.sectionTitle}>{'Available Tags'}</h4>
-            <HStack className={styles.tags}>
-              {availableTags.map((tag) => {
-                const isAdded = usingTags.find((x) => x.name === tag.name)
-                if (isAdded) {
-                  return null
-                }
-                return (
-                  <AddRemovePill
-                    isDisabled={user?.grants['proxy-config-flag'] == false}
-                    text={tag.name}
-                    onAdd={(title) => {
-                      setConfirmTitle(title)
-                      setIsConfirmModalOpen(true)
-                      setConfirmHandler(
-                        () => () => dispatch(addProxyTag({ clusterName: selectedCluster?.name, tag: tag.name }))
-                      )
-                    }}
-                  />
-                )
-              })}
-            </HStack>
+            <h4 className={styles.sectionTitle}>{'Available Config Fragments'}</h4>
+            {availableFragments}
           </VStack>
           <VStack className={`${styles.addedTags} ${styles.proxyTags}`}>
-            <h4 className={styles.sectionTitle}>{'Using Tags'}</h4>
-            <HStack className={`${styles.tags} `}>
-              {usingTags.map((tag) => {
-                return (
-                  <AddRemovePill
-                    isDisabled={user?.grants['proxy-config-flag'] == false}
-                    text={tag}
-                    onRemove={(title) => {
-                      setConfirmTitle(title)
-                      setIsConfirmModalOpen(true)
-                      setConfirmHandler(
-                        () => () => dispatch(dropProxyTag({ clusterName: selectedCluster?.name, tag: tag }))
-                      )
-                    }}
-                    used={true}
-                  />
-                )
-              })}
-            </HStack>
+            <h4 className={styles.sectionTitle}>{'Used Config Fragments'}</h4>
+            {usedFragments}
           </VStack>
         </VStack>
       )
@@ -249,7 +264,11 @@ function ProxyConfig({ selectedCluster, user }) {
   ]
   return (
     <VStack>
-      <TableType2 dataArray={dataObject} className={styles.table} />
+      {part === 'available' || part === 'used' ? (
+        <Box className={styles.fragmentPanel}>{part === 'available' ? availableFragments : usedFragments}</Box>
+      ) : (
+        <TableType2 dataArray={partRows(dataObject, part)} className={styles.table} />
+      )}
       {isConfirmModalOpen && (
         <ConfirmModal
           isOpen={isConfirmModalOpen}

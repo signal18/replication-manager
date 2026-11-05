@@ -12,7 +12,8 @@ function AccordionComponent({
   isOpen = null,
   allowToggle = true,
   onToggle,
-  headerActions
+  headerActions,
+  headerControls
 }) {
   return (
     <Accordion
@@ -22,7 +23,7 @@ function AccordionComponent({
       defaultIndex={0}
       {...(isOpen !== null ? { index: isOpen ? [0] : [] } : {})}>
       <AccordionItem className={styles.accordionItem}>
-        <h2>
+        <h2 style={headerControls ? { position: 'relative' } : undefined}>
           <AccordionButton
             className={`${styles.button} ${styles.baseColor} ${headerClassName}`}
             {...(onToggle ? { onClick: onToggle } : {})}>
@@ -34,8 +35,12 @@ function AccordionComponent({
                 {headerActions}
               </Box>
             )}
+            {headerControls && <Box className={styles.headerControlsSpace} />}
             {allowToggle && <AccordionIcon className={styles.icon} />}
           </AccordionButton>
+          {/* form controls (a select, an input) cannot live inside the header's button: they sit
+              over its right side, outside it, so they work and the rest of the header toggles */}
+          {headerControls && <Box className={styles.headerControls}>{headerControls}</Box>}
         </h2>
         <AccordionPanel className={`${styles.panel} ${panelClassName}`}>{body}</AccordionPanel>
       </AccordionItem>

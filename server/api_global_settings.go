@@ -880,11 +880,12 @@ func (repman *ReplicationManager) switchRepmanSetting(name string) error {
 		// which is merged back at startup. NOT ImmuableFlagMap (immutable.toml is never read).
 		repman.Conf.Cloud18DisablePeers = !repman.Conf.Cloud18DisablePeers
 	case "cloud18-disable-for-sale":
-		// Free plans cannot disable marketplace
-		if repman.Conf.Cloud18SubscriptionPlan != "" && repman.Conf.Cloud18SubscriptionPlan != "free" {
-			// scope:"server" — persisted to default.toml by SaveDynamic (value != default).
-			repman.Conf.Cloud18DisableForSale = !repman.Conf.Cloud18DisableForSale
+		// a paying customer only (a Support plan or a licence): said, not silently ignored
+		if !repman.Conf.Cloud18ForSaleOptOutAllowed() {
+			return errors.New("cloud18-disable-for-sale needs a Developer or Support plan, or a licence")
 		}
+		// scope:"server" — persisted to default.toml by SaveDynamic (value != default).
+		repman.Conf.Cloud18DisableForSale = !repman.Conf.Cloud18DisableForSale
 	default:
 		return errors.New("setting not found")
 	}

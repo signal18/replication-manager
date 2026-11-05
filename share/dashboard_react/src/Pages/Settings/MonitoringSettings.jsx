@@ -4,6 +4,8 @@ import styles from './styles.module.scss'
 import RMSwitch from '../../components/RMSwitch'
 import { useDispatch, useSelector } from 'react-redux'
 import TableType2 from '../../components/TableType2'
+import TabItems from '../../components/TabItems'
+import SectionFrame from '../../components/SectionFrame'
 import { setSetting, switchSetting } from '../../redux/settingsSlice'
 import TextForm from '../../components/TextForm'
 import NumberInput from '../../components/NumberInput'
@@ -15,7 +17,7 @@ import remarkGfm from 'remark-gfm'
 import { HiQuestionMarkCircle } from 'react-icons/hi'
 import RMIconButton from '../../components/RMIconButton'
 
-function MonitoringSettings({ selectedCluster, user, openConfirmModal }) {
+function MonitoringSettings({ selectedCluster, user, openConfirmModal, part }) {
   const dispatch = useDispatch()
   const [action, setAction] = useState({ title: '', body: <></> })
   const [isCommonModalOpen, setIsCommonModalOpen] = useState(false)
@@ -29,12 +31,12 @@ function MonitoringSettings({ selectedCluster, user, openConfirmModal }) {
     <RMIconButton icon={HiQuestionMarkCircle} onClick={() => openInfoModal(title, content)} iconFontsize='1rem' variant='ghost' style={{ opacity: 0.5, minWidth: '1.5rem', height: '1.5rem' }} />
   )
 
-  const { settings: { monSaveConfigLoading, monPauseLoading, monCaptureLoading, monSchemaChangeLoading, monInnoDBLoading, monVarDiffLoading, monProcessListLoading, captureTriggerLoading, monIgnoreErrLoading, monBinlogEventsLoading } } = useSelector((state) => state)
+  const [tab, setTab] = useState(0)
+  const { settings: { monPauseLoading, monCaptureLoading, monSchemaChangeLoading, monInnoDBLoading, monVarDiffLoading, monProcessListLoading, captureTriggerLoading, monIgnoreErrLoading, monBinlogEventsLoading } } = useSelector((state) => state)
 
   const sw = (setting, configKey, loading) =>
     <RMSwitch confirmTitle={`Confirm switch settings for ${setting}?`} onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting }))} isDisabled={user?.grants['cluster-settings'] == false} isChecked={selectedCluster?.config?.[configKey]} loading={loading} />
 
-  const hSaveConfig = `**Monitoring Save Config**\n\nWhen enabled, any setting changed through the API or GUI is immediately persisted to the cluster configuration file on disk.\nWhen disabled, changes apply at runtime only and are lost on the next restart.\n\nConfig: \`monitoring-save-config\``
   const hPause = `**Monitoring Pause**\n\nTemporarily suspends all monitoring cycles for this cluster.\nUseful during planned maintenance windows to avoid spurious alerts or unintended failovers.\n\nConfig: \`monitoring-pause\``
   const hResolveServerIP = `**Monitoring Resolve Server IP**\n\nRe-resolves a database server's hostname to an IP on every reconnect after an outage, keeping the server's tracked IP current.\n\nUsed by \`haproxy-mode: externalcheck\` (HAProxy's external-check scripts report a resolved IP, not the configured hostname) and \`haproxy-mode: runtimeapi\` (drives HAProxy's Runtime API with a real, current IP). Matters most on Kubernetes, where a pod restart hands out a brand-new address; OpenSVC/Docker addresses are typically stable across restarts.\n\nOnly triggers on a down-to-up transition, not every monitoring tick. Disable to skip this DNS lookup entirely.\n\nConfig: \`monitoring-resolve-server-ip\``
   const hCapture = `**Monitoring Capture On Error**\n\nCaptures a full diagnostic snapshot every time an error state is detected.\nThe snapshot includes SHOW FULL PROCESSLIST, SHOW ENGINE INNODB STATUS, and replication status.\nSnapshots are written to JSON files in the cluster working directory.\n\nConfig: \`monitoring-capture\``
@@ -80,69 +82,125 @@ function MonitoringSettings({ selectedCluster, user, openConfirmModal }) {
   const hRepStatCapture = `**Monitoring Replication Statistics**\n\nEnables collection of replication lag measurements at regular intervals averaged per hour.\nUsed to detect degrading replica performance over time.\nRequired for Failover Candidate Rate Using Statistics to function.\n\nConfig: \`delay-stat-capture\``
   const hRepStatRotate = `**Monitoring Replication Statistics Rotate**\n\nNumber of hours of delay statistics to retain before rotating.\nDefault: 24 hours. Maximum: 72 hours.\n\nConfig: \`delay-stat-rotate\``
 
-  const dataObject = [
+  // the Monitoring settings in tabs (#2268); the labels without the repeated "Monitoring"
+  const groups = [
     {
-      key: 'Monitoring Save Config', value: [
-        { key: 'Monitoring Save Config', help: h(hSaveConfig, 'Monitoring Save Config'), value: sw('monitoring-save-config', 'monitoringSaveConfig', monSaveConfigLoading) },
-        { key: 'Monitoring Pause', help: h(hPause, 'Monitoring Pause'), value: sw('monitoring-pause', 'monitoringPause', monPauseLoading) },
+      name: 'Capture',
+      rows: [
+        { clusterSetting: 'monitoring-capture', key: 'Capture On Error', help: h(hCapture, 'Monitoring Capture On Error'), value: sw('monitoring-capture', 'monitoringCapture', monCaptureLoading) },
+        { clusterSetting: 'monitoring-capture-trigger', key: 'Capture On Error Trigger', help: h(hCaptureTrigger, 'Monitoring Capture On Error Trigger'), value: <TextForm value={selectedCluster?.config?.monitoringCaptureTrigger} confirmTitle={`Confirm change 'monitoring-capture-trigger' to `} onSave={(v) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-capture-trigger', value: v.length === 0 ? '{undefined}' : v }))} /> },
+        { clusterSetting: 'monitoring-ignore-errors', key: 'Ignore Error List', help: h(hIgnoreErrors, 'Monitoring Ignore Error List'), value: <TextForm value={selectedCluster?.config?.monitoringIgnoreErrors} confirmTitle={`Confirm change 'monitoring-ignore-errors' to: `} onSave={(v) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-ignore-errors', value: v.length === 0 ? '{undefined}' : v }))} /> }
       ]
     },
-    { key: 'Monitoring Resolve Server IP', help: h(hResolveServerIP, 'Monitoring Resolve Server IP'), value: sw('monitoring-resolve-server-ip', 'monitoringResolveServerIP') },
-    { key: 'Monitoring Capture On Error', help: h(hCapture, 'Monitoring Capture On Error'), value: sw('monitoring-capture', 'monitoringCapture', monCaptureLoading) },
-    { key: 'Monitoring Capture On Error Trigger', help: h(hCaptureTrigger, 'Monitoring Capture On Error Trigger'), value: <TextForm value={selectedCluster?.config?.monitoringCaptureTrigger} confirmTitle={`Confirm change 'monitoring-capture-trigger' to `} onSave={(v) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-capture-trigger', value: v.length === 0 ? '{undefined}' : v }))} /> },
-    { key: 'Monitoring Ignore Error List', help: h(hIgnoreErrors, 'Monitoring Ignore Error List'), value: <TextForm value={selectedCluster?.config?.monitoringIgnoreErrors} confirmTitle={`Confirm change 'monitoring-ignore-errors' to: `} onSave={(v) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-ignore-errors', value: v.length === 0 ? '{undefined}' : v }))} /> },
-    { key: 'Monitoring Schema', help: h(hSchema, 'Monitoring Schema'), value: sw('monitoring-schema-change', 'monitoringSchemaChange', monSchemaChangeLoading) },
-    { key: 'Monitoring Schema Columns', help: h(hSchemaColumns, 'Monitoring Schema Columns'), value: sw('monitoring-schema-columns', 'monitoringSchemaColumns', monSchemaChangeLoading) },
-    { key: 'Monitoring Schema Indexes', help: h(hSchemaIndexes, 'Monitoring Schema Indexes'), value: sw('monitoring-schema-indexes', 'monitoringSchemaIndexes', monSchemaChangeLoading) },
-    { key: 'Monitoring Schema Events', help: h(hSchemaEvents, 'Monitoring Schema Events'), value: sw('monitoring-schema-events', 'monitoringSchemaEvents', monSchemaChangeLoading) },
-    { key: 'Monitoring Schema Events Page Size', help: h(hSchemaEventsPageSize, 'Monitoring Schema Events Page Size'), value: <NumberInput value={selectedCluster?.config?.monitoringSchemaEventsPageSize} min={1} max={10000} showEditButton={true} showConfirmModal={true} confirmTitle={`Confirm change 'monitoring-schema-events-page-size' to: `} onConfirm={(v) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-schema-events-page-size', value: v.length === 0 ? '1000' : v }))} /> },
-    { key: 'Monitoring Schema Events Maximum', help: h(hSchemaEventsMax, 'Monitoring Schema Events Maximum'), value: <NumberInput value={selectedCluster?.config?.monitoringSchemaEventsMax} min={1} max={10000} showEditButton={true} showConfirmModal={true} confirmTitle={`Confirm change 'monitoring-schema-events-max' to: `} onConfirm={(v) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-schema-events-max', value: v.length === 0 ? '10000' : v }))} /> },
-    { key: 'Monitoring Schema Ignore Tables', help: h(hSchemaIgnore, 'Monitoring Schema Ignore Tables'), value: <TextForm value={selectedCluster?.config?.monitoringSchemaIgnoreTables} confirmTitle={`Confirm change 'monitoring-schema-ignore-tables' to: `} onSave={(v) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-schema-ignore-tables', value: v.length === 0 ? '&nbsp;' : v }))} /> },
-    { key: 'Monitoring Schema Scan Timeout', help: h(hSchemaScanTimeout, 'Monitoring Schema Scan Timeout'), value: <NumberInput value={selectedCluster?.config?.monitoringSchemaScanTimeout} showEditButton={true} showConfirmModal={true} confirmTitle={`Confirm change 'monitoring-schema-scan-timeout' to: `} onConfirm={(v) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-schema-scan-timeout', value: v.length === 0 ? '30' : v }))} /> },
-    { key: 'Database Servers DNS Timeout', help: h(hDnsTimeout, 'Database Servers DNS Timeout'), value: <NumberInput value={selectedCluster?.config?.dbServersDnsTimeout} min={1} max={300} showEditButton={true} showConfirmModal={true} confirmTitle={`Confirm change 'db-servers-dns-timeout' to: `} onConfirm={(v) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'db-servers-dns-timeout', value: v.length === 0 ? '5' : v }))} /> },
-    { key: 'Database Servers Monitor Extra Port', help: h(hMonitorExtraPort, 'Database Servers Monitor Extra Port'), value: <NumberInput value={selectedCluster?.config?.dbServersMonitorExtraPort} min={0} max={65535} showEditButton={true} showConfirmModal={true} confirmTitle={`Confirm change 'db-servers-monitor-extra-port' to: `} onConfirm={(v) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'db-servers-monitor-extra-port', value: v.length === 0 ? '0' : v }))} /> },
-    { key: 'Monitoring Variable Diff', help: h(hVarDiff, 'Monitoring Variable Diff'), value: sw('monitoring-variable-diff', 'monitoringVariableDiff', monVarDiffLoading) },
-    { key: 'Monitoring Variable Change', help: h(hVarChange, 'Monitoring Variable Change'), value: sw('monitoring-variable-change', 'monitoringVariableChange', monVarDiffLoading) },
-    { key: 'Monitoring Variable Change Script', help: h(hVarChangeScript, 'Monitoring Variable Change Script'), value: <TextForm value={selectedCluster?.config?.monitoringVariableChangeScript} confirmTitle={`Confirm change 'monitoring-variable-change-script' to: `} onSave={(v) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-variable-change-script', value: v.length === 0 ? '{undefined}' : v }))} /> },
-    { key: 'Monitoring Variable Change Ignore', help: h(hVarChangeIgnore, 'Monitoring Variable Change Ignore'), value: <TextForm value={selectedCluster?.config?.monitoringVariableChangeIgnore} confirmTitle={`Confirm change 'monitoring-variable-change-ignore' to: `} onSave={(v) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-variable-change-ignore', value: v.length === 0 ? '{undefined}' : v }))} /> },
-    { key: 'Monitoring Add Monitor Script', help: h(hAddMonitorScript, 'Monitoring Add Monitor Script'), value: <TextForm value={selectedCluster?.config?.monitoringAddMonitorScript} confirmTitle={`Confirm change 'monitoring-add-monitor-script' to: `} onSave={(v) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-add-monitor-script', value: v.length === 0 ? '{undefined}' : v }))} /> },
-    { key: 'Monitoring Drop Monitor Script', help: h(hDropMonitorScript, 'Monitoring Drop Monitor Script'), value: <TextForm value={selectedCluster?.config?.monitoringDropMonitorScript} confirmTitle={`Confirm change 'monitoring-drop-monitor-script' to: `} onSave={(v) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-drop-monitor-script', value: v.length === 0 ? '{undefined}' : v }))} /> },
-    { key: 'Monitoring Schema Change Script', help: h(hSchemaChangeScript, 'Monitoring Schema Change Script'), value: <TextForm value={selectedCluster?.config?.monitoringSchemaChangeScript} confirmTitle={`Confirm change 'monitoring-schema-change-script' to: `} onSave={(v) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-schema-change-script', value: v.length === 0 ? '{undefined}' : v }))} /> },
-    { key: 'Monitoring Processlist', help: h(hProcesslist, 'Monitoring Processlist'), value: sw('monitoring-processlist', 'monitoringProcesslist', monProcessListLoading) },
-    { key: 'Monitoring Processlist Information Schema', help: h(hProcesslistIS, 'Monitoring Processlist Information Schema'), value: sw('monitoring-processlist-information-schema', 'monitoringProcesslistInformationSchema', monProcessListLoading) },
-    { key: 'Monitoring Processlist Inactive', help: h(hProcesslistInactive, 'Monitoring Processlist Inactive'), value: sw('monitoring-processlist-inactive', 'monitoringProcesslistInactive', monProcessListLoading) },
-    { key: 'Monitoring Processlist Transactions', help: h(hProcesslistTx, 'Monitoring Processlist Transactions'), value: sw('monitoring-processlist-transactions', 'monitoringProcesslistTransactions', monProcessListLoading) },
-    { key: 'Monitoring InnoDB Status', help: h(hInnoDB, 'Monitoring InnoDB Status'), value: sw('monitoring-innodb-status', 'monitoringInnoDBStatus', monInnoDBLoading) },
-    { key: 'Monitoring InnoDB Mutex', help: h(hMutex, 'Monitoring InnoDB Mutex'), value: sw('monitoring-performance-schema-mutex', 'monitoringPerformanceSchemaMutex', monProcessListLoading) },
-    { key: 'Monitoring InnoDB Latch', help: h(hLatch, 'Monitoring InnoDB Latch'), value: sw('monitoring-performance-schema-latch', 'monitoringPerformanceSchemaLatch', monProcessListLoading) },
     {
-      key: 'Monitoring Binlog Events', value: [
-        { key: 'Monitoring Binlog Events', help: h(hBinlogEvents, 'Monitoring Binlog Events'), value: sw('monitoring-binlog-events', 'monitoringBinlogEvents', monBinlogEventsLoading) },
-        { key: 'Monitoring Binlog Event Log Length', help: h(hBinlogEventLogLength, 'Monitoring Binlog Event Log Length'), value: <NumberInput value={selectedCluster?.config?.monitoringBinlogEventLogLength} min={32} max={4096} showEditButton={true} showConfirmModal={true} confirmTitle={`Confirm change 'monitoring-binlog-event-log-length' to: `} onConfirm={(v) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-binlog-event-log-length', value: v.length === 0 ? '256' : v }))} /> },
+      name: 'Schema',
+      rows: [
+        { clusterSetting: 'monitoring-schema-change', key: 'Schema', help: h(hSchema, 'Monitoring Schema'), value: sw('monitoring-schema-change', 'monitoringSchemaChange', monSchemaChangeLoading) },
+        { clusterSetting: 'monitoring-schema-columns', key: 'Schema Columns', help: h(hSchemaColumns, 'Monitoring Schema Columns'), value: sw('monitoring-schema-columns', 'monitoringSchemaColumns', monSchemaChangeLoading) },
+        { clusterSetting: 'monitoring-schema-indexes', key: 'Schema Indexes', help: h(hSchemaIndexes, 'Monitoring Schema Indexes'), value: sw('monitoring-schema-indexes', 'monitoringSchemaIndexes', monSchemaChangeLoading) },
+        { clusterSetting: 'monitoring-schema-events', key: 'Schema Events', help: h(hSchemaEvents, 'Monitoring Schema Events'), value: sw('monitoring-schema-events', 'monitoringSchemaEvents', monSchemaChangeLoading) },
+        { clusterSetting: 'monitoring-schema-events-page-size', key: 'Schema Events Page Size', help: h(hSchemaEventsPageSize, 'Monitoring Schema Events Page Size'), value: <NumberInput value={selectedCluster?.config?.monitoringSchemaEventsPageSize} min={1} max={10000} showEditButton={true} showConfirmModal={true} confirmTitle={`Confirm change 'monitoring-schema-events-page-size' to: `} onConfirm={(v) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-schema-events-page-size', value: v.length === 0 ? '1000' : v }))} /> },
+        { clusterSetting: 'monitoring-schema-events-max', key: 'Schema Events Maximum', help: h(hSchemaEventsMax, 'Monitoring Schema Events Maximum'), value: <NumberInput value={selectedCluster?.config?.monitoringSchemaEventsMax} min={1} max={10000} showEditButton={true} showConfirmModal={true} confirmTitle={`Confirm change 'monitoring-schema-events-max' to: `} onConfirm={(v) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-schema-events-max', value: v.length === 0 ? '10000' : v }))} /> },
+        { clusterSetting: 'monitoring-schema-ignore-tables', key: 'Schema Ignore Tables', help: h(hSchemaIgnore, 'Monitoring Schema Ignore Tables'), value: <TextForm value={selectedCluster?.config?.monitoringSchemaIgnoreTables} confirmTitle={`Confirm change 'monitoring-schema-ignore-tables' to: `} onSave={(v) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-schema-ignore-tables', value: v.length === 0 ? '&nbsp;' : v }))} /> },
+        { clusterSetting: 'monitoring-schema-scan-timeout', key: 'Schema Scan Timeout', help: h(hSchemaScanTimeout, 'Monitoring Schema Scan Timeout'), value: <NumberInput value={selectedCluster?.config?.monitoringSchemaScanTimeout} showEditButton={true} showConfirmModal={true} confirmTitle={`Confirm change 'monitoring-schema-scan-timeout' to: `} onConfirm={(v) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-schema-scan-timeout', value: v.length === 0 ? '30' : v }))} /> },
+        { clusterSetting: 'monitoring-schema-change-script', key: 'Schema Change Script', help: h(hSchemaChangeScript, 'Monitoring Schema Change Script'), value: <TextForm value={selectedCluster?.config?.monitoringSchemaChangeScript} confirmTitle={`Confirm change 'monitoring-schema-change-script' to: `} onSave={(v) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-schema-change-script', value: v.length === 0 ? '{undefined}' : v }))} /> }
       ]
     },
-    { key: 'Monitoring Replication Statistics', help: h(hRepStatCapture, 'Monitoring Replication Statistics'), value: sw('delay-stat-capture', 'delayStatCapture') },
-    { key: 'Monitoring Replication Statistics Rotate', help: h(hRepStatRotate, 'Monitoring Replication Statistics Rotate'), value: (<RMSlider value={selectedCluster?.config?.delayStatRotate} max={72} showMarkAtInterval={12} confirmTitle='Confirm change replication statistics rotate to: ' onChange={(val) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'delay-stat-rotate', value: val }))} />) },
     {
-      key: 'Monitoring Performance Schema', value: [
-        { key: 'Enabled', help: h(hPFS, 'Monitoring Performance Schema'), value: sw('monitoring-performance-schema', 'monitoringPerformanceSchema') },
-        { key: 'Memory', help: h(hPFSMemory, 'Monitoring Performance Schema Memory'), value: sw('monitoring-performance-schema-memory', 'monitoringPerformanceSchemaMemory') },
-        { key: 'Instruments', help: h(hPFSInstruments, 'Monitoring Performance Schema Instruments'), value: sw('monitoring-performance-schema-instruments', 'monitoringPerformanceIntruments') },
-        { key: 'Queries', help: h(hPFSQueries, 'Monitoring Performance Schema Queries'), value: sw('monitoring-performance-schema-queries', 'monitoringPerformanceSchemaQueries') },
-        { key: 'Queries Period', help: h(hPFSPeriod, 'PFS Queries Period'), value: <NumberInput value={selectedCluster?.config?.monitoringPerformanceSchemaQueriesPeriod} min={1} max={168} showEditButton={true} showConfirmModal={true} confirmTitle={`Confirm change 'monitoring-performance-schema-queries-period' to: `} onConfirm={(v) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-performance-schema-queries-period', value: v.length === 0 ? '1' : v }))} /> },
-        { key: 'Queries Interval', help: h(hPFSInterval, 'PFS Queries Interval'), value: <NumberInput value={selectedCluster?.config?.monitoringPerformanceSchemaQueriesInterval} min={0} max={3600} showEditButton={true} showConfirmModal={true} confirmTitle={`Confirm change 'monitoring-performance-schema-queries-interval' to: `} onConfirm={(v) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-performance-schema-queries-interval', value: v.length === 0 ? '30' : v }))} /> },
-        { key: 'Queries Explain', help: h(hPFSExplain, 'PFS Queries Explain'), value: sw('monitoring-performance-schema-queries-explain', 'monitoringPerformanceSchemaQueriesExplain') },
-        { key: 'Queries Explain Delay', help: h(hPFSDelay, 'PFS Queries Explain Delay'), value: <NumberInput value={selectedCluster?.config?.monitoringPerformanceSchemaQueriesExplainDelay} min={0} max={5000} step={50} showEditButton={true} showConfirmModal={true} confirmTitle={`Confirm change 'monitoring-performance-schema-queries-explain-delay' to: `} onConfirm={(v) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-performance-schema-queries-explain-delay', value: v.length === 0 ? '200' : v }))} /> },
-        { key: 'Queries Explain Purge', help: h(hPFSPurge, 'PFS Queries Explain Purge Period'), value: <NumberInput value={selectedCluster?.config?.monitoringPerformanceSchemaQueriesExplainPurgePeriod} min={0} max={365} showEditButton={true} showConfirmModal={true} confirmTitle={`Confirm change 'monitoring-performance-schema-queries-explain-purge-period' to: `} onConfirm={(v) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-performance-schema-queries-explain-purge-period', value: v.length === 0 ? '30' : v }))} /> },
+      name: 'InnoDB PFS',
+      rows: [
+        { clusterSetting: 'monitoring-innodb-status', key: 'InnoDB Status', help: h(hInnoDB, 'Monitoring InnoDB Status'), value: sw('monitoring-innodb-status', 'monitoringInnoDBStatus', monInnoDBLoading) },
+        { clusterSetting: 'monitoring-performance-schema-mutex', key: 'InnoDB Mutex', help: h(hMutex, 'Monitoring InnoDB Mutex'), value: sw('monitoring-performance-schema-mutex', 'monitoringPerformanceSchemaMutex', monProcessListLoading) },
+        { clusterSetting: 'monitoring-performance-schema-latch', key: 'InnoDB Latch', help: h(hLatch, 'Monitoring InnoDB Latch'), value: sw('monitoring-performance-schema-latch', 'monitoringPerformanceSchemaLatch', monProcessListLoading) },
+        {
+          key: 'Performance Schema', value: [
+            { clusterSetting: 'monitoring-performance-schema', key: 'Enabled', help: h(hPFS, 'Monitoring Performance Schema'), value: sw('monitoring-performance-schema', 'monitoringPerformanceSchema') },
+            { clusterSetting: 'monitoring-performance-schema-memory', key: 'Memory', help: h(hPFSMemory, 'Monitoring Performance Schema Memory'), value: sw('monitoring-performance-schema-memory', 'monitoringPerformanceSchemaMemory') },
+            { clusterSetting: 'monitoring-performance-schema-instruments', key: 'Instruments', help: h(hPFSInstruments, 'Monitoring Performance Schema Instruments'), value: sw('monitoring-performance-schema-instruments', 'monitoringPerformanceIntruments') },
+            { clusterSetting: 'monitoring-performance-schema-queries', key: 'Queries', help: h(hPFSQueries, 'Monitoring Performance Schema Queries'), value: sw('monitoring-performance-schema-queries', 'monitoringPerformanceSchemaQueries') },
+            { clusterSetting: 'monitoring-performance-schema-queries-period', key: 'Queries Period', help: h(hPFSPeriod, 'PFS Queries Period'), value: <NumberInput value={selectedCluster?.config?.monitoringPerformanceSchemaQueriesPeriod} min={1} max={168} showEditButton={true} showConfirmModal={true} confirmTitle={`Confirm change 'monitoring-performance-schema-queries-period' to: `} onConfirm={(v) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-performance-schema-queries-period', value: v.length === 0 ? '1' : v }))} /> },
+            { clusterSetting: 'monitoring-performance-schema-queries-interval', key: 'Queries Interval', help: h(hPFSInterval, 'PFS Queries Interval'), value: <NumberInput value={selectedCluster?.config?.monitoringPerformanceSchemaQueriesInterval} min={0} max={3600} showEditButton={true} showConfirmModal={true} confirmTitle={`Confirm change 'monitoring-performance-schema-queries-interval' to: `} onConfirm={(v) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-performance-schema-queries-interval', value: v.length === 0 ? '30' : v }))} /> },
+            { clusterSetting: 'monitoring-performance-schema-queries-explain', key: 'Queries Explain', help: h(hPFSExplain, 'PFS Queries Explain'), value: sw('monitoring-performance-schema-queries-explain', 'monitoringPerformanceSchemaQueriesExplain') },
+            { clusterSetting: 'monitoring-performance-schema-queries-explain-delay', key: 'Queries Explain Delay', help: h(hPFSDelay, 'PFS Queries Explain Delay'), value: <NumberInput value={selectedCluster?.config?.monitoringPerformanceSchemaQueriesExplainDelay} min={0} max={5000} step={50} showEditButton={true} showConfirmModal={true} confirmTitle={`Confirm change 'monitoring-performance-schema-queries-explain-delay' to: `} onConfirm={(v) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-performance-schema-queries-explain-delay', value: v.length === 0 ? '200' : v }))} /> },
+            { clusterSetting: 'monitoring-performance-schema-queries-explain-purge-period', key: 'Queries Explain Purge', help: h(hPFSPurge, 'PFS Queries Explain Purge Period'), value: <NumberInput value={selectedCluster?.config?.monitoringPerformanceSchemaQueriesExplainPurgePeriod} min={0} max={365} showEditButton={true} showConfirmModal={true} confirmTitle={`Confirm change 'monitoring-performance-schema-queries-explain-purge-period' to: `} onConfirm={(v) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-performance-schema-queries-explain-purge-period', value: v.length === 0 ? '30' : v }))} /> },
+          ]
+        }
+      ]
+    },
+    {
+      name: 'Status',
+      rows: [
+        { clusterSetting: 'monitoring-pause', key: 'Pause', help: h(hPause, 'Monitoring Pause'), value: sw('monitoring-pause', 'monitoringPause', monPauseLoading) },
+        { clusterSetting: 'monitoring-add-monitor-script', key: 'Add Monitor Script', help: h(hAddMonitorScript, 'Monitoring Add Monitor Script'), value: <TextForm value={selectedCluster?.config?.monitoringAddMonitorScript} confirmTitle={`Confirm change 'monitoring-add-monitor-script' to: `} onSave={(v) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-add-monitor-script', value: v.length === 0 ? '{undefined}' : v }))} /> },
+        { clusterSetting: 'monitoring-drop-monitor-script', key: 'Drop Monitor Script', help: h(hDropMonitorScript, 'Monitoring Drop Monitor Script'), value: <TextForm value={selectedCluster?.config?.monitoringDropMonitorScript} confirmTitle={`Confirm change 'monitoring-drop-monitor-script' to: `} onSave={(v) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-drop-monitor-script', value: v.length === 0 ? '{undefined}' : v }))} /> }
+      ]
+    },
+    {
+      name: 'Processlist',
+      rows: [
+        { clusterSetting: 'monitoring-processlist', key: 'Processlist', help: h(hProcesslist, 'Monitoring Processlist'), value: sw('monitoring-processlist', 'monitoringProcesslist', monProcessListLoading) },
+        { clusterSetting: 'monitoring-processlist-information-schema', key: 'Processlist Information Schema', help: h(hProcesslistIS, 'Monitoring Processlist Information Schema'), value: sw('monitoring-processlist-information-schema', 'monitoringProcesslistInformationSchema', monProcessListLoading) },
+        { clusterSetting: 'monitoring-processlist-inactive', key: 'Processlist Inactive', help: h(hProcesslistInactive, 'Monitoring Processlist Inactive'), value: sw('monitoring-processlist-inactive', 'monitoringProcesslistInactive', monProcessListLoading) },
+        { clusterSetting: 'monitoring-processlist-transactions', key: 'Processlist Transactions', help: h(hProcesslistTx, 'Monitoring Processlist Transactions'), value: sw('monitoring-processlist-transactions', 'monitoringProcesslistTransactions', monProcessListLoading) }
+      ]
+    },
+    {
+      name: 'Variables',
+      rows: [
+        { clusterSetting: 'monitoring-variable-diff', key: 'Variable Diff', help: h(hVarDiff, 'Monitoring Variable Diff'), value: sw('monitoring-variable-diff', 'monitoringVariableDiff', monVarDiffLoading) },
+        { clusterSetting: 'monitoring-variable-change', key: 'Variable Change', help: h(hVarChange, 'Monitoring Variable Change'), value: sw('monitoring-variable-change', 'monitoringVariableChange', monVarDiffLoading) },
+        { clusterSetting: 'monitoring-variable-change-script', key: 'Variable Change Script', help: h(hVarChangeScript, 'Monitoring Variable Change Script'), value: <TextForm value={selectedCluster?.config?.monitoringVariableChangeScript} confirmTitle={`Confirm change 'monitoring-variable-change-script' to: `} onSave={(v) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-variable-change-script', value: v.length === 0 ? '{undefined}' : v }))} /> },
+        { clusterSetting: 'monitoring-variable-change-ignore', key: 'Variable Change Ignore', help: h(hVarChangeIgnore, 'Monitoring Variable Change Ignore'), value: <TextForm value={selectedCluster?.config?.monitoringVariableChangeIgnore} confirmTitle={`Confirm change 'monitoring-variable-change-ignore' to: `} onSave={(v) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-variable-change-ignore', value: v.length === 0 ? '{undefined}' : v }))} /> }
+      ]
+    },
+    {
+      name: 'Replication',
+      rows: [
+        {
+          key: 'Binlog Events', value: [
+            { clusterSetting: 'monitoring-binlog-events', key: 'Binlog Events', help: h(hBinlogEvents, 'Monitoring Binlog Events'), value: sw('monitoring-binlog-events', 'monitoringBinlogEvents', monBinlogEventsLoading) },
+            { clusterSetting: 'monitoring-binlog-event-log-length', key: 'Binlog Event Log Length', help: h(hBinlogEventLogLength, 'Monitoring Binlog Event Log Length'), value: <NumberInput value={selectedCluster?.config?.monitoringBinlogEventLogLength} min={32} max={4096} showEditButton={true} showConfirmModal={true} confirmTitle={`Confirm change 'monitoring-binlog-event-log-length' to: `} onConfirm={(v) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-binlog-event-log-length', value: v.length === 0 ? '256' : v }))} /> },
+          ]
+        },
+        { clusterSetting: 'delay-stat-capture', key: 'Replication Statistics', help: h(hRepStatCapture, 'Monitoring Replication Statistics'), value: sw('delay-stat-capture', 'delayStatCapture') },
+        { clusterSetting: 'delay-stat-rotate', key: 'Replication Statistics Rotate', help: h(hRepStatRotate, 'Monitoring Replication Statistics Rotate'), value: (<RMSlider value={selectedCluster?.config?.delayStatRotate} max={72} showMarkAtInterval={12} confirmTitle='Confirm change replication statistics rotate to: ' onChange={(val) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'delay-stat-rotate', value: val }))} />) }
       ]
     }
   ]
 
+  // how repman reaches the servers: shown in Setup > Connect (#2268)
+  const connectRows = [
+    { clusterSetting: 'monitoring-resolve-server-ip', key: 'Resolve Server IP', help: h(hResolveServerIP, 'Monitoring Resolve Server IP'), value: sw('monitoring-resolve-server-ip', 'monitoringResolveServerIP') },
+    { clusterSetting: 'db-servers-dns-timeout', key: 'Database Servers DNS Timeout', help: h(hDnsTimeout, 'Database Servers DNS Timeout'), value: <NumberInput value={selectedCluster?.config?.dbServersDnsTimeout} min={1} max={300} showEditButton={true} showConfirmModal={true} confirmTitle={`Confirm change 'db-servers-dns-timeout' to: `} onConfirm={(v) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'db-servers-dns-timeout', value: v.length === 0 ? '5' : v }))} /> },
+    { clusterSetting: 'db-servers-monitor-extra-port', key: 'Database Servers Monitor Extra Port', help: h(hMonitorExtraPort, 'Database Servers Monitor Extra Port'), value: <NumberInput value={selectedCluster?.config?.dbServersMonitorExtraPort} min={0} max={65535} showEditButton={true} showConfirmModal={true} confirmTitle={`Confirm change 'db-servers-monitor-extra-port' to: `} onConfirm={(v) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'db-servers-monitor-extra-port', value: v.length === 0 ? '0' : v }))} /> }
+  ]
+
+  if (part === 'connect') {
+    return (
+      <>
+        <Flex justify='space-between' gap='0'>
+          <TableType2 dataArray={connectRows} className={styles.tableWithHelp} helpColumn={true} />
+        </Flex>
+        <CommonModal isOpen={isCommonModalOpen} closeModal={() => setIsCommonModalOpen(false)} title={action.title} body={action.body} size='xl' />
+      </>
+    )
+  }
+
   return (
     <>
-      <Flex justify='space-between' gap='0'>
-        <TableType2 dataArray={dataObject} className={styles.tableWithHelp} helpColumn={true} />
-      </Flex>
+      <TabItems
+        options={groups.map((g) => g.name)}
+        tabIndex={Math.min(tab, groups.length - 1)}
+        onChange={setTab}
+        tabContents={groups.map((g) => (
+          // each tab's rows in a frame, as every settings section (#2268)
+          <SectionFrame key={g.name} title={g.name}>
+            <Flex justify='space-between' gap='0'>
+              <TableType2 dataArray={g.rows} className={styles.tableWithHelp} helpColumn={true} />
+            </Flex>
+          </SectionFrame>
+        ))}
+      />
       <CommonModal isOpen={isCommonModalOpen} closeModal={() => setIsCommonModalOpen(false)} title={action.title} body={action.body} size='xl' />
     </>
   )

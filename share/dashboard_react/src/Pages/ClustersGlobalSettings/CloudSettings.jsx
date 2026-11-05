@@ -7,6 +7,8 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 import styles from './styles.module.scss'
 import { useDispatch } from 'react-redux'
 import TableType2 from '../../components/TableType2'
+import SectionFrame from '../../components/SectionFrame'
+import { PlanLockButton } from '../../components/SettingLock'
 import { setGlobalSetting, switchGlobalSetting, getMonitoredData, registerInstance, confirmRegisterInstance, pollRegisterStatus, fetchSubscriptionPlans, fetchSubscription, updateSubscription, unregisterInstance } from '../../redux/globalClustersSlice'
 import TextForm from '../../components/TextForm'
 import RMSwitch from '../../components/RMSwitch'
@@ -27,7 +29,7 @@ import { authService } from '../../services/authService'
 import Cloud18Identity from './Cloud18Identity'
 import { globalClustersService } from '../../services/globalClustersService'
 
-function CloudSettings({ config }) {
+function CloudSettings({ config, part }) {
   const dispatch = useDispatch()
   const joinClasses = (...classes) => classes.filter(Boolean).join(' ')
   const [action, setAction] = useState({ title: '', body: <></> })
@@ -467,8 +469,8 @@ Start create an account in https://gitlab.signal18.io
   )
 
   const hStatus = `**Cloud18 Status**\n\nShows whether this instance is actively connected to Signal18 Cloud18.\nWhen ONLINE, configuration is automatically backed up to GitLab on every change, and marketplace features are available.\n\nConfig: \`cloud18\``
-  const hGitUser = `**Git User**\n\nGitLab email or username at \`gitlab.signal18.io\`.\nCreated during registration — used for authentication, encrypted configuration backup, and marketplace identity.\n\n**Locked while connected.** To change the email, unregister first (which drops the GitLab projects for this URI), then register again with the new email.\n\nConfig: \`cloud18-gitlab-user\``
-  const hGitPass = `**GitLab Password**\n\nPassword for the GitLab account at \`gitlab.signal18.io\`.\nStored encrypted in the replication-manager configuration.\n\nConfig: \`cloud18-gitlab-password\``
+  const hGitUser = `**Cloud18 User**\n\nThe email of this instance's Cloud18 account.\nSet at registration: it signs the instance in to Cloud18, backs its configuration up (encrypted), and is its marketplace identity.\n\n**Locked while connected.** To change it, unregister first (which drops this URI's configuration backup), then register again with the new account.\n\nConfig: \`cloud18-gitlab-user\``
+  const hGitPass = `**Cloud18 Password**\n\nThe password of this instance's Cloud18 account.\nStored encrypted in the replication-manager configuration.\n\nConfig: \`cloud18-gitlab-password\``
   const hIdentity = `**Identity**\n\nThe Cloud18 login of this instance (\`identity.cloud18.io\`), made with the account it is registered with: replication-manager signs in once, keeps the login and refreshes it. It acts as that account for the S3 SSO archive storages (the archive folder is the account's) and the Cloud18 vault (\`vault-auth = jwt\`).\n\n**Not registered**: no Cloud18 login. **Refused**: Cloud18 refuses the registered account (its password changed, the account was removed): register this instance again.`
   const hDomain = `**Domain**\n\nCompany namespace on Cloud18 (e.g. \`mycompany\`).\nA top-level GitLab group with this name is created at \`gitlab.signal18.io\` to host your cluster configurations.\n\nConfig: \`cloud18-domain\``
   const hSubdomain = `**Subdomain**\n\nDatacenter or environment identifier (e.g. \`ovh\`, \`aws\`).\nCreates a subgroup under your domain group, allowing multiple independent deployment environments.\n\nConfig: \`cloud18-sub-domain\``
@@ -500,12 +502,12 @@ Start create an account in https://gitlab.signal18.io
 
   const registrationData = [
     { key: 'Status',         help: h(hStatus,    'Cloud18 Status'),    value: <TagPill colorScheme={isConnected ? 'green' : 'gray'} text={isConnected ? 'ONLINE' : 'OFFLINE'} /> },
-    { key: 'Git User',       help: h(hGitUser,   'Git User'),          value: isConnected
+    { globalSetting: 'cloud18-gitlab-user', key: 'Cloud18 User',   help: h(hGitUser,   'Cloud18 User'),          value: isConnected
         ? <Text fontSize='sm'>{config?.cloud18GitUser}</Text>
-        : <TextForm value={config?.cloud18GitUser}        confirmTitle='Confirm git username to '   onSave={(v) => dispatch(setGlobalSetting({ setting: 'cloud18-gitlab-user', value: v }))} /> },
-    { key: 'GitLab Password',help: h(hGitPass,   'GitLab Password'),   value: isConnected
+        : <TextForm value={config?.cloud18GitUser}        confirmTitle='Confirm Cloud18 user to '   onSave={(v) => dispatch(setGlobalSetting({ setting: 'cloud18-gitlab-user', value: v }))} /> },
+    { globalSetting: 'cloud18-gitlab-password', key: 'Cloud18 Password', help: h(hGitPass, 'Cloud18 Password'),   value: isConnected
         ? <Text fontSize='sm'>••••••••</Text>
-        : <TextForm value={config?.cloud18GitlabPassword} type='password' confirmTitle='Confirm GitLab password to ' onSave={(v) => dispatch(setGlobalSetting({ setting: 'cloud18-gitlab-password', value: btoa(v) }))} /> },
+        : <TextForm value={config?.cloud18GitlabPassword} type='password' confirmTitle='Confirm Cloud18 password to ' onSave={(v) => dispatch(setGlobalSetting({ setting: 'cloud18-gitlab-password', value: btoa(v) }))} /> },
     { key: 'Identity', help: h(hIdentity, 'Identity'), value: <Cloud18Identity /> },
     { key: 'URI', help: h(`**URI**\n\nThis instance's Cloud18 identity — **domain / sub-domain / zone**. It forms the GitLab repos it syncs config and the peer catalog through.\n\nExamples: \`mycompany.headquarter.us1\`, \`signal18.ovh.fr-2\`.\n\nConfig: \`cloud18-domain\`, \`cloud18-sub-domain\`, \`cloud18-sub-domain-zone\``, 'URI'),
       // Credit-card style: the 3 URI parts as distinct fields on one line, with a SINGLE
@@ -620,6 +622,7 @@ Start create an account in https://gitlab.signal18.io
   const hApiPublicUrl = `**API Public URL**\n\nPublic URL this replication-manager advertises so peers can reach it — required for peer aggregation (sharing/combining fleet clusters across instances).\n\nConfig: \`api-public-url\``
   const peeringData = isConnected ? [
     {
+      globalSetting: 'api-public-url',
       key: 'API Public URL',
       help: h(hApiPublicUrl, 'API Public URL'),
       value: (
@@ -631,6 +634,7 @@ Start create an account in https://gitlab.signal18.io
       )
     },
     {
+      globalSetting: 'cloud18-peer-health-mode',
       key: 'Peer Health Mode',
       help: h(`**Peer Health Mode**\n\nHow peer cluster health status is determined:\n\n- **peering**: Direct HTTP polling of all peer instances — gives real-time reachability but scales O(N²)\n- **smart** (default): Always polls your own fleet (same registered GitLab user). Shared/marketplace peers are only polled when a user viewing them is connected\n- **pulling**: Health comes from peer.json via the back office — lowest overhead, scales O(N), but with a few minutes delay\n\nConfig: \`cloud18-peer-health-mode\``, 'Peer Health Mode'),
       value: (
@@ -647,6 +651,7 @@ Start create an account in https://gitlab.signal18.io
       )
     },
     {
+      globalSetting: 'cloud18-disable-peers',
       key: 'Disable Peers',
       help: h(`**Disable Peers**\n\nWhen enabled, peer clusters are hidden from the dashboard and all peer health polling is skipped.\n\nConfig: \`cloud18-disable-peers\``, 'Disable Peers'),
       value: (
@@ -661,16 +666,32 @@ Start create an account in https://gitlab.signal18.io
 
   // Marketplace section — a SEPARATE concern from peering (buying/selling clusters;
   // works even without a public interface). Free plans cannot disable it.
-  const marketplaceData = (isConnected && config?.cloud18SubscriptionPlan && config?.cloud18SubscriptionPlan !== 'free') ? [
+  // Not Interested in Clusters For Sale: shown to every registered instance, for paying customers
+  // only (#2268): a Developer, Support or Support and Services plan, or a licence. The server's rule
+  // is the same (Config.Cloud18ForSaleOptOutAllowed): the free and partner plans see the sale.
+  const forSaleOptOutAllowed = ['developer', 'support', 'support-services'].includes(config?.cloud18SubscriptionPlan) || !!config?.cloud18LicenseFile
+  const marketplaceData = isConnected ? [
     {
-      key: 'Disable Clusters For Sale',
-      help: h(`**Disable Clusters For Sale**\n\nWhen enabled, clusters for sale are hidden from the marketplace view.\n\nThis option is only available on paid plans. Free plan users always see clusters for sale.\n\nConfig: \`cloud18-disable-for-sale\``, 'Disable Clusters For Sale'),
+      globalSetting: 'cloud18-disable-for-sale',
+      key: 'Not Interested in Clusters For Sale',
+      help: h(`**Not Interested in Clusters For Sale**\n\nWhen on, the clusters for sale are hidden from the marketplace view.\n\nThis option is for paying customers (a Developer, Support or Support and Services plan, or a licence). Other plans always see clusters for sale.\n\nConfig: \`cloud18-disable-for-sale\``, 'Not Interested in Clusters For Sale'),
       value: (
-        <RMSwitch
-          confirmTitle='Confirm switch settings for cloud18-disable-for-sale?'
-          onChange={() => dispatch(switchGlobalSetting({ setting: 'cloud18-disable-for-sale' }))}
-          isChecked={config?.cloud18DisableForSale}
-        />
+        <HStack spacing={2}>
+          <RMSwitch
+            confirmTitle='Confirm switch settings for cloud18-disable-for-sale?'
+            onChange={() => dispatch(switchGlobalSetting({ setting: 'cloud18-disable-for-sale' }))}
+            // shown off when the plan does not allow it: the server ignores a value kept from a
+            // former plan, the switch must not say it hides anything
+            isChecked={forSaleOptOutAllowed && config?.cloud18DisableForSale}
+            isDisabled={!forSaleOptOutAllowed}
+          />
+          {!forSaleOptOutAllowed && (
+            <PlanLockButton
+              title='Available with a Support plan or a licence'
+              text={'Hiding the clusters for sale is for paying customers.\n\nA **Developer**, **Support** or **Support and Services** plan (Cloud18 > Registration > Subscription), or a **licence**, lets this instance hide them.'}
+            />
+          )}
+        </HStack>
       )
     },
   ] : []
@@ -680,6 +701,7 @@ Start create an account in https://gitlab.signal18.io
   // partner is only informed). Only meaningful on OpenSVC / Kubernetes.
   const selfServiceData = isConnected ? [
     {
+      globalSetting: 'cloud18-self-service-clusters',
       key: 'Self-Service Clusters',
       help: h(`**Self-Service Clusters**\n\nWhen enabled, a Cloud18 user (SSO identity) can create a cluster on this infrastructure directly from their own replication-manager or assistant, without the subscription and email-acceptance chain. The cluster starts on the default unit plan (DBU / APU / BKU) and the creator becomes its sponsor. You are informed by mail and in the security log.\n\nRequires an OpenSVC or Kubernetes orchestrator.\n\nConfig: \`cloud18-self-service-clusters\``, 'Self-Service Clusters'),
       value: (
@@ -691,6 +713,7 @@ Start create an account in https://gitlab.signal18.io
       )
     },
     {
+      globalSetting: 'cloud18-self-service-max-clusters-per-user',
       key: 'Max Clusters Per User',
       help: h(`**Max Clusters Per User**\n\nUpper bound of self-service clusters one Cloud18 identity may sponsor on this infrastructure, so that a single user cannot flood it. Counted as the clusters where the identity holds the sponsor role.\n\nDefault 3.\n\nConfig: \`cloud18-self-service-max-clusters-per-user\``, 'Max Clusters Per User'),
       value: (
@@ -703,6 +726,7 @@ Start create an account in https://gitlab.signal18.io
       )
     },
     {
+      globalSetting: 'cloud18-self-service-cache-seconds',
       key: 'Self-Service Cache Seconds',
       help: h(`**Self-Service Cache Seconds**\n\nHow long the self-service status (capacity pool, templates, enabled-script verdict per identity) is served from one computation before it is recomputed. A burst of calls on the public status route, or on the MCP infrastructure listing, costs one computation per interval instead of one per call. 0 recomputes at every call.\n\nConfig: \`cloud18-self-service-cache-seconds\``, 'Self-Service Cache Seconds'),
       value: (
@@ -715,6 +739,7 @@ Start create an account in https://gitlab.signal18.io
       )
     },
     {
+      globalSetting: 'cloud18-self-service-clusters-enabled-script',
       key: 'Self-Service Enabled Script',
       help: h(`**Self-Service Enabled Script**\n\nYour own gate on every self-service creation, run after the switch and the orchestrator check, before the per-user limit and the pool. Arguments: the identity and the orchestrator. Environment: \`REPMAN_IDENTITY\`, \`REPMAN_ORCHESTRATOR\`, \`REPMAN_SPONSORED_CLUSTERS\`, \`REPMAN_NEEDED_DBU\`, \`REPMAN_NEEDED_APU\`, \`REPMAN_FREE_DBU\`, \`REPMAN_FREE_APU\`, \`REPMAN_BORROW_DBU\`, \`REPMAN_BORROW_APU\`.\n\nA non-zero exit refuses the creation and the first line printed is the reason shown to the user; a timeout (30 s) refuses too. The script can only refuse more than the switch, never open what it closes. Empty: no script.\n\nConfig: \`cloud18-self-service-clusters-enabled-script\``, 'Self-Service Enabled Script'),
       value: (
@@ -726,6 +751,7 @@ Start create an account in https://gitlab.signal18.io
       )
     },
     {
+      globalSetting: 'cloud18-self-service-clusters-can-borrow',
       key: 'Self-Service Can Borrow',
       help: h(`**Self-Service Can Borrow**\n\nWhen the plan pot (capacity × quota minus every plan sold) cannot guarantee the default units of a new cluster, let it be created on the over-commit pot instead: capacity minus every plan minus what is already borrowed. The cluster then runs without guarantee and the self-service status says so (borrowed). Off: a pool without room refuses the creation.\n\nConfig: \`cloud18-self-service-clusters-can-borrow\``, 'Self-Service Can Borrow'),
       value: (
@@ -737,6 +763,7 @@ Start create an account in https://gitlab.signal18.io
       )
     },
     {
+      globalSetting: 'cloud18-self-service-clusters-can-consume-for-sale',
       key: 'Self-Service Consumes For Sale',
       help: h(`**Self-Service Consumes For Sale**\n\nLet a new self-service cluster take the plans your clusters for sale hold above their floors (1 DBU per database node, 1 APU per proxy and per running app instance, a locked plan whole): the offer stays on sale with a lower plan. The Cloud18 quote counts the same room. Off: only the free pool counts, at creation and in the quote, and this instance publishes 0 for sale (forSaleDbu, forSaleApu) whatever its offers hold. The creation check follows a change at once; the published self-service status within cloud18-self-service-cache-seconds (10 s by default).\n\nConfig: \`cloud18-self-service-clusters-can-consume-for-sale\``, 'Self-Service Consumes For Sale'),
       value: (
@@ -749,34 +776,60 @@ Start create an account in https://gitlab.signal18.io
     },
   ] : []
 
+  // the Cloud18 tabs of the global settings (#2268): part 'registration' (the registration rows, then
+  // the licence in its own frame), 'marketplace' (peering, clusters for sale and self-service); no
+  // part shows them all
+  const LICENCE_ROWS = ['Licence package']
+  const registrationRows = part ? registrationData.filter((row) => !LICENCE_ROWS.includes(row.key)) : registrationData
+  const licenceRows = registrationData.filter((row) => LICENCE_ROWS.includes(row.key))
+  const marketplaceEmpty = peeringData.length === 0 && marketplaceData.length === 0 && selfServiceData.length === 0
+  const shows = (p) => !part || part === p
+
   return (
     <>
-      <Flex justify='space-between' gap='0'>
-        <TableType2 dataArray={registrationData} className={styles.tableWithHelp} helpColumn />
-      </Flex>
-      {peeringData.length > 0 && (
-        <>
-          <Box as='h4' bg='var(--secondary-color)' color='var(--white-color)' fontWeight='bold' textTransform='uppercase' px={4} py={2} mt={4}>Peering</Box>
+      {shows('registration') && (
+        <SectionFrame title='Registration'>
+          <Flex justify='space-between' gap='0'>
+            <TableType2 dataArray={registrationRows} className={styles.tableWithHelp} helpColumn />
+          </Flex>
+        </SectionFrame>
+      )}
+      {/* the support plugins package and its licence: for an air-gapped instance only; one registered on
+          Cloud18 gets them from the web */}
+      {part === 'registration' && !isConnected && licenceRows.length > 0 && (
+        <SectionFrame title='Support Plugins Package (air-gapped)'>
+          <Flex justify='space-between' gap='0'>
+            <TableType2 dataArray={licenceRows} className={styles.tableWithHelp} helpColumn />
+          </Flex>
+        </SectionFrame>
+      )}
+      {part === 'marketplace' && marketplaceEmpty && (
+        <SectionFrame
+          title='Marketplace'
+          isEmpty
+          emptyText='Register this instance to Cloud18 (Registration) to set its peering, its clusters for sale and its self-service clusters.'
+        />
+      )}
+      {shows('marketplace') && peeringData.length > 0 && (
+        <SectionFrame title='Peering'>
           <Flex justify='space-between' gap='0'>
             <TableType2 dataArray={peeringData} className={styles.tableWithHelp} helpColumn />
           </Flex>
-        </>
+        </SectionFrame>
       )}
-      {marketplaceData.length > 0 && (
-        <>
-          <Box as='h4' bg='var(--secondary-color)' color='var(--white-color)' fontWeight='bold' textTransform='uppercase' px={4} py={2} mt={4}>Marketplace</Box>
+      {shows('marketplace') && marketplaceData.length > 0 && (
+        <SectionFrame title='Clusters For Sale'>
           <Flex justify='space-between' gap='0'>
             <TableType2 dataArray={marketplaceData} className={styles.tableWithHelp} helpColumn />
           </Flex>
-        </>
+        </SectionFrame>
       )}
-      {selfServiceData.length > 0 && (
-        <>
-          <Box as='h4' bg='var(--secondary-color)' color='var(--white-color)' fontWeight='bold' textTransform='uppercase' px={4} py={2} mt={4}>Self-Service Clusters</Box>
+      {shows('marketplace') && selfServiceData.length > 0 && (
+        <SectionFrame title='Self-Service Clusters'>
           <Flex justify='space-between' gap='0'>
             <TableType2 dataArray={selfServiceData} className={styles.tableWithHelp} helpColumn />
           </Flex>
-        </>
+        </SectionFrame>
       )}
       <CommonModal
         isOpen={isCommonModalOpen}

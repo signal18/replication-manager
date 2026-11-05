@@ -487,3 +487,11 @@ div.settingsContainer {
   border-radius: rem(8);
   background-color: var(--secondary-gray-color);
 }
+
+// the Setup sub-tabs (#2268): the whole width
+.fullWidthTabs {
+  width: 100%;
+  [role='tabpanel'] {
+    width: 100%;
+  }
+}
