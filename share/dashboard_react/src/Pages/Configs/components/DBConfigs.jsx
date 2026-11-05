@@ -270,7 +270,24 @@ function DBConfigs({ selectedCluster, user }) {
 
   const hDynamicResource = `**Dynamic Resource Resize**\n\nWhen enabled, a change to the provisioned memory (\`prov-db-memory\`, e.g. from a DBU/plan resize) is applied to the **running** database live instead of a full restart: the buffer pool and other dynamically-settable variables via \`SET GLOBAL\`, and the container cgroup via the orchestrator (OpenSVC \`pg update\`) or a client hook. Restart-only variables still schedule a restart. \`max_connections\` is never touched (client workload).\n\nTwo optional client hooks refine it: \`prov-db-dynamic-resource-can-change-script\` (feasibility — prints yes / no / migration) runs first, and \`prov-db-dynamic-resource-change-script\` (does the infra resize, overrides the native path in every orchestrator case).\n\nOff by default.\n\nConfig: \`prov-db-dynamic-resource\``
 
+  const hEnableConfigurator = `**Enable Configurator**\n\nWhen enabled, replication-manager generates each database's configuration from the cluster's config fragments and deploys it to the servers.\n\nWhen disabled, no configuration is deployed to the databases; the tracking (preserved variables, override files, compliance) stays visible.\n\nConfig: \`prov-db-config\``
+
   const dataObject = [
+    {
+      clusterSetting: 'prov-db-config',
+      key: 'Enable Configurator',
+      help: h(hEnableConfigurator, 'Enable Configurator'),
+      value: (
+        <RMSwitch
+          isChecked={selectedCluster?.config?.provDbConfig}
+          isDisabled={user?.grants['cluster-settings'] == false}
+          confirmTitle={'Confirm switch settings for prov-db-config? When disabled, no config is deployed to databases but tracking remains visible.'}
+          onChange={() =>
+            dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'prov-db-config' }))
+          }
+        />
+      )
+    },
     {
       clusterSetting: 'prov-db-start-fetch-config',
       key: 'Pull Config On DB Start',
