@@ -14,13 +14,7 @@ import { HiQuestionMarkCircle } from 'react-icons/hi'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
-// the configurator's Databases / Proxies tabs (#2268): scope 'proxy' keeps the proxy rows, 'db' the
-// others (the database rows and those both share); no scope keeps every row
-const PROXY_ROWS = ['Proxy']
-const scopedRows = (rows, scope) =>
-  !scope ? rows : rows.filter((row) => (scope === 'proxy') === PROXY_ROWS.includes(row.key))
-
-function OrchestratorDisks({ selectedCluster, user, scope }) {
+function OrchestratorDisks({ selectedCluster, user }) {
   const dispatch = useDispatch()
   const [helpAction, setHelpAction] = useState({ title: '', body: <></> })
   const [isHelpModalOpen, setIsHelpModalOpen] = useState(false)
@@ -375,7 +369,7 @@ function OrchestratorDisks({ selectedCluster, user, scope }) {
   ]
   return (
     <VStack>
-      <TableType2 dataArray={scopedRows(dataObject, scope)} className={parentStyles.tableWithHelp} helpColumn={true} />
+      <TableType2 dataArray={dataObject} className={parentStyles.tableWithHelp} helpColumn={true} />
       <CommonModal
         isOpen={isHelpModalOpen}
         closeModal={() => setIsHelpModalOpen(false)}

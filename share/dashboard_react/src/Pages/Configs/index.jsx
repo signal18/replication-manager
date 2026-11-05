@@ -29,7 +29,7 @@ function Configs({ selectedCluster, user }) {
   return (
     <VStack className={styles.configContainer}>
       <TabItems
-        options={['Databases', 'Proxies']}
+        options={['Databases', 'Proxies', 'Orchestrator', 'Security']}
         tabIndex={tabIndex}
         onChange={setTabIndex}
         tabContents={[
@@ -46,31 +46,7 @@ function Configs({ selectedCluster, user }) {
               heading={'Config Fragments'}
               body={<DBConfigs selectedCluster={selectedCluster} user={user} part='fragments' />}
             />
-            <AccordionComponent
-              className={styles.accordion}
-              headerClassName={styles.accordionHeader}
-              heading={'Orchestrator Images'}
-              body={<OrchestratorImages selectedCluster={selectedCluster} user={user} scope='db' />}
-            />
-            <AccordionComponent
-              className={styles.accordion}
-              headerClassName={styles.accordionHeader}
-              heading={'Orchestrator Disks'}
-              body={<OrchestratorDisks selectedCluster={selectedCluster} user={user} scope='db' />}
-            />
-            <AccordionComponent
-              className={styles.accordion}
-              headerClassName={styles.accordionHeader}
-              heading={'Orchestrator Database VM'}
-              body={<OrchestratorDbVM selectedCluster={selectedCluster} user={user} scope='db' />}
-            />
-            <AccordionComponent
-              className={styles.accordion}
-              headerClassName={styles.accordionHeader}
-              heading={'Certificates'}
-              body={<Certificates selectedCluster={selectedCluster} user={user} />}
-            />
-              \n          </VStack>,
+          </VStack>,
           <VStack key='proxy' className={styles.configContainer}>
             <AccordionComponent
               className={styles.accordion}
@@ -84,27 +60,37 @@ function Configs({ selectedCluster, user }) {
               heading={'Config Fragments'}
               body={<ProxyConfig selectedCluster={selectedCluster} user={user} part='fragments' />}
             />
+          </VStack>,
+          <VStack key='orchestrator' className={styles.configContainer}>
             <AccordionComponent
               className={styles.accordion}
               headerClassName={styles.accordionHeader}
               heading={'Orchestrator Images'}
-              body={<OrchestratorImages selectedCluster={selectedCluster} user={user} scope='proxy' />}
+              body={<OrchestratorImages selectedCluster={selectedCluster} user={user} />}
             />
             <AccordionComponent
               className={styles.accordion}
               headerClassName={styles.accordionHeader}
               heading={'Orchestrator Disks'}
-              body={<OrchestratorDisks selectedCluster={selectedCluster} user={user} scope='proxy' />}
+              body={<OrchestratorDisks selectedCluster={selectedCluster} user={user} />}
             />
             <AccordionComponent
               className={styles.accordion}
               headerClassName={styles.accordionHeader}
-              heading={'Orchestrator Proxy VM'}
-              body={<OrchestratorDbVM selectedCluster={selectedCluster} user={user} scope='proxy' />}
+              heading={'Orchestrator VM'}
+              body={<OrchestratorDbVM selectedCluster={selectedCluster} user={user} />}
             />
-              \n          </VStack>
-              ]}
+          </VStack>,
+          <VStack key='security' className={styles.configContainer}>
+            <AccordionComponent
+              className={styles.accordion}
+              headerClassName={styles.accordionHeader}
+              heading={'Certificates'}
+              body={<Certificates selectedCluster={selectedCluster} user={user} />}
             />
+          </VStack>
+        ]}
+      />
     </VStack>
   )
 }

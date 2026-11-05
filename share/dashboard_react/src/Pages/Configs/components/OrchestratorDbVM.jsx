@@ -11,13 +11,7 @@ import { getKubeStorageClasses } from '../../../redux/clusterSlice'
 import { convertObjectToArrayForDropdown } from '../../../utility/common'
 import RMSwitch from '../../../components/RMSwitch'
 
-// the configurator's Databases / Proxies tabs (#2268): scope 'proxy' keeps the proxy rows, 'db' the
-// others (the database rows and those both share); no scope keeps every row
-const PROXY_ROWS = ['Proxy Start Timeout', 'Proxy VM', 'Kubernetes Proxy Storage Class']
-const scopedRows = (rows, scope) =>
-  !scope ? rows : rows.filter((row) => (scope === 'proxy') === PROXY_ROWS.includes(row.key))
-
-function OrchestratorDbVM({ selectedCluster, user, scope }) {
+function OrchestratorDbVM({ selectedCluster, user }) {
   const dispatch = useDispatch()
   const {
     globalClusters: { monitor }
@@ -205,7 +199,7 @@ function OrchestratorDbVM({ selectedCluster, user, scope }) {
   ].filter(Boolean)
   return (
     <VStack>
-      <TableType2 dataArray={scopedRows(dataObject, scope)} className={parentStyles.table} />
+      <TableType2 dataArray={dataObject} className={parentStyles.table} />
     </VStack>
   )
 }
