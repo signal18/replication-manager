@@ -16,20 +16,21 @@ import GraphSettings from './GraphSettings'
 import CloudSettings from './CloudSettings'
 import RepFailOverSettings from './RepFailOverSettings'
 import RepConfigSettings from './RepConfigSettings'
-import DynamicConfigSettings from './DynamicConfigSettings'
 import CredentialsSettings from './CredentialsSettings'
 import AppTemplateRepoSection from './components/AppTemplateRepoSection'
 import { setSetting } from '../../redux/settingsSlice'
 import { useDispatch } from 'react-redux'
 
 // the Setup tab's sub-tabs (#2268): each a group of the cluster's settings sections, in order. The
-// Scheduler, Backup, Archive and S3 Providers settings live in the Maintenance tab. Alerts has
+// Scheduler, Backup, Archive and S3 Providers settings live in the Maintenance tab, Dynamic Config in
+// Configs > Databases > Scaling. Alerts has
 // its own tabs inside (by channel, Cloud18 Support for a Cloud18 cluster).
 const SETUP_GROUPS = [
-  { name: 'General', sections: ['isCredentialsOpen', 'isDynamicConfigOpen', 'isCloud18Open', 'isAppTemplateRepoOpen'] },
+  { name: 'General', sections: ['isCredentialsOpen', 'isAppTemplateRepoOpen'] },
   { name: 'High Availability', sections: ['isGeneralOpen', 'isRepFailOverOpen', 'isRejoinOpen', 'isRepConfigOpen', 'isProxiesOpen'] },
   { name: 'Collecting', sections: ['isMonitoringOpen', 'isLogsOpen', 'isGraphsOpen'] },
   { name: 'Alerts', sections: ['alerts'] },
+  { name: 'Marketplace', sections: ['isCloud18Open'] },
   { name: 'Plugins', sections: ['isPluginsOpen'] }
 ]
 const SECTION_ORDER = SETUP_GROUPS.flatMap((g) => g.sections)
@@ -77,17 +78,11 @@ function Settings({ selectedCluster, user, onTabChange, monitor }) {
   const { isOpen: isRejoinOpen, onToggle: onRejoinToggle } = useDisclosure({
     defaultIsOpen: JSON.parse(localStorage.getItem('isRejoinOpen')) || false
   })
-  const { isOpen: isDynamicConfigOpen, onToggle: onDynamicConfigToggle } = useDisclosure({
-    defaultIsOpen: JSON.parse(localStorage.getItem('isDynamicConfigOpen')) || false
-  })
   const { isOpen: isProxiesOpen, onToggle: onProxiesToggle } = useDisclosure({
     defaultIsOpen: JSON.parse(localStorage.getItem('isProxiesOpen')) || false
   })
   const { isOpen: isGraphsOpen, onToggle: onGraphsToggle } = useDisclosure({
     defaultIsOpen: JSON.parse(localStorage.getItem('isGraphsOpen')) || false
-  })
-  const { isOpen: isCloud18Open, onToggle: onCloud18Toggle } = useDisclosure({
-    defaultIsOpen: JSON.parse(localStorage.getItem('isCloud18Open')) || false
   })
   const { isOpen: isCredentialsOpen, onToggle: onCredentialsToggle } = useDisclosure({
     defaultIsOpen: JSON.parse(localStorage.getItem('isCredentialsOpen')) || false
@@ -116,9 +111,6 @@ function Settings({ selectedCluster, user, onTabChange, monitor }) {
     localStorage.setItem('isRejoinOpen', JSON.stringify(isRejoinOpen))
   }, [isRejoinOpen])
 
-  useEffect(() => {
-    localStorage.setItem('isDynamicConfigOpen', JSON.stringify(isDynamicConfigOpen))
-  }, [isDynamicConfigOpen])
 
   useEffect(() => {
     localStorage.setItem('isProxiesOpen', JSON.stringify(isProxiesOpen))
@@ -127,9 +119,6 @@ function Settings({ selectedCluster, user, onTabChange, monitor }) {
     localStorage.setItem('isGraphsOpen', JSON.stringify(isGraphsOpen))
   }, [isGraphsOpen])
 
-  useEffect(() => {
-    localStorage.setItem('isCloud18Open', JSON.stringify(isCloud18Open))
-  }, [isCloud18Open])
   useEffect(() => {
     localStorage.setItem('isAppTemplateRepoOpen', JSON.stringify(isAppTemplateRepoOpen))
   }, [isAppTemplateRepoOpen])
@@ -220,16 +209,6 @@ function Settings({ selectedCluster, user, onTabChange, monitor }) {
             body={<RejoinSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} />}
           />
     ),
-    isDynamicConfigOpen: (
-      <AccordionComponent
-            heading={'Dynamic Config'}
-            onToggle={onDynamicConfigToggle}
-            isOpen={isDynamicConfigOpen}
-            headerClassName={styles.accordionHeader}
-            panelClassName={styles.accordionPanel}
-            body={<DynamicConfigSettings selectedCluster={selectedCluster} user={user} />}
-          />
-    ),
     isProxiesOpen: (
       <AccordionComponent
             heading={'Proxies'}
@@ -250,16 +229,8 @@ function Settings({ selectedCluster, user, onTabChange, monitor }) {
             body={<GraphSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} />}
           />
     ),
-    isCloud18Open: (
-      <AccordionComponent
-            heading={'Cloud18'}
-            onToggle={onCloud18Toggle}
-            isOpen={isCloud18Open}
-            headerClassName={styles.accordionHeader}
-            panelClassName={styles.accordionPanel}
-            body={<CloudSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} />}
-          />
-    ),
+    // Marketplace (the Cloud18 settings): a sub-tab of its own
+    isCloud18Open: <CloudSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} />,
     isAppTemplateRepoOpen: (
       <AccordionComponent
             heading={'App Templates Repo'}
