@@ -125,7 +125,7 @@ function MonitoringSettings({ selectedCluster, user, openConfirmModal, part }) {
     {
       name: 'Status',
       rows: [
-        { clusterSetting: 'monitoring-pause', key: 'Pause', help: h(hPause, 'Monitoring Pause'), value: sw('monitoring-pause', 'monitoringPause', monPauseLoading) },
+        { clusterSetting: 'monitoring-pause', key: 'Monitoring Pause', help: h(hPause, 'Monitoring Pause'), value: sw('monitoring-pause', 'monitoringPause', monPauseLoading) },
         { clusterSetting: 'monitoring-innodb-status', key: 'InnoDB Status', help: h(hInnoDB, 'Monitoring InnoDB Status'), value: sw('monitoring-innodb-status', 'monitoringInnoDBStatus', monInnoDBLoading) },
         { clusterSetting: 'monitoring-add-monitor-script', key: 'Add Monitor Script', help: h(hAddMonitorScript, 'Monitoring Add Monitor Script'), value: <TextForm value={selectedCluster?.config?.monitoringAddMonitorScript} confirmTitle={`Confirm change 'monitoring-add-monitor-script' to: `} onSave={(v) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-add-monitor-script', value: v.length === 0 ? '{undefined}' : v }))} /> },
         { clusterSetting: 'monitoring-drop-monitor-script', key: 'Drop Monitor Script', help: h(hDropMonitorScript, 'Monitoring Drop Monitor Script'), value: <TextForm value={selectedCluster?.config?.monitoringDropMonitorScript} confirmTitle={`Confirm change 'monitoring-drop-monitor-script' to: `} onSave={(v) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-drop-monitor-script', value: v.length === 0 ? '{undefined}' : v }))} /> }
