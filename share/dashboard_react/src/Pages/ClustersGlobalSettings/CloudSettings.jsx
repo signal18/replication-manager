@@ -467,8 +467,8 @@ Start create an account in https://gitlab.signal18.io
   )
 
   const hStatus = `**Cloud18 Status**\n\nShows whether this instance is actively connected to Signal18 Cloud18.\nWhen ONLINE, configuration is automatically backed up to GitLab on every change, and marketplace features are available.\n\nConfig: \`cloud18\``
-  const hGitUser = `**Git User**\n\nGitLab email or username at \`gitlab.signal18.io\`.\nCreated during registration — used for authentication, encrypted configuration backup, and marketplace identity.\n\n**Locked while connected.** To change the email, unregister first (which drops the GitLab projects for this URI), then register again with the new email.\n\nConfig: \`cloud18-gitlab-user\``
-  const hGitPass = `**GitLab Password**\n\nPassword for the GitLab account at \`gitlab.signal18.io\`.\nStored encrypted in the replication-manager configuration.\n\nConfig: \`cloud18-gitlab-password\``
+  const hGitUser = `**Cloud18 User**\n\nThe email of this instance's Cloud18 account.\nSet at registration: it signs the instance in to Cloud18, backs its configuration up (encrypted), and is its marketplace identity.\n\n**Locked while connected.** To change it, unregister first (which drops this URI's configuration backup), then register again with the new account.\n\nConfig: \`cloud18-gitlab-user\``
+  const hGitPass = `**Cloud18 Password**\n\nThe password of this instance's Cloud18 account.\nStored encrypted in the replication-manager configuration.\n\nConfig: \`cloud18-gitlab-password\``
   const hIdentity = `**Identity**\n\nThe Cloud18 login of this instance (\`identity.cloud18.io\`), made with the account it is registered with: replication-manager signs in once, keeps the login and refreshes it. It acts as that account for the S3 SSO archive storages (the archive folder is the account's) and the Cloud18 vault (\`vault-auth = jwt\`).\n\n**Not registered**: no Cloud18 login. **Refused**: Cloud18 refuses the registered account (its password changed, the account was removed): register this instance again.`
   const hDomain = `**Domain**\n\nCompany namespace on Cloud18 (e.g. \`mycompany\`).\nA top-level GitLab group with this name is created at \`gitlab.signal18.io\` to host your cluster configurations.\n\nConfig: \`cloud18-domain\``
   const hSubdomain = `**Subdomain**\n\nDatacenter or environment identifier (e.g. \`ovh\`, \`aws\`).\nCreates a subgroup under your domain group, allowing multiple independent deployment environments.\n\nConfig: \`cloud18-sub-domain\``
@@ -500,12 +500,12 @@ Start create an account in https://gitlab.signal18.io
 
   const registrationData = [
     { key: 'Status',         help: h(hStatus,    'Cloud18 Status'),    value: <TagPill colorScheme={isConnected ? 'green' : 'gray'} text={isConnected ? 'ONLINE' : 'OFFLINE'} /> },
-    { globalSetting: 'cloud18-gitlab-user', key: 'Git User',       help: h(hGitUser,   'Git User'),          value: isConnected
+    { globalSetting: 'cloud18-gitlab-user', key: 'Cloud18 User',   help: h(hGitUser,   'Cloud18 User'),          value: isConnected
         ? <Text fontSize='sm'>{config?.cloud18GitUser}</Text>
-        : <TextForm value={config?.cloud18GitUser}        confirmTitle='Confirm git username to '   onSave={(v) => dispatch(setGlobalSetting({ setting: 'cloud18-gitlab-user', value: v }))} /> },
-    { globalSetting: 'cloud18-gitlab-password', key: 'GitLab Password',help: h(hGitPass,   'GitLab Password'),   value: isConnected
+        : <TextForm value={config?.cloud18GitUser}        confirmTitle='Confirm Cloud18 user to '   onSave={(v) => dispatch(setGlobalSetting({ setting: 'cloud18-gitlab-user', value: v }))} /> },
+    { globalSetting: 'cloud18-gitlab-password', key: 'Cloud18 Password', help: h(hGitPass, 'Cloud18 Password'),   value: isConnected
         ? <Text fontSize='sm'>••••••••</Text>
-        : <TextForm value={config?.cloud18GitlabPassword} type='password' confirmTitle='Confirm GitLab password to ' onSave={(v) => dispatch(setGlobalSetting({ setting: 'cloud18-gitlab-password', value: btoa(v) }))} /> },
+        : <TextForm value={config?.cloud18GitlabPassword} type='password' confirmTitle='Confirm Cloud18 password to ' onSave={(v) => dispatch(setGlobalSetting({ setting: 'cloud18-gitlab-password', value: btoa(v) }))} /> },
     { key: 'Identity', help: h(hIdentity, 'Identity'), value: <Cloud18Identity /> },
     { key: 'URI', help: h(`**URI**\n\nThis instance's Cloud18 identity — **domain / sub-domain / zone**. It forms the GitLab repos it syncs config and the peer catalog through.\n\nExamples: \`mycompany.headquarter.us1\`, \`signal18.ovh.fr-2\`.\n\nConfig: \`cloud18-domain\`, \`cloud18-sub-domain\`, \`cloud18-sub-domain-zone\``, 'URI'),
       // Credit-card style: the 3 URI parts as distinct fields on one line, with a SINGLE
@@ -760,9 +760,9 @@ Start create an account in https://gitlab.signal18.io
   ] : []
 
   // the Cloud18 tabs of the global settings (#2268): part 'registration' (the registration rows),
-  // 'support' (the subscription plan and the licence package), 'marketplace' (peering, clusters for
+  // 'support' (the licence package), 'marketplace' (peering, clusters for
   // sale and self-service); no part shows them all
-  const SUPPORT_ROWS = ['Subscription', 'Licence package']
+  const SUPPORT_ROWS = ['Licence package']
   const registrationRows = part ? registrationData.filter((row) => !SUPPORT_ROWS.includes(row.key)) : registrationData
   const supportRows = registrationData.filter((row) => SUPPORT_ROWS.includes(row.key))
   const shows = (p) => !part || part === p
