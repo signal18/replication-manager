@@ -1261,6 +1261,7 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
       {section === 'jobs' && jobsSection}
       {!section && (
         <TabItems
+          className={styles.fullWidthTabs}
           options={['Backups', `Found in Folders${candidateData.length ? ` (${candidateData.length})` : ''}`, 'Archive', 'Database Jobs', 'Job Logs', 'Scheduler']}
           tabIndex={maintenanceTab}
           onChange={setMaintenanceTab}

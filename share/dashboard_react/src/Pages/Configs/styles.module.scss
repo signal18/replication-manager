@@ -164,3 +164,13 @@
     flex-direction: row;
   }
 }
+
+// the tabs (#2268): the whole width, whatever their content's width (a narrow tab, Proxies or
+// Certificates, shrank to its content)
+.fullWidthTabs {
+  width: 100%;
+  > div[role='tabpanel'],
+  [role='tabpanel'] {
+    width: 100%;
+  }
+}

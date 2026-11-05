@@ -32,11 +32,13 @@ function Configs({ selectedCluster, user }) {
   return (
     <VStack className={styles.configContainer}>
       <TabItems
+        className={styles.fullWidthTabs}
         options={['Databases', 'Proxies', 'Certificates']}
         tabIndex={tabIndex}
         onChange={setTabIndex}
         tabContents={[
           <TabItems
+            className={styles.fullWidthTabs}
             key='db'
             variant='line'
             options={['System Resources', 'Available Fragments', 'Used Fragments', 'Config Pinning', 'Scaling', 'Provisioning']}
@@ -56,6 +58,7 @@ function Configs({ selectedCluster, user }) {
             ]}
           />,
           <TabItems
+            className={styles.fullWidthTabs}
             key='proxy'
             variant='line'
             options={['System Resources', 'Available Fragments', 'Used Fragments', 'Provisioning']}
