@@ -18,7 +18,7 @@ import modalStyles from '../../components/Modals/styles.module.scss'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { HiQuestionMarkCircle } from 'react-icons/hi'
-import AccordionComponent from '../../components/AccordionComponent'
+import SectionFrame from '../../components/SectionFrame'
 
 // cards (#2268): which of its cards to show, by title; none = all (the Alerts card is shown in
 // Cloud18 > Support, the others in General)
@@ -131,6 +131,33 @@ function GlobalSettings({ config, cards }) {
           showConfirmModal={true}
           confirmTitle={`Confirm change 'api-token-timeout' to: `}
           onConfirm={(value) => dispatch(setGlobalSetting({ setting: 'api-token-timeout', value: value }))}
+        />
+      )
+    },
+    {
+      globalSetting: 'api-swagger-enabled',
+      key: 'Enable API Swagger',
+      help: h(hSwagger, 'Enable API Swagger'),
+      value: (
+        <HStack>
+          <RMSwitch
+            confirmTitle={'Confirm switch global settings for API Swagger?'}
+            onChange={(_v, setRefresh) => dispatch(switchGlobalSetting({ setting: 'api-swagger-enabled', setRefresh }))}
+            isChecked={config?.apiSwaggerEnabled}
+          />
+          { config?.apiSwaggerEnabled && (<RMIconButton icon={TbApi} onClick={() => { window.open("/api-docs/", "_blank") }} />) }
+        </HStack>
+      )
+    },
+    {
+      globalSetting: 'api-v3-server',
+      key: 'Enable API v3',
+      help: h(hApiV3, 'Enable API v3'),
+      value: (
+        <RMSwitch
+          confirmTitle={'Confirm switch global settings for API v3?'}
+          onChange={(_v, setRefresh) => dispatch(switchGlobalSetting({ setting: 'api-v3-server', setRefresh }))}
+          isChecked={config?.apiV3Server}
         />
       )
     },
@@ -372,33 +399,6 @@ function GlobalSettings({ config, cards }) {
       )
     },
     {
-      globalSetting: 'api-swagger-enabled',
-      key: 'Enable API Swagger',
-      help: h(hSwagger, 'Enable API Swagger'),
-      value: (
-        <HStack>
-          <RMSwitch
-            confirmTitle={'Confirm switch global settings for API Swagger?'}
-            onChange={(_v, setRefresh) => dispatch(switchGlobalSetting({ setting: 'api-swagger-enabled', setRefresh }))}
-            isChecked={config?.apiSwaggerEnabled}
-          />
-          { config?.apiSwaggerEnabled && (<RMIconButton icon={TbApi} onClick={() => { window.open("/api-docs/", "_blank") }} />) }
-        </HStack>
-      )
-    },
-    {
-      globalSetting: 'api-v3-server',
-      key: 'Enable API v3',
-      help: h(hApiV3, 'Enable API v3'),
-      value: (
-        <RMSwitch
-          confirmTitle={'Confirm switch global settings for API v3?'}
-          onChange={(_v, setRefresh) => dispatch(switchGlobalSetting({ setting: 'api-v3-server', setRefresh }))}
-          isChecked={config?.apiV3Server}
-        />
-      )
-    },
-    {
       globalSetting: 'monitoring-log-api-login',
       key: 'Log API Login',
       help: h(hLogApiLogin, 'Log API Login'),
@@ -502,16 +502,11 @@ function GlobalSettings({ config, cards }) {
   ]
 
   const settingsCard = (heading, data) => (
-    <AccordionComponent
-      heading={heading}
-      headerClassName={styles.accordionHeader}
-      panelClassName={styles.accordionPanel}
-      body={
-        <Flex justify='space-between' gap='0'>
-          <TableType2 dataArray={data} className={styles.tableWithHelp} helpColumn={true} />
-        </Flex>
-      }
-    />
+    <SectionFrame title={heading}>
+      <Flex justify='space-between' gap='0'>
+        <TableType2 dataArray={data} className={styles.tableWithHelp} helpColumn={true} />
+      </Flex>
+    </SectionFrame>
   )
 
   return (

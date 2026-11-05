@@ -7,6 +7,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 import styles from './styles.module.scss'
 import { useDispatch } from 'react-redux'
 import TableType2 from '../../components/TableType2'
+import SectionFrame from '../../components/SectionFrame'
 import { setGlobalSetting, switchGlobalSetting, getMonitoredData, registerInstance, confirmRegisterInstance, pollRegisterStatus, fetchSubscriptionPlans, fetchSubscription, updateSubscription, unregisterInstance } from '../../redux/globalClustersSlice'
 import TextForm from '../../components/TextForm'
 import RMSwitch from '../../components/RMSwitch'
@@ -770,38 +771,39 @@ Start create an account in https://gitlab.signal18.io
   return (
     <>
       {shows('registration') && (
-        <Flex justify='space-between' gap='0'>
-          <TableType2 dataArray={registrationRows} className={styles.tableWithHelp} helpColumn />
-        </Flex>
+        <SectionFrame title='Registration'>
+          <Flex justify='space-between' gap='0'>
+            <TableType2 dataArray={registrationRows} className={styles.tableWithHelp} helpColumn />
+          </Flex>
+        </SectionFrame>
       )}
       {part === 'support' && (
-        <Flex justify='space-between' gap='0'>
-          <TableType2 dataArray={supportRows} className={styles.tableWithHelp} helpColumn />
-        </Flex>
+        <SectionFrame title='Licence'>
+          <Flex justify='space-between' gap='0'>
+            <TableType2 dataArray={supportRows} className={styles.tableWithHelp} helpColumn />
+          </Flex>
+        </SectionFrame>
       )}
       {shows('marketplace') && peeringData.length > 0 && (
-        <>
-          <Box as='h4' bg='var(--secondary-color)' color='var(--white-color)' fontWeight='bold' textTransform='uppercase' px={4} py={2} mt={4}>Peering</Box>
+        <SectionFrame title='Peering'>
           <Flex justify='space-between' gap='0'>
             <TableType2 dataArray={peeringData} className={styles.tableWithHelp} helpColumn />
           </Flex>
-        </>
+        </SectionFrame>
       )}
       {shows('marketplace') && marketplaceData.length > 0 && (
-        <>
-          <Box as='h4' bg='var(--secondary-color)' color='var(--white-color)' fontWeight='bold' textTransform='uppercase' px={4} py={2} mt={4}>Marketplace</Box>
+        <SectionFrame title='Clusters For Sale'>
           <Flex justify='space-between' gap='0'>
             <TableType2 dataArray={marketplaceData} className={styles.tableWithHelp} helpColumn />
           </Flex>
-        </>
+        </SectionFrame>
       )}
       {shows('marketplace') && selfServiceData.length > 0 && (
-        <>
-          <Box as='h4' bg='var(--secondary-color)' color='var(--white-color)' fontWeight='bold' textTransform='uppercase' px={4} py={2} mt={4}>Self-Service Clusters</Box>
+        <SectionFrame title='Self-Service Clusters'>
           <Flex justify='space-between' gap='0'>
             <TableType2 dataArray={selfServiceData} className={styles.tableWithHelp} helpColumn />
           </Flex>
-        </>
+        </SectionFrame>
       )}
       <CommonModal
         isOpen={isCommonModalOpen}

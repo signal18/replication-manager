@@ -1,10 +1,11 @@
-import { Box, Button, Flex } from '@chakra-ui/react'
+import { Button, Flex } from '@chakra-ui/react'
 import React, { useState, useEffect } from 'react'
 import styles from './styles.module.scss'
 import GeneralSettings from './GeneralSettings'
 import ConfirmModal from '../../components/Modals/ConfirmModal'
 import MonitoringSettings from './MonitoringSettings'
 import TabItems from '../../components/TabItems'
+import SectionFrame from '../../components/SectionFrame'
 import PluginsSettings from './PluginsSettings'
 import AlertSettings, { ALERT_GROUPS } from './AlertSettings'
 import StandbyBanner from '../../components/StandbyBanner'
@@ -118,10 +119,9 @@ function Settings({ selectedCluster, user, onTabChange, monitor }) {
   }
   // a section in a frame (#2268), always with its heading
   const frame = (k) => (
-    <Box key={k} className={styles.sectionFrame}>
-      <Box className={styles.sectionFrameTitle}>{sectionBlocks[k].title}</Box>
-      <Box className={styles.sectionFrameBody}>{sectionBlocks[k].body}</Box>
-    </Box>
+    <SectionFrame key={k} title={sectionBlocks[k].title}>
+      {sectionBlocks[k].body}
+    </SectionFrame>
   )
   // a filtered view (a gear in another tab): the requested sections, framed, one under the other
   const sectionsOf = (keys) => keys.filter(isVisible).map((k) => frame(k))
