@@ -2141,9 +2141,10 @@ func (conf *Config) ImmuableFlagValues() map[string]string {
 	return values
 }
 
-// urlWithPassword: a value carrying a password in a URL (scheme://user:password@host), masked
-// whatever its key.
-var urlWithPassword = regexp.MustCompile(`://[^/@\s]*:[^/@\s]*@`)
+// urlWithPassword: a value carrying credentials in a URL (scheme://user:password@host, or a
+// token alone, scheme://TOKEN@host), masked whatever its key; a user@host URL is masked too
+// (over-masking is cheap).
+var urlWithPassword = regexp.MustCompile(`://[^/@\s]+@`)
 
 // looksLikeSecretKey: a key whose name says it holds a secret (password, pass, pwd, credential,
 // secret, token, auth...), masked even when the secret registry does not know it (defence in depth

@@ -29,7 +29,7 @@ func TestGUISettingKeysAreFlags(t *testing.T) {
 		}
 	}
 
-	keyRe := regexp.MustCompile(`(?:globalSetting|clusterSetting): '([a-z0-9-]+)'`)
+	keyRe := regexp.MustCompile(`(?:globalSetting|clusterSetting): ['"]([a-z0-9-]+)['"]`)
 	unknown := map[string][]string{}
 	n := 0
 	root := filepath.Join("..", "share", "dashboard_react", "src")

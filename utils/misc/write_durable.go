@@ -22,9 +22,13 @@ const staleTempAge = 10 * time.Minute
 //
 //   - An existing file keeps its mode and owner; newPerm is the mode of a file created here (the
 //     temp file's Chmod ignores the umask, so the caller's mode is exactly what the file gets).
-//   - A symlink is followed: its target is replaced, the link stays.
+//   - A symlink is followed: its target is replaced, the link stays. A dangling link cannot be
+//     followed: it is replaced by a regular file.
 //   - A file that cannot be replaced by a rename (a single-file bind mount: EBUSY, EXDEV) is
-//     written in place and fsynced instead: not atomic, but durable.
+//     written in place and fsynced instead: durable, NOT atomic (a crash between the truncate
+//     and the fsync leaves a short or empty file).
+//   - tempPattern must contain a "*" (".name-*.tmp"): the leftover cleanup globs it, and without
+//     one os.CreateTemp appends its random part at the end, where the glob would miss it.
 func WriteFileDurable(path string, payload []byte, newPerm os.FileMode, tempPattern string) error {
 	if target, err := filepath.EvalSymlinks(path); err == nil {
 		path = target

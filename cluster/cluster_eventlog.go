@@ -304,8 +304,9 @@ func (cluster *Cluster) emitConfigChangeEvents(oldData []byte, newData []byte, s
 // file first: identical content is not rewritten (stable mtimes, no phantom
 // git changes). On change, events are emitted from the key diff (skipped
 // when no previous file exists — a first save is a baseline, not a set of
-// changes), then the content is written to <path>.new and renamed over the
-// old file so a crash mid-save can never leave a truncated config.
+// changes), then the content is written durably (misc.WriteFileDurable: a
+// hidden .<name>-*.tmp file, fsynced, renamed over the old file, directory
+// fsynced) so a crash mid-save can never leave a truncated config.
 func (cluster *Cluster) saveConfigArtifact(filePath string, content []byte, section string, emitEvents bool) (bool, error) {
 	oldData, rerr := os.ReadFile(filePath)
 	hadOld := rerr == nil

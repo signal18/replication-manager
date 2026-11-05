@@ -27,7 +27,7 @@ func TestImmuableFlagValues(t *testing.T) {
 		"cloud18-gitlab-password":  SecretMask,
 		"backup-restic-aws-secret": SecretMask,
 		"maxscale-pass":            SecretMask, // "pass" in the name
-		"git-url":                  SecretMask, // a password in the URL
+		"git-url":                  SecretMask, // credentials in the URL
 		"api-public-url":           "https://repman.acme.example",
 	}
 	for k, v := range want {

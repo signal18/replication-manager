@@ -118,11 +118,15 @@ function Settings({ selectedCluster, user, onTabChange, monitor }) {
     isPluginsOpen: { title: 'Plugins', body: <PluginsSettings selectedCluster={selectedCluster} user={user} /> }
   }
   // a section in a frame (#2268), always with its heading
-  const frame = (k) => (
-    <SectionFrame key={k} title={sectionBlocks[k].title}>
-      {sectionBlocks[k].body}
-    </SectionFrame>
-  )
+  // Monitoring frames each of its own tabs
+  const SELF_FRAMED = ['isMonitoringOpen']
+  const frame = (k) => SELF_FRAMED.includes(k)
+    ? <React.Fragment key={k}>{sectionBlocks[k].body}</React.Fragment>
+    : (
+      <SectionFrame key={k} title={sectionBlocks[k].title}>
+        {sectionBlocks[k].body}
+      </SectionFrame>
+      )
   // a filtered view (a gear in another tab): the requested sections, framed, one under the other
   const sectionsOf = (keys) => keys.filter(isVisible).map((k) => frame(k))
   // a Setup sub-tab: its one section framed, or its sections as level-3 tabs

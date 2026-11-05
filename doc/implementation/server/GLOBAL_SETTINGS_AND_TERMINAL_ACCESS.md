@@ -51,6 +51,27 @@ The settings pages tag each row of the settings table with the key its control c
 A row whose control goes through a helper that does not take the key as its first `setting`
 argument is not tagged yet.
 
+### Durable config writes (`misc.WriteFileDurable`)
+
+The secret store, each cluster's toml and `default.toml` are written through
+`misc.WriteFileDurable`: a hidden `.<name>-*.tmp` file in the same directory, fsynced, renamed
+over the file, then the directory fsynced. After a crash the file is the old one or the new one,
+whole.
+
+- An existing file keeps its mode and owner; a new one is `0640` (`0600` for the secret store).
+- A symlink is followed (a dangling one is replaced by a regular file).
+- A single-file bind mount cannot be renamed over (`EBUSY`/`EXDEV`): the file is written in place
+  and fsynced. Durable, but not atomic: a crash between the truncate and the fsync leaves a short
+  file.
+- A temp file a crash left (it may hold secrets) is removed by the next write of the same file
+  once older than 10 minutes.
+
+### Not Interested in Clusters For Sale
+
+`Config.Cloud18ForSaleOptOutAllowed`: a Developer, Support or Support and Services plan, or a
+licence. After a downgrade, `cloud18-disable-for-sale` stays `true` in the saved config but the API
+and the MCP ignore it, and the GUI shows it off and locked; it applies again if the plan returns.
+
 ## Terminal: the logins `terminal-session-auth` names
 
 `terminal-session-auth` (scope server, default `local`) lists the logins that open a terminal:

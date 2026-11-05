@@ -5,6 +5,7 @@ import RMSwitch from '../../components/RMSwitch'
 import { useDispatch, useSelector } from 'react-redux'
 import TableType2 from '../../components/TableType2'
 import TabItems from '../../components/TabItems'
+import SectionFrame from '../../components/SectionFrame'
 import { setSetting, switchSetting } from '../../redux/settingsSlice'
 import TextForm from '../../components/TextForm'
 import NumberInput from '../../components/NumberInput'
@@ -172,9 +173,12 @@ function MonitoringSettings({ selectedCluster, user, openConfirmModal }) {
         tabIndex={Math.min(tab, groups.length - 1)}
         onChange={setTab}
         tabContents={groups.map((g) => (
-          <Flex key={g.name} justify='space-between' gap='0'>
-            <TableType2 dataArray={g.rows} className={styles.tableWithHelp} helpColumn={true} />
-          </Flex>
+          // each tab's rows in a frame, as every settings section (#2268)
+          <SectionFrame key={g.name} title={g.name}>
+            <Flex justify='space-between' gap='0'>
+              <TableType2 dataArray={g.rows} className={styles.tableWithHelp} helpColumn={true} />
+            </Flex>
+          </SectionFrame>
         ))}
       />
       <CommonModal isOpen={isCommonModalOpen} closeModal={() => setIsCommonModalOpen(false)} title={action.title} body={action.body} size='xl' />
