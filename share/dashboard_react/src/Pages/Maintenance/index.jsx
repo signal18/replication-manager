@@ -1262,17 +1262,24 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
       {!section && (
         <TabItems
           className={styles.fullWidthTabs}
-          options={['Backups', `Found in Folders${candidateData.length ? ` (${candidateData.length})` : ''}`, 'Archive', 'Database Jobs', 'Job Logs', 'Scheduler']}
+          options={['Backups', 'Archive', 'Database Jobs', 'Job Logs', 'Scheduler']}
           tabIndex={maintenanceTab}
           onChange={setMaintenanceTab}
           tabContents={[
           <VStack key='backups' align='stretch' className={styles.tabContent}>
             {backupsActions && <HStack justify='flex-end'>{backupsActions}</HStack>}
             {backupsBody}
-          </VStack>,
-          <VStack key='found' align='stretch' className={styles.tabContent}>
-            {foundActions && <HStack justify='flex-end'>{foundActions}</HStack>}
-            {foundBody}
+            {/* the backups found in the backup folders without metadata: a section of Backups (#2268) */}
+            <AccordionComponent
+              heading={`Import from Disk${candidateData.length ? ` (${candidateData.length})` : ''}`}
+              isOpen={isCandidatesOpen}
+              onToggle={onCandidatesToggle}
+              className={styles.accordion}
+              headerClassName={styles.accordionHeader}
+              panelClassName={styles.accordionPanel}
+              headerActions={foundActions}
+              body={foundBody}
+            />
           </VStack>,
           <VStack key='archive' align='stretch' className={styles.tabContent}>
             {archiveActions && <HStack justify='flex-end'>{archiveActions}</HStack>}
