@@ -39,7 +39,7 @@ function Configs({ selectedCluster, user }) {
           <TabItems
             key='db'
             variant='line'
-            options={['System Resources', 'Available Fragments', 'Used Fragments', 'Config Pinning', 'Dynamic Config', 'Provision']}
+            options={['System Resources', 'Available Fragments', 'Used Fragments', 'Config Pinning', 'Scaling', 'Provision']}
             tabIndex={dbTab}
             onChange={setDbTab}
             tabContents={[
