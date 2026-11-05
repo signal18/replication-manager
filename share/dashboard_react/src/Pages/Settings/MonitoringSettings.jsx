@@ -85,6 +85,15 @@ function MonitoringSettings({ selectedCluster, user, openConfirmModal, part }) {
   // the Monitoring settings in tabs (#2268); the labels without the repeated "Monitoring"
   const groups = [
     {
+      name: 'General',
+      rows: [
+        { clusterSetting: 'monitoring-pause', key: 'Monitoring Pause', help: h(hPause, 'Monitoring Pause'), value: sw('monitoring-pause', 'monitoringPause', monPauseLoading) },
+        { clusterSetting: 'monitoring-innodb-status', key: 'InnoDB Status', help: h(hInnoDB, 'Monitoring InnoDB Status'), value: sw('monitoring-innodb-status', 'monitoringInnoDBStatus', monInnoDBLoading) },
+        { clusterSetting: 'monitoring-add-monitor-script', key: 'Add Monitor Script', help: h(hAddMonitorScript, 'Monitoring Add Monitor Script'), value: <TextForm value={selectedCluster?.config?.monitoringAddMonitorScript} confirmTitle={`Confirm change 'monitoring-add-monitor-script' to: `} onSave={(v) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-add-monitor-script', value: v.length === 0 ? '{undefined}' : v }))} /> },
+        { clusterSetting: 'monitoring-drop-monitor-script', key: 'Drop Monitor Script', help: h(hDropMonitorScript, 'Monitoring Drop Monitor Script'), value: <TextForm value={selectedCluster?.config?.monitoringDropMonitorScript} confirmTitle={`Confirm change 'monitoring-drop-monitor-script' to: `} onSave={(v) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-drop-monitor-script', value: v.length === 0 ? '{undefined}' : v }))} /> }
+      ]
+    },
+    {
       name: 'Capture',
       rows: [
         { clusterSetting: 'monitoring-capture', key: 'Capture On Error', help: h(hCapture, 'Monitoring Capture On Error'), value: sw('monitoring-capture', 'monitoringCapture', monCaptureLoading) },
@@ -120,15 +129,6 @@ function MonitoringSettings({ selectedCluster, user, openConfirmModal, part }) {
         { clusterSetting: 'monitoring-performance-schema-queries-explain', key: 'Queries Explain', help: h(hPFSExplain, 'PFS Queries Explain'), value: sw('monitoring-performance-schema-queries-explain', 'monitoringPerformanceSchemaQueriesExplain') },
         { clusterSetting: 'monitoring-performance-schema-queries-explain-delay', key: 'Queries Explain Delay', help: h(hPFSDelay, 'PFS Queries Explain Delay'), value: <NumberInput value={selectedCluster?.config?.monitoringPerformanceSchemaQueriesExplainDelay} min={0} max={5000} step={50} showEditButton={true} showConfirmModal={true} confirmTitle={`Confirm change 'monitoring-performance-schema-queries-explain-delay' to: `} onConfirm={(v) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-performance-schema-queries-explain-delay', value: v.length === 0 ? '200' : v }))} /> },
         { clusterSetting: 'monitoring-performance-schema-queries-explain-purge-period', key: 'Queries Explain Purge', help: h(hPFSPurge, 'PFS Queries Explain Purge Period'), value: <NumberInput value={selectedCluster?.config?.monitoringPerformanceSchemaQueriesExplainPurgePeriod} min={0} max={365} showEditButton={true} showConfirmModal={true} confirmTitle={`Confirm change 'monitoring-performance-schema-queries-explain-purge-period' to: `} onConfirm={(v) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-performance-schema-queries-explain-purge-period', value: v.length === 0 ? '30' : v }))} /> }
-      ]
-    },
-    {
-      name: 'Status',
-      rows: [
-        { clusterSetting: 'monitoring-pause', key: 'Monitoring Pause', help: h(hPause, 'Monitoring Pause'), value: sw('monitoring-pause', 'monitoringPause', monPauseLoading) },
-        { clusterSetting: 'monitoring-innodb-status', key: 'InnoDB Status', help: h(hInnoDB, 'Monitoring InnoDB Status'), value: sw('monitoring-innodb-status', 'monitoringInnoDBStatus', monInnoDBLoading) },
-        { clusterSetting: 'monitoring-add-monitor-script', key: 'Add Monitor Script', help: h(hAddMonitorScript, 'Monitoring Add Monitor Script'), value: <TextForm value={selectedCluster?.config?.monitoringAddMonitorScript} confirmTitle={`Confirm change 'monitoring-add-monitor-script' to: `} onSave={(v) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-add-monitor-script', value: v.length === 0 ? '{undefined}' : v }))} /> },
-        { clusterSetting: 'monitoring-drop-monitor-script', key: 'Drop Monitor Script', help: h(hDropMonitorScript, 'Monitoring Drop Monitor Script'), value: <TextForm value={selectedCluster?.config?.monitoringDropMonitorScript} confirmTitle={`Confirm change 'monitoring-drop-monitor-script' to: `} onSave={(v) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-drop-monitor-script', value: v.length === 0 ? '{undefined}' : v }))} /> }
       ]
     },
     {
