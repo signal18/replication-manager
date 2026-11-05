@@ -12,7 +12,13 @@ import { setSetting, switchSetting, changePlanUnits } from '../../../redux/setti
 import RMSlider from '../../../components/Sliders/RMSlider'
 import { convertSize } from '../../../utility/common'
 
-function ProxyConfig({ selectedCluster, user }) {
+// the Proxies tab's two sections (#2268): part 'fragments' keeps the config fragments (tags) row,
+// 'resources' the others; no part keeps every row
+const FRAGMENT_ROWS = ['Manage Config Fragments']
+const partRows = (rows, part) =>
+  !part ? rows : rows.filter((row) => (part === 'fragments') === FRAGMENT_ROWS.includes(row.key))
+
+function ProxyConfig({ selectedCluster, user, part }) {
   const dispatch = useDispatch()
   const clusterProxies = useSelector((state) => state.cluster.clusterProxies)
   const nProx = clusterProxies?.length || 1
@@ -251,7 +257,7 @@ function ProxyConfig({ selectedCluster, user }) {
   ]
   return (
     <VStack>
-      <TableType2 dataArray={dataObject} className={styles.table} />
+      <TableType2 dataArray={partRows(dataObject, part)} className={styles.table} />
       {isConfirmModalOpen && (
         <ConfirmModal
           isOpen={isConfirmModalOpen}

@@ -69,8 +69,14 @@ function Configs({ selectedCluster, user }) {
             <AccordionComponent
               className={styles.accordion}
               headerClassName={styles.accordionHeader}
-              heading={'Proxy Configurator'}
-              body={<ProxyConfig selectedCluster={selectedCluster} user={user} />}
+              heading={'System Resources'}
+              body={<ProxyConfig selectedCluster={selectedCluster} user={user} part='resources' />}
+            />
+            <AccordionComponent
+              className={styles.accordion}
+              headerClassName={styles.accordionHeader}
+              heading={'Config Fragments'}
+              body={<ProxyConfig selectedCluster={selectedCluster} user={user} part='fragments' />}
             />
             <AccordionComponent
               className={styles.accordion}
