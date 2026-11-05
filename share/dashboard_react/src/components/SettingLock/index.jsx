@@ -60,6 +60,32 @@ function LockButton({ icon, title, text, lock }) {
   )
 }
 
+// a lock for a setting the instance's plan does not include (#2268): the same button and window as
+// the system config locks, with what unlocks it
+export function PlanLockButton({ title, text }) {
+  const [isOpen, setIsOpen] = useState(false)
+  return (
+    <>
+      <RMIconButton
+        icon={HiLockClosed}
+        tooltip={title}
+        onClick={() => setIsOpen(true)}
+        iconFontsize='1rem'
+        variant='ghost'
+        colorScheme='orange'
+        style={{ minWidth: '1.5rem', height: '1.5rem' }}
+      />
+      <CommonModal
+        isOpen={isOpen}
+        closeModal={() => setIsOpen(false)}
+        title={title}
+        body={<Box className={modalStyles.infoTooltip}><Markdown remarkPlugins={[remarkGfm]}>{text}</Markdown></Box>}
+        size='xl'
+      />
+    </>
+  )
+}
+
 // a row label, with the lock of its global setting or the rollback lock of its cluster setting,
 // on the right of the label cell, apart from its text
 export function SettingLabel({ setting, clusterSetting, children }) {

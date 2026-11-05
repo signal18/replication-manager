@@ -8,6 +8,7 @@ import styles from './styles.module.scss'
 import { useDispatch } from 'react-redux'
 import TableType2 from '../../components/TableType2'
 import SectionFrame from '../../components/SectionFrame'
+import { PlanLockButton } from '../../components/SettingLock'
 import { setGlobalSetting, switchGlobalSetting, getMonitoredData, registerInstance, confirmRegisterInstance, pollRegisterStatus, fetchSubscriptionPlans, fetchSubscription, updateSubscription, unregisterInstance } from '../../redux/globalClustersSlice'
 import TextForm from '../../components/TextForm'
 import RMSwitch from '../../components/RMSwitch'
@@ -665,17 +666,29 @@ Start create an account in https://gitlab.signal18.io
 
   // Marketplace section — a SEPARATE concern from peering (buying/selling clusters;
   // works even without a public interface). Free plans cannot disable it.
-  const marketplaceData = (isConnected && config?.cloud18SubscriptionPlan && config?.cloud18SubscriptionPlan !== 'free') ? [
+  // Not Interested in Clusters For Sale: shown to every registered instance, locked unless it has a
+  // support plan or a licence (#2268); the server enforces the same plan gate
+  const forSaleOptOutAllowed = (config?.cloud18SubscriptionPlan && config?.cloud18SubscriptionPlan !== 'free') || !!config?.cloud18LicenseFile
+  const marketplaceData = isConnected ? [
     {
       globalSetting: 'cloud18-disable-for-sale',
       key: 'Not Interested in Clusters For Sale',
       help: h(`**Not Interested in Clusters For Sale**\n\nWhen on, the clusters for sale are hidden from the marketplace view.\n\nThis option is only available on paid plans. Free plan users always see clusters for sale.\n\nConfig: \`cloud18-disable-for-sale\``, 'Not Interested in Clusters For Sale'),
       value: (
-        <RMSwitch
-          confirmTitle='Confirm switch settings for cloud18-disable-for-sale?'
-          onChange={() => dispatch(switchGlobalSetting({ setting: 'cloud18-disable-for-sale' }))}
-          isChecked={config?.cloud18DisableForSale}
-        />
+        <HStack spacing={2}>
+          <RMSwitch
+            confirmTitle='Confirm switch settings for cloud18-disable-for-sale?'
+            onChange={() => dispatch(switchGlobalSetting({ setting: 'cloud18-disable-for-sale' }))}
+            isChecked={config?.cloud18DisableForSale}
+            isDisabled={!forSaleOptOutAllowed}
+          />
+          {!forSaleOptOutAllowed && (
+            <PlanLockButton
+              title='Available with a Support plan or a licence'
+              text={'The clusters for sale stay visible on the free plan.\n\nA **Support** plan (Cloud18 > Registration > Subscription), or a **licence**, lets this instance hide them.'}
+            />
+          )}
+        </HStack>
       )
     },
   ] : []
@@ -778,11 +791,10 @@ Start create an account in https://gitlab.signal18.io
           </Flex>
         </SectionFrame>
       )}
-      {part === 'registration' && (
-        <SectionFrame
-          title='Licence'
-          isEmpty={licenceRows.length === 0}
-          emptyText='The licence package comes with the configuration pull (git-url-pull is set): nothing to load here.'>
+      {/* the support plugins package and its licence: for an air-gapped instance only; one registered on
+          Cloud18 gets them from the web */}
+      {part === 'registration' && !isConnected && licenceRows.length > 0 && (
+        <SectionFrame title='Support Plugins Package (air-gapped)'>
           <Flex justify='space-between' gap='0'>
             <TableType2 dataArray={licenceRows} className={styles.tableWithHelp} helpColumn />
           </Flex>
