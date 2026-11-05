@@ -25,5 +25,7 @@ series of restarts and tests mails no one; before, every restart during it still
   by the scheduler's alert disable alone has no counter: only the log line says it.
 - The cluster map is read under `repman.Lock()`, as `StartCluster` and `DeleteCluster` write it.
 - One cluster not muted: the mail goes, as before. `mail-to` empty: no mail, as before.
+- An intervention restored with its `AutoEndAt` already past still mutes until the first scheduler tick
+  ends it: the restart mail sent in that window is skipped, as the alerts are.
 
 Test: `server/server_mail_init_test.go`.

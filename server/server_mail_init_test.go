@@ -29,6 +29,7 @@ func TestInitMailMuted(t *testing.T) {
 		t.Fatalf("one cluster not muted: the restart mail goes, nothing counted (%d)", a.InterventionSuppressedAlerts)
 	}
 	b.IsAlertDisable = true
+	// no SMTP set: the mute is checked before the mailer config, so the send stops at the mute
 	repman.SendClustersInitMail()
 	if a.InterventionSuppressedAlerts != 1 || b.InterventionSuppressedAlerts != 0 {
 		t.Fatalf("every cluster muted: no restart mail, counted on the intervention only (a %d, b %d)",
