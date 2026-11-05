@@ -7,7 +7,6 @@ import MonitoringSettings from './MonitoringSettings'
 import AccordionComponent from '../../components/AccordionComponent'
 import StandbyBanner from '../../components/StandbyBanner'
 import LogsSettings from './LogsSettings'
-import PluginsSettings from './PluginsSettings'
 import RejoinSettings from './RejoinSettings'
 import ProxySettings from './ProxySettings'
 import GraphSettings from './GraphSettings'
@@ -85,9 +84,6 @@ function Settings({ selectedCluster, user, onTabChange, monitor }) {
   const { isOpen: isCloud18Open, onToggle: onCloud18Toggle } = useDisclosure({
     defaultIsOpen: JSON.parse(localStorage.getItem('isCloud18Open')) || false
   })
-  const { isOpen: isPluginsOpen, onToggle: onPluginsToggle } = useDisclosure({
-    defaultIsOpen: JSON.parse(localStorage.getItem('isPluginsOpen')) || false
-  })
   const { isOpen: isS3ProvidersOpen, onToggle: onS3ProvidersToggle } = useDisclosure({
     defaultIsOpen: JSON.parse(localStorage.getItem('isS3ProvidersOpen')) || false
   })
@@ -144,9 +140,6 @@ function Settings({ selectedCluster, user, onTabChange, monitor }) {
   useEffect(() => {
     localStorage.setItem('isCloud18Open', JSON.stringify(isCloud18Open))
   }, [isCloud18Open])
-  useEffect(() => {
-    localStorage.setItem('isPluginsOpen', JSON.stringify(isPluginsOpen))
-  }, [isPluginsOpen])
   useEffect(() => {
     localStorage.setItem('isS3ProvidersOpen', JSON.stringify(isS3ProvidersOpen))
   }, [isS3ProvidersOpen])
@@ -240,14 +233,7 @@ function Settings({ selectedCluster, user, onTabChange, monitor }) {
         panelClassName={styles.accordionPanel}
         body={<LogsSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} />}
       />}
-      {isVisible('isPluginsOpen') && <AccordionComponent
-        heading={'Plugins'}
-        onToggle={onPluginsToggle}
-        isOpen={isPluginsOpen}
-        headerClassName={styles.accordionHeader}
-        panelClassName={styles.accordionPanel}
-        body={<PluginsSettings selectedCluster={selectedCluster} user={user} />}
-      />}
+      {/* Plugins: a cluster tab of its own (#2268) */}
       {isVisible('isRejoinOpen') && <AccordionComponent
         heading={'Rejoin'}
         onToggle={onRejoinToggle}
