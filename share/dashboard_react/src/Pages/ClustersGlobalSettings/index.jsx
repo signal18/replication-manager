@@ -37,8 +37,8 @@ function ClustersGlobalSettings({ user }) {
     setConfirmHandler(null)
     setConfirmTitle('')
   }
-  // the global settings' tabs (#2268): Cloud18 (Registration / Support / Marketplace), General,
-  // Arbitration, AI Assistant (the MCP server)
+  // the global settings' tabs (#2268): Cloud18 (Registration / Support / Marketplace), Monitoring
+  // Units, HTTP & API, Logs, Arbitration, AI Assistant (the MCP server)
   const [globalTab, setGlobalTab] = useState(() => parseInt(localStorage.getItem('globalSettingsTab'), 10) || 0)
   const changeGlobalTab = (index) => {
     setGlobalTab(index)
@@ -50,7 +50,7 @@ function ClustersGlobalSettings({ user }) {
       <StandbyBanner />
       <TabItems
         className={styles.fullWidthTabs}
-        options={['Cloud18', 'General', 'Arbitration', 'AI Assistant']}
+        options={['Cloud18', 'Monitoring Units', 'HTTP & API', 'Logs', 'Arbitration', 'AI Assistant']}
         tabIndex={globalTab}
         onChange={changeGlobalTab}
         tabContents={[
@@ -84,7 +84,9 @@ function ClustersGlobalSettings({ user }) {
               </Flex>
             ]}
           />,
-          <GlobalSettings key='general' config={monitor?.config} openConfirmModal={openConfirmModal} cards={['Global Settings', 'Logs']} />,
+          <GlobalSettings key='units' config={monitor?.config} openConfirmModal={openConfirmModal} cards={['Monitoring Units']} />,
+          <GlobalSettings key='http' config={monitor?.config} openConfirmModal={openConfirmModal} cards={['HTTP & API']} />,
+          <GlobalSettings key='logs' config={monitor?.config} openConfirmModal={openConfirmModal} cards={['Logs']} />,
           <SectionFrame key='arbitration' title='Arbitration'>
             <ArbitrationSettings config={monitor?.config} />
           </SectionFrame>,

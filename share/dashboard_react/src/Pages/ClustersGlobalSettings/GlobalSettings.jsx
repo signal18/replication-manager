@@ -20,8 +20,8 @@ import remarkGfm from 'remark-gfm'
 import { HiQuestionMarkCircle } from 'react-icons/hi'
 import SectionFrame from '../../components/SectionFrame'
 
-// cards (#2268): which of its cards to show, by title; none = all (the Alerts card is shown in
-// Cloud18 > Support, the others in General)
+// cards (#2268): which of its cards to show, by title (Monitoring Units, HTTP & API, Alerts, Logs, AI
+// Assistant (MCP)); none = all. The Alerts card is shown in Cloud18 > Support.
 function GlobalSettings({ config, cards }) {
   const showsCard = (title) => !cards || cards.includes(title)
   const dispatch = useDispatch()
@@ -501,6 +501,15 @@ function GlobalSettings({ config, cards }) {
     },
   ]
 
+  // the global Setup tabs (#2268): the monitor's own units of work, then the HTTP server and its API
+  const MONITORING_UNITS_ROWS = ['Concurrent Backup Slots', 'Global Intervention']
+  const API_LOG_ROWS = ['Log API Login', 'Log API Login Silent Users']
+  const monitoringUnitsData = generalData.filter((row) => MONITORING_UNITS_ROWS.includes(row.key))
+  const httpApiData = [
+    ...generalData.filter((row) => !MONITORING_UNITS_ROWS.includes(row.key)),
+    ...logsData.filter((row) => API_LOG_ROWS.includes(row.key))
+  ]
+
   const settingsCard = (heading, data) => (
     <SectionFrame title={heading}>
       <Flex justify='space-between' gap='0'>
@@ -511,9 +520,10 @@ function GlobalSettings({ config, cards }) {
 
   return (
     <>
-      {showsCard('Global Settings') && settingsCard('Global Settings', generalData)}
+      {showsCard('Monitoring Units') && settingsCard('Monitoring Units', monitoringUnitsData)}
+      {showsCard('HTTP & API') && settingsCard('HTTP & API', httpApiData)}
       {showsCard('Alerts') && settingsCard('Alerts', alertsData)}
-      {showsCard('Logs') && settingsCard('Logs', logsData)}
+      {showsCard('Logs') && settingsCard('Logs', logsData.filter((row) => !API_LOG_ROWS.includes(row.key)))}
       {showsCard('AI Assistant (MCP)') && settingsCard('AI Assistant (MCP)', mcpData)}
       <CommonModal isOpen={isCommonModalOpen} closeModal={() => setIsCommonModalOpen(false)} title={action.title} body={action.body} size='xl' />
       {isInterventionModalOpen && (
