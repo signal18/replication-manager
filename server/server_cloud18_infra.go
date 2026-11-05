@@ -725,7 +725,7 @@ func (repman *ReplicationManager) peerLoginAs(p *repmanmcp.Principal, infra stri
 			id.password = ""
 		}
 		if id.bearer == "" && id.password == "" {
-			return nil, "", fmt.Errorf("login on %s as %s not tried: Cloud18 refused this instance's account (check cloud18-gitlab-password)", base, id.user)
+			return nil, "", fmt.Errorf("login on %s as %s not tried: no credential of this instance (Cloud18 refused its account, or it has no Cloud18 password: cloud18-gitlab-password)", base, id.user)
 		}
 	}
 	status, body := repman.peerLoginAsIdentity(loginURL, id)

@@ -2358,7 +2358,7 @@ func (repman *ReplicationManager) DynamicPeerHandler(w http.ResponseWriter, r *h
 			}
 			if id.bearer == "" && id.password == "" {
 				w.WriteHeader(http.StatusUnauthorized)
-				fmt.Fprintf(w, "Cloud18 refused this instance's account: check its Cloud18 password (cloud18-gitlab-password)")
+				fmt.Fprintf(w, "No credential of this instance for another instance: Cloud18 refused its account, or it has no Cloud18 password (cloud18-gitlab-password)")
 				return
 			}
 			status, body = repman.peerLoginAsIdentity(parsedPeerURL, id)

@@ -563,6 +563,9 @@ func (conf *Config) Cloud18InstanceLoginToken() (string, error) {
 		wait := cloud18InstanceLoginRefusedWait
 		if !IsCloud18LoginRefusal(err) {
 			wait = cloud18InstanceLoginUnreachableWait
+		} else {
+			// once per refusal window: the other instances get no login of this one until fixed
+			conf.cloud18Log(LvlWarn, "Cloud18 refused the account this instance is registered with: no login on the other Cloud18 instances until its password (cloud18-gitlab-password) is fixed, tried again in %s: %s", wait, err)
 		}
 		cloud18InstanceLogin.refused, cloud18InstanceLogin.refusedErr = time.Now().Add(wait), err
 		return "", err

@@ -92,7 +92,12 @@ issuer is the realm): an instance not registered to Cloud18 never trusts the rea
     second factor): never, to any peer. A peer would refuse it too, and the poll repeating it at every
     interval is what locked the account (#2327). The poll then has no session on the peers until the
     password is fixed; the health check needs none;
-  - the realm out of reach: the password goes, as before, and the peer decides.
+  - the realm out of reach: the password goes, as before, and the peer decides. Known limit: during a
+    realm outage a peer registered with another account refuses that password, and the poll can lock
+    the account there again until the realm is back (one login a minute at most, the realm's wait).
+    Treating an outage as a refusal would cut every peer that still knows the password (registered with
+    the same account) during the outage; the lockout ends by itself, the cut would not be seen.
+  A refusal is logged once per refusal window (WARN, the identity log), when the login actually ran.
   A login never carries the session token the peer client may still hold. The poll reads the account,
   the password and the token source under the peer manager's lock (a reload may set them).
 
