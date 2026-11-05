@@ -668,8 +668,8 @@ Start create an account in https://gitlab.signal18.io
   const marketplaceData = (isConnected && config?.cloud18SubscriptionPlan && config?.cloud18SubscriptionPlan !== 'free') ? [
     {
       globalSetting: 'cloud18-disable-for-sale',
-      key: 'Disable Clusters For Sale',
-      help: h(`**Disable Clusters For Sale**\n\nWhen enabled, clusters for sale are hidden from the marketplace view.\n\nThis option is only available on paid plans. Free plan users always see clusters for sale.\n\nConfig: \`cloud18-disable-for-sale\``, 'Disable Clusters For Sale'),
+      key: 'Not Interested in Clusters For Sale',
+      help: h(`**Not Interested in Clusters For Sale**\n\nWhen on, the clusters for sale are hidden from the marketplace view.\n\nThis option is only available on paid plans. Free plan users always see clusters for sale.\n\nConfig: \`cloud18-disable-for-sale\``, 'Not Interested in Clusters For Sale'),
       value: (
         <RMSwitch
           confirmTitle='Confirm switch settings for cloud18-disable-for-sale?'
