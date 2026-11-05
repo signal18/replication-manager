@@ -17,6 +17,7 @@ func TestImmuableFlagValues(t *testing.T) {
 		"backup-restic-aws-secret": "s3cr3t",
 		"maxscale-pass":            "mx",
 		"git-url":                  "https://user:t0ken@git.acme.example/repo.git",
+		"git-url-pull":             "https://T0KEN@git.acme.example/repo.git",
 		"api-public-url":           "https://repman.acme.example",
 	}}
 	got := conf.ImmuableFlagValues()
@@ -28,6 +29,7 @@ func TestImmuableFlagValues(t *testing.T) {
 		"backup-restic-aws-secret": SecretMask,
 		"maxscale-pass":            SecretMask, // "pass" in the name
 		"git-url":                  SecretMask, // credentials in the URL
+		"git-url-pull":             SecretMask, // a token alone in the URL
 		"api-public-url":           "https://repman.acme.example",
 	}
 	for k, v := range want {
