@@ -954,6 +954,7 @@ type Config struct {
 	BackupResticPassword                      string            `mapstructure:"backup-restic-password"  toml:"backup-restic-password" json:"-"`
 	BackupResticAws                           bool              `mapstructure:"backup-restic-aws"  toml:"backup-restic-aws" json:"backupResticAws"`
 	BackupWriteStallTimeout                   int               `mapstructure:"backup-write-stall-timeout" toml:"backup-write-stall-timeout" json:"backupWriteStallTimeout"`
+	BackupWriteStallLeakGrace                 int               `mapstructure:"backup-write-stall-leak-grace" toml:"backup-write-stall-leak-grace" json:"backupWriteStallLeakGrace"`
 	BackupResticTimeout                       int               `mapstructure:"backup-restic-timeout"  toml:"backup-restic-timeout" json:"backupResticTimeout"`
 	BackupResticDumpTimeout                   int               `mapstructure:"backup-restic-dump-timeout" toml:"backup-restic-dump-timeout" json:"backupResticDumpTimeout"`
 	BackupResticDirMode                       int               `mapstructure:"backup-restic-dir-mode" toml:"backup-restic-dir-mode" json:"backupResticDirMode"`

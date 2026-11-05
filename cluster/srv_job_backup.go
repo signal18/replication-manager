@@ -4543,6 +4543,17 @@ func backupStallWatchdog(done <-chan struct{}, cancel context.CancelFunc, progre
 // backup forever.
 const backupStallLeakGrace = 60 * time.Second
 
+// backupStallLeakGraceDuration is the configured leak grace (backup-write-stall-leak-grace),
+// falling back to the backupStallLeakGrace default when unset (0 or negative) so an existing
+// config keeps 60s. Exposed as a config key (T16) so a test can shrink it and an operator can
+// tune it. See boundedWait.
+func (cluster *Cluster) backupStallLeakGraceDuration() time.Duration {
+	if cluster.Conf.BackupWriteStallLeakGrace > 0 {
+		return time.Duration(cluster.Conf.BackupWriteStallLeakGrace) * time.Second
+	}
+	return backupStallLeakGrace
+}
+
 // boundedWait blocks until wg completes. If `fired` is signalled (the stall
 // watchdog cancelled) and wg still hasn't completed after `grace`, it returns
 // true — the goroutine is stuck (e.g. a subprocess in uninterruptible sleep on a
@@ -4800,7 +4811,7 @@ func (server *ServerMonitor) JobBackupMysqldump(ctx context.Context, task, filen
 	// would never return — so after backupStallLeakGrace give up, leak the stuck
 	// goroutine, and return the stall error. Best-effort mitigation for the
 	// hard-hung-mount case, not a hard guarantee — see BACKUP_DEAD_VOLUME_STALL.md.
-	leaked := boundedWait(&wg, stallFired, backupStallLeakGrace)
+	leaked := boundedWait(&wg, stallFired, cluster.backupStallLeakGraceDuration())
 	close(stallDone) // stop the watchdog
 	if leaked {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn,
@@ -5167,7 +5178,7 @@ func (server *ServerMonitor) JobBackupMyDumper(ctx context.Context, outputdir st
 	// on a hard-hung mount (SIGKILL can't free it, its pipes never EOF), stop waiting and treat it as
 	// leaked rather than hang the backup slot forever — as the mysqldump path does (boundedWait).
 	if stallTimeout > 0 {
-		if boundedWait(&wg, stallFired, backupStallLeakGrace) {
+		if boundedWait(&wg, stallFired, cluster.backupStallLeakGraceDuration()) {
 			// Leaked, as the mysqldump path: a process wedged on a hard-hung mount that SIGKILL
 			// cannot free means dumpCmd.Wait() is never called and a zombie remains until the mount
 			// recovers — better than hanging the backup slot forever.
@@ -6945,7 +6956,7 @@ func (cluster *Cluster) JobRejoinMysqldumpFromSource(source *ServerMonitor, dest
 	// instead of hanging the reseed forever. Best-effort mitigation for the
 	// hard-hung-mount case, not a hard guarantee -- see
 	// BACKUP_DEAD_VOLUME_STALL.md.
-	leaked := boundedWait(&wg, stallFired, backupStallLeakGrace)
+	leaked := boundedWait(&wg, stallFired, cluster.backupStallLeakGraceDuration())
 	close(stallDone) // stop the watchdog
 	if leaked {
 		artifactWriter.discard() // never publish a partial artifact (Cancellation and Failure Semantics: cancel during phase 1)
