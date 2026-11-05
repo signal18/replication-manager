@@ -122,11 +122,12 @@ function Home() {
     } else {
       globalTabsRef.current = ['Clusters Local']
     }
-    if (loggedUser?.User == "admin") {
-      globalTabsRef.current.push('Settings')
-    }
     globalTabsRef.current.push('Dashboard')
     globalTabsRef.current.push('Resources')
+    // the instance's settings, named Setup like a cluster's and last (#2268)
+    if (loggedUser?.User == "admin") {
+      globalTabsRef.current.push('Setup')
+    }
   }, [monitor?.config?.cloud18, monitor?.config?.cloud18DisablePeers, monitor?.config?.cloud18DisableForSale, monitor?.config?.cloud18SubscriptionPlan, loggedUser?.User, isSSOUser])
 
   // For SSO users: if local clusters are empty after loading, advance to Peer,
@@ -246,7 +247,7 @@ function Home() {
     if (!isClusterOpenRef.current) {
       if (
         globalTabsRef.current[selectedTabRef.current] === 'Clusters Local' ||
-        globalTabsRef.current[selectedTabRef.current] === 'Settings'
+        globalTabsRef.current[selectedTabRef.current] === 'Setup'
       ) {
         if (!isPaused) {
           // monitor = global/near-static options (config, service catalogs, plans) +
@@ -414,7 +415,7 @@ function Home() {
           tabIndex={selectedTab}
           onChange={handleTabChange}
           // On a Standby ("S") node, blink the Settings tab red — changes there won't persist.
-          blinkLabels={monitor?.status === 'S' ? ['Settings', 'Setup'] : []}
+          blinkLabels={monitor?.status === 'S' ? ['Setup'] : []}
           options={
             isClusterOpenRef.current
               ? [
@@ -481,11 +482,11 @@ function Home() {
                   ...(globalTabsRef.current.includes('Billing')
                     ? [<Billing />]
                     : []),
-                  ...(globalTabsRef.current.includes('Settings')
-                    ? [<ClustersGlobalSettings user={loggedUser} />]
-                    : []),
                   <GlobalItems />,
-                  <ResourceManager />
+                  <ResourceManager />,
+                  ...(globalTabsRef.current.includes('Setup')
+                    ? [<ClustersGlobalSettings user={loggedUser} />]
+                    : [])
                 ])
           ]}
         />
