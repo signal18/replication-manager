@@ -7,6 +7,7 @@ import MonitoringSettings from './MonitoringSettings'
 import AccordionComponent from '../../components/AccordionComponent'
 import TabItems from '../../components/TabItems'
 import PluginsSettings from './PluginsSettings'
+import AlertSettings, { ALERT_GROUPS } from './AlertSettings'
 import StandbyBanner from '../../components/StandbyBanner'
 import LogsSettings from './LogsSettings'
 import RejoinSettings from './RejoinSettings'
@@ -22,12 +23,13 @@ import { setSetting } from '../../redux/settingsSlice'
 import { useDispatch } from 'react-redux'
 
 // the Setup tab's sub-tabs (#2268): each a group of the cluster's settings sections, in order. The
-// Scheduler, Backup, Archive and S3 Providers settings live in the Maintenance tab, the Alerts in
-// their own tab.
+// Scheduler, Backup, Archive and S3 Providers settings live in the Maintenance tab. Alerts has
+// its own tabs inside (by channel, Cloud18 Support for a Cloud18 cluster).
 const SETUP_GROUPS = [
   { name: 'General', sections: ['isCredentialsOpen', 'isDynamicConfigOpen', 'isCloud18Open', 'isAppTemplateRepoOpen'] },
   { name: 'High Availability', sections: ['isGeneralOpen', 'isRepFailOverOpen', 'isRejoinOpen', 'isRepConfigOpen', 'isProxiesOpen'] },
   { name: 'Collecting', sections: ['isMonitoringOpen', 'isLogsOpen', 'isGraphsOpen'] },
+  { name: 'Alerts', sections: ['alerts'] },
   { name: 'Plugins', sections: ['isPluginsOpen'] }
 ]
 const SECTION_ORDER = SETUP_GROUPS.flatMap((g) => g.sections)
@@ -46,6 +48,8 @@ function Settings({ selectedCluster, user, onTabChange, monitor }) {
   })
   const isVisible = (key) => !sectionFilter || sectionFilter.includes(key)
   const [setupTab, setSetupTab] = useState(() => parseInt(localStorage.getItem('setupTab'), 10) || 0)
+  const [alertTab, setAlertTab] = useState(0)
+  const alertGroups = ALERT_GROUPS.filter((g) => !g.cloud18 || selectedCluster?.config?.cloud18)
   const changeSetupTab = (index) => {
     setSetupTab(index)
     localStorage.setItem('setupTab', String(index))
@@ -276,6 +280,18 @@ function Settings({ selectedCluster, user, onTabChange, monitor }) {
               />
             }
           />
+    ),
+    // Alerts: its channels as tabs (level 3)
+    alerts: (
+      <TabItems
+        className={styles.fullWidthTabs}
+        options={alertGroups.map((g) => g.name)}
+        tabIndex={Math.min(alertTab, alertGroups.length - 1)}
+        onChange={setAlertTab}
+        tabContents={alertGroups.map((g) => (
+          <AlertSettings key={g.name} selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} group={g.name} />
+        ))}
+      />
     ),
     // Plugins: a sub-tab of its own
     isPluginsOpen: <PluginsSettings selectedCluster={selectedCluster} user={user} />
