@@ -16,10 +16,14 @@ series of restarts and tests mails no one; before, every restart during it still
 
 - Across the restart: the interventions are restored from each cluster's `interventions.json` when the
   cluster initialises (`LoadInterventionHistory`, `cluster.go`), before the mail is sent. The global
-  flag itself is rebuilt later (`RefreshGlobalInterventionState`), so a global intervention reaches the
-  mail through its per-cluster entries.
-- Counted, not hidden: the skipped mail is one suppressed alert on each muted cluster
-  (`IncrementSuppressedAlerts`), shown in the intervention's summary, and logged at INFO.
+  flag itself is rebuilt later (`RefreshGlobalInterventionState`), so at a start a global intervention
+  reaches the mail through its per-cluster entries; the global flag is read for a mail sent while
+  running. The unit test sets the flag by hand; the restore-before-mail order is checked on a real
+  restart with an intervention in place.
+- Counted, not hidden: the skipped mail is one suppressed alert on each cluster under an intervention
+  (`IncrementSuppressedAlerts`, shown in the intervention's summary), and logged at INFO. A cluster muted
+  by the scheduler's alert disable alone has no counter: only the log line says it.
+- The cluster map is read under `repman.Lock()`, as `StartCluster` and `DeleteCluster` write it.
 - One cluster not muted: the mail goes, as before. `mail-to` empty: no mail, as before.
 
 Test: `server/server_mail_init_test.go`.

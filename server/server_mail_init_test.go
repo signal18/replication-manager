@@ -13,8 +13,9 @@ import (
 )
 
 // The restart mail obeys the mute: every cluster under an intervention (or the scheduler's alert
-// disable), or a global intervention, and it is not sent, counted as suppressed on each muted
-// cluster; one cluster not muted and it goes (here: on to the mailer checks).
+// disable), or a global intervention, and it is not sent; one cluster not muted and it goes. The
+// skipped mail is counted on each cluster under an intervention; a cluster muted by the alert
+// disable alone has no counter. A nil entry is never touched.
 func TestInitMailMuted(t *testing.T) {
 	a, b := &cluster.Cluster{}, &cluster.Cluster{}
 	repman := &ReplicationManager{Conf: &config.Config{MailTo: "ops@x.io"}, Logrus: log.New(),
@@ -24,20 +25,19 @@ func TestInitMailMuted(t *testing.T) {
 		t.Fatal("no mute: the restart mail goes")
 	}
 	a.IsIntervention = true
-	if repman.initMailMuted() {
-		t.Fatal("one cluster not muted: the restart mail goes")
+	if repman.initMailMuted() || a.InterventionSuppressedAlerts != 0 {
+		t.Fatalf("one cluster not muted: the restart mail goes, nothing counted (%d)", a.InterventionSuppressedAlerts)
 	}
 	b.IsAlertDisable = true
-	if !repman.initMailMuted() {
-		t.Fatal("every cluster muted (intervention, alert disable): no restart mail")
-	}
 	repman.SendClustersInitMail()
-	if a.InterventionSuppressedAlerts != 1 {
-		t.Fatalf("the skipped mail is counted on the intervention: %d", a.InterventionSuppressedAlerts)
+	if a.InterventionSuppressedAlerts != 1 || b.InterventionSuppressedAlerts != 0 {
+		t.Fatalf("every cluster muted: no restart mail, counted on the intervention only (a %d, b %d)",
+			a.InterventionSuppressedAlerts, b.InterventionSuppressedAlerts)
 	}
 
 	a.IsIntervention, b.IsAlertDisable = false, false
 	repman.IsGlobalIntervention = true
+	repman.Clusters["nil"] = nil
 	if !repman.initMailMuted() {
 		t.Fatal("a global intervention mutes the restart mail")
 	}

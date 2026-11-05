@@ -19,20 +19,32 @@ func (repman *ReplicationManager) isInitMailEnabled() bool {
 // (cluster_chk.go). The restart mail is then not sent either: an intervention exists so that a
 // planned series of restarts and tests mails no one. The interventions are restored from
 // interventions.json when the clusters initialise, before the mail is sent, so the mute holds
-// across the restart itself.
+// across the restart itself (a global intervention through its per-cluster entries: the global
+// flag is rebuilt later, RefreshGlobalInterventionState). When muted, the skipped mail is counted
+// on each cluster under an intervention (its suppressed alerts, in the intervention's summary); a
+// cluster muted by the alert disable alone has no counter. The cluster map is read under the
+// lock that guards it (StartCluster, DeleteCluster).
 func (repman *ReplicationManager) initMailMuted() bool {
-	if repman.IsGlobalIntervention {
-		return true
-	}
-	if len(repman.Clusters) == 0 {
-		return false
-	}
-	for _, cl := range repman.Clusters {
-		if cl == nil || (!cl.IsIntervention && !cl.IsAlertDisable) {
-			return false
+	repman.Lock()
+	defer repman.Unlock()
+	muted := repman.IsGlobalIntervention
+	if !muted && len(repman.Clusters) > 0 {
+		muted = true
+		for _, cl := range repman.Clusters {
+			if cl == nil || (!cl.IsIntervention && !cl.IsAlertDisable) {
+				muted = false
+				break
+			}
 		}
 	}
-	return true
+	if muted {
+		for _, cl := range repman.Clusters {
+			if cl != nil {
+				cl.IncrementSuppressedAlerts() // counts only under an intervention
+			}
+		}
+	}
+	return muted
 }
 
 func (repman *ReplicationManager) mailerConfigMissing() []string {
@@ -77,10 +89,6 @@ func (repman *ReplicationManager) SendClustersInitMail() {
 		return
 	}
 	if repman.initMailMuted() {
-		// counted like a muted alert: the intervention's summary shows it
-		for _, cl := range repman.Clusters {
-			cl.IncrementSuppressedAlerts()
-		}
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Skipping clusters init mail: notifications are muted (intervention)")
 		return
 	}
