@@ -107,19 +107,13 @@ function MonitoringSettings({ selectedCluster, user, openConfirmModal, part }) {
       ]
     },
     {
-      name: 'InnoDB',
-      rows: [
-        { clusterSetting: 'monitoring-innodb-status', key: 'Status', help: h(hInnoDB, 'Monitoring InnoDB Status'), value: sw('monitoring-innodb-status', 'monitoringInnoDBStatus', monInnoDBLoading) },
-        { clusterSetting: 'monitoring-performance-schema-mutex', key: 'Mutex', help: h(hMutex, 'Monitoring InnoDB Mutex'), value: sw('monitoring-performance-schema-mutex', 'monitoringPerformanceSchemaMutex', monProcessListLoading) },
-        { clusterSetting: 'monitoring-performance-schema-latch', key: 'Latch', help: h(hLatch, 'Monitoring InnoDB Latch'), value: sw('monitoring-performance-schema-latch', 'monitoringPerformanceSchemaLatch', monProcessListLoading) }
-      ]
-    },
-    {
       name: 'Performance Schema',
       rows: [
         { clusterSetting: 'monitoring-performance-schema', key: 'Enabled', help: h(hPFS, 'Monitoring Performance Schema'), value: sw('monitoring-performance-schema', 'monitoringPerformanceSchema') },
         { clusterSetting: 'monitoring-performance-schema-memory', key: 'Memory', help: h(hPFSMemory, 'Monitoring Performance Schema Memory'), value: sw('monitoring-performance-schema-memory', 'monitoringPerformanceSchemaMemory') },
         { clusterSetting: 'monitoring-performance-schema-instruments', key: 'Instruments', help: h(hPFSInstruments, 'Monitoring Performance Schema Instruments'), value: sw('monitoring-performance-schema-instruments', 'monitoringPerformanceIntruments') },
+        { clusterSetting: 'monitoring-performance-schema-mutex', key: 'InnoDB Mutex', help: h(hMutex, 'Monitoring InnoDB Mutex'), value: sw('monitoring-performance-schema-mutex', 'monitoringPerformanceSchemaMutex', monProcessListLoading) },
+        { clusterSetting: 'monitoring-performance-schema-latch', key: 'InnoDB Latch', help: h(hLatch, 'Monitoring InnoDB Latch'), value: sw('monitoring-performance-schema-latch', 'monitoringPerformanceSchemaLatch', monProcessListLoading) },
         { clusterSetting: 'monitoring-performance-schema-queries', key: 'Queries', help: h(hPFSQueries, 'Monitoring Performance Schema Queries'), value: sw('monitoring-performance-schema-queries', 'monitoringPerformanceSchemaQueries') },
         { clusterSetting: 'monitoring-performance-schema-queries-period', key: 'Queries Period', help: h(hPFSPeriod, 'PFS Queries Period'), value: <NumberInput value={selectedCluster?.config?.monitoringPerformanceSchemaQueriesPeriod} min={1} max={168} showEditButton={true} showConfirmModal={true} confirmTitle={`Confirm change 'monitoring-performance-schema-queries-period' to: `} onConfirm={(v) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-performance-schema-queries-period', value: v.length === 0 ? '1' : v }))} /> },
         { clusterSetting: 'monitoring-performance-schema-queries-interval', key: 'Queries Interval', help: h(hPFSInterval, 'PFS Queries Interval'), value: <NumberInput value={selectedCluster?.config?.monitoringPerformanceSchemaQueriesInterval} min={0} max={3600} showEditButton={true} showConfirmModal={true} confirmTitle={`Confirm change 'monitoring-performance-schema-queries-interval' to: `} onConfirm={(v) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-performance-schema-queries-interval', value: v.length === 0 ? '30' : v }))} /> },
@@ -132,6 +126,7 @@ function MonitoringSettings({ selectedCluster, user, openConfirmModal, part }) {
       name: 'Status',
       rows: [
         { clusterSetting: 'monitoring-pause', key: 'Pause', help: h(hPause, 'Monitoring Pause'), value: sw('monitoring-pause', 'monitoringPause', monPauseLoading) },
+        { clusterSetting: 'monitoring-innodb-status', key: 'InnoDB Status', help: h(hInnoDB, 'Monitoring InnoDB Status'), value: sw('monitoring-innodb-status', 'monitoringInnoDBStatus', monInnoDBLoading) },
         { clusterSetting: 'monitoring-add-monitor-script', key: 'Add Monitor Script', help: h(hAddMonitorScript, 'Monitoring Add Monitor Script'), value: <TextForm value={selectedCluster?.config?.monitoringAddMonitorScript} confirmTitle={`Confirm change 'monitoring-add-monitor-script' to: `} onSave={(v) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-add-monitor-script', value: v.length === 0 ? '{undefined}' : v }))} /> },
         { clusterSetting: 'monitoring-drop-monitor-script', key: 'Drop Monitor Script', help: h(hDropMonitorScript, 'Monitoring Drop Monitor Script'), value: <TextForm value={selectedCluster?.config?.monitoringDropMonitorScript} confirmTitle={`Confirm change 'monitoring-drop-monitor-script' to: `} onSave={(v) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-drop-monitor-script', value: v.length === 0 ? '{undefined}' : v }))} /> }
       ]
