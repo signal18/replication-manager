@@ -396,6 +396,11 @@ answered.** Before calling a PR ready, to the maintainer or in any summary, chec
 - **Reviewed:** a review exists on the PR's *current* head commit. A review of an earlier
   push does not count; every new commit calls for a new review (`@claude` comment). A PR
   with no review is not ready, whatever its age.
+- **The maintainer's own check is a review.** When the maintainer has checked the current
+  head (on a dev instance, in the browser) and says merge, a GUI-only change needs no
+  `@claude` review on top: merge it. The `@claude` review stays required for a change to the
+  server, monitoring, failover, data or security, and for any head the maintainer has not
+  checked.
 - **Answered:** every blocking point is fixed, and every other point is fixed or answered
   in the PR with a reason. "Approve with comments" is not "ready" while they are open.
 - **Checks:** the PR's CI checks are green, none missing, none pending.
