@@ -27,7 +27,7 @@ import { authService } from '../../services/authService'
 import Cloud18Identity from './Cloud18Identity'
 import { globalClustersService } from '../../services/globalClustersService'
 
-function CloudSettings({ config }) {
+function CloudSettings({ config, part }) {
   const dispatch = useDispatch()
   const joinClasses = (...classes) => classes.filter(Boolean).join(' ')
   const [action, setAction] = useState({ title: '', body: <></> })
@@ -759,12 +759,27 @@ Start create an account in https://gitlab.signal18.io
     },
   ] : []
 
+  // the Cloud18 tabs of the global settings (#2268): part 'registration' (the registration rows and
+  // the peering), 'support' (the subscription plan and the licence package), 'marketplace' (clusters
+  // for sale and self-service); no part shows them all
+  const SUPPORT_ROWS = ['Subscription', 'Licence package']
+  const registrationRows = part ? registrationData.filter((row) => !SUPPORT_ROWS.includes(row.key)) : registrationData
+  const supportRows = registrationData.filter((row) => SUPPORT_ROWS.includes(row.key))
+  const shows = (p) => !part || part === p
+
   return (
     <>
-      <Flex justify='space-between' gap='0'>
-        <TableType2 dataArray={registrationData} className={styles.tableWithHelp} helpColumn />
-      </Flex>
-      {peeringData.length > 0 && (
+      {shows('registration') && (
+        <Flex justify='space-between' gap='0'>
+          <TableType2 dataArray={registrationRows} className={styles.tableWithHelp} helpColumn />
+        </Flex>
+      )}
+      {part === 'support' && (
+        <Flex justify='space-between' gap='0'>
+          <TableType2 dataArray={supportRows} className={styles.tableWithHelp} helpColumn />
+        </Flex>
+      )}
+      {shows('registration') && peeringData.length > 0 && (
         <>
           <Box as='h4' bg='var(--secondary-color)' color='var(--white-color)' fontWeight='bold' textTransform='uppercase' px={4} py={2} mt={4}>Peering</Box>
           <Flex justify='space-between' gap='0'>
@@ -772,7 +787,7 @@ Start create an account in https://gitlab.signal18.io
           </Flex>
         </>
       )}
-      {marketplaceData.length > 0 && (
+      {shows('marketplace') && marketplaceData.length > 0 && (
         <>
           <Box as='h4' bg='var(--secondary-color)' color='var(--white-color)' fontWeight='bold' textTransform='uppercase' px={4} py={2} mt={4}>Marketplace</Box>
           <Flex justify='space-between' gap='0'>
@@ -780,7 +795,7 @@ Start create an account in https://gitlab.signal18.io
           </Flex>
         </>
       )}
-      {selfServiceData.length > 0 && (
+      {shows('marketplace') && selfServiceData.length > 0 && (
         <>
           <Box as='h4' bg='var(--secondary-color)' color='var(--white-color)' fontWeight='bold' textTransform='uppercase' px={4} py={2} mt={4}>Self-Service Clusters</Box>
           <Flex justify='space-between' gap='0'>
