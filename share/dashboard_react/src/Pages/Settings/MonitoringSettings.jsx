@@ -17,7 +17,7 @@ import remarkGfm from 'remark-gfm'
 import { HiQuestionMarkCircle } from 'react-icons/hi'
 import RMIconButton from '../../components/RMIconButton'
 
-function MonitoringSettings({ selectedCluster, user, openConfirmModal }) {
+function MonitoringSettings({ selectedCluster, user, openConfirmModal, part }) {
   const dispatch = useDispatch()
   const [action, setAction] = useState({ title: '', body: <></> })
   const [isCommonModalOpen, setIsCommonModalOpen] = useState(false)
@@ -131,11 +131,13 @@ function MonitoringSettings({ selectedCluster, user, openConfirmModal }) {
       name: 'Status',
       rows: [
         { clusterSetting: 'monitoring-pause', key: 'Pause', help: h(hPause, 'Monitoring Pause'), value: sw('monitoring-pause', 'monitoringPause', monPauseLoading) },
-        { clusterSetting: 'monitoring-resolve-server-ip', key: 'Resolve Server IP', help: h(hResolveServerIP, 'Monitoring Resolve Server IP'), value: sw('monitoring-resolve-server-ip', 'monitoringResolveServerIP') },
-        { clusterSetting: 'db-servers-dns-timeout', key: 'Database Servers DNS Timeout', help: h(hDnsTimeout, 'Database Servers DNS Timeout'), value: <NumberInput value={selectedCluster?.config?.dbServersDnsTimeout} min={1} max={300} showEditButton={true} showConfirmModal={true} confirmTitle={`Confirm change 'db-servers-dns-timeout' to: `} onConfirm={(v) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'db-servers-dns-timeout', value: v.length === 0 ? '5' : v }))} /> },
-        { clusterSetting: 'db-servers-monitor-extra-port', key: 'Database Servers Monitor Extra Port', help: h(hMonitorExtraPort, 'Database Servers Monitor Extra Port'), value: <NumberInput value={selectedCluster?.config?.dbServersMonitorExtraPort} min={0} max={65535} showEditButton={true} showConfirmModal={true} confirmTitle={`Confirm change 'db-servers-monitor-extra-port' to: `} onConfirm={(v) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'db-servers-monitor-extra-port', value: v.length === 0 ? '0' : v }))} /> },
         { clusterSetting: 'monitoring-add-monitor-script', key: 'Add Monitor Script', help: h(hAddMonitorScript, 'Monitoring Add Monitor Script'), value: <TextForm value={selectedCluster?.config?.monitoringAddMonitorScript} confirmTitle={`Confirm change 'monitoring-add-monitor-script' to: `} onSave={(v) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-add-monitor-script', value: v.length === 0 ? '{undefined}' : v }))} /> },
-        { clusterSetting: 'monitoring-drop-monitor-script', key: 'Drop Monitor Script', help: h(hDropMonitorScript, 'Monitoring Drop Monitor Script'), value: <TextForm value={selectedCluster?.config?.monitoringDropMonitorScript} confirmTitle={`Confirm change 'monitoring-drop-monitor-script' to: `} onSave={(v) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-drop-monitor-script', value: v.length === 0 ? '{undefined}' : v }))} /> },
+        { clusterSetting: 'monitoring-drop-monitor-script', key: 'Drop Monitor Script', help: h(hDropMonitorScript, 'Monitoring Drop Monitor Script'), value: <TextForm value={selectedCluster?.config?.monitoringDropMonitorScript} confirmTitle={`Confirm change 'monitoring-drop-monitor-script' to: `} onSave={(v) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-drop-monitor-script', value: v.length === 0 ? '{undefined}' : v }))} /> }
+      ]
+    },
+    {
+      name: 'Processlist',
+      rows: [
         { clusterSetting: 'monitoring-processlist', key: 'Processlist', help: h(hProcesslist, 'Monitoring Processlist'), value: sw('monitoring-processlist', 'monitoringProcesslist', monProcessListLoading) },
         { clusterSetting: 'monitoring-processlist-information-schema', key: 'Processlist Information Schema', help: h(hProcesslistIS, 'Monitoring Processlist Information Schema'), value: sw('monitoring-processlist-information-schema', 'monitoringProcesslistInformationSchema', monProcessListLoading) },
         { clusterSetting: 'monitoring-processlist-inactive', key: 'Processlist Inactive', help: h(hProcesslistInactive, 'Monitoring Processlist Inactive'), value: sw('monitoring-processlist-inactive', 'monitoringProcesslistInactive', monProcessListLoading) },
@@ -165,6 +167,24 @@ function MonitoringSettings({ selectedCluster, user, openConfirmModal }) {
       ]
     }
   ]
+
+  // how repman reaches the servers: shown in Setup > Connect (#2268)
+  const connectRows = [
+    { clusterSetting: 'monitoring-resolve-server-ip', key: 'Resolve Server IP', help: h(hResolveServerIP, 'Monitoring Resolve Server IP'), value: sw('monitoring-resolve-server-ip', 'monitoringResolveServerIP') },
+    { clusterSetting: 'db-servers-dns-timeout', key: 'Database Servers DNS Timeout', help: h(hDnsTimeout, 'Database Servers DNS Timeout'), value: <NumberInput value={selectedCluster?.config?.dbServersDnsTimeout} min={1} max={300} showEditButton={true} showConfirmModal={true} confirmTitle={`Confirm change 'db-servers-dns-timeout' to: `} onConfirm={(v) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'db-servers-dns-timeout', value: v.length === 0 ? '5' : v }))} /> },
+    { clusterSetting: 'db-servers-monitor-extra-port', key: 'Database Servers Monitor Extra Port', help: h(hMonitorExtraPort, 'Database Servers Monitor Extra Port'), value: <NumberInput value={selectedCluster?.config?.dbServersMonitorExtraPort} min={0} max={65535} showEditButton={true} showConfirmModal={true} confirmTitle={`Confirm change 'db-servers-monitor-extra-port' to: `} onConfirm={(v) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'db-servers-monitor-extra-port', value: v.length === 0 ? '0' : v }))} /> }
+  ]
+
+  if (part === 'connect') {
+    return (
+      <>
+        <Flex justify='space-between' gap='0'>
+          <TableType2 dataArray={connectRows} className={styles.tableWithHelp} helpColumn={true} />
+        </Flex>
+        <CommonModal isOpen={isCommonModalOpen} closeModal={() => setIsCommonModalOpen(false)} title={action.title} body={action.body} size='xl' />
+      </>
+    )
+  }
 
   return (
     <>

@@ -26,7 +26,7 @@ import { useDispatch } from 'react-redux'
 // Configs > Databases > Scaling. Alerts has
 // its own tabs inside (by channel, Cloud18 Support for a Cloud18 cluster).
 const SETUP_GROUPS = [
-  { name: 'Connect', sections: ['isCredentialsOpen'] },
+  { name: 'Connect', sections: ['isCredentialsOpen', 'isConnectionOpen'] },
   { name: 'High Availability', sections: ['isGeneralOpen', 'isRepFailOverOpen', 'isRejoinOpen', 'isRepConfigOpen', 'isProxiesOpen'] },
   { name: 'Collecting', sections: ['isMonitoringOpen', 'isLogsOpen', 'isGraphsOpen'] },
   { name: 'Alerts', sections: ['alerts'] },
@@ -85,6 +85,7 @@ function Settings({ selectedCluster, user, onTabChange, monitor }) {
     isCredentialsOpen: { title: 'Credentials', body: <CredentialsSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} /> },
     isRepFailOverOpen: { title: 'Failover', body: <RepFailOverSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} /> },
     isRepConfigOpen: { title: 'Replication', body: <RepConfigSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} /> },
+    isConnectionOpen: { title: 'Connection', body: <MonitoringSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} part='connect' /> },
     isMonitoringOpen: { title: 'Monitoring', body: <MonitoringSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} /> },
     isLogsOpen: { title: 'Logs', body: <LogsSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} /> },
     isRejoinOpen: { title: 'Rejoin', body: <RejoinSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} /> },
