@@ -169,8 +169,7 @@ func (repman *ReplicationManager) Cloud18ClustersForSale() ([]*peer.PeerCluster,
 	if repman.PeerManager == nil {
 		return nil, errors.New("peer manager not started (not registered to Cloud18?)")
 	}
-	plan := repman.Conf.Cloud18SubscriptionPlan
-	if repman.Conf.Cloud18DisableForSale && plan != "" && plan != "free" {
+	if repman.Conf.Cloud18DisableForSale && repman.Conf.Cloud18ForSaleOptOutAllowed() {
 		return []*peer.PeerCluster{}, nil
 	}
 	raw, err := repman.PeerManager.GetSaleClustersJSON()

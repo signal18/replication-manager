@@ -1715,10 +1715,9 @@ func (repman *ReplicationManager) handlerMuxPeerClustersForSale(w http.ResponseW
 		return
 	}
 
-	// Paid plans can disable the for-sale marketplace view.
-	// Free plans cannot — marketplace visibility is the trade-off for the free tier.
-	plan := repman.Conf.Cloud18SubscriptionPlan
-	if repman.Conf.Cloud18DisableForSale && plan != "" && plan != "free" {
+	// A paying customer (a Support plan or a licence) may hide the clusters for sale; any other
+	// plan sees them: marketplace visibility is the trade-off (Cloud18ForSaleOptOutAllowed).
+	if repman.Conf.Cloud18DisableForSale && repman.Conf.Cloud18ForSaleOptOutAllowed() {
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte("[]"))
 		return

@@ -2111,6 +2111,18 @@ func (conf *Config) GetImmuableFlag(key string) (interface{}, bool) {
 	return v, ok
 }
 
+// Cloud18ForSaleOptOutAllowed tells whether this instance may hide the clusters for sale
+// (cloud18-disable-for-sale, the "no noise" option): a paying customer only, a Support or a Support
+// and Services plan, or a licence (#2268). The free, developer and partner plans see what the
+// marketplace sells.
+func (conf *Config) Cloud18ForSaleOptOutAllowed() bool {
+	switch conf.Cloud18SubscriptionPlan {
+	case "support", "support-services":
+		return true
+	}
+	return strings.TrimSpace(conf.Cloud18LicenseFile) != ""
+}
+
 // ImmuableFlagValues maps each key the immutable configuration sets to the value it sets there,
 // as text, for the GUI's lock tooltips (#2268). A secret's value is never sent (F10): it is
 // SecretMask, as on every API path, and so is a key whose name says it holds one.
