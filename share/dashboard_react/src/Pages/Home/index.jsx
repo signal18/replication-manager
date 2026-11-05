@@ -46,7 +46,6 @@ import Users from '../Users'
 import Maintenance from '../Maintenance'
 import Top from '../Top'
 import Shards from '../Shards'
-import QueryRules from '../QueryRules'
 import PeerClusterList from '../PeerClusterList'
 import ClustersGlobalSettings from '../ClustersGlobalSettings'
 import GlobalItems, { GlobalLogs } from '../GlobalItems'
@@ -69,6 +68,8 @@ function Home() {
   const dashboardTabsRef = useRef([])
   const globalTabsRef = useRef([])
   const intervalTickerRef = useRef(0)
+  // the cluster runs ProxySQL: Configs > Proxies then has Query Rules, refreshed with the tab (#2268)
+  const hasProxysqlRef = useRef(false)
   const [isNewClusterModalOpen, setIsNewClusterModalOpen] = useState(false)
   const params = useParams()
 
@@ -169,9 +170,6 @@ function Home() {
             if (apiUser.grants['db-show-process']) {
               authorizedTabs.push('Tops')
             }
-            if (clusterData.config.proxysql && apiUser.grants['cluster-show-agents']) {
-              authorizedTabs.push('Query Rules')
-            }
             if (apiUser.grants['db-show-schema']) {
               authorizedTabs.push('Schema')
             }
@@ -179,6 +177,7 @@ function Home() {
               authorizedTabs.push('Users')
             }
             dashboardTabsRef.current = authorizedTabs
+            hasProxysqlRef.current = !!clusterData.config.proxysql
           }
         }
       }
@@ -280,6 +279,10 @@ function Home() {
       }
       if (dashboardTabsRef.current[selectedTabRef.current - 1] === 'Configs') {
         dispatch(getClusterCertificates({ clusterName: selectedClusterNameRef.current }))
+        // the query rules live in Configs > Proxies now (#2268): refreshed with the tab
+        if (hasProxysqlRef.current) {
+          dispatch(getQueryRules({ clusterName: selectedClusterNameRef.current }))
+        }
       }
       if (dashboardTabsRef.current[selectedTabRef.current - 1] === 'Maintenance') {
         refreshMaintenanceData(selectedClusterNameRef.current)
@@ -287,9 +290,6 @@ function Home() {
       if (dashboardTabsRef.current[selectedTabRef.current - 1] === 'Tops') {
         dispatch(getTopProcess({ clusterName: selectedClusterNameRef.current }))
         dispatch(getOpenSVCStats({ clusterName: selectedClusterNameRef.current }))
-      }
-      if (dashboardTabsRef.current[selectedTabRef.current - 1] === 'Query Rules') {
-        dispatch(getQueryRules({ clusterName: selectedClusterNameRef.current }))
       }
       if (dashboardTabsRef.current[selectedTabRef.current - 1] === 'Schema') {
         dispatch(getShardSchema({ clusterName: selectedClusterNameRef.current }))
@@ -422,9 +422,6 @@ function Home() {
                   ? [<Maintenance user={user} selectedCluster={selectedCluster} onOpenBackupSettings={openBackupSettings} onOpenArchiveSettings={openArchiveSettings} onOpenSchedulerSettings={openSchedulerSettings} onOpenLogsSettings={openLogsSettings} />]
                   : []),
                 ...(user?.grants['db-show-process'] ? [<Top selectedCluster={selectedCluster} onOpenMonitoringSettings={openMonitoringSettings} onOpenTopologySettings={openTopologySettings} />] : []),
-                ...(selectedCluster?.config?.proxysql && user?.grants['cluster-show-agents']
-                  ? [<QueryRules selectedCluster={selectedCluster} />]
-                  : []),
                 ...(user?.grants['db-show-schema'] ? [<Shards selectedCluster={selectedCluster} user={user} onOpenSchedulerSettings={openMaintenanceScheduler} onOpenLogsSettings={openLogsSettings} onOpenMonitoringSettings={openMonitoringSettings} />] : []),
                 ...(user?.grants['cluster-grant'] || user?.grants['token-manage'] ? [<Users selectedCluster={selectedCluster} user={user} />] : [])
               ]

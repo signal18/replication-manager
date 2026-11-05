@@ -9,6 +9,7 @@ import OrchestratorImages from './components/OrchestratorImages'
 import OrchestratorDisks from './components/OrchestratorDisks'
 import OrchestratorDbVM from './components/OrchestratorDbVM'
 import Certificates from './components/Certificates'
+import QueryRules from '../QueryRules'
 import { useDispatch, useSelector } from 'react-redux'
 import { getClusterCertificates } from '../../redux/clusterSlice'
 
@@ -18,6 +19,8 @@ function Configs({ selectedCluster, user }) {
   // the Databases and Proxies sub-tabs (level 3, #2268)
   const [dbTab, setDbTab] = useState(0)
   const [proxyTab, setProxyTab] = useState(0)
+  // Query Rules (formerly a cluster tab): a Proxies sub-tab, for a ProxySQL cluster, with the same grant
+  const showQueryRules = !!selectedCluster?.config?.proxysql && !!user?.grants?.['cluster-show-agents']
 
   const {
     cluster: { clusterCertificates }
@@ -61,7 +64,7 @@ function Configs({ selectedCluster, user }) {
             className={styles.fullWidthTabs}
             key='proxy'
             variant='line'
-            options={['System Resources', 'Available Fragments', 'Used Fragments', 'Provisioning']}
+            options={['System Resources', 'Available Fragments', 'Used Fragments', 'Provisioning', ...(showQueryRules ? ['Query Rules'] : [])]}
             tabIndex={proxyTab}
             onChange={setProxyTab}
             tabContents={[
@@ -72,7 +75,8 @@ function Configs({ selectedCluster, user }) {
                   <AccordionComponent className={styles.accordion} headerClassName={styles.accordionHeader} heading={'Orchestrator Images'} body={<OrchestratorImages selectedCluster={selectedCluster} user={user} scope='proxy' />} />
                   <AccordionComponent className={styles.accordion} headerClassName={styles.accordionHeader} heading={'Orchestrator Disks'} body={<OrchestratorDisks selectedCluster={selectedCluster} user={user} scope='proxy' />} />
                   <AccordionComponent className={styles.accordion} headerClassName={styles.accordionHeader} heading={'Orchestrator VM'} body={<OrchestratorDbVM selectedCluster={selectedCluster} user={user} scope='proxy' />} />
-                </VStack>
+                </VStack>,
+                ...(showQueryRules ? [<QueryRules key='queryrules' selectedCluster={selectedCluster} />] : [])
             ]}
           />,
           <VStack key='certificates' className={styles.configContainer}>
