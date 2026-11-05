@@ -263,7 +263,7 @@ func (repman *ReplicationManager) cloud18TokenLogin(w http.ResponseWriter, r *ht
 	jwt, u, err := repman.cloud18TokenSession(raw)
 	if err != nil {
 		repman.logCloud18TokenRefused("api_auth_failure", r.RemoteAddr, err)
-		http.Error(w, "Error logging in: Cloud18 token refused", http.StatusUnauthorized)
+		http.Error(w, "Error logging in: "+config.ConstCloud18TokenRefused, http.StatusUnauthorized)
 		return
 	}
 	if repman.Conf.MonitoringLogAPILogin && !repman.isAPILoginSilenced(u.Email) {

@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/klauspost/compress/zstd"
@@ -41,22 +42,34 @@ func (repman *ReplicationManager) peerLoginAsIdentity(parsedPeerURL *url.URL, id
 		if status != http.StatusUnauthorized || id.password == "" {
 			return status, body
 		}
+		if id.instance && strings.Contains(string(body), config.ConstCloud18TokenRefused) {
+			// a peer that knows realm tokens refused the instance's: its password would not
+			// do better there, and repeated it would lock the account (#2327)
+			return status, body
+		}
 	}
 	return repman.PeerLogin(parsedPeerURL, userCredentials{Username: id.user, Password: id.password})
 }
 
-// instancePeerBearer is the realm token of the account the instance is registered with, sent to
-// another instance when this one acts as itself (#2327), so the peer does not have to know the
-// account's password. "" when there is none (realm out of reach, login refused): the password
-// goes, as before.
-func (repman *ReplicationManager) instancePeerBearer() string {
+// instancePeerLogin is how this instance logs in to another one as itself (#2327): the realm
+// token of the account it is registered with, which the peer verifies by itself without knowing the
+// account's password, and whether that password may still go to a peer on an older release. It may
+// not when the realm refused the account (wrong or stale password, ended session): a peer would
+// refuse it too, and every poll repeating it would lock the account there. With the realm out of
+// reach, no token and the password may go, as before.
+func (repman *ReplicationManager) instancePeerLogin() (bearer string, sendPassword bool) {
 	t, err := repman.Conf.Cloud18InstanceLoginToken()
-	if err != nil {
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg,
-			"no Cloud18 token of this instance for the other instances, the password is sent: %s", err)
-		return ""
+	if err == nil {
+		return t, true
 	}
-	return t
+	if config.IsCloud18LoginRefusal(err) {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg,
+			"Cloud18 refused this instance's account, no login on the other instances: %s", err)
+		return "", false
+	}
+	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg,
+		"no Cloud18 token of this instance for the other instances, the password is sent: %s", err)
+	return "", true
 }
 
 // peerLoginRequest posts a login to another instance, with a bearer when one is given.

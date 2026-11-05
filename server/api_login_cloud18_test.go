@@ -500,29 +500,30 @@ func TestCloud18LoginACRRefreshWalkAndErrors(t *testing.T) {
 
 // #2327: the instance acting as itself on another instance sends a realm token of the account it
 // is registered with, not its password: the account logs in once, its token verifies as the account
-// (a peer that does not know the password accepts it), the next calls reuse the login; a wrong
-// password is not tried again while the refusal lasts (no account lockout from a peer loop); a
-// changed password starts a new login; an instance not registered has no token (the password goes).
-func TestInstancePeerBearer(t *testing.T) {
+// (a peer that does not know the password accepts it), the next calls reuse the login; a refused
+// account gives no token and no password either (the peers would refuse it and lock the account),
+// not tried again while the refusal lasts; a changed password starts a new login; an instance not
+// registered has no token; a realm out of reach gives no token but lets the password go.
+func TestInstancePeerLogin(t *testing.T) {
 	f, issuer := newRegisterFakes(t)
 	repman := loginRepman(t, issuer)
 	config.ForgetCloud18InstanceLogin()
 	defer config.ForgetCloud18InstanceLogin()
 
-	if repman.instancePeerBearer() != "" {
+	if bearer, _ := repman.instancePeerLogin(); bearer != "" {
 		t.Fatal("an instance not registered has no token")
 	}
 	repman.Conf.Cloud18GitUser = "admin@acme.example"
 	repman.Conf.Cloud18GitPassword = repman.Conf.GetEncryptedString("s3cr3t-cloud18")
-	first := repman.instancePeerBearer()
+	first, send := repman.instancePeerLogin()
 	u, err := repman.Conf.VerifyCloud18Token(first)
-	if err != nil || u.Email != "admin@acme.example" {
-		t.Fatalf("the instance's token verifies as its registered account: %+v %v", u, err)
+	if err != nil || u.Email != "admin@acme.example" || !send {
+		t.Fatalf("the instance's token verifies as its registered account: %+v %v (password may go: %v)", u, err, send)
 	}
 	f.mu.Lock()
 	logins := f.logins
 	f.mu.Unlock()
-	if again := repman.instancePeerBearer(); again == "" {
+	if again, _ := repman.instancePeerLogin(); again == "" {
 		t.Fatal("the next call gives a token")
 	}
 	f.mu.Lock()
@@ -539,27 +540,33 @@ func TestInstancePeerBearer(t *testing.T) {
 		}
 		raw := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
 		if u, err := repman.Conf.VerifyCloud18Token(raw); err != nil || u.Email != "admin@acme.example" {
-			http.Error(w, "Error logging in: Invalid credentials", http.StatusUnauthorized)
+			http.Error(w, "Error logging in: "+config.ConstCloud18TokenRefused, http.StatusUnauthorized)
 			return
 		}
 		w.Write([]byte(`{"token":"peer-session"}`))
 	}))
 	defer peer.Close()
 	pu, _ := url.Parse(peer.URL + "/api/login")
-	status, body := repman.peerLoginAsIdentity(pu, peerIdentity{user: "admin@acme.example", password: "s3cr3t-cloud18", bearer: repman.instancePeerBearer()})
+	bearer, _ := repman.instancePeerLogin()
+	status, body := repman.peerLoginAsIdentity(pu, peerIdentity{user: "admin@acme.example", password: "s3cr3t-cloud18", bearer: bearer, instance: true})
 	if status != http.StatusOK || !strings.Contains(string(body), "peer-session") {
 		t.Fatalf("a peer that does not know the password logs the instance in with its token: %d %s", status, body)
 	}
+	// that peer refusing the instance's token (it knows tokens): no password after it
+	status, _ = repman.peerLoginAsIdentity(pu, peerIdentity{user: "admin@acme.example", password: "s3cr3t-cloud18", bearer: "forged", instance: true})
+	if status != http.StatusUnauthorized {
+		t.Fatalf("a refused token is the answer, no password tried: %d", status)
+	}
 
-	// a wrong password: no token, and not tried again while the refusal lasts
+	// a wrong password: no token, no password to the peers, not tried again while the refusal lasts
 	repman.Conf.Cloud18GitPassword = repman.Conf.GetEncryptedString("wrong-password")
-	if repman.instancePeerBearer() != "" {
-		t.Fatal("a wrong password gives no token")
+	if bearer, send := repman.instancePeerLogin(); bearer != "" || send {
+		t.Fatalf("a refused account gives no token and no password: %q %v", bearer, send)
 	}
 	f.mu.Lock()
 	f.accounts["admin@acme.example"] = "wrong-password" // the realm would now take it
 	f.mu.Unlock()
-	if repman.instancePeerBearer() != "" {
+	if bearer, send := repman.instancePeerLogin(); bearer != "" || send {
 		t.Fatal("a refused login is not tried again before the wait ends")
 	}
 	// a changed password is a new login
@@ -567,7 +574,16 @@ func TestInstancePeerBearer(t *testing.T) {
 	f.accounts["admin@acme.example"] = "n3w-cloud18"
 	f.mu.Unlock()
 	repman.Conf.Cloud18GitPassword = repman.Conf.GetEncryptedString("n3w-cloud18")
-	if repman.instancePeerBearer() == "" {
+	if bearer, send := repman.instancePeerLogin(); bearer == "" || !send {
 		t.Fatal("a changed password logs in again at once")
+	}
+
+	// the realm out of reach: no token, the password may go (a peer still decides)
+	config.ForgetCloud18InstanceLogin()
+	dead := httptest.NewServer(http.NotFoundHandler())
+	dead.Close()
+	repman.Conf.Cloud18IdentityURL = dead.URL + "/realms/cloud18"
+	if bearer, send := repman.instancePeerLogin(); bearer != "" || !send {
+		t.Fatalf("a realm out of reach is not a refusal: %q %v", bearer, send)
 	}
 }

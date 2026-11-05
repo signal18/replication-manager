@@ -10,6 +10,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/signal18/replication-manager/config"
 )
 
 // PeerClient represents the HTTP client for peer communication
@@ -76,10 +78,16 @@ func (pc *PeerClient) SetHeader(key, value string) {
 
 // DoRequest sends an HTTP request with the specified method, endpoint, and body
 func (pc *PeerClient) DoRequest(method, endpoint string, body io.Reader) (int, []byte, error) {
+	return pc.doRequest(method, endpoint, body, false, "")
+}
+
+// doRequest sends the request with the client's headers. A login (#2327) never carries the
+// session token the client may hold (any case of the header name), only the realm token given
+// as bearer, and is a JSON post.
+func (pc *PeerClient) doRequest(method, endpoint string, body io.Reader, login bool, bearer string) (int, []byte, error) {
 	// one slash between the base URL and the endpoint: callers pass "/api/..." and a
 	// recent peer does not clean "//api/..." (#1953)
 	url := strings.TrimRight(pc.baseURL, "/") + "/" + strings.TrimLeft(endpoint, "/")
-
 	req, err := http.NewRequest(method, url, body)
 	if err != nil {
 		return 500, nil, fmt.Errorf("failed to create request: %w", err)
@@ -87,57 +95,38 @@ func (pc *PeerClient) DoRequest(method, endpoint string, body io.Reader) (int, [
 
 	// Add headers
 	for key, value := range pc.headers {
+		if login && strings.EqualFold(key, "Authorization") {
+			continue
+		}
 		req.Header.Set(key, value)
 	}
-	req.Close = true
-
-	resp, err := pc.client.Do(req)
-	if err != nil {
-		return http.StatusInternalServerError, nil, fmt.Errorf("request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return resp.StatusCode, nil, fmt.Errorf("failed to read response body: %w", err)
-	}
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return resp.StatusCode, respBody, fmt.Errorf("peer %s status %d: %s", pc.baseURL, resp.StatusCode, string(respBody))
-	}
-
-	return resp.StatusCode, respBody, nil
-}
-
-// postLogin posts a login to the peer, with the realm token as bearer when one is given, never
-// with a session token this client may still hold.
-func (pc *PeerClient) postLogin(body []byte, bearer string) (int, []byte, error) {
-	req, err := http.NewRequest(http.MethodPost, strings.TrimRight(pc.baseURL, "/")+"/api/login", bytes.NewReader(body))
-	if err != nil {
-		return http.StatusInternalServerError, nil, fmt.Errorf("failed to create request: %w", err)
-	}
-	for key, value := range pc.headers {
-		if key != "Authorization" {
-			req.Header.Set(key, value)
+	if login {
+		req.Header.Set("Content-Type", "application/json")
+		if bearer != "" {
+			req.Header.Set("Authorization", "Bearer "+bearer)
 		}
 	}
-	req.Header.Set("Content-Type", "application/json")
-	if bearer != "" {
-		req.Header.Set("Authorization", "Bearer "+bearer)
-	}
 	req.Close = true
+
 	resp, err := pc.client.Do(req)
 	if err != nil {
 		return http.StatusInternalServerError, nil, fmt.Errorf("request failed: %w", err)
 	}
 	defer resp.Body.Close()
-	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+
+	var from io.Reader = resp.Body
+	if login {
+		from = io.LimitReader(resp.Body, 1<<20) // a login answer is a token
+	}
+	respBody, err := io.ReadAll(from)
 	if err != nil {
 		return resp.StatusCode, nil, fmt.Errorf("failed to read response body: %w", err)
 	}
+
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return resp.StatusCode, respBody, fmt.Errorf("peer %s status %d: %s", pc.baseURL, resp.StatusCode, string(respBody))
 	}
+
 	return resp.StatusCode, respBody, nil
 }
 
@@ -166,23 +155,28 @@ func (pc *PeerClient) PeerLogin(username, password string) error {
 }
 
 // PeerLoginWithBearer logs in on the peer with a Cloud18 realm token when one is given (#2327):
-// the peer verifies it by itself, whether or not it knows the account's password. The password is
-// sent only when there is no token, or when the peer refuses the token with a 401 (an older
-// release, which knows only passwords); any other answer is returned as is.
+// the peer verifies it by itself, whether or not it knows the account's password. The password
+// (when one is given) is sent only when there is no token, or when the peer refuses the token
+// with a 401 of an older release, which knows only passwords; a peer answering that it refused
+// the token (config.ConstCloud18TokenRefused) knows tokens, and the password would only be refused
+// there too. Any other answer is returned as is.
 func (pc *PeerClient) PeerLoginWithBearer(bearer, username, password string) error {
 	status, body, err := 0, []byte(nil), error(nil)
 	if bearer != "" {
-		status, body, err = pc.postLogin([]byte("{}"), bearer)
-		if err != nil && (status != http.StatusUnauthorized || password == "") {
+		status, body, err = pc.doRequest(http.MethodPost, "api/login", bytes.NewReader([]byte("{}")), true, bearer)
+		if err != nil && (status != http.StatusUnauthorized || password == "" || strings.Contains(string(body), config.ConstCloud18TokenRefused)) {
 			return err
 		}
 	}
 	if bearer == "" || err != nil {
+		if password == "" {
+			return fmt.Errorf("no credential to log in on %s", pc.baseURL)
+		}
 		loginBody, merr := json.Marshal(PeerCredential{Username: username, Password: password})
 		if merr != nil {
 			return merr
 		}
-		status, body, err = pc.postLogin(loginBody, "")
+		status, body, err = pc.doRequest(http.MethodPost, "api/login", bytes.NewReader(loginBody), true, "")
 		if err != nil {
 			return err
 		}
@@ -198,6 +192,9 @@ func (pc *PeerClient) PeerLoginWithBearer(bearer, username, password string) err
 
 	if err := json.Unmarshal(body, &AuthToken); err != nil {
 		return err
+	}
+	if AuthToken.Token == "" {
+		return fmt.Errorf("peer %s gave no session token", pc.baseURL)
 	}
 
 	pc.SetHeader("Authorization", "Bearer "+AuthToken.Token)

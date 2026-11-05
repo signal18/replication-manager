@@ -615,6 +615,7 @@ type peerIdentity struct {
 	bearer   string // the caller's Cloud18 realm token (#2182), tried before the password
 	mode     string // "caller" (the SSO user), "instance" (the registered identity), "refused"
 	reason   string
+	instance bool // the instance as itself (#2327): no password after a peer refused its token
 }
 
 // peerIdentityFor decides whose credentials reach an infrastructure, the same door as the
@@ -715,9 +716,17 @@ func (repman *ReplicationManager) peerLoginAs(p *repmanmcp.Principal, infra stri
 		return nil, "", err
 	}
 	if id.mode == "instance" {
-		// the instance's own realm token (#2327); the password only for a peer that refuses it
-		// (an older release)
-		id.bearer = repman.instancePeerBearer()
+		// the instance's own realm token (#2327); the password only for a peer on an older
+		// release, never when the realm refused the account
+		var sendPassword bool
+		id.bearer, sendPassword = repman.instancePeerLogin()
+		id.instance = true
+		if !sendPassword {
+			id.password = ""
+		}
+		if id.bearer == "" && id.password == "" {
+			return nil, "", fmt.Errorf("login on %s as %s not tried: Cloud18 refused this instance's account (check cloud18-gitlab-password)", base, id.user)
+		}
 	}
 	status, body := repman.peerLoginAsIdentity(loginURL, id)
 	if status != http.StatusOK {

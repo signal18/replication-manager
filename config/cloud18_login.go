@@ -500,6 +500,23 @@ var cloud18InstanceLogin struct {
 // request to another instance would lock the account (a variable: tests lower it).
 var cloud18InstanceLoginRefusedWait = 10 * time.Minute
 
+// cloud18InstanceLoginUnreachableWait is how long a realm out of reach is not asked again: every
+// peer poll would otherwise wait on it in turn (the login holds one lock).
+var cloud18InstanceLoginUnreachableWait = time.Minute
+
+// ConstCloud18TokenRefused is the text of a replication-manager refusing a realm token at login
+// (401): an instance that knows realm tokens and refused this one, unlike an older release,
+// whose 401 is a password refusal. The instance's password never goes after it (#2327).
+const ConstCloud18TokenRefused = "Cloud18 token refused"
+
+// IsCloud18LoginRefusal says whether a login error is the realm refusing the account (wrong or
+// stale password, ended session, second factor), not the realm out of reach: the account's
+// password must then not be sent to another instance either, which would refuse it and lock the
+// account there (#2327).
+func IsCloud18LoginRefusal(err error) bool {
+	return errors.Is(err, ErrCloud18Refused) || errors.Is(err, ErrCloud18BadCredentials) || errors.Is(err, ErrCloud18SecondFactor)
+}
+
 // Cloud18InstanceLoginToken returns a realm token of the account the instance is registered with
 // (cloud18-gitlab-user), for the other Cloud18 instances (#2327): the instance acting as itself
 // (a local admin entering a peer, the MCP tools as the instance) sends this token, not the
@@ -521,15 +538,21 @@ func (conf *Config) Cloud18InstanceLoginToken() (string, error) {
 		cloud18InstanceLogin.account, cloud18InstanceLogin.refresh = account, ""
 		cloud18InstanceLogin.refused, cloud18InstanceLogin.refusedErr = time.Time{}, nil
 	}
-	if refresh := cloud18InstanceLogin.refresh; refresh != "" {
-		t, err := conf.Cloud18LoginAccess(refresh)
-		if err == nil || !errors.Is(err, ErrCloud18Refused) {
-			return t, err // a token, or the realm out of reach: the next call tries again
-		}
-		cloud18InstanceLogin.refresh = "" // the realm ended the login: log in again
-	}
 	if now := time.Now(); now.Before(cloud18InstanceLogin.refused) {
 		return "", cloud18InstanceLogin.refusedErr
+	}
+	if refresh := cloud18InstanceLogin.refresh; refresh != "" {
+		t, err := conf.Cloud18LoginAccess(refresh)
+		if err == nil {
+			return t, nil
+		}
+		if !errors.Is(err, ErrCloud18Refused) {
+			// the realm out of reach: the login lives on, not asked again for a while
+			err = fmt.Errorf("Cloud18 login of %s not refreshed: %w", user, err)
+			cloud18InstanceLogin.refused, cloud18InstanceLogin.refusedErr = time.Now().Add(cloud18InstanceLoginUnreachableWait), err
+			return "", err
+		}
+		cloud18InstanceLogin.refresh = "" // the realm ended the login: log in again
 	}
 	l, err := conf.Cloud18Login(user, password)
 	if err == nil && (l.Access == "" || l.Refresh == "") {
@@ -537,7 +560,11 @@ func (conf *Config) Cloud18InstanceLoginToken() (string, error) {
 	}
 	if err != nil {
 		err = fmt.Errorf("Cloud18 login of %s: %w", user, err)
-		cloud18InstanceLogin.refused, cloud18InstanceLogin.refusedErr = time.Now().Add(cloud18InstanceLoginRefusedWait), err
+		wait := cloud18InstanceLoginRefusedWait
+		if !IsCloud18LoginRefusal(err) {
+			wait = cloud18InstanceLoginUnreachableWait
+		}
+		cloud18InstanceLogin.refused, cloud18InstanceLogin.refusedErr = time.Now().Add(wait), err
 		return "", err
 	}
 	cloud18InstanceLogin.refresh = l.Refresh
