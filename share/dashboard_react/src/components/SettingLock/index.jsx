@@ -1,7 +1,6 @@
 import { Box, Flex } from '@chakra-ui/react'
 import React, { useState } from 'react'
-import { HiLockClosed } from 'react-icons/hi'
-import { MdLockReset } from 'react-icons/md'
+import { HiLockClosed, HiLockOpen } from 'react-icons/hi'
 import { useSelector } from 'react-redux'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -80,7 +79,7 @@ export function SettingLabel({ setting, clusterSetting, children }) {
       )}
       {clusterLock && (
         <LockButton
-          icon={MdLockReset}
+          icon={HiLockOpen}
           title='Rolled back at restart'
           text='This setting is set in the system config. A change here applies at once, for a test, and the next restart rolls it back to the system config value.'
           lock={clusterLock}
