@@ -40,7 +40,6 @@ import CustomIcon from '../../components/Icons/CustomIcon'
 import Dashboard from '../Dashboard'
 import Settings from '../Settings'
 import Configs from '../Configs'
-import PluginsSettings from '../Settings/PluginsSettings'
 import Graphs from '../Graphs'
 import Agents from '../Agents'
 import Users from '../Users'
@@ -168,8 +167,8 @@ function Home() {
           const apiUser = clusterData.apiUsers[loggedUser.User] ? clusterData.apiUsers[loggedUser.User] : clusterData.apiUsers[loggedUser.Email]
           if (apiUser) {
             setUser(apiUser)
-            // Plugins (#2268): a tab of its own, out of the Settings tab
-            const authorizedTabs = [selectedClusterNameRef.current, 'Settings', 'Configs', 'Plugins']
+            // Setup (the former Settings, its sections in sub-tabs, Plugins one of them) comes last (#2268)
+            const authorizedTabs = [selectedClusterNameRef.current, 'Configs']
             // Monitoring (#2268): Graphs, Nodes, Tops and Schema as its sub-tabs, each on its own grant
             const monitoringTabs = []
             if (clusterData.config.graphiteMetrics && apiUser.grants['cluster-show-graphs']) {
@@ -194,6 +193,7 @@ function Home() {
             if (apiUser.grants['cluster-grant'] || apiUser.grants['token-manage']) {
               authorizedTabs.push('Access') // the cluster's accounts, grants and API tokens
             }
+            authorizedTabs.push('Setup')
             dashboardTabsRef.current = authorizedTabs
             hasProxysqlRef.current = !!clusterData.config.proxysql
           }
@@ -370,12 +370,12 @@ function Home() {
     // Open the filtered sections, close everything else
     const allSections = [
       'isGeneralOpen', 'isRepFailOverOpen', 'isRepConfigOpen', 'isMonitoringOpen',
-      'isAlertsOpen', 'isLogsOpen', 'isRejoinOpen', 'isProxiesOpen',
+      'isAlertsOpen', 'isLogsOpen', 'isPluginsOpen', 'isRejoinOpen', 'isProxiesOpen',
       'isGraphsOpen', 'isCloud18Open', 'isSchedulerOpen', 'isBackupOpen', 'isArchiveOpen',
       'isS3ProvidersOpen', 'isAppTemplateRepoOpen'
     ]
     allSections.forEach((key) => localStorage.setItem(key, JSON.stringify(visibleSections.includes(key))))
-    const settingsIndex = dashboardTabsRef.current.indexOf('Settings')
+    const settingsIndex = dashboardTabsRef.current.indexOf('Setup')
     if (settingsIndex >= 0) {
       const tabIndex = settingsIndex + 1
       selectedTabRef.current = tabIndex
@@ -390,11 +390,7 @@ function Home() {
   const openProxiesSettings = () => openSettingsSection(['isProxiesOpen'])
   const openLogsSettings = () => openSettingsSection(['isLogsOpen'])
   const openMonitoringSettings = () => openSettingsSection(['isMonitoringOpen'])
-  // the plugins have their own tab (#2268): the Dashboard's gear opens it
-  const openPluginsSettings = () => {
-    const pluginsIndex = dashboardTabsRef.current.indexOf('Plugins')
-    if (pluginsIndex >= 0) handleTabChange(pluginsIndex + 1)
-  }
+  const openPluginsSettings = () => openSettingsSection(['isPluginsOpen'])
   const openGraphsSettings = () => openSettingsSection(['isGraphsOpen'])
   const openFailoverSettings = () => openSettingsSection(['isRepFailOverOpen'])
   const openNewClusterModal = (e) => {
@@ -420,7 +416,7 @@ function Home() {
           tabIndex={selectedTab}
           onChange={handleTabChange}
           // On a Standby ("S") node, blink the Settings tab red — changes there won't persist.
-          blinkLabels={monitor?.status === 'S' ? ['Settings'] : []}
+          blinkLabels={monitor?.status === 'S' ? ['Settings', 'Setup'] : []}
           options={
             isClusterOpenRef.current
               ? [
@@ -447,9 +443,7 @@ function Home() {
             ...(isClusterOpenRef.current
               ? [
                 <Dashboard user={user} selectedCluster={selectedCluster} openSettings={{ topology: openTopologySettings, proxies: openProxiesSettings, logs: openLogsSettings, scheduler: openSchedulerSettings, monitoring: openMonitoringSettings, plugins: openPluginsSettings, graphs: openGraphsSettings, failover: openFailoverSettings }} />,
-                <Settings user={user} selectedCluster={selectedCluster} onTabChange={handleTabChange} monitor={monitor} />,
                 <Configs user={user} selectedCluster={selectedCluster} />,
-                <PluginsSettings user={user} selectedCluster={selectedCluster} />,
                 ...(monitoringTabsRef.current.length > 0
                   ? [
                       <TabItems
@@ -476,7 +470,8 @@ function Home() {
                 ...(user?.grants['cluster-show-backups']
                   ? [<Maintenance user={user} selectedCluster={selectedCluster} onOpenBackupSettings={openBackupSettings} onOpenArchiveSettings={openArchiveSettings} onOpenSchedulerSettings={openSchedulerSettings} onOpenLogsSettings={openLogsSettings} />]
                   : []),
-                ...(user?.grants['cluster-grant'] || user?.grants['token-manage'] ? [<Users selectedCluster={selectedCluster} user={user} />] : [])
+                ...(user?.grants['cluster-grant'] || user?.grants['token-manage'] ? [<Users selectedCluster={selectedCluster} user={user} />] : []),
+                <Settings user={user} selectedCluster={selectedCluster} onTabChange={handleTabChange} monitor={monitor} />
               ]
               : [
                   ...(globalTabsRef.current.includes('Clusters Peer')

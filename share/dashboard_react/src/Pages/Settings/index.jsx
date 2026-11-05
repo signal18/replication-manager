@@ -5,6 +5,8 @@ import GeneralSettings from './GeneralSettings'
 import ConfirmModal from '../../components/Modals/ConfirmModal'
 import MonitoringSettings from './MonitoringSettings'
 import AccordionComponent from '../../components/AccordionComponent'
+import TabItems from '../../components/TabItems'
+import PluginsSettings from './PluginsSettings'
 import StandbyBanner from '../../components/StandbyBanner'
 import LogsSettings from './LogsSettings'
 import RejoinSettings from './RejoinSettings'
@@ -24,6 +26,16 @@ import AppTemplateRepoSection from './components/AppTemplateRepoSection'
 import { setSetting } from '../../redux/settingsSlice'
 import { useDispatch } from 'react-redux'
 
+// the Setup tab's sub-tabs (#2268): each a group of the cluster's settings sections, in order
+const SETUP_GROUPS = [
+  { name: 'General', sections: ['isGeneralOpen', 'isCredentialsOpen', 'isAlertsOpen', 'isDynamicConfigOpen', 'isCloud18Open', 'isAppTemplateRepoOpen'] },
+  { name: 'High Availability', sections: ['isRepFailOverOpen', 'isRejoinOpen', 'isRepConfigOpen', 'isProxiesOpen'] },
+  { name: 'Collecting', sections: ['isMonitoringOpen', 'isLogsOpen', 'isGraphsOpen'] },
+  { name: 'Maintenance', sections: ['isSchedulerOpen', 'isBackupOpen', 'isArchiveOpen', 'isS3ProvidersOpen'] },
+  { name: 'Plugins', sections: ['isPluginsOpen'] }
+]
+const SECTION_ORDER = SETUP_GROUPS.flatMap((g) => g.sections)
+
 function Settings({ selectedCluster, user, onTabChange, monitor }) {
   const dispatch = useDispatch()
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false)
@@ -37,6 +49,11 @@ function Settings({ selectedCluster, user, onTabChange, monitor }) {
     } catch { return null }
   })
   const isVisible = (key) => !sectionFilter || sectionFilter.includes(key)
+  const [setupTab, setSetupTab] = useState(() => parseInt(localStorage.getItem('setupTab'), 10) || 0)
+  const changeSetupTab = (index) => {
+    setSetupTab(index)
+    localStorage.setItem('setupTab', String(index))
+  }
   const clearFilter = () => {
     localStorage.removeItem('settingsFilter')
     setSectionFilter(null)
@@ -160,6 +177,195 @@ function Settings({ selectedCluster, user, onTabChange, monitor }) {
     setConfirmHandler(null)
     setConfirmTitle('')
   }
+  // the sections, by their key (#2268): shown as the Setup sub-tabs, or filtered when a gear in
+  // another tab opened some of them
+  const sectionBlocks = {
+    isGeneralOpen: (
+      <AccordionComponent
+            heading={'Topology'}
+            onToggle={onGeneralToggle}
+            isOpen={isGeneralOpen}
+            headerClassName={styles.accordionHeader}
+            panelClassName={styles.accordionPanel}
+            body={<GeneralSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} onTabChange={onTabChange} monitor={monitor} />}
+          />
+    ),
+    isCredentialsOpen: (
+      <AccordionComponent
+            heading={'Credentials'}
+            onToggle={onCredentialsToggle}
+            isOpen={isCredentialsOpen}
+            headerClassName={styles.accordionHeader}
+            panelClassName={styles.accordionPanel}
+            body={<CredentialsSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} />}
+          />
+    ),
+    isRepFailOverOpen: (
+      <AccordionComponent
+            heading={'Failover'}
+            onToggle={onRepFailOverToggle}
+            isOpen={isRepFailOverOpen}
+            headerClassName={styles.accordionHeader}
+            panelClassName={styles.accordionPanel}
+            body={<RepFailOverSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} />}
+          />
+    ),
+    isRepConfigOpen: (
+      <AccordionComponent
+            heading={'Replication'}
+            onToggle={onRepConfigToggle}
+            isOpen={isRepConfigOpen}
+            headerClassName={styles.accordionHeader}
+            panelClassName={styles.accordionPanel}
+            body={<RepConfigSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} />}
+          />
+    ),
+    isMonitoringOpen: (
+      <AccordionComponent
+            heading={'Monitoring'}
+            onToggle={onMonitoringToggle}
+            isOpen={isMonitoringOpen}
+            headerClassName={styles.accordionHeader}
+            panelClassName={styles.accordionPanel}
+            body={<MonitoringSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} />}
+          />
+    ),
+    isAlertsOpen: (
+      <AccordionComponent
+            heading={'Alerts'}
+            onToggle={onAlertsToggle}
+            isOpen={isAlertsOpen}
+            headerClassName={styles.accordionHeader}
+            panelClassName={styles.accordionPanel}
+            body={<AlertSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} />}
+          />
+    ),
+    isLogsOpen: (
+      <AccordionComponent
+            heading={'Logs'}
+            onToggle={onLogsToggle}
+            isOpen={isLogsOpen}
+            headerClassName={styles.accordionHeader}
+            panelClassName={styles.accordionPanel}
+            body={<LogsSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} />}
+          />
+    ),
+    isRejoinOpen: (
+      <AccordionComponent
+            heading={'Rejoin'}
+            onToggle={onRejoinToggle}
+            isOpen={isRejoinOpen}
+            headerClassName={styles.accordionHeader}
+            panelClassName={styles.accordionPanel}
+            body={<RejoinSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} />}
+          />
+    ),
+    isDynamicConfigOpen: (
+      <AccordionComponent
+            heading={'Dynamic Config'}
+            onToggle={onDynamicConfigToggle}
+            isOpen={isDynamicConfigOpen}
+            headerClassName={styles.accordionHeader}
+            panelClassName={styles.accordionPanel}
+            body={<DynamicConfigSettings selectedCluster={selectedCluster} user={user} />}
+          />
+    ),
+    isProxiesOpen: (
+      <AccordionComponent
+            heading={'Proxies'}
+            onToggle={onProxiesToggle}
+            isOpen={isProxiesOpen}
+            headerClassName={styles.accordionHeader}
+            panelClassName={styles.accordionPanel}
+            body={<ProxySettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} />}
+          />
+    ),
+    isGraphsOpen: (
+      <AccordionComponent
+            heading={'Graphs'}
+            onToggle={onGraphsToggle}
+            isOpen={isGraphsOpen}
+            headerClassName={styles.accordionHeader}
+            panelClassName={styles.accordionPanel}
+            body={<GraphSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} />}
+          />
+    ),
+    isCloud18Open: (
+      <AccordionComponent
+            heading={'Cloud18'}
+            onToggle={onCloud18Toggle}
+            isOpen={isCloud18Open}
+            headerClassName={styles.accordionHeader}
+            panelClassName={styles.accordionPanel}
+            body={<CloudSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} />}
+          />
+    ),
+    isSchedulerOpen: (
+      <AccordionComponent
+            heading={'Scheduler'}
+            onToggle={onSchedulerToggle}
+            isOpen={isSchedulerOpen}
+            headerClassName={styles.accordionHeader}
+            panelClassName={styles.accordionPanel}
+            body={<SchedulerSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} />}
+          />
+    ),
+    isBackupOpen: (
+      <AccordionComponent
+            heading={'Backup'}
+            onToggle={onBackupToggle}
+            isOpen={isBackupOpen}
+            headerClassName={styles.accordionHeader}
+            panelClassName={styles.accordionPanel}
+            body={<BackupSettings selectedCluster={selectedCluster} user={user} />}
+          />
+    ),
+    isArchiveOpen: (
+      <AccordionComponent
+            heading={'Archive'}
+            onToggle={onArchiveToggle}
+            isOpen={isArchiveOpen}
+            headerClassName={styles.accordionHeader}
+            panelClassName={styles.accordionPanel}
+            body={<ArchiveSettings selectedCluster={selectedCluster} user={user} />}
+          />
+    ),
+    isS3ProvidersOpen: (
+      <AccordionComponent
+            heading={'S3 Providers'}
+            onToggle={onS3ProvidersToggle}
+            isOpen={isS3ProvidersOpen}
+            headerClassName={styles.accordionHeader}
+            panelClassName={styles.accordionPanel}
+            body={<S3ProvidersSettings selectedCluster={selectedCluster} user={user} />}
+          />
+    ),
+    isAppTemplateRepoOpen: (
+      <AccordionComponent
+            heading={'App Templates Repo'}
+            onToggle={onAppTemplateRepoToggle}
+            isOpen={isAppTemplateRepoOpen}
+            headerClassName={styles.accordionHeader}
+            panelClassName={styles.accordionPanel}
+            body={
+              <AppTemplateRepoSection
+                scope='cluster'
+                config={selectedCluster?.config}
+                canEdit={
+                  user?.grants?.['cluster-settings'] !== false &&
+                  user?.grants?.['cluster-settings'] !== undefined &&
+                  selectedCluster?.config?.provAppTemplateRepoAllowOverride !== false
+                }
+                onSet={(setting, value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting, value }))}
+              />
+            }
+          />
+    ),
+    // Plugins: a sub-tab of its own
+    isPluginsOpen: <PluginsSettings selectedCluster={selectedCluster} user={user} />
+  }
+  const sectionsOf = (keys) => keys.filter(isVisible).map((k) => <React.Fragment key={k}>{sectionBlocks[k]}</React.Fragment>)
+
   return (
     <Flex className={styles.settingsContainer}>
       <StandbyBanner />
@@ -177,154 +383,21 @@ function Settings({ selectedCluster, user, onTabChange, monitor }) {
           Show all settings
         </Button>
       )}
-      {isVisible('isGeneralOpen') && <AccordionComponent
-        heading={'Topology'}
-        onToggle={onGeneralToggle}
-        isOpen={isGeneralOpen}
-        headerClassName={styles.accordionHeader}
-        panelClassName={styles.accordionPanel}
-        body={<GeneralSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} onTabChange={onTabChange} monitor={monitor} />}
-      />}
-      {isVisible('isCredentialsOpen') && <AccordionComponent
-        heading={'Credentials'}
-        onToggle={onCredentialsToggle}
-        isOpen={isCredentialsOpen}
-        headerClassName={styles.accordionHeader}
-        panelClassName={styles.accordionPanel}
-        body={<CredentialsSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} />}
-      />}
-      {isVisible('isRepFailOverOpen') && <AccordionComponent
-        heading={'Failover'}
-        onToggle={onRepFailOverToggle}
-        isOpen={isRepFailOverOpen}
-        headerClassName={styles.accordionHeader}
-        panelClassName={styles.accordionPanel}
-        body={<RepFailOverSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} />}
-      />}
-      {isVisible('isRepConfigOpen') && <AccordionComponent
-        heading={'Replication'}
-        onToggle={onRepConfigToggle}
-        isOpen={isRepConfigOpen}
-        headerClassName={styles.accordionHeader}
-        panelClassName={styles.accordionPanel}
-        body={<RepConfigSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} />}
-      />}
-      {isVisible('isMonitoringOpen') && <AccordionComponent
-        heading={'Monitoring'}
-        onToggle={onMonitoringToggle}
-        isOpen={isMonitoringOpen}
-        headerClassName={styles.accordionHeader}
-        panelClassName={styles.accordionPanel}
-        body={<MonitoringSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} />}
-      />}
-      {isVisible('isAlertsOpen') && <AccordionComponent
-        heading={'Alerts'}
-        onToggle={onAlertsToggle}
-        isOpen={isAlertsOpen}
-        headerClassName={styles.accordionHeader}
-        panelClassName={styles.accordionPanel}
-        body={<AlertSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} />}
-      />}
-      {isVisible('isLogsOpen') && <AccordionComponent
-        heading={'Logs'}
-        onToggle={onLogsToggle}
-        isOpen={isLogsOpen}
-        headerClassName={styles.accordionHeader}
-        panelClassName={styles.accordionPanel}
-        body={<LogsSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} />}
-      />}
-      {/* Plugins: a cluster tab of its own (#2268) */}
-      {isVisible('isRejoinOpen') && <AccordionComponent
-        heading={'Rejoin'}
-        onToggle={onRejoinToggle}
-        isOpen={isRejoinOpen}
-        headerClassName={styles.accordionHeader}
-        panelClassName={styles.accordionPanel}
-        body={<RejoinSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} />}
-      />}
-      {isVisible('isDynamicConfigOpen') && <AccordionComponent
-        heading={'Dynamic Config'}
-        onToggle={onDynamicConfigToggle}
-        isOpen={isDynamicConfigOpen}
-        headerClassName={styles.accordionHeader}
-        panelClassName={styles.accordionPanel}
-        body={<DynamicConfigSettings selectedCluster={selectedCluster} user={user} />}
-      />}
-      {isVisible('isProxiesOpen') && <AccordionComponent
-        heading={'Proxies'}
-        onToggle={onProxiesToggle}
-        isOpen={isProxiesOpen}
-        headerClassName={styles.accordionHeader}
-        panelClassName={styles.accordionPanel}
-        body={<ProxySettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} />}
-      />}
-      {isVisible('isGraphsOpen') && <AccordionComponent
-        heading={'Graphs'}
-        onToggle={onGraphsToggle}
-        isOpen={isGraphsOpen}
-        headerClassName={styles.accordionHeader}
-        panelClassName={styles.accordionPanel}
-        body={<GraphSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} />}
-      />}
-      {isVisible('isCloud18Open') && <AccordionComponent
-        heading={'Cloud18'}
-        onToggle={onCloud18Toggle}
-        isOpen={isCloud18Open}
-        headerClassName={styles.accordionHeader}
-        panelClassName={styles.accordionPanel}
-        body={<CloudSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} />}
-      />}
-      {isVisible('isSchedulerOpen') && <AccordionComponent
-        heading={'Scheduler'}
-        onToggle={onSchedulerToggle}
-        isOpen={isSchedulerOpen}
-        headerClassName={styles.accordionHeader}
-        panelClassName={styles.accordionPanel}
-        body={<SchedulerSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} />}
-      />}
-      {isVisible('isBackupOpen') && <AccordionComponent
-        heading={'Backup'}
-        onToggle={onBackupToggle}
-        isOpen={isBackupOpen}
-        headerClassName={styles.accordionHeader}
-        panelClassName={styles.accordionPanel}
-        body={<BackupSettings selectedCluster={selectedCluster} user={user} />}
-      />}
-      {isVisible('isArchiveOpen') && <AccordionComponent
-        heading={'Archive'}
-        onToggle={onArchiveToggle}
-        isOpen={isArchiveOpen}
-        headerClassName={styles.accordionHeader}
-        panelClassName={styles.accordionPanel}
-        body={<ArchiveSettings selectedCluster={selectedCluster} user={user} />}
-      />}
-      {isVisible('isS3ProvidersOpen') && <AccordionComponent
-        heading={'S3 Providers'}
-        onToggle={onS3ProvidersToggle}
-        isOpen={isS3ProvidersOpen}
-        headerClassName={styles.accordionHeader}
-        panelClassName={styles.accordionPanel}
-        body={<S3ProvidersSettings selectedCluster={selectedCluster} user={user} />}
-      />}
-      {isVisible('isAppTemplateRepoOpen') && <AccordionComponent
-        heading={'App Templates Repo'}
-        onToggle={onAppTemplateRepoToggle}
-        isOpen={isAppTemplateRepoOpen}
-        headerClassName={styles.accordionHeader}
-        panelClassName={styles.accordionPanel}
-        body={
-          <AppTemplateRepoSection
-            scope='cluster'
-            config={selectedCluster?.config}
-            canEdit={
-              user?.grants?.['cluster-settings'] !== false &&
-              user?.grants?.['cluster-settings'] !== undefined &&
-              selectedCluster?.config?.provAppTemplateRepoAllowOverride !== false
-            }
-            onSet={(setting, value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting, value }))}
-          />
-        }
-      />}
+      {sectionFilter ? (
+        sectionsOf(SECTION_ORDER)
+      ) : (
+        <TabItems
+          className={styles.fullWidthTabs}
+          options={SETUP_GROUPS.map((g) => g.name)}
+          tabIndex={setupTab}
+          onChange={changeSetupTab}
+          tabContents={SETUP_GROUPS.map((g) => (
+            <Flex key={g.name} direction='column' gap='8px' width='100%'>
+              {sectionsOf(g.sections)}
+            </Flex>
+          ))}
+        />
+      )}
 
       {isConfirmModalOpen && (
         <ConfirmModal
