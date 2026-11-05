@@ -7,7 +7,6 @@ import { useDispatch, useSelector } from 'react-redux'
 import { getUnitRatios } from '../../../utility/unitRatios'
 import { setSetting, switchSetting, changePlanUnits } from '../../../redux/settingsSlice'
 import AccordionComponent from '../../../components/AccordionComponent'
-import TabItems from '../../../components/TabItems'
 import AddRemovePill from '../../../components/AddRemovePill'
 import ConfirmModal from '../../../components/Modals/ConfirmModal'
 import TagContentModal from '../../../components/Modals/TagContentModal'
@@ -91,12 +90,13 @@ function DBUSlider({ value, isDisabled, onChange, nbNodes = 1 }) {
   )
 }
 
-// part (#2268): 'resources' = System Resources (the settings, Dynamic Config), 'fragments' = Config
-// Fragments (Available / Used Fragments, Config Pinning); no part shows both
+// part (#2268), the Databases tab's sub-tabs: 'resources' = System Resources (the settings, Dynamic
+// Config); 'available' / 'used' = the config fragments to add / in use; 'pinning' = Config Pinning
+// (the override files, the preserved variables). No part shows them all.
+const FRAGMENT_PARTS = ['available', 'used', 'pinning']
 function DBConfigs({ selectedCluster, user, part }) {
-  const showResources = part !== 'fragments'
-  const showFragments = part !== 'resources'
-  const [fragmentTab, setFragmentTab] = useState(0)
+  const showResources = !part || part === 'resources'
+  const showFragments = !part || FRAGMENT_PARTS.includes(part)
   const [replicationTags, setReplicationTags] = useState([])
   const [logTags, setLogsTags] = useState([])
   const [engineTags, setEngineTags] = useState([])
@@ -686,11 +686,39 @@ function DBConfigs({ selectedCluster, user, part }) {
       )}
       {showFragments && user?.grants['db-config-flag'] && (
         <Box className={styles.configTagContainer}>
-          <TabItems
-            options={['Available Fragments', 'Used Fragments', 'Config Pinning']}
-            tabIndex={fragmentTab}
-            onChange={setFragmentTab}
-            tabContents={[
+          {part === 'used' ? (
+              <HStack key='used' className={`${styles.tags} ${styles.usedFragments}`}>
+                  {usingDBServerTags
+                    .filter((tag) => tag?.name)
+                    .map((tag) => (
+                      <AddRemovePill
+                        key={tag?.name}
+                        text={tag?.name}
+                        onViewContent={handleViewContent}
+                        onRemove={(title) => {
+                          setConfirmTitle(title)
+                          setIsConfirmModalOpen(true)
+                          setConfirmHandler(
+                            () => () => dispatch(dropDBTag({ clusterName: selectedCluster?.name, tag: tag?.name }))
+                          )
+                        }}
+                        used={true}
+                        category={tag?.category}
+                      />
+                    ))}
+                </HStack>
+          ) : part === 'pinning' ? (
+              <VStack key='pinning' className={styles.fragmentCategories}>
+                <ConfigFilesPanel selectedCluster={selectedCluster} accordionClassName={styles.accordion} headerClassName={styles.accordionHeader} panelClassName={styles.accordionBody} />
+                <AccordionComponent
+                  heading={'Cluster Preserved Variables (Table & Editor)'}
+                  className={styles.accordion}
+                  headerClassName={styles.accordionHeader}
+                  panelClassName={styles.accordionBody}
+                  body={<PreservedVariablesEditor clusterName={selectedCluster?.name} user={user} />}
+                    />
+              </VStack>
+          ) : part === 'available' ? (
               <VStack key='available' className={styles.fragmentCategories}>
                 {configTagData.map((tagData) => (
                   <Box key={tagData.key} className={styles.fragmentCategory}>
@@ -720,7 +748,39 @@ function DBConfigs({ selectedCluster, user, part }) {
                         </HStack>
                   </Box>
                 ))}
-              </VStack>,
+              </VStack>
+          ) : (
+            <>
+              <VStack key='available' className={styles.fragmentCategories}>
+                {configTagData.map((tagData) => (
+                  <Box key={tagData.key} className={styles.fragmentCategory}>
+                    <Box as='h5' className={styles.fragmentCategoryTitle}>{tagData.key}</Box>
+                        <HStack className={styles.tags}>
+                          {tagData.value.map((tag) => {
+                            const isAdded = usingDBServerTags?.find((x) => x?.name === tag.name)
+                            if (isAdded) {
+                              return null
+                            }
+                            return (
+                              <AddRemovePill
+                                isDisabled={user?.grants['proxy-config-flag'] == false}
+                                key={tag.name}
+                                text={tag.name}
+                                onAdd={(title) => {
+                                  setConfirmTitle(title)
+                                  setIsConfirmModalOpen(true)
+                                  setConfirmHandler(
+                                    () => () => dispatch(addDBTag({ clusterName: selectedCluster?.name, tag: tag.name }))
+                                  )
+                                }}
+                                onViewContent={handleViewContent}
+                              />
+                            )
+                          })}
+                        </HStack>
+                  </Box>
+                ))}
+              </VStack>
               <HStack key='used' className={`${styles.tags} ${styles.usedFragments}`}>
                   {usingDBServerTags
                     .filter((tag) => tag?.name)
@@ -740,7 +800,7 @@ function DBConfigs({ selectedCluster, user, part }) {
                         category={tag?.category}
                       />
                     ))}
-                </HStack>,
+                </HStack>
               <VStack key='pinning' className={styles.fragmentCategories}>
                 <ConfigFilesPanel selectedCluster={selectedCluster} accordionClassName={styles.accordion} headerClassName={styles.accordionHeader} panelClassName={styles.accordionBody} />
                 <AccordionComponent
@@ -751,8 +811,8 @@ function DBConfigs({ selectedCluster, user, part }) {
                   body={<PreservedVariablesEditor clusterName={selectedCluster?.name} user={user} />}
                     />
               </VStack>
-            ]}
-          />
+            </>
+          )}
         </Box>
       )}
 
