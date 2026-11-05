@@ -1,10 +1,9 @@
-import { Button, Flex, Text, useDisclosure } from '@chakra-ui/react'
+import { Box, Button, Flex } from '@chakra-ui/react'
 import React, { useState, useEffect } from 'react'
 import styles from './styles.module.scss'
 import GeneralSettings from './GeneralSettings'
 import ConfirmModal from '../../components/Modals/ConfirmModal'
 import MonitoringSettings from './MonitoringSettings'
-import AccordionComponent from '../../components/AccordionComponent'
 import TabItems from '../../components/TabItems'
 import PluginsSettings from './PluginsSettings'
 import AlertSettings, { ALERT_GROUPS } from './AlertSettings'
@@ -26,11 +25,11 @@ import { useDispatch } from 'react-redux'
 // Configs > Databases > Scaling. Alerts has
 // its own tabs inside (by channel, Cloud18 Support for a Cloud18 cluster).
 const SETUP_GROUPS = [
-  { name: 'General', sections: ['isCredentialsOpen', 'isAppTemplateRepoOpen'] },
+  { name: 'Connect', sections: ['isCredentialsOpen'] },
   { name: 'High Availability', sections: ['isGeneralOpen', 'isRepFailOverOpen', 'isRejoinOpen', 'isRepConfigOpen', 'isProxiesOpen'] },
   { name: 'Collecting', sections: ['isMonitoringOpen', 'isLogsOpen', 'isGraphsOpen'] },
   { name: 'Alerts', sections: ['alerts'] },
-  { name: 'Marketplace', sections: ['isCloud18Open'] },
+  { name: 'Marketplace', sections: ['isCloud18Open', 'isAppTemplateRepoOpen'] },
   { name: 'Plugins', sections: ['isPluginsOpen'] }
 ]
 const SECTION_ORDER = SETUP_GROUPS.flatMap((g) => g.sections)
@@ -50,6 +49,8 @@ function Settings({ selectedCluster, user, onTabChange, monitor }) {
   const isVisible = (key) => !sectionFilter || sectionFilter.includes(key)
   const [setupTab, setSetupTab] = useState(() => parseInt(localStorage.getItem('setupTab'), 10) || 0)
   const [alertTab, setAlertTab] = useState(0)
+  // the level-3 tab of each Setup sub-tab
+  const [sectionTab, setSectionTab] = useState({})
   const alertGroups = ALERT_GROUPS.filter((g) => !g.cloud18 || selectedCluster?.config?.cloud18)
   const changeSetupTab = (index) => {
     setSetupTab(index)
@@ -60,71 +61,11 @@ function Settings({ selectedCluster, user, onTabChange, monitor }) {
     setSectionFilter(null)
   }
 
-  const { isOpen: isGeneralOpen, onToggle: onGeneralToggle } = useDisclosure({
-    defaultIsOpen: JSON.parse(localStorage.getItem('isGeneralOpen')) === false ? false : true
-  })
-  const { isOpen: isMonitoringOpen, onToggle: onMonitoringToggle } = useDisclosure({
-    defaultIsOpen: JSON.parse(localStorage.getItem('isMonitoringOpen')) || false
-  })
-  const { isOpen: isLogsOpen, onToggle: onLogsToggle } = useDisclosure({
-    defaultIsOpen: JSON.parse(localStorage.getItem('isLogsOpen')) || false
-  })
-  const { isOpen: isRepFailOverOpen, onToggle: onRepFailOverToggle } = useDisclosure({
-    defaultIsOpen: JSON.parse(localStorage.getItem('isRepFailOverOpen')) || false
-  })
-  const { isOpen: isRepConfigOpen, onToggle: onRepConfigToggle } = useDisclosure({
-    defaultIsOpen: JSON.parse(localStorage.getItem('isRepConfigOpen')) || false
-  })
-  const { isOpen: isRejoinOpen, onToggle: onRejoinToggle } = useDisclosure({
-    defaultIsOpen: JSON.parse(localStorage.getItem('isRejoinOpen')) || false
-  })
-  const { isOpen: isProxiesOpen, onToggle: onProxiesToggle } = useDisclosure({
-    defaultIsOpen: JSON.parse(localStorage.getItem('isProxiesOpen')) || false
-  })
-  const { isOpen: isGraphsOpen, onToggle: onGraphsToggle } = useDisclosure({
-    defaultIsOpen: JSON.parse(localStorage.getItem('isGraphsOpen')) || false
-  })
-  const { isOpen: isCredentialsOpen, onToggle: onCredentialsToggle } = useDisclosure({
-    defaultIsOpen: JSON.parse(localStorage.getItem('isCredentialsOpen')) || false
-  })
-  const { isOpen: isAppTemplateRepoOpen, onToggle: onAppTemplateRepoToggle } = useDisclosure({
-    defaultIsOpen: JSON.parse(localStorage.getItem('isAppTemplateRepoOpen')) || false
-  })
-
-  useEffect(() => {
-    localStorage.setItem('isGeneralOpen', JSON.stringify(isGeneralOpen))
-  }, [isGeneralOpen])
-  useEffect(() => {
-    localStorage.setItem('isMonitoringOpen', JSON.stringify(isMonitoringOpen))
-  }, [isMonitoringOpen])
-  useEffect(() => {
-    localStorage.setItem('isLogsOpen', JSON.stringify(isLogsOpen))
-  }, [isLogsOpen])
-  useEffect(() => {
-    localStorage.setItem('isRepFailOverOpen', JSON.stringify(isRepFailOverOpen))
-  }, [isRepFailOverOpen])
-  useEffect(() => {
-    localStorage.setItem('isRepConfigOpen', JSON.stringify(isRepConfigOpen))
-  }, [isRepConfigOpen])
-
-  useEffect(() => {
-    localStorage.setItem('isRejoinOpen', JSON.stringify(isRejoinOpen))
-  }, [isRejoinOpen])
 
 
-  useEffect(() => {
-    localStorage.setItem('isProxiesOpen', JSON.stringify(isProxiesOpen))
-  }, [isProxiesOpen])
-  useEffect(() => {
-    localStorage.setItem('isGraphsOpen', JSON.stringify(isGraphsOpen))
-  }, [isGraphsOpen])
 
-  useEffect(() => {
-    localStorage.setItem('isAppTemplateRepoOpen', JSON.stringify(isAppTemplateRepoOpen))
-  }, [isAppTemplateRepoOpen])
-  useEffect(() => {
-    localStorage.setItem('isCredentialsOpen', JSON.stringify(isCredentialsOpen))
-  }, [isCredentialsOpen])
+
+
 
   const openConfirmModal = (title, handler) => {
     setIsConfirmModalOpen(true)
@@ -139,107 +80,18 @@ function Settings({ selectedCluster, user, onTabChange, monitor }) {
   // the sections, by their key (#2268): shown as the Setup sub-tabs, or filtered when a gear in
   // another tab opened some of them
   const sectionBlocks = {
-    isGeneralOpen: (
-      <AccordionComponent
-            heading={'Topology'}
-            onToggle={onGeneralToggle}
-            isOpen={isGeneralOpen}
-            headerClassName={styles.accordionHeader}
-            panelClassName={styles.accordionPanel}
-            body={<GeneralSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} onTabChange={onTabChange} monitor={monitor} />}
-          />
-    ),
-    isCredentialsOpen: (
-      <AccordionComponent
-            heading={'Credentials'}
-            onToggle={onCredentialsToggle}
-            isOpen={isCredentialsOpen}
-            headerClassName={styles.accordionHeader}
-            panelClassName={styles.accordionPanel}
-            body={<CredentialsSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} />}
-          />
-    ),
-    isRepFailOverOpen: (
-      <AccordionComponent
-            heading={'Failover'}
-            onToggle={onRepFailOverToggle}
-            isOpen={isRepFailOverOpen}
-            headerClassName={styles.accordionHeader}
-            panelClassName={styles.accordionPanel}
-            body={<RepFailOverSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} />}
-          />
-    ),
-    isRepConfigOpen: (
-      <AccordionComponent
-            heading={'Replication'}
-            onToggle={onRepConfigToggle}
-            isOpen={isRepConfigOpen}
-            headerClassName={styles.accordionHeader}
-            panelClassName={styles.accordionPanel}
-            body={<RepConfigSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} />}
-          />
-    ),
-    isMonitoringOpen: (
-      <AccordionComponent
-            heading={'Monitoring'}
-            onToggle={onMonitoringToggle}
-            isOpen={isMonitoringOpen}
-            headerClassName={styles.accordionHeader}
-            panelClassName={styles.accordionPanel}
-            body={<MonitoringSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} />}
-          />
-    ),
-    isLogsOpen: (
-      <AccordionComponent
-            heading={'Logs'}
-            onToggle={onLogsToggle}
-            isOpen={isLogsOpen}
-            headerClassName={styles.accordionHeader}
-            panelClassName={styles.accordionPanel}
-            body={<LogsSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} />}
-          />
-    ),
-    isRejoinOpen: (
-      <AccordionComponent
-            heading={'Rejoin'}
-            onToggle={onRejoinToggle}
-            isOpen={isRejoinOpen}
-            headerClassName={styles.accordionHeader}
-            panelClassName={styles.accordionPanel}
-            body={<RejoinSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} />}
-          />
-    ),
-    isProxiesOpen: (
-      <AccordionComponent
-            heading={'Proxies'}
-            onToggle={onProxiesToggle}
-            isOpen={isProxiesOpen}
-            headerClassName={styles.accordionHeader}
-            panelClassName={styles.accordionPanel}
-            body={<ProxySettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} />}
-          />
-    ),
-    isGraphsOpen: (
-      <AccordionComponent
-            heading={'Graphs'}
-            onToggle={onGraphsToggle}
-            isOpen={isGraphsOpen}
-            headerClassName={styles.accordionHeader}
-            panelClassName={styles.accordionPanel}
-            body={<GraphSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} />}
-          />
-    ),
+    isGeneralOpen: { title: 'Topology', body: <GeneralSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} onTabChange={onTabChange} monitor={monitor} /> },
+    isCredentialsOpen: { title: 'Credentials', body: <CredentialsSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} /> },
+    isRepFailOverOpen: { title: 'Failover', body: <RepFailOverSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} /> },
+    isRepConfigOpen: { title: 'Replication', body: <RepConfigSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} /> },
+    isMonitoringOpen: { title: 'Monitoring', body: <MonitoringSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} /> },
+    isLogsOpen: { title: 'Logs', body: <LogsSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} /> },
+    isRejoinOpen: { title: 'Rejoin', body: <RejoinSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} /> },
+    isProxiesOpen: { title: 'Proxies', body: <ProxySettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} /> },
+    isGraphsOpen: { title: 'Graphs', body: <GraphSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} /> },
     // Marketplace (the Cloud18 settings): a sub-tab of its own
-    isCloud18Open: <CloudSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} />,
-    isAppTemplateRepoOpen: (
-      <AccordionComponent
-            heading={'App Templates Repo'}
-            onToggle={onAppTemplateRepoToggle}
-            isOpen={isAppTemplateRepoOpen}
-            headerClassName={styles.accordionHeader}
-            panelClassName={styles.accordionPanel}
-            body={
-              <AppTemplateRepoSection
+    isCloud18Open: { title: 'Cloud18', body: <CloudSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} /> },
+    isAppTemplateRepoOpen: { title: 'App Templates Repo', body: <AppTemplateRepoSection
                 scope='cluster'
                 config={selectedCluster?.config}
                 canEdit={
@@ -248,12 +100,9 @@ function Settings({ selectedCluster, user, onTabChange, monitor }) {
                   selectedCluster?.config?.provAppTemplateRepoAllowOverride !== false
                 }
                 onSet={(setting, value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting, value }))}
-              />
-            }
-          />
-    ),
+              /> },
     // Alerts: its channels as tabs (level 3)
-    alerts: (
+    alerts: { title: 'Alerts', body: (
       <TabItems
         className={styles.fullWidthTabs}
         options={alertGroups.map((g) => g.name)}
@@ -263,24 +112,38 @@ function Settings({ selectedCluster, user, onTabChange, monitor }) {
           <AlertSettings key={g.name} selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} group={g.name} />
         ))}
       />
-    ),
+    ) },
     // Plugins: a sub-tab of its own
-    isPluginsOpen: <PluginsSettings selectedCluster={selectedCluster} user={user} />
+    isPluginsOpen: { title: 'Plugins', body: <PluginsSettings selectedCluster={selectedCluster} user={user} /> }
   }
-  const sectionsOf = (keys) => keys.filter(isVisible).map((k) => <React.Fragment key={k}>{sectionBlocks[k]}</React.Fragment>)
+  // a section in a frame (#2268), its title on top unless a tab already names it
+  const frame = (k, withTitle = true) => (
+    <Box key={k} className={styles.sectionFrame}>
+      {withTitle && <Box className={styles.sectionFrameTitle}>{sectionBlocks[k].title}</Box>}
+      <Box className={styles.sectionFrameBody}>{sectionBlocks[k].body}</Box>
+    </Box>
+  )
+  // a filtered view (a gear in another tab): the requested sections, framed, one under the other
+  const sectionsOf = (keys) => keys.filter(isVisible).map((k) => frame(k))
+  // a Setup sub-tab: its one section framed, or its sections as level-3 tabs
+  const groupOf = (g) => {
+    const keys = g.sections.filter((k) => sectionBlocks[k])
+    if (keys.length === 1) return frame(keys[0])
+    const index = Math.min(sectionTab[g.name] || 0, keys.length - 1)
+    return (
+      <TabItems
+        className={styles.fullWidthTabs}
+        options={keys.map((k) => sectionBlocks[k].title)}
+        tabIndex={index}
+        onChange={(i) => setSectionTab((t) => ({ ...t, [g.name]: i }))}
+        tabContents={keys.map((k) => frame(k, false))}
+      />
+    )
+  }
 
   return (
     <Flex className={styles.settingsContainer}>
       <StandbyBanner />
-      {(() => {
-        const ts = selectedCluster?.lastConfigSaveToDisk
-        const saved = ts && !ts.startsWith('0001-01-01')
-        return (
-          <Text fontSize='xs' color='gray.500' mb={1}>
-            Config last saved to disk: {saved ? new Date(ts).toLocaleString() : 'not yet saved this session'}
-          </Text>
-        )
-      })()}
       {sectionFilter && (
         <Button size='sm' variant='outline' mb={2} onClick={clearFilter}>
           Show all settings
@@ -296,7 +159,7 @@ function Settings({ selectedCluster, user, onTabChange, monitor }) {
           onChange={changeSetupTab}
           tabContents={SETUP_GROUPS.map((g) => (
             <Flex key={g.name} direction='column' gap='8px' width='100%'>
-              {sectionsOf(g.sections)}
+              {groupOf(g)}
             </Flex>
           ))}
         />

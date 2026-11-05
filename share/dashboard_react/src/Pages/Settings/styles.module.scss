@@ -495,3 +495,21 @@ div.settingsContainer {
     width: 100%;
   }
 }
+
+// a section of Setup in a frame, even when alone in its sub-tab (#2268); theme variables only
+.sectionFrame {
+  width: 100%;
+  border: 1px solid var(--tertiary-color);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.sectionFrameTitle {
+  background-color: var(--secondary-color);
+  color: var(--white-color);
+  font-weight: bold;
+  text-transform: uppercase;
+  padding: 6px 12px;
+}
+.sectionFrameBody {
+  padding: 8px;
+}
