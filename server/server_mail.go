@@ -14,6 +14,27 @@ func (repman *ReplicationManager) isInitMailEnabled() bool {
 	return strings.TrimSpace(repman.Conf.MailTo) != ""
 }
 
+// initMailMuted says whether the mute covers every cluster: a global intervention, or each cluster
+// under an intervention or the scheduler's alert disable, the gates of the cluster alerts
+// (cluster_chk.go). The restart mail is then not sent either: an intervention exists so that a
+// planned series of restarts and tests mails no one. The interventions are restored from
+// interventions.json when the clusters initialise, before the mail is sent, so the mute holds
+// across the restart itself.
+func (repman *ReplicationManager) initMailMuted() bool {
+	if repman.IsGlobalIntervention {
+		return true
+	}
+	if len(repman.Clusters) == 0 {
+		return false
+	}
+	for _, cl := range repman.Clusters {
+		if cl == nil || (!cl.IsIntervention && !cl.IsAlertDisable) {
+			return false
+		}
+	}
+	return true
+}
+
 func (repman *ReplicationManager) mailerConfigMissing() []string {
 	mailFrom := strings.TrimSpace(repman.Conf.MailFrom)
 	mailSMTPAddr := strings.TrimSpace(repman.Conf.MailSMTPAddr)
@@ -53,6 +74,14 @@ func (repman *ReplicationManager) InitMailer() error {
 func (repman *ReplicationManager) SendClustersInitMail() {
 	if !repman.isInitMailEnabled() {
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Skipping clusters init mail: mail-to not set")
+		return
+	}
+	if repman.initMailMuted() {
+		// counted like a muted alert: the intervention's summary shows it
+		for _, cl := range repman.Clusters {
+			cl.IncrementSuppressedAlerts()
+		}
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Skipping clusters init mail: notifications are muted (intervention)")
 		return
 	}
 	missing := repman.mailerConfigMissing()
