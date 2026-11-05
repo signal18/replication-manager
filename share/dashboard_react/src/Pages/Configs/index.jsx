@@ -38,7 +38,13 @@ function Configs({ selectedCluster, user }) {
               className={styles.accordion}
               headerClassName={styles.accordionHeader}
               heading={'System Resources'}
-              body={<DBConfigs selectedCluster={selectedCluster} user={user} />}
+              body={<DBConfigs selectedCluster={selectedCluster} user={user} part='resources' />}
+            />
+            <AccordionComponent
+              className={styles.accordion}
+              headerClassName={styles.accordionHeader}
+              heading={'Config Fragments'}
+              body={<DBConfigs selectedCluster={selectedCluster} user={user} part='fragments' />}
             />
             <AccordionComponent
               className={styles.accordion}

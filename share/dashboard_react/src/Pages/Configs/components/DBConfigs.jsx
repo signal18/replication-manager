@@ -7,6 +7,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import { getUnitRatios } from '../../../utility/unitRatios'
 import { setSetting, switchSetting, changePlanUnits } from '../../../redux/settingsSlice'
 import AccordionComponent from '../../../components/AccordionComponent'
+import TabItems from '../../../components/TabItems'
 import AddRemovePill from '../../../components/AddRemovePill'
 import ConfirmModal from '../../../components/Modals/ConfirmModal'
 import TagContentModal from '../../../components/Modals/TagContentModal'
@@ -90,7 +91,12 @@ function DBUSlider({ value, isDisabled, onChange, nbNodes = 1 }) {
   )
 }
 
-function DBConfigs({ selectedCluster, user }) {
+// part (#2268): 'resources' = System Resources (the settings, Dynamic Config), 'fragments' = Config
+// Fragments (Available / Used Fragments, Config Pinning); no part shows both
+function DBConfigs({ selectedCluster, user, part }) {
+  const showResources = part !== 'fragments'
+  const showFragments = part !== 'resources'
+  const [fragmentTab, setFragmentTab] = useState(0)
   const [replicationTags, setReplicationTags] = useState([])
   const [logTags, setLogsTags] = useState([])
   const [engineTags, setEngineTags] = useState([])
@@ -650,102 +656,104 @@ function DBConfigs({ selectedCluster, user }) {
 
   return (
     <VStack>
-      {hasPendingCompliance && (
-        <Alert status='warning' borderRadius='md' w='100%'>
-          <AlertIcon />
-          <Text fontSize='sm' flex='1'>
-            A new compliance update is available from the back office. Review the changes before accepting.
-          </Text>
-          <HStack spacing={2}>
-            <Button size='sm' variant='outline' colorScheme='orange' onClick={handleReviewCompliance}>
-              Review Changes
-            </Button>
-            <Button size='sm' colorScheme='blue' isLoading={acceptLoading} onClick={handleAcceptCompliance}>
-              Accept
-            </Button>
-          </HStack>
-        </Alert>
-      )}
-      <TableType2 dataArray={dataObject} className={styles.tableWithHelp} helpColumn={true} />
-      <AccordionComponent
-        heading={'Dynamic Config'}
-        className={styles.accordion}
-        headerClassName={styles.accordionHeader}
-        panelClassName={styles.accordionBody}
-        body={<DynamicConfigSettings selectedCluster={selectedCluster} user={user} />}
-      />
-      {user?.grants['db-config-flag'] && (
-        <HStack className={styles.configTagContainer}>
-          <VStack className={styles.availableTags}>
-            <h4 className={styles.sectionTitle}>{'Available Config Fragments'}</h4>
-            {configTagData.map((tagData) => {
-              return (
-                <AccordionComponent
-                  heading={tagData.key}
-                  className={styles.accordion}
-                  headerClassName={styles.accordionHeader}
-                  panelClassName={styles.accordionBody}
-                  body={
-                    <HStack className={styles.tags}>
-                      {tagData.value.map((tag) => {
-                        const isAdded = usingDBServerTags?.find((x) => x?.name === tag.name)
-                        if (isAdded) {
-                          return null
-                        }
-                        return (
-                          <AddRemovePill
-                            isDisabled={user?.grants['proxy-config-flag'] == false}
-                            key={tag.name}
-                            text={tag.name}
-                            onAdd={(title) => {
-                              setConfirmTitle(title)
-                              setIsConfirmModalOpen(true)
-                              setConfirmHandler(
-                                () => () => dispatch(addDBTag({ clusterName: selectedCluster?.name, tag: tag.name }))
-                              )
-                            }}
-                            onViewContent={handleViewContent}
-                          />
-                        )
-                      })}
-                    </HStack>
-                  }
-                />
-              )
-            })}
-          </VStack>
-          <VStack className={styles.addedTags}>
-            <h4 className={styles.sectionTitle}>{'Used Config Fragments'}</h4>
-            <HStack className={`${styles.tags} `}>
-              {usingDBServerTags
-                .filter((tag) => tag?.name)
-                .map((tag) => (
-                  <AddRemovePill
-                    key={tag?.name}
-                    text={tag?.name}
-                    onViewContent={handleViewContent}
-                    onRemove={(title) => {
-                      setConfirmTitle(title)
-                      setIsConfirmModalOpen(true)
-                      setConfirmHandler(
-                        () => () => dispatch(dropDBTag({ clusterName: selectedCluster?.name, tag: tag?.name }))
-                      )
-                    }}
-                    used={true}
-                    category={tag?.category}
-                  />
-                ))}
+      {showResources && (
+        <>
+        {hasPendingCompliance && (
+          <Alert status='warning' borderRadius='md' w='100%'>
+            <AlertIcon />
+            <Text fontSize='sm' flex='1'>
+              A new compliance update is available from the back office. Review the changes before accepting.
+            </Text>
+            <HStack spacing={2}>
+              <Button size='sm' variant='outline' colorScheme='orange' onClick={handleReviewCompliance}>
+                Review Changes
+              </Button>
+              <Button size='sm' colorScheme='blue' isLoading={acceptLoading} onClick={handleAcceptCompliance}>
+                Accept
+              </Button>
             </HStack>
-            <ConfigFilesPanel selectedCluster={selectedCluster} accordionClassName={styles.accordion} headerClassName={styles.accordionHeader} panelClassName={styles.accordionBody} />
-            <AccordionComponent
+          </Alert>
+        )}
+        <TableType2 dataArray={dataObject} className={styles.tableWithHelp} helpColumn={true} />
+        <AccordionComponent
+          heading={'Dynamic Config'}
+          className={styles.accordion}
+          headerClassName={styles.accordionHeader}
+          panelClassName={styles.accordionBody}
+          body={<DynamicConfigSettings selectedCluster={selectedCluster} user={user} />}
+        />
+        </>
+      )}
+      {showFragments && user?.grants['db-config-flag'] && (
+        <Box className={styles.configTagContainer}>
+          <TabItems
+            options={['Available Fragments', 'Used Fragments', 'Config Pinning']}
+            tabIndex={fragmentTab}
+            onChange={setFragmentTab}
+            tabContents={[
+              <VStack key='available' className={styles.fragmentCategories}>
+                {configTagData.map((tagData) => (
+                  <Box key={tagData.key} className={styles.fragmentCategory}>
+                    <Box as='h5' className={styles.fragmentCategoryTitle}>{tagData.key}</Box>
+                        <HStack className={styles.tags}>
+                          {tagData.value.map((tag) => {
+                            const isAdded = usingDBServerTags?.find((x) => x?.name === tag.name)
+                            if (isAdded) {
+                              return null
+                            }
+                            return (
+                              <AddRemovePill
+                                isDisabled={user?.grants['proxy-config-flag'] == false}
+                                key={tag.name}
+                                text={tag.name}
+                                onAdd={(title) => {
+                                  setConfirmTitle(title)
+                                  setIsConfirmModalOpen(true)
+                                  setConfirmHandler(
+                                    () => () => dispatch(addDBTag({ clusterName: selectedCluster?.name, tag: tag.name }))
+                                  )
+                                }}
+                                onViewContent={handleViewContent}
+                              />
+                            )
+                          })}
+                        </HStack>
+                  </Box>
+                ))}
+              </VStack>,
+              <HStack key='used' className={`${styles.tags} ${styles.usedFragments}`}>
+                  {usingDBServerTags
+                    .filter((tag) => tag?.name)
+                    .map((tag) => (
+                      <AddRemovePill
+                        key={tag?.name}
+                        text={tag?.name}
+                        onViewContent={handleViewContent}
+                        onRemove={(title) => {
+                          setConfirmTitle(title)
+                          setIsConfirmModalOpen(true)
+                          setConfirmHandler(
+                            () => () => dispatch(dropDBTag({ clusterName: selectedCluster?.name, tag: tag?.name }))
+                          )
+                        }}
+                        used={true}
+                        category={tag?.category}
+                      />
+                    ))}
+                </HStack>,
+              <VStack key='pinning' className={styles.fragmentCategories}>
+                <ConfigFilesPanel selectedCluster={selectedCluster} accordionClassName={styles.accordion} headerClassName={styles.accordionHeader} panelClassName={styles.accordionBody} />
+                <AccordionComponent
                   heading={'Cluster Preserved Variables (Table & Editor)'}
                   className={styles.accordion}
                   headerClassName={styles.accordionHeader}
                   panelClassName={styles.accordionBody}
                   body={<PreservedVariablesEditor clusterName={selectedCluster?.name} user={user} />}
-                />
-          </VStack>
-        </HStack>
+                    />
+              </VStack>
+            ]}
+          />
+        </Box>
       )}
 
       {isConfirmModalOpen && (
