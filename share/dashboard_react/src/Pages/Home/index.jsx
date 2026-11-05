@@ -44,6 +44,7 @@ import Graphs from '../Graphs'
 import Agents from '../Agents'
 import Users from '../Users'
 import Maintenance, { MAINTENANCE_TABS } from '../Maintenance'
+import AlertSettings, { ALERT_GROUPS } from '../Settings/AlertSettings'
 import Top from '../Top'
 import Shards from '../Shards'
 import PeerClusterList from '../PeerClusterList'
@@ -75,6 +76,8 @@ function Home() {
   // one, also read by the refresh ticker (#2268)
   const monitoringTabsRef = useRef([])
   const monitoringTabRef = useRef(0)
+  // the Alerts tab's sub-tabs: Cloud18 Support only for a Cloud18 cluster (#2268)
+  const [alertTab, setAlertTab] = useState(0)
   const [monitoringTab, setMonitoringTab] = useState(0)
   const handleMonitoringTabChange = (index) => {
     monitoringTabRef.current = index
@@ -187,6 +190,7 @@ function Home() {
             if (monitoringTabs.length > 0) {
               authorizedTabs.push('Monitoring')
             }
+            authorizedTabs.push('Alerts') // its own tab, its sub-tabs by channel (#2268)
             if (apiUser.grants['cluster-show-backups']) {
               authorizedTabs.push('Maintenance')
             }
@@ -371,7 +375,7 @@ function Home() {
     // Open the filtered sections, close everything else
     const allSections = [
       'isGeneralOpen', 'isRepFailOverOpen', 'isRepConfigOpen', 'isMonitoringOpen',
-      'isAlertsOpen', 'isLogsOpen', 'isPluginsOpen', 'isRejoinOpen', 'isProxiesOpen',
+      'isLogsOpen', 'isPluginsOpen', 'isRejoinOpen', 'isProxiesOpen',
       'isGraphsOpen', 'isCloud18Open', 'isAppTemplateRepoOpen'
     ]
     allSections.forEach((key) => localStorage.setItem(key, JSON.stringify(visibleSections.includes(key))))
@@ -406,6 +410,8 @@ function Home() {
   const openTerminalPage = () => {
     window.open(terminalURL, '_blank')
   }
+
+  const alertGroups = ALERT_GROUPS.filter((g) => !g.cloud18 || selectedCluster?.config?.cloud18)
 
   return (
     <PageContainer>
@@ -465,6 +471,16 @@ function Home() {
                       />
                     ]
                   : []),
+                <TabItems
+                  key='alerts'
+                  className={styles.fullWidthTabs}
+                  options={alertGroups.map((g) => g.name)}
+                  tabIndex={Math.min(alertTab, alertGroups.length - 1)}
+                  onChange={setAlertTab}
+                  tabContents={alertGroups.map((g) => (
+                    <AlertSettings key={g.name} selectedCluster={selectedCluster} user={user} group={g.name} />
+                  ))}
+                />,
                 ...(user?.grants['cluster-show-backups']
                   ? [<Maintenance user={user} selectedCluster={selectedCluster} onOpenSchedulerSettings={openSchedulerSettings} onOpenLogsSettings={openLogsSettings} />]
                   : []),

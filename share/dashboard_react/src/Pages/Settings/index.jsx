@@ -15,7 +15,6 @@ import GraphSettings from './GraphSettings'
 import CloudSettings from './CloudSettings'
 import RepFailOverSettings from './RepFailOverSettings'
 import RepConfigSettings from './RepConfigSettings'
-import AlertSettings from './AlertSettings'
 import DynamicConfigSettings from './DynamicConfigSettings'
 import CredentialsSettings from './CredentialsSettings'
 import AppTemplateRepoSection from './components/AppTemplateRepoSection'
@@ -23,9 +22,10 @@ import { setSetting } from '../../redux/settingsSlice'
 import { useDispatch } from 'react-redux'
 
 // the Setup tab's sub-tabs (#2268): each a group of the cluster's settings sections, in order. The
-// Scheduler, Backup, Archive and S3 Providers settings live in the Maintenance tab.
+// Scheduler, Backup, Archive and S3 Providers settings live in the Maintenance tab, the Alerts in
+// their own tab.
 const SETUP_GROUPS = [
-  { name: 'General', sections: ['isCredentialsOpen', 'isAlertsOpen', 'isDynamicConfigOpen', 'isCloud18Open', 'isAppTemplateRepoOpen'] },
+  { name: 'General', sections: ['isCredentialsOpen', 'isDynamicConfigOpen', 'isCloud18Open', 'isAppTemplateRepoOpen'] },
   { name: 'High Availability', sections: ['isGeneralOpen', 'isRepFailOverOpen', 'isRejoinOpen', 'isRepConfigOpen', 'isProxiesOpen'] },
   { name: 'Collecting', sections: ['isMonitoringOpen', 'isLogsOpen', 'isGraphsOpen'] },
   { name: 'Plugins', sections: ['isPluginsOpen'] }
@@ -76,9 +76,6 @@ function Settings({ selectedCluster, user, onTabChange, monitor }) {
   const { isOpen: isDynamicConfigOpen, onToggle: onDynamicConfigToggle } = useDisclosure({
     defaultIsOpen: JSON.parse(localStorage.getItem('isDynamicConfigOpen')) || false
   })
-  const { isOpen: isAlertsOpen, onToggle: onAlertsToggle } = useDisclosure({
-    defaultIsOpen: JSON.parse(localStorage.getItem('isAlertsOpen')) || false
-  })
   const { isOpen: isProxiesOpen, onToggle: onProxiesToggle } = useDisclosure({
     defaultIsOpen: JSON.parse(localStorage.getItem('isProxiesOpen')) || false
   })
@@ -119,9 +116,6 @@ function Settings({ selectedCluster, user, onTabChange, monitor }) {
     localStorage.setItem('isDynamicConfigOpen', JSON.stringify(isDynamicConfigOpen))
   }, [isDynamicConfigOpen])
 
-  useEffect(() => {
-    localStorage.setItem('isAlertsOpen', JSON.stringify(isAlertsOpen))
-  }, [isAlertsOpen])
   useEffect(() => {
     localStorage.setItem('isProxiesOpen', JSON.stringify(isProxiesOpen))
   }, [isProxiesOpen])
@@ -200,16 +194,6 @@ function Settings({ selectedCluster, user, onTabChange, monitor }) {
             headerClassName={styles.accordionHeader}
             panelClassName={styles.accordionPanel}
             body={<MonitoringSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} />}
-          />
-    ),
-    isAlertsOpen: (
-      <AccordionComponent
-            heading={'Alerts'}
-            onToggle={onAlertsToggle}
-            isOpen={isAlertsOpen}
-            headerClassName={styles.accordionHeader}
-            panelClassName={styles.accordionPanel}
-            body={<AlertSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} />}
           />
     ),
     isLogsOpen: (

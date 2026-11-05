@@ -15,7 +15,19 @@ import remarkGfm from 'remark-gfm'
 import { HiQuestionMarkCircle } from 'react-icons/hi'
 import RMIconButton from '../../components/RMIconButton'
 
-function AlertSettings({ selectedCluster, user, openConfirmModal }) {
+// the Alerts tab's sub-tabs (#2268): each a group of the alert settings rows, by their label;
+// Cloud18 Support only for a Cloud18 cluster (its rows come from the former Cloud18 section)
+export const ALERT_GROUPS = [
+  { name: 'Mail', keys: ['Mail From', 'Mail To', 'Mail SMTP Address', 'Mail SMTP User', 'Mail SMTP Password', 'Mail SMTP TLS Skip Verify'] },
+  { name: 'Slack', keys: ['Slack Channel', 'Slack URL', 'Slack User'] },
+  { name: 'Teams', keys: ['Teams Proxy URL', 'Teams State', 'Teams URL'] },
+  { name: 'Pushover', keys: ['Pushover App Token', 'Pushover User Token'] },
+  { name: 'Script', keys: ['Extra Alert Script Path'] },
+  { name: 'Triggers', keys: ['Monitoring Alert Trigger', 'Scheduler Alert', 'Scheduler Alert Disable Time (seconds)'] },
+  { name: 'Cloud18 Support', keys: ['Cloud18 Alert', 'Cloud18 Alert Channel', 'Cloud18 Alert URL', 'Cloud18 Alert User'], cloud18: true }
+]
+
+function AlertSettings({ selectedCluster, user, openConfirmModal, group }) {
   const dispatch = useDispatch()
   const [action, setAction] = useState({ title: '', body: <></> })
   const [isCommonModalOpen, setIsCommonModalOpen] = useState(false)
@@ -50,6 +62,11 @@ function AlertSettings({ selectedCluster, user, openConfirmModal }) {
 
   const tf = (configKey, setting, title, encode) => <TextForm value={selectedCluster?.config?.[configKey]} confirmTitle={`Confirm ${title} to `} className={styles.textbox} onSave={(v) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting, value: encode ? btoa(v) : v }))} />
 
+  const hAlert = `**Cloud18 Alert**\n\nEnables Cloud18 alert notifications via Slack.\nWhen enabled, cluster events are forwarded to the configured Slack channel.\n\nConfig: \`cloud18-alert\``
+  const hAlertChannel = `**Cloud18 Alert Channel**\n\nSlack channel for Cloud18 alert notifications.\nExample: \`#cloud18-alerts\`\n\nConfig: \`cloud18-alert-slack-channel\``
+  const hAlertUrl = `**Cloud18 Alert URL**\n\nSlack incoming webhook URL for Cloud18 alerts.\n\nConfig: \`cloud18-alert-slack-url\``
+  const hAlertUser = `**Cloud18 Alert User**\n\nSlack display name used as the sender for Cloud18 alert messages.\n\nConfig: \`cloud18-alert-slack-user\``
+
   const dataObject = [
     { key: 'Mail From', help: h(hMailFrom, 'Mail From'), value: tf('mailFrom', 'mail-from', 'mail-from') },
     { key: 'Mail To', help: h(hMailTo, 'Mail To'), value: tf('mailTo', 'mail-to', 'mail-to') },
@@ -69,12 +86,22 @@ function AlertSettings({ selectedCluster, user, openConfirmModal }) {
     { key: 'Monitoring Alert Trigger', help: h(hAlertTrigger, 'Monitoring Alert Trigger'), value: tf('monitoringAlertTrigger', 'monitoring-alert-trigger', 'monitoring alert trigger') },
     { key: 'Scheduler Alert', help: h(hSchedulerAlert, 'Scheduler Alert'), value: (<Scheduler user={user} value={selectedCluster?.config?.schedulerAlertDisableCron} switchConfirmTitle={'Confirm switch settings for scheduler-alert-disable?'} isSwitchChecked={selectedCluster?.config?.schedulerAlertDisable} confirmTitle={'Confirm save scheduler alert to: '} onSwitchChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'scheduler-alert-disable' }))} onSave={(v) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'scheduler-alert-disable-cron', value: v }))} />) },
     { clusterSetting: 'scheduler-alert-disable-time', key: 'Scheduler Alert Disable Time (seconds)', help: h(hSchedulerAlertTime, 'Scheduler Alert Disable Time'), value: (<NumberInput min={1} max={10000} defaultValue={3600} value={selectedCluster?.config?.schedulerAlertDisableTime} isDisabled={user?.grants['cluster-settings'] == false} showEditButton={true} onChange={null} onConfirm={(v) => openConfirmModal(`Confirm change 'scheduler-alert-disable-time' to: ${v} `, () => () => { dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'scheduler-alert-disable-time', value: v })) })} />) },
+    ...(selectedCluster?.config?.cloud18 ? [
+      { clusterSetting: 'cloud18-alert', key: 'Cloud18 Alert', help: h(hAlert, 'Cloud18 Alert'), value: (<RMSwitch confirmTitle={'Confirm switch settings for cloud18-alert?'} onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'cloud18-alert' }))} isDisabled={user?.grants['cluster-settings'] == false} isChecked={selectedCluster?.config?.cloud18Alert} />) },
+      { clusterSetting: 'cloud18-alert-slack-channel', key: 'Cloud18 Alert Channel', help: h(hAlertChannel, 'Cloud18 Alert Channel'), value: (<TextForm value={selectedCluster?.config?.cloud18AlertSlackChannel} confirmTitle={`Confirm slack channel to `} className={styles.textbox} onSave={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'cloud18-alert-slack-channel', value }))} />) },
+      { clusterSetting: 'cloud18-alert-slack-url', key: 'Cloud18 Alert URL', help: h(hAlertUrl, 'Cloud18 Alert URL'), value: (<TextForm value={selectedCluster?.config?.cloud18AlertSlackUrl} confirmTitle={`Confirm slack url to `} className={styles.textbox} onSave={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'cloud18-alert-slack-url', value: btoa(value) }))} />) },
+      { clusterSetting: 'cloud18-alert-slack-user', key: 'Cloud18 Alert User', help: h(hAlertUser, 'Cloud18 Alert User'), value: (<TextForm value={selectedCluster?.config?.cloud18AlertSlackUser} confirmTitle={`Confirm slack user to `} className={styles.textbox} onSave={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'cloud18-alert-slack-user', value }))} />) },
+    ] : []),
   ]
 
   return (
     <>
       <Flex justify='space-between' gap='0'>
-        <TableType2 dataArray={dataObject} className={styles.tableWithHelp} helpColumn={true} />
+        <TableType2
+          dataArray={group ? dataObject.filter((row) => (ALERT_GROUPS.find((g) => g.name === group)?.keys || []).includes(row.key)) : dataObject}
+          className={styles.tableWithHelp}
+          helpColumn={true}
+        />
       </Flex>
       <CommonModal isOpen={isCommonModalOpen} closeModal={() => setIsCommonModalOpen(false)} title={action.title} body={action.body} size='xl' />
     </>
