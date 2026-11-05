@@ -719,7 +719,7 @@ function DBConfigs({ selectedCluster, user }) {
                   />
                 ))}
             </HStack>
-            <ConfigFilesPanel selectedCluster={selectedCluster} />
+            <ConfigFilesPanel selectedCluster={selectedCluster} accordionClassName={styles.accordion} headerClassName={styles.accordionHeader} panelClassName={styles.accordionBody} />
             <AccordionComponent
                   heading={'Cluster Preserved Variables (Table & Editor)'}
                   className={styles.accordion}

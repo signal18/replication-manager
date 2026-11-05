@@ -29,3 +29,18 @@
     overflow: auto;
   }
 }
+
+// headerControls: on the right of the header, left of the toggle icon, outside the button
+.headerControls {
+  position: absolute;
+  top: 50%;
+  right: 2.5rem;
+  transform: translateY(-50%);
+  z-index: 1;
+}
+
+// keeps the heading text from running under the controls
+.headerControlsSpace {
+  width: 320px;
+  flex-shrink: 0;
+}

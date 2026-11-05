@@ -5,6 +5,7 @@ import { useSelector } from 'react-redux'
 import { clusterService } from '../../services/clusterService'
 import { useTheme } from '../../ThemeProvider'
 import styles from './styles.module.scss'
+import AccordionComponent from '../AccordionComponent'
 
 const COMMENT_COLORS_LIGHT = {
   'preserved:server-specific': { bg: '#e3f2fd', color: '#1565c0', label: 'Server Preserved' },
@@ -140,7 +141,9 @@ function FilePanel({ title, content, emptyText, commentColors, onRemove }) {
   )
 }
 
-function ConfigFilesPanel({ selectedCluster }) {
+// accordionClassName / headerClassName / panelClassName: the caller's subsection classes, so this
+// section looks like its siblings (Dynamic Config, Cluster Preserved Variables)
+function ConfigFilesPanel({ selectedCluster, accordionClassName, headerClassName, panelClassName }) {
   const { theme } = useTheme()
   const commentColors = theme === 'light' ? COMMENT_COLORS_LIGHT : COMMENT_COLORS_DARK
   const [selectedServer, setSelectedServer] = useState('')
@@ -184,110 +187,118 @@ function ConfigFilesPanel({ selectedCluster }) {
   }
 
   return (
-    <VStack className={styles.container} align='stretch' spacing={3}>
-      <HStack>
-        <Text fontWeight='bold'>Config Override Files</Text>
+    <AccordionComponent
+      heading={'Config Override Files'}
+      className={accordionClassName}
+      headerClassName={headerClassName}
+      panelClassName={panelClassName}
+      headerControls={
         <Select
           size='sm'
           width='300px'
           value={selectedServer}
           onChange={(e) => setSelectedServer(e.target.value)}
+          aria-label='Database server'
         >
           {servers.map((srv) => (
             <option key={srv.id} value={srv.id}>{srv.host}:{srv.port}</option>
           ))}
         </Select>
-      </HStack>
+      }
+      body={
+        <VStack className={styles.container} align='stretch' spacing={3}>
 
-      {loading ? (
-        <Text>Loading...</Text>
-      ) : (
-        <VStack spacing={3} align='stretch'>
-          <FilePanel
-            title='01_preserved.cnf'
-            content={configFiles.preserved}
-            emptyText='No preserved variables'
-            commentColors={commentColors}
-            onRemove={(varName) => handleVariableAction(varName, 'clear')}
-          />
-          <Box className={styles.filePanel}>
-            <Flex className={styles.fileTitle} justify='space-between' align='center'>
-              <Text fontWeight={600} fontSize='0.85rem' fontFamily='monospace'>02_delta.cnf</Text>
-              {configFiles.delta && parseConfigLines(configFiles.delta).length > 0 && (
-                <Button size='xs' colorScheme='red' variant='outline' onClick={handleClearDelta}>
-                  Clear Delta
-                </Button>
-              )}
-            </Flex>
-            <Box className={styles.fileContent}>
-              {parseConfigLines(configFiles.delta).length === 0 ? (
-                <Text className={styles.emptyText}>No delta — server is fully converged</Text>
-              ) : (
-                parseConfigLines(configFiles.delta).map((line, idx) => {
-                  const colors = line.comment ? commentColors[line.comment] : null
-                  if (line.type === 'dropped') {
-                    return (
-                      <Flex key={idx} className={styles.fileLine} bg={commentColors['agreed:dropped'].bg}>
-                        <Badge colorScheme='red' size='sm' mr={2}>Dropped</Badge>
-                        <Code className={styles.lineText} color={commentColors['agreed:dropped'].color}>
-                          {line.text.replace('#', '').trim()}
-                        </Code>
-                      </Flex>
-                    )
-                  }
-                  return (
-                    <Flex key={idx} className={styles.fileLine} bg={colors?.bg || 'transparent'} justify='space-between'>
-                      <Flex align='center' flex={1} minW={0}>
-                        {colors && (
-                          <Badge size='sm' mr={2} bg={colors.bg} color={colors.color} border='1px solid' borderColor={colors.color} flexShrink={0}>
-                            {colors.label}
-                          </Badge>
-                        )}
-                        {line.isLoose && (
-                          <Badge colorScheme='orange' size='sm' mr={2} flexShrink={0}>loose</Badge>
-                        )}
-                        <Code className={styles.lineText}>
-                          <Text as='span' fontWeight='bold'>{line.name}</Text>
-                          <Text as='span'> = {line.value}</Text>
-                        </Code>
-                      </Flex>
-                      <HStack spacing={1} flexShrink={0} ml={2}>
-                        <Tooltip label='Accept compliance value'>
-                          <IconButton
-                            size='xs'
-                            variant='ghost'
-                            colorScheme='green'
-                            icon={<HiCheck />}
-                            aria-label='Accept'
-                            onClick={() => handleVariableAction(line.name, 'accept')}
-                          />
-                        </Tooltip>
-                        <Tooltip label='Preserve current DB value'>
-                          <IconButton
-                            size='xs'
-                            variant='ghost'
-                            colorScheme='blue'
-                            icon={<HiLockClosed />}
-                            aria-label='Preserve'
-                            onClick={() => handleVariableAction(line.name, 'preserve')}
-                          />
-                        </Tooltip>
-                      </HStack>
-                    </Flex>
-                  )
-                })
-              )}
-            </Box>
-          </Box>
-          <FilePanel
-            title='03_agreed.cnf'
-            content={configFiles.agreed}
-            emptyText='No accepted deviations'
-            commentColors={commentColors}
-          />
+          {loading ? (
+            <Text>Loading...</Text>
+          ) : (
+            <VStack spacing={3} align='stretch'>
+              <FilePanel
+                title='01_preserved.cnf'
+                content={configFiles.preserved}
+                emptyText='No preserved variables'
+                commentColors={commentColors}
+                onRemove={(varName) => handleVariableAction(varName, 'clear')}
+              />
+              <Box className={styles.filePanel}>
+                <Flex className={styles.fileTitle} justify='space-between' align='center'>
+                  <Text fontWeight={600} fontSize='0.85rem' fontFamily='monospace'>02_delta.cnf</Text>
+                  {configFiles.delta && parseConfigLines(configFiles.delta).length > 0 && (
+                    <Button size='xs' colorScheme='red' variant='outline' onClick={handleClearDelta}>
+                      Clear Delta
+                    </Button>
+                  )}
+                </Flex>
+                <Box className={styles.fileContent}>
+                  {parseConfigLines(configFiles.delta).length === 0 ? (
+                    <Text className={styles.emptyText}>No delta — server is fully converged</Text>
+                  ) : (
+                    parseConfigLines(configFiles.delta).map((line, idx) => {
+                      const colors = line.comment ? commentColors[line.comment] : null
+                      if (line.type === 'dropped') {
+                        return (
+                          <Flex key={idx} className={styles.fileLine} bg={commentColors['agreed:dropped'].bg}>
+                            <Badge colorScheme='red' size='sm' mr={2}>Dropped</Badge>
+                            <Code className={styles.lineText} color={commentColors['agreed:dropped'].color}>
+                              {line.text.replace('#', '').trim()}
+                            </Code>
+                          </Flex>
+                        )
+                      }
+                      return (
+                        <Flex key={idx} className={styles.fileLine} bg={colors?.bg || 'transparent'} justify='space-between'>
+                          <Flex align='center' flex={1} minW={0}>
+                            {colors && (
+                              <Badge size='sm' mr={2} bg={colors.bg} color={colors.color} border='1px solid' borderColor={colors.color} flexShrink={0}>
+                                {colors.label}
+                              </Badge>
+                            )}
+                            {line.isLoose && (
+                              <Badge colorScheme='orange' size='sm' mr={2} flexShrink={0}>loose</Badge>
+                            )}
+                            <Code className={styles.lineText}>
+                              <Text as='span' fontWeight='bold'>{line.name}</Text>
+                              <Text as='span'> = {line.value}</Text>
+                            </Code>
+                          </Flex>
+                          <HStack spacing={1} flexShrink={0} ml={2}>
+                            <Tooltip label='Accept compliance value'>
+                              <IconButton
+                                size='xs'
+                                variant='ghost'
+                                colorScheme='green'
+                                icon={<HiCheck />}
+                                aria-label='Accept'
+                                onClick={() => handleVariableAction(line.name, 'accept')}
+                              />
+                            </Tooltip>
+                            <Tooltip label='Preserve current DB value'>
+                              <IconButton
+                                size='xs'
+                                variant='ghost'
+                                colorScheme='blue'
+                                icon={<HiLockClosed />}
+                                aria-label='Preserve'
+                                onClick={() => handleVariableAction(line.name, 'preserve')}
+                              />
+                            </Tooltip>
+                          </HStack>
+                        </Flex>
+                      )
+                    })
+                  )}
+                </Box>
+              </Box>
+              <FilePanel
+                title='03_agreed.cnf'
+                content={configFiles.agreed}
+                emptyText='No accepted deviations'
+                commentColors={commentColors}
+              />
+            </VStack>
+          )}
         </VStack>
-      )}
-    </VStack>
+      }
+    />
   )
 }
 
