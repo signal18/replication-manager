@@ -1,6 +1,7 @@
 import { Box, Grid, GridItem } from '@chakra-ui/react'
 import React from 'react'
 import styles from './styles.module.scss'
+import { SettingLabel, SettingValue } from '../SettingLock'
 
 function TableType2({
   dataArray,
@@ -30,7 +31,7 @@ function TableType2({
       {dataArray.map((item, index) => (
         <React.Fragment key={index}>
           <GridItem className={`${styles.row} ${rowClassName}`}>
-            <Box className={`${styles.label} ${labelClassName}`}>{item.key}</Box>
+            <Box className={`${styles.label} ${labelClassName}`}><SettingLabel setting={item.globalSetting}>{item.key}</SettingLabel></Box>
           </GridItem>
           {renderHelpCell(item.help)}
           {Array.isArray(item.value) ? (
@@ -39,7 +40,7 @@ function TableType2({
             </GridItem>
           ) : (
             <GridItem className={`${styles.row} ${rowClassName}`}>
-              <Box className={`${styles.value} ${valueClassName}`}>{item.value}</Box>
+              <Box className={`${styles.value} ${valueClassName}`}><SettingValue setting={item.globalSetting}>{item.value}</SettingValue></Box>
             </GridItem>
           )}
           {Array.isArray(item.value) &&
@@ -52,24 +53,24 @@ function TableType2({
                       {subItem.key && (
                         <GridItem colSpan={span} className={`${styles.row} ${rowClassName}`}>
                           <Box className={`${styles.label} ${styles.subLabel}`} pl={3}>
-                            {subItem.key}
+                            <SettingLabel setting={subItem.globalSetting}>{subItem.key}</SettingLabel>
                           </Box>
                         </GridItem>
                       )}
                       <GridItem colSpan={span} className={`${styles.row} ${rowClassName}`}>
-                        <Box className={`${styles.value} ${valueClassName}`}>{subItem.value}</Box>
+                        <Box className={`${styles.value} ${valueClassName}`}><SettingValue setting={subItem.globalSetting}>{subItem.value}</SettingValue></Box>
                       </GridItem>
                     </>
                   ) : (
                     <>
                       <GridItem className={`${styles.row} ${rowClassName}`}>
                         <Box className={`${styles.label} ${styles.subLabel}`} pl={3}>
-                          {subItem.key}
+                          <SettingLabel setting={subItem.globalSetting}>{subItem.key}</SettingLabel>
                         </Box>
                       </GridItem>
                       {renderHelpCell(subItem.help, true)}
                       <GridItem className={`${styles.row} ${rowClassName}`}>
-                        <Box className={`${styles.value} ${valueClassName}`}>{subItem.value}</Box>
+                        <Box className={`${styles.value} ${valueClassName}`}><SettingValue setting={subItem.globalSetting}>{subItem.value}</SettingValue></Box>
                       </GridItem>
                     </>
                   )}

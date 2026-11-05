@@ -2111,6 +2111,19 @@ func (conf *Config) GetImmuableFlag(key string) (interface{}, bool) {
 	return v, ok
 }
 
+// ImmuableFlagNames lists, sorted, the keys the immutable configuration sets (the configuration
+// file, the command line, the environment): names only, never their values (#2268).
+func (conf *Config) ImmuableFlagNames() []string {
+	flagMapMu.RLock()
+	defer flagMapMu.RUnlock()
+	names := make([]string, 0, len(conf.ImmuableFlagMap))
+	for k := range conf.ImmuableFlagMap {
+		names = append(names, k)
+	}
+	sort.Strings(names)
+	return names
+}
+
 // SetImmuableFlag writes key into the immutable config map, created when there is none.
 func (conf *Config) SetImmuableFlag(key string, value interface{}) {
 	flagMapMu.Lock()

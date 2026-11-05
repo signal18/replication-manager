@@ -78,6 +78,7 @@ function ArbitrationSettings({ config }) {
         ]
       : []),
     {
+      globalSetting: 'arbitration-external',
       key: 'External Arbitration',
       help: h(hExternal, 'External Arbitration'),
       value: (
@@ -90,6 +91,7 @@ function ArbitrationSettings({ config }) {
       )
     },
     {
+      globalSetting: 'arbitration-external-hosts',
       key: 'Arbitrator Address',
       help: h(hHosts, 'Arbitrator Address'),
       value: (
@@ -103,6 +105,7 @@ function ArbitrationSettings({ config }) {
       )
     },
     {
+      globalSetting: 'arbitration-external-secret',
       key: 'Arbitration Secret',
       help: h(hSecret, 'Arbitration Secret'),
       value: (
@@ -117,6 +120,7 @@ function ArbitrationSettings({ config }) {
       )
     },
     {
+      globalSetting: 'arbitration-external-unique-id',
       key: 'Unique Instance Id',
       help: h(hUniqueId, 'Unique Instance Id'),
       value: (
@@ -131,6 +135,7 @@ function ArbitrationSettings({ config }) {
       )
     },
     {
+      globalSetting: 'arbitration-peer-hosts',
       key: 'Peer Replication-Manager Hosts',
       help: h(hPeerHosts, 'Peer Replication-Manager Hosts'),
       value: (
@@ -144,6 +149,7 @@ function ArbitrationSettings({ config }) {
       )
     },
     {
+      globalSetting: 'arbitration-failed-master-script',
       key: 'Failed Master Script',
       help: h(hFailedScript, 'Failed Master Script'),
       value: (
@@ -157,6 +163,7 @@ function ArbitrationSettings({ config }) {
       )
     },
     {
+      globalSetting: 'arbitration-read-timeout',
       key: 'Read Timeout in Milliseconds',
       help: h(hReadTimeout, 'Read Timeout'),
       value: (
@@ -171,6 +178,7 @@ function ArbitrationSettings({ config }) {
       )
     },
     {
+      globalSetting: 'arbitration-verdict-streak',
       key: 'Verdict Streak in Ticks',
       help: h(hVerdictStreak, 'Verdict Streak'),
       value: (

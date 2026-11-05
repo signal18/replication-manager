@@ -83,6 +83,7 @@ function GlobalSettings({ config }) {
 
   const generalData = [
     {
+      globalSetting: 'backup-concurrent-slots',
       key: 'Concurrent Backup Slots',
       help: h(hBackupSlots, 'Concurrent Backup Slots'),
       value: (
@@ -116,6 +117,7 @@ function GlobalSettings({ config }) {
       )
     },
     {
+      globalSetting: 'api-token-timeout',
       key: 'API Token Timeout in Hours',
       help: h(hTokenTimeout, 'API Token Timeout'),
       value: (
@@ -133,6 +135,7 @@ function GlobalSettings({ config }) {
 
   const alertsData = [
     {
+      globalSetting: 'mail-from',
       key: 'Mail From',
       help: h(hMailFrom, 'Mail From'),
       value: (
@@ -146,6 +149,7 @@ function GlobalSettings({ config }) {
       )
     },
     {
+      globalSetting: 'mail-to',
       key: 'Mail To',
       help: h(hMailTo, 'Mail To'),
       value: (
@@ -159,6 +163,7 @@ function GlobalSettings({ config }) {
       )
     },
     {
+      globalSetting: 'mail-smtp-addr',
       key: 'Mail SMTP Address',
       help: h(hMailSmtp, 'Mail SMTP Address'),
       value: (
@@ -172,6 +177,7 @@ function GlobalSettings({ config }) {
       )
     },
     {
+      globalSetting: 'mail-smtp-user',
       key: 'Mail SMTP User',
       help: h(hMailUser, 'Mail SMTP User'),
       value: (
@@ -185,6 +191,7 @@ function GlobalSettings({ config }) {
       )
     },
     {
+      globalSetting: 'mail-smtp-password',
       key: 'Mail SMTP Password',
       help: h(hMailPass, 'Mail SMTP Password'),
       value: (
@@ -198,6 +205,7 @@ function GlobalSettings({ config }) {
       )
     },
     {
+      globalSetting: 'mail-smtp-tls-skip-verify',
       key: 'Mail SMTP TLS (Skip Verify)',
       help: h(hMailTls, 'Mail SMTP TLS'),
       value: (
@@ -209,6 +217,7 @@ function GlobalSettings({ config }) {
       )
     },
     {
+      globalSetting: 'mail-max-pool',
       key: 'Max Pool Connections',
       help: h(hMailPool, 'Max Pool Connections'),
       value: (
@@ -223,6 +232,7 @@ function GlobalSettings({ config }) {
       )
     },
     {
+      globalSetting: 'mail-timeout',
       key: 'Mail Timeout in Seconds (0 = no timeout)',
       help: h(hMailTimeout, 'Mail Timeout'),
       value: (
@@ -240,6 +250,7 @@ function GlobalSettings({ config }) {
 
   const logsData = [
     {
+      globalSetting: 'log-level-file',
       key: 'Log File Level',
       help: h(hLogFile, 'Log File Level'),
       value: (
@@ -258,6 +269,7 @@ function GlobalSettings({ config }) {
       )
     },
     {
+      globalSetting: 'log-level-git',
       key: 'Log GIT',
       help: h(hLogGit, 'Log GIT'),
       value: (
@@ -276,6 +288,7 @@ function GlobalSettings({ config }) {
       )
     },
     {
+      globalSetting: 'log-support',
       key: 'Log Support',
       help: h(hLogSupport, 'Log Support'),
       value: (
@@ -287,6 +300,7 @@ function GlobalSettings({ config }) {
       )
     },
     {
+      globalSetting: 'log-level-support',
       key: 'Log Support Level',
       help: h(hLogSupportLevel, 'Log Support Level'),
       value: (
@@ -305,6 +319,7 @@ function GlobalSettings({ config }) {
       )
     },
     {
+      globalSetting: 'log-level-stats',
       key: 'Log Stats Level',
       help: h(hLogStats, 'Log Stats Level'),
       value: (
@@ -323,6 +338,7 @@ function GlobalSettings({ config }) {
       )
     },
     {
+      globalSetting: 'log-heartbeat',
       key: 'Log HeartBeat',
       help: h(hLogHeartbeat, 'Log HeartBeat'),
       value: (
@@ -334,6 +350,7 @@ function GlobalSettings({ config }) {
       )
     },
     {
+      globalSetting: 'log-level-heartbeat',
       key: 'Log HeartBeat Level',
       help: h(hLogHeartbeatLevel, 'Log HeartBeat Level'),
       value: (
@@ -352,6 +369,7 @@ function GlobalSettings({ config }) {
       )
     },
     {
+      globalSetting: 'api-swagger-enabled',
       key: 'Enable API Swagger',
       help: h(hSwagger, 'Enable API Swagger'),
       value: (
@@ -366,6 +384,7 @@ function GlobalSettings({ config }) {
       )
     },
     {
+      globalSetting: 'api-v3-server',
       key: 'Enable API v3',
       help: h(hApiV3, 'Enable API v3'),
       value: (
@@ -377,6 +396,7 @@ function GlobalSettings({ config }) {
       )
     },
     {
+      globalSetting: 'monitoring-log-api-login',
       key: 'Log API Login',
       help: h(hLogApiLogin, 'Log API Login'),
       value: (
@@ -388,6 +408,7 @@ function GlobalSettings({ config }) {
       )
     },
     {
+      globalSetting: 'monitoring-log-api-login-silent-users',
       key: 'Log API Login Silent Users',
       help: h(hLogApiSilent, 'Log API Login Silent Users'),
       value: (
@@ -404,6 +425,7 @@ function GlobalSettings({ config }) {
 
   const mcpData = [
     {
+      globalSetting: 'mcp-server',
       key: 'MCP Server',
       help: h(hMcpServer, 'MCP Server'),
       value: (
@@ -415,6 +437,7 @@ function GlobalSettings({ config }) {
       )
     },
     {
+      globalSetting: 'mcp-auth-enabled',
       key: 'MCP Authentication',
       help: h(hMcpAuth, 'MCP Authentication'),
       value: (
@@ -426,6 +449,7 @@ function GlobalSettings({ config }) {
       )
     },
     {
+      globalSetting: 'mcp-transport',
       key: 'MCP Transport',
       help: h(hMcpTransport, 'MCP Transport'),
       value: (
@@ -437,6 +461,7 @@ function GlobalSettings({ config }) {
       )
     },
     {
+      globalSetting: 'mcp-port',
       key: 'MCP Port (sse transport)',
       help: h(hMcpPort, 'MCP Port'),
       value: (
@@ -448,6 +473,7 @@ function GlobalSettings({ config }) {
       )
     },
     {
+      globalSetting: 'mcp-bind-address',
       key: 'MCP Bind Address (sse transport)',
       help: h(hMcpPort, 'MCP Bind Address'),
       value: (
@@ -459,6 +485,7 @@ function GlobalSettings({ config }) {
       )
     },
     {
+      globalSetting: 'mcp-advertise-address',
       key: 'MCP Advertise Address (sse transport)',
       help: h(hMcpPort, 'MCP Advertise Address'),
       value: (

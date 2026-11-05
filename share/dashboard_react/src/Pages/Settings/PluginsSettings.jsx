@@ -211,6 +211,7 @@ function PluginsSettings({ selectedCluster, user }) {
       key: 'Signing',
       value: [
         {
+          globalSetting: 'plugin-signing-public-key',
           key: 'Plugin Signing Public Key',
           help: h(hSigningKey, 'Plugin Signing Public Key'),
           value: (

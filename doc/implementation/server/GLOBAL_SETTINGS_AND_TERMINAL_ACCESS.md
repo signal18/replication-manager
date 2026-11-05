@@ -28,6 +28,16 @@ it in memory until then. `setServerSetting` and `switchServerSetting` now refuse
 (`errImmutableGlobalSetting`, a 403 logged as `global_setting_denied`), for every caller, the
 admin included: such a setting is changed on the host, in the file.
 
+### In the GUI: a lock (#2268)
+
+`/api/monitor` lists the immutable keys as `immutableSettings`: the names only (`Conf.ImmuableFlagNames`),
+never their values, and only to a logged-in caller (the route also answers without a token). The
+global settings pages tag each row of the settings table with the key its control changes
+(`globalSetting`); the table (`components/TableType2`) shows a small lock next to the label of a
+locked key, with the popup "Locked from system config", and disables its controls (a disabled
+`fieldset`, `components/SettingLock`). The server refuses the change either way: the lock only
+says so before the click.
+
 ## Terminal: the logins `terminal-session-auth` names
 
 `terminal-session-auth` (scope server, default `local`) lists the logins that open a terminal:

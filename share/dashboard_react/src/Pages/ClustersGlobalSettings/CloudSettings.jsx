@@ -500,10 +500,10 @@ Start create an account in https://gitlab.signal18.io
 
   const registrationData = [
     { key: 'Status',         help: h(hStatus,    'Cloud18 Status'),    value: <TagPill colorScheme={isConnected ? 'green' : 'gray'} text={isConnected ? 'ONLINE' : 'OFFLINE'} /> },
-    { key: 'Git User',       help: h(hGitUser,   'Git User'),          value: isConnected
+    { globalSetting: 'cloud18-gitlab-user', key: 'Git User',       help: h(hGitUser,   'Git User'),          value: isConnected
         ? <Text fontSize='sm'>{config?.cloud18GitUser}</Text>
         : <TextForm value={config?.cloud18GitUser}        confirmTitle='Confirm git username to '   onSave={(v) => dispatch(setGlobalSetting({ setting: 'cloud18-gitlab-user', value: v }))} /> },
-    { key: 'GitLab Password',help: h(hGitPass,   'GitLab Password'),   value: isConnected
+    { globalSetting: 'cloud18-gitlab-password', key: 'GitLab Password',help: h(hGitPass,   'GitLab Password'),   value: isConnected
         ? <Text fontSize='sm'>••••••••</Text>
         : <TextForm value={config?.cloud18GitlabPassword} type='password' confirmTitle='Confirm GitLab password to ' onSave={(v) => dispatch(setGlobalSetting({ setting: 'cloud18-gitlab-password', value: btoa(v) }))} /> },
     { key: 'Identity', help: h(hIdentity, 'Identity'), value: <Cloud18Identity /> },
@@ -620,6 +620,7 @@ Start create an account in https://gitlab.signal18.io
   const hApiPublicUrl = `**API Public URL**\n\nPublic URL this replication-manager advertises so peers can reach it — required for peer aggregation (sharing/combining fleet clusters across instances).\n\nConfig: \`api-public-url\``
   const peeringData = isConnected ? [
     {
+      globalSetting: 'api-public-url',
       key: 'API Public URL',
       help: h(hApiPublicUrl, 'API Public URL'),
       value: (
@@ -631,6 +632,7 @@ Start create an account in https://gitlab.signal18.io
       )
     },
     {
+      globalSetting: 'cloud18-peer-health-mode',
       key: 'Peer Health Mode',
       help: h(`**Peer Health Mode**\n\nHow peer cluster health status is determined:\n\n- **peering**: Direct HTTP polling of all peer instances — gives real-time reachability but scales O(N²)\n- **smart** (default): Always polls your own fleet (same registered GitLab user). Shared/marketplace peers are only polled when a user viewing them is connected\n- **pulling**: Health comes from peer.json via the back office — lowest overhead, scales O(N), but with a few minutes delay\n\nConfig: \`cloud18-peer-health-mode\``, 'Peer Health Mode'),
       value: (
@@ -647,6 +649,7 @@ Start create an account in https://gitlab.signal18.io
       )
     },
     {
+      globalSetting: 'cloud18-disable-peers',
       key: 'Disable Peers',
       help: h(`**Disable Peers**\n\nWhen enabled, peer clusters are hidden from the dashboard and all peer health polling is skipped.\n\nConfig: \`cloud18-disable-peers\``, 'Disable Peers'),
       value: (
@@ -663,6 +666,7 @@ Start create an account in https://gitlab.signal18.io
   // works even without a public interface). Free plans cannot disable it.
   const marketplaceData = (isConnected && config?.cloud18SubscriptionPlan && config?.cloud18SubscriptionPlan !== 'free') ? [
     {
+      globalSetting: 'cloud18-disable-for-sale',
       key: 'Disable Clusters For Sale',
       help: h(`**Disable Clusters For Sale**\n\nWhen enabled, clusters for sale are hidden from the marketplace view.\n\nThis option is only available on paid plans. Free plan users always see clusters for sale.\n\nConfig: \`cloud18-disable-for-sale\``, 'Disable Clusters For Sale'),
       value: (
@@ -680,6 +684,7 @@ Start create an account in https://gitlab.signal18.io
   // partner is only informed). Only meaningful on OpenSVC / Kubernetes.
   const selfServiceData = isConnected ? [
     {
+      globalSetting: 'cloud18-self-service-clusters',
       key: 'Self-Service Clusters',
       help: h(`**Self-Service Clusters**\n\nWhen enabled, a Cloud18 user (SSO identity) can create a cluster on this infrastructure directly from their own replication-manager or assistant, without the subscription and email-acceptance chain. The cluster starts on the default unit plan (DBU / APU / BKU) and the creator becomes its sponsor. You are informed by mail and in the security log.\n\nRequires an OpenSVC or Kubernetes orchestrator.\n\nConfig: \`cloud18-self-service-clusters\``, 'Self-Service Clusters'),
       value: (
@@ -691,6 +696,7 @@ Start create an account in https://gitlab.signal18.io
       )
     },
     {
+      globalSetting: 'cloud18-self-service-max-clusters-per-user',
       key: 'Max Clusters Per User',
       help: h(`**Max Clusters Per User**\n\nUpper bound of self-service clusters one Cloud18 identity may sponsor on this infrastructure, so that a single user cannot flood it. Counted as the clusters where the identity holds the sponsor role.\n\nDefault 3.\n\nConfig: \`cloud18-self-service-max-clusters-per-user\``, 'Max Clusters Per User'),
       value: (
@@ -703,6 +709,7 @@ Start create an account in https://gitlab.signal18.io
       )
     },
     {
+      globalSetting: 'cloud18-self-service-cache-seconds',
       key: 'Self-Service Cache Seconds',
       help: h(`**Self-Service Cache Seconds**\n\nHow long the self-service status (capacity pool, templates, enabled-script verdict per identity) is served from one computation before it is recomputed. A burst of calls on the public status route, or on the MCP infrastructure listing, costs one computation per interval instead of one per call. 0 recomputes at every call.\n\nConfig: \`cloud18-self-service-cache-seconds\``, 'Self-Service Cache Seconds'),
       value: (
@@ -715,6 +722,7 @@ Start create an account in https://gitlab.signal18.io
       )
     },
     {
+      globalSetting: 'cloud18-self-service-clusters-enabled-script',
       key: 'Self-Service Enabled Script',
       help: h(`**Self-Service Enabled Script**\n\nYour own gate on every self-service creation, run after the switch and the orchestrator check, before the per-user limit and the pool. Arguments: the identity and the orchestrator. Environment: \`REPMAN_IDENTITY\`, \`REPMAN_ORCHESTRATOR\`, \`REPMAN_SPONSORED_CLUSTERS\`, \`REPMAN_NEEDED_DBU\`, \`REPMAN_NEEDED_APU\`, \`REPMAN_FREE_DBU\`, \`REPMAN_FREE_APU\`, \`REPMAN_BORROW_DBU\`, \`REPMAN_BORROW_APU\`.\n\nA non-zero exit refuses the creation and the first line printed is the reason shown to the user; a timeout (30 s) refuses too. The script can only refuse more than the switch, never open what it closes. Empty: no script.\n\nConfig: \`cloud18-self-service-clusters-enabled-script\``, 'Self-Service Enabled Script'),
       value: (
@@ -726,6 +734,7 @@ Start create an account in https://gitlab.signal18.io
       )
     },
     {
+      globalSetting: 'cloud18-self-service-clusters-can-borrow',
       key: 'Self-Service Can Borrow',
       help: h(`**Self-Service Can Borrow**\n\nWhen the plan pot (capacity × quota minus every plan sold) cannot guarantee the default units of a new cluster, let it be created on the over-commit pot instead: capacity minus every plan minus what is already borrowed. The cluster then runs without guarantee and the self-service status says so (borrowed). Off: a pool without room refuses the creation.\n\nConfig: \`cloud18-self-service-clusters-can-borrow\``, 'Self-Service Can Borrow'),
       value: (
@@ -737,6 +746,7 @@ Start create an account in https://gitlab.signal18.io
       )
     },
     {
+      globalSetting: 'cloud18-self-service-clusters-can-consume-for-sale',
       key: 'Self-Service Consumes For Sale',
       help: h(`**Self-Service Consumes For Sale**\n\nLet a new self-service cluster take the plans your clusters for sale hold above their floors (1 DBU per database node, 1 APU per proxy and per running app instance, a locked plan whole): the offer stays on sale with a lower plan. The Cloud18 quote counts the same room. Off: only the free pool counts, at creation and in the quote, and this instance publishes 0 for sale (forSaleDbu, forSaleApu) whatever its offers hold. The creation check follows a change at once; the published self-service status within cloud18-self-service-cache-seconds (10 s by default).\n\nConfig: \`cloud18-self-service-clusters-can-consume-for-sale\``, 'Self-Service Consumes For Sale'),
       value: (
