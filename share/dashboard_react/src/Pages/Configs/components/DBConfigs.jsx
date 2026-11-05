@@ -90,9 +90,9 @@ function DBUSlider({ value, isDisabled, onChange, nbNodes = 1 }) {
   )
 }
 
-// part (#2268), the Databases tab's sub-tabs: 'resources' = System Resources (the settings, Dynamic
-// Config); 'available' / 'used' = the config fragments to add / in use; 'pinning' = Config Pinning
-// (the override files, the preserved variables). No part shows them all.
+// part (#2268), the Databases tab's sub-tabs: 'resources' = System Resources (the settings);
+// 'available' / 'used' = the config fragments to add / in use; 'pinning' = Config Pinning (the
+// override files, the preserved variables); 'dynamic' = Dynamic Config. No part shows them all.
 const FRAGMENT_PARTS = ['available', 'used', 'pinning']
 function DBConfigs({ selectedCluster, user, part }) {
   const showResources = !part || part === 'resources'
@@ -268,7 +268,7 @@ function DBConfigs({ selectedCluster, user, part }) {
     selectedCluster?.configurator?.dbServersTags
   ])
 
-  const hFetchConfig = `**Fetch Config on Start**\n\nWhen enabled (default), a database server fetches fresh configuration from replication-manager on startup.\n\nOn Kubernetes, disabling this skips that fetch entirely and starts from whatever configuration was already persisted on the server's own volume from a previous boot — nothing is re-fetched as a fallback. On other orchestrators, disabling it skips the on-start refresh the same way.\n\nThis is checked live on every startup, not baked into the server's spec at provision time — toggling it takes effect on the server's next restart.\n\nConfig: \`prov-db-start-fetch-config\``
+  const hFetchConfig = `**Pull Config On Start**\n\nWhen enabled (default), a database server fetches fresh configuration from replication-manager on startup.\n\nOn Kubernetes, disabling this skips that fetch entirely and starts from whatever configuration was already persisted on the server's own volume from a previous boot — nothing is re-fetched as a fallback. On other orchestrators, disabling it skips the on-start refresh the same way.\n\nThis is checked live on every startup, not baked into the server's spec at provision time — toggling it takes effect on the server's next restart.\n\nConfig: \`prov-db-start-fetch-config\``
   const hDynamicConfig = `**Apply Dynamic Config**\n\nWhen enabled, replication-manager applies configuration changes dynamically using \`SET GLOBAL\` statements without requiring a database restart.\n\nOnly variables that support dynamic changes are applied this way. Variables requiring a restart are written to the config file for the next restart.\n\nConfig: \`prov-db-apply-dynamic-config\``
   const hRefreshConfig = `**Refresh Variables and DB Config**\n\nRegenerates the configuration files for all database servers in this cluster from the compliance module and the current config fragment selection.\n\nThis rebuilds the config tarball at \`{datadir}/config.tar.gz\` with all tag-specific cnf files merged with preserved variables and defaults.`
   const hAutoUpdateCompliance = `**Auto-Update Compliance**\n\nThe compliance module contains replication-manager's best practices for database and proxy configuration. It defines which variables are set for each config fragment.\n\nWhen enabled (default), compliance updates from the back office or new replication-manager releases are **applied automatically**. Your preserved variables are never overwritten — they always take priority over compliance defaults.\n\nWhen disabled, a warning (WARN0168) is raised when new compliance is available. You can review the changes (added, removed, or modified config fragments) and accept when ready. This is recommended for production environments where you want to review best practice changes before they take effect.\n\nConfig: \`prov-auto-update-compliance\``
@@ -296,8 +296,8 @@ function DBConfigs({ selectedCluster, user, part }) {
     },
     {
       clusterSetting: 'prov-db-start-fetch-config',
-      key: 'Pull Config On DB Start',
-      help: h(hFetchConfig, 'Pull Config On DB Start'),
+      key: 'Pull Config On Start',
+      help: h(hFetchConfig, 'Pull Config On Start'),
       value: (
         <RMSwitch
           isChecked={selectedCluster?.config?.provDbStartFetchConfig}
@@ -654,6 +654,10 @@ function DBConfigs({ selectedCluster, user, part }) {
     setConfirmHandler(null)
   }
 
+  if (part === 'dynamic') {
+    return <DynamicConfigSettings selectedCluster={selectedCluster} user={user} />
+  }
+
   return (
     <VStack>
       {showResources && (
@@ -675,13 +679,15 @@ function DBConfigs({ selectedCluster, user, part }) {
           </Alert>
         )}
         <TableType2 dataArray={dataObject} className={styles.tableWithHelp} helpColumn={true} />
-        <AccordionComponent
-          heading={'Dynamic Config'}
-          className={styles.accordion}
-          headerClassName={styles.accordionHeader}
-          panelClassName={styles.accordionBody}
-          body={<DynamicConfigSettings selectedCluster={selectedCluster} user={user} />}
-        />
+        {!part && (
+          <AccordionComponent
+            heading={'Dynamic Config'}
+            className={styles.accordion}
+            headerClassName={styles.accordionHeader}
+            panelClassName={styles.accordionBody}
+            body={<DynamicConfigSettings selectedCluster={selectedCluster} user={user} />}
+          />
+        )}
         </>
       )}
       {showFragments && user?.grants['db-config-flag'] && (

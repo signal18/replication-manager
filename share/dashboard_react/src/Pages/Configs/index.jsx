@@ -39,7 +39,7 @@ function Configs({ selectedCluster, user }) {
           <TabItems
             key='db'
             variant='line'
-            options={['System Resources', 'Available Fragments', 'Used Fragments', 'Config Pinning', 'Orchestrator']}
+            options={['System Resources', 'Available Fragments', 'Used Fragments', 'Config Pinning', 'Dynamic Config', 'Provision']}
             tabIndex={dbTab}
             onChange={setDbTab}
             tabContents={[
@@ -47,7 +47,8 @@ function Configs({ selectedCluster, user }) {
                 <DBConfigs key='available' selectedCluster={selectedCluster} user={user} part='available' />,
                 <DBConfigs key='used' selectedCluster={selectedCluster} user={user} part='used' />,
                 <DBConfigs key='pinning' selectedCluster={selectedCluster} user={user} part='pinning' />,
-                <VStack key='orchestrator' className={styles.configContainer}>
+                <DBConfigs key='dynamic' selectedCluster={selectedCluster} user={user} part='dynamic' />,
+                <VStack key='provision' className={styles.configContainer}>
                   <AccordionComponent className={styles.accordion} headerClassName={styles.accordionHeader} heading={'Orchestrator Images'} body={<OrchestratorImages selectedCluster={selectedCluster} user={user} scope='db' />} />
                   <AccordionComponent className={styles.accordion} headerClassName={styles.accordionHeader} heading={'Orchestrator Disks'} body={<OrchestratorDisks selectedCluster={selectedCluster} user={user} scope='db' />} />
                   <AccordionComponent className={styles.accordion} headerClassName={styles.accordionHeader} heading={'Orchestrator VM'} body={<OrchestratorDbVM selectedCluster={selectedCluster} user={user} scope='db' />} />
@@ -57,14 +58,14 @@ function Configs({ selectedCluster, user }) {
           <TabItems
             key='proxy'
             variant='line'
-            options={['System Resources', 'Available Fragments', 'Used Fragments', 'Orchestrator']}
+            options={['System Resources', 'Available Fragments', 'Used Fragments', 'Provision']}
             tabIndex={proxyTab}
             onChange={setProxyTab}
             tabContents={[
                 <ProxyConfig key='resources' selectedCluster={selectedCluster} user={user} part='resources' />,
                 <ProxyConfig key='available' selectedCluster={selectedCluster} user={user} part='available' />,
                 <ProxyConfig key='used' selectedCluster={selectedCluster} user={user} part='used' />,
-                <VStack key='orchestrator' className={styles.configContainer}>
+                <VStack key='provision' className={styles.configContainer}>
                   <AccordionComponent className={styles.accordion} headerClassName={styles.accordionHeader} heading={'Orchestrator Images'} body={<OrchestratorImages selectedCluster={selectedCluster} user={user} scope='proxy' />} />
                   <AccordionComponent className={styles.accordion} headerClassName={styles.accordionHeader} heading={'Orchestrator Disks'} body={<OrchestratorDisks selectedCluster={selectedCluster} user={user} scope='proxy' />} />
                   <AccordionComponent className={styles.accordion} headerClassName={styles.accordionHeader} heading={'Orchestrator VM'} body={<OrchestratorDbVM selectedCluster={selectedCluster} user={user} scope='proxy' />} />
