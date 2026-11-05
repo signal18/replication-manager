@@ -232,3 +232,11 @@
     width: 100%;
   }
 }
+
+// a settings panel a tab's gear opens (Backup, Archive): framed like a section
+.settingsPanel {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid var(--tertiary-color);
+  border-radius: 4px;
+}

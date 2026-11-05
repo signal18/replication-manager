@@ -12,6 +12,9 @@ import DatabaseJobs from './DatabaseJobs'
 import AttachedArchive from './AttachedArchive'
 import TabItems from '../../components/TabItems'
 import SchedulerSettings from '../Settings/SchedulerSettings'
+import BackupSettings from '../Settings/BackupSettings'
+import ArchiveSettings from '../Settings/ArchiveSettings'
+import S3ProvidersSettings from '../Settings/S3ProvidersSettings'
 import { clusterService } from '../../services/clusterService'
 import { archiveBackup, deleteBackup, discoverBackups, registerBackup, registerBackupChange, unregisterBackup, reseedFromBackup, verifyBackup, purgeResticSnapshot, resticQueueCancel, resticQueueMove, resticQueuePause, resticQueueResume } from '../../redux/clusterSlice'
 import RMIconButton from '../../components/RMIconButton'
@@ -514,7 +517,10 @@ const candidateStatusLabel = {
 }
 
 // section: undefined = full page, 'backup' = backup accordions only, 'jobs' = jobs accordion only
-function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onOpenArchiveSettings, onOpenSchedulerSettings, onOpenLogsSettings }) {
+// the whole page's tabs (#2268), exported so another tab can open one by name (the Scheduler)
+export const MAINTENANCE_TABS = ['Backups', 'Archive', 'Database Jobs', 'Job Logs', 'Scheduler']
+
+function Maintenance({ selectedCluster, user, section, onOpenSchedulerSettings, onOpenLogsSettings }) {
   const [data, setData] = useState([])
   const [snapshotData, setSnapshotData] = useState([])
   const [queueData, setQueueData] = useState([])
@@ -551,6 +557,9 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
     defaultIsOpen: JSON.parse(localStorage.getItem('isBackupSnapshotOpen')) || false
   })
   // the tab of the whole page, remembered across visits like the sections' open state was
+  // the Backup and Archive settings: hidden panels their tab's gear opens (#2268), no longer in Setup
+  const [showBackupSettings, setShowBackupSettings] = useState(false)
+  const [showArchiveSettings, setShowArchiveSettings] = useState(false)
   const [maintenanceTab, setMaintenanceTabState] = useState(() => parseInt(localStorage.getItem('maintenanceTab'), 10) || 0)
   const setMaintenanceTab = (index) => {
     setMaintenanceTabState(index)
@@ -1106,7 +1115,7 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
   // each section's content and header buttons, shared by the collapsible sections (the Slideshow's
   // one-section view) and the tabs of the whole page (#2268)
   const backupsActions = <HStack spacing={1}>
-            {settingsButton(onOpenBackupSettings, 'Open Backup Settings')}
+            {!section && settingsButton(() => setShowBackupSettings((v) => !v), showBackupSettings ? 'Hide Backup Settings' : 'Backup Settings')}
           </HStack>
   const backupsBody = <VStack className={styles.snapshotContainer}>
             <BKUSlider
@@ -1161,7 +1170,7 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
             <DataTable key="candidates" data={candidateData} columns={candidateColumns} className={styles.table} />
           </VStack>
 
-  const archiveActions = settingsButton(onOpenArchiveSettings || onOpenBackupSettings, 'Open Archive Settings')
+  const archiveActions = !section ? settingsButton(() => setShowArchiveSettings((v) => !v), showArchiveSettings ? 'Hide Archive Settings' : 'Archive Settings') : null
   const archiveBody = <VStack className={styles.snapshotContainer}>
             <AttachedArchive clusterName={selectedCluster?.name} user={user} onAttached={setAttachedArchive}
               snapbackAsk={snapbackAsk} onSnapbackAskDone={() => setSnapbackAsk(null)} />
@@ -1188,7 +1197,7 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
             )}
           </VStack>
 
-  const jobsActions = settingsButton(onOpenSchedulerSettings, 'Open Scheduler Settings')
+  const jobsActions = settingsButton(!section ? () => setMaintenanceTab(MAINTENANCE_TABS.indexOf('Scheduler')) : onOpenSchedulerSettings, 'Open Scheduler Settings')
   const jobsBody = <DatabaseJobs clusterName={selectedCluster?.name} user={user} />
 
   const logsActions = settingsButton(onOpenLogsSettings, 'Open Log Settings')
@@ -1262,12 +1271,17 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
       {!section && (
         <TabItems
           className={styles.fullWidthTabs}
-          options={['Backups', 'Archive', 'Database Jobs', 'Job Logs', 'Scheduler']}
+          options={MAINTENANCE_TABS}
           tabIndex={maintenanceTab}
           onChange={setMaintenanceTab}
           tabContents={[
           <VStack key='backups' align='stretch' className={styles.tabContent}>
             {backupsActions && <HStack justify='flex-end'>{backupsActions}</HStack>}
+            {showBackupSettings && (
+              <Box className={styles.settingsPanel}>
+                <BackupSettings selectedCluster={selectedCluster} user={user} />
+              </Box>
+            )}
             {backupsBody}
             {/* the backups found in the backup folders without metadata: a section of Backups (#2268) */}
             <AccordionComponent
@@ -1283,6 +1297,12 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
           </VStack>,
           <VStack key='archive' align='stretch' className={styles.tabContent}>
             {archiveActions && <HStack justify='flex-end'>{archiveActions}</HStack>}
+            {showArchiveSettings && (
+              <Box className={styles.settingsPanel}>
+                <ArchiveSettings selectedCluster={selectedCluster} user={user} />
+                <S3ProvidersSettings selectedCluster={selectedCluster} user={user} />
+              </Box>
+            )}
             {archiveBody}
           </VStack>,
           <VStack key='jobs' align='stretch' className={styles.tabContent}>

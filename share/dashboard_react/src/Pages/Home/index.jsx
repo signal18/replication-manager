@@ -43,7 +43,7 @@ import Configs from '../Configs'
 import Graphs from '../Graphs'
 import Agents from '../Agents'
 import Users from '../Users'
-import Maintenance from '../Maintenance'
+import Maintenance, { MAINTENANCE_TABS } from '../Maintenance'
 import Top from '../Top'
 import Shards from '../Shards'
 import PeerClusterList from '../PeerClusterList'
@@ -351,8 +351,9 @@ function Home() {
     setSelectedTab(1)
   }
 
+  // the scheduler lives in Maintenance (#2268): open that tab on its Scheduler sub-tab
   const openMaintenanceScheduler = () => {
-    localStorage.setItem('isSchedulerOpen', JSON.stringify(true))
+    localStorage.setItem('maintenanceTab', String(MAINTENANCE_TABS.indexOf('Scheduler')))
     const maintenanceIndex = dashboardTabsRef.current.indexOf('Maintenance')
     if (maintenanceIndex >= 0) {
       const tabIndex = maintenanceIndex + 1
@@ -371,8 +372,7 @@ function Home() {
     const allSections = [
       'isGeneralOpen', 'isRepFailOverOpen', 'isRepConfigOpen', 'isMonitoringOpen',
       'isAlertsOpen', 'isLogsOpen', 'isPluginsOpen', 'isRejoinOpen', 'isProxiesOpen',
-      'isGraphsOpen', 'isCloud18Open', 'isSchedulerOpen', 'isBackupOpen', 'isArchiveOpen',
-      'isS3ProvidersOpen', 'isAppTemplateRepoOpen'
+      'isGraphsOpen', 'isCloud18Open', 'isAppTemplateRepoOpen'
     ]
     allSections.forEach((key) => localStorage.setItem(key, JSON.stringify(visibleSections.includes(key))))
     const settingsIndex = dashboardTabsRef.current.indexOf('Setup')
@@ -383,9 +383,7 @@ function Home() {
     }
   }
 
-  const openBackupSettings = () => openSettingsSection(['isBackupOpen'])
-  const openArchiveSettings = () => openSettingsSection(['isArchiveOpen', 'isS3ProvidersOpen'])
-  const openSchedulerSettings = () => openSettingsSection(['isSchedulerOpen'])
+  const openSchedulerSettings = openMaintenanceScheduler
   const openTopologySettings = () => openSettingsSection(['isGeneralOpen'])
   const openProxiesSettings = () => openSettingsSection(['isProxiesOpen'])
   const openLogsSettings = () => openSettingsSection(['isLogsOpen'])
@@ -468,7 +466,7 @@ function Home() {
                     ]
                   : []),
                 ...(user?.grants['cluster-show-backups']
-                  ? [<Maintenance user={user} selectedCluster={selectedCluster} onOpenBackupSettings={openBackupSettings} onOpenArchiveSettings={openArchiveSettings} onOpenSchedulerSettings={openSchedulerSettings} onOpenLogsSettings={openLogsSettings} />]
+                  ? [<Maintenance user={user} selectedCluster={selectedCluster} onOpenSchedulerSettings={openSchedulerSettings} onOpenLogsSettings={openLogsSettings} />]
                   : []),
                 ...(user?.grants['cluster-grant'] || user?.grants['token-manage'] ? [<Users selectedCluster={selectedCluster} user={user} />] : []),
                 <Settings user={user} selectedCluster={selectedCluster} onTabChange={handleTabChange} monitor={monitor} />

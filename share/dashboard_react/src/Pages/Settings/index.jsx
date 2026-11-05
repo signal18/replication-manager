@@ -16,22 +16,18 @@ import CloudSettings from './CloudSettings'
 import RepFailOverSettings from './RepFailOverSettings'
 import RepConfigSettings from './RepConfigSettings'
 import AlertSettings from './AlertSettings'
-import BackupSettings from './BackupSettings'
-import ArchiveSettings from './ArchiveSettings'
-import SchedulerSettings from './SchedulerSettings'
 import DynamicConfigSettings from './DynamicConfigSettings'
 import CredentialsSettings from './CredentialsSettings'
-import S3ProvidersSettings from './S3ProvidersSettings'
 import AppTemplateRepoSection from './components/AppTemplateRepoSection'
 import { setSetting } from '../../redux/settingsSlice'
 import { useDispatch } from 'react-redux'
 
-// the Setup tab's sub-tabs (#2268): each a group of the cluster's settings sections, in order
+// the Setup tab's sub-tabs (#2268): each a group of the cluster's settings sections, in order. The
+// Scheduler, Backup, Archive and S3 Providers settings live in the Maintenance tab.
 const SETUP_GROUPS = [
   { name: 'General', sections: ['isGeneralOpen', 'isCredentialsOpen', 'isAlertsOpen', 'isDynamicConfigOpen', 'isCloud18Open', 'isAppTemplateRepoOpen'] },
   { name: 'High Availability', sections: ['isRepFailOverOpen', 'isRejoinOpen', 'isRepConfigOpen', 'isProxiesOpen'] },
   { name: 'Collecting', sections: ['isMonitoringOpen', 'isLogsOpen', 'isGraphsOpen'] },
-  { name: 'Maintenance', sections: ['isSchedulerOpen', 'isBackupOpen', 'isArchiveOpen', 'isS3ProvidersOpen'] },
   { name: 'Plugins', sections: ['isPluginsOpen'] }
 ]
 const SECTION_ORDER = SETUP_GROUPS.flatMap((g) => g.sections)
@@ -59,15 +55,6 @@ function Settings({ selectedCluster, user, onTabChange, monitor }) {
     setSectionFilter(null)
   }
 
-  const { isOpen: isBackupOpen, onToggle: onBackupToggle } = useDisclosure({
-    defaultIsOpen: JSON.parse(localStorage.getItem('isBackupOpen')) || false
-  })
-  const { isOpen: isArchiveOpen, onToggle: onArchiveToggle } = useDisclosure({
-    defaultIsOpen: JSON.parse(localStorage.getItem('isArchiveOpen')) || false
-  })
-  const { isOpen: isSchedulerOpen, onToggle: onSchedulerToggle } = useDisclosure({
-    defaultIsOpen: JSON.parse(localStorage.getItem('isSchedulerOpen')) || false
-  })
   const { isOpen: isGeneralOpen, onToggle: onGeneralToggle } = useDisclosure({
     defaultIsOpen: JSON.parse(localStorage.getItem('isGeneralOpen')) === false ? false : true
   })
@@ -101,9 +88,6 @@ function Settings({ selectedCluster, user, onTabChange, monitor }) {
   const { isOpen: isCloud18Open, onToggle: onCloud18Toggle } = useDisclosure({
     defaultIsOpen: JSON.parse(localStorage.getItem('isCloud18Open')) || false
   })
-  const { isOpen: isS3ProvidersOpen, onToggle: onS3ProvidersToggle } = useDisclosure({
-    defaultIsOpen: JSON.parse(localStorage.getItem('isS3ProvidersOpen')) || false
-  })
   const { isOpen: isCredentialsOpen, onToggle: onCredentialsToggle } = useDisclosure({
     defaultIsOpen: JSON.parse(localStorage.getItem('isCredentialsOpen')) || false
   })
@@ -111,15 +95,6 @@ function Settings({ selectedCluster, user, onTabChange, monitor }) {
     defaultIsOpen: JSON.parse(localStorage.getItem('isAppTemplateRepoOpen')) || false
   })
 
-  useEffect(() => {
-    localStorage.setItem('isBackupOpen', JSON.stringify(isBackupOpen))
-  }, [isBackupOpen])
-  useEffect(() => {
-    localStorage.setItem('isArchiveOpen', JSON.stringify(isArchiveOpen))
-  }, [isArchiveOpen])
-  useEffect(() => {
-    localStorage.setItem('isSchedulerOpen', JSON.stringify(isSchedulerOpen))
-  }, [isSchedulerOpen])
   useEffect(() => {
     localStorage.setItem('isGeneralOpen', JSON.stringify(isGeneralOpen))
   }, [isGeneralOpen])
@@ -157,9 +132,6 @@ function Settings({ selectedCluster, user, onTabChange, monitor }) {
   useEffect(() => {
     localStorage.setItem('isCloud18Open', JSON.stringify(isCloud18Open))
   }, [isCloud18Open])
-  useEffect(() => {
-    localStorage.setItem('isS3ProvidersOpen', JSON.stringify(isS3ProvidersOpen))
-  }, [isS3ProvidersOpen])
   useEffect(() => {
     localStorage.setItem('isAppTemplateRepoOpen', JSON.stringify(isAppTemplateRepoOpen))
   }, [isAppTemplateRepoOpen])
@@ -298,46 +270,6 @@ function Settings({ selectedCluster, user, onTabChange, monitor }) {
             headerClassName={styles.accordionHeader}
             panelClassName={styles.accordionPanel}
             body={<CloudSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} />}
-          />
-    ),
-    isSchedulerOpen: (
-      <AccordionComponent
-            heading={'Scheduler'}
-            onToggle={onSchedulerToggle}
-            isOpen={isSchedulerOpen}
-            headerClassName={styles.accordionHeader}
-            panelClassName={styles.accordionPanel}
-            body={<SchedulerSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} />}
-          />
-    ),
-    isBackupOpen: (
-      <AccordionComponent
-            heading={'Backup'}
-            onToggle={onBackupToggle}
-            isOpen={isBackupOpen}
-            headerClassName={styles.accordionHeader}
-            panelClassName={styles.accordionPanel}
-            body={<BackupSettings selectedCluster={selectedCluster} user={user} />}
-          />
-    ),
-    isArchiveOpen: (
-      <AccordionComponent
-            heading={'Archive'}
-            onToggle={onArchiveToggle}
-            isOpen={isArchiveOpen}
-            headerClassName={styles.accordionHeader}
-            panelClassName={styles.accordionPanel}
-            body={<ArchiveSettings selectedCluster={selectedCluster} user={user} />}
-          />
-    ),
-    isS3ProvidersOpen: (
-      <AccordionComponent
-            heading={'S3 Providers'}
-            onToggle={onS3ProvidersToggle}
-            isOpen={isS3ProvidersOpen}
-            headerClassName={styles.accordionHeader}
-            panelClassName={styles.accordionPanel}
-            body={<S3ProvidersSettings selectedCluster={selectedCluster} user={user} />}
           />
     ),
     isAppTemplateRepoOpen: (
