@@ -102,6 +102,18 @@ function GlobalSettings({ config, cards }) {
       )
     },
     {
+      globalSetting: 'monitoring-save-config',
+      key: 'Save Config',
+      help: h(hSaveConfig, 'Save Config'),
+      value: (
+        <RMSwitch
+          confirmTitle='Confirm switch global settings for monitoring-save-config?'
+          onChange={(_v, setRefresh) => dispatch(switchGlobalSetting({ setting: 'monitoring-save-config', setRefresh }))}
+          isChecked={config?.monitoringSaveConfig}
+        />
+      )
+    },
+    {
       key: 'Global Intervention',
       help: h(hIntervention, 'Global Intervention'),
       value: (
@@ -522,7 +534,9 @@ function GlobalSettings({ config, cards }) {
   ]
 
   // the global Setup tabs (#2268): the monitor's own units of work, then the HTTP server and its API
-  const MONITORING_UNITS_ROWS = ['Concurrent Backup Slots', 'Global Intervention']
+  // Save Config: an instance setting (scope server), for every cluster of this repman (#2268)
+  const hSaveConfig = `**Save Config**\n\nWhen enabled, a setting changed through the API or the GUI is written at once to the configuration files of this replication-manager (each cluster's and the instance's).\nWhen disabled, changes apply at runtime only and are lost on the next restart.\n\nAn instance setting: it applies to every cluster.\n\nConfig: \`monitoring-save-config\``
+  const MONITORING_UNITS_ROWS = ['Save Config', 'Concurrent Backup Slots', 'Global Intervention']
   const API_LOG_ROWS = ['Log API Login', 'Log API Login Silent Users']
   const monitoringUnitsData = generalData.filter((row) => MONITORING_UNITS_ROWS.includes(row.key))
   const httpApiData = [
