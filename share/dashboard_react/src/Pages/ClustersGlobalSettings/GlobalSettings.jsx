@@ -20,7 +20,10 @@ import remarkGfm from 'remark-gfm'
 import { HiQuestionMarkCircle } from 'react-icons/hi'
 import AccordionComponent from '../../components/AccordionComponent'
 
-function GlobalSettings({ config }) {
+// cards (#2268): which of its cards to show, by title; none = all (the Alerts card is shown in
+// Cloud18 > Support, the others in General)
+function GlobalSettings({ config, cards }) {
+  const showsCard = (title) => !cards || cards.includes(title)
   const dispatch = useDispatch()
   const monitor = useSelector((state) => state?.globalClusters?.monitor)
   const baseURL = useSelector((state) => state?.auth?.baseURL)
@@ -513,10 +516,10 @@ function GlobalSettings({ config }) {
 
   return (
     <>
-      {settingsCard('Global Settings', generalData)}
-      {settingsCard('Alerts', alertsData)}
-      {settingsCard('Logs', logsData)}
-      {settingsCard('AI Assistant (MCP)', mcpData)}
+      {showsCard('Global Settings') && settingsCard('Global Settings', generalData)}
+      {showsCard('Alerts') && settingsCard('Alerts', alertsData)}
+      {showsCard('Logs') && settingsCard('Logs', logsData)}
+      {showsCard('AI Assistant (MCP)') && settingsCard('AI Assistant (MCP)', mcpData)}
       <CommonModal isOpen={isCommonModalOpen} closeModal={() => setIsCommonModalOpen(false)} title={action.title} body={action.body} size='xl' />
       {isInterventionModalOpen && (
         <InterventionModal

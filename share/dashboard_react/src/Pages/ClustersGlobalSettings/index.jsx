@@ -36,46 +36,59 @@ function ClustersGlobalSettings({ user }) {
     setConfirmHandler(null)
     setConfirmTitle('')
   }
-  // the global settings' tabs (#2268): Cloud18 first, with Registration / Support / Marketplace
+  // the global settings' tabs (#2268): Cloud18 (Registration / Support), Marketplace (Offers / App
+  // Templates Repo), General, Arbitration
   const [globalTab, setGlobalTab] = useState(() => parseInt(localStorage.getItem('globalSettingsTab'), 10) || 0)
   const changeGlobalTab = (index) => {
     setGlobalTab(index)
     localStorage.setItem('globalSettingsTab', String(index))
   }
   const [cloud18Tab, setCloud18Tab] = useState(0)
+  const [marketplaceTab, setMarketplaceTab] = useState(0)
   return (
     <Flex className={styles.settingsContainer}>
       <StandbyBanner />
       <TabItems
         className={styles.fullWidthTabs}
-        options={['Cloud18', 'General', 'Arbitration', 'App Templates Repo']}
+        options={['Cloud18', 'Marketplace', 'General', 'Arbitration']}
         tabIndex={globalTab}
         onChange={changeGlobalTab}
         tabContents={[
           <TabItems
             key='cloud18'
             className={styles.fullWidthTabs}
-            options={['Registration', 'Support', 'Marketplace']}
-            tabIndex={cloud18Tab}
+            options={['Registration', 'Support']}
+            tabIndex={Math.min(cloud18Tab, 1)}
             onChange={setCloud18Tab}
             tabContents={[
               <CloudSettings key='registration' config={monitor?.config} openConfirmModal={openConfirmModal} part='registration' />,
-              <CloudSettings key='support' config={monitor?.config} openConfirmModal={openConfirmModal} part='support' />,
-              <Flex key='marketplace' direction='column' gap='8px' width='100%'>
-                <CloudSettings config={monitor?.config} openConfirmModal={openConfirmModal} part='marketplace' />
-                {monitor?.config?.cloud18 && <MarketplaceSettings config={monitor?.config} />}
+              <Flex key='support' direction='column' gap='8px' width='100%'>
+                <CloudSettings config={monitor?.config} openConfirmModal={openConfirmModal} part='support' />
+                <GlobalSettings config={monitor?.config} openConfirmModal={openConfirmModal} cards={['Alerts']} />
               </Flex>
             ]}
           />,
-          // GlobalSettings renders its own Global Settings / Alerts / Logs cards
-          <GlobalSettings key='general' config={monitor?.config} openConfirmModal={openConfirmModal} />,
-          <ArbitrationSettings key='arbitration' config={monitor?.config} />,
-      <AppTemplateRepoSection key='templates'
-        scope='global'
-        config={monitor?.config}
-        canEdit={canEditGlobalSettings}
-        onSet={(setting, value) => dispatch(setGlobalSetting({ setting, value }))}
-      />
+          <TabItems
+            key='marketplace'
+            className={styles.fullWidthTabs}
+            options={['Offers', 'App Templates Repo']}
+            tabIndex={marketplaceTab}
+            onChange={setMarketplaceTab}
+            tabContents={[
+              <Flex key='offers' direction='column' gap='8px' width='100%'>
+                <CloudSettings config={monitor?.config} openConfirmModal={openConfirmModal} part='marketplace' />
+                {monitor?.config?.cloud18 && <MarketplaceSettings config={monitor?.config} />}
+              </Flex>,
+              <AppTemplateRepoSection key='templates'
+            scope='global'
+            config={monitor?.config}
+            canEdit={canEditGlobalSettings}
+            onSet={(setting, value) => dispatch(setGlobalSetting({ setting, value }))}
+          />
+            ]}
+          />,
+          <GlobalSettings key='general' config={monitor?.config} openConfirmModal={openConfirmModal} cards={['Global Settings', 'Logs', 'AI Assistant (MCP)']} />,
+          <ArbitrationSettings key='arbitration' config={monitor?.config} />
         ]}
       />
 
