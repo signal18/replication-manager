@@ -227,7 +227,6 @@ function PluginsSettings({ selectedCluster, user }) {
       ]
     },
     {
-      clusterSetting: 'log-level-plugin',
       key: 'External Plugins',
       value: [
         {

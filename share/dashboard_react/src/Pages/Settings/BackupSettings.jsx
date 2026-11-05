@@ -681,7 +681,6 @@ function BackupSettings({ selectedCluster, user }) {
       )
     },
     {
-      clusterSetting: 'backup-binlog-type',
       key: 'Binlog Backup',
       help: h(hBinlogBackup, 'Binlog Backup'),
       value: (

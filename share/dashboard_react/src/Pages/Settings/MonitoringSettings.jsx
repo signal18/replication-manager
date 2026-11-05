@@ -116,7 +116,6 @@ function MonitoringSettings({ selectedCluster, user, openConfirmModal }) {
     { clusterSetting: 'monitoring-performance-schema-mutex', key: 'Monitoring InnoDB Mutex', help: h(hMutex, 'Monitoring InnoDB Mutex'), value: sw('monitoring-performance-schema-mutex', 'monitoringPerformanceSchemaMutex', monProcessListLoading) },
     { clusterSetting: 'monitoring-performance-schema-latch', key: 'Monitoring InnoDB Latch', help: h(hLatch, 'Monitoring InnoDB Latch'), value: sw('monitoring-performance-schema-latch', 'monitoringPerformanceSchemaLatch', monProcessListLoading) },
     {
-      clusterSetting: 'monitoring-binlog-event-log-length',
       key: 'Monitoring Binlog Events', value: [
         { clusterSetting: 'monitoring-binlog-events', key: 'Monitoring Binlog Events', help: h(hBinlogEvents, 'Monitoring Binlog Events'), value: sw('monitoring-binlog-events', 'monitoringBinlogEvents', monBinlogEventsLoading) },
         { clusterSetting: 'monitoring-binlog-event-log-length', key: 'Monitoring Binlog Event Log Length', help: h(hBinlogEventLogLength, 'Monitoring Binlog Event Log Length'), value: <NumberInput value={selectedCluster?.config?.monitoringBinlogEventLogLength} min={32} max={4096} showEditButton={true} showConfirmModal={true} confirmTitle={`Confirm change 'monitoring-binlog-event-log-length' to: `} onConfirm={(v) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-binlog-event-log-length', value: v.length === 0 ? '256' : v }))} /> },
@@ -125,7 +124,6 @@ function MonitoringSettings({ selectedCluster, user, openConfirmModal }) {
     { clusterSetting: 'delay-stat-capture', key: 'Monitoring Replication Statistics', help: h(hRepStatCapture, 'Monitoring Replication Statistics'), value: sw('delay-stat-capture', 'delayStatCapture') },
     { clusterSetting: 'delay-stat-rotate', key: 'Monitoring Replication Statistics Rotate', help: h(hRepStatRotate, 'Monitoring Replication Statistics Rotate'), value: (<RMSlider value={selectedCluster?.config?.delayStatRotate} max={72} showMarkAtInterval={12} confirmTitle='Confirm change replication statistics rotate to: ' onChange={(val) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'delay-stat-rotate', value: val }))} />) },
     {
-      clusterSetting: 'monitoring-performance-schema-queries-period',
       key: 'Monitoring Performance Schema', value: [
         { clusterSetting: 'monitoring-performance-schema', key: 'Enabled', help: h(hPFS, 'Monitoring Performance Schema'), value: sw('monitoring-performance-schema', 'monitoringPerformanceSchema') },
         { clusterSetting: 'monitoring-performance-schema-memory', key: 'Memory', help: h(hPFSMemory, 'Monitoring Performance Schema Memory'), value: sw('monitoring-performance-schema-memory', 'monitoringPerformanceSchemaMemory') },

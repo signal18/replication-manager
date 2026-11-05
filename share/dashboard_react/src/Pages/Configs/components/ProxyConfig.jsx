@@ -162,7 +162,6 @@ function ProxyConfig({ selectedCluster, user }) {
       )
     },
     {
-      clusterSetting: 'prov-proxy-memory',
       key: 'Resources',
       value: (
         <Flex className={styles.resources}>

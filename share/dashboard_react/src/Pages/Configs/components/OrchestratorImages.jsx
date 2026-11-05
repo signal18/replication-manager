@@ -126,6 +126,7 @@ function OrchestratorImages({ selectedCluster }) {
       )
     },
     {
+      clusterSetting: 'prov-proxy-docker-proxysql-img',
       key: 'ProxySQL',
       value: (
         <Dropdown
@@ -146,6 +147,7 @@ function OrchestratorImages({ selectedCluster }) {
       )
     },
     {
+      clusterSetting: 'prov-proxy-docker-maxscale-img',
       key: 'Maxscale',
       value: (
         <Dropdown
@@ -166,6 +168,7 @@ function OrchestratorImages({ selectedCluster }) {
       )
     },
     {
+      clusterSetting: 'prov-proxy-docker-haproxy-img',
       key: 'HaProxy',
       value: (
         <Dropdown
@@ -212,6 +215,7 @@ function OrchestratorImages({ selectedCluster }) {
       )
     },
     {
+      clusterSetting: 'prov-sphinx-img',
       key: 'Sphinx',
       value: (
         <Dropdown
@@ -232,6 +236,7 @@ function OrchestratorImages({ selectedCluster }) {
       )
     },
     {
+      clusterSetting: 'prov-proxy-docker-shardproxy-img',
       key: 'ShardProxy',
       value: (
         <Dropdown

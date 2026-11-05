@@ -71,7 +71,6 @@ function LogsSettings({ selectedCluster, user }) {
 
   const dataObject = [
     {
-      clusterSetting: 'verbose',
       key: 'Global',
       value: [
         {
@@ -104,13 +103,13 @@ function LogsSettings({ selectedCluster, user }) {
       ]
     },
     {
+      clusterSetting: 'log-level-sql',
       key: 'Monitoring SQL',
       value: [
         { clusterSetting: 'log-level-sql', key: 'Log SQL in Monitoring', help: h(hLogSql, 'Log SQL in Monitoring'), value: sl('log-level-sql', 'logSqlLevel') }
       ]
     },
     {
-      clusterSetting: 'print-delay-stat',
       key: 'Replication Statistics',
       value: [
         {
@@ -183,7 +182,6 @@ function LogsSettings({ selectedCluster, user }) {
       ]
     },
     {
-      clusterSetting: 'log-arbitration',
       key: 'Core Monitoring',
       value: [
         {
@@ -283,7 +281,6 @@ function LogsSettings({ selectedCluster, user }) {
       ]
     },
     {
-      clusterSetting: 'db-log-rotate',
       key: 'DB Log Retention',
       value: [
         {

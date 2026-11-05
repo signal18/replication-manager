@@ -28,6 +28,7 @@ function Certificates({ selectedCluster, user }) {
   const handleClienKeyChange = () => { }
   const dataObject = [
     {
+      clusterSetting: 'db-servers-tls-ssl-mode',
       key: <Stack>
         <Text as="span">Client SSL Mode</Text>
         <Text as="span" fontSize='sm' color='gray.500'>(Default (empty) will try to use SSL and use VERIFY_CA if SSL Tag is activated in configurator. Choose manually to override)</Text>

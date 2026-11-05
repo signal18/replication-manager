@@ -1,8 +1,13 @@
-import { Box, Text, Tooltip } from '@chakra-ui/react'
-import React from 'react'
+import { Box, Flex } from '@chakra-ui/react'
+import React, { useState } from 'react'
 import { HiLockClosed } from 'react-icons/hi'
 import { MdLockReset } from 'react-icons/md'
 import { useSelector } from 'react-redux'
+import Markdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import RMIconButton from '../RMIconButton'
+import CommonModal from '../Modals/CommonModal'
+import modalStyles from '../Modals/styles.module.scss'
 
 // #2268: the settings set in the system config (the configuration file, the command line or the
 // environment), each with its value there (a secret masked). /api/monitor carries the global ones,
@@ -25,53 +30,63 @@ function lockOf(immutable, setting) {
   if (!setting || !immutable || typeof immutable !== 'object' || !(setting in immutable)) {
     return null
   }
-  return { value: immutable[setting] }
+  return { setting, value: immutable[setting] }
 }
 
-function LockTooltip({ title, lock }) {
+// the lock button, the help button's twin (same RMIconButton, size and ghost style, the same
+// info window), so that both read the same way in a row
+function LockButton({ icon, title, text, lock }) {
+  const [isOpen, setIsOpen] = useState(false)
+  const value = lock.value === '' ? '_(empty)_' : '`' + lock.value + '`'
+  const content = `**${title}**\n\n${text}\n\n**System config value:** ${value}\n\nConfig: \`${lock.setting}\``
   return (
-    <Box>
-      <Text fontWeight='bold'>{title}</Text>
-      <Text>System config value: {lock.value === '' ? '(empty)' : lock.value}</Text>
-    </Box>
+    <>
+      <RMIconButton
+        icon={icon}
+        tooltip={title}
+        onClick={() => setIsOpen(true)}
+        iconFontsize='1rem'
+        variant='ghost'
+        colorScheme='orange'
+        style={{ minWidth: '1.5rem', height: '1.5rem' }}
+      />
+      <CommonModal
+        isOpen={isOpen}
+        closeModal={() => setIsOpen(false)}
+        title={title}
+        body={<Box className={modalStyles.infoTooltip}><Markdown remarkPlugins={[remarkGfm]}>{content}</Markdown></Box>}
+        size='xl'
+      />
+    </>
   )
 }
 
-// the small lock shown next to a global setting's label
-export function SettingLockIcon({ lock }) {
-  return (
-    <Tooltip label={<LockTooltip title='Locked from system config' lock={lock} />} hasArrow placement='top'>
-      <Box as='span' display='inline-flex' verticalAlign='middle' ml={1} color='orange.400' aria-label='Locked from system config'>
-        <HiLockClosed size={14} />
-      </Box>
-    </Tooltip>
-  )
-}
-
-// the rollback lock shown next to a cluster setting's label
-export function SettingRollbackIcon({ lock }) {
-  return (
-    <Tooltip
-      label={<LockTooltip title='Set in system config: a change here is rolled back at the next restart' lock={lock} />}
-      hasArrow
-      placement='top'>
-      <Box as='span' display='inline-flex' verticalAlign='middle' ml={1} color='orange.400' aria-label='Rolled back to the system config at restart'>
-        <MdLockReset size={16} />
-      </Box>
-    </Tooltip>
-  )
-}
-
-// a row label, with the lock of its global setting or the rollback lock of its cluster setting
+// a row label, with the lock of its global setting or the rollback lock of its cluster setting,
+// on the right of the label cell, apart from its text
 export function SettingLabel({ setting, clusterSetting, children }) {
   const globalLock = useGlobalSettingLock(setting)
   const clusterLock = useClusterSettingLock(clusterSetting)
+  if (!globalLock && !clusterLock) return children
   return (
-    <>
-      {children}
-      {globalLock && <SettingLockIcon lock={globalLock} />}
-      {clusterLock && <SettingRollbackIcon lock={clusterLock} />}
-    </>
+    <Flex align='center' justify='space-between' gap={2} w='100%'>
+      <Box>{children}</Box>
+      {globalLock && (
+        <LockButton
+          icon={HiLockClosed}
+          title='Locked from system config'
+          text='This setting is set in the system config (the configuration file, the command line or the environment). The API refuses to change it: change it there.'
+          lock={globalLock}
+        />
+      )}
+      {clusterLock && (
+        <LockButton
+          icon={MdLockReset}
+          title='Rolled back at restart'
+          text='This setting is set in the system config. A change here applies at once, for a test, and the next restart rolls it back to the system config value.'
+          lock={clusterLock}
+        />
+      )}
+    </Flex>
   )
 }
 
