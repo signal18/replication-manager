@@ -220,7 +220,7 @@ func TestCloud18InstanceLoginWaits(t *testing.T) {
 	down := httptest.NewServer(http.NotFoundHandler())
 	down.Close() // connection refused: the realm out of reach
 	oldU, oldR := cloud18InstanceLoginUnreachableWait, cloud18InstanceLoginRefusedWait
-	cloud18InstanceLoginUnreachableWait, cloud18InstanceLoginRefusedWait = time.Second, time.Hour
+	cloud18InstanceLoginUnreachableWait, cloud18InstanceLoginRefusedWait = 400*time.Millisecond, time.Hour
 	defer func() { cloud18InstanceLoginUnreachableWait, cloud18InstanceLoginRefusedWait = oldU, oldR }()
 	ForgetCloud18InstanceLogin()
 	defer ForgetCloud18InstanceLogin()
@@ -234,7 +234,7 @@ func TestCloud18InstanceLoginWaits(t *testing.T) {
 	if _, again := conf.Cloud18InstanceLoginToken(); again != first {
 		t.Fatalf("within the wait the cached error comes back, no new login: %v", again)
 	}
-	time.Sleep(1200 * time.Millisecond)
+	time.Sleep(1200 * time.Millisecond) // three times the outage's wait: no flake on a loaded runner
 	if _, later := conf.Cloud18InstanceLoginToken(); later == nil || later == first {
 		t.Fatalf("after the wait the login is tried again: %v", later)
 	}
@@ -245,7 +245,7 @@ func TestCloud18InstanceLoginWaits(t *testing.T) {
 	cloud18InstanceLogin.account = cloud18AccountFingerprint("sysops@acme.example", "pw")
 	cloud18InstanceLogin.refused, cloud18InstanceLogin.refusedErr = time.Now().Add(cloud18InstanceLoginRefusedWait), ErrCloud18BadCredentials
 	cloud18InstanceLogin.Unlock()
-	time.Sleep(1200 * time.Millisecond)
+	time.Sleep(1200 * time.Millisecond) // three times the outage's wait: no flake on a loaded runner
 	if _, err := conf.Cloud18InstanceLoginToken(); err != ErrCloud18BadCredentials || !IsCloud18LoginRefusal(err) {
 		t.Fatalf("a refusal is kept past the outage's wait, no new login: %v", err)
 	}
