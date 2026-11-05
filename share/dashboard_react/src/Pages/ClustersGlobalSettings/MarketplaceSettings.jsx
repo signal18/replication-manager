@@ -15,7 +15,12 @@ import modalStyles from '../../components/Modals/styles.module.scss'
 import remarkGfm from 'remark-gfm'
 import ConfirmModal from '../../components/Modals/ConfirmModal'
 
-function MarketplaceSettings({ config }) {
+// part (#2268), the Marketplace tabs of the global Setup: 'pricing' (the unit ratios and prices,
+// the gateway units, over/under-commit, the plans) or 'gateway' (the platform description, the
+// gateway and the domain); none shows every row
+const GATEWAY_ROWS = ['Platform Description', 'Gateway Domain Name', 'Gateway Service', 'Gateway Bandwidth (Mb/s)', 'Domain Add Script', 'Domain Drop Script', 'Domain User', 'Domain Secret']
+
+function MarketplaceSettings({ config, part }) {
   const dispatch = useDispatch()
   const [action, setAction] = useState({ title: '', body: <></> })
   const [isInfoModalOpen, setIsInfoModalOpen] = useState(false)
@@ -351,7 +356,11 @@ function MarketplaceSettings({ config }) {
   return (
     <>
       <Flex justify='space-between' gap='0'>
-        <TableType2 dataArray={dataObject} className={styles.tableWithHelp} helpColumn />
+        <TableType2
+          dataArray={!part ? dataObject : dataObject.filter((row) => (part === 'gateway') === GATEWAY_ROWS.includes(row.key))}
+          className={styles.tableWithHelp}
+          helpColumn
+        />
       </Flex>
       <CommonModal
         isOpen={isInfoModalOpen}

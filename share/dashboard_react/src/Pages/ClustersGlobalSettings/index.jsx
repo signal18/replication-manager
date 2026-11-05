@@ -45,6 +45,9 @@ function ClustersGlobalSettings({ user }) {
     localStorage.setItem('globalSettingsTab', String(index))
   }
   const [cloud18Tab, setCloud18Tab] = useState(0)
+  // Cloud18 > Marketplace: Pricing and Gateway & Domain for a Cloud18 instance only
+  const [marketplaceTab, setMarketplaceTab] = useState(0)
+  const marketplaceTabs = ['Peering', ...(monitor?.config?.cloud18 ? ['Pricing', 'Gateway & Domain'] : []), 'App Templates Repo']
   return (
     <Flex className={styles.settingsContainer}>
       <StandbyBanner />
@@ -66,22 +69,34 @@ function ClustersGlobalSettings({ user }) {
                 <CloudSettings config={monitor?.config} openConfirmModal={openConfirmModal} part='support' />
                 <GlobalSettings config={monitor?.config} openConfirmModal={openConfirmModal} cards={['Alerts']} />
               </Flex>,
-              <Flex key='marketplace' direction='column' gap='8px' width='100%'>
-                <CloudSettings config={monitor?.config} openConfirmModal={openConfirmModal} part='marketplace' />
-                {monitor?.config?.cloud18 && (
-                  <SectionFrame title='Pricing, Gateway and Domain'>
-                    <MarketplaceSettings config={monitor?.config} />
-                  </SectionFrame>
-                )}
-                <SectionFrame title='App Templates Repo'>
-                  <AppTemplateRepoSection
+              <TabItems
+                key='marketplace'
+                className={styles.fullWidthTabs}
+                options={marketplaceTabs}
+                tabIndex={Math.min(marketplaceTab, marketplaceTabs.length - 1)}
+                onChange={setMarketplaceTab}
+                tabContents={[
+                  <CloudSettings key='peering' config={monitor?.config} openConfirmModal={openConfirmModal} part='marketplace' />,
+                  ...(monitor?.config?.cloud18
+                    ? [
+                        <SectionFrame key='pricing' title='Pricing'>
+                          <MarketplaceSettings config={monitor?.config} part='pricing' />
+                        </SectionFrame>,
+                        <SectionFrame key='gateway' title='Gateway and Domain'>
+                          <MarketplaceSettings config={monitor?.config} part='gateway' />
+                        </SectionFrame>
+                      ]
+                    : []),
+                  <SectionFrame key='templates' title='App Templates Repo'>
+                    <AppTemplateRepoSection
                 scope='global'
                 config={monitor?.config}
                 canEdit={canEditGlobalSettings}
                 onSet={(setting, value) => dispatch(setGlobalSetting({ setting, value }))}
               />
-                </SectionFrame>
-              </Flex>
+                  </SectionFrame>
+                ]}
+              />
             ]}
           />,
           <GlobalSettings key='units' config={monitor?.config} openConfirmModal={openConfirmModal} cards={['Monitoring Units']} />,
