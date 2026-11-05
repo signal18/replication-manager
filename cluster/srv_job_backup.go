@@ -4543,6 +4543,17 @@ func backupStallWatchdog(done <-chan struct{}, cancel context.CancelFunc, progre
 // backup forever.
 const backupStallLeakGrace = 60 * time.Second
 
+// backupStallLeakGraceDuration is the configured leak grace (backup-write-stall-leak-grace),
+// falling back to the backupStallLeakGrace default when unset (0 or negative) so an existing
+// config keeps 60s. Exposed as a config key (T16) so a test can shrink it and an operator can
+// tune it. See boundedWait.
+func (cluster *Cluster) backupStallLeakGraceDuration() time.Duration {
+	if cluster.Conf.BackupWriteStallLeakGrace > 0 {
+		return time.Duration(cluster.Conf.BackupWriteStallLeakGrace) * time.Second
+	}
+	return backupStallLeakGrace
+}
+
 // boundedWait blocks until wg completes. If `fired` is signalled (the stall
 // watchdog cancelled) and wg still hasn't completed after `grace`, it returns
 // true — the goroutine is stuck (e.g. a subprocess in uninterruptible sleep on a
@@ -4800,7 +4811,7 @@ func (server *ServerMonitor) JobBackupMysqldump(ctx context.Context, task, filen
 	// would never return — so after backupStallLeakGrace give up, leak the stuck
 	// goroutine, and return the stall error. Best-effort mitigation for the
 	// hard-hung-mount case, not a hard guarantee — see BACKUP_DEAD_VOLUME_STALL.md.
-	leaked := boundedWait(&wg, stallFired, backupStallLeakGrace)
+	leaked := boundedWait(&wg, stallFired, cluster.backupStallLeakGraceDuration())
 	close(stallDone) // stop the watchdog
 	if leaked {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn,
@@ -5019,7 +5030,7 @@ func mydumperTrxTablesOn(option string) bool {
 	return strings.Trim(value[:digits], "0") != ""
 }
 
-func (server *ServerMonitor) JobBackupMyDumper(outputdir string) error {
+func (server *ServerMonitor) JobBackupMyDumper(ctx context.Context, outputdir string) error {
 	cluster := server.ClusterGroup
 	var err error
 	var bckConn *sqlx.DB
@@ -5089,12 +5100,68 @@ func (server *ServerMonitor) JobBackupMyDumper(outputdir string) error {
 		myargs = append(myargs, "--regex", cluster.Conf.BackupMyDumperRegex)
 	}
 
-	dumpCmd := exec.Command(cluster.GetMyDumperPath(), myargs...)
+	// #2249: run mydumper under the same write-stall watchdog as the mysqldump path and the direct
+	// reseed (T2: reuse backupStallWatchdog). mydumper writes to outputdir on a mount that can die
+	// (writes fail ENOTCONN); it then hangs on its own pipes with nothing waiting on FUSE, so a plain
+	// exec.Command + Wait() would block forever, holding the backup slot (WARN0175) and blocking every
+	// later backup. The watchdog kills it when the output folder stops growing for
+	// backup-write-stall-timeout.
+	if ctx == nil { // context.WithCancel panics on a nil parent; JobBackupMysqldump guards it the same way
+		ctx = context.Background()
+	}
+	dumpCtx, dumpCancel := context.WithCancel(ctx)
+	defer dumpCancel()
+	dumpCmd := exec.CommandContext(dumpCtx, cluster.GetMyDumperPath(), myargs...)
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "%s", strings.Replace(dumpCmd.String(), "="+cluster.GetDbPass(), "=XXXX", 1))
 	stdoutIn, _ := dumpCmd.StdoutPipe()
 	stderrIn, _ := dumpCmd.StderrPipe()
-	dumpCmd.Start()
+	if err = dumpCmd.Start(); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error starting mydumper: %s", err)
+		return err
+	}
+
+	if cluster.Conf.BackupWriteStallTimeout < 0 {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn,
+			"backup-write-stall-timeout is negative (%d) — the mydumper write-stall watchdog is DISABLED; use 0 to disable intentionally, or a positive number of seconds to enable", cluster.Conf.BackupWriteStallTimeout)
+	}
+	stallTimeout := time.Duration(cluster.Conf.BackupWriteStallTimeout) * time.Second
+	checkInterval := stallTimeout / 4
+	if checkInterval < time.Second {
+		checkInterval = time.Second
+	}
+	var folderBytes atomic.Int64
+	var stalled atomic.Bool
+	stallDone := make(chan struct{})
+	stallFired := make(chan struct{})
+	stallErr := fmt.Errorf("mydumper backup of %s stalled: no output growth for %s, aborted (hung backup volume?)", server.URL, stallTimeout)
+	// mydumper writes the dump files itself (no stream to count), so the progress the watchdog
+	// watches is the output folder's total size, polled. A stat that hangs on a dead mount freezes
+	// the counter — which is itself the stall the watchdog then fires on — and leaks this one poller
+	// goroutine stuck in dirBytes: bounded (one per stalled backup) and the deliberate price of not
+	// blocking the monitor (F2), never unbounded growth (F3/F4). Called inline so a hung walk cannot
+	// pile up overlapping walks. Note: the watchdog fires from the start, so backup-write-stall-timeout
+	// must exceed mydumper's quiet startup (lock wait, metadata, chunk planning before the first file).
+	if stallTimeout > 0 {
+		go func() {
+			t := time.NewTicker(checkInterval)
+			defer t.Stop()
+			for {
+				select {
+				case <-stallDone:
+					return
+				case <-t.C:
+					folderBytes.Store(dirBytes(outputdir))
+				}
+			}
+		}()
+		go backupStallWatchdog(stallDone, dumpCancel, &folderBytes, stallTimeout, checkInterval, func() {
+			stalled.Store(true)
+			close(stallFired)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr,
+				"mydumper write stalled for %s with no output growth in %s (dead/hung backup volume?); aborting backup for %s", stallTimeout, outputdir, server.URL)
+		})
+	}
 
 	var wg sync.WaitGroup
 	var valid bool = true
@@ -5107,8 +5174,25 @@ func (server *ServerMonitor) JobBackupMyDumper(outputdir string) error {
 		defer wg.Done()
 		valid = server.myDumperCopyLogs(stderrIn, config.ConstLogModBackupStream, config.LvlDbg)
 	}()
-	wg.Wait()
+	// Bound the wait: once the watchdog has cancelled, if mydumper is wedged in uninterruptible sleep
+	// on a hard-hung mount (SIGKILL can't free it, its pipes never EOF), stop waiting and treat it as
+	// leaked rather than hang the backup slot forever — as the mysqldump path does (boundedWait).
+	if stallTimeout > 0 {
+		if boundedWait(&wg, stallFired, cluster.backupStallLeakGraceDuration()) {
+			// Leaked, as the mysqldump path: a process wedged on a hard-hung mount that SIGKILL
+			// cannot free means dumpCmd.Wait() is never called and a zombie remains until the mount
+			// recovers — better than hanging the backup slot forever.
+			close(stallDone)
+			return stallErr
+		}
+	} else {
+		wg.Wait()
+	}
+	close(stallDone)
 	if err = dumpCmd.Wait(); err != nil {
+		if stalled.Load() {
+			return stallErr
+		}
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error mydumper:  %s", err)
 		return err
 	}
@@ -5533,7 +5617,7 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, op
 					exec.Command("mv", oldSrc, oldSrc+".old").Run()
 				}
 			}
-			err = server.JobBackupMyDumper(stagedDir + "/")
+			err = server.JobBackupMyDumper(ctx, stagedDir+"/")
 			if err != nil {
 				if e2 := updateJobState(task, err.Error(), 5, 1); e2 != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
@@ -6872,7 +6956,7 @@ func (cluster *Cluster) JobRejoinMysqldumpFromSource(source *ServerMonitor, dest
 	// instead of hanging the reseed forever. Best-effort mitigation for the
 	// hard-hung-mount case, not a hard guarantee -- see
 	// BACKUP_DEAD_VOLUME_STALL.md.
-	leaked := boundedWait(&wg, stallFired, backupStallLeakGrace)
+	leaked := boundedWait(&wg, stallFired, cluster.backupStallLeakGraceDuration())
 	close(stallDone) // stop the watchdog
 	if leaked {
 		artifactWriter.discard() // never publish a partial artifact (Cancellation and Failure Semantics: cancel during phase 1)

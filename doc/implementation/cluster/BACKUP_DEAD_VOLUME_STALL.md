@@ -155,3 +155,28 @@ A `losetup`-detach or an `iptables`-blocked NFS server reproduces the *hung* var
 (writes block instead of erroring), which is the harder case the watchdog specifically
 targets — an `EIO`/`ENOSPC` would at least error the write, but a hung mount never
 returns, which is why a progress watchdog (not just error handling) is required.
+
+## mydumper (#2249)
+
+`JobBackupMyDumper` was the one logical-backup path left without the watchdog: mydumper is
+its own process writing a *folder* of files (no stream repman reads), started with a plain
+`exec.Command` + `Wait()`. When the backup folder's mount died mid-dump (writes `ENOTCONN`),
+mydumper hung on its internal pipes with nothing on FUSE and `Wait()` blocked forever —
+holding the backup slot (`WARN0175`) and blocking every later backup and the bucket move,
+until it was killed by hand (observed: 21 minutes).
+
+The fix reuses the same `backupStallWatchdog` (T2):
+
+- `exec.CommandContext` with a cancelable context so the watchdog can `SIGKILL` the process;
+- the progress the watchdog watches is the **output folder's total size** (`dirBytes`,
+  polled every `checkInterval`) — mydumper writes the files itself, so there is no stream to
+  count; a `stat` that hangs on a dead mount simply freezes the counter, which is itself the
+  stall the watchdog fires on;
+- `boundedWait` after a fire, so a process wedged in uninterruptible sleep on a hard-hung
+  mount (SIGKILL cannot free it, its pipes never EOF) is treated as leaked rather than
+  hanging the slot forever — identical to the mysqldump path;
+- on stall the kill is logged with the reason and the backup returns a "stalled … aborted"
+  error (F7/F11), so the slot frees and the operator sees why.
+
+Same `backup-write-stall-timeout` knob (negative = disabled with a warning, `0` = off). No
+new parameter.

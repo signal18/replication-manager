@@ -1,6 +1,7 @@
 package cluster
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -1991,5 +1992,45 @@ func TestBackupRegexPatternsMySQL84AcceptsLegacyAndNewDumpHeader(t *testing.T) {
 				t.Fatalf("regex %q did not extract file/pos from %q: %v", binlogRegex, tc.header, m)
 			}
 		})
+	}
+}
+
+// TestJobBackupMyDumper_StallWatchdogAbortsAndClearsSlot proves #2249: a mydumper logical backup
+// whose output stops growing (a dead/hung backup volume, or a wedged mydumper that holds a
+// connection-scoped DB lock) is aborted by the write-stall watchdog instead of hanging forever and
+// holding the backup slot. A fake mydumper writes nothing to the output folder and never exits
+// (exec sleep, same trick as the mysqldump stall tests so SIGKILL reaches the real blocked process).
+// With backup-write-stall-timeout and backup-write-stall-leak-grace set to 1s, JobBackupMyDumper must
+// return a stall error within a few seconds rather than block.
+func TestJobBackupMyDumper_StallWatchdogAbortsAndClearsSlot(t *testing.T) {
+	cluster, server := newTestRuntimeOnlyClusterServer(t, "mydumper-stall-test", "src", "3306")
+	server.LastBackupMeta.Logical = &backupmgr.BackupMetadata{}
+
+	binDir := t.TempDir()
+	fake := writeFakeExecutable(t, binDir, "fakemydumper.sh", `#!/bin/sh
+echo "-- fake mydumper starting" >&2
+# Write nothing to the output dir and never exit: a wedged dump that produces no output, exactly
+# what the folder-size watchdog must catch. exec so SIGKILL from the watchdog hits this PID.
+exec sleep 300
+`)
+
+	cluster.Conf.BackupMyDumperPath = fake
+	cluster.Conf.BackupWriteStallTimeout = 1   // seconds; small so the test is fast, not 300s
+	cluster.Conf.BackupWriteStallLeakGrace = 1 // seconds; the leak grace must be tunable too (T16)
+	cluster.Conf.BackupLockDDL = false         // no DB in a runtime-only test: skip the DDL-lock connection
+	// Seed a mydumper version so JobBackupMyDumper does not run the fake with --version, and pick a
+	// version (0.14) that skips every version-specific argument branch.
+	cluster.VersionsMap.Set("mydumper", &version.Version{Flavor: "mydumper", Major: 0, Minor: 14})
+
+	resultCh := make(chan error, 1)
+	go func() { resultCh <- server.JobBackupMyDumper(context.Background(), t.TempDir()+"/") }()
+
+	select {
+	case err := <-resultCh:
+		if err == nil || !strings.Contains(err.Error(), "stall") {
+			t.Fatalf("expected a stall error, got: %v", err)
+		}
+	case <-time.After(20 * time.Second):
+		t.Fatal("JobBackupMyDumper did not return -- a stalled mydumper is stuck, the watchdog did not fire")
 	}
 }
