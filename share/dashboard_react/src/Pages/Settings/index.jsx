@@ -116,10 +116,10 @@ function Settings({ selectedCluster, user, onTabChange, monitor }) {
     // Plugins: a sub-tab of its own
     isPluginsOpen: { title: 'Plugins', body: <PluginsSettings selectedCluster={selectedCluster} user={user} /> }
   }
-  // a section in a frame (#2268), its title on top unless a tab already names it
-  const frame = (k, withTitle = true) => (
+  // a section in a frame (#2268), always with its heading
+  const frame = (k) => (
     <Box key={k} className={styles.sectionFrame}>
-      {withTitle && <Box className={styles.sectionFrameTitle}>{sectionBlocks[k].title}</Box>}
+      <Box className={styles.sectionFrameTitle}>{sectionBlocks[k].title}</Box>
       <Box className={styles.sectionFrameBody}>{sectionBlocks[k].body}</Box>
     </Box>
   )
@@ -136,7 +136,7 @@ function Settings({ selectedCluster, user, onTabChange, monitor }) {
         options={keys.map((k) => sectionBlocks[k].title)}
         tabIndex={index}
         onChange={(i) => setSectionTab((t) => ({ ...t, [g.name]: i }))}
-        tabContents={keys.map((k) => frame(k, false))}
+        tabContents={keys.map((k) => frame(k))}
       />
     )
   }
