@@ -227,14 +227,17 @@ function PluginsSettings({ selectedCluster, user }) {
       ]
     },
     {
+      clusterSetting: 'log-level-plugin',
       key: 'External Plugins',
       value: [
         {
+          clusterSetting: 'log-plugin',
           key: 'Enable Log Plugins',
           help: h(hLogPlugin, 'Enable Log Plugins'),
           value: sw('log-plugin', 'logPlugin')
         },
         {
+          clusterSetting: 'log-level-plugin',
           key: 'Plugin Module Verbosity',
           help: h(hLogPluginLevel, 'Plugin Module Verbosity'),
           value: (

@@ -272,6 +272,7 @@ function DBConfigs({ selectedCluster, user }) {
 
   const dataObject = [
     {
+      clusterSetting: 'prov-db-start-fetch-config',
       key: 'Pull Config On DB Start',
       help: h(hFetchConfig, 'Pull Config On DB Start'),
       value: (
@@ -299,6 +300,7 @@ function DBConfigs({ selectedCluster, user }) {
       )
     },
     {
+      clusterSetting: 'prov-db-max-connections',
       key: 'Connections',
       value: (
         <Flex className={styles.connections}>
@@ -436,6 +438,7 @@ function DBConfigs({ selectedCluster, user }) {
       )
     },
     {
+      clusterSetting: 'prov-db-memory',
       key: 'Resources',
       value: (
         <Flex direction='column' gap={4} w='100%'>
@@ -576,6 +579,7 @@ function DBConfigs({ selectedCluster, user }) {
       )
     },
     {
+      clusterSetting: 'prov-db-memory-shared-pct',
       key: 'Memory Allocation',
       value: (
         <Flex direction='column' gap={4} w='100%'>

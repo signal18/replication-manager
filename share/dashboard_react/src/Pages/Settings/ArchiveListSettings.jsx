@@ -630,12 +630,14 @@ export function useArchiveSettings({ clusterName, user, help, config }) {
         confirmTitle={`Confirm update '${setting}' to `} onSave={(v) => setClusterSetting(setting, v)} />
     })),
     {
+      clusterSetting: 'backup-keep-tag-policies',
       key: 'Tagged policies',
       help: help('**Tagged policies**\n\nThe snapshots carrying a tag kept by their own keep values, counted apart from the keep values above (the default policy), so they never push a backup out of keep last. The tags replication-manager sets: `trigger:backup` (a backup), `trigger:manual` (the Archive action), `trigger:snapback`, `trigger:binlogs` (a binlog-only snapshot). The binlog-only snapshots taken since the last backup are always kept: a binlog only extends a backup. An archive with its own purge policies applies those instead.\n\nConfig: `backup-keep-tag-policies`', 'Tagged policies'),
       value: <PurgePoliciesEditor value={config?.backupKeepTagPolicies || ''} isDisabled={!canSet}
         onSave={(v) => setClusterSetting('backup-keep-tag-policies', v)} />
     },
     {
+      clusterSetting: 'backup-archive-remove-original',
       key: 'Remove original once archived',
       help: help('**Remove original once archived**\n\nOnce the attached archive holds a backup and it is checked, the backup is deleted from the server\'s backup folder. A restore fetches it back from the archive first.\n\nConfig: `backup-archive-remove-original`', 'Remove original once archived'),
       value: <RMSwitch isChecked={!!config?.backupArchiveRemoveOriginal} isDisabled={!canSet}
@@ -643,6 +645,7 @@ export function useArchiveSettings({ clusterName, user, help, config }) {
         onChange={() => dispatch(switchSetting({ clusterName, setting: 'backup-archive-remove-original' }))} />
     },
     {
+      clusterSetting: 'backup-archive-purge-trigger',
       key: 'Purge',
       help: help('**Purge**\n\nWhen the attached archive is asked to apply the policy. After each backup: every backup it receives is followed by a purge. On schedule: at the cron below (needs the cluster scheduler, `monitoring-scheduler`).\n\n**Purge now** asks it at once.\n\nConfig: `backup-archive-purge-trigger`', 'Purge'),
       value: (
@@ -656,6 +659,7 @@ export function useArchiveSettings({ clusterName, user, help, config }) {
       )
     },
     ...(onSchedule ? [{
+      clusterSetting: 'scheduler-archive-purge-cron',
       key: 'Purge schedule',
       help: help('**Purge schedule**\n\nCron with 6 fields (seconds first). Default: every hour.\n\nConfig: `scheduler-archive-purge-cron`', 'Purge schedule'),
       value: (
@@ -721,6 +725,7 @@ export function useArchiveSettings({ clusterName, user, help, config }) {
     // the program the restic plugins run: shown only with a restic archive
     ...(list.archives.some((a) => (a.plugin || '').startsWith('archive-restic')) ? [
     {
+      clusterSetting: 'backup-restic-allow-unsafe-mount',
       key: 'Restic program',
       value: [
         {
@@ -734,6 +739,7 @@ export function useArchiveSettings({ clusterName, user, help, config }) {
           value: <Text fontSize='sm'>{config?.backupResticMountDir || '<working-dir>/<cluster>/mount'}</Text>
         },
         {
+          clusterSetting: 'backup-restic-allow-unsafe-mount',
           key: 'Allow unsafe mount',
           help: help('**Allow unsafe mount**\n\nUse a restic mount found at the mount folder that replication-manager did not start (made by hand, by a helper with FUSE rights, or lost track of after a restart). Unsafe: it may be of another archive, and whoever made it can unmount it during a reseed.\n\nConfig: `backup-restic-allow-unsafe-mount`', 'Allow unsafe mount'),
           value: <RMSwitch isChecked={!!config?.backupResticAllowUnsafeMount} isDisabled={!canSet}

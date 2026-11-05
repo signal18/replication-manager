@@ -258,6 +258,7 @@ function BackupSettings({ selectedCluster, user }) {
 
   const dataObject = [
     {
+      clusterSetting: 'backup-encryption',
       key: 'Backup Encryption',
       help: h(hBackupEncryption, 'Backup Encryption'),
       value: (
@@ -268,6 +269,7 @@ function BackupSettings({ selectedCluster, user }) {
       )
     },
     {
+      clusterSetting: 'backup-save-script',
       key: 'Custom Backup Script',
       help: h(hSaveScript, 'Custom Backup Save Script'),
       value: (
@@ -277,6 +279,7 @@ function BackupSettings({ selectedCluster, user }) {
       )
     },
     {
+      clusterSetting: 'backup-load-script',
       key: 'Custom Load Script',
       help: h(hLoadScript, 'Custom Load Script'),
       value: (
@@ -286,6 +289,7 @@ function BackupSettings({ selectedCluster, user }) {
       )
     },
     {
+      clusterSetting: 'backup-logical-type',
       key: 'Logical Backup',
       help: h(hLogicalBackup, 'Logical Backup'),
       value: (
@@ -298,6 +302,7 @@ function BackupSettings({ selectedCluster, user }) {
       )
     },
     {
+      clusterSetting: 'backup-logical-post-script',
       key: 'Logical Backup Post-Script',
       help: h(hLogicalPostScript, 'Logical Backup Post-Script'),
       value: (
@@ -307,6 +312,7 @@ function BackupSettings({ selectedCluster, user }) {
       )
     },
     {
+      clusterSetting: 'backup-mysqlclient-options',
       key: 'DB Client Options',
       help: h(hDbClientOptions, 'DB Client Options'),
       value: (
@@ -316,6 +322,7 @@ function BackupSettings({ selectedCluster, user }) {
       )
     },
     {
+      clusterSetting: 'backup-mysqldump-options',
       key: 'Mysqldump Options',
       help: h(hMysqldumpOptions, 'Mysqldump Options'),
       value: (
@@ -325,6 +332,7 @@ function BackupSettings({ selectedCluster, user }) {
       )
     },
     {
+      clusterSetting: 'backup-mysqldump-path',
       key: 'Mysqldump Path',
       help: h(hMysqldumpPath, 'Mysqldump Path'),
       value: (
@@ -334,6 +342,7 @@ function BackupSettings({ selectedCluster, user }) {
       )
     },
     {
+      clusterSetting: 'backup-mysqlclient-path',
       key: 'MySQL Client Path',
       help: h(hMysqlclientPath, 'MySQL Client Path'),
       value: (
@@ -343,6 +352,7 @@ function BackupSettings({ selectedCluster, user }) {
       )
     },
     {
+      clusterSetting: 'backup-mysqlbinlog-path',
       key: 'Mysqlbinlog Path',
       help: h(hMysqlbinlogPath, 'Mysqlbinlog Path'),
       value: (
@@ -352,6 +362,7 @@ function BackupSettings({ selectedCluster, user }) {
       )
     },
     {
+      clusterSetting: 'backup-discovery',
       key: 'Backup Discovery',
       help: h(hDiscovery, 'Backup Discovery'),
       value: (
@@ -362,6 +373,7 @@ function BackupSettings({ selectedCluster, user }) {
       )
     },
     {
+      clusterSetting: 'backup-discovery-candidate-max',
       key: 'Backup Discovery Candidates',
       help: h(hDiscoveryCandidateMax, 'Backup Discovery Candidates'),
       value: (
@@ -372,6 +384,7 @@ function BackupSettings({ selectedCluster, user }) {
       )
     },
     {
+      clusterSetting: 'backup-verification',
       key: 'Backup Verification',
       help: h(hVerification, 'Backup Verification'),
       value: (
@@ -382,6 +395,7 @@ function BackupSettings({ selectedCluster, user }) {
       )
     },
     {
+      clusterSetting: 'backup-verification-level',
       key: 'Backup Verification Level',
       help: h(hVerificationLevel, 'Backup Verification Level'),
       value: (
@@ -393,6 +407,7 @@ function BackupSettings({ selectedCluster, user }) {
       )
     },
     {
+      clusterSetting: 'backup-verification-timeout',
       key: 'Backup Verification Timeout',
       help: h(hVerificationTimeout, 'Backup Verification Timeout'),
       value: (
@@ -403,6 +418,7 @@ function BackupSettings({ selectedCluster, user }) {
       )
     },
     {
+      clusterSetting: 'backup-verification-host',
       key: 'Backup Verification Server',
       help: h(hVerificationHost, 'Backup Verification Server'),
       value: (
@@ -464,6 +480,7 @@ function BackupSettings({ selectedCluster, user }) {
         ]
       : []),
     {
+      clusterSetting: 'backup-verification-registered-proven',
       key: 'Reseed From Registered Backups Once Proven',
       help: h(hVerificationRegisteredProven, 'Reseed From Registered Backups Once Proven'),
       value: (
@@ -474,6 +491,7 @@ function BackupSettings({ selectedCluster, user }) {
       )
     },
     {
+      clusterSetting: 'backup-mysqldump-splitdump',
       key: 'Mysqldump Splitdump Output',
       help: h(hSplitDump, 'Mysqldump Splitdump Output'),
       value: (
@@ -484,6 +502,7 @@ function BackupSettings({ selectedCluster, user }) {
       )
     },
     {
+      clusterSetting: 'backup-splitdump-file-size',
       key: 'Splitdump Shard Size',
       help: h(hSplitDumpSize, 'Splitdump Shard Size'),
       value: (
@@ -494,6 +513,7 @@ function BackupSettings({ selectedCluster, user }) {
       )
     },
     {
+      clusterSetting: 'backup-splitdump-create-databases',
       key: 'Auto-create databases for splitdump restore',
       help: h(hSplitDumpCreateDatabases, 'Auto-create databases for splitdump restore'),
       value: (
@@ -510,6 +530,7 @@ function BackupSettings({ selectedCluster, user }) {
       )
     },
     {
+      clusterSetting: 'backup-restore-definer-strict',
       key: 'Strict DEFINER enforcement on restore',
       help: h(hRestoreDefinerStrict, 'Strict DEFINER enforcement on restore'),
       value: (
@@ -526,6 +547,7 @@ function BackupSettings({ selectedCluster, user }) {
       )
     },
     {
+      clusterSetting: 'replication-manager-cli-path',
       key: 'Replication Manager CLI Path',
       help: h(hCliPath, 'Replication Manager CLI Path'),
       value: (
@@ -535,6 +557,7 @@ function BackupSettings({ selectedCluster, user }) {
       )
     },
     {
+      clusterSetting: 'backup-mydumper-options',
       key: 'Mydumper Options',
       help: h(hMydumperOptions, 'Mydumper Options'),
       value: (
@@ -544,6 +567,7 @@ function BackupSettings({ selectedCluster, user }) {
       )
     },
     {
+      clusterSetting: 'backup-mydumper-regex',
       key: 'Mydumper Regex',
       help: h(hMydumperRegex, 'Mydumper Regex'),
       value: (
@@ -553,6 +577,7 @@ function BackupSettings({ selectedCluster, user }) {
       )
     },
     {
+      clusterSetting: 'backup-myloader-options',
       key: 'Myloader Options',
       help: h(hMyloaderOptions, 'Myloader Options'),
       value: (
@@ -562,6 +587,7 @@ function BackupSettings({ selectedCluster, user }) {
       )
     },
     {
+      clusterSetting: 'backup-logical-load-threads',
       key: 'Logical Restore Threads',
       help: h(hLoadThreads, 'Logical Restore Threads'),
       value: (
@@ -571,6 +597,7 @@ function BackupSettings({ selectedCluster, user }) {
       )
     },
     {
+      clusterSetting: 'backup-logical-dump-threads',
       key: 'Logical Dump Threads',
       help: h(hDumpThreads, 'Logical Dump Threads'),
       value: (
@@ -580,6 +607,7 @@ function BackupSettings({ selectedCluster, user }) {
       )
     },
     {
+      clusterSetting: 'backup-logical-remote-pickup-timeout',
       key: 'Remote Dump Pickup Timeout',
       help: h(hRemotePickup, 'Remote Dump Pickup Timeout'),
       value: (
@@ -589,6 +617,7 @@ function BackupSettings({ selectedCluster, user }) {
       )
     },
     {
+      clusterSetting: 'backup-logical-remote-report-timeout',
       key: 'Remote Dump Report Timeout',
       help: h(hRemoteReport, 'Remote Dump Report Timeout'),
       value: (
@@ -598,6 +627,7 @@ function BackupSettings({ selectedCluster, user }) {
       )
     },
     {
+      clusterSetting: 'backup-logical-remote-arm-timeout',
       key: 'Remote Dump Arm Timeout',
       help: h(hRemoteArm, 'Remote Dump Arm Timeout'),
       value: (
@@ -607,6 +637,7 @@ function BackupSettings({ selectedCluster, user }) {
       )
     },
     {
+      clusterSetting: 'backup-split-mysql-user',
       key: 'Split Logical Dump with DB Credentials',
       help: h(hSplitUser, 'Split Logical Dump with DB Credentials'),
       value: (
@@ -617,6 +648,7 @@ function BackupSettings({ selectedCluster, user }) {
       )
     },
     {
+      clusterSetting: 'backup-restore-mysql-user',
       key: 'Restore User When Reseed',
       help: h(hRestoreUser, 'Restore User When Reseed'),
       value: (
@@ -627,6 +659,7 @@ function BackupSettings({ selectedCluster, user }) {
       )
     },
     {
+      clusterSetting: 'backup-physical-type',
       key: 'Physical Backup',
       help: h(hPhysicalBackup, 'Physical Backup'),
       value: (
@@ -638,6 +671,7 @@ function BackupSettings({ selectedCluster, user }) {
       )
     },
     {
+      clusterSetting: 'backup-physical-post-script',
       key: 'Physical Backup Post-Script',
       help: h(hPhysicalPostScript, 'Physical Backup Post-Script'),
       value: (
@@ -647,6 +681,7 @@ function BackupSettings({ selectedCluster, user }) {
       )
     },
     {
+      clusterSetting: 'backup-binlog-type',
       key: 'Binlog Backup',
       help: h(hBinlogBackup, 'Binlog Backup'),
       value: (
@@ -669,6 +704,7 @@ function BackupSettings({ selectedCluster, user }) {
       )
     },
     {
+      clusterSetting: 'binlog-parse-mode',
       key: 'Binlog Parse Mode',
       help: h(hBinlogParseMode, 'Binlog Parse Mode'),
       value: (
@@ -680,6 +716,7 @@ function BackupSettings({ selectedCluster, user }) {
       )
     },
     {
+      clusterSetting: 'compress-backups',
       key: 'Use Compression',
       help: h(hCompression, 'Use Compression'),
       value: (
@@ -690,6 +727,7 @@ function BackupSettings({ selectedCluster, user }) {
       )
     },
     {
+      clusterSetting: 'compress-backups-compression-level',
       key: 'Compression Level',
       help: h(hCompressionLevel, 'Compression Level'),
       value: (
@@ -699,6 +737,7 @@ function BackupSettings({ selectedCluster, user }) {
       )
     },
     {
+      clusterSetting: 'compress-backups-parallel-blocks',
       key: 'Parallel Blocks',
       help: h(hParallelBlocks, 'Parallel Blocks'),
       value: (
@@ -708,6 +747,7 @@ function BackupSettings({ selectedCluster, user }) {
       )
     },
     {
+      clusterSetting: 'compress-backups-decompress-buffer-size',
       key: 'Decompress Buffer Size',
       help: h(hDecompressBuffer, 'Decompress Buffer Size'),
       value: (
@@ -717,6 +757,7 @@ function BackupSettings({ selectedCluster, user }) {
       )
     },
     {
+      clusterSetting: 'sst-send-buffer',
       key: 'Backup Buffer Size',
       help: h(hBackupBuffer, 'Backup Buffer Size'),
       value: (
@@ -726,6 +767,7 @@ function BackupSettings({ selectedCluster, user }) {
       )
     },
     {
+      clusterSetting: 'backup-binlogs',
       key: 'Backup Binlogs',
       help: h(hBackupBinlogs, 'Backup Binlogs'),
       value: (
@@ -736,6 +778,7 @@ function BackupSettings({ selectedCluster, user }) {
       )
     },
     {
+      clusterSetting: 'backup-binlogs-keep',
       key: 'Backup Binlogs Keep Files',
       help: h(hBackupBinlogsKeep, 'Backup Binlogs Keep Files'),
       value: (
@@ -745,6 +788,7 @@ function BackupSettings({ selectedCluster, user }) {
       )
     },
     {
+      clusterSetting: 'force-binlog-purge',
       key: 'Enforce Binlog Purge',
       help: h(hEnforcePurge, 'Enforce Binlog Purge'),
       value: (
@@ -755,6 +799,7 @@ function BackupSettings({ selectedCluster, user }) {
       )
     },
     {
+      clusterSetting: 'force-binlog-purge-total-size',
       key: 'Max Binlog Total Size (GB)',
       help: h(hMaxBinlogSize, 'Max Binlog Total Size'),
       value: (
@@ -769,6 +814,7 @@ function BackupSettings({ selectedCluster, user }) {
       )
     },
     {
+      clusterSetting: 'force-binlog-purge-min-replica',
       key: 'Minimum Replicas for Purging',
       help: h(hMinReplicas, 'Minimum Replicas Needed for Purging'),
       value: (
@@ -778,6 +824,7 @@ function BackupSettings({ selectedCluster, user }) {
       )
     },
     {
+      clusterSetting: 'force-binlog-purge-on-restore',
       key: 'Enforce Binlog Purge on Restore',
       help: h(hPurgeOnRestore, 'Enforce Binlog Purge on Restore'),
       value: (
@@ -788,6 +835,7 @@ function BackupSettings({ selectedCluster, user }) {
       )
     },
     {
+      clusterSetting: 'force-binlog-purge-replicas',
       key: 'Enforce Binlog Purge on Replicas',
       help: h(hPurgeOnReplicas, 'Enforce Binlog Purge on Replicas'),
       value: (
@@ -800,14 +848,14 @@ function BackupSettings({ selectedCluster, user }) {
     {
       key: 'Check Free Space',
       value: [
-        { key: 'Check Free Space Before Backup', help: h(hCheckFreeSpace, 'Check Free Space Before Backup'), value: (<RMSwitch isChecked={selectedCluster?.config?.backupCheckFreeSpace} isDisabled={user?.grants['cluster-settings'] == false} confirmTitle={'Confirm switch settings for backup-check-free-space?'} onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'backup-check-free-space' }))} />) },
+        { clusterSetting: 'backup-check-free-space', key: 'Check Free Space Before Backup', help: h(hCheckFreeSpace, 'Check Free Space Before Backup'), value: (<RMSwitch isChecked={selectedCluster?.config?.backupCheckFreeSpace} isDisabled={user?.grants['cluster-settings'] == false} confirmTitle={'Confirm switch settings for backup-check-free-space?'} onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'backup-check-free-space' }))} />) },
         ...(selectedCluster?.config?.backupCheckFreeSpace ? [
-          { key: 'Disk Usage Warning Threshold', help: h(hDiskWarn, 'Disk Usage Warning Threshold'), value: (<NumberInput min={1} max={100} value={selectedCluster?.config?.backupDiskTresholdWarn} showEditButton={true} showConfirmModal={true} confirmTitle={`Confirm change 'backup-disk-treshold-warn' to: `} onConfirm={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'backup-disk-treshold-warn', value }))} />) },
-          { key: 'Disk Usage Critical Threshold', help: h(hDiskCrit, 'Disk Usage Critical Threshold'), value: (<NumberInput min={1} max={100} value={selectedCluster?.config?.backupDiskTresholdCrit} showEditButton={true} showConfirmModal={true} confirmTitle={`Confirm change 'backup-disk-treshold-crit' to: `} onConfirm={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'backup-disk-treshold-crit', value }))} />) },
-          { key: 'Estimate Backup Size', help: h(hEstimateSize, 'Estimate Backup Size'), value: (<RMSwitch isChecked={selectedCluster?.config?.backupEstimateSize} isDisabled={user?.grants['cluster-settings'] == false} confirmTitle={'Confirm switch settings for backup-estimate-size?'} onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'backup-estimate-size' }))} />) },
+          { clusterSetting: 'backup-disk-treshold-warn', key: 'Disk Usage Warning Threshold', help: h(hDiskWarn, 'Disk Usage Warning Threshold'), value: (<NumberInput min={1} max={100} value={selectedCluster?.config?.backupDiskTresholdWarn} showEditButton={true} showConfirmModal={true} confirmTitle={`Confirm change 'backup-disk-treshold-warn' to: `} onConfirm={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'backup-disk-treshold-warn', value }))} />) },
+          { clusterSetting: 'backup-disk-treshold-crit', key: 'Disk Usage Critical Threshold', help: h(hDiskCrit, 'Disk Usage Critical Threshold'), value: (<NumberInput min={1} max={100} value={selectedCluster?.config?.backupDiskTresholdCrit} showEditButton={true} showConfirmModal={true} confirmTitle={`Confirm change 'backup-disk-treshold-crit' to: `} onConfirm={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'backup-disk-treshold-crit', value }))} />) },
+          { clusterSetting: 'backup-estimate-size', key: 'Estimate Backup Size', help: h(hEstimateSize, 'Estimate Backup Size'), value: (<RMSwitch isChecked={selectedCluster?.config?.backupEstimateSize} isDisabled={user?.grants['cluster-settings'] == false} confirmTitle={'Confirm switch settings for backup-estimate-size?'} onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'backup-estimate-size' }))} />) },
           ...(selectedCluster?.config?.backupEstimateSize ? [
-            { key: 'Backup Growth Percentage', help: h(hGrowthPercentage, 'Last Backup Growth Percentage'), value: (<NumberInput min={1} value={selectedCluster?.config?.backupGrowthPercentage} showEditButton={true} showConfirmModal={true} confirmTitle={`Confirm change 'backup-growth-percentage' to: `} onConfirm={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'backup-growth-percentage', value }))} />) },
-            { key: 'Estimation from information_schema (%)', help: h(hEstimatePercentage, 'Backup Estimation Percentage from information_schema'), value: (<NumberInput min={1} value={selectedCluster?.config?.backupEstimateSizePercentage} showEditButton={true} showConfirmModal={true} confirmTitle={`Confirm change 'backup-estimate-size-percentage' to: `} onConfirm={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'backup-estimate-size-percentage', value }))} />) },
+            { clusterSetting: 'backup-growth-percentage', key: 'Backup Growth Percentage', help: h(hGrowthPercentage, 'Last Backup Growth Percentage'), value: (<NumberInput min={1} value={selectedCluster?.config?.backupGrowthPercentage} showEditButton={true} showConfirmModal={true} confirmTitle={`Confirm change 'backup-growth-percentage' to: `} onConfirm={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'backup-growth-percentage', value }))} />) },
+            { clusterSetting: 'backup-estimate-size-percentage', key: 'Estimation from information_schema (%)', help: h(hEstimatePercentage, 'Backup Estimation Percentage from information_schema'), value: (<NumberInput min={1} value={selectedCluster?.config?.backupEstimateSizePercentage} showEditButton={true} showConfirmModal={true} confirmTitle={`Confirm change 'backup-estimate-size-percentage' to: `} onConfirm={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'backup-estimate-size-percentage', value }))} />) },
           ] : [])
         ] : [])
       ]
@@ -819,6 +867,7 @@ function BackupSettings({ selectedCluster, user }) {
       help: h(hBackupMount, 'Backups Folder Mount'),
       value: [
         {
+          clusterSetting: 'backup-streaming',
           key: 'Mount S3 Bucket',
           help: h(hBackupMount, 'Backups Folder Mount'),
           value: (<RMSwitch isChecked={!!selectedCluster?.config?.backupStreaming}
@@ -826,6 +875,7 @@ function BackupSettings({ selectedCluster, user }) {
             onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'backup-streaming' }))} />)
         },
         {
+          clusterSetting: 'backup-streaming-provider',
           key: 'S3 Provider',
           help: h(hMountProvider, 'Backups Mount S3 Provider'),
           value: (
@@ -839,6 +889,7 @@ function BackupSettings({ selectedCluster, user }) {
           )
         },
         {
+          clusterSetting: 'backup-streaming-bucket',
           key: 'S3 Bucket',
           help: h(hMountBucket, 'Backups Mount S3 Bucket'),
           value: (<TextForm value={selectedCluster?.config?.backupStreamingBucket} confirmTitle={`Confirm backup-streaming-bucket to `} className={styles.textbox}

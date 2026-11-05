@@ -2111,17 +2111,34 @@ func (conf *Config) GetImmuableFlag(key string) (interface{}, bool) {
 	return v, ok
 }
 
-// ImmuableFlagNames lists, sorted, the keys the immutable configuration sets (the configuration
-// file, the command line, the environment): names only, never their values (#2268).
-func (conf *Config) ImmuableFlagNames() []string {
+// ImmuableFlagValues maps each key the immutable configuration sets to the value it sets there,
+// as text, for the GUI's lock tooltips (#2268). A secret's value is never sent (F10): it is
+// SecretMask, as on every API path, and so is a key whose name says it holds one.
+func (conf *Config) ImmuableFlagValues() map[string]string {
 	flagMapMu.RLock()
-	defer flagMapMu.RUnlock()
-	names := make([]string, 0, len(conf.ImmuableFlagMap))
-	for k := range conf.ImmuableFlagMap {
-		names = append(names, k)
+	values := make(map[string]string, len(conf.ImmuableFlagMap))
+	for k, v := range conf.ImmuableFlagMap {
+		values[k] = fmt.Sprint(v)
 	}
-	sort.Strings(names)
-	return names
+	flagMapMu.RUnlock()
+	for k := range values {
+		if _, secret := conf.Secrets.Lookup(k); secret || looksLikeSecretKey(k) {
+			values[k] = SecretMask
+		}
+	}
+	return values
+}
+
+// looksLikeSecretKey: a key whose name says it holds a secret, masked even when the secret
+// registry does not know it (defence in depth for the lock tooltips).
+func looksLikeSecretKey(key string) bool {
+	k := strings.ToLower(key)
+	for _, word := range []string{"password", "credential", "secret", "token", "passphrase", "private-key", "api-key"} {
+		if strings.Contains(k, word) {
+			return true
+		}
+	}
+	return false
 }
 
 // SetImmuableFlag writes key into the immutable config map, created when there is none.

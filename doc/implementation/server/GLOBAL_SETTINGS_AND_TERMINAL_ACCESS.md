@@ -28,15 +28,28 @@ it in memory until then. `setServerSetting` and `switchServerSetting` now refuse
 (`errImmutableGlobalSetting`, a 403 logged as `global_setting_denied`), for every caller, the
 admin included: such a setting is changed on the host, in the file.
 
-### In the GUI: a lock (#2268)
+### In the GUI: a lock, and a rollback lock for the cluster settings (#2268)
 
-`/api/monitor` lists the immutable keys as `immutableSettings`: the names only (`Conf.ImmuableFlagNames`),
-never their values, and only to a logged-in caller (the route also answers without a token). The
-global settings pages tag each row of the settings table with the key its control changes
-(`globalSetting`); the table (`components/TableType2`) shows a small lock next to the label of a
-locked key, with the popup "Locked from system config", and disables its controls (a disabled
-`fieldset`, `components/SettingLock`). The server refuses the change either way: the lock only
-says so before the click.
+`/api/monitor` (the global settings) and `/api/clusters/{name}` (the cluster's) carry
+`immutableSettings`: each key the system config sets (the configuration file, the command line,
+the environment) with its value there, as text (`Conf.ImmuableFlagValues`). A secret's value is
+never sent: it is `SecretMask`, as on every API path, for a key the secret registry knows or whose
+name says it holds one (password, credential, secret, token...). `/api/monitor` sends it only to a
+logged-in caller (the route also answers without a token); the cluster route is behind its ACL.
+
+The settings pages tag each row of the settings table with the key its control changes:
+`globalSetting` on the global pages, `clusterSetting` on the cluster pages (`components/TableType2`,
+`components/SettingLock`):
+
+- a **global** setting set in the system config gets a lock, its controls disabled: the API refuses
+  the change (`immutableGlobalSetting`). Tooltip: "Locked from system config", and its value there;
+- a **cluster** setting set in the system config gets a rollback lock, its controls editable: the
+  API accepts the change, for a test, and the next restart rolls it back to the system config
+  (`setClusterSetting` logs a warning). Tooltip: "Set in system config: a change here is rolled back
+  at the next restart", and the value it rolls back to.
+
+A row whose control goes through a helper that does not take the key as its first `setting`
+argument is not tagged yet.
 
 ## Terminal: the logins `terminal-session-auth` names
 

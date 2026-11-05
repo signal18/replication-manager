@@ -53,6 +53,7 @@ function ProxyConfig({ selectedCluster, user }) {
 
   const dataObject = [
     {
+      clusterSetting: 'prov-proxy-start-fetch-config',
       key: 'Proxy Start Fetch Config',
       value: (
         <RMSwitch
@@ -66,6 +67,7 @@ function ProxyConfig({ selectedCluster, user }) {
       )
     },
     {
+      clusterSetting: 'prov-proxy-single-failover',
       key: 'Single Proxy Failover',
       value: (
         <RMSwitch
@@ -160,6 +162,7 @@ function ProxyConfig({ selectedCluster, user }) {
       )
     },
     {
+      clusterSetting: 'prov-proxy-memory',
       key: 'Resources',
       value: (
         <Flex className={styles.resources}>

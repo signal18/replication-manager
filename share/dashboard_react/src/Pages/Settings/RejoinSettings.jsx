@@ -39,15 +39,15 @@ function RejoinSettings({ selectedCluster, user, openConfirmModal }) {
   const hAutoseed = `**Auto Seed From Backup Standalone Server**\n\nAutomatically seeds a standalone server from the latest backup and adds it to the replication topology.\n\nConfig: \`autoseed\``
 
   const dataObject = [
-    { key: 'Failback', help: h(hFailback, 'Failback'), value: sw('autorejoin', 'autorejoin', arLoading) },
-    { key: 'Failback Backup Extra Events', help: h(hBinlog, 'Failback Backup Extra Events'), value: sw('autorejoin-backup-binlog', 'autorejoinBackupBinlog', arBackupBinlogLoading) },
-    { key: 'Failback Flashback When Semi-Sync Status Sync', help: h(hFlashbackSync, 'Failback Flashback When Semi-Sync Status Sync'), value: sw('autorejoin-flashback-on-sync', 'autorejoinFlashbackOnSync', arFlashbackOnSyncLoading) },
-    { key: 'Failback Binlog Flashback', help: h(hFlashback, 'Failback Binlog Flashback'), value: sw('autorejoin-flashback', 'autorejoinFlashback', arFlashbackLoading) },
-    { key: 'Failback Direct Master Dump', help: h(hDump, 'Failback Direct Master Dump'), value: sw('autorejoin-mysqldump', 'autorejoinMysqldump', arMysqldumpLoading) },
-    { key: 'Failback Via Logical Backup', help: h(hLogical, 'Failback Via Logical Backup'), value: sw('autorejoin-logical-backup', 'autorejoinLogicalBackup', arLogicalBackupLoading) },
-    { key: 'Failback Via Physical Backup', help: h(hPhysical, 'Failback Via Physical Backup'), value: sw('autorejoin-physical-backup', 'autorejoinPhysicalBackup', arPhysicalBackupLoading) },
-    { key: 'Force Rejoin With Restore', help: h(hForce, 'Force Rejoin With Restore'), value: sw('autorejoin-force-restore', 'autorejoinForceRestore', arForceRestoreLoading) },
-    { key: 'Auto Seed From Backup Standalone Server', help: h(hAutoseed, 'Auto Seed From Backup Standalone Server'), value: sw('autoseed', 'autoseed', autoseedLoading) },
+    { clusterSetting: 'autorejoin', key: 'Failback', help: h(hFailback, 'Failback'), value: sw('autorejoin', 'autorejoin', arLoading) },
+    { clusterSetting: 'autorejoin-backup-binlog', key: 'Failback Backup Extra Events', help: h(hBinlog, 'Failback Backup Extra Events'), value: sw('autorejoin-backup-binlog', 'autorejoinBackupBinlog', arBackupBinlogLoading) },
+    { clusterSetting: 'autorejoin-flashback-on-sync', key: 'Failback Flashback When Semi-Sync Status Sync', help: h(hFlashbackSync, 'Failback Flashback When Semi-Sync Status Sync'), value: sw('autorejoin-flashback-on-sync', 'autorejoinFlashbackOnSync', arFlashbackOnSyncLoading) },
+    { clusterSetting: 'autorejoin-flashback', key: 'Failback Binlog Flashback', help: h(hFlashback, 'Failback Binlog Flashback'), value: sw('autorejoin-flashback', 'autorejoinFlashback', arFlashbackLoading) },
+    { clusterSetting: 'autorejoin-mysqldump', key: 'Failback Direct Master Dump', help: h(hDump, 'Failback Direct Master Dump'), value: sw('autorejoin-mysqldump', 'autorejoinMysqldump', arMysqldumpLoading) },
+    { clusterSetting: 'autorejoin-logical-backup', key: 'Failback Via Logical Backup', help: h(hLogical, 'Failback Via Logical Backup'), value: sw('autorejoin-logical-backup', 'autorejoinLogicalBackup', arLogicalBackupLoading) },
+    { clusterSetting: 'autorejoin-physical-backup', key: 'Failback Via Physical Backup', help: h(hPhysical, 'Failback Via Physical Backup'), value: sw('autorejoin-physical-backup', 'autorejoinPhysicalBackup', arPhysicalBackupLoading) },
+    { clusterSetting: 'autorejoin-force-restore', key: 'Force Rejoin With Restore', help: h(hForce, 'Force Rejoin With Restore'), value: sw('autorejoin-force-restore', 'autorejoinForceRestore', arForceRestoreLoading) },
+    { clusterSetting: 'autoseed', key: 'Auto Seed From Backup Standalone Server', help: h(hAutoseed, 'Auto Seed From Backup Standalone Server'), value: sw('autoseed', 'autoseed', autoseedLoading) },
   ]
 
   return (

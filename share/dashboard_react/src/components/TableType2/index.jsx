@@ -31,7 +31,7 @@ function TableType2({
       {dataArray.map((item, index) => (
         <React.Fragment key={index}>
           <GridItem className={`${styles.row} ${rowClassName}`}>
-            <Box className={`${styles.label} ${labelClassName}`}><SettingLabel setting={item.globalSetting}>{item.key}</SettingLabel></Box>
+            <Box className={`${styles.label} ${labelClassName}`}><SettingLabel setting={item.globalSetting} clusterSetting={item.clusterSetting}>{item.key}</SettingLabel></Box>
           </GridItem>
           {renderHelpCell(item.help)}
           {Array.isArray(item.value) ? (
@@ -53,7 +53,7 @@ function TableType2({
                       {subItem.key && (
                         <GridItem colSpan={span} className={`${styles.row} ${rowClassName}`}>
                           <Box className={`${styles.label} ${styles.subLabel}`} pl={3}>
-                            <SettingLabel setting={subItem.globalSetting}>{subItem.key}</SettingLabel>
+                            <SettingLabel setting={subItem.globalSetting} clusterSetting={subItem.clusterSetting}>{subItem.key}</SettingLabel>
                           </Box>
                         </GridItem>
                       )}
@@ -65,7 +65,7 @@ function TableType2({
                     <>
                       <GridItem className={`${styles.row} ${rowClassName}`}>
                         <Box className={`${styles.label} ${styles.subLabel}`} pl={3}>
-                          <SettingLabel setting={subItem.globalSetting}>{subItem.key}</SettingLabel>
+                          <SettingLabel setting={subItem.globalSetting} clusterSetting={subItem.clusterSetting}>{subItem.key}</SettingLabel>
                         </Box>
                       </GridItem>
                       {renderHelpCell(subItem.help, true)}

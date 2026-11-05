@@ -71,9 +71,11 @@ function LogsSettings({ selectedCluster, user }) {
 
   const dataObject = [
     {
+      clusterSetting: 'verbose',
       key: 'Global',
       value: [
         {
+          clusterSetting: 'verbose',
           key: 'Verbose Mode',
           help: h(hVerbose, 'Verbose Mode'),
           value: (
@@ -86,6 +88,7 @@ function LogsSettings({ selectedCluster, user }) {
           )
         },
         {
+          clusterSetting: 'log-syslog',
           key: 'Log to SysLog',
           help: h(hSyslog, 'Log to SysLog'),
           value: (
@@ -97,19 +100,21 @@ function LogsSettings({ selectedCluster, user }) {
             />
           )
         },
-        { key: 'Log Level', help: h(hLogLevel, 'Log Level'), value: sl('log-level', 'logLevel') }
+        { clusterSetting: 'log-level', key: 'Log Level', help: h(hLogLevel, 'Log Level'), value: sl('log-level', 'logLevel') }
       ]
     },
     {
       key: 'Monitoring SQL',
       value: [
-        { key: 'Log SQL in Monitoring', help: h(hLogSql, 'Log SQL in Monitoring'), value: sl('log-level-sql', 'logSqlLevel') }
+        { clusterSetting: 'log-level-sql', key: 'Log SQL in Monitoring', help: h(hLogSql, 'Log SQL in Monitoring'), value: sl('log-level-sql', 'logSqlLevel') }
       ]
     },
     {
+      clusterSetting: 'print-delay-stat',
       key: 'Replication Statistics',
       value: [
         {
+          clusterSetting: 'print-delay-stat',
           key: 'Log Replication Statistics Print',
           help: h(hRepStatPrint, 'Log Replication Statistics Print'),
           value: (
@@ -122,6 +127,7 @@ function LogsSettings({ selectedCluster, user }) {
           )
         },
         {
+          clusterSetting: 'print-delay-stat-history',
           key: 'Log Replication Statistics Print History',
           help: h(hRepStatPrintHistory, 'Log Replication Statistics Print History'),
           value: (
@@ -134,6 +140,7 @@ function LogsSettings({ selectedCluster, user }) {
           )
         },
         {
+          clusterSetting: 'print-delay-stat-interval',
           key: 'Log Replication Statistics Print Interval',
           help: h(hRepStatPrintInterval, 'Log Replication Statistics Print Interval'),
           value: (
@@ -159,14 +166,16 @@ function LogsSettings({ selectedCluster, user }) {
     {
       key: 'Cluster Operations',
       value: [
-        { key: 'Log DB Jobs', help: h(lh('Log DB Jobs', 'log-level-task'), 'Log DB Jobs'), value: sl('log-level-task', 'logTaskLevel') },
+        { clusterSetting: 'log-level-task', key: 'Log DB Jobs', help: h(lh('Log DB Jobs', 'log-level-task'), 'Log DB Jobs'), value: sl('log-level-task', 'logTaskLevel') },
         {
+          clusterSetting: 'log-level-writer-election',
           key: 'Log Writer Election',
           help: h(lh('Log Writer Election', 'log-level-writer-election'), 'Log Writer Election'),
           value: sl('log-level-writer-election', 'logWriterElectionLevel')
         },
-        { key: 'Log SST', help: h(lh('Log SST', 'log-level-sst'), 'Log SST'), value: sl('log-level-sst', 'logSstLevel') },
+        { clusterSetting: 'log-level-sst', key: 'Log SST', help: h(lh('Log SST', 'log-level-sst'), 'Log SST'), value: sl('log-level-sst', 'logSstLevel') },
         {
+          clusterSetting: 'log-level-binlog-purge',
           key: 'Log Binlog Purge',
           help: h(lh('Log Binlog Purge', 'log-level-binlog-purge'), 'Log Binlog Purge'),
           value: sl('log-level-binlog-purge', 'logBinlogPurgeLevel')
@@ -174,9 +183,11 @@ function LogsSettings({ selectedCluster, user }) {
       ]
     },
     {
+      clusterSetting: 'log-arbitration',
       key: 'Core Monitoring',
       value: [
         {
+          clusterSetting: 'log-arbitration',
           key: 'Log Arbitration',
           value: (
             <RMSwitch
@@ -188,21 +199,25 @@ function LogsSettings({ selectedCluster, user }) {
           )
         },
         {
+          clusterSetting: 'log-level-arbitration',
           key: 'Log Arbitration Level',
           help: h(lh('Log Arbitration Level', 'log-level-arbitration'), 'Log Arbitration Level'),
           value: sl('log-level-arbitration', 'logArbitrationLevel')
         },
         {
+          clusterSetting: 'log-level-config-load',
           key: 'Log Config Load',
           help: h(lh('Log Config Load', 'log-level-config-load'), 'Log Config Load'),
           value: sl('log-level-config-load', 'logConfigLoadLevel')
         },
         {
+          clusterSetting: 'log-level-orchestrator',
           key: 'Log Orchestrator',
           help: h(lh('Log Orchestrator', 'log-level-orchestrator'), 'Log Orchestrator'),
           value: sl('log-level-orchestrator', 'logOrchestratorLevel')
         },
         {
+          clusterSetting: 'log-level-topology',
           key: 'Log Topology Detection',
           help: h(lh('Log Topology Detection', 'log-level-topology'), 'Log Topology Detection'),
           value: sl('log-level-topology', 'logTopologyLevel')
@@ -213,16 +228,19 @@ function LogsSettings({ selectedCluster, user }) {
       key: 'Backup & Restore',
       value: [
         {
+          clusterSetting: 'log-level-backup-stream',
           key: 'Log Backup Stream',
           help: h(lh('Log Backup Stream', 'log-level-backup-stream'), 'Log Backup Stream'),
           value: sl('log-level-backup-stream', 'logBackupStreamLevel')
         },
         {
+          clusterSetting: 'log-level-restic',
           key: 'Log Restic',
           help: h(lh('Log Restic', 'log-level-restic'), 'Log Restic'),
           value: sl('log-level-restic', 'logResticLevel')
         },
         {
+          clusterSetting: 'log-level-vault',
           key: 'Log Vault',
           help: h(lh('Log Vault', 'log-level-vault'), 'Log Vault'),
           value: sl('log-level-vault', 'logVaultLevel')
@@ -233,26 +251,31 @@ function LogsSettings({ selectedCluster, user }) {
       key: 'Database Log Collection',
       value: [
         {
+          clusterSetting: 'log-level-database-audit',
           key: 'Log Fetch Audit Log',
           help: h(lh('Log Fetch Audit Log', 'log-level-database-audit'), 'Log Fetch Audit Log'),
           value: sl('log-level-database-audit', 'logLevelDatabaseAudit')
         },
         {
+          clusterSetting: 'log-level-database-errors',
           key: 'Log Fetch Error Log',
           help: h(lh('Log Fetch Error Log', 'log-level-database-errors'), 'Log Fetch Error Log'),
           value: sl('log-level-database-errors', 'logLevelDatabaseErrors')
         },
         {
+          clusterSetting: 'log-level-database-sql-errors',
           key: 'Log Fetch SQL Error Log',
           help: h(lh('Log Fetch SQL Error Log', 'log-level-database-sql-errors'), 'Log Fetch SQL Error Log'),
           value: sl('log-level-database-sql-errors', 'logLevelDatabaseSqlErrors')
         },
         {
+          clusterSetting: 'log-level-database-slowquery',
           key: 'Log Fetch Slow Query',
           help: h(lh('Log Fetch Slow Query', 'log-level-database-slowquery'), 'Log Fetch Slow Query'),
           value: sl('log-level-database-slowquery', 'logLevelDatabaseSlowquery')
         },
         {
+          clusterSetting: 'log-level-database-optimize',
           key: 'Log DB Optimize',
           help: h(lh('Log DB Optimize', 'log-level-database-optimize'), 'Log DB Optimize'),
           value: sl('log-level-database-optimize', 'logLevelDatabaseOptimize')
@@ -260,9 +283,11 @@ function LogsSettings({ selectedCluster, user }) {
       ]
     },
     {
+      clusterSetting: 'db-log-rotate',
       key: 'DB Log Retention',
       value: [
         {
+          clusterSetting: 'db-log-rotate',
           key: 'DB Log Rotation',
           help: h(hDbLogRotate, 'DB Log Rotation'),
           value: (
@@ -275,6 +300,7 @@ function LogsSettings({ selectedCluster, user }) {
           )
         },
         {
+          clusterSetting: 'db-log-on-backup-storage',
           key: 'Use Backup Storage for DB Logs',
           help: h(hDbLogOnBackupStorage, 'Use Backup Storage for DB Logs'),
           value: (
@@ -287,6 +313,7 @@ function LogsSettings({ selectedCluster, user }) {
           )
         },
         {
+          clusterSetting: 'db-log-rotate-max-size',
           key: 'DB Log Rotate Max Size (MB)',
           help: h(hDbLogRotateMaxSize, 'DB Log Rotate Max Size (MB)'),
           value: (
@@ -303,6 +330,7 @@ function LogsSettings({ selectedCluster, user }) {
           )
         },
         {
+          clusterSetting: 'db-log-rotate-max-backup',
           key: 'DB Log Rotate Max Backups',
           help: h(hDbLogRotateMaxBackup, 'DB Log Rotate Max Backups'),
           value: (
@@ -319,6 +347,7 @@ function LogsSettings({ selectedCluster, user }) {
           )
         },
         {
+          clusterSetting: 'db-log-rotate-max-age',
           key: 'DB Log Rotate Max Age (days)',
           help: h(hDbLogRotateMaxAge, 'DB Log Rotate Max Age (days)'),
           value: (
@@ -340,21 +369,25 @@ function LogsSettings({ selectedCluster, user }) {
       key: 'External Integrations',
       value: [
         {
+          clusterSetting: 'log-level-graphite',
           key: 'Log Graphite',
           help: h(lh('Log Graphite', 'log-level-graphite'), 'Log Graphite'),
           value: sl('log-level-graphite', 'logGraphiteLevel')
         },
         {
+          clusterSetting: 'log-level-mailer',
           key: 'Log Mailer',
           help: h(lh('Log Mailer', 'log-level-mailer'), 'Log Mailer'),
           value: sl('log-level-mailer', 'logMailerLevel')
         },
         {
+          clusterSetting: 'log-level-external-script',
           key: 'Log External Script',
           help: h(lh('Log External Script', 'log-level-external-script'), 'Log External Script'),
           value: sl('log-level-external-script', 'logExternalScriptLevel')
         },
         {
+          clusterSetting: 'log-level-support',
           key: 'Log Support',
           help: h(lh('Log Support', 'log-level-support'), 'Log Support'),
           value: sl('log-level-support', 'logSupportLevel')
@@ -364,15 +397,16 @@ function LogsSettings({ selectedCluster, user }) {
     {
       key: 'Proxies',
       value: [
-        { key: 'Log Proxy', help: h(lh('Log Proxy', 'log-level-proxy'), 'Log Proxy'), value: sl('log-level-proxy', 'logProxyLevel') },
-        { key: 'Log HAProxy', help: h(lh('Log HAProxy', 'log-level-haproxy'), 'Log HAProxy'), value: sl('log-level-haproxy', 'haproxyLogLevel') },
-        { key: 'Log ProxySQL', help: h(lh('Log ProxySQL', 'log-level-proxysql'), 'Log ProxySQL'), value: sl('log-level-proxysql', 'proxysqlLogLevel') },
+        { clusterSetting: 'log-level-proxy', key: 'Log Proxy', help: h(lh('Log Proxy', 'log-level-proxy'), 'Log Proxy'), value: sl('log-level-proxy', 'logProxyLevel') },
+        { clusterSetting: 'log-level-haproxy', key: 'Log HAProxy', help: h(lh('Log HAProxy', 'log-level-haproxy'), 'Log HAProxy'), value: sl('log-level-haproxy', 'haproxyLogLevel') },
+        { clusterSetting: 'log-level-proxysql', key: 'Log ProxySQL', help: h(lh('Log ProxySQL', 'log-level-proxysql'), 'Log ProxySQL'), value: sl('log-level-proxysql', 'proxysqlLogLevel') },
         {
+          clusterSetting: 'log-level-proxyjanitor',
           key: 'Log Proxy Janitor',
           help: h(lh('Log Proxy Janitor', 'log-level-proxyjanitor'), 'Log Proxy Janitor'),
           value: sl('log-level-proxyjanitor', 'proxyjanitorLogLevel')
         },
-        { key: 'Log Maxscale', help: h(lh('Log Maxscale', 'log-level-maxscale'), 'Log Maxscale'), value: sl('log-level-maxscale', 'maxscaleLogLevel') }
+        { clusterSetting: 'log-level-maxscale', key: 'Log Maxscale', help: h(lh('Log Maxscale', 'log-level-maxscale'), 'Log Maxscale'), value: sl('log-level-maxscale', 'maxscaleLogLevel') }
       ]
     }
   ]

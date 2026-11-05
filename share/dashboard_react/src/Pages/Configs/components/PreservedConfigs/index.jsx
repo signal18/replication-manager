@@ -140,6 +140,7 @@ function PreservedConfigs({ selectedCluster, user }) {
     
     const dataObject = [
         {
+          clusterSetting: 'prov-db-config-preserve',
           key: 'Enable Preserve Variables',
           value: (
             <RMSwitch

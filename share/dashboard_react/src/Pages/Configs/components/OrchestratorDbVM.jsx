@@ -33,6 +33,7 @@ function OrchestratorDbVM({ selectedCluster, user }) {
 
   const dataObject = [
     {
+      clusterSetting: 'prov-db-start-timeout',
       key: 'Database Start Timeout',
       value: (
         <TextForm
@@ -45,6 +46,7 @@ function OrchestratorDbVM({ selectedCluster, user }) {
       )
     },
     {
+      clusterSetting: 'prov-proxy-start-timeout',
       key: 'Proxy Start Timeout',
       value: (
         <TextForm
@@ -57,6 +59,7 @@ function OrchestratorDbVM({ selectedCluster, user }) {
       )
     },
     {
+      clusterSetting: 'prov-db-service-type',
       key: 'Database VM',
       value: (
         <Dropdown
@@ -77,6 +80,7 @@ function OrchestratorDbVM({ selectedCluster, user }) {
       )
     },
     {
+      clusterSetting: 'prov-proxy-service-type',
       key: 'Proxy VM',
       value: (
         <Dropdown
@@ -97,6 +101,7 @@ function OrchestratorDbVM({ selectedCluster, user }) {
       )
     },
     {
+      clusterSetting: 'prov-net-cni',
       key: 'Provisioning CNI',
       value: (
         <RMSwitch
@@ -108,6 +113,7 @@ function OrchestratorDbVM({ selectedCluster, user }) {
       )
     },
     selectedCluster?.config?.provOrchestrator === 'kube' && {
+      clusterSetting: 'prov-kube-storage-class',
       key: 'Kubernetes Storage Class',
       value: (
         <Dropdown
@@ -128,6 +134,7 @@ function OrchestratorDbVM({ selectedCluster, user }) {
       )
     },
     selectedCluster?.config?.provOrchestrator === 'kube' && {
+      clusterSetting: 'prov-kube-proxy-storage-class',
       key: 'Kubernetes Proxy Storage Class',
       value: (
         <Dropdown
@@ -148,6 +155,7 @@ function OrchestratorDbVM({ selectedCluster, user }) {
       )
     },
     selectedCluster?.config?.provOrchestrator === 'kube' && {
+      clusterSetting: 'prov-kube-image-force-pull',
       key: 'Kubernetes Force Image Pull',
       value: (
         <RMSwitch
@@ -161,6 +169,7 @@ function OrchestratorDbVM({ selectedCluster, user }) {
       )
     },
     {
+      clusterSetting: 'prov-docker-daemon-private',
       key: 'Provisioning Private Docker Daemon',
       value: (
         <RMSwitch
@@ -174,6 +183,7 @@ function OrchestratorDbVM({ selectedCluster, user }) {
       )
     },
     {
+      clusterSetting: 'prov-object-allow-overwrite',
       key: 'Provisioning Allow Overwrite Config/Secret Objects',
       value: (
         <RMSwitch
