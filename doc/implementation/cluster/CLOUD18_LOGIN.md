@@ -71,6 +71,19 @@ issuer is the realm): an instance not registered to Cloud18 never trusts the rea
   (`peerLoginAsIdentity`), got from the session (`cloud18TokenFor`: the token it came with, or one
   refreshed from its `cloud18` refresh token, one refresh per token lifetime, `Cloud18LoginAccess`). The
   password is sent only when that instance refuses the token (an older release) and the session has one.
+- The instance acting as itself (#2327: a local admin entering a peer, `DynamicPeerHandler`; the MCP tools
+  as the instance, `peerLoginAs` in `instance` mode): logged in with a realm token of the account the
+  instance is registered with (`cloud18-gitlab-user`), never with that account's password alone. Before
+  #2327 the password went to the peer, which could check it only when it knew it locally (a peer
+  registered with the same account) or through the realm login of a person; a peer registered with
+  another account (a partner's own) refused it, and its lockout (3 min after repeated failures) kept the
+  account locked as long as the calls went on. `config.Cloud18InstanceLoginToken` logs the account in
+  once with the person's login (`Cloud18Login`), keeps its refresh token in memory (one per instance, lost
+  at a restart) and takes the next tokens from it (`Cloud18LoginAccess`). A login that fails is not tried
+  again for 10 minutes (`cloud18InstanceLoginRefusedWait`): each try walks the whole login, and a wrong
+  password retried at every call would lock the account on the realm. A changed account or password starts
+  a new login at once. Without a token (realm out of reach, login refused) the password goes, as before,
+  and the peer still decides.
 
 ## Realm setup
 

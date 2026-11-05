@@ -11,6 +11,7 @@ import (
 
 	"github.com/klauspost/compress/zstd"
 	"github.com/klauspost/pgzip"
+	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/peer"
 	log "github.com/sirupsen/logrus"
 )
@@ -42,6 +43,20 @@ func (repman *ReplicationManager) peerLoginAsIdentity(parsedPeerURL *url.URL, id
 		}
 	}
 	return repman.PeerLogin(parsedPeerURL, userCredentials{Username: id.user, Password: id.password})
+}
+
+// instancePeerBearer is the realm token of the account the instance is registered with, sent to
+// another instance when this one acts as itself (#2327), so the peer does not have to know the
+// account's password. "" when there is none (realm out of reach, login refused): the password
+// goes, as before.
+func (repman *ReplicationManager) instancePeerBearer() string {
+	t, err := repman.Conf.Cloud18InstanceLoginToken()
+	if err != nil {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg,
+			"no Cloud18 token of this instance for the other instances, the password is sent: %s", err)
+		return ""
+	}
+	return t
 }
 
 // peerLoginRequest posts a login to another instance, with a bearer when one is given.
