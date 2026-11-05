@@ -81,11 +81,11 @@ function ProxyConfig({ selectedCluster, user }) {
       )
     },
     {
-      key: 'Manage Tags',
+      key: 'Manage Config Fragments',
       value: (
         <VStack className={styles.configTagContainer}>
           <VStack className={`${styles.availableTags} ${styles.proxyTags}`}>
-            <h4 className={styles.sectionTitle}>{'Available Tags'}</h4>
+            <h4 className={styles.sectionTitle}>{'Available Config Fragments'}</h4>
             <HStack className={styles.tags}>
               {availableTags.map((tag) => {
                 const isAdded = usingTags.find((x) => x.name === tag.name)
@@ -109,7 +109,7 @@ function ProxyConfig({ selectedCluster, user }) {
             </HStack>
           </VStack>
           <VStack className={`${styles.addedTags} ${styles.proxyTags}`}>
-            <h4 className={styles.sectionTitle}>{'Using Tags'}</h4>
+            <h4 className={styles.sectionTitle}>{'Used Config Fragments'}</h4>
             <HStack className={`${styles.tags} `}>
               {usingTags.map((tag) => {
                 return (
