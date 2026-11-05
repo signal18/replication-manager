@@ -759,9 +759,9 @@ Start create an account in https://gitlab.signal18.io
     },
   ] : []
 
-  // the Cloud18 tabs of the global settings (#2268): part 'registration' (the registration rows and
-  // the peering), 'support' (the subscription plan and the licence package), 'marketplace' (clusters
-  // for sale and self-service); no part shows them all
+  // the Cloud18 tabs of the global settings (#2268): part 'registration' (the registration rows),
+  // 'support' (the subscription plan and the licence package), 'marketplace' (peering, clusters for
+  // sale and self-service); no part shows them all
   const SUPPORT_ROWS = ['Subscription', 'Licence package']
   const registrationRows = part ? registrationData.filter((row) => !SUPPORT_ROWS.includes(row.key)) : registrationData
   const supportRows = registrationData.filter((row) => SUPPORT_ROWS.includes(row.key))
@@ -779,7 +779,7 @@ Start create an account in https://gitlab.signal18.io
           <TableType2 dataArray={supportRows} className={styles.tableWithHelp} helpColumn />
         </Flex>
       )}
-      {shows('registration') && peeringData.length > 0 && (
+      {shows('marketplace') && peeringData.length > 0 && (
         <>
           <Box as='h4' bg='var(--secondary-color)' color='var(--white-color)' fontWeight='bold' textTransform='uppercase' px={4} py={2} mt={4}>Peering</Box>
           <Flex justify='space-between' gap='0'>
