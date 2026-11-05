@@ -37,7 +37,7 @@ function ClustersGlobalSettings({ user }) {
     setConfirmTitle('')
   }
   // the global settings' tabs (#2268): Cloud18 (Registration / Support), Marketplace (Offers / App
-  // Templates Repo), General, Arbitration
+  // Templates Repo), General, Arbitration, AI Assistant (the MCP server)
   const [globalTab, setGlobalTab] = useState(() => parseInt(localStorage.getItem('globalSettingsTab'), 10) || 0)
   const changeGlobalTab = (index) => {
     setGlobalTab(index)
@@ -50,7 +50,7 @@ function ClustersGlobalSettings({ user }) {
       <StandbyBanner />
       <TabItems
         className={styles.fullWidthTabs}
-        options={['Cloud18', 'Marketplace', 'General', 'Arbitration']}
+        options={['Cloud18', 'Marketplace', 'General', 'Arbitration', 'AI Assistant']}
         tabIndex={globalTab}
         onChange={changeGlobalTab}
         tabContents={[
@@ -87,8 +87,9 @@ function ClustersGlobalSettings({ user }) {
           />
             ]}
           />,
-          <GlobalSettings key='general' config={monitor?.config} openConfirmModal={openConfirmModal} cards={['Global Settings', 'Logs', 'AI Assistant (MCP)']} />,
-          <ArbitrationSettings key='arbitration' config={monitor?.config} />
+          <GlobalSettings key='general' config={monitor?.config} openConfirmModal={openConfirmModal} cards={['Global Settings', 'Logs']} />,
+          <ArbitrationSettings key='arbitration' config={monitor?.config} />,
+          <GlobalSettings key='assistant' config={monitor?.config} openConfirmModal={openConfirmModal} cards={['AI Assistant (MCP)']} />
         ]}
       />
 
