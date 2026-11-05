@@ -22,3 +22,11 @@
 .sectionFrameBody {
   padding: 12px 16px 16px 16px;
 }
+
+// the message of a frame with nothing to set
+.sectionFrameEmpty {
+  color: var(--text-color);
+  opacity: 0.7;
+  font-style: italic;
+  padding: 4px 0;
+}

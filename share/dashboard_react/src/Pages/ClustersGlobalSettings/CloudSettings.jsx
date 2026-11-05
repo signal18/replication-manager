@@ -760,12 +760,13 @@ Start create an account in https://gitlab.signal18.io
     },
   ] : []
 
-  // the Cloud18 tabs of the global settings (#2268): part 'registration' (the registration rows),
-  // 'support' (the licence package), 'marketplace' (peering, clusters for
-  // sale and self-service); no part shows them all
-  const SUPPORT_ROWS = ['Licence package']
-  const registrationRows = part ? registrationData.filter((row) => !SUPPORT_ROWS.includes(row.key)) : registrationData
-  const supportRows = registrationData.filter((row) => SUPPORT_ROWS.includes(row.key))
+  // the Cloud18 tabs of the global settings (#2268): part 'registration' (the registration rows, then
+  // the licence in its own frame), 'marketplace' (peering, clusters for sale and self-service); no
+  // part shows them all
+  const LICENCE_ROWS = ['Licence package']
+  const registrationRows = part ? registrationData.filter((row) => !LICENCE_ROWS.includes(row.key)) : registrationData
+  const licenceRows = registrationData.filter((row) => LICENCE_ROWS.includes(row.key))
+  const marketplaceEmpty = peeringData.length === 0 && marketplaceData.length === 0 && selfServiceData.length === 0
   const shows = (p) => !part || part === p
 
   return (
@@ -777,12 +778,22 @@ Start create an account in https://gitlab.signal18.io
           </Flex>
         </SectionFrame>
       )}
-      {part === 'support' && (
-        <SectionFrame title='Licence'>
+      {part === 'registration' && (
+        <SectionFrame
+          title='Licence'
+          isEmpty={licenceRows.length === 0}
+          emptyText='The licence package comes with the configuration pull (git-url-pull is set): nothing to load here.'>
           <Flex justify='space-between' gap='0'>
-            <TableType2 dataArray={supportRows} className={styles.tableWithHelp} helpColumn />
+            <TableType2 dataArray={licenceRows} className={styles.tableWithHelp} helpColumn />
           </Flex>
         </SectionFrame>
+      )}
+      {part === 'marketplace' && marketplaceEmpty && (
+        <SectionFrame
+          title='Marketplace'
+          isEmpty
+          emptyText='Register this instance to Cloud18 (Registration) to set its peering, its clusters for sale and its self-service clusters.'
+        />
       )}
       {shows('marketplace') && peeringData.length > 0 && (
         <SectionFrame title='Peering'>

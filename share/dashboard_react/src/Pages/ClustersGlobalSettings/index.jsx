@@ -65,10 +65,7 @@ function ClustersGlobalSettings({ user }) {
             onChange={setCloud18Tab}
             tabContents={[
               <CloudSettings key='registration' config={monitor?.config} openConfirmModal={openConfirmModal} part='registration' />,
-              <Flex key='support' direction='column' gap='8px' width='100%'>
-                <CloudSettings config={monitor?.config} openConfirmModal={openConfirmModal} part='support' />
-                <GlobalSettings config={monitor?.config} openConfirmModal={openConfirmModal} cards={['Alerts']} />
-              </Flex>,
+              <GlobalSettings key='support' config={monitor?.config} openConfirmModal={openConfirmModal} cards={['Alerts']} />,
               <TabItems
                 key='marketplace'
                 className={styles.fullWidthTabs}
