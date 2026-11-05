@@ -48,39 +48,6 @@ func (s *peerSession) endpoint() string {
 	return s.base
 }
 
-// peerLogin authenticates on the infrastructure as the Cloud18 GitLab identity.
-func (repman *ReplicationManager) peerLogin(infra string) (*peerSession, error) {
-	base := strings.TrimRight(strings.TrimSpace(infra), "/")
-	if base == "" {
-		return nil, errors.New("infrastructure (api-public-url) is required")
-	}
-	if repman.PeerManager == nil || !repman.PeerManager.HasPeerURL(base) {
-		return nil, fmt.Errorf("%s is not a known Cloud18 infrastructure: pick one from list-cloud18-infrastructures", base)
-	}
-	if repman.Conf.Cloud18GitUser == "" {
-		return nil, errors.New("this instance has no Cloud18 identity: register first (cloud18-register)")
-	}
-	loginURL, err := url.Parse(base + "/api/login")
-	if err != nil {
-		return nil, err
-	}
-	creds := userCredentials{
-		Username: repman.Conf.Cloud18GitUser,
-		Password: repman.Conf.GetDecryptedPassword("git-password", repman.Conf.Secrets.Get("cloud18-gitlab-password").Value),
-	}
-	status, body := repman.PeerLogin(loginURL, creds)
-	if status != http.StatusOK {
-		return nil, fmt.Errorf("login on %s refused (HTTP %d): %s", base, status, strings.TrimSpace(string(body)))
-	}
-	var resp struct {
-		Token string `json:"token"`
-	}
-	if err := json.Unmarshal(body, &resp); err != nil || resp.Token == "" {
-		return nil, fmt.Errorf("login on %s returned no token", base)
-	}
-	return &peerSession{base: base, token: resp.Token}, nil
-}
-
 // call performs one API call on the infrastructure.
 func (s *peerSession) call(method, path string, payload any) (int, []byte, error) {
 	return s.callWithTimeout(method, path, payload, peerCallTimeout)
@@ -648,6 +615,7 @@ type peerIdentity struct {
 	bearer   string // the caller's Cloud18 realm token (#2182), tried before the password
 	mode     string // "caller" (the SSO user), "instance" (the registered identity), "refused"
 	reason   string
+	instance bool // the instance as itself (#2327): no password after a peer refused its token
 }
 
 // peerIdentityFor decides whose credentials reach an infrastructure, the same door as the
@@ -746,6 +714,19 @@ func (repman *ReplicationManager) peerLoginAs(p *repmanmcp.Principal, infra stri
 	loginURL, err := url.Parse(base + "/api/login")
 	if err != nil {
 		return nil, "", err
+	}
+	if id.mode == "instance" {
+		// the instance's own realm token (#2327); the password only for a peer on an older
+		// release, never when the realm refused the account
+		var sendPassword bool
+		id.bearer, sendPassword = repman.instancePeerLogin()
+		id.instance = true
+		if !sendPassword {
+			id.password = ""
+		}
+		if id.bearer == "" && id.password == "" {
+			return nil, "", fmt.Errorf("login on %s as %s not tried: no credential of this instance (Cloud18 refused its account, or it has no Cloud18 password: cloud18-gitlab-password)", base, id.user)
+		}
 	}
 	status, body := repman.peerLoginAsIdentity(loginURL, id)
 	if status != http.StatusOK {

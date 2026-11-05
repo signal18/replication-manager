@@ -2346,19 +2346,27 @@ func (repman *ReplicationManager) DynamicPeerHandler(w http.ResponseWriter, r *h
 			return
 		} else if repman.isAdminUser(uinfomap["User"]) && repman.Conf.Cloud18GitUser != "" {
 			// Local admin on a registered instance: peers don't know our local 'admin'
-			// identity, so authenticate AS the registered user (Cloud18GitUser) with the
-			// git credentials the server already holds. (Fixes: admin Enter refused with
+			// identity, so authenticate AS the registered user (Cloud18GitUser): with its
+			// realm token (#2327), which a peer verifies by itself, the password only for a
+			// peer that refuses the token (an older release). (Fixes: admin Enter refused with
 			// "not logged in via Gitlab".)
-			user.Username = repman.Conf.Cloud18GitUser
-			user.Password = repman.Conf.GetDecryptedPassword("git-password", repman.Conf.Secrets.Get("cloud18-gitlab-password").Value)
+			id := peerIdentity{user: repman.Conf.Cloud18GitUser, instance: true}
+			var sendPassword bool
+			id.bearer, sendPassword = repman.instancePeerLogin()
+			if sendPassword {
+				id.password = repman.Conf.GetDecryptedPassword("git-password", repman.Conf.Secrets.Get("cloud18-gitlab-password").Value)
+			}
+			if id.bearer == "" && id.password == "" {
+				w.WriteHeader(http.StatusUnauthorized)
+				fmt.Fprintf(w, "No credential of this instance for another instance: Cloud18 refused its account, or it has no Cloud18 password (cloud18-gitlab-password)")
+				return
+			}
+			status, body = repman.peerLoginAsIdentity(parsedPeerURL, id)
 		} else {
 			w.WriteHeader(http.StatusForbidden)
 			fmt.Fprintf(w, "Current user is not logged in via Gitlab!")
 			return
 		}
-
-		status, body = repman.PeerLogin(parsedPeerURL, user)
-
 	} else {
 		// Forward the request to the peer URL
 		status, body = repman.PeerRequestForwarder(parsedPeerURL, r)

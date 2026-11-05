@@ -211,3 +211,42 @@ func TestCloud18LoginEnd(t *testing.T) {
 		t.Fatalf("a login not kept (another instance, a restart): its own refresh token: %v %q", err, got())
 	}
 }
+
+// #2327 review: the instance's login is not asked again within its wait, then it is: the realm out
+// of reach waits cloud18InstanceLoginUnreachableWait, a refusal the longer
+// cloud18InstanceLoginRefusedWait; a refusal is told apart from an outage (IsCloud18LoginRefusal).
+// Within a wait the cached error comes back (no new login); after it, a new login gives a new error.
+func TestCloud18InstanceLoginWaits(t *testing.T) {
+	down := httptest.NewServer(http.NotFoundHandler())
+	down.Close() // connection refused: the realm out of reach
+	oldU, oldR := cloud18InstanceLoginUnreachableWait, cloud18InstanceLoginRefusedWait
+	cloud18InstanceLoginUnreachableWait, cloud18InstanceLoginRefusedWait = 400*time.Millisecond, time.Hour
+	defer func() { cloud18InstanceLoginUnreachableWait, cloud18InstanceLoginRefusedWait = oldU, oldR }()
+	ForgetCloud18InstanceLogin()
+	defer ForgetCloud18InstanceLogin()
+
+	conf := &Config{Cloud18: true, Cloud18GitUser: "sysops@acme.example", Cloud18GitPassword: "pw",
+		Cloud18IdentityURL: down.URL + "/realms/cloud18", OAuthProvider: down.URL}
+	_, first := conf.Cloud18InstanceLoginToken()
+	if first == nil || IsCloud18LoginRefusal(first) {
+		t.Fatalf("a realm out of reach is not a refusal: %v", first)
+	}
+	if _, again := conf.Cloud18InstanceLoginToken(); again != first {
+		t.Fatalf("within the wait the cached error comes back, no new login: %v", again)
+	}
+	time.Sleep(1200 * time.Millisecond) // three times the outage's wait: no flake on a loaded runner
+	if _, later := conf.Cloud18InstanceLoginToken(); later == nil || later == first {
+		t.Fatalf("after the wait the login is tried again: %v", later)
+	}
+
+	// a refusal waits the refusal's wait (an hour here), not the outage's
+	ForgetCloud18InstanceLogin()
+	cloud18InstanceLogin.Lock()
+	cloud18InstanceLogin.account = cloud18AccountFingerprint("sysops@acme.example", "pw")
+	cloud18InstanceLogin.refused, cloud18InstanceLogin.refusedErr = time.Now().Add(cloud18InstanceLoginRefusedWait), ErrCloud18BadCredentials
+	cloud18InstanceLogin.Unlock()
+	time.Sleep(1200 * time.Millisecond) // three times the outage's wait: no flake on a loaded runner
+	if _, err := conf.Cloud18InstanceLoginToken(); err != ErrCloud18BadCredentials || !IsCloud18LoginRefusal(err) {
+		t.Fatalf("a refusal is kept past the outage's wait, no new login: %v", err)
+	}
+}

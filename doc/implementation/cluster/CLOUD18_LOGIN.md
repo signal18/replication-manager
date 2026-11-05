@@ -71,6 +71,35 @@ issuer is the realm): an instance not registered to Cloud18 never trusts the rea
   (`peerLoginAsIdentity`), got from the session (`cloud18TokenFor`: the token it came with, or one
   refreshed from its `cloud18` refresh token, one refresh per token lifetime, `Cloud18LoginAccess`). The
   password is sent only when that instance refuses the token (an older release) and the session has one.
+- The instance acting as itself (#2327: the peer poll, `peer.PeerManager` through `SetPeerBearer`, at every
+  interval for every peer; a local admin entering a peer, `DynamicPeerHandler`; the MCP tools as the
+  instance, `peerLoginAs` in `instance` mode): logged in with a realm token of the account the
+  instance is registered with (`cloud18-gitlab-user`), never with that account's password alone. Before
+  #2327 the password went to the peer, which could check it only when it knew it locally (a peer
+  registered with the same account) or through the realm login of a person; a peer registered with
+  another account (a partner's own) refused it, and its lockout (3 min after repeated failures) kept the
+  account locked as long as the calls went on. `config.Cloud18InstanceLoginToken` logs the account in
+  once with the person's login (`Cloud18Login`), keeps its refresh token in memory (one per instance, lost
+  at a restart) and takes the next tokens from it (`Cloud18LoginAccess`). A login the realm refuses is not
+  tried again for 10 minutes (`cloud18InstanceLoginRefusedWait`): each try walks the whole login, and a
+  wrong password retried at every call would lock the account on the realm. A realm out of reach is not
+  asked again for 1 minute (`cloud18InstanceLoginUnreachableWait`): the peer polls share the login's lock
+  and would each wait on it. A changed account or password starts a new login at once.
+  When the password goes (`instancePeerLogin`, `peer.loginPeer`):
+  - with a token: only to a peer answering it with the 401 of an older release; a peer answering
+    `Cloud18 token refused` (`config.ConstCloud18TokenRefused`) knows tokens, and gets nothing more;
+  - the realm refused the account (`config.IsCloud18LoginRefusal`: wrong or stale password, ended session,
+    second factor): never, to any peer. A peer would refuse it too, and the poll repeating it at every
+    interval is what locked the account (#2327). The poll then has no session on the peers until the
+    password is fixed; the health check needs none;
+  - the realm out of reach: the password goes, as before, and the peer decides. Known limit: during a
+    realm outage a peer registered with another account refuses that password, and the poll can lock
+    the account there again until the realm is back (one login a minute at most, the realm's wait).
+    Treating an outage as a refusal would cut every peer that still knows the password (registered with
+    the same account) during the outage; the lockout ends by itself, the cut would not be seen.
+  A refusal is logged once per refusal window (WARN, the identity log), when the login actually ran.
+  A login never carries the session token the peer client may still hold. The poll reads the account,
+  the password and the token source under the peer manager's lock (a reload may set them).
 
 ## Realm setup
 
