@@ -667,14 +667,14 @@ Start create an account in https://gitlab.signal18.io
   // Marketplace section — a SEPARATE concern from peering (buying/selling clusters;
   // works even without a public interface). Free plans cannot disable it.
   // Not Interested in Clusters For Sale: shown to every registered instance, for paying customers
-  // only (#2268): a Support or a Support and Services plan, or a licence. The server's rule is the
-  // same (Config.Cloud18ForSaleOptOutAllowed): the free, developer and partner plans see the sale.
-  const forSaleOptOutAllowed = ['support', 'support-services'].includes(config?.cloud18SubscriptionPlan) || !!config?.cloud18LicenseFile
+  // only (#2268): a Developer, Support or Support and Services plan, or a licence. The server's rule
+  // is the same (Config.Cloud18ForSaleOptOutAllowed): the free and partner plans see the sale.
+  const forSaleOptOutAllowed = ['developer', 'support', 'support-services'].includes(config?.cloud18SubscriptionPlan) || !!config?.cloud18LicenseFile
   const marketplaceData = isConnected ? [
     {
       globalSetting: 'cloud18-disable-for-sale',
       key: 'Not Interested in Clusters For Sale',
-      help: h(`**Not Interested in Clusters For Sale**\n\nWhen on, the clusters for sale are hidden from the marketplace view.\n\nThis option is for paying customers (a Support or Support and Services plan, or a licence). Other plans always see clusters for sale.\n\nConfig: \`cloud18-disable-for-sale\``, 'Not Interested in Clusters For Sale'),
+      help: h(`**Not Interested in Clusters For Sale**\n\nWhen on, the clusters for sale are hidden from the marketplace view.\n\nThis option is for paying customers (a Developer, Support or Support and Services plan, or a licence). Other plans always see clusters for sale.\n\nConfig: \`cloud18-disable-for-sale\``, 'Not Interested in Clusters For Sale'),
       value: (
         <HStack spacing={2}>
           <RMSwitch
@@ -686,7 +686,7 @@ Start create an account in https://gitlab.signal18.io
           {!forSaleOptOutAllowed && (
             <PlanLockButton
               title='Available with a Support plan or a licence'
-              text={'Hiding the clusters for sale is for paying customers.\n\nA **Support** or **Support and Services** plan (Cloud18 > Registration > Subscription), or a **licence**, lets this instance hide them.'}
+              text={'Hiding the clusters for sale is for paying customers.\n\nA **Developer**, **Support** or **Support and Services** plan (Cloud18 > Registration > Subscription), or a **licence**, lets this instance hide them.'}
             />
           )}
         </HStack>

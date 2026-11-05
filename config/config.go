@@ -2112,12 +2112,12 @@ func (conf *Config) GetImmuableFlag(key string) (interface{}, bool) {
 }
 
 // Cloud18ForSaleOptOutAllowed tells whether this instance may hide the clusters for sale
-// (cloud18-disable-for-sale, the "no noise" option): a paying customer only, a Support or a Support
-// and Services plan, or a licence (#2268). The free, developer and partner plans see what the
-// marketplace sells.
+// (cloud18-disable-for-sale, the "no noise" option): a paying customer only, a Developer, Support or
+// Support and Services plan, or a licence (#2268). The free and partner plans see what the
+// marketplace sells (a partner may get its own "only my clusters for sale" switch one day).
 func (conf *Config) Cloud18ForSaleOptOutAllowed() bool {
 	switch conf.Cloud18SubscriptionPlan {
-	case "support", "support-services":
+	case "developer", "support", "support-services":
 		return true
 	}
 	return strings.TrimSpace(conf.Cloud18LicenseFile) != ""

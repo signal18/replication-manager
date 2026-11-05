@@ -882,7 +882,7 @@ func (repman *ReplicationManager) switchRepmanSetting(name string) error {
 	case "cloud18-disable-for-sale":
 		// a paying customer only (a Support plan or a licence): said, not silently ignored
 		if !repman.Conf.Cloud18ForSaleOptOutAllowed() {
-			return errors.New("cloud18-disable-for-sale needs a Support plan or a licence")
+			return errors.New("cloud18-disable-for-sale needs a Developer or Support plan, or a licence")
 		}
 		// scope:"server" — persisted to default.toml by SaveDynamic (value != default).
 		repman.Conf.Cloud18DisableForSale = !repman.Conf.Cloud18DisableForSale

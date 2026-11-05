@@ -6,10 +6,10 @@ package config
 
 import "testing"
 
-// #2268: hiding the clusters for sale is for paying customers: a Support or a Support and
-// Services plan, or a licence; the free, developer and partner plans see what the marketplace sells.
+// #2268: hiding the clusters for sale is for paying customers: a Developer, Support or Support and
+// Services plan, or a licence; the free and partner plans see what the marketplace sells.
 func TestCloud18ForSaleOptOutAllowed(t *testing.T) {
-	for plan, want := range map[string]bool{"support": true, "support-services": true, "free": false, "developer": false, "partner": false, "": false} {
+	for plan, want := range map[string]bool{"support": true, "support-services": true, "free": false, "developer": true, "partner": false, "": false} {
 		if got := (&Config{Cloud18SubscriptionPlan: plan}).Cloud18ForSaleOptOutAllowed(); got != want {
 			t.Errorf("plan %q: %v, want %v", plan, got, want)
 		}
