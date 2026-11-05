@@ -216,3 +216,9 @@
     animation: none;
   }
 }
+
+// a tab of the whole page (#2268): its header buttons on the right, then its content
+.tabContent {
+  width: 100%;
+  gap: 8px;
+}

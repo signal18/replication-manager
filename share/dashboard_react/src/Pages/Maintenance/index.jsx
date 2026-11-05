@@ -10,6 +10,8 @@ import { useDispatch, useSelector } from 'react-redux'
 import { TaskLogs } from '../Dashboard/components/Logs'
 import DatabaseJobs from './DatabaseJobs'
 import AttachedArchive from './AttachedArchive'
+import TabItems from '../../components/TabItems'
+import SchedulerSettings from '../Settings/SchedulerSettings'
 import { clusterService } from '../../services/clusterService'
 import { archiveBackup, deleteBackup, discoverBackups, registerBackup, registerBackupChange, unregisterBackup, reseedFromBackup, verifyBackup, purgeResticSnapshot, resticQueueCancel, resticQueueMove, resticQueuePause, resticQueueResume } from '../../redux/clusterSlice'
 import RMIconButton from '../../components/RMIconButton'
@@ -548,6 +550,12 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
   const { isOpen: isBackupSnapshotOpen, onToggle: onBackupSnapshotToggle } = useDisclosure({
     defaultIsOpen: JSON.parse(localStorage.getItem('isBackupSnapshotOpen')) || false
   })
+  // the tab of the whole page, remembered across visits like the sections' open state was
+  const [maintenanceTab, setMaintenanceTabState] = useState(() => parseInt(localStorage.getItem('maintenanceTab'), 10) || 0)
+  const setMaintenanceTab = (index) => {
+    setMaintenanceTabState(index)
+    localStorage.setItem('maintenanceTab', String(index))
+  }
   const { isOpen: isDBJobsOpen, onToggle: onDBJobsToggle } = useDisclosure({
     defaultIsOpen: JSON.parse(localStorage.getItem('isDBJobsOpen')) || false
   })
@@ -1095,22 +1103,12 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
       />
     ) : null
 
-  const backupSection = (
-    <>
-      <AccordionComponent
-        heading={'Current Backups'}
-        isOpen={isBackupsOpen}
-        onToggle={onBackupsToggle}
-        className={styles.accordion}
-        headerClassName={styles.accordionHeader}
-        panelClassName={styles.accordionPanel}
-        headerActions={
-          <HStack spacing={1}>
+  // each section's content and header buttons, shared by the collapsible sections (the Slideshow's
+  // one-section view) and the tabs of the whole page (#2268)
+  const backupsActions = <HStack spacing={1}>
             {settingsButton(onOpenBackupSettings, 'Open Backup Settings')}
           </HStack>
-        }
-        body={
-          <VStack className={styles.snapshotContainer}>
+  const backupsBody = <VStack className={styles.snapshotContainer}>
             <BKUSlider
               isDisabled={user?.grants['cluster-settings'] == false}
               value={bkuPlan || 1}
@@ -1142,17 +1140,8 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
             </Flex>)}
             <DataTable key="backups" data={data} columns={columns} className={styles.table} />
           </VStack>
-        }
-      />
-      <AccordionComponent
-        heading={`Found in backup folders${candidateData.length ? ` (${candidateData.length})` : ''}`}
-        isOpen={isCandidatesOpen}
-        onToggle={onCandidatesToggle}
-        className={styles.accordion}
-        headerClassName={styles.accordionHeader}
-        panelClassName={styles.accordionPanel}
-        headerActions={
-          <RMIconButton
+
+  const foundActions = <RMIconButton
             icon={HiSearch}
             tooltip='Discover: scan the backup folders for the backups no metadata describes'
             onClick={() => openConfirmModal('Scan the backup folders for the backups no metadata describes? Nothing is registered: register the backups you want used.', { action: 'backupDiscover' })}
@@ -1160,9 +1149,7 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
             size='xs'
             variant='ghost'
           />
-        }
-        body={
-          <VStack className={styles.snapshotContainer}>
+  const foundBody = <VStack className={styles.snapshotContainer}>
             <Text fontSize='sm'>
               Backups placed in the backup folders by hand or by another tool are listed here with what their check found; they are used only once registered, and never by an automatic restore.
             </Text>
@@ -1173,18 +1160,9 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
             ))}
             <DataTable key="candidates" data={candidateData} columns={candidateColumns} className={styles.table} />
           </VStack>
-        }
-      />
-      <AccordionComponent
-        heading={'Archive'}
-        isOpen={isBackupSnapshotOpen}
-        onToggle={onBackupSnapshotToggle}
-        className={styles.accordion}
-        headerClassName={styles.accordionHeader}
-        panelClassName={styles.accordionPanel}
-        headerActions={settingsButton(onOpenArchiveSettings || onOpenBackupSettings, 'Open Archive Settings')}
-        body={
-          <VStack className={styles.snapshotContainer}>
+
+  const archiveActions = settingsButton(onOpenArchiveSettings || onOpenBackupSettings, 'Open Archive Settings')
+  const archiveBody = <VStack className={styles.snapshotContainer}>
             <AttachedArchive clusterName={selectedCluster?.name} user={user} onAttached={setAttachedArchive}
               snapbackAsk={snapbackAsk} onSnapbackAskDone={() => setSnapbackAsk(null)} />
             {resticShown && (
@@ -1209,7 +1187,44 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
               </>
             )}
           </VStack>
-        }
+
+  const jobsActions = settingsButton(onOpenSchedulerSettings, 'Open Scheduler Settings')
+  const jobsBody = <DatabaseJobs clusterName={selectedCluster?.name} user={user} />
+
+  const logsActions = settingsButton(onOpenLogsSettings, 'Open Log Settings')
+  const logsBody = <TaskLogs />
+
+  const backupSection = (
+    <>
+      <AccordionComponent
+        heading={'Current Backups'}
+        isOpen={isBackupsOpen}
+        onToggle={onBackupsToggle}
+        className={styles.accordion}
+        headerClassName={styles.accordionHeader}
+        panelClassName={styles.accordionPanel}
+        headerActions={backupsActions}
+        body={backupsBody}
+      />
+      <AccordionComponent
+        heading={`Found in backup folders${candidateData.length ? ` (${candidateData.length})` : ''}`}
+        isOpen={isCandidatesOpen}
+        onToggle={onCandidatesToggle}
+        className={styles.accordion}
+        headerClassName={styles.accordionHeader}
+        panelClassName={styles.accordionPanel}
+        headerActions={foundActions}
+        body={foundBody}
+      />
+      <AccordionComponent
+        heading={'Archive'}
+        isOpen={isBackupSnapshotOpen}
+        onToggle={onBackupSnapshotToggle}
+        className={styles.accordion}
+        headerClassName={styles.accordionHeader}
+        panelClassName={styles.accordionPanel}
+        headerActions={archiveActions}
+        body={archiveBody}
       />
     </>
   )
@@ -1222,8 +1237,8 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
       className={styles.accordion}
       headerClassName={styles.accordionHeader}
       panelClassName={styles.accordionPanel}
-      headerActions={settingsButton(onOpenSchedulerSettings, 'Open Scheduler Settings')}
-      body={<DatabaseJobs clusterName={selectedCluster?.name} user={user} />}
+      headerActions={jobsActions}
+      body={jobsBody}
     />
   )
 
@@ -1235,16 +1250,45 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
       headerClassName={styles.accordionHeader}
       panelClassName={styles.accordionPanel}
       heading={'Job Logs'}
-      headerActions={settingsButton(onOpenLogsSettings, 'Open Log Settings')}
-      body={<TaskLogs />}
+      headerActions={logsActions}
+      body={logsBody}
     />
   )
 
   return (
     <VStack className={styles.backupContainer}>
-      {(!section || section === 'backup') && backupSection}
-      {(!section || section === 'jobs') && jobsSection}
-      {!section && logsSection}
+      {section === 'backup' && backupSection}
+      {section === 'jobs' && jobsSection}
+      {!section && (
+        <TabItems
+          options={['Backups', `Found in Folders${candidateData.length ? ` (${candidateData.length})` : ''}`, 'Archive', 'Database Jobs', 'Job Logs', 'Scheduler']}
+          tabIndex={maintenanceTab}
+          onChange={setMaintenanceTab}
+          tabContents={[
+          <VStack key='backups' align='stretch' className={styles.tabContent}>
+            {backupsActions && <HStack justify='flex-end'>{backupsActions}</HStack>}
+            {backupsBody}
+          </VStack>,
+          <VStack key='found' align='stretch' className={styles.tabContent}>
+            {foundActions && <HStack justify='flex-end'>{foundActions}</HStack>}
+            {foundBody}
+          </VStack>,
+          <VStack key='archive' align='stretch' className={styles.tabContent}>
+            {archiveActions && <HStack justify='flex-end'>{archiveActions}</HStack>}
+            {archiveBody}
+          </VStack>,
+          <VStack key='jobs' align='stretch' className={styles.tabContent}>
+            {jobsActions && <HStack justify='flex-end'>{jobsActions}</HStack>}
+            {jobsBody}
+          </VStack>,
+          <VStack key='logs' align='stretch' className={styles.tabContent}>
+            {logsActions && <HStack justify='flex-end'>{logsActions}</HStack>}
+            {logsBody}
+          </VStack>,
+            <SchedulerSettings key='scheduler' selectedCluster={selectedCluster} user={user} />
+          ]}
+        />
+      )}
       {gwuConfirm.isOpen && <ConfirmModal title={gwuConfirm.title} isOpen={gwuConfirm.isOpen}
         onConfirmClick={() => { dispatch(changePlanUnits({ clusterName: selectedCluster?.name, unit: 'GWU', delta: gwuConfirm.delta })); setGwuConfirm({ isOpen: false, title: '', delta: 0 }) }}
         closeModal={() => setGwuConfirm({ isOpen: false, title: '', delta: 0 })} />}
