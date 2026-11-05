@@ -40,3 +40,10 @@
     cursor: pointer;
   }
 }
+// a level-2 tab row inside a cluster tab (Monitoring, #2268): the whole width
+.fullWidthTabs {
+  width: 100%;
+  [role='tabpanel'] {
+    width: 100%;
+  }
+}

@@ -51,6 +51,7 @@ import ClustersGlobalSettings from '../ClustersGlobalSettings'
 import GlobalItems, { GlobalLogs } from '../GlobalItems'
 import ResourceManager from '../ResourceManager'
 import AccordionComponent from '../../components/AccordionComponent'
+import TagPill from '../../components/TagPill'
 import Billing from '../Billing'
 import NewClusterModal from '../../components/Modals/NewClusterModal'
 import { FaPlus } from 'react-icons/fa'
@@ -70,6 +71,15 @@ function Home() {
   const intervalTickerRef = useRef(0)
   // the cluster runs ProxySQL: Configs > Proxies then has Query Rules, refreshed with the tab (#2268)
   const hasProxysqlRef = useRef(false)
+  // the Monitoring tab's sub-tabs (Graphs, Nodes, Tops, Schema, as the grants allow) and the active
+  // one, also read by the refresh ticker (#2268)
+  const monitoringTabsRef = useRef([])
+  const monitoringTabRef = useRef(0)
+  const [monitoringTab, setMonitoringTab] = useState(0)
+  const handleMonitoringTabChange = (index) => {
+    monitoringTabRef.current = index
+    setMonitoringTab(index)
+  }
   const [isNewClusterModalOpen, setIsNewClusterModalOpen] = useState(false)
   const params = useParams()
 
@@ -158,20 +168,26 @@ function Home() {
           if (apiUser) {
             setUser(apiUser)
             const authorizedTabs = [selectedClusterNameRef.current, 'Settings', 'Configs']
+            // Monitoring (#2268): Graphs, Nodes, Tops and Schema as its sub-tabs, each on its own grant
+            const monitoringTabs = []
             if (clusterData.config.graphiteMetrics && apiUser.grants['cluster-show-graphs']) {
-              authorizedTabs.push('Graphs')
+              monitoringTabs.push('Graphs')
             }
             if (apiUser.grants['cluster-show-agents']) {
-              authorizedTabs.push('Agents')
+              monitoringTabs.push('Nodes') // the orchestrator's nodes (the Agents page)
+            }
+            if (apiUser.grants['db-show-process']) {
+              monitoringTabs.push('Tops')
+            }
+            if (apiUser.grants['db-show-schema']) {
+              monitoringTabs.push('Schema')
+            }
+            monitoringTabsRef.current = monitoringTabs
+            if (monitoringTabs.length > 0) {
+              authorizedTabs.push('Monitoring')
             }
             if (apiUser.grants['cluster-show-backups']) {
               authorizedTabs.push('Maintenance')
-            }
-            if (apiUser.grants['db-show-process']) {
-              authorizedTabs.push('Tops')
-            }
-            if (apiUser.grants['db-show-schema']) {
-              authorizedTabs.push('Schema')
             }
             if (apiUser.grants['cluster-grant'] || apiUser.grants['token-manage']) {
               authorizedTabs.push('Users')
@@ -287,12 +303,16 @@ function Home() {
       if (dashboardTabsRef.current[selectedTabRef.current - 1] === 'Maintenance') {
         refreshMaintenanceData(selectedClusterNameRef.current)
       }
-      if (dashboardTabsRef.current[selectedTabRef.current - 1] === 'Tops') {
-        dispatch(getTopProcess({ clusterName: selectedClusterNameRef.current }))
-        dispatch(getOpenSVCStats({ clusterName: selectedClusterNameRef.current }))
-      }
-      if (dashboardTabsRef.current[selectedTabRef.current - 1] === 'Schema') {
-        dispatch(getShardSchema({ clusterName: selectedClusterNameRef.current }))
+      if (dashboardTabsRef.current[selectedTabRef.current - 1] === 'Monitoring') {
+        // the active Monitoring sub-tab decides what refreshes
+        const monitoringTab = monitoringTabsRef.current[monitoringTabRef.current]
+        if (monitoringTab === 'Tops') {
+          dispatch(getTopProcess({ clusterName: selectedClusterNameRef.current }))
+          dispatch(getOpenSVCStats({ clusterName: selectedClusterNameRef.current }))
+        }
+        if (monitoringTab === 'Schema') {
+          dispatch(getShardSchema({ clusterName: selectedClusterNameRef.current }))
+        }
       }
     }
 
@@ -397,7 +417,18 @@ function Home() {
           blinkLabels={monitor?.status === 'S' ? ['Settings'] : []}
           options={
             isClusterOpenRef.current
-              ? [renderClusterListTabWithArrow(), ...dashboardTabsRef.current]
+              ? [
+                  renderClusterListTabWithArrow(),
+                  // the cluster's first tab reads Dashboard, its name in a pill (#2268); the tab names
+                  // kept in dashboardTabsRef (the ticker's, the settings links') are unchanged
+                  ...dashboardTabsRef.current.map((name, index) =>
+                    index === 0 ? (
+                      <Flex key='dashboard' align='center' gap={2}>
+                        Dashboard <TagPill text={name} colorScheme='blue' />
+                      </Flex>
+                    ) : name
+                  )
+                ]
               : globalTabsRef.current
           }
           tabPrefix={[...(selectedClusterNameRef.current == '' && localStorage.getItem('username') == "admin" ? [<div onClick={openNewClusterModal} className={styles.tabSelected}><CustomIcon icon={FaPlus} /></div>] : [])]}
@@ -412,17 +443,32 @@ function Home() {
                 <Dashboard user={user} selectedCluster={selectedCluster} openSettings={{ topology: openTopologySettings, proxies: openProxiesSettings, logs: openLogsSettings, scheduler: openSchedulerSettings, monitoring: openMonitoringSettings, plugins: openPluginsSettings, graphs: openGraphsSettings, failover: openFailoverSettings }} />,
                 <Settings user={user} selectedCluster={selectedCluster} onTabChange={handleTabChange} monitor={monitor} />,
                 <Configs user={user} selectedCluster={selectedCluster} />,
-                ...(selectedCluster?.config?.graphiteMetrics && user?.grants['cluster-show-graphs']
-                  ? [<Graphs selectedCluster={selectedCluster} onOpenSettings={openGraphsSettings} />]
-                  : []),
-                ...(user?.grants['cluster-show-agents']
-                  ? [<Agents user={user} selectedCluster={selectedCluster} />]
+                ...(monitoringTabsRef.current.length > 0
+                  ? [
+                      <TabItems
+                        key='monitoring'
+                        className={styles.fullWidthTabs}
+                        options={monitoringTabsRef.current}
+                        tabIndex={monitoringTab}
+                        onChange={handleMonitoringTabChange}
+                        tabContents={monitoringTabsRef.current.map((name) => {
+                          switch (name) {
+                            case 'Graphs':
+                              return <Graphs key='graphs' selectedCluster={selectedCluster} onOpenSettings={openGraphsSettings} />
+                            case 'Nodes':
+                              return <Agents key='agents' user={user} selectedCluster={selectedCluster} />
+                            case 'Tops':
+                              return <Top key='tops' selectedCluster={selectedCluster} onOpenMonitoringSettings={openMonitoringSettings} onOpenTopologySettings={openTopologySettings} />
+                            default:
+                              return <Shards key='schema' selectedCluster={selectedCluster} user={user} onOpenSchedulerSettings={openMaintenanceScheduler} onOpenLogsSettings={openLogsSettings} onOpenMonitoringSettings={openMonitoringSettings} />
+                          }
+                        })}
+                      />
+                    ]
                   : []),
                 ...(user?.grants['cluster-show-backups']
                   ? [<Maintenance user={user} selectedCluster={selectedCluster} onOpenBackupSettings={openBackupSettings} onOpenArchiveSettings={openArchiveSettings} onOpenSchedulerSettings={openSchedulerSettings} onOpenLogsSettings={openLogsSettings} />]
                   : []),
-                ...(user?.grants['db-show-process'] ? [<Top selectedCluster={selectedCluster} onOpenMonitoringSettings={openMonitoringSettings} onOpenTopologySettings={openTopologySettings} />] : []),
-                ...(user?.grants['db-show-schema'] ? [<Shards selectedCluster={selectedCluster} user={user} onOpenSchedulerSettings={openMaintenanceScheduler} onOpenLogsSettings={openLogsSettings} onOpenMonitoringSettings={openMonitoringSettings} />] : []),
                 ...(user?.grants['cluster-grant'] || user?.grants['token-manage'] ? [<Users selectedCluster={selectedCluster} user={user} />] : [])
               ]
               : [
