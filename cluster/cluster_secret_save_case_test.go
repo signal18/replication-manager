@@ -5,6 +5,7 @@
 package cluster
 
 import (
+	"hash/crc64"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -99,5 +100,37 @@ func TestProxysqlUserFollowsTheSecret(t *testing.T) {
 	}
 	if prx := NewProxySQLProxy(0, cl, "proxysql1"); prx.User != "external" {
 		t.Fatalf("a new proxy logs in as %q, want external", prx.User)
+	}
+}
+
+// A ProxySQL added with its login (service plan, proxies copied from a cluster head, gRPC) logs
+// in with it: the login is kept where the proxy reads it, not only in Conf.ProxysqlUser.
+func TestAddedProxysqlKeepsItsLogin(t *testing.T) {
+	cl := newSecretURLTestCluster(t, map[string]interface{}{})
+	cl.crcTable = crc64.MakeTable(crc64.ECMA) // as Cluster.Init sets it: the proxy ID is a CRC
+	// the defaults a running replication-manager has: proxysql-user and proxysql-password admin
+	cl.Conf.ProxysqlUser = "admin"
+	cl.Conf.Secrets.Set("proxysql-user", config.Secret{Value: "admin"})
+	cl.Conf.Secrets.Set("proxysql-password", config.Secret{Value: "admin"})
+	if err := cl.AddSeededProxy(config.ConstProxySqlproxy, "proxysql1", "6033", "external", "proxypass"); err != nil {
+		t.Fatal(err)
+	}
+	if got := cl.GetProxysqlUser(); got != "external" {
+		t.Fatalf("after the add: user %q, want external", got)
+	}
+	if got := cl.Conf.Secrets.Get("proxysql-password").Value; got != "proxypass" {
+		t.Fatalf("after the add: password %q, want the one given", got)
+	}
+	found := false
+	for _, p := range cl.Proxies {
+		if prx, ok := p.(*ProxySQLProxy); ok {
+			found = true
+			if prx.User != "external" || prx.Pass != "proxypass" {
+				t.Fatalf("the added proxy logs in as %s:%s, want external:proxypass", prx.User, prx.Pass)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("no ProxySQL proxy after the add")
 	}
 }
