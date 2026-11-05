@@ -2387,8 +2387,8 @@ func (cluster *Cluster) SaveConfigFile() (bool, error) {
 	keys := t.Keys()
 	keys = misc.SortKeysAsc(keys)
 
-	// Build the full content in memory: the save is written crash-safe
-	// (.new + rename) and key-diffed against the previous save to derive
+	// Build the full content in memory: the save is written durably
+	// (temp file fsynced, rename, directory fsynced) and key-diffed against the previous save to derive
 	// config change events (see cluster_eventlog.go).
 	var buf bytes.Buffer
 	buf.WriteString(header)

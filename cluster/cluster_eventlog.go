@@ -19,13 +19,15 @@ import (
 
 	toml "github.com/pelletier/go-toml"
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/misc"
 )
 
 // Config event log — save-diff authoring side.
 // Design: doc/implementation/config/CONFIG_EVENT_LOG.md.
 //
-// Every config save writes its file crash-safe (content built in memory,
-// written to <file>.new, renamed over the old file) and key-diffs the new
+// Every config save writes its file durably (content built in memory, written
+// to a temp file and fsynced, renamed over the old file, the directory
+// fsynced: misc.WriteFileDurable) and key-diffs the new
 // content against the previous save. Changes that were not just replayed
 // from a peer (provenance subtraction) are locally-born mutations and are
 // appended to this instance's event-changed.<RRBid>.log, which travels to
@@ -313,17 +315,16 @@ func (cluster *Cluster) saveConfigArtifact(filePath string, content []byte, sect
 	if emitEvents && hadOld {
 		cluster.emitConfigChangeEvents(oldData, content, section)
 	}
-	tmp := filePath + ".new"
-	if err := os.WriteFile(tmp, content, 0666); err != nil {
+	// durable: written, fsynced, renamed, its directory fsynced. The cluster config holds the
+	// current credential when versioning is off (#2269): a power loss after a rotation must not
+	// bring the previous file back, nor leave it empty. The temp name does not end in .toml, so the
+	// config push never stages it.
+	if err := misc.WriteFileDurable(filePath, content, 0666, "."+filepath.Base(filePath)+"-*.tmp"); err != nil {
 		if os.IsPermission(err) {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "File permission denied: %s", tmp)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "File permission denied: %s", filePath)
 		} else {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Error writing file %s: %s", tmp, err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Error writing file %s: %s", filePath, err)
 		}
-		return true, err
-	}
-	if err := os.Rename(tmp, filePath); err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Error renaming %s over %s: %s", tmp, filePath, err)
 		return true, err
 	}
 	return true, nil

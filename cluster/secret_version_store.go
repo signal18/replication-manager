@@ -13,6 +13,7 @@ import (
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/config/credstore"
+	"github.com/signal18/replication-manager/utils/misc"
 )
 
 const secretVersionStoreFilename = "secret_store.json"
@@ -535,40 +536,9 @@ func resolveSecretStoreEntryByTime(key string, versions []secretVersion, at time
 	}, nil
 }
 
+// writeFileAtomic writes a secret file durably, owner-only (misc.WriteFileDurable).
 func writeFileAtomic(path string, payload []byte, tempPattern string) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return err
-	}
-
-	tmpFile, err := os.CreateTemp(filepath.Dir(path), tempPattern)
-	if err != nil {
-		return err
-	}
-	tmpPath := tmpFile.Name()
-
-	defer func() {
-		_ = os.Remove(tmpPath)
-	}()
-
-	if _, err := tmpFile.Write(payload); err != nil {
-		_ = tmpFile.Close()
-		return err
-	}
-
-	if err := tmpFile.Sync(); err != nil {
-		_ = tmpFile.Close()
-		return err
-	}
-
-	if err := tmpFile.Close(); err != nil {
-		return err
-	}
-
-	if err := os.Rename(tmpPath, path); err != nil {
-		return fmt.Errorf("atomic rename failed: %w", err)
-	}
-
-	return nil
+	return misc.WriteFileDurable(path, payload, 0o600, tempPattern)
 }
 
 func hashBytes(payload []byte) string {

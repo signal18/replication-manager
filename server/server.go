@@ -4830,17 +4830,10 @@ func (repman *ReplicationManager) SaveDynamic() (bool, error) {
 	keys := t.Keys()
 	keys = misc.SortKeysAsc(keys)
 
-	// Write sorted values to file
-	file, err := os.OpenFile(filePath, os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
-	if err != nil {
-		if os.IsPermission(err) {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "File permission denied: %s", filePath)
-		} else {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Error opening file: %s", err)
-		}
-		return false, err
-	}
-	defer file.Close()
+	// The content is built in memory, then written durably (misc.WriteFileDurable): the file
+	// holds the instance's secrets, encrypted, and was truncated then written in place, so a
+	// crash in the middle left it cut.
+	var file bytes.Buffer
 
 	// Write header
 	file.WriteString(header)
@@ -4879,13 +4872,21 @@ func (repman *ReplicationManager) SaveDynamic() (bool, error) {
 		}
 	}
 
-	s.WriteTo(file)
+	s.WriteTo(&file)
+	if err := misc.WriteFileDurable(filePath, file.Bytes(), 0666, ".default.toml-*.tmp"); err != nil {
+		if os.IsPermission(err) {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "File permission denied: %s", filePath)
+		} else {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Error writing file %s: %s", filePath, err)
+		}
+		return false, err
+	}
 	//fmt.Printf("SAVE repman IMMUABLE MAP : %s", repman.Conf.ImmuableFlagMap)
 	//fmt.Printf("SAVE repman DYNAMIC MAP : %s", repman.Conf.DynamicFlagMap)
+	// Kept as it was: the former code copied from the file's end (after its writes), so this hash
+	// never covers the content and "changed" is true only at the first save. Out of the scope of
+	// the durable write; to be fixed on its own.
 	new_h := md5.New()
-	if _, err := io.Copy(new_h, file); err != nil {
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "Error during Overwriting: %s", err)
-	}
 
 	h, ok := repman.CheckSumConfig["saved"]
 	if !ok {
