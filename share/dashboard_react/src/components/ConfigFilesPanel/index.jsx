@@ -199,6 +199,12 @@ function ConfigFilesPanel({ selectedCluster, accordionClassName, headerClassName
           value={selectedServer}
           onChange={(e) => setSelectedServer(e.target.value)}
           aria-label='Database server'
+          // on the open (dark blue) header: the theme's page background and text, not the header's
+          // white text, in both themes; its options too (the native list)
+          bg='var(--body-bg-color)'
+          color='var(--text-color)'
+          borderColor='var(--tertiary-color)'
+          sx={{ '& option': { backgroundColor: 'var(--body-bg-color)', color: 'var(--text-color)' } }}
         >
           {servers.map((srv) => (
             <option key={srv.id} value={srv.id}>{srv.host}:{srv.port}</option>
