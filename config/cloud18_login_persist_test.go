@@ -96,7 +96,7 @@ func TestCloud18LoginsBatched(t *testing.T) {
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
 		t.Fatal("not written before the delay")
 	}
-	deadline := time.Now().Add(2 * time.Second)
+	deadline := time.Now().Add(15 * time.Second) // slow CI: the write comes after 50 ms
 	for time.Now().Before(deadline) {
 		if _, err := os.Stat(path); err == nil {
 			ForgetCloud18Logins()

@@ -27,7 +27,12 @@ import (
 
 const cloud18ResumePath = "/api/auth/cloud18/resume"
 
+// sessionIssuer is the issuer of the sessions repman signs (issueJWTFor and the resume check).
 const sessionIssuer = "https://api.replication-manager.signal18.io"
+
+// cloud18ResumeLimiter bounds the resumes of one address (each may ask the realm): after a restart
+// each person resumes once, a burst of 10 covers an office behind one address.
+var cloud18ResumeLimiter = newIPRateLimiter(30, 10, 15*time.Minute, 128)
 
 var errCloud18ResumeRefused = errors.New("this session cannot be resumed: sign in again")
 
@@ -66,6 +71,7 @@ func (repman *ReplicationManager) cloud18ResumableSession(raw string) (login, em
 // @Param Authorization header string true "the old session's bearer (Bearer <token>)"
 // @Success 200 {object} AuthTokenWithUpgrade "the new session"
 // @Failure 401 {string} string "sign in again"
+// @Failure 429 {string} string "too many resumes from this address"
 // @Failure 404 {string} string "cloud18-login-resume is off"
 // @Router /api/auth/cloud18/resume [post]
 func (repman *ReplicationManager) handlerMuxCloud18SessionResume(w http.ResponseWriter, r *http.Request) {
@@ -74,10 +80,15 @@ func (repman *ReplicationManager) handlerMuxCloud18SessionResume(w http.Response
 		http.Error(w, "Resuming Cloud18 sessions is off (cloud18-login-resume)", http.StatusNotFound)
 		return
 	}
+	if !cloud18ResumeLimiter.allow(clientIP(r.RemoteAddr), time.Now()) {
+		http.Error(w, "Too many requests", http.StatusTooManyRequests)
+		return
+	}
 	session, u, err := repman.cloud18ResumeSession(bearerOf(r))
 	if err != nil {
+		// the detail (the realm's answer) in the security log only: the caller is not signed in
 		repman.logCloud18Refusal("api_auth_failure", u, r.RemoteAddr, "Cloud18 session not resumed: "+err.Error())
-		http.Error(w, err.Error(), http.StatusUnauthorized)
+		http.Error(w, errCloud18ResumeRefused.Error(), http.StatusUnauthorized)
 		return
 	}
 	if repman.Conf.MonitoringLogAPILogin && !repman.isAPILoginSilenced(u) {

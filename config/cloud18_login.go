@@ -440,6 +440,12 @@ func (conf *Config) Cloud18LoginAccess(refresh string) (string, error) {
 	}
 	now := time.Now()
 	e := cloud18LoginEntryFor(refresh, now)
+	rotated := false
+	defer func() {
+		if rotated {
+			cloud18LoginRotated() // after the unlock below: the writer reads the new refresh token
+		}
+	}()
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	now = time.Now() // after waiting on a concurrent refresh
@@ -480,13 +486,13 @@ func (conf *Config) Cloud18LoginAccess(refresh string) (string, error) {
 	e.token, e.expires = a.AccessToken, now.Add(lifetime)
 	changed := false
 	if a.RefreshToken != "" && a.RefreshToken != e.refresh {
-		e.refresh, changed = a.RefreshToken, true // a realm rotating refresh tokens
+		e.refresh, changed, rotated = a.RefreshToken, true, true // a realm rotating refresh tokens
 	}
 	if end := a.sessionEnd(now); !end.IsZero() && !end.Equal(e.refreshEnd) {
 		e.refreshEnd, changed = end, true
 	}
-	if changed {
-		cloud18LoginsChanged() // the newest refresh token and its end, for the next start
+	if changed && !rotated {
+		cloud18LoginsChanged() // its end, for the next start (a rotation is written at once, above)
 	}
 	return e.token, nil
 }

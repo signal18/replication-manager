@@ -8,6 +8,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -24,6 +26,7 @@ func resumeRepman(t *testing.T) (*registerFakes, *ReplicationManager) {
 	f, issuer := newRegisterFakes(t)
 	repman := loginRepman(t, issuer)
 	repman.Conf.Cloud18LoginResume = true
+	cloud18ResumeLimiter.resetForTests()
 	return f, repman
 }
 
@@ -166,10 +169,21 @@ func TestCloud18SessionResumeRotatingRealm(t *testing.T) {
 	}
 	claim := repman.Conf.GetEncryptedString("rt-rotating@acme.example")
 	old, _ := repman.issueJWT(repman.cloud18SSOSessionInfo(config.Cloud18User{Email: "rotating@acme.example"}, claim, "a"), "")
+	path := filepath.Join(repman.Conf.WorkingDir, "cloud18-logins.json")
 	if repman.cloud18TokenFor("", claim) == "" { // the login in use: the realm rotated its refresh token
 		t.Fatal("the login gives a token before the restart")
 	}
-	config.FlushCloud18Logins()
+	// a rotation is written at once (no shutdown flush on a hard stop), well before the 5 s batch
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		if _, err := os.Stat(path); err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the rotated refresh token is not written at once")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 
 	// the restart: an empty cache read back from the file, a new key
 	config.ForgetCloud18Logins()
@@ -186,5 +200,25 @@ func TestCloud18SessionResumeRotatingRealm(t *testing.T) {
 	repman.initKeys()
 	if code, _ := resumeCall(repman, old); code != http.StatusUnauthorized {
 		t.Fatalf("without the kept logins a rotating realm refuses: %d", code)
+	}
+}
+
+// #2341 review: the resume asks the realm, so one address is bounded (a burst of 10, then 429).
+func TestCloud18SessionResumeRateLimited(t *testing.T) {
+	_, repman := resumeRepman(t)
+	cloud18ResumeLimiter.resetForTests()
+	t.Cleanup(cloud18ResumeLimiter.resetForTests)
+	limited := false
+	for i := 0; i < 30; i++ {
+		if code, _ := resumeCall(repman, "not-a-jwt"); code == http.StatusTooManyRequests {
+			limited = true
+			if i < 10 {
+				t.Fatalf("limited after %d calls, the burst is 10", i)
+			}
+			break
+		}
+	}
+	if !limited {
+		t.Fatal("30 resumes from one address in a row: limited")
 	}
 }

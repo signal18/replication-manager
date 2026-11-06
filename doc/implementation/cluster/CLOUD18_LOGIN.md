@@ -162,9 +162,12 @@ token, encrypted with the instance key, claim `cloud18`); the realm decides whet
     last use. Never the first token: the key is its hash.
   - Ended and refused logins are not written. The cache's bound (`cloud18LoginTokensMax`) applies on
     load, most recent first (F4).
-  - Writes are batched (`cloud18LoginsSaveDelay`, 5 s) and durable (`misc.WriteFileDurable`, 0600). A
-    login whose refresh is in progress is written as it was, or at the next pass: the writer never
-    waits on the realm.
+  - Writes are batched (`cloud18LoginsSaveDelay`, 5 s) and durable (`misc.WriteFileDurable`, 0600), one
+    writer at a time. A login whose refresh is in progress is written as it was, or at the next pass:
+    the writer never waits on the realm.
+  - A rotated refresh token is written at once (`cloud18LoginRotated`, after the login's lock is
+    released): the old token is revoked, and a hard stop runs no shutdown code. `Stop()` also flushes
+    the cache (`FlushCloud18Logins`).
   - Session data, not config: not staged by the config push (only `default.toml` and the event logs
     are staged from the data directory root), so no churn in git (T17), and no other writer (T25).
   - The file matters for a realm that rotates refresh tokens. The session's first token is revoked
@@ -174,7 +177,8 @@ token, encrypted with the instance key, claim `cloud18`); the realm decides whet
   session is read without its signature. It is refused (401) when:
   - it has expired, is not an SSO session, or has no Cloud18 login;
   - its login does not decrypt with this instance's key (`DecryptCloud18LoginClaim`). The cipher is
-    AES-CFB, unauthenticated, so a non-printable result is refused too;
+    AES-CFB, unauthenticated, so a result that is not printable ASCII is refused too. Keycloak's
+    refresh tokens are JWTs, so printable; a realm issuing other bytes would never resume;
   - the realm refuses the login (`Cloud18LoginAccess`), or the realm's person is not the session's
     email.
 
@@ -182,8 +186,10 @@ token, encrypted with the instance key, claim `cloud18`); the realm decides whet
   Cloud18 callback: a Member, the realm's person. It ends when the old one would have
   (`issueJWTFor`, the remaining lifetime). Nothing else of the old session is read, so a forged role or
   name is worthless.
-  - Each refusal goes to the bounded security log (`logCloud18Refusal`), each success to the API
-    login log.
+  - The caller gets one generic message ("sign in again"). The detail, such as the realm's answer,
+    goes to the bounded security log only (`logCloud18Refusal`). Each success goes to the API login log.
+  - At most 30 resumes a minute per address, with a burst of 10 (`cloud18ResumeLimiter`, the signup
+    limiter's code), then 429. Each resume may ask the realm.
 - **GUI** (`services/apiHelper.js`): on a 401 of a request that carried the session, one resume. It is
   shared by the requests refused together and never tried twice for the same session. On success the
   request is sent again with the new session, else the person is signed out as before.

@@ -4351,6 +4351,9 @@ func (repman *ReplicationManager) Stop() {
 		repman.globalScheduler.Stop()
 	}
 
+	// the Cloud18 logins as they are now: a refresh token rotated in the last seconds is kept (#2341)
+	config.FlushCloud18Logins()
+
 	repman.Logrus.Info("Stop: shutting down login upgrade store")
 	if repman.LoginUpgradeStore != nil {
 		repman.LoginUpgradeStore.Shutdown()

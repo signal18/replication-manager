@@ -148,7 +148,7 @@ func (repman *ReplicationManager) issueJWTFor(userInfo interface{}, gitlabToken 
 	}
 	signer := jwt.New(jwt.SigningMethodRS256)
 	claims := signer.Claims.(jwt.MapClaims)
-	claims["iss"] = "https://api.replication-manager.signal18.io"
+	claims["iss"] = sessionIssuer
 	claims["iat"] = time.Now().Unix()
 	claims["exp"] = time.Now().Add(lifetime).Unix()
 	claims["jti"] = jti

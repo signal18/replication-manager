@@ -41,6 +41,10 @@ var cloud18LoginsSaveDelay = 5 * time.Second
 
 // cloud18LoginsStore is where the cache is kept: set by LoadCloud18Logins, empty (nothing kept)
 // until then and when cloud18-login-resume is off.
+// cloud18LoginsWrite serializes the writes (the batch, a rotation, a flush): one writer at a time,
+// each with a fresh snapshot.
+var cloud18LoginsWrite sync.Mutex
+
 var cloud18LoginsStore = struct {
 	sync.Mutex
 	conf    *Config
@@ -133,9 +137,24 @@ func cloud18LoginsChanged() {
 	time.AfterFunc(cloud18LoginsSaveDelay, saveCloud18Logins)
 }
 
+// cloud18LoginRotated says the realm rotated a login's refresh token: the old one is revoked, the
+// new one is the only way back for that session, so it is written now, not after the batch delay
+// (a hard stop runs no shutdown flush). Called once the login's lock is released; in its own
+// goroutine, so the request that refreshed does not wait on the disk.
+func cloud18LoginRotated() {
+	cloud18LoginsStore.Lock()
+	kept := cloud18LoginsStore.path != ""
+	cloud18LoginsStore.Unlock()
+	if kept {
+		go saveCloud18Logins()
+	}
+}
+
 // saveCloud18Logins writes the cache. A login being refreshed (its lock held across the call to
 // the realm) is written as it was, or at the next write: the writer never waits on the realm.
 func saveCloud18Logins() {
+	cloud18LoginsWrite.Lock()
+	defer cloud18LoginsWrite.Unlock()
 	cloud18LoginsStore.Lock()
 	conf, path := cloud18LoginsStore.conf, cloud18LoginsStore.path
 	cloud18LoginsStore.pending = false
@@ -147,6 +166,8 @@ func saveCloud18Logins() {
 	if key == nil {
 		return // never in clear: no key, nothing kept
 	}
+	// the file as written last time: a login being refreshed (its lock busy) keeps its last record.
+	// One read per write, bounded by the cache's own bound (cloud18LoginTokensMax records).
 	previous := map[string]cloud18LoginRecord{}
 	if data, err := os.ReadFile(path); err == nil {
 		var f cloud18LoginsFile
