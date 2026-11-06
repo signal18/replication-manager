@@ -1348,10 +1348,9 @@ func (cluster *Cluster) SetProxyServersCredential(credential string, proxytype s
 		}
 		cluster.MarkSecretVersionStoreDirty()
 		for _, pri := range cluster.Proxies {
-			_, pass := misc.SplitPair(credential)
 			if prx, ok := pri.(*ProxySQLProxy); ok {
 
-				prx.RotateProxyPasswords(pass)
+				prx.SetAdminCredentials(user, pass)
 				prx.SetCredential(credential)
 				pri.SetCredential(credential)
 				prx.SetRestartCookie()

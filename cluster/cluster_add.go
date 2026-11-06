@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/config/credstore"
 	"github.com/signal18/replication-manager/router/proxysql"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/s18log"
@@ -264,6 +265,7 @@ func (cluster *Cluster) AddSeededProxy(prx string, srv string, port string, user
 		if user != "" || password != "" {
 			cluster.Conf.ProxysqlUser = user
 			cluster.Conf.ProxysqlPassword = password
+			cluster.setAddedProxysqlCredential(user, password)
 		}
 
 		if cluster.Conf.ProxysqlHosts != "" {
@@ -292,6 +294,28 @@ func (cluster *Cluster) AddSeededProxy(prx string, srv string, port string, user
 	cluster.Unlock()
 	cluster.StateMachine.RemoveFailoverState()
 	return nil
+}
+
+// setAddedProxysqlCredential keeps the login a ProxySQL is added with (service plan, proxies
+// copied from a cluster head, gRPC) where the proxy reads it: the proxysql-user and
+// proxysql-password secrets (GetProxysqlUser), written through the credential chain so they
+// survive a restart. A chain that refuses the change leaves them set in memory only.
+func (cluster *Cluster) setAddedProxysqlCredential(user string, password string) {
+	var changes []credstore.Change
+	if user != "" {
+		changes = append(changes, credstore.Change{Key: "proxysql-user", Value: user})
+	}
+	if password != "" {
+		changes = append(changes, credstore.Change{Key: "proxysql-password", Value: password})
+	}
+	if err := cluster.CredentialChain().SetAll(changes...); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlWarn, "ProxySQL login of the added proxy kept in memory only, the credential chain refused it: %s", err)
+		for _, ch := range changes {
+			cluster.Conf.Secrets.Set(ch.Key, config.Secret{Value: ch.Value, OldValue: cluster.Conf.Secrets.Get(ch.Key).Value})
+		}
+		return
+	}
+	cluster.MarkSecretVersionStoreDirty()
 }
 
 type UserForm struct {

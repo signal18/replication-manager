@@ -26,7 +26,7 @@ func NewProxySQLProxy(placement int, cluster *Cluster, proxyHost string) *ProxyS
 	prx.Type = config.ConstProxySqlproxy
 	prx.Port = conf.ProxysqlAdminPort
 	prx.ReadWritePort, _ = strconv.Atoi(conf.ProxysqlPort)
-	prx.User = cluster.Conf.ProxysqlUser
+	prx.User = cluster.GetProxysqlUser()
 	prx.Pass = cluster.Conf.Secrets.Get("proxysql-password").Value
 	prx.ReaderHostgroup, _ = strconv.Atoi(conf.ProxysqlReaderHostgroup)
 	prx.WriterHostgroup, _ = strconv.Atoi(conf.ProxysqlWriterHostgroup)
@@ -848,6 +848,13 @@ func (proxy *ProxySQLProxy) RotateMonitoringPasswords(password string) {
 }
 
 func (proxy *ProxySQLProxy) RotateProxyPasswords(password string) {
+	proxy.SetAdminCredentials(proxy.User, password)
+}
+
+// SetAdminCredentials logs in with the login replication-manager uses now and makes user:password
+// ProxySQL's admin credential: a credential setting that changes the user writes the new user,
+// not the current one with the new password.
+func (proxy *ProxySQLProxy) SetAdminCredentials(user string, password string) {
 	cluster := proxy.ClusterGroup
 	psql, err := proxy.Connect()
 	if err != nil {
@@ -856,7 +863,7 @@ func (proxy *ProxySQLProxy) RotateProxyPasswords(password string) {
 	}
 	defer psql.Connection.Close()
 
-	err = psql.SetMySQLVariable("admin-admin_credentials", proxy.User+":"+password)
+	err = psql.SetMySQLVariable("admin-admin_credentials", user+":"+password)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlErr, "ProxySQL could not set mysql variables (%s)", err)
 	}
