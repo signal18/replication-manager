@@ -6,12 +6,18 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/go-sql-driver/mysql"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/router/proxysql"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/state"
 	"github.com/spf13/pflag"
+)
+
+const (
+	proxysqlLocalAdmin    = "admin"
+	proxysqlExternalAdmin = "external"
 )
 
 type ProxySQLProxy struct {
@@ -85,9 +91,13 @@ func (proxy *ProxySQLProxy) AddFlags(flags *pflag.FlagSet, conf *config.Config) 
 	flags.StringVar(&conf.ProxysqlBinaryPath, "proxysql-binary-path", "/usr/sbin/proxysql", "proxysql binary location")
 }
 
-func (proxy *ProxySQLProxy) Connect() (proxysql.ProxySQL, error) {
+// proxysqlLocalOnlyError is the error ProxySQL answers a remote login of its local-only admin user with
+// ("User 'admin' can only connect locally").
+const proxysqlLocalOnlyError = 1040
+
+func (proxy *ProxySQLProxy) adminConnection(user string) proxysql.ProxySQL {
 	psql := proxysql.ProxySQL{
-		User:     proxy.User,
+		User:     user,
 		Password: proxy.Pass,
 		Host:     proxy.Host,
 		Port:     proxy.Port,
@@ -98,11 +108,31 @@ func (proxy *ProxySQLProxy) Connect() (proxysql.ProxySQL, error) {
 	if proxy.ClusterGroup.isPostgresCluster() {
 		psql.Flavor = proxysql.FlavorPgSQL
 	}
+	return psql
+}
 
-	if err := psql.Connect(); err != nil {
+// Connect logs in with the ProxySQL admin login. When ProxySQL refuses admin as local-only (1040),
+// it probes the external login the template creates with the same password and, if that
+// connects, keeps external as the login (proxysql-user).
+func (proxy *ProxySQLProxy) Connect() (proxysql.ProxySQL, error) {
+	psql := proxy.adminConnection(proxy.User)
+	err := psql.Connect()
+	if err == nil {
+		return psql, nil
+	}
+	var myErr *mysql.MySQLError
+	if proxy.User != proxysqlLocalAdmin || !errors.As(err, &myErr) || myErr.Number != proxysqlLocalOnlyError {
 		return psql, err
 	}
-	return psql, nil
+	probe := proxy.adminConnection(proxysqlExternalAdmin)
+	if probe.Connect() != nil {
+		return psql, err
+	}
+	cluster := proxy.ClusterGroup
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlInfo, "ProxySQL %s refuses %s as local-only, logging in as %s", proxy.Host, proxysqlLocalAdmin, proxysqlExternalAdmin)
+	proxy.User = proxysqlExternalAdmin
+	cluster.setAddedProxysqlCredential(proxysqlExternalAdmin, "")
+	return probe, nil
 }
 
 func (cluster *Cluster) AddShardProxy(proxysql *ProxySQLProxy, shardproxy *MariadbShardProxy) {
