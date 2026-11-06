@@ -6310,7 +6310,6 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	}
 	if trackedSecretSnapshotChanged(trackedSecretsBefore, mycluster.TrackedSecretCompareSnapshot()) {
 		mycluster.MarkSecretVersionStoreDirty()
-		mycluster.ReconcileSecretVersionStore()
 	}
 
 	mycluster.ConfigManager.SaveConfig(mycluster, false)

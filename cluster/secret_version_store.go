@@ -71,13 +71,38 @@ func (cluster *Cluster) MarkSecretVersionStoreDirty() {
 	cluster.Save()
 }
 
+// recordDirtySecretVersions is the memory part of the reconcile (#2227 rule 2): when asked
+// (MarkSecretVersionStoreDirty), the current value of each tracked secret becomes a version
+// when it differs from the last one (a secret without a version gets version 1: the starting
+// value); the versions the chain made at each change are already there, with their own time
+// and writer. Memory only, no file: the file is written by the save callback (T25), so a
+// reader of the history (a backup recording the password version it used) calls this and
+// never ReconcileSecretVersionStore. Versioning on only.
+func (cluster *Cluster) recordDirtySecretVersions() {
+	if cluster == nil || cluster.Conf == nil || !cluster.Conf.IsMonitoringSecretVersioningEnabled() {
+		return
+	}
+	vs := cluster.versionStore()
+	cluster.secretVersionStoreMu.Lock()
+	dirty := cluster.secretVersionStoreDirty
+	cluster.secretVersionStoreDirty = false
+	cluster.secretVersionStoreMu.Unlock()
+	if !dirty {
+		return
+	}
+	currentValues := cluster.getTrackedSecretStoreValues()
+	for _, key := range sortedTrackedSecretKeys(currentValues) {
+		current := currentValues[key]
+		vs.Record(key, current.StoredValue, current.CompareValue)
+	}
+}
+
 // ReconcileSecretVersionStore is the save callback's part for the local versioned file
-// (#2227 rule 2): when asked (MarkSecretVersionStoreDirty), the current value of each tracked
-// secret becomes a version when it differs from the last one (a secret without a version gets
-// version 1: the starting value); the versions the chain made at each change are already
-// there, with their own time and writer. Then the file is written, atomically, from the
-// version store. Encrypted values only (F9). Nothing when versioning is off. The error is the
-// file's write: the save is then not complete (ConfigSavedAsOf).
+// (#2227 rule 2): the tracked secrets recorded as versions (recordDirtySecretVersions), then
+// the file written, atomically, from the version store. It is called by the save callback
+// only (T25): every other path marks the store dirty and saves. Encrypted values only (F9).
+// Nothing when versioning is off. The error is the file's write: the save is then not
+// complete (ConfigSavedAsOf).
 func (cluster *Cluster) ReconcileSecretVersionStore() error {
 	if cluster == nil || cluster.Conf == nil {
 		return nil
@@ -87,18 +112,7 @@ func (cluster *Cluster) ReconcileSecretVersionStore() error {
 		return nil
 	}
 
-	vs := cluster.versionStore()
-	cluster.secretVersionStoreMu.Lock()
-	dirty := cluster.secretVersionStoreDirty
-	cluster.secretVersionStoreDirty = false
-	cluster.secretVersionStoreMu.Unlock()
-	if dirty {
-		currentValues := cluster.getTrackedSecretStoreValues()
-		for _, key := range sortedTrackedSecretKeys(currentValues) {
-			current := currentValues[key]
-			vs.Record(key, current.StoredValue, current.CompareValue)
-		}
-	}
+	cluster.recordDirtySecretVersions()
 	if err := cluster.writeSecretVersionFile(); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
 			"Failed to persist secret version store %s: %v", SecretVersionStorePath(cluster.Conf.WorkingDir, cluster.Name), err)

@@ -245,7 +245,13 @@ test counts from what the file holds when it starts.
   start when versioning is on, written by the save callback only (T25), atomically, when a
   version changed; a standby merges the file the config pull brings (versions known by time
   and writer) and never writes it. A remote newer version is inserted with its own time and
-  writer (no new version, rule 3).
+  writer (no new version, rule 3). `ReconcileSecretVersionStore` is called by
+  `SaveCallBack` only (#2041): a setter or a job marks the store dirty and asks a save. A
+  reader of the history that needs the current secrets as versions at once (a backup
+  recording the password version it used) calls `recordDirtySecretVersions`, which records
+  them in the version store in memory and writes no file; the next save writes it. The
+  history is read with `VersionStore.Versions`, which leaves the pending write alone
+  (`Export` takes it).
 - **Secret-store CLI tools** (`server/server_secret_store.go`): `secret-store-restore`
   restores a versioned secret as a new version of the file (offline: appended atomically,
   `AppendSecretVersionFile`; with `--apply-runtime`: through the running cluster's chain and
