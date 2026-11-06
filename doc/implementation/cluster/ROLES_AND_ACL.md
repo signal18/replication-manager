@@ -1,6 +1,6 @@
 # Cluster roles and ACL (Cloud18)
 
-Status: **design draft, agreed 2026-11-03, not implemented.** The "Today" sections describe the
+Status: **design draft (2026-11-03, decisions 2026-11-05), not implemented.** The "Today" sections describe the
 code as it stands; the rest is the target.
 
 ## The principle: repman rules, the others follow
@@ -39,7 +39,10 @@ technical parts.
 ### The payer
 
 The payer is a single attribution: one holder per cluster at any time. By default it is the
-sponsor. Only the current payer can hand it over, to another member of the cluster.
+sponsor. The current payer hands it over to another member of the cluster. **Override:** the
+provider's `sysops` on the cluster can always take it back, and if its holder disappears (account
+deleted, leaves the cluster) it returns to the provisioning sysops, so the payer is never empty.
+Every move of the payer is logged (who, from whom, to whom, when).
 
 **Today:** there is no payer role. Billing (`cluster/cluster_billing_feed.go`,
 `BillingIdentity`) sends the identities holding the `sponsor` role, and the separate payer was
@@ -51,8 +54,8 @@ Its name follows the existing role names (T19), to choose when it is built.
 | Step | `extsysops`, `extdbops` | payer |
 |---|---|---|
 | 1. Provisioning of a cluster for sale | on the sysops who provisions it | the sysops who provisions it |
-| 2. A client takes the cluster | given to the sponsor | moves to the sponsor |
-| 3. Later | the sponsor gives them to users of its choice (several) | the current payer hands it to one other member |
+| 2. A client takes the cluster | given to the sponsor too (they stay on the provisioning sysops) | moves to the sponsor |
+| 3. Later | the sponsor gives and removes them for anyone, except the repman's registration account, which always keeps them | the current payer hands it to one other member; the provider's sysops can take it back |
 
 ## How the roles reach the other tools
 
@@ -66,6 +69,11 @@ Its name follows the existing role names (T19), to choose when it is built.
    tool calls the BO or the CRM to know a user's rights.
 
 The Signal18 team (admin groups of the identity provider) sees every cluster in every tool.
+
+Decided 2026-11-05 (details in the BO's design): a role change takes effect at the BO's pace; a
+repman the BO cannot read keeps its last known roles, emptied after 7 days without a successful read;
+each run compares and fixes the differences; the BO accepts from each repman only roles on its own
+clusters (groups under its own `<uri>`), anything else is refused and logged.
 
 The technical accounts a repman is registered with (its `cloud18-gitlab-user`) are the repman's
 own sysops; they get no access to the tools through these groups.
@@ -82,3 +90,6 @@ own sysops; they get no access to the tools through these groups.
 
 - What each role sees in each tool (Grafana, CRM, member zone).
 - The name of the payer role in repman.
+- From the review of #2303: dots in cluster names inside the group path, a renamed URI or cluster,
+  the claim size for a user on many clusters, whether the `pending-*`, `quote-*`, `unsubscribed-*`
+  states are pushed too.
