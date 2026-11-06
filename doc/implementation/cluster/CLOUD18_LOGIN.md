@@ -197,6 +197,12 @@ token, encrypted with the instance key, claim `cloud18`); the realm decides whet
     signature, so its `exp` could be forged. The resume takes the earlier of the token's `exp` and the
     recorded end, and refuses past it. Tested with a far-future `exp`, and with an ended session whose
     `exp` was forged into the future.
+  - The record is per login, not per session: it keeps the latest end of any session issued for the
+    login. An older session of the same login (an earlier sign-in, the login upgrade) can therefore
+    resume up to the newest session's end. It is the same person and the same realm login, and the
+    realm still decides.
+  - A file written before the recorded end existed (unreleased commits of this PR) has no
+    `session_end`: those sessions do not resume once, then every new session is recorded.
   - Nothing else of the old session is read, so a forged role or name is worthless.
   - A session from the Cloud18 password form (`Name` = the login name typed) comes back with `Name` =
     the realm's email. Its identity is unchanged (an SSO session is identified by its email). It loses
@@ -207,7 +213,9 @@ token, encrypted with the instance key, claim `cloud18`); the realm decides whet
   - The caller gets one generic message ("sign in again"). The detail, such as the realm's answer,
     goes to the bounded security log only (`logCloud18Refusal`). Each success goes to the API login log.
   - At most 30 resumes a minute per address, with a burst of 10 (`cloud18ResumeLimiter`, the signup
-    limiter's code), then 429. Each resume may ask the realm.
+    limiter's code), then 429. Each resume may ask the realm. The address is the person's, behind the
+    gateway too (`signupClientIP`: `X-Forwarded-For` from a private or loopback proxy). On a 429 the
+    GUI tries once more after 2 to 5 s, for an office resuming together after a restart.
 - **GUI** (`services/apiHelper.js`): on a 401 of a request that carried the session, one resume per
   old session. It is shared by the requests refused together and never tried twice for the same
   session. On success the

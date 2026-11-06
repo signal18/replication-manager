@@ -86,7 +86,10 @@ const resumeSession = (oldToken) => {
   if (resumeTried.has(oldToken)) return Promise.resolve(null)
   resumeTried.add(oldToken)
   {
-    const p = fetch('/api/auth/cloud18/resume', { method: 'POST', headers: { Authorization: `Bearer ${oldToken}`, Accept: '*/*' } })
+    const call = () => fetch('/api/auth/cloud18/resume', { method: 'POST', headers: { Authorization: `Bearer ${oldToken}`, Accept: '*/*' } })
+    // 429: many people resuming at once behind one address after a restart; once more, a little later
+    const p = call()
+      .then((r) => (r.status === 429 ? new Promise((resolve) => setTimeout(resolve, 2000 + Math.random() * 3000)).then(call) : r))
       .then((r) => (r.ok ? r.json() : null))
       .then((body) => {
         const token = body?.token || null

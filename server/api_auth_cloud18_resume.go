@@ -70,8 +70,11 @@ func (repman *ReplicationManager) cloud18ResumableSession(raw string) (login, em
 		return "", "", end, errCloud18ResumeRefused
 	}
 	exp, _ := claims["exp"].(float64)
+	if exp > float64(time.Now().Add(100*365*24*time.Hour).Unix()) {
+		exp = float64(time.Now().Add(100 * 365 * 24 * time.Hour).Unix()) // a forged huge exp: capped by the record anyway
+	}
 	end = time.Unix(int64(exp), 0)
-	if exp == 0 || !time.Now().Before(end) {
+	if exp <= 0 || !time.Now().Before(end) {
 		return "", "", end, errors.New("the session has expired: sign in again")
 	}
 	info, _ := claims["CustomUserInfo"].(map[string]interface{})
@@ -101,7 +104,8 @@ func (repman *ReplicationManager) handlerMuxCloud18SessionResume(w http.Response
 		http.Error(w, "Resuming Cloud18 sessions is off (cloud18-login-resume)", http.StatusNotFound)
 		return
 	}
-	if !cloud18ResumeLimiter.allow(clientIP(r.RemoteAddr), time.Now()) {
+	// the person's address, behind the gateway too (X-Forwarded-For from a trusted proxy), as signup
+	if !cloud18ResumeLimiter.allow(signupClientIP(r), time.Now()) {
 		http.Error(w, "Too many requests", http.StatusTooManyRequests)
 		return
 	}
