@@ -76,9 +76,13 @@ func galeraProbeOn(master *cluster.ServerMonitor, nodes []*cluster.ServerMonitor
 	return nil
 }
 
+// galeraGate checks that a cluster declared Galera (the test's topology target, MatchTarget)
+// is discovered Galera. It used to log "Skipping" and return PASS: a Galera cluster discovered
+// master-slave (the regression fixed by 06c9757c4) passed every Galera test without running
+// one. It is a failure (#2350).
 func galeraGate(cl *cluster.Cluster, name string) bool {
 	if cl.GetTopology() != config.TopoMultiMasterWsrep {
-		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Skipping %s: requires topology %s, cluster is %s", name, config.TopoMultiMasterWsrep, cl.GetTopology())
+		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "FAIL %s: the cluster is declared %s but discovered %s", name, config.TopoMultiMasterWsrep, cl.GetTopology())
 		return false
 	}
 	return true
@@ -92,7 +96,7 @@ func (regtest *RegTest) TestGaleraBootstrap(cl *cluster.Cluster, conf string, te
 		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", format, args...)
 	}
 	if !galeraGate(cl, "GaleraBootstrap") {
-		return true
+		return false
 	}
 	var master *cluster.ServerMonitor
 	var err error
@@ -117,7 +121,7 @@ func (regtest *RegTest) TestGaleraSwitchover(cl *cluster.Cluster, conf string, t
 		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", format, args...)
 	}
 	if !galeraGate(cl, "GaleraSwitchover") {
-		return true
+		return false
 	}
 	before, err := galeraHealthy(cl, len(cl.Servers))
 	if err != nil {
@@ -147,15 +151,16 @@ func (regtest *RegTest) TestGaleraSwitchover(cl *cluster.Cluster, conf string, t
 }
 
 // TestGaleraMasterLoss stops the database service of replication-manager's master: the other
-// nodes keep a Primary component, the master moves to one of them (in manual mode the cluster
-// first waits for the operator, ERR00002, then the operator's failover moves it), and once
-// started again the lost node rejoins Synced with the writes made while it was down.
+// nodes keep a Primary component and the virtual master moves to one of them by itself, in any
+// failover mode (a switchover: no operator, no ERR00002, #2350). Once started again, the lost
+// node rejoins Synced with the writes made while it was down: on an OpenSVC-provisioned cluster
+// that is the node the provision bootstrapped, whose start used to bootstrap a new cluster.
 func (regtest *RegTest) TestGaleraMasterLoss(cl *cluster.Cluster, conf string, test *cluster.Test) bool {
 	logf := func(format string, args ...interface{}) {
 		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", format, args...)
 	}
 	if !galeraGate(cl, "GaleraMasterLoss") {
-		return true
+		return false
 	}
 	n := len(cl.Servers)
 	lost, err := galeraHealthy(cl, n)
@@ -177,19 +182,15 @@ func (regtest *RegTest) TestGaleraMasterLoss(cl *cluster.Cluster, conf string, t
 		cl.StartDatabaseService(lost)
 		return false
 	}
-	if cl.Conf.Interactive {
-		// manual mode: the cluster waits for the operator, who fails over
-		if !waitFor(30*time.Second, func() bool { return cl.StateMachine.IsInState("ERR00002") }) {
-			logf("FAIL GaleraMasterLoss: manual mode, master %s failed, but no ERR00002 (waiting for a manual failover)", lost.URL)
-			cl.StartDatabaseService(lost)
-			return false
-		}
-		logf("Manual mode: ERR00002 open, failing over as the operator")
-		cl.FailoverNow()
-	}
+	// no operator in any mode: the master moves by itself (the GUI has no failover for Galera)
 	var elected *cluster.ServerMonitor
 	if !waitFor(120*time.Second, func() bool { elected, err = galeraHealthy(cl, n-1); return err == nil }) {
-		logf("FAIL GaleraMasterLoss: the master did not move off %s: %s", lost.URL, err)
+		logf("FAIL GaleraMasterLoss: the master did not move off %s by itself (interactive=%v): %s", lost.URL, cl.Conf.Interactive, err)
+		cl.StartDatabaseService(lost)
+		return false
+	}
+	if cl.StateMachine.IsInState("ERR00002") {
+		logf("FAIL GaleraMasterLoss: ERR00002 open: Galera never waits for an operator failover")
 		cl.StartDatabaseService(lost)
 		return false
 	}
@@ -215,5 +216,106 @@ func (regtest *RegTest) TestGaleraMasterLoss(cl *cluster.Cluster, conf string, t
 		return false
 	}
 	logf("PASS GaleraMasterLoss: %s lost, master moved to %s, %s rejoined Synced with the writes", lost.URL, elected.URL, lost.URL)
+	return true
+}
+
+// TestGaleraFullRestartNotLastFirst stops the whole cluster, the master first, so the last node
+// stopped (the only one Galera lets bootstrap, safe_to_bootstrap: 1) is another node. It then
+// starts a node that was NOT the last one stopped, alone: that start must not create a new cluster
+// (no Primary component while the others are down). Then it starts the rest: the cluster must come
+// back whole (every node Synced in one Primary component) with the SAME cluster state UUID as
+// before, never a new cluster (#2350, asked after the master-loss fix).
+func (regtest *RegTest) TestGaleraFullRestartNotLastFirst(cl *cluster.Cluster, conf string, test *cluster.Test) bool {
+	logf := func(format string, args ...interface{}) {
+		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", format, args...)
+	}
+	if !galeraGate(cl, "GaleraFullRestartNotLastFirst") {
+		return false
+	}
+	n := len(cl.Servers)
+	master, err := galeraHealthy(cl, n)
+	if err != nil {
+		logf("FAIL GaleraFullRestartNotLastFirst: the cluster is not healthy before the test: %s", err)
+		return false
+	}
+	uuid := master.Status.Get("WSREP_CLUSTER_STATE_UUID")
+	if uuid == "" {
+		logf("FAIL GaleraFullRestartNotLastFirst: no cluster state UUID on %s", master.URL)
+		return false
+	}
+	restartAll := func() {
+		for _, s := range cl.Servers {
+			if s.IsDown() {
+				cl.StartDatabaseService(s)
+			}
+		}
+	}
+
+	// the master first, then the others in declared order: the last one stopped is not the master
+	order := []*cluster.ServerMonitor{master}
+	for _, s := range cl.Servers {
+		if s.URL != master.URL {
+			order = append(order, s)
+		}
+	}
+	for _, s := range order {
+		logf("Stopping %s", s.URL)
+		if err := cl.StopDatabaseService(s); err != nil {
+			logf("FAIL GaleraFullRestartNotLastFirst: cannot stop %s: %s", s.URL, err)
+			restartAll()
+			return false
+		}
+		if !waitFor(120*time.Second, func() bool { return s.IsDown() }) {
+			logf("FAIL GaleraFullRestartNotLastFirst: %s not down 120s after its stop", s.URL)
+			restartAll()
+			return false
+		}
+	}
+	first, last := order[0], order[len(order)-1]
+	logf("Cluster down; the last node stopped is %s; starting %s first, alone", last.URL, first.URL)
+
+	// the node that was not the last to leave, alone: never a Primary component (a new cluster)
+	if err := cl.StartDatabaseService(first); err != nil {
+		logf("Start of %s refused: %s (no new cluster: acceptable)", first.URL, err)
+	}
+	newCluster := ""
+	waitFor(90*time.Second, func() bool {
+		if first.Conn != nil && !first.IsDown() && first.HasWsrepPrimary() {
+			newCluster = first.Status.Get("WSREP_CLUSTER_STATE_UUID")
+			return true
+		}
+		return false
+	})
+	if newCluster != "" {
+		logf("FAIL GaleraFullRestartNotLastFirst: %s, not the last node stopped, formed a Primary component alone (state UUID %s, was %s): a new cluster", first.URL, newCluster, uuid)
+		restartAll()
+		return false
+	}
+
+	// the rest, the last node stopped first: the cluster comes back whole, the same cluster
+	starts := []*cluster.ServerMonitor{last}
+	for _, s := range order[:len(order)-1] {
+		starts = append(starts, s)
+	}
+	for _, s := range starts {
+		if s.IsDown() {
+			logf("Starting %s", s.URL)
+			if err := cl.StartDatabaseService(s); err != nil {
+				logf("Start of %s: %s", s.URL, err)
+			}
+		}
+	}
+	if !waitFor(600*time.Second, func() bool { _, err = galeraHealthy(cl, n); return err == nil }) {
+		logf("FAIL GaleraFullRestartNotLastFirst: the cluster did not come back whole 600s after the starts: %s", err)
+		restartAll()
+		return false
+	}
+	for _, s := range galeraSynced(cl) {
+		if got := s.Status.Get("WSREP_CLUSTER_STATE_UUID"); got != uuid {
+			logf("FAIL GaleraFullRestartNotLastFirst: %s is in cluster %s, was %s: a new cluster was bootstrapped", s.URL, got, uuid)
+			return false
+		}
+	}
+	logf("PASS GaleraFullRestartNotLastFirst: %s started first formed no cluster; the cluster came back whole, state UUID %s kept", first.URL, uuid)
 	return true
 }

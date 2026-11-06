@@ -345,6 +345,9 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 		if test.Name == "testGaleraMasterLoss" {
 			res = regtest.TestGaleraMasterLoss(cl, test.ConfigFile, &test)
 		}
+		if test.Name == "testGaleraFullRestartNotLastFirst" {
+			res = regtest.TestGaleraFullRestartNotLastFirst(cl, test.ConfigFile, &test)
+		}
 		if test.Name == "testReplicationTLSAutoCertificate" {
 			res = regtest.TestReplicationTLSAutoCertificate(cl, test.ConfigFile, &test)
 		}

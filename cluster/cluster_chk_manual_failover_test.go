@@ -23,7 +23,7 @@ func TestManualFailoverAwaitedOnlyOnFailedMaster(t *testing.T) {
 	}{
 		{config.TopoMasterSlave, stateMaster, false},
 		{config.TopoMasterSlave, stateFailed, true},
-		{config.TopoMultiMasterWsrep, stateFailed, true},
+		{config.TopoMultiMasterWsrep, stateFailed, false}, // Galera never waits for an operator (#2350)
 		{config.TopoMultiMasterGrouprep, stateMaster, false},
 		{config.TopoMultiMasterGrouprep, stateFailed, false},
 	} {
