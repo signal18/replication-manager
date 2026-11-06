@@ -74,6 +74,32 @@ const handleResponse = async (response) => {
   return { data, status: response.status, headers: response.headers };
 };
 
+// A Cloud18 session left unverifiable by a restart of replication-manager is resumed once (#2341):
+// the server asks the Cloud18 realm whether the session's login still holds and gives a new
+// session, or refuses (the person then signs in again). One resume at a time for all the requests
+// refused together, and never twice for the same old session.
+let resumeInFlight = null
+const resumeTried = new Set()
+const resumeSession = (oldToken) => {
+  if (!oldToken || resumeTried.has(oldToken)) return Promise.resolve(null)
+  if (!resumeInFlight) {
+    resumeTried.add(oldToken)
+    resumeInFlight = fetch('/api/auth/cloud18/resume', { method: 'POST', headers: { Authorization: `Bearer ${oldToken}`, Accept: '*/*' } })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((body) => {
+        const token = body?.token || null
+        // only when the session refused is still the stored one (not a sign-in meanwhile)
+        if (token && localStorage.getItem('user_token') === oldToken) {
+          localStorage.setItem('user_token', token)
+        }
+        return token
+      })
+      .catch(() => null)
+      .finally(() => { resumeInFlight = null })
+  }
+  return resumeInFlight
+}
+
 const performRequest = async (method, apiUrl, params, authValue, baseUrl = '') => {
   let headerURL = baseUrl;
   if (apiUrl === "login") {
@@ -142,6 +168,14 @@ const performRequest = async (method, apiUrl, params, authValue, baseUrl = '') =
       const currentToken = localStorage.getItem('user_token')
       if (tokenUsed && currentToken && tokenUsed !== currentToken) {
         return handleResponse(response)
+      }
+      // a restart of replication-manager: the Cloud18 session may come back (#2341)
+      const resumed = await resumeSession(tokenUsed)
+      if (resumed) {
+        const retried = await fetch(url, { ...options, headers: { ...headers, Authorization: `Bearer ${resumed}` } })
+        if (retried.status !== 401) {
+          return handleResponse(retried)
+        }
       }
       clearLocalStorageByPrefix('user_token');
       localStorage.removeItem('username');

@@ -1295,6 +1295,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.Cloud18GitPassword, "cloud18-gitlab-password", "", "Cloud 18 GitLab password")
 	flags.StringVar(&conf.Cloud18IdentityURL, "cloud18-identity-url", config.ConstCloud18IdentityURL, "Cloud18 identity realm (OpenID Connect issuer): a person connects this replication-manager to it once (device login), for the S3 SSO storages, the Cloud18 vault and the Cloud18 GitLab token")
 	flags.BoolVar(&conf.Cloud18SSOLogin, "cloud18-sso-login", false, "On a registered repman with a public https address (api-public-url) whose callback (<api-public-url>/api/auth/cloud18/callback) the Cloud18 realm accepts, the login page offers Sign in and Sign up with Cloud18 and checks the realm session silently (#2185). Off by default: no repman is declared in the realm unless it registers its own address; the Sign in form checks Cloud18 server-side without it")
+	flags.BoolVar(&conf.Cloud18LoginResume, "cloud18-login-resume", true, "Keep the Cloud18 (OIDC) logins across a restart: the live logins are kept encrypted in the data directory (cloud18-logins.json, never pushed to git) and a session the restart left unverifiable is given again when the realm still accepts its login (#2341). Off: every restart signs the Cloud18 users out, the file is removed")
 	flags.StringVar(&conf.Cloud18LoginACR, "cloud18-login-acr", "", "Authentication levels (OpenID Connect acr values, comma-separated) a Cloud18 login must reach on this repman, e.g. mfa for the password and a one-time code: repman asks the realm for them and refuses a realm token whose acr claim is not literally one of them (Sign in with Cloud18, the Sign in form, a bearer at the API or the MCP, a peer). Set for the Cloud18 Keycloak realm (acr as a string). Empty: any level")
 	flags.StringVar(&conf.Cloud18PlatformDescription, "cloud18-platform-description", "", "Marketing banner display on the cloud18 portal describing the infrastucture")
 	flags.StringVar(&conf.Cloud18ArchiveOfferRequests, "cloud18-archive-offer-requests", "", "Archive offers of the Cloud18 marketplace whose access the cluster asks the back-office for (comma-separated offer names): it delivers the S3 provider or the archive")
@@ -3007,6 +3008,12 @@ func (repman *ReplicationManager) Run() error {
 
 	repman.initKeys()
 	repman.ensureLoginUpgradeInfra()
+	// the Cloud18 logins of the previous run: their sessions can be resumed (#2341)
+	if n, err := repman.Conf.LoadCloud18Logins(); err != nil {
+		repman.Logrus.Warnf("Cloud18 logins of the previous run not read: %s", err)
+	} else if n > 0 {
+		repman.Logrus.Infof("Cloud18 logins of the previous run kept: %d", n)
+	}
 
 	//	repman.currentCluster.SetCfgGroupDisplay(strClusters)
 	if repman.Conf.MCPServ {

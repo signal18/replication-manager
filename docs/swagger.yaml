@@ -2924,6 +2924,8 @@ definitions:
         type: integer
       backupVerificationTimeout:
         type: integer
+      backupWriteStallLeakGrace:
+        type: integer
       backupWriteStallTimeout:
         type: integer
       binlogCopyMode:
@@ -3044,6 +3046,8 @@ definitions:
         type: string
       cloud18LoginAcr:
         type: string
+      cloud18LoginResume:
+        type: boolean
       cloud18MarketplaceApuPrice:
         type: number
       cloud18MarketplaceBauClientStorage:
@@ -4983,6 +4987,13 @@ definitions:
     type: object
   peer.PeerNodeStatus:
     properties:
+      connectionError:
+        description: |-
+          ConnectionError is why the poll holds no authenticated session to the peer although
+          its health answers (login refused, /api/clusters refused): the row then stays on the
+          peer.json catalog. Empty once the live fetch works. A tracked state, shown in the
+          peer view, instead of the error the poll used to drop.
+        type: string
       error:
         type: string
       lastUpdate:
@@ -6229,6 +6240,38 @@ paths:
             additionalProperties: true
             type: object
       summary: 'Sign in with Cloud18: end the realm session at logout'
+      tags:
+      - Auth
+  /api/auth/cloud18/resume:
+    post:
+      description: 'With the bearer of a Cloud18 session issued before this replication-manager
+        restarted, gives a new session when the session has not expired and the Cloud18
+        realm still accepts its login (#2341). The new session is built from the realm''s
+        answer (a Member, the realm''s person) and ends when the old one would have.
+        Refused (401) for a local session, an expired one, or a login the realm refuses:
+        the person signs in again. 404 when cloud18-login-resume is off. Public.'
+      parameters:
+      - description: the old session's bearer (Bearer <token>)
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: the new session
+          schema:
+            $ref: '#/definitions/server.AuthTokenWithUpgrade'
+        "401":
+          description: sign in again
+          schema:
+            type: string
+        "404":
+          description: cloud18-login-resume is off
+          schema:
+            type: string
+      summary: Resume a Cloud18 session after a restart
       tags:
       - Auth
   /api/auth/cloud18/session:

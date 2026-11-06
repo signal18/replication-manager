@@ -149,6 +149,53 @@ Authentication" steps (level 1 password, level 2 password and OTP), and on the c
 `replication-manager-login` the ACR to LoA mapping (`mfa` -> 2) and the `acr` claim in its access tokens
 (client scope `acr`). Check on a token that `acr` reads `mfa` before setting `cloud18-login-acr`.
 
+## Sessions across a restart (`cloud18-login-resume`, #2341)
+
+The sessions repman issues are signed with an RSA key generated at each start (`initKeys`), so a
+restart leaves every session unverifiable. A Cloud18 session carries its login (the first refresh
+token, encrypted with the instance key, claim `cloud18`); the realm decides whether it comes back.
+
+- **Kept logins** (`config/cloud18_login_persist.go`): the login cache (`cloud18LoginTokens`, keyed by
+  the hash of the first refresh token) is written to `<datadir>/cloud18-logins.json` and read back at
+  start (`LoadCloud18Logins`, called after `initKeys`).
+  - Each record holds the newest refresh token, encrypted (`hash_`, instance key), its end and its
+    last use. Never the first token: the key is its hash.
+  - Ended and refused logins are not written. The cache's bound (`cloud18LoginTokensMax`) applies on
+    load, most recent first (F4).
+  - Writes are batched (`cloud18LoginsSaveDelay`, 5 s) and durable (`misc.WriteFileDurable`, 0600). A
+    login whose refresh is in progress is written as it was, or at the next pass: the writer never
+    waits on the realm.
+  - Session data, not config: not staged by the config push (only `default.toml` and the event logs
+    are staged from the data directory root), so no churn in git (T17), and no other writer (T25).
+  - The file matters for a realm that rotates refresh tokens. The session's first token is revoked
+    once used, and only the cache knows the newest one. With Keycloak's default (no rotation), the
+    claim alone would do.
+- **Resume** (`POST /api/auth/cloud18/resume`, public, `server/api_auth_cloud18_resume.go`): the old
+  session is read without its signature. It is refused (401) when:
+  - it has expired, is not an SSO session, or has no Cloud18 login;
+  - its login does not decrypt with this instance's key (`DecryptCloud18LoginClaim`). The cipher is
+    AES-CFB, unauthenticated, so a non-printable result is refused too;
+  - the realm refuses the login (`Cloud18LoginAccess`), or the realm's person is not the session's
+    email.
+
+  Otherwise a new session is built by `cloud18SSOSessionInfo`, the same builder as the Sign in with
+  Cloud18 callback: a Member, the realm's person. It ends when the old one would have
+  (`issueJWTFor`, the remaining lifetime). Nothing else of the old session is read, so a forged role or
+  name is worthless.
+  - Each refusal goes to the bounded security log (`logCloud18Refusal`), each success to the API
+    login log.
+- **GUI** (`services/apiHelper.js`): on a 401 of a request that carried the session, one resume. It is
+  shared by the requests refused together and never tried twice for the same session. On success the
+  request is sent again with the new session, else the person is signed out as before.
+- **Off-switch**: `cloud18-login-resume` (default on, Setup > Cloud18 > Registration, "Keep Sessions
+  Across Restarts"). Off: the resume answers 404, nothing is written, and the file is removed at once.
+- **Limits**:
+  - Local (password) sessions still end at a restart.
+  - A logout only drops the session in the browser. The realm session is ended by
+    `Cloud18LoginEnd`, which also drops the kept login, so a logged-out session cannot resume.
+  - A copy of an old session can resume while the realm accepts its login, as it could be used
+    before the restart until its end.
+
 ## Rollout (step 3, later)
 
 Older releases keep logging in with GitLab's password grant as long as GitLab accepts it. Once the fleet

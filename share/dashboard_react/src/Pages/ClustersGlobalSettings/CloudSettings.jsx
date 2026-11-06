@@ -613,6 +613,18 @@ Start create an account in https://gitlab.signal18.io
         </HStack>
       )
     }] : []),
+    ...(config?.cloud18 ? [{
+      globalSetting: 'cloud18-login-resume',
+      key: 'Keep Sessions Across Restarts',
+      help: h(`**Keep Sessions Across Restarts**\n\nA restart of replication-manager no longer signs out the people signed in with their Cloud18 account (#2341).\n\n- The live Cloud18 logins are kept, encrypted with this instance's key, in the data directory (\`cloud18-logins.json\`, never pushed to git).\n- After a restart, a session comes back only when the Cloud18 realm still accepts its login, and it ends when it would have ended.\n- Local (password) logins still end at a restart.\n\nOff: every restart signs everyone out, and the kept logins are removed at once.\n\nConfig: \`cloud18-login-resume\``, 'Keep Sessions Across Restarts'),
+      value: (
+        <RMSwitch
+          confirmTitle='Confirm switch global settings for cloud18-login-resume?'
+          onChange={() => dispatch(switchGlobalSetting({ setting: 'cloud18-login-resume' }))}
+          isChecked={config?.cloud18LoginResume}
+        />
+      )
+    }] : []),
   ]
 
   // Peering section (rendered after Registration): this instance's declared public

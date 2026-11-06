@@ -227,20 +227,7 @@ func (repman *ReplicationManager) handlerMuxCloud18SSOCallback(w http.ResponseWr
 		repman.cloud18SSOFail(w, r, public, cloud18SSOToken, err.Error())
 		return
 	}
-	info := struct {
-		Name         string
-		DisplayName  string `json:"display_name"`
-		Role         string
-		Password     string
-		Email        string `json:"email"`
-		Profile      string `json:"profile"`
-		MeetUserID   string `json:"meet_user_id"`
-		Chat         string `json:"chat"`
-		Cloud18      string `json:"cloud18,omitempty"`
-		Cloud18Token string `json:"cloud18_token"`
-	}{u.Email, u.Name, "Member", "", u.Email, repman.Conf.OAuthProvider, "", chatNeedsPassword,
-		ssoLogin{cloud18: l}.cloud18Claim(repman.Conf), repman.Conf.GetEncryptedString(l.Access)}
-	jwt, err := repman.issueJWT(info, "")
+	jwt, err := repman.issueJWT(repman.cloud18SSOSessionInfo(u, ssoLogin{cloud18: l}.cloud18Claim(repman.Conf), l.Access), "")
 	if err != nil {
 		repman.cloud18SSOFail(w, r, public, cloud18SSOFailed, err.Error())
 		return
@@ -345,6 +332,25 @@ func (repman *ReplicationManager) handlerMuxCloud18SSOLogoutEnd(w http.ResponseW
 	repman.jsonResponse(map[string]interface{}{"url": repman.cloud18SSOLogoutTarget(), "ended": ended}, w)
 }
 
+// cloud18SSOSessionInfo is the session of a Sign in with Cloud18 login: the person the realm token
+// names (u), a Member, its Cloud18 login (the encrypted refresh token, loginClaim) and the realm
+// token, encrypted. The callback and the resume after a restart (#2341) build it the same way.
+func (repman *ReplicationManager) cloud18SSOSessionInfo(u config.Cloud18User, loginClaim, access string) interface{} {
+	return struct {
+		Name         string
+		DisplayName  string `json:"display_name"`
+		Role         string
+		Password     string
+		Email        string `json:"email"`
+		Profile      string `json:"profile"`
+		MeetUserID   string `json:"meet_user_id"`
+		Chat         string `json:"chat"`
+		Cloud18      string `json:"cloud18,omitempty"`
+		Cloud18Token string `json:"cloud18_token"`
+	}{u.Email, u.Name, "Member", "", u.Email, repman.Conf.OAuthProvider, "", chatNeedsPassword,
+		loginClaim, repman.Conf.GetEncryptedString(access)}
+}
+
 // cloud18LogoutSession is the session of a logout's bearer, an expired one included: a tab left open
 // past the session's end still ends its realm session at Logout. The signature is checked as for any
 // session (repman's key, RS256); only the expiry is not, and the session opens nothing here, it can
@@ -373,4 +379,5 @@ func (repman *ReplicationManager) registerCloud18SSORoutes(router *mux.Router) {
 	router.HandleFunc("/api/auth/cloud18/session", repman.handlerMuxCloud18SSOSession).Methods(http.MethodPost)
 	router.HandleFunc("/api/auth/cloud18/logout", repman.handlerMuxCloud18SSOLogout).Methods(http.MethodGet)
 	router.HandleFunc("/api/auth/cloud18/logout", repman.handlerMuxCloud18SSOLogoutEnd).Methods(http.MethodPost)
+	router.HandleFunc(cloud18ResumePath, repman.handlerMuxCloud18SessionResume).Methods(http.MethodPost)
 }
