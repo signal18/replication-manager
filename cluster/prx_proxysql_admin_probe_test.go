@@ -5,6 +5,7 @@ import (
 	"io"
 	"net"
 	"strconv"
+	"sync"
 	"testing"
 
 	"github.com/signal18/replication-manager/config"
@@ -19,8 +20,11 @@ func fakeProxySQLAdmin(t *testing.T, refuse map[string]uint16) string {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { ln.Close() })
+	frame := func(seq byte, payload []byte) []byte {
+		return append([]byte{byte(len(payload)), byte(len(payload) >> 8), byte(len(payload) >> 16), seq}, payload...)
+	}
 	write := func(c net.Conn, seq byte, payload []byte) {
-		c.Write(append([]byte{byte(len(payload)), byte(len(payload) >> 8), byte(len(payload) >> 16), seq}, payload...))
+		c.Write(frame(seq, payload))
 	}
 	read := func(c net.Conn) (byte, []byte, error) {
 		h := make([]byte, 4)
@@ -75,11 +79,12 @@ func fakeProxySQLAdmin(t *testing.T, refuse map[string]uint16) string {
 					if len(cmd) > 0 && cmd[0] == 3 {
 						col := []byte{3, 'd', 'e', 'f', 0, 0, 0, 1, 'x', 1, 'x', 0x0c, 33, 0, 20, 0, 0, 0, 0xfd, 0, 0, 0, 0, 0}
 						eof := []byte{0xfe, 0, 0, 2, 0}
-						write(c, seq+1, []byte{1})
-						write(c, seq+2, col)
-						write(c, seq+3, eof)
-						write(c, seq+4, append([]byte{8}, "16777216"...))
-						write(c, seq+5, eof)
+						// one write: the driver reads the value in place and a later segment overwrites it
+						var rs []byte
+						for i, p := range [][]byte{{1}, col, eof, append([]byte{8}, "16777216"...), eof} {
+							rs = append(rs, frame(seq+byte(i)+1, p)...)
+						}
+						c.Write(rs)
 						continue
 					}
 					write(c, seq+1, ok)
@@ -153,5 +158,34 @@ func TestProxysqlConnectProbesOnlyOn1040ForAdmin(t *testing.T) {
 				t.Fatalf("login changed to %q / %q, want %s", prx.User, cl.GetProxysqlUser(), c.user)
 			}
 		})
+	}
+}
+
+// Several callers reach Connect on one proxy at the same time (the monitor, an API call): the
+// login is switched once and every caller connects. Run with -race.
+func TestProxysqlConnectConcurrentSwitch(t *testing.T) {
+	cl, prx := newProbeProxy(t, "admin", map[string]uint16{"admin": 1040})
+	var wg sync.WaitGroup
+	errs := make(chan error, 8)
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			psql, err := prx.Connect()
+			if err == nil {
+				psql.Connection.Close()
+			}
+			errs <- err
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatalf("connect: %s", err)
+		}
+	}
+	if user, _ := prx.adminLogin(); user != "external" || cl.GetProxysqlUser() != "external" {
+		t.Fatalf("the proxy logs in as %q, proxysql-user %q, want external", user, cl.GetProxysqlUser())
 	}
 }

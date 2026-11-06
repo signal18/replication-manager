@@ -17,7 +17,12 @@ If the probe connects, `external` becomes the login: the proxy uses it and the `
 secret is written through the credential chain (`setAddedProxysqlCredential`), so it survives a
 restart. If the probe fails, the original error is returned and nothing changes.
 
-Any other error, or any other configured user, never probes.
+Any other error, or any other configured user, never probes. A probe that does not connect is
+logged at debug level with its error.
+
+`proxysql-user` is a cluster-wide setting: after the switch every ProxySQL of the cluster logs in
+as `external`. The login switch is done once under a mutex (`adminLoginMu`) when several callers
+reach `Connect()` at the same time.
 
 ## Notes
 - `router/proxysql/proxysql.go` wraps the connection error with `%w` instead of `%s` so the
