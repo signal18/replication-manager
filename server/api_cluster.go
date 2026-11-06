@@ -5093,9 +5093,7 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		if err != nil {
 			return errors.New("unable to decode")
 		}
-		if err := mycluster.SetAlertSlackUrl(string(val)); err != nil {
-			return err
-		}
+		mycluster.SetAlertSlackUrl(string(val))
 	case "alert-slack-user":
 		mycluster.SetAlertSlackUser(value)
 	case "cloud18-alert":
@@ -5116,9 +5114,7 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		if err != nil {
 			return errors.New("unable to decode")
 		}
-		if err := mycluster.SetCloud18AlertSlackUrl(string(val)); err != nil {
-			return err
-		}
+		mycluster.SetCloud18AlertSlackUrl(string(val))
 	case "cloud18-alert-slack-user":
 		mycluster.SetCloud18AlertSlackUser(value)
 	case "alert-teams-proxy-url":
@@ -5126,9 +5122,7 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		if err != nil {
 			return errors.New("unable to decode")
 		}
-		if err := mycluster.SetAlertTeamsProxyUrl(string(val)); err != nil {
-			return err
-		}
+		mycluster.SetAlertTeamsProxyUrl(string(val))
 	case "alert-teams-state":
 		mycluster.SetAlertTeamsState(value)
 	case "alert-teams-url":
@@ -5136,9 +5130,7 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		if err != nil {
 			return errors.New("unable to decode")
 		}
-		if err := mycluster.SetAlertTeamsUrl(string(val)); err != nil {
-			return err
-		}
+		mycluster.SetAlertTeamsUrl(string(val))
 	case "monitoring-alert-trigger":
 		mycluster.SetMonitoringAlertTriggerl(value)
 	case "mail-smtp-addr":

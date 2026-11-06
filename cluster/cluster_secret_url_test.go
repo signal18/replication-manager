@@ -12,7 +12,6 @@ import (
 	"testing"
 
 	"github.com/pelletier/go-toml"
-	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/config/manager"
 	"github.com/signal18/replication-manager/utils/alert/slackman"
 )
@@ -36,28 +35,46 @@ func newSecretURLTestCluster(t *testing.T, dynamic map[string]interface{}) *Clus
 	return cl
 }
 
-// A webhook URL set through the API is a secret: the API JSON masks it, the save writes it
-// encrypted, and after a restart from the saved file its readers get the URL, not the
-// ciphertext.
-func TestWebhookURLSecretSetSaveRestart(t *testing.T) {
-	urls := map[string]string{
-		"alert-slack-url":         "https://hooks.slack.example/services/T0/B0/MARKERSLACK",
-		"cloud18-alert-slack-url": "https://hooks.slack.example/services/T1/B1/MARKERC18",
-		"alert-teams-url":         "https://prod.example.logic.azure.com:443/workflows/x/invoke?api-version=2016-06-01&sp=%2Ftriggers&sig=MARKERTEAMS",
-		"alert-teams-proxy-url":   "http://user:MARKERPROXY@proxy.example:3128",
+var alertURLs = map[string]string{
+	"alert-slack-url":         "https://hooks.slack.example/services/T0/B0/MARKERSLACK",
+	"cloud18-alert-slack-url": "https://hooks.slack.example/services/T1/B1/MARKERC18",
+	"alert-teams-url":         "https://prod.example.logic.azure.com:443/workflows/x/invoke?api-version=2016-06-01&sp=%2Ftriggers&sig=MARKERTEAMS",
+	"alert-teams-proxy-url":   "http://user:MARKERPROXY@proxy.example:3128",
+}
+
+// withAlertURLDefaults registers the alert URL flags' defaults as a running repman has them: the
+// save writes a setting that differs from its default and drops one with none.
+func withAlertURLDefaults(c *Cluster) *Cluster {
+	for k := range alertURLs {
+		c.Conf.DefaultFlagMap[k] = ""
 	}
-	setters := map[string]func(*Cluster, string) error{
+	return c
+}
+
+func alertURLFields(c *Cluster) map[string]string {
+	return map[string]string{
+		"alert-slack-url":         c.Conf.SlackURL,
+		"cloud18-alert-slack-url": c.Conf.Cloud18AlertSlackURL,
+		"alert-teams-url":         c.Conf.TeamsUrl,
+		"alert-teams-proxy-url":   c.Conf.TeamsProxyUrl,
+	}
+}
+
+// An alert URL is a plain setting: the API JSON shows it (the back office reads it to find why
+// an integration does not post) and the save writes it in plain.
+func TestAlertURLsPlainSetSave(t *testing.T) {
+	setters := map[string]func(*Cluster, string){
 		"alert-slack-url":         (*Cluster).SetAlertSlackUrl,
 		"cloud18-alert-slack-url": (*Cluster).SetCloud18AlertSlackUrl,
 		"alert-teams-url":         (*Cluster).SetAlertTeamsUrl,
 		"alert-teams-proxy-url":   (*Cluster).SetAlertTeamsProxyUrl,
 	}
-	cl := newSecretURLTestCluster(t, map[string]interface{}{})
-	for k, u := range urls {
-		if err := setters[k](cl, u); err != nil {
-			t.Fatalf("set %s: %s", k, err)
-		}
-		if v := cl.Conf.GetDecryptedValue(k); v != u {
+	cl := withAlertURLDefaults(newSecretURLTestCluster(t, map[string]interface{}{}))
+	for k, u := range alertURLs {
+		setters[k](cl, u)
+	}
+	for k, v := range alertURLFields(cl) {
+		if v != alertURLs[k] {
 			t.Fatalf("%s after set: %q", k, v)
 		}
 	}
@@ -70,8 +87,10 @@ func TestWebhookURLSecretSetSaveRestart(t *testing.T) {
 	if doc, err = cl.Conf.MaskSecretsJSON(doc, ""); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(doc), "MARKER") {
-		t.Fatalf("a webhook URL in the API JSON: %s", doc)
+	for k, u := range alertURLs {
+		if !strings.Contains(string(doc), strings.ReplaceAll(u, "&", `\u0026`)) && !strings.Contains(string(doc), u) {
+			t.Fatalf("%s is not in the API JSON", k)
+		}
 	}
 
 	// the saved file
@@ -82,48 +101,60 @@ func TestWebhookURLSecretSetSaveRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(tree.String(), "MARKER") {
-		t.Fatalf("a webhook URL in clear in the saved file:\n%s", tree)
-	}
 	saved, ok := tree.Get("saved-" + cl.Name).(*toml.Tree)
 	if !ok {
 		t.Fatalf("no [saved-%s] section", cl.Name)
 	}
-	for k := range urls {
-		if raw, _ := saved.Get(k).(string); !strings.Contains(raw, "hash_") {
-			t.Fatalf("%s saved as %q, want it encrypted", k, raw)
+	for k, u := range alertURLs {
+		if raw, _ := saved.Get(k).(string); raw != u {
+			t.Fatalf("%s saved as %q, want the plain URL", k, raw)
 		}
 	}
 
-	// a restart from the saved file
-	restarted := newSecretURLTestCluster(t, saved.ToMap())
-	restarted.Conf.WorkingDir = cl.Conf.WorkingDir
-	restarted.Conf.SecretKey = cl.Conf.SecretKey
-	restarted.SetClusterCredentialsFromConfig()
-	for k, u := range urls {
-		if v := restarted.Conf.GetDecryptedValue(k); v != u {
-			t.Fatalf("%s after the restart: %q, want the URL", k, v)
-		}
-	}
 }
 
-// The API sends SecretMask for a secret: a GUI form saved unchanged sends it back, and it
-// must not replace the URL.
-func TestWebhookURLSecretRefusesMask(t *testing.T) {
-	cl := newSecretURLTestCluster(t, map[string]interface{}{})
-	const u = "https://hooks.slack.example/services/T0/B0/MARKER"
-	if err := cl.SetAlertSlackUrl(u); err != nil {
+// A config v3.1.47 or v3.1.48 saved holds the alert URLs encrypted ("https:hash_<hex>"): the
+// start reads them back as the URLs, so the alerts post, and the next save writes them in plain.
+func TestLegacyEncryptedAlertURLsMigrate(t *testing.T) {
+	plain := newSecretURLTestCluster(t, map[string]interface{}{})
+	dynamic := map[string]interface{}{}
+	for k, u := range alertURLs {
+		enc := plain.Conf.EncryptSecretValue(u)
+		if !strings.Contains(enc, "hash_") || strings.Contains(enc, "MARKER") {
+			t.Fatalf("%s: the fixture is not encrypted: %q", k, enc)
+		}
+		dynamic[k] = enc
+	}
+	cl := withAlertURLDefaults(newSecretURLTestCluster(t, dynamic))
+	cl.Conf.SecretKey = plain.Conf.SecretKey
+	// the fields as the load leaves them: the saved ciphertext
+	cl.Conf.SlackURL = dynamic["alert-slack-url"].(string)
+	cl.Conf.Cloud18AlertSlackURL = dynamic["cloud18-alert-slack-url"].(string)
+	cl.Conf.TeamsUrl = dynamic["alert-teams-url"].(string)
+	cl.Conf.TeamsProxyUrl = dynamic["alert-teams-proxy-url"].(string)
+
+	cl.SetClusterCredentialsFromConfig()
+	for k, v := range alertURLFields(cl) {
+		if v != alertURLs[k] {
+			t.Fatalf("%s after the start: %q, want the URL", k, v)
+		}
+	}
+
+	if _, err := cl.SaveConfigFile(); err != nil {
 		t.Fatal(err)
 	}
-	if err := cl.SetAlertSlackUrl(config.SecretMask); err == nil {
-		t.Fatal("the mask was accepted")
+	tree, err := toml.LoadFile(filepath.Join(cl.Conf.WorkingDir, cl.Name, cl.Name+".toml"))
+	if err != nil {
+		t.Fatal(err)
 	}
-	if v := cl.Conf.GetDecryptedValue("alert-slack-url"); v != u || cl.Conf.SlackURL != u {
-		t.Fatalf("after the mask: secret %q, field %q", v, cl.Conf.SlackURL)
+	saved, _ := tree.Get("saved-" + cl.Name).(*toml.Tree)
+	if saved == nil {
+		t.Fatalf("no [saved-%s] section", cl.Name)
 	}
-	// an empty value still clears it
-	if err := cl.SetAlertSlackUrl(""); err != nil || cl.Conf.GetDecryptedValue("alert-slack-url") != "" {
-		t.Fatalf("clear: %v, %q", err, cl.Conf.GetDecryptedValue("alert-slack-url"))
+	for k, u := range alertURLs {
+		if raw, _ := saved.Get(k).(string); raw != u {
+			t.Fatalf("%s saved as %q after the migration, want the plain URL", k, raw)
+		}
 	}
 }
 
@@ -131,10 +162,6 @@ func TestWebhookURLSecretRefusesMask(t *testing.T) {
 // as "" (the default branch of GetEncryptedValueFromMemory).
 func TestFlatSecretsHaveSaveCase(t *testing.T) {
 	values := map[string]string{
-		"alert-slack-url":              "https://hooks.slack.example/services/T0/B0/X",
-		"cloud18-alert-slack-url":      "https://hooks.slack.example/services/T1/B1/X",
-		"alert-teams-url":              "https://example.webhook.office.com/webhookb2/X",
-		"alert-teams-proxy-url":        "http://user:pass@proxy.example:3128",
 		"monitoring-tunnel-credential": "tunnel:pass",
 		"registry-consul-credential":   "consul:pass",
 		"registry-consul-token":        "token",

@@ -14,41 +14,48 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// A webhook URL set on a peer arrives encrypted; its setter takes base64, so it is applied
-// generically, which sets the field only. The secret its readers read gets the URL too.
-func TestPeerEventWebhookURLSecret(t *testing.T) {
-	cl := &cluster.Cluster{
-		Name:          "c1",
-		Logrus:        logrus.New(),
-		ConfigManager: &manager.ConfigManager{},
-		Conf: &config.Config{
-			SecretKey:       []byte("0123456789abcdef"),
-			DefaultFlagMap:  map[string]interface{}{},
-			ImmuableFlagMap: map[string]interface{}{},
-			DynamicFlagMap:  map[string]interface{}{},
-		},
-	}
-	cl.SetClusterCredentialsFromConfig()
-	repman := &ReplicationManager{
-		Conf:     &config.Config{},
-		Clusters: map[string]*cluster.Cluster{cl.Name: cl},
+// An alert URL is a plain setting: a peer's event carries the URL, applied to the field. A peer
+// still on v3.1.47 or v3.1.48 sends it encrypted ("https:hash_<hex>"): the next start or reload
+// reads that back as the URL.
+func TestPeerEventAlertURL(t *testing.T) {
+	newCluster := func() (*ReplicationManager, *cluster.Cluster) {
+		cl := &cluster.Cluster{
+			Name:          "c1",
+			Logrus:        logrus.New(),
+			ConfigManager: &manager.ConfigManager{},
+			Conf: &config.Config{
+				SecretKey:       []byte("0123456789abcdef"),
+				DefaultFlagMap:  map[string]interface{}{},
+				ImmuableFlagMap: map[string]interface{}{},
+				DynamicFlagMap:  map[string]interface{}{},
+			},
+		}
+		cl.SetClusterCredentialsFromConfig()
+		return &ReplicationManager{
+			Conf:     &config.Config{},
+			Clusters: map[string]*cluster.Cluster{cl.Name: cl},
+		}, cl
 	}
 	const u = "https://example.webhook.office.com/webhookb2/MARKER"
-	ev := cluster.ConfigChangeEvent{
-		Ts:      time.Now(),
-		Cluster: cl.Name,
-		Author:  2,
-		Action:  "set",
-		Key:     "alert-teams-url",
-		Value:   cl.Conf.EncryptSecretValue(u),
+	event := func(cl *cluster.Cluster, value string) cluster.ConfigChangeEvent {
+		return cluster.ConfigChangeEvent{Ts: time.Now(), Cluster: cl.Name, Author: 2, Action: "set", Key: "alert-teams-url", Value: value}
 	}
-	if !repman.applyPeerConfigEvent(ev) {
-		t.Fatal("the event was not applied")
+
+	repman, cl := newCluster()
+	if !repman.applyPeerConfigEvent(event(cl, u)) {
+		t.Fatal("the plain event was not applied")
 	}
-	if v := cl.Conf.GetDecryptedValue("alert-teams-url"); v != u {
-		t.Fatalf("secret %q after the peer event, want the URL", v)
+	if cl.Conf.TeamsUrl != u {
+		t.Fatalf("field %q after the plain peer event, want the URL", cl.Conf.TeamsUrl)
 	}
-	if s := cl.Conf.Secrets.Get("alert-teams-url"); s.Crypted != ev.Value {
-		t.Fatal("the peer's ciphertext is not kept for the next save")
+
+	repman, cl = newCluster()
+	legacy := cl.Conf.EncryptSecretValue(u)
+	if !repman.applyPeerConfigEvent(event(cl, legacy)) {
+		t.Fatal("the legacy encrypted event was not applied")
+	}
+	cl.SetClusterCredentialsFromConfig() // what a start or a reload does
+	if cl.Conf.TeamsUrl != u {
+		t.Fatalf("field %q after the legacy peer event and a reload, want the URL", cl.Conf.TeamsUrl)
 	}
 }

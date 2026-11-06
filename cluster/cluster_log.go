@@ -137,8 +137,8 @@ func (cluster *Cluster) sendMsTeams(level string, format string, args ...interfa
 	mstClient := teams.NewTeamsClient()
 
 	// setup webhook url
-	webhookUrl := cluster.Conf.GetDecryptedValue("alert-teams-url")
-	webhookProxyUrl := cluster.Conf.GetDecryptedValue("alert-teams-proxy-url")
+	webhookUrl := cluster.Conf.TeamsUrl
+	webhookProxyUrl := cluster.Conf.TeamsProxyUrl
 
 	proxyUrl, err := url.Parse(webhookProxyUrl)
 
