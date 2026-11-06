@@ -7,6 +7,7 @@ package regtest
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -141,7 +142,16 @@ func (regtest *RegTest) TestLogicalReseed(cl *clusterpkg.Cluster, conf string, t
 		e.cl.Conf.ParseJobsExecOverrides()
 		id := meta.Id
 		e.reseedWithAndCheck("R8 reseed from the chosen backup, reseedmysqldump listed", gtid, config.ConstBackupLogicalTypeMysqldump, func() error {
-			return e.cl.ReseedFromBackupID(e.r, id)
+			// a reseed waits for the archive pushes (one may remove the file it restores):
+			// retried as the operator would, the backup's own push ending
+			deadline := time.Now().Add(archiveWait)
+			for {
+				err := e.cl.ReseedFromBackupID(e.r, id)
+				if !errors.Is(err, clusterpkg.ErrBackupInProgress) || time.Now().After(deadline) {
+					return err
+				}
+				time.Sleep(5 * time.Second)
+			}
 		})
 	}
 	cl.Conf.BackupMysqldumpSplitDump = true
