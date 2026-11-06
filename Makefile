@@ -226,13 +226,16 @@ plugins: $(PLUGIN_SIGNER_BIN)
 # Usage:  make plugin-licence LICENCE_URI=company.202612.1 [GOOS=linux GOARCH=amd64]
 .PHONY: plugin-licence
 plugin-licence: $(PLUGIN_SIGNER_BIN) plugin-keys
-	@if ! echo "$(LICENCE_URI)" | grep -Eq '^[a-z0-9][a-z0-9-]*\.[0-9]{6}\.[0-9]+$$'; then \
-		echo "ERROR: set LICENCE_URI=<company>.<YYYYMM>.<seat>"; exit 1; \
+	@if [ -n "$(LICENCE_EXPIRY)" ]; then \
+		echo "$(LICENCE_URI)" | grep -Eq '^[a-z0-9][a-z0-9-]*(\.[a-z0-9][a-z0-9-]*)+$$' || { echo "ERROR: with LICENCE_EXPIRY set, LICENCE_URI must be a lowercase dotted URI (domain.subdomain.zone)"; exit 1; }; \
+		echo "$(LICENCE_EXPIRY)" | grep -Eq '^[0-9]{4}-[0-9]{2}-[0-9]{2}$$|^[0-9]{6}$$' || { echo "ERROR: LICENCE_EXPIRY must be YYYY-MM-DD or YYYYMM"; exit 1; }; \
+	elif ! echo "$(LICENCE_URI)" | grep -Eq '^[a-z0-9][a-z0-9-]*\.[0-9]{6}\.[0-9]+$$'; then \
+		echo "ERROR: set LICENCE_URI=<company>.<YYYYMM>.<seat>  (or, for a registered instance, LICENCE_URI=<domain.subdomain.zone> LICENCE_EXPIRY=<YYYY-MM-DD>)"; exit 1; \
 	fi
 	@mkdir -p $(PLUGIN_BINDIR) $(PLUGIN_SIG_DIR)
 	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) \
 	  go build \
-	    --ldflags "-extldflags '-static' -w -s -X main.licenceURI=$(LICENCE_URI)" \
+	    --ldflags "-extldflags '-static' -w -s -X main.licenceURI=$(LICENCE_URI) -X main.licenceExpiry=$(LICENCE_EXPIRY)" \
 	    -o $(PLUGIN_BINDIR)/plugin-licence \
 	    ./cluster/logplugin/plugins/plugin-licence/...
 	$(PLUGIN_SIGNER_BIN) sign --private-key "$(PLUGIN_SIGNING_KEY)" --sig-dir "$(PLUGIN_SIG_DIR)" $(PLUGIN_BINDIR)/plugin-licence

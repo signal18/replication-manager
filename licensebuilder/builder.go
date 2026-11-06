@@ -2,6 +2,7 @@ package licensebuilder
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -52,6 +53,9 @@ type Config struct {
 	MonitorPassword string   //
 	SignerUser      string   // signer repo credentials: make plugin-keys fetches the Signal18 key
 	SignerToken     string   //
+	GitBaseURL      string   // Cloud18 GitLab base (e.g. https://gitlab.signal18.io) for -pull delivery
+	GitUser         string   // Cloud18 git identity (defaults to oauth2) used to push the -pull repos
+	GitToken        string   // its token; carried in an Authorization header, never in the remote URL
 	IssuerURL       string   // the Cloud18 realm that signs the callers' tokens
 	AllowedClients  []string // the clients a caller's token may come from (azp), e.g. cloud18-crm
 	Addr            string   // HTTP listen address
@@ -77,6 +81,10 @@ const (
 
 var uriPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,23}\.[0-9]{6}\.[0-9]+$`)
 
+// fullURIPattern is a registered instance's identity URI, domain.subdomain.zone (any number of
+// lowercase dotted labels); its expiry is carried separately, not in the URI.
+var fullURIPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*(\.[a-z0-9][a-z0-9-]*)+$`)
+
 // New builds a Builder. logf may be nil.
 func New(cfg Config, logf func(string, ...interface{})) *Builder {
 	if logf == nil {
@@ -94,24 +102,47 @@ func (r *Request) Validate() error {
 		r.Platform = "linux/amd64"
 	}
 	switch {
-	case !uriPattern.MatchString(r.URI):
-		return fmt.Errorf("uri %q is not <company>.<YYYYMM>.<seat>", r.URI)
-	case !strings.HasPrefix(r.URI, r.Company+"."):
+	case r.Company == "" || !strings.HasPrefix(r.URI, r.Company+"."):
 		return fmt.Errorf("uri %q is not of company %q", r.URI, r.Company)
 	case r.Version == "" || strings.ContainsAny(r.Version, " /\\"):
 		return fmt.Errorf("version %q", r.Version)
 	case strings.Count(r.Platform, "/") != 1:
 		return fmt.Errorf("platform %q is not GOOS/GOARCH", r.Platform)
-	case !r.AirGapped:
-		return fmt.Errorf("delivery to a -pull repo (registered client) is not built yet: only air-gapped requests")
+	case r.AirGapped && !uriPattern.MatchString(r.URI):
+		return fmt.Errorf("air-gapped uri %q is not <company>.<YYYYMM>.<seat>", r.URI)
+	case !r.AirGapped && !fullURIPattern.MatchString(r.URI):
+		return fmt.Errorf("online uri %q is not a dotted domain.subdomain.zone", r.URI)
+	case !r.AirGapped && r.Expiry == "":
+		return fmt.Errorf("online licence for %q needs an expiry (the contract end date)", r.URI)
 	}
 	// Never build a born-expired licence: a mis-created contract (a past or too-short term) must
-	// fail HERE, on our side, not after it ships and the client is the one who hits ERR00122. A
-	// licence valid only through a month already gone would install already expired (#2309).
-	if end, err := licenceExpiryEnd(r.URI); err == nil && !time.Now().Before(end) {
-		return fmt.Errorf("uri %q expires %s, already in the past: fix the contract term before building — a born-expired licence must never ship", r.URI, end.AddDate(0, 0, -1).Format("2006-01-02"))
+	// fail HERE, on our side, not after it ships and the client is the one who hits ERR00122. The
+	// expiry is the URI's YYYYMM for an air-gapped seat, the contract end for a registered instance.
+	if end, err := r.expiryEnd(); err == nil && !time.Now().Before(end) {
+		return fmt.Errorf("licence %q expires %s, already in the past: fix the contract term before building — a born-expired licence must never ship", r.URI, end.AddDate(0, 0, -1).Format("2006-01-02"))
 	}
 	return nil
+}
+
+// expiryEnd is the first instant after this request's licence is last valid: the contract end
+// (Expiry) for a registered instance, the URI's YYYYMM for an air-gapped seat.
+func (r *Request) expiryEnd() (time.Time, error) {
+	if !r.AirGapped {
+		return parseExpiry(r.Expiry)
+	}
+	return licenceExpiryEnd(r.URI)
+}
+
+// parseExpiry accepts YYYY-MM-DD (valid through that day) or YYYYMM (valid through that month),
+// mirroring the plugin-licence's own parse of a separately-carried expiry.
+func parseExpiry(s string) (time.Time, error) {
+	if d, err := time.Parse("2006-01-02", s); err == nil {
+		return d.AddDate(0, 0, 1), nil
+	}
+	if m, err := time.Parse("200601", s); err == nil {
+		return m.AddDate(0, 1, 0), nil
+	}
+	return time.Time{}, fmt.Errorf("licence expiry %q is not YYYY-MM-DD or YYYYMM", s)
 }
 
 // licenceExpiryEnd parses <company>.<YYYYMM>.<seat> and returns the first instant after the expiry
@@ -196,25 +227,19 @@ func (b *Builder) record(r Result) {
 	}
 }
 
-// process builds, packages, cleans and tests one seat.
+// process builds one seat/instance's licence plugin, then either packages it for an air-gapped
+// download (with the release's other plugins, tested via license-pull) or stores the signed
+// plugin-licence alone, for delivery into a registered instance's -pull repo (#2309).
 func (b *Builder) process(res *Result) error {
 	r := res.Request
 	goos, goarch, _ := strings.Cut(r.Platform, "/")
+	env := []string{"OS=" + goos, "ARCH=" + goarch, "PLUGIN_SIGNER_USER=" + b.cfg.SignerUser, "PLUGIN_SIGNER_TOKEN=" + b.cfg.SignerToken}
 
-	// 1. the version's plugins, from a clone of that release
+	// 1. the release clone (once per version), for the wire the seat's licence plugin must speak
 	src, err := b.versionSource(r.Version)
 	if err != nil {
 		return err
 	}
-	env := []string{"OS=" + goos, "ARCH=" + goarch, "PLUGIN_SIGNER_USER=" + b.cfg.SignerUser, "PLUGIN_SIGNER_TOKEN=" + b.cfg.SignerToken}
-	if err := os.RemoveAll(filepath.Join(src, "build", "plugins")); err != nil {
-		return err
-	}
-	if err := b.run(src, env, "make", "plugins"); err != nil {
-		return fmt.Errorf("make plugins (%s): %w", r.Version, err)
-	}
-	// 2. the seat's licence plugin, from the builder's own source (the plugin is newer than
-	//    some releases); it must speak the release's wire
 	wire, err := wireVersion(src)
 	if err != nil {
 		return err
@@ -222,19 +247,51 @@ func (b *Builder) process(res *Result) error {
 	if own, err := wireVersion(b.cfg.SourceDir); err != nil || own != wire {
 		return fmt.Errorf("plugin-licence source is wire %d, release %s is wire %d (%v)", own, r.Version, wire, err)
 	}
+
+	// 2. the licence plugin, from the builder's own source. An air-gapped seat carries its expiry
+	//    in the URI (<company>.<YYYYMM>.<seat>); a registered instance carries the full identity URI
+	//    and the expiry separately (LICENCE_EXPIRY = the contract end).
 	if err := os.RemoveAll(filepath.Join(b.cfg.SourceDir, "build", "plugins")); err != nil {
 		return err
 	}
-	if err := b.run(b.cfg.SourceDir, append(env, "LICENCE_URI="+r.URI), "make", "plugin-licence"); err != nil {
+	licenceEnv := append(env, "LICENCE_URI="+r.URI)
+	if !r.AirGapped {
+		licenceEnv = append(licenceEnv, "LICENCE_EXPIRY="+r.Expiry)
+	}
+	if err := b.run(b.cfg.SourceDir, licenceEnv, "make", "plugin-licence"); err != nil {
 		return fmt.Errorf("make plugin-licence: %w", err)
 	}
-
-	// 3. package
-	plugins, err := collectPlugins(src)
+	licence, err := collectPlugins(b.cfg.SourceDir)
 	if err != nil {
 		return err
 	}
-	licence, err := collectPlugins(b.cfg.SourceDir)
+
+	// 3a. Registered (online) instance: the licence plugin rides the instance's -pull repo with the
+	//     other plugins, rebuilt and re-delivered on every version change — no package, no
+	//     license-pull self-test (that exercises the air-gapped install path). Store the signed
+	//     plugin-licence (+ .sig) keyed by uri/wire/platform; the -pull delivery reads it from here.
+	if !r.AirGapped {
+		name, err := writeLicencePlugin(b.cfg.OutDir, r, wire, licence)
+		if err != nil {
+			return err
+		}
+		res.Package = name
+		res.Loaded = pluginNames(licence)
+		if err := b.deliverToPull(r, licence); err != nil {
+			return fmt.Errorf("deliver to -pull: %w", err)
+		}
+		return nil
+	}
+
+	// 3b. Air-gapped seat: the full package (the release's plugins + the licence plugin) the client
+	//     extracts into its datadir, tested here with license-pull as the client would.
+	if err := os.RemoveAll(filepath.Join(src, "build", "plugins")); err != nil {
+		return err
+	}
+	if err := b.run(src, env, "make", "plugins"); err != nil {
+		return fmt.Errorf("make plugins (%s): %w", r.Version, err)
+	}
+	plugins, err := collectPlugins(src)
 	if err != nil {
 		return err
 	}
@@ -277,6 +334,103 @@ func (b *Builder) process(res *Result) error {
 	}
 	if len(loaded) != len(plugins) {
 		return fmt.Errorf("license-pull loaded %d of the %d plugins", len(loaded), len(plugins))
+	}
+	return nil
+}
+
+// writeLicencePlugin stores a registered instance's signed plugin-licence (binary + .sig) under
+// OutDir, keyed by uri/wire/platform (two releases of one wire share a plugin; a version upgrade
+// that changes the wire gets a fresh build). The -pull delivery reads it from here. Returns the
+// stored directory name.
+func writeLicencePlugin(outDir string, r Request, wire int, licence []Plugin) (string, error) {
+	plat := strings.ReplaceAll(r.Platform, "/", "-")
+	name := fmt.Sprintf("%s.wire%d.%s", r.URI, wire, plat)
+	dir := filepath.Join(outDir, name)
+	if err := os.RemoveAll(dir); err != nil {
+		return "", err
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", err
+	}
+	for _, p := range licence {
+		if err := os.WriteFile(filepath.Join(dir, p.Name), p.Data, 0o644); err != nil {
+			return "", err
+		}
+		if err := os.WriteFile(filepath.Join(dir, p.Name+".sig"), p.Sig, 0o644); err != nil {
+			return "", err
+		}
+	}
+	return name, nil
+}
+
+func pluginNames(plugins []Plugin) []string {
+	names := make([]string, 0, len(plugins))
+	for _, p := range plugins {
+		names = append(names, p.Name)
+	}
+	return names
+}
+
+// deliverToPull pushes a registered instance's licence plugin into its -pull repo, into the same
+// plugins/ directory the enterprise plugins live in (inject_plugins' layout: binary + .sig). On its
+// next git pull repman syncs and verifies it against the embedded public key, exactly as for the
+// other plugins. The repo is <GitBaseURL>/<domain>/<subdomain>-<zone>-pull, derived from the full
+// URI domain.subdomain.zone. The git token is sent in an Authorization header, never in the remote
+// URL or any error output (F10). Unchanged content (same wire/expiry already there) is a no-op.
+func (b *Builder) deliverToPull(r Request, licence []Plugin) error {
+	parts := strings.Split(r.URI, ".")
+	if len(parts) != 3 {
+		return fmt.Errorf("uri %q is not domain.subdomain.zone", r.URI)
+	}
+	if b.cfg.GitBaseURL == "" || b.cfg.GitToken == "" {
+		return fmt.Errorf("-pull delivery not configured (git-base-url / git-token)")
+	}
+	repoPath := fmt.Sprintf("%s/%s-%s-pull", parts[0], parts[1], parts[2])
+	cloneURL := strings.TrimSuffix(b.cfg.GitBaseURL, "/") + "/" + repoPath + ".git"
+	user := b.cfg.GitUser
+	if user == "" {
+		user = "oauth2"
+	}
+	authHdr := "http.extraheader=Authorization: Basic " + base64.StdEncoding.EncodeToString([]byte(user+":"+b.cfg.GitToken))
+	ident := []string{
+		"GIT_AUTHOR_NAME=license-builder", "GIT_AUTHOR_EMAIL=license-builder@signal18.io",
+		"GIT_COMMITTER_NAME=license-builder", "GIT_COMMITTER_EMAIL=license-builder@signal18.io",
+	}
+
+	dir, err := os.MkdirTemp("", "pull-")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(dir)
+
+	if err := b.run("", nil, "git", "-c", authHdr, "clone", "--depth", "1", cloneURL, dir); err != nil {
+		return fmt.Errorf("clone %s: %w", repoPath, err)
+	}
+	plugins := filepath.Join(dir, "plugins")
+	if err := os.MkdirAll(plugins, 0o755); err != nil {
+		return err
+	}
+	for _, p := range licence {
+		if err := os.WriteFile(filepath.Join(plugins, p.Name), p.Data, 0o755); err != nil {
+			return err
+		}
+		if err := os.WriteFile(filepath.Join(plugins, p.Name+".sig"), p.Sig, 0o644); err != nil {
+			return err
+		}
+	}
+	if err := b.run(dir, nil, "git", "add", "plugins"); err != nil {
+		return err
+	}
+	// git diff --cached --quiet exits 0 when nothing is staged: the same plugin is already there
+	// (same wire/expiry), so there is nothing to deliver — a no-op, not an error.
+	if b.run(dir, nil, "git", "diff", "--cached", "--quiet") == nil {
+		return nil
+	}
+	if err := b.run(dir, ident, "git", "commit", "-m", "licence plugin for "+r.URI); err != nil {
+		return err
+	}
+	if err := b.run(dir, nil, "git", "-c", authHdr, "push"); err != nil {
+		return fmt.Errorf("push %s: %w", repoPath, err)
 	}
 	return nil
 }
