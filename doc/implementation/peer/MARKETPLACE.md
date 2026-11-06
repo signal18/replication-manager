@@ -272,6 +272,22 @@ a partner fleet* instead of across the whole registered population.
 
 ---
 
+### 4.1 Live connect: the session, and why a peer is not connected
+
+After a peer's public health answers, the poll connects to it (`connectPeer`): without a
+session it logs in (the instance's realm token, its password only when allowed, #2327), then
+pulls the peer's `/api/clusters` into the rows (`GetClusterDetails`, `DirectUpdate`).
+
+- **A session the peer no longer knows is dropped.** A peer's restart ends the sessions it gave;
+  before, the poll logged in only when it held no session, so it sent the dead one forever (401)
+  and the peer stayed disconnected until this instance restarted. `GetClusterDetails` now drops
+  the session on a 401 (`ClearSession`), and the next poll logs in again.
+- **Why a peer is not connected is a tracked state:** `PeerNodeStatus.ConnectionError` ("login: …"
+  or "clusters: …", bounded to 300 characters, empty once connected), next to `Error` (health).
+  The poll used to drop both errors (`_ =`), and the peer package has no logger: no log level
+  showed them. The peer view shows "Not connected" with the reason (orange: health answers, no
+  session), before an old `DirectUpdate`, which is not "connected".
+
 ## 5. Entering a delegated cluster (request forwarding)
 
 Live visibility is only half of delegation; the partner also needs to *act* on the

@@ -71,6 +71,16 @@ func (pc *PeerClient) SetBaseURL(baseURL string) {
 	pc.baseURL = urlparse.String()
 }
 
+// ClearSession drops the session token the client holds (any case of the header name): the
+// next poll logs in again.
+func (pc *PeerClient) ClearSession() {
+	for key := range pc.headers {
+		if strings.EqualFold(key, "Authorization") {
+			delete(pc.headers, key)
+		}
+	}
+}
+
 // SetHeader sets a custom header for all requests
 func (pc *PeerClient) SetHeader(key, value string) {
 	pc.headers[key] = value

@@ -88,7 +88,15 @@ type PeerHealth struct {
 type PeerNodeStatus struct {
 	Error      string
 	LastUpdate time.Time
+	// ConnectionError is why the poll holds no authenticated session to the peer although
+	// its health answers (login refused, /api/clusters refused): the row then stays on the
+	// peer.json catalog. Empty once the live fetch works. A tracked state, shown in the
+	// peer view, instead of the error the poll used to drop.
+	ConnectionError string
 }
+
+// maxConnectionErrorLen bounds the reason kept per peer (F4): a peer's error body is quoted.
+const maxConnectionErrorLen = 300
 
 // PeerManager manages peer clusters.
 type PeerManager struct {
@@ -500,6 +508,11 @@ type peerClusterDetail struct {
 // poll, which is gated on !Cloud18DisablePeers.
 func (pm *PeerManager) GetClusterDetails(pclient *PeerClient) error {
 	status, body, err := pclient.Get("/api/clusters")
+	if status == http.StatusUnauthorized {
+		// the session ended on the peer (its restart, the token's end): dropped, so the next
+		// poll logs in again; kept, it was sent forever and the peer stayed disconnected
+		pclient.ClearSession()
+	}
 	if err != nil {
 		return err
 	}
@@ -633,30 +646,47 @@ func (pm *PeerManager) pollPeerHealth(url string) {
 	// Network I/O outside the lock. This goroutine owns the claim, but nodestat is
 	// also read by GetPeerNodesJSON (status API), so its fields are written under the
 	// lock via setNodeError, not raw.
-	if token, ok := pclient.headers["Authorization"]; !ok || token == "" {
-		// Best-effort login: /api/health is PUBLIC (curl of any dbaas-*.signal18.io
-		// /api/health returns 200 with no auth). A login failure — the SSO user not
-		// being provisioned on the peer, a wrong password, etc. — must NOT block the
-		// health/connectivity check, which needs no token. Login only matters for
-		// richer authenticated calls (e.g. /api/clusters).
-		// The instance's realm token first (#2327): a peer that does not know the password
-		// (registered with another account) refused it at every poll and locked the account.
-		_ = loginPeer(pclient, user, password, bearer)
-	}
 	if err := pm.GetHealthStatus(pclient); err != nil {
 		pm.setNodeError(nodestat, fmt.Sprintf("failed to get health status: %s", err))
 		return
 	}
 	pm.setNodeError(nodestat, "")
 
-	// Auto-connect to fleet: if we hold an authenticated session to the peer, pull its
-	// /api/clusters and merge the live monitoring fields into our rows. Best-effort — an
-	// unauthenticated peer (login failed / no SSO fix) just skips it and stays on the
-	// peer.json catalog. This is the outbound live-connect; it runs only here, inside the
-	// poll, which the server dispatches solely when !Cloud18DisablePeers.
-	if token, ok := pclient.headers["Authorization"]; ok && token != "" {
-		_ = pm.GetClusterDetails(pclient)
+	// Auto-connect to fleet: the authenticated part, best-effort (/api/health above is
+	// public and needs no session). Its failure is the peer's ConnectionError.
+	pm.setNodeConnectionError(nodestat, pm.connectPeer(pclient, user, password, bearer))
+}
+
+// connectPeer holds an authenticated session to the peer and pulls its /api/clusters into the
+// rows (GetClusterDetails), the outbound live-connect; it runs only inside the poll, which the
+// server dispatches solely when !Cloud18DisablePeers. Without a session it logs in first: the
+// instance's realm token, its password only when allowed (#2327). A session the peer no longer
+// knows (its restart) is dropped on the 401, so the next poll logs in again. Returns why the
+// peer is not connected, "" when the live fetch worked.
+func (pm *PeerManager) connectPeer(pclient *PeerClient, user, password string, bearer func() (string, bool)) string {
+	if token, ok := pclient.headers["Authorization"]; !ok || token == "" {
+		if err := loginPeer(pclient, user, password, bearer); err != nil {
+			return "login: " + err.Error()
+		}
 	}
+	if err := pm.GetClusterDetails(pclient); err != nil {
+		// a 401 dropped the session (next poll logs in again); any other refusal (403, 5xx)
+		// keeps it: the session is valid, the peer answered something else
+		return "clusters: " + err.Error()
+	}
+	return ""
+}
+
+// setNodeConnectionError writes ns.ConnectionError under the lock, bounded.
+func (pm *PeerManager) setNodeConnectionError(ns *PeerNodeStatus, errMsg string) {
+	if len(errMsg) > maxConnectionErrorLen {
+		// cut on a character boundary: a peer's error body may be non-ASCII, and the
+		// status is served as JSON
+		errMsg = strings.ToValidUTF8(errMsg[:maxConnectionErrorLen], "")
+	}
+	pm.mu.Lock()
+	ns.ConnectionError = errMsg
+	pm.mu.Unlock()
 }
 
 // setNodeError writes ns.Error under the lock. PeerNodeStatus pointers are read by
@@ -664,6 +694,11 @@ func (pm *PeerManager) pollPeerHealth(url string) {
 func (pm *PeerManager) setNodeError(ns *PeerNodeStatus, errMsg string) {
 	pm.mu.Lock()
 	ns.Error = errMsg
+	if errMsg != "" {
+		// health failing: no connect was tried, an earlier "not connected" reason would
+		// describe a peer that no longer answers at all
+		ns.ConnectionError = ""
+	}
 	pm.mu.Unlock()
 }
 
