@@ -102,3 +102,40 @@ replication re-reads its PRIMARY every tick).
   not move the bootstrap node), `TestGaleraBootstrapAfterSwitchoverThenTotalLoss` (the new
   master is saved as lastmaster and bootstraps).
 - Regtests (#2186): `testGaleraBootstrap`, `testGaleraSwitchover`, `testGaleraMasterLoss`.
+
+## After the bootstrap: losing the virtual master, and the rejoin (#2350)
+
+On Galera the cluster fails over by itself. As long as a majority is up, its nodes keep a Primary
+component and every one of them takes writes. replication-manager's virtual master is only the
+node it routes the writes to, so moving it is a switchover, never a promotion.
+
+- **The virtual master moves on its own** (`cluster/galera_vmaster.go`), in any failover mode, as
+  soon as the Primary component has a synced node (`galeraElectable`: Primary, synced, reachable,
+  not failed, ignored or in maintenance). With none there is no majority, and nothing moves.
+  - Failed master: `isAutomaticFailover` is true on Galera when a majority is up. There is no
+    manual-mode gate and no ERR00002 (the GUI has no failover for Galera, so the cluster waited
+    forever). `failover-limit` and `failover-time-limit` do not apply either: they guard
+    master-slave promotions, and a cluster losing a node every day would stop routing after five.
+  - No master (the last one failed before a restart of replication-manager, so `lastmaster` is a
+    failed node): `CheckFailed` elects one (`galeraElectVirtualMaster`): the preferred master
+    when electable, else the first electable node in declared order. The election is the state
+    WARN0006.
+  - The manual-mode gate applies to Galera only since `06c9757c4` (v3.1.44). Before, Galera
+    clusters were discovered as master-slave.
+- **The empty member list is never a delta.** A bootstrap node runs with
+  `wsrep_cluster_address=gcomm://`. Kept as a runtime delta (`02_delta.cnf`), it made every later
+  start bootstrap a new cluster, and Galera refuses that (`safe_to_bootstrap: 0`).
+  `config.IsGaleraPerStartVariable` (`wsrep_cluster_address`, `wsrep_start_position`) keeps them
+  out of `WriteDeltaVariables`. The configurator strips them when it deploys `02_delta.cnf`
+  (`StripGaleraPerStartVariables`), which also cleans a file written before, on a node that is
+  down.
+- **The bootstrap option is set for one start only.** The provision writes
+  `container#db.command = --wsrep_new_cluster` on the node it bootstraps. Before each OpenSVC v3
+  start of a Galera node, `openSVCSyncGaleraBootstrapCommandV3` brings it in line with that start
+  (`galeraCommandPatch`): set on the bootstrap node of a cluster entirely down
+  (`isGaleraBootstrapNode`), removed from any other start. Any other command is the operator's and
+  is left alone. OpenSVC v2 (the per-pod `container#20<pod>` section) is not covered yet.
+- **Regtest** (`TestGaleraMasterLoss`): the master must move by itself in either mode, with no
+  `FailoverNow` and no ERR00002, and the lost node must rejoin Synced. `galeraGate` fails a
+  cluster declared Galera but not discovered Galera. It used to log "Skipping" and return PASS.
+

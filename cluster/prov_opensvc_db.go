@@ -385,6 +385,68 @@ func (cluster *Cluster) OpenSVCStopDatabaseService(server *ServerMonitor) error 
 	return nil
 }
 
+// galeraCommandPatch says what a Galera node's container#db.command must become for this start
+// (#2350): the bootstrap option on the bootstrap node of a cluster entirely down
+// (isGaleraBootstrapNode), nothing on any other start. The provision wrote the option on the node
+// it bootstrapped and nothing removed it: every later start of that node bootstrapped a new
+// cluster. A command other than the bootstrap option is the operator's and is left alone.
+// changed is false when the section already says it.
+func galeraCommandPatch(section *ini.Section, bootstrap bool) (changed bool) {
+	current := strings.TrimSpace(section.Key("command").String())
+	switch {
+	case bootstrap && current == "":
+		section.Key("command").SetValue(galeraBootstrapCommand)
+		return true
+	case !bootstrap && current == galeraBootstrapCommand:
+		section.DeleteKey("command")
+		return true
+	}
+	return false
+}
+
+// openSVCSyncGaleraBootstrapCommandV3 applies galeraCommandPatch to the live service config of a
+// Galera node before it starts (OpenSVC v3). Not a Galera cluster, nothing to change: no write.
+func (cluster *Cluster) openSVCSyncGaleraBootstrapCommandV3(svc opensvc.Collector, server *ServerMonitor) error {
+	if cluster.GetTopologyTarget() != config.TopoMultiMasterWsrep {
+		return nil
+	}
+	parts := strings.SplitN(server.ServiceName, "/", 3)
+	if len(parts) != 3 {
+		return fmt.Errorf("invalid service name format %q, expected namespace/kind/name", server.ServiceName)
+	}
+	raw, err := svc.GetObjectConfigFileV3(parts[0], parts[1], parts[2])
+	if err != nil {
+		return err
+	}
+	cfg, err := ini.LoadSources(ini.LoadOptions{IgnoreInlineComment: true}, bytes.NewReader(raw))
+	if err != nil {
+		return fmt.Errorf("failed to parse service config for %s: %w", server.ServiceName, err)
+	}
+	section, err := cfg.GetSection("container#db")
+	if err != nil {
+		return nil // not a database container service: nothing to do
+	}
+	bootstrap := cluster.isGaleraBootstrapNode(server)
+	if !galeraCommandPatch(section, bootstrap) {
+		return nil
+	}
+	var buf bytes.Buffer
+	if _, err := cfg.WriteTo(&buf); err != nil {
+		return fmt.Errorf("failed to serialize patched service config for %s: %w", server.ServiceName, err)
+	}
+	if _, err := svc.UpdateObjectV3(parts[0], parts[1], parts[2], buf.Bytes()); err != nil {
+		return err
+	}
+	if bootstrap {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
+			"Galera: %s bootstraps the cluster (entirely down): %s set on its container#db", server.URL, galeraBootstrapCommand)
+	} else {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
+			"Galera: %s joins the cluster: %s removed from its container#db (left by a previous bootstrap, #2350)", server.URL, galeraBootstrapCommand)
+	}
+	return nil
+}
+
 func (cluster *Cluster) OpenSVCStartDatabaseService(server *ServerMonitor) error {
 	svc := cluster.OpenSVCConnect()
 	if cluster.Conf.ProvOpensvcUseCollectorAPI {
@@ -398,6 +460,10 @@ func (cluster *Cluster) OpenSVCStartDatabaseService(server *ServerMonitor) error
 		}
 		svc.StartService(agent.Node_id, service.Svc_id)
 	} else if svc.IsV3() {
+		if err := cluster.openSVCSyncGaleraBootstrapCommandV3(svc, server); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn,
+				"Galera bootstrap option of %s not checked before its start: %s", server.URL, err)
+		}
 		if cluster.Conf.ProvOpensvcUseOrchestratedStart {
 			// HA-safe path: abort (clears warn + cancels pending orchestration)
 			// then restart (atomic stop+start, avoids race with repman detecting

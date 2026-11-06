@@ -76,9 +76,13 @@ func galeraProbeOn(master *cluster.ServerMonitor, nodes []*cluster.ServerMonitor
 	return nil
 }
 
+// galeraGate checks that a cluster declared Galera (the test's topology target, MatchTarget)
+// is discovered Galera. It used to log "Skipping" and return PASS: a Galera cluster discovered
+// master-slave (the regression fixed by 06c9757c4) passed every Galera test without running
+// one. It is a failure (#2350).
 func galeraGate(cl *cluster.Cluster, name string) bool {
 	if cl.GetTopology() != config.TopoMultiMasterWsrep {
-		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Skipping %s: requires topology %s, cluster is %s", name, config.TopoMultiMasterWsrep, cl.GetTopology())
+		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "FAIL %s: the cluster is declared %s but discovered %s", name, config.TopoMultiMasterWsrep, cl.GetTopology())
 		return false
 	}
 	return true
@@ -92,7 +96,7 @@ func (regtest *RegTest) TestGaleraBootstrap(cl *cluster.Cluster, conf string, te
 		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", format, args...)
 	}
 	if !galeraGate(cl, "GaleraBootstrap") {
-		return true
+		return false
 	}
 	var master *cluster.ServerMonitor
 	var err error
@@ -117,7 +121,7 @@ func (regtest *RegTest) TestGaleraSwitchover(cl *cluster.Cluster, conf string, t
 		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", format, args...)
 	}
 	if !galeraGate(cl, "GaleraSwitchover") {
-		return true
+		return false
 	}
 	before, err := galeraHealthy(cl, len(cl.Servers))
 	if err != nil {
@@ -147,15 +151,16 @@ func (regtest *RegTest) TestGaleraSwitchover(cl *cluster.Cluster, conf string, t
 }
 
 // TestGaleraMasterLoss stops the database service of replication-manager's master: the other
-// nodes keep a Primary component, the master moves to one of them (in manual mode the cluster
-// first waits for the operator, ERR00002, then the operator's failover moves it), and once
-// started again the lost node rejoins Synced with the writes made while it was down.
+// nodes keep a Primary component and the virtual master moves to one of them by itself, in any
+// failover mode (a switchover: no operator, no ERR00002, #2350). Once started again, the lost
+// node rejoins Synced with the writes made while it was down: on an OpenSVC-provisioned cluster
+// that is the node the provision bootstrapped, whose start used to bootstrap a new cluster.
 func (regtest *RegTest) TestGaleraMasterLoss(cl *cluster.Cluster, conf string, test *cluster.Test) bool {
 	logf := func(format string, args ...interface{}) {
 		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", format, args...)
 	}
 	if !galeraGate(cl, "GaleraMasterLoss") {
-		return true
+		return false
 	}
 	n := len(cl.Servers)
 	lost, err := galeraHealthy(cl, n)
@@ -177,19 +182,15 @@ func (regtest *RegTest) TestGaleraMasterLoss(cl *cluster.Cluster, conf string, t
 		cl.StartDatabaseService(lost)
 		return false
 	}
-	if cl.Conf.Interactive {
-		// manual mode: the cluster waits for the operator, who fails over
-		if !waitFor(30*time.Second, func() bool { return cl.StateMachine.IsInState("ERR00002") }) {
-			logf("FAIL GaleraMasterLoss: manual mode, master %s failed, but no ERR00002 (waiting for a manual failover)", lost.URL)
-			cl.StartDatabaseService(lost)
-			return false
-		}
-		logf("Manual mode: ERR00002 open, failing over as the operator")
-		cl.FailoverNow()
-	}
+	// no operator in any mode: the master moves by itself (the GUI has no failover for Galera)
 	var elected *cluster.ServerMonitor
 	if !waitFor(120*time.Second, func() bool { elected, err = galeraHealthy(cl, n-1); return err == nil }) {
-		logf("FAIL GaleraMasterLoss: the master did not move off %s: %s", lost.URL, err)
+		logf("FAIL GaleraMasterLoss: the master did not move off %s by itself (interactive=%v): %s", lost.URL, cl.Conf.Interactive, err)
+		cl.StartDatabaseService(lost)
+		return false
+	}
+	if cl.StateMachine.IsInState("ERR00002") {
+		logf("FAIL GaleraMasterLoss: ERR00002 open: Galera never waits for an operator failover")
 		cl.StartDatabaseService(lost)
 		return false
 	}

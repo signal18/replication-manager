@@ -1070,9 +1070,13 @@ func (configurator *Configurator) GenerateDatabaseConfig(Datadir string, Cluster
 			srcpath := filepath.Join(Datadir, fname)
 			destpath := filepath.Join(Datadir, "init/etc/mysql/custom.d/", fname)
 
-			// Check if the source file exists before copying
-			if _, err := os.Stat(srcpath); err == nil {
-				misc.CopyFile(srcpath, destpath)
+			// Check if the source file exists before copying. The per-start Galera variables
+			// are stripped: a delta written before #2350 (a bootstrap node's gcomm://) must not
+			// reach the node, which is often down when its config is deployed again.
+			if data, err := os.ReadFile(srcpath); err == nil {
+				if err := os.WriteFile(destpath, []byte(config.StripGaleraPerStartVariables(string(data))), 0644); err != nil {
+					configurator.Logger.Errorf("Failed to deploy %s: %s", fname, err)
+				}
 			}
 		}
 	}
