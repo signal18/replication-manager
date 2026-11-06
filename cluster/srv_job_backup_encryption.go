@@ -186,20 +186,15 @@ type backupPasswordVersion struct {
 }
 
 // backupPasswordHistory returns the db-servers-credential passwords recorded
-// in secret_store.json, newest first. Backup encryption turns secret
-// versioning on; the history is empty only when the store cannot be read or
-// has nothing recorded (e.g. no Repman key): only the current password is
-// then known.
+// in the secret version store, newest first: the store in memory, which the
+// save callback writes to secret_store.json (T25). Backup encryption turns
+// secret versioning on; the history is empty only when nothing is recorded
+// (e.g. no Repman key): only the current password is then known.
 func (cluster *Cluster) backupPasswordHistory() []backupPasswordVersion {
 	if cluster.Conf == nil || !cluster.Conf.IsMonitoringSecretVersioningEnabled() {
 		return nil
 	}
-	store, err := loadSecretVersionStore(SecretVersionStorePath(cluster.Conf.WorkingDir, cluster.Name))
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Backup encryption: cannot read secret version store: %s", err)
-		return nil
-	}
-	versions := store[backupEncryptionSecretKey]
+	versions := cluster.versionStore().Versions(backupEncryptionSecretKey)
 	history := make([]backupPasswordVersion, 0, len(versions))
 	for i := len(versions) - 1; i >= 0; i-- {
 		_, pass := misc.SplitPair(cluster.Conf.DecryptSecretValue(backupEncryptionSecretKey, versions[i].HashValue))
@@ -211,10 +206,11 @@ func (cluster *Cluster) backupPasswordHistory() []backupPasswordVersion {
 	return history
 }
 
-// currentBackupPasswordVersion returns the secret_store.json version holding
-// password. When the store has not recorded it yet (encryption just switched
-// on, or a password change not yet reconciled), the store is reconciled
-// first, so every password that encrypted a backup is in the history.
+// currentBackupPasswordVersion returns the secret version store's version
+// holding password. When the store has not recorded it yet (encryption just
+// switched on, or a password change not yet recorded), it is recorded in
+// memory and a save is asked, so every password that encrypted a backup is in
+// the history; the file is written by that save, never from here (T25).
 // Returns 0 when the store cannot record it (no Repman key).
 func (cluster *Cluster) currentBackupPasswordVersion(password string) int {
 	find := func() int {
@@ -232,7 +228,7 @@ func (cluster *Cluster) currentBackupPasswordVersion(password string) int {
 		return 0
 	}
 	cluster.MarkSecretVersionStoreDirty()
-	cluster.ReconcileSecretVersionStore()
+	cluster.recordDirtySecretVersions()
 	return find()
 }
 

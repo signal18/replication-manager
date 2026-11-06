@@ -37,8 +37,10 @@ only for the operation that needs it.
 ### Password history and rotation
 
 Each encrypted backup records the active password version in
-`BackupMetadata.EncryptionKeyVersion`. Restore candidates are tried in this
-order:
+`BackupMetadata.EncryptionKeyVersion`. The history is read from the secret
+version store in memory; a password it has not recorded yet is recorded there at
+once and `secret_store.json` is written by the next config save, never by the
+backup (#2041). Restore candidates are tried in this order:
 
 1. the password active at the backup time according to `secret_store.json`;
 2. the password matching `EncryptionKeyVersion`, when present;

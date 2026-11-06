@@ -107,6 +107,7 @@ var tests = []string{
 	"testConfigPersistBackupOption",
 	"testCredentialPersistTagReload",
 	"testCredentialVersionsRotation",
+	"testCredentialStoreSaveOnly",
 	"testAppSecretVersions",
 	"testCredentialConfigRotationScheduled",
 	"testConfigCookiePushBasic",
@@ -336,6 +337,8 @@ var testTargets = map[string][]TestTarget{
 	// entry, testCredentialVersionsRotationVault, is run by name on a cluster whose config enables
 	// a [[<cluster>.secret-kv]] on a Vault or OpenBao dev container.
 	"testCredentialVersionsRotation": {{FlavorTarget: []string{"mariadb", "mysql"}, ConfigVariableMustHave: map[string]string{"monitoring-secret-versioning": "true"}}},
+	// #2041: secret_store.json written by the config save only (the settings API, a backup)
+	"testCredentialStoreSaveOnly": {{FlavorTarget: []string{"mariadb", "mysql"}, ConfigVariableMustHave: map[string]string{"monitoring-secret-versioning": "true"}}},
 	// #2306: the app secrets as versions, the versioned file on. Its variant with a vault entry,
 	// testAppSecretVersionsVault, is run by name on a cluster whose config enables a
 	// [[<cluster>.secret-kv]] on a Vault or OpenBao dev container.

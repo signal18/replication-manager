@@ -364,6 +364,14 @@ func (s *VersionStore) Export() (map[string][]FileVersion, bool) {
 	return out, dirty
 }
 
+// Versions is a copy of the versions of key, oldest first. Unlike Export it leaves the
+// changed flag alone: a reader never takes the file's pending write away.
+func (s *VersionStore) Versions(key string) []FileVersion {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]FileVersion(nil), s.versions[key]...)
+}
+
 // MarkDirty asks the next save to write the file.
 func (s *VersionStore) MarkDirty() {
 	s.mu.Lock()

@@ -243,3 +243,39 @@ func TestEncryptionForcesSecretVersioningAndRecordsFirstPassword(t *testing.T) {
 		t.Fatalf("backup taken before rotation not restorable: %q, %v", got, err)
 	}
 }
+
+// #2041, T25: recording the password version a backup used never writes secret_store.json: the
+// file is written by the save callback (ReconcileSecretVersionStore) only. The version is in
+// the history at once, a save is asked, and reading the history leaves the file's pending
+// write alone.
+func TestCurrentBackupPasswordVersionLeavesTheFileToTheSave(t *testing.T) {
+	c := newEncryptionTestCluster(t, "pw1")
+	c.WorkingDir = filepath.Join(c.Conf.WorkingDir, c.Name)
+	os.MkdirAll(c.WorkingDir, 0700)
+	c.Conf.MonitoringSecretVersioning = true
+	c.Conf.SecretKey = []byte("01234567890123456789012345678901")
+	path := SecretVersionStorePath(c.Conf.WorkingDir, c.Name)
+
+	if v := c.currentBackupPasswordVersion("pw1"); v != 1 {
+		t.Fatalf("version of the password a backup used: got %d, want 1", v)
+	}
+	if _, err := os.Stat(path); err == nil {
+		t.Fatalf("secret_store.json was written outside the save callback")
+	}
+	if !c.IsNeedConfigSave {
+		t.Fatalf("no save was asked")
+	}
+	if h := c.backupPasswordHistory(); len(h) != 1 || h[0].password != "pw1" {
+		t.Fatalf("history before the save: %+v", h)
+	}
+
+	// the save callback writes the file, with the version the backup recorded
+	if err := c.ReconcileSecretVersionStore(); err != nil {
+		t.Fatalf("save callback: %v", err)
+	}
+	store := readSecretStoreForTest(t, path)
+	assertSecretVersionCount(t, store, backupEncryptionSecretKey, 1)
+	if v := c.currentBackupPasswordVersion("pw1"); v != 1 {
+		t.Fatalf("version after the save: got %d, want 1", v)
+	}
+}

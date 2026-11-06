@@ -629,3 +629,26 @@ func TestChainSetAllRevertible(t *testing.T) {
 		t.Fatalf("after a refresh: %q", v)
 	}
 }
+
+// Versions reads a key's versions without taking the file's pending write away (Export does).
+func TestVersionStoreVersionsKeepsTheChangedFlag(t *testing.T) {
+	conf := testConf()
+	vs := NewVersionStore(func() *config.Config { return conf }, func(string) bool { return true }, nil, nil)
+	vs.Load(map[string][]FileVersion{"db-servers-credential": {{Version: 1, HashValue: "hash_a"}, {Version: 2, HashValue: "hash_b"}}})
+	vs.MarkDirty()
+
+	got := vs.Versions("db-servers-credential")
+	if len(got) != 2 || got[0].Version != 1 || got[1].Version != 2 {
+		t.Fatalf("versions: %+v", got)
+	}
+	got[0].HashValue = "changed"
+	if vs.Versions("db-servers-credential")[0].HashValue != "hash_a" {
+		t.Fatalf("Versions returned the store's own slice")
+	}
+	if _, dirty := vs.Export(); !dirty {
+		t.Fatalf("Versions took the pending write away")
+	}
+	if len(vs.Versions("unknown")) != 0 {
+		t.Fatalf("versions of an unknown key")
+	}
+}
