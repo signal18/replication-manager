@@ -120,11 +120,23 @@ func TestValidate(t *testing.T) {
 		{Company: "company", URI: "company.2026-12.1", AirGapped: true, Version: "v1"},
 		{Company: "other", URI: "company.202612.1", AirGapped: true, Version: "v1"},
 		{Company: "company", URI: "company.202612.1", AirGapped: true, Version: "../x"},
-		{Company: "company", URI: "company.202612.1", AirGapped: false, Version: "v1"},
-		{Company: "company", URI: "company.202001.1", AirGapped: true, Version: "v1"}, // born-expired: the guardrail must reject
+		{Company: "company", URI: "company.202001.1", AirGapped: true, Version: "v1"},                               // born-expired: the guardrail must reject
+		{Company: "acme", URI: "acme.east.z1", AirGapped: false, Version: "v1"},                   // online, no expiry
+		{Company: "acme", URI: "acme.east.z1", AirGapped: false, Version: "v1", Expiry: "202001"}, // online, born-expired
+		{Company: "acme", URI: "acme.UP.fr1", AirGapped: false, Version: "v1", Expiry: "2099-12-31"},        // online, not lower-case dotted
+		{Company: "acme", URI: "company.202612.1", AirGapped: false, Version: "v1", Expiry: "2099-12-31"},       // online uri not of company
 	} {
 		if err := r.Validate(); err == nil {
 			t.Errorf("Validate(%+v) accepted", r)
+		}
+	}
+	for _, r := range []Request{
+		{Company: "company", URI: "company.202612.1", AirGapped: true, Version: "v1"},                                        // air-gapped seat
+		{Company: "acme", URI: "acme.east.z1", AirGapped: false, Version: "v3.1.48", Expiry: "2099-12-31"}, // online, YYYY-MM-DD expiry
+		{Company: "acme", URI: "acme.east.z1", AirGapped: false, Version: "v3.1.48", Expiry: "209912"},     // online, YYYYMM expiry
+	} {
+		if err := r.Validate(); err != nil {
+			t.Errorf("Validate(%+v) rejected: %v", r, err)
 		}
 	}
 }
@@ -136,5 +148,60 @@ func TestRecordBounded(t *testing.T) {
 	}
 	if n := len(b.Status()["results"].([]Result)); n != resultsMax {
 		t.Fatalf("%d results kept, want %d", n, resultsMax)
+	}
+}
+
+func TestDeliverToPull(t *testing.T) {
+	cfg := Config{GitBaseURL: "https://gitlab.example.test", GitUser: "oauth2", GitToken: "SECRETTOKEN"}
+	b := New(cfg, nil)
+	var calls [][]string
+	b.run = func(dir string, env []string, name string, args ...string) error {
+		calls = append(calls, append([]string{name}, args...))
+		for _, a := range args {
+			if a == "add" { // by now the plugin + .sig are written into dir/plugins
+				if _, err := os.Stat(filepath.Join(dir, "plugins", "plugin-licence")); err != nil {
+					t.Errorf("plugin binary not written: %v", err)
+				}
+				if _, err := os.Stat(filepath.Join(dir, "plugins", "plugin-licence.sig")); err != nil {
+					t.Errorf("plugin .sig not written: %v", err)
+				}
+			}
+			if a == "diff" {
+				return os.ErrInvalid // simulate staged changes so commit+push proceed
+			}
+		}
+		return nil
+	}
+	lic := []Plugin{{Name: "plugin-licence", Data: []byte("bin"), Sig: []byte("sig")}}
+	if err := b.deliverToPull(Request{URI: "acme.east.z1"}, lic); err != nil {
+		t.Fatalf("deliverToPull: %v", err)
+	}
+	var clone, push bool
+	for _, c := range calls {
+		j := strings.Join(c, " ")
+		if strings.Contains(j, "clone") {
+			clone = true
+			if !strings.Contains(j, "acme/east-z1-pull.git") {
+				t.Errorf("clone targets the wrong repo: %v", c)
+			}
+		}
+		if strings.Contains(j, "push") {
+			push = true
+		}
+		for _, a := range c { // the token must never ride the remote URL
+			if strings.HasPrefix(a, "https://") && strings.Contains(a, cfg.GitToken) {
+				t.Errorf("token leaked into a URL arg: %q", a)
+			}
+		}
+	}
+	if !clone || !push {
+		t.Errorf("expected a clone and a push, got %v", calls)
+	}
+}
+
+func TestDeliverToPullUnconfigured(t *testing.T) {
+	b := New(Config{}, nil) // no GitBaseURL/GitToken
+	if err := b.deliverToPull(Request{URI: "acme.east.z1"}, nil); err == nil {
+		t.Error("deliverToPull with no git config should fail")
 	}
 }
