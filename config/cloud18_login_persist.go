@@ -59,6 +59,7 @@ type cloud18LoginRecord struct {
 	Refresh    string    `json:"refresh"`
 	RefreshEnd time.Time `json:"refresh_end"`
 	Seen       time.Time `json:"seen"`
+	SessionEnd time.Time `json:"session_end,omitempty"`
 }
 
 type cloud18LoginsFile struct {
@@ -118,7 +119,7 @@ func (conf *Config) LoadCloud18Logins() (int, error) {
 		if err != nil {
 			continue // another key: this login cannot come back
 		}
-		cloud18LoginTokens.m[l.Key] = &cloud18LoginEntry{refresh: refresh, refreshEnd: l.RefreshEnd, seen: l.Seen}
+		cloud18LoginTokens.m[l.Key] = &cloud18LoginEntry{refresh: refresh, refreshEnd: l.RefreshEnd, seen: l.Seen, sessionEnd: l.SessionEnd}
 		n++
 	}
 	cloud18LoginTokens.Unlock()
@@ -180,13 +181,14 @@ func saveCloud18Logins() {
 
 	now := time.Now()
 	type snap struct {
-		key string
-		e   *cloud18LoginEntry
+		key        string
+		e          *cloud18LoginEntry
+		sessionEnd time.Time
 	}
 	cloud18LoginTokens.Lock()
 	entries := make([]snap, 0, len(cloud18LoginTokens.m))
 	for k, e := range cloud18LoginTokens.m {
-		entries = append(entries, snap{k, e})
+		entries = append(entries, snap{k, e, e.sessionEnd})
 	}
 	cloud18LoginTokens.Unlock()
 
@@ -210,7 +212,7 @@ func saveCloud18Logins() {
 		if p.CipherText == "" {
 			continue
 		}
-		f.Logins = append(f.Logins, cloud18LoginRecord{Key: s.key, Refresh: "hash_" + p.CipherText, RefreshEnd: end, Seen: seen})
+		f.Logins = append(f.Logins, cloud18LoginRecord{Key: s.key, Refresh: "hash_" + p.CipherText, RefreshEnd: end, Seen: seen, SessionEnd: s.sessionEnd})
 	}
 	data, err := json.MarshalIndent(f, "", "  ")
 	if err == nil {
@@ -244,6 +246,35 @@ func (conf *Config) DecryptCloud18LoginClaim(claim string) (string, error) {
 		}
 	}
 	return refresh, nil
+}
+
+// RecordCloud18SessionEnd records that this instance issued a session of the login (its first
+// refresh token) ending at end (#2341). A resume after a restart takes its end from here, never from
+// the old session (read without its signature, its end could be forged).
+func RecordCloud18SessionEnd(refresh string, end time.Time) {
+	if refresh == "" {
+		return
+	}
+	e := cloud18LoginEntryFor(refresh, time.Now())
+	cloud18LoginTokens.Lock()
+	if end.After(e.sessionEnd) {
+		e.sessionEnd = end
+	}
+	cloud18LoginTokens.Unlock()
+	cloud18LoginsChanged()
+}
+
+// Cloud18SessionEnd is the latest end of a session this instance issued for the login, false when
+// it issued none (or no longer knows: logged out, evicted, another instance). It never creates an
+// entry and never asks the realm: a login no session of this instance carried is refused for free.
+func Cloud18SessionEnd(refresh string) (time.Time, bool) {
+	cloud18LoginTokens.Lock()
+	defer cloud18LoginTokens.Unlock()
+	e, ok := cloud18LoginTokens.m[cloud18LoginKey(refresh)]
+	if !ok || e.sessionEnd.IsZero() {
+		return time.Time{}, false
+	}
+	return e.sessionEnd, true
 }
 
 // FlushCloud18Logins writes the cache now, without waiting for the batch (tests, shutdown).

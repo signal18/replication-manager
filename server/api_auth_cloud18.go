@@ -227,7 +227,7 @@ func (repman *ReplicationManager) handlerMuxCloud18SSOCallback(w http.ResponseWr
 		repman.cloud18SSOFail(w, r, public, cloud18SSOToken, err.Error())
 		return
 	}
-	jwt, err := repman.issueJWT(repman.cloud18SSOSessionInfo(u, ssoLogin{cloud18: l}.cloud18Claim(repman.Conf), l.Access), "")
+	jwt, err := repman.issueCloud18Session(repman.cloud18SSOSessionInfo(u, ssoLogin{cloud18: l}.cloud18Claim(repman.Conf), l.Access), "", l.Refresh)
 	if err != nil {
 		repman.cloud18SSOFail(w, r, public, cloud18SSOFailed, err.Error())
 		return

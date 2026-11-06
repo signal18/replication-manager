@@ -6271,6 +6271,10 @@ paths:
           description: cloud18-login-resume is off
           schema:
             type: string
+        "429":
+          description: too many resumes from this address
+          schema:
+            type: string
       summary: Resume a Cloud18 session after a restart
       tags:
       - Auth

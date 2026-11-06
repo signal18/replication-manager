@@ -11,6 +11,7 @@ import (
 	"time"
 
 	jwt "github.com/golang-jwt/jwt/v5"
+	"github.com/signal18/replication-manager/config"
 )
 
 // Resuming a Cloud18 session after a restart (#2341). The sessions repman issues are signed with a
@@ -19,11 +20,15 @@ import (
 // with this instance's key): the realm, asked again, says whether the login still holds, and a new
 // session is given only then.
 //
-// Nothing of the old session is trusted but what the realm confirms: the person is the one of the
-// realm's token, the role is Member as at any Cloud18 sign-in (cloud18SSOSessionInfo); the old
-// session only gives its login (which must decrypt with this instance's key and be accepted by the
-// realm), its email (which must be the realm's) and its end (a resume never makes a session last
-// longer). A forged role, name or end is worthless: it is not read, or only shortens the session.
+// Nothing of the old session is trusted but what this instance recorded and the realm confirms:
+// - the person is the one of the realm's token, the role is Member as at any Cloud18 sign-in
+//   (cloud18SSOSessionInfo): the old session's role and name are not read;
+// - its login must decrypt with this instance's key, be one this instance issued a session for
+//   (Cloud18SessionEnd: else refused without asking the realm) and be accepted by the realm;
+// - its email must be the realm's;
+// - its end is the one this instance recorded when it issued the session (issueCloud18Session),
+//   never later: the old session is read without its signature, its exp could be forged.
+// A logout drops the login (Cloud18LoginEnd), so a logged-out session never resumes.
 
 const cloud18ResumePath = "/api/auth/cloud18/resume"
 
@@ -35,6 +40,22 @@ const sessionIssuer = "https://api.replication-manager.signal18.io"
 var cloud18ResumeLimiter = newIPRateLimiter(30, 10, 15*time.Minute, 128)
 
 var errCloud18ResumeRefused = errors.New("this session cannot be resumed: sign in again")
+
+// cloud18ResumeMinLogin is the shortest refresh token a resume takes: a realm's refresh tokens are
+// long JWTs, a short "decryption" is another key's bytes (the cipher is not authenticated).
+const cloud18ResumeMinLogin = 32
+
+// issueCloud18Session issues a session carrying a Cloud18 login and records its end with the login
+// (#2341): the end a resume after a restart is bounded by. refresh is the login's first refresh
+// token ("" when the session carries none).
+func (repman *ReplicationManager) issueCloud18Session(userInfo interface{}, gitlabToken, refresh string) (string, error) {
+	lifetime := time.Hour * time.Duration(repman.Conf.TokenTimeout)
+	session, err := repman.issueJWTFor(userInfo, gitlabToken, lifetime)
+	if err == nil && refresh != "" {
+		config.RecordCloud18SessionEnd(refresh, time.Now().Add(lifetime))
+	}
+	return session, err
+}
 
 // cloud18ResumableSession reads, without its signature, what a session gives a resume: its Cloud18
 // login, its email and its end. An expired session, a local (password) session, a session without a
@@ -108,8 +129,18 @@ func (repman *ReplicationManager) cloud18ResumeSession(raw string) (string, stri
 		return "", email, err
 	}
 	refresh, err := repman.Conf.DecryptCloud18LoginClaim(login)
-	if err != nil || refresh == "" {
+	if err != nil || len(refresh) < cloud18ResumeMinLogin {
 		return "", email, errors.New("the session's Cloud18 login is not one of this instance: sign in again")
+	}
+	recorded, ok := config.Cloud18SessionEnd(refresh)
+	if !ok {
+		return "", email, errors.New("no session of this Cloud18 login was issued here (or it logged out): sign in again")
+	}
+	if recorded.Before(end) {
+		end = recorded // the old session's exp is unverified: never later than what was issued
+	}
+	if !time.Now().Before(end) {
+		return "", email, errors.New("the session has expired: sign in again")
 	}
 	access, err := repman.Conf.Cloud18LoginAccess(refresh)
 	if err != nil {

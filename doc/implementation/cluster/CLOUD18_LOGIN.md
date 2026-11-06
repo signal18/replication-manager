@@ -158,8 +158,13 @@ token, encrypted with the instance key, claim `cloud18`); the realm decides whet
 - **Kept logins** (`config/cloud18_login_persist.go`): the login cache (`cloud18LoginTokens`, keyed by
   the hash of the first refresh token) is written to `<datadir>/cloud18-logins.json` and read back at
   start (`LoadCloud18Logins`, called after `initKeys`).
-  - Each record holds the newest refresh token, encrypted (`hash_`, instance key), its end and its
-    last use. Never the first token: the key is its hash.
+  - Each record holds the newest refresh token, encrypted (`hash_`, instance key), its end, its last
+    use, and the latest end of a session this instance issued for the login (`session_end`). Never
+    the first token: the key is its hash.
+  - The encryption key is `monitoring-key-path` (default `/etc/replication-manager/.replication-manager.key`),
+    not the data directory. The encryption protects the file when the data directory leaks without
+    the key: a backup, a copied volume. Someone who can read both can use the logins, as they can
+    read every other secret of the instance.
   - Ended and refused logins are not written. The cache's bound (`cloud18LoginTokensMax`) applies on
     load, most recent first (F4).
   - Writes are batched (`cloud18LoginsSaveDelay`, 5 s) and durable (`misc.WriteFileDurable`, 0600), one
@@ -176,6 +181,8 @@ token, encrypted with the instance key, claim `cloud18`); the realm decides whet
 - **Resume** (`POST /api/auth/cloud18/resume`, public, `server/api_auth_cloud18_resume.go`): the old
   session is read without its signature. It is refused (401) when:
   - it has expired, is not an SSO session, or has no Cloud18 login;
+  - this instance issued no session for that login (`Cloud18SessionEnd`), for example after a logout
+    dropped it. The realm is not asked: a claim nobody issued here costs nothing;
   - its login does not decrypt with this instance's key (`DecryptCloud18LoginClaim`). The cipher is
     AES-CFB, unauthenticated, so a result that is not printable ASCII is refused too. Keycloak's
     refresh tokens are JWTs, so printable; a realm issuing other bytes would never resume;
@@ -183,15 +190,27 @@ token, encrypted with the instance key, claim `cloud18`); the realm decides whet
     email.
 
   Otherwise a new session is built by `cloud18SSOSessionInfo`, the same builder as the Sign in with
-  Cloud18 callback: a Member, the realm's person. It ends when the old one would have
-  (`issueJWTFor`, the remaining lifetime). Nothing else of the old session is read, so a forged role or
-  name is worthless.
+  Cloud18 callback: a Member, the realm's person.
+  - **Its end comes from the record, not the token.** Every session carrying a Cloud18 login is issued
+    by `issueCloud18Session`, which records its end with the login (`RecordCloud18SessionEnd`): the
+    callback, the Cloud18 password login and the login upgrade. The old session is read without its
+    signature, so its `exp` could be forged. The resume takes the earlier of the token's `exp` and the
+    recorded end, and refuses past it. Tested with a far-future `exp`, and with an ended session whose
+    `exp` was forged into the future.
+  - Nothing else of the old session is read, so a forged role or name is worthless.
+  - A session from the Cloud18 password form (`Name` = the login name typed) comes back with `Name` =
+    the realm's email. Its identity is unchanged (an SSO session is identified by its email). It loses
+    the encrypted password claim and the meet user id: the other instances get the realm token, and
+    meet asks again.
+  - The login's "decryption" must be at least 32 bytes (`cloud18ResumeMinLogin`): Keycloak's refresh
+    tokens are long JWTs.
   - The caller gets one generic message ("sign in again"). The detail, such as the realm's answer,
     goes to the bounded security log only (`logCloud18Refusal`). Each success goes to the API login log.
   - At most 30 resumes a minute per address, with a burst of 10 (`cloud18ResumeLimiter`, the signup
     limiter's code), then 429. Each resume may ask the realm.
-- **GUI** (`services/apiHelper.js`): on a 401 of a request that carried the session, one resume. It is
-  shared by the requests refused together and never tried twice for the same session. On success the
+- **GUI** (`services/apiHelper.js`): on a 401 of a request that carried the session, one resume per
+  old session. It is shared by the requests refused together and never tried twice for the same
+  session. On success the
   request is sent again with the new session, else the person is signed out as before.
 - **Off-switch**: `cloud18-login-resume` (default on, Setup > Cloud18 > Registration, "Keep Sessions
   Across Restarts"). Off: the resume answers 404, nothing is written, and the file is removed at once.
@@ -199,8 +218,9 @@ token, encrypted with the instance key, claim `cloud18`); the realm decides whet
   - Local (password) sessions still end at a restart.
   - A logout only drops the session in the browser. The realm session is ended by
     `Cloud18LoginEnd`, which also drops the kept login, so a logged-out session cannot resume.
-  - A copy of an old session can resume while the realm accepts its login, as it could be used
-    before the restart until its end.
+  - A copy of an old session can resume until the end this instance issued it with, and only while the
+    realm accepts its login and the login was not logged out. That is what the copy was worth before
+    the restart.
 
 ## Rollout (step 3, later)
 

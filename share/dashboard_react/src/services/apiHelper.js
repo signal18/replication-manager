@@ -78,13 +78,15 @@ const handleResponse = async (response) => {
 // the server asks the Cloud18 realm whether the session's login still holds and gives a new
 // session, or refuses (the person then signs in again). One resume at a time for all the requests
 // refused together, and never twice for the same old session.
-let resumeInFlight = null
+const resumeInFlight = new Map() // old session -> its resume
 const resumeTried = new Set()
 const resumeSession = (oldToken) => {
-  if (!oldToken || resumeTried.has(oldToken)) return Promise.resolve(null)
-  if (!resumeInFlight) {
-    resumeTried.add(oldToken)
-    resumeInFlight = fetch('/api/auth/cloud18/resume', { method: 'POST', headers: { Authorization: `Bearer ${oldToken}`, Accept: '*/*' } })
+  if (!oldToken) return Promise.resolve(null)
+  if (resumeInFlight.has(oldToken)) return resumeInFlight.get(oldToken)
+  if (resumeTried.has(oldToken)) return Promise.resolve(null)
+  resumeTried.add(oldToken)
+  {
+    const p = fetch('/api/auth/cloud18/resume', { method: 'POST', headers: { Authorization: `Bearer ${oldToken}`, Accept: '*/*' } })
       .then((r) => (r.ok ? r.json() : null))
       .then((body) => {
         const token = body?.token || null
@@ -95,9 +97,10 @@ const resumeSession = (oldToken) => {
         return token
       })
       .catch(() => null)
-      .finally(() => { resumeInFlight = null })
+      .finally(() => { resumeInFlight.delete(oldToken) })
+    resumeInFlight.set(oldToken, p)
+    return p
   }
-  return resumeInFlight
 }
 
 const performRequest = async (method, apiUrl, params, authValue, baseUrl = '') => {

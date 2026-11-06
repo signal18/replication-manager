@@ -368,6 +368,9 @@ type cloud18LoginEntry struct {
 	seen       time.Time
 	refused    time.Time // the realm refused the refresh token: not asked again before this
 	refusedErr error
+	// the latest end of a session this instance issued for this login (#2341), guarded by
+	// cloud18LoginTokens' lock: a resume after a restart ends no later, whatever the old session says
+	sessionEnd time.Time
 }
 
 // cloud18LoginRefusedWait is how long a refresh token the realm refused (revoked, its session

@@ -234,6 +234,12 @@ const docTemplate = `{
                         "schema": {
                             "type": "string"
                         }
+                    },
+                    "429": {
+                        "description": "too many resumes from this address",
+                        "schema": {
+                            "type": "string"
+                        }
                     }
                 }
             }
