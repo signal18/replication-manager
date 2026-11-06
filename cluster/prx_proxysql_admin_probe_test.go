@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/config/credstore/vaultfake"
 )
 
 // fakeProxySQLAdmin answers the MySQL handshake like ProxySQL's admin interface: refuse maps a
@@ -187,5 +188,69 @@ func TestProxysqlConnectConcurrentSwitch(t *testing.T) {
 	}
 	if user, _ := prx.adminLogin(); user != "external" || cl.GetProxysqlUser() != "external" {
 		t.Fatalf("the proxy logs in as %q, proxysql-user %q, want external", user, cl.GetProxysqlUser())
+	}
+}
+
+// A login held in Vault is not switched: external would be written into Vault, and the Vault
+// user would differ from the one in use at every tick.
+func TestProxysqlConnectDoesNotProbeAVaultLogin(t *testing.T) {
+	for name, set := range map[string]func(c *Cluster){
+		"user at a Vault path":     func(c *Cluster) { c.Conf.ProxysqlUser = "secret/rmmdb/proxysql/proxysql-user" },
+		"password at a Vault path": func(c *Cluster) { c.Conf.ProxysqlPassword = "secret/rmmdb/proxysql/proxysql-password" },
+	} {
+		t.Run(name, func(t *testing.T) {
+			cl, prx := newProbeProxy(t, "admin", map[string]uint16{"admin": 1040})
+			cl.Conf.VaultServerAddr = "http://127.0.0.1:1"
+			set(cl)
+			if _, err := prx.Connect(); err == nil {
+				t.Fatal("connect succeeded, want the admin error: the probe must not run")
+			}
+			if user, _ := prx.adminLogin(); user != "admin" || cl.GetProxysqlUser() != "admin" {
+				t.Fatalf("login changed to %q / %q, want admin", user, cl.GetProxysqlUser())
+			}
+		})
+	}
+}
+
+// With the login in Vault (KV v2), a switched user is what the guard keeps out: the Vault user
+// would differ from the secret, and HasProxyCredentialsRotation would report a rotation at
+// every tick.
+func TestProxysqlVaultLoginSwitchWouldTriggerRotation(t *testing.T) {
+	kv := vaultfake.New("kv", "role", "sid")
+	defer kv.Close()
+	userPath, passPath := "c1/proxysql/proxysql-user", "c1/proxysql/proxysql-password"
+	kv.Put(userPath, map[string]interface{}{"proxysql-user": "admin"})
+	kv.Put(passPath, map[string]interface{}{"proxysql-password": "pw"})
+
+	cl, prx := newProbeProxy(t, "admin", map[string]uint16{"admin": 1040})
+	cl.Conf.ProxysqlOn = true
+	cl.Conf.VaultServerAddr = kv.URL
+	cl.Conf.VaultMode = config.VaultConfigStoreV2
+	cl.Conf.VaultMount = "kv"
+	cl.Conf.VaultAuth = config.ConstVaultAuthAppRole
+	cl.Conf.VaultRoleId = "role"
+	cl.Conf.VaultSecretId = cl.Conf.GetEncryptedString("sid")
+	cl.Conf.ProxysqlUser = userPath
+	cl.Conf.ProxysqlPassword = passPath
+
+	if cl.HasProxyCredentialsRotation() {
+		t.Fatal("a rotation is reported before anything changed")
+	}
+	// what the probe does without the guard: external becomes the secret, Vault still says admin
+	cl.Conf.Secrets.Set("proxysql-user", config.Secret{Value: "external"})
+	if !cl.HasProxyCredentialsRotation() {
+		t.Fatal("no rotation reported: the guard would not be needed")
+	}
+	cl.Conf.Secrets.Set("proxysql-user", config.Secret{Value: "admin"})
+
+	// with the guard Connect leaves the login alone, and no rotation is reported
+	if _, err := prx.Connect(); err == nil {
+		t.Fatal("connect succeeded, want the admin error")
+	}
+	if user, _ := prx.adminLogin(); user != "admin" || cl.GetProxysqlUser() != "admin" {
+		t.Fatalf("login changed to %q / %q, want admin", user, cl.GetProxysqlUser())
+	}
+	if cl.HasProxyCredentialsRotation() {
+		t.Fatal("a rotation is reported after Connect: the Vault login was switched")
 	}
 }
