@@ -875,6 +875,13 @@ func (repman *ReplicationManager) switchRepmanSetting(name string) error {
 		repman.Conf.MonitoringLogAPILogin = !repman.Conf.MonitoringLogAPILogin
 	case "log-history-enable":
 		repman.Conf.LogHistoryEnable = !repman.Conf.LogHistoryEnable
+	case "cloud18-login-resume":
+		// scope:"server" — persisted to default.toml by SaveDynamic (value != default). Applied at
+		// once: off removes the kept logins, on keeps them from now on (#2341).
+		repman.Conf.Cloud18LoginResume = !repman.Conf.Cloud18LoginResume
+		if _, err := repman.Conf.LoadCloud18Logins(); err != nil {
+			repman.Logrus.Warnf("cloud18-login-resume: %s", err)
+		}
 	case "cloud18-disable-peers":
 		// scope:"server" — persisted to default.toml by SaveDynamic (value != default),
 		// which is merged back at startup. NOT ImmuableFlagMap (immutable.toml is never read).

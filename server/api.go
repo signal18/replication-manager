@@ -148,7 +148,7 @@ func (repman *ReplicationManager) issueJWTFor(userInfo interface{}, gitlabToken 
 	}
 	signer := jwt.New(jwt.SigningMethodRS256)
 	claims := signer.Claims.(jwt.MapClaims)
-	claims["iss"] = "https://api.replication-manager.signal18.io"
+	claims["iss"] = sessionIssuer
 	claims["iat"] = time.Now().Unix()
 	claims["exp"] = time.Now().Add(lifetime).Unix()
 	claims["jti"] = jti
@@ -1075,7 +1075,7 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 
 	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlDbg, "LoginHandler: meet userID %s", meetUserID)
 
-	tokenString, err := repman.issueJWT(ssoUserInfo, tok)
+	tokenString, err := repman.issueCloud18Session(ssoUserInfo, tok, sso.cloud18Refresh())
 	if err != nil {
 		http.Error(w, "Error signing token: "+err.Error(), http.StatusInternalServerError)
 		return

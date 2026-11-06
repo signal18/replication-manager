@@ -53,6 +53,15 @@ func (l ssoLogin) cloud18Claim(conf *config.Config) string {
 	return conf.GetEncryptedString(l.cloud18.Refresh)
 }
 
+// cloud18Refresh is the login's first refresh token, "" without a Cloud18 login: the key under which
+// the end of its sessions is recorded (#2341).
+func (l ssoLogin) cloud18Refresh() string {
+	if l.cloud18 == nil {
+		return ""
+	}
+	return l.cloud18.Refresh
+}
+
 // ssoMeetUser logs the person in to meet: with the GitLab session of a Cloud18 login, else with
 // the password (an account on GitLab's password grant).
 func (repman *ReplicationManager) ssoMeetUser(meetUser, password string, l ssoLogin) (string, error) {

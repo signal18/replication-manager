@@ -368,6 +368,9 @@ type cloud18LoginEntry struct {
 	seen       time.Time
 	refused    time.Time // the realm refused the refresh token: not asked again before this
 	refusedErr error
+	// the latest end of a session this instance issued for this login (#2341), guarded by
+	// cloud18LoginTokens' lock: a resume after a restart ends no later, whatever the old session says
+	sessionEnd time.Time
 }
 
 // cloud18LoginRefusedWait is how long a refresh token the realm refused (revoked, its session
@@ -416,6 +419,7 @@ func cloud18LoginEntryFor(refresh string, now time.Time) *cloud18LoginEntry {
 	}
 	e := &cloud18LoginEntry{refresh: refresh, seen: now, refreshEnd: now.Add(cloud18IdentityMaxLifetime)}
 	cloud18LoginTokens.m[key] = e
+	cloud18LoginsChanged() // a new login, and the ones pruned above: kept for the next start (#2341)
 	return e
 }
 
@@ -439,6 +443,12 @@ func (conf *Config) Cloud18LoginAccess(refresh string) (string, error) {
 	}
 	now := time.Now()
 	e := cloud18LoginEntryFor(refresh, now)
+	rotated := false
+	defer func() {
+		if rotated {
+			cloud18LoginRotated() // after the unlock below: the writer reads the new refresh token
+		}
+	}()
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	now = time.Now() // after waiting on a concurrent refresh
@@ -463,6 +473,7 @@ func (conf *Config) Cloud18LoginAccess(refresh string) (string, error) {
 			// the refresh token is refused (invalid_grant): not again for a while; a network
 			// error or a 5xx is tried again at the next call
 			e.token, e.refused, e.refusedErr = "", now.Add(cloud18LoginRefusedWait), err
+			cloud18LoginsChanged() // a refused login is not kept for the next start
 		}
 		return "", err
 	}
@@ -476,11 +487,15 @@ func (conf *Config) Cloud18LoginAccess(refresh string) (string, error) {
 	}
 	e.refused, e.refusedErr = time.Time{}, nil
 	e.token, e.expires = a.AccessToken, now.Add(lifetime)
-	if a.RefreshToken != "" {
-		e.refresh = a.RefreshToken // a realm rotating refresh tokens
+	changed := false
+	if a.RefreshToken != "" && a.RefreshToken != e.refresh {
+		e.refresh, changed, rotated = a.RefreshToken, true, true // a realm rotating refresh tokens
 	}
-	if end := a.sessionEnd(now); !end.IsZero() {
-		e.refreshEnd = end
+	if end := a.sessionEnd(now); !end.IsZero() && !end.Equal(e.refreshEnd) {
+		e.refreshEnd, changed = end, true
+	}
+	if changed && !rotated {
+		cloud18LoginsChanged() // its end, for the next start (a rotation is written at once, above)
 	}
 	return e.token, nil
 }
@@ -617,6 +632,7 @@ func (conf *Config) Cloud18LoginEnd(refresh string) error {
 		cloud18LoginTokens.Lock()
 		delete(cloud18LoginTokens.m, key)
 		cloud18LoginTokens.Unlock()
+		cloud18LoginsChanged() // a logged-out login never comes back at the next start
 	}
 	if !ended {
 		return cloud18Status("the realm", code, ": "+cloud18RealmError(body))

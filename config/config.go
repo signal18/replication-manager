@@ -1054,6 +1054,7 @@ type Config struct {
 	Cloud18GitPassword               string  `scope:"server" mapstructure:"cloud18-gitlab-password" toml:"cloud18-gitlab-password" json:"-"`
 	Cloud18IdentityURL               string  `scope:"server" mapstructure:"cloud18-identity-url" toml:"cloud18-identity-url" json:"cloud18IdentityUrl"`
 	Cloud18SSOLogin                  bool    `scope:"server" mapstructure:"cloud18-sso-login" toml:"cloud18-sso-login" json:"cloud18SsoLogin"`
+	Cloud18LoginResume               bool    `scope:"server" mapstructure:"cloud18-login-resume" toml:"cloud18-login-resume" json:"cloud18LoginResume"`
 	Cloud18LoginACR                  string  `scope:"server" mapstructure:"cloud18-login-acr" toml:"cloud18-login-acr" json:"cloud18LoginAcr"`
 	Cloud18GatewayDomainName         string  `scope:"server" mapstructure:"cloud18-gateway-domain-name" toml:"cloud18-gateway-domain-name"  json:"cloud18GatewayDomainName"`
 	Cloud18GatewayService            string  `scope:"server" mapstructure:"cloud18-gateway-service" toml:"Cloud18-gateway-service" json:"cloud18GatewayService"`

@@ -541,7 +541,7 @@ func (repman *ReplicationManager) runAsyncSSOUpgrade(
 		}{username, "Member", repman.Conf.GetEncryptedString(password), meetUserID}
 	}
 
-	newJWT, err := repman.issueJWT(userInfo, ssoToken)
+	newJWT, err := repman.issueCloud18Session(userInfo, ssoToken, sso.cloud18Refresh())
 	if err != nil {
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlErr,
 			"SSO upgrade: error issuing JWT: %v", err)
