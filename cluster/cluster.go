@@ -919,7 +919,7 @@ func (cluster *Cluster) InitFromConf() {
 	cluster.LogSlack.SetOutput(io.Discard)
 
 	cluster.LogSlack.SetHookConfig("slack", slackman.SlackConfig{
-		URL:            cluster.Conf.GetDecryptedValue("alert-slack-url"),
+		URL:            cluster.Conf.SlackURL,
 		AcceptedLevels: logrus_slack.LevelThreshold(log.InfoLevel), // Send Error, warning and info level (resolved) to slack
 		Channel:        cluster.Conf.SlackChannel,
 		User:           cluster.Conf.SlackUser,
@@ -934,7 +934,7 @@ func (cluster *Cluster) InitFromConf() {
 	}
 
 	cluster.LogSlack.SetHookConfig("cloud18", slackman.SlackConfig{
-		URL:            cluster.Conf.GetDecryptedValue("cloud18-alert-slack-url"),
+		URL:            cluster.Conf.Cloud18AlertSlackURL,
 		AcceptedLevels: logrus_slack.LevelThreshold(log.InfoLevel), // Only send Error level to alert channel
 		Channel:        cluster.Conf.Cloud18AlertSlackChannel,
 		User:           cluster.Conf.Cloud18AlertSlackUser,
@@ -2670,7 +2670,7 @@ func (cluster *Cluster) GetEncryptedValueFromMemory(key string) string {
 		return cluster.Conf.GetStableEncryptedValue("git-pull-access-token", cluster.Conf.GetDecryptedValue("git-pull-access-token"))
 	case "vault-token":
 		return cluster.Conf.GetStableEncryptedValue("vault-token", cluster.Conf.GetDecryptedValue("vault-token"))
-	case "alert-slack-url", "cloud18-alert-slack-url", "alert-teams-url", "alert-teams-proxy-url", "monitoring-tunnel-credential", "registry-consul-credential", "registry-consul-token", "mysqlrouter-pass",
+	case "monitoring-tunnel-credential", "registry-consul-credential", "registry-consul-token", "mysqlrouter-pass",
 		"cloud18-domain-secret", "prov-app-template-repo-password", "prov-docker-registry-credentials":
 		return cluster.Conf.GetStableEncryptedValue(key, cluster.Conf.GetDecryptedValue(key))
 	case "proxysql-user":

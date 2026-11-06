@@ -2040,12 +2040,9 @@ var SecretKeys = []string{
 	"meet-token",
 	"prov-app-template-repo-password",
 	"prov-docker-registry-credentials",
-	// webhook URLs (the URL is the credential), the tunnel and Consul credentials, and
-	// password/token fields with no reader yet
-	"alert-slack-url",
-	"cloud18-alert-slack-url",
-	"alert-teams-url",
-	"alert-teams-proxy-url",
+	// the tunnel and Consul credentials, and password/token fields with no reader yet. The
+	// alert URLs are not secrets: the back office reads them to find why an integration does
+	// not post.
 	"monitoring-tunnel-credential",
 	"registry-consul-credential",
 	"registry-consul-token",
@@ -2056,6 +2053,32 @@ var SecretKeys = []string{
 // ImmuableFlagMap, then DefaultFlagMap.
 func (conf *Config) DecryptSecretsFromConfig() {
 	conf.RebuildSecrets(conf.configSecretSource)
+}
+
+// DecryptLegacyEncryptedURLs turns back into the URL an alert URL setting that v3.1.47 and
+// v3.1.48 saved encrypted ("https:hash_<hex>", the secret form of #2264, which the alert URLs
+// no longer have): without it the alert posts to the ciphertext. It returns the settings it
+// decrypted; the next save writes them in plain.
+func (conf *Config) DecryptLegacyEncryptedURLs() []string {
+	if conf.SecretKey == nil {
+		return nil
+	}
+	var done []string
+	for _, u := range []struct {
+		key   string
+		field *string
+	}{
+		{"alert-slack-url", &conf.SlackURL},
+		{"cloud18-alert-slack-url", &conf.Cloud18AlertSlackURL},
+		{"alert-teams-url", &conf.TeamsUrl},
+		{"alert-teams-proxy-url", &conf.TeamsProxyUrl},
+	} {
+		if HasEncryptedToken(*u.field) {
+			*u.field = conf.GetDecryptedEmbedded(u.key, *u.field)
+			done = append(done, u.key)
+		}
+	}
+	return done
 }
 
 // flagMapMu guards the content of every DynamicFlagMap and ImmuableFlagMap (#2075). A map
