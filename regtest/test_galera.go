@@ -218,3 +218,104 @@ func (regtest *RegTest) TestGaleraMasterLoss(cl *cluster.Cluster, conf string, t
 	logf("PASS GaleraMasterLoss: %s lost, master moved to %s, %s rejoined Synced with the writes", lost.URL, elected.URL, lost.URL)
 	return true
 }
+
+// TestGaleraFullRestartNotLastFirst stops the whole cluster, the master first, so the last node
+// stopped (the only one Galera lets bootstrap, safe_to_bootstrap: 1) is another node. It then
+// starts a node that was NOT the last one stopped, alone: that start must not create a new cluster
+// (no Primary component while the others are down). Then it starts the rest: the cluster must come
+// back whole (every node Synced in one Primary component) with the SAME cluster state UUID as
+// before, never a new cluster (#2350, asked after the master-loss fix).
+func (regtest *RegTest) TestGaleraFullRestartNotLastFirst(cl *cluster.Cluster, conf string, test *cluster.Test) bool {
+	logf := func(format string, args ...interface{}) {
+		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", format, args...)
+	}
+	if !galeraGate(cl, "GaleraFullRestartNotLastFirst") {
+		return false
+	}
+	n := len(cl.Servers)
+	master, err := galeraHealthy(cl, n)
+	if err != nil {
+		logf("FAIL GaleraFullRestartNotLastFirst: the cluster is not healthy before the test: %s", err)
+		return false
+	}
+	uuid := master.Status.Get("WSREP_CLUSTER_STATE_UUID")
+	if uuid == "" {
+		logf("FAIL GaleraFullRestartNotLastFirst: no cluster state UUID on %s", master.URL)
+		return false
+	}
+	restartAll := func() {
+		for _, s := range cl.Servers {
+			if s.IsDown() {
+				cl.StartDatabaseService(s)
+			}
+		}
+	}
+
+	// the master first, then the others in declared order: the last one stopped is not the master
+	order := []*cluster.ServerMonitor{master}
+	for _, s := range cl.Servers {
+		if s.URL != master.URL {
+			order = append(order, s)
+		}
+	}
+	for _, s := range order {
+		logf("Stopping %s", s.URL)
+		if err := cl.StopDatabaseService(s); err != nil {
+			logf("FAIL GaleraFullRestartNotLastFirst: cannot stop %s: %s", s.URL, err)
+			restartAll()
+			return false
+		}
+		if !waitFor(120*time.Second, func() bool { return s.IsDown() }) {
+			logf("FAIL GaleraFullRestartNotLastFirst: %s not down 120s after its stop", s.URL)
+			restartAll()
+			return false
+		}
+	}
+	first, last := order[0], order[len(order)-1]
+	logf("Cluster down; the last node stopped is %s; starting %s first, alone", last.URL, first.URL)
+
+	// the node that was not the last to leave, alone: never a Primary component (a new cluster)
+	if err := cl.StartDatabaseService(first); err != nil {
+		logf("Start of %s refused: %s (no new cluster: acceptable)", first.URL, err)
+	}
+	newCluster := ""
+	waitFor(90*time.Second, func() bool {
+		if first.Conn != nil && !first.IsDown() && first.HasWsrepPrimary() {
+			newCluster = first.Status.Get("WSREP_CLUSTER_STATE_UUID")
+			return true
+		}
+		return false
+	})
+	if newCluster != "" {
+		logf("FAIL GaleraFullRestartNotLastFirst: %s, not the last node stopped, formed a Primary component alone (state UUID %s, was %s): a new cluster", first.URL, newCluster, uuid)
+		restartAll()
+		return false
+	}
+
+	// the rest, the last node stopped first: the cluster comes back whole, the same cluster
+	starts := []*cluster.ServerMonitor{last}
+	for _, s := range order[:len(order)-1] {
+		starts = append(starts, s)
+	}
+	for _, s := range starts {
+		if s.IsDown() {
+			logf("Starting %s", s.URL)
+			if err := cl.StartDatabaseService(s); err != nil {
+				logf("Start of %s: %s", s.URL, err)
+			}
+		}
+	}
+	if !waitFor(600*time.Second, func() bool { _, err = galeraHealthy(cl, n); return err == nil }) {
+		logf("FAIL GaleraFullRestartNotLastFirst: the cluster did not come back whole 600s after the starts: %s", err)
+		restartAll()
+		return false
+	}
+	for _, s := range galeraSynced(cl) {
+		if got := s.Status.Get("WSREP_CLUSTER_STATE_UUID"); got != uuid {
+			logf("FAIL GaleraFullRestartNotLastFirst: %s is in cluster %s, was %s: a new cluster was bootstrapped", s.URL, got, uuid)
+			return false
+		}
+	}
+	logf("PASS GaleraFullRestartNotLastFirst: %s started first formed no cluster; the cluster came back whole, state UUID %s kept", first.URL, uuid)
+	return true
+}
