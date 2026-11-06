@@ -2055,15 +2055,19 @@ func (conf *Config) DecryptSecretsFromConfig() {
 	conf.RebuildSecrets(conf.configSecretSource)
 }
 
+// legacyEncryptedURLRe matches exactly what EncryptSecretValue writes for a URL: comma-separated
+// parts, each an optional clear prefix up to a ":" (the scheme) and an encrypted token. A plain
+// URL that only contains "hash_" somewhere never matches.
+var legacyEncryptedURLRe = regexp.MustCompile(`^(?:[^,:]*:)?hash_[0-9a-fA-F]{34,}(?:,(?:[^,:]*:)?hash_[0-9a-fA-F]{34,})*$`)
+
 // DecryptLegacyEncryptedURLs turns back into the URL an alert URL setting that v3.1.47 and
 // v3.1.48 saved encrypted ("https:hash_<hex>", the secret form of #2264, which the alert URLs
-// no longer have): without it the alert posts to the ciphertext. It returns the settings it
-// decrypted; the next save writes them in plain.
-func (conf *Config) DecryptLegacyEncryptedURLs() []string {
-	if conf.SecretKey == nil {
-		return nil
-	}
-	var done []string
+// no longer have): without it the alert posts to the ciphertext. The next save writes it in plain.
+//
+// It returns the settings it decrypted, and the settings still holding the encrypted form that
+// it could not read: no encryption key, or a value that does not decrypt to a URL (a token the
+// key does not open decrypts to bytes, as the cipher has no integrity check; a URL has "://").
+func (conf *Config) DecryptLegacyEncryptedURLs() (decrypted []string, unread []string) {
 	for _, u := range []struct {
 		key   string
 		field *string
@@ -2073,12 +2077,22 @@ func (conf *Config) DecryptLegacyEncryptedURLs() []string {
 		{"alert-teams-url", &conf.TeamsUrl},
 		{"alert-teams-proxy-url", &conf.TeamsProxyUrl},
 	} {
-		if HasEncryptedToken(*u.field) {
-			*u.field = conf.GetDecryptedEmbedded(u.key, *u.field)
-			done = append(done, u.key)
+		if !legacyEncryptedURLRe.MatchString(*u.field) {
+			continue
 		}
+		if conf.SecretKey == nil {
+			unread = append(unread, u.key)
+			continue
+		}
+		url := conf.GetDecryptedEmbedded(u.key, *u.field)
+		if url == *u.field || !strings.Contains(url, "://") {
+			unread = append(unread, u.key)
+			continue
+		}
+		*u.field = url
+		decrypted = append(decrypted, u.key)
 	}
-	return done
+	return decrypted, unread
 }
 
 // flagMapMu guards the content of every DynamicFlagMap and ImmuableFlagMap (#2075). A map

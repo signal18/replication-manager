@@ -881,8 +881,12 @@ func (cluster *Cluster) SetTestStopCluster(check bool) {
 }
 
 func (cluster *Cluster) SetClusterCredentialsFromConfig() {
-	for _, key := range cluster.Conf.DecryptLegacyEncryptedURLs() {
+	decrypted, unread := cluster.Conf.DecryptLegacyEncryptedURLs()
+	for _, key := range decrypted {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlInfo, "%s was saved encrypted: read as a plain URL, the next save writes it in plain", key)
+	}
+	for _, key := range unread {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "%s was saved encrypted and cannot be read (no encryption key, or not the key that encrypted it): set it again, the alert is not sent until then", key)
 	}
 	// the secrets are the credential chain's cache: rebuilt from its stores, a value set at
 	// runtime is kept (#2017)

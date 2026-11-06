@@ -96,8 +96,9 @@ func TestIsPathURL(t *testing.T) {
 }
 
 // An alert URL v3.1.47 or v3.1.48 saved encrypted ("https:hash_<hex>") is read back as the URL,
-// the webhook URLs being plain: left as it was, the alert would post to the ciphertext. A plain
-// URL is left alone, and nothing is decrypted without the encryption key.
+// the alert URLs being plain: left as it was, the alert would post to the ciphertext. A plain
+// URL is left alone, whatever it contains, and a value that cannot be read is reported, not
+// replaced.
 func TestDecryptLegacyEncryptedURLs(t *testing.T) {
 	keyed := &Config{SecretKey: []byte("0123456789abcdef")}
 	urls := map[string]string{
@@ -106,48 +107,66 @@ func TestDecryptLegacyEncryptedURLs(t *testing.T) {
 		"alert-teams-url":         "https://prod.example.logic.azure.com:443/workflows/x/invoke?api-version=2016-06-01&sp=%2Ftriggers&sig=MARKERTEAMS",
 		"alert-teams-proxy-url":   "http://user:MARKERPROXY@proxy.example:3128",
 	}
-	newConf := func(key []byte, enc bool) *Config {
+	newConf := func(key []byte, val func(k string) string) *Config {
 		c := &Config{SecretKey: key}
-		val := func(k string) string {
-			if enc {
-				return keyed.EncryptSecretValue(urls[k])
-			}
-			return urls[k]
-		}
 		c.SlackURL, c.Cloud18AlertSlackURL = val("alert-slack-url"), val("cloud18-alert-slack-url")
 		c.TeamsUrl, c.TeamsProxyUrl = val("alert-teams-url"), val("alert-teams-proxy-url")
 		return c
 	}
+	encrypted := func(k string) string { return keyed.EncryptSecretValue(urls[k]) }
+	plain := func(k string) string { return urls[k] }
 	got := func(c *Config) map[string]string {
 		return map[string]string{"alert-slack-url": c.SlackURL, "cloud18-alert-slack-url": c.Cloud18AlertSlackURL, "alert-teams-url": c.TeamsUrl, "alert-teams-proxy-url": c.TeamsProxyUrl}
 	}
 
-	enc := newConf(keyed.SecretKey, true)
+	enc := newConf(keyed.SecretKey, encrypted)
 	for k, v := range got(enc) {
 		if !strings.Contains(v, "hash_") || strings.Contains(v, "MARKER") {
 			t.Fatalf("%s is not saved encrypted by the fixture: %q", k, v)
 		}
 	}
-	done := enc.DecryptLegacyEncryptedURLs()
-	if len(done) != len(urls) {
-		t.Fatalf("decrypted %v, want the four URLs", done)
+	done, unread := enc.DecryptLegacyEncryptedURLs()
+	if len(done) != len(urls) || len(unread) != 0 {
+		t.Fatalf("decrypted %v, unread %v, want the four URLs and none unread", done, unread)
 	}
 	for k, v := range got(enc) {
 		if v != urls[k] {
 			t.Errorf("%s after the decrypt: %q, want %q", k, v, urls[k])
 		}
 	}
-	if again := enc.DecryptLegacyEncryptedURLs(); len(again) != 0 {
-		t.Errorf("a second decrypt changed %v: it must leave a plain URL alone", again)
+	if again, unread := enc.DecryptLegacyEncryptedURLs(); len(again) != 0 || len(unread) != 0 {
+		t.Errorf("a second decrypt changed %v, unread %v: it must leave a plain URL alone", again, unread)
 	}
 
-	plain := newConf(keyed.SecretKey, false)
-	if done := plain.DecryptLegacyEncryptedURLs(); len(done) != 0 {
-		t.Errorf("plain URLs decrypted: %v", done)
+	pl := newConf(keyed.SecretKey, plain)
+	if done, unread := pl.DecryptLegacyEncryptedURLs(); len(done) != 0 || len(unread) != 0 {
+		t.Errorf("plain URLs touched: decrypted %v, unread %v", done, unread)
 	}
-	nokey := newConf(nil, true)
+
+	// a plain URL that only contains "hash_" and hex digits is not the encrypted form
+	const lookalike = "https://hooks.example/services/hash_0123456789abcdef0123456789abcdef01234567/x"
+	la := newConf(keyed.SecretKey, func(string) string { return lookalike })
+	if done, unread := la.DecryptLegacyEncryptedURLs(); len(done) != 0 || len(unread) != 0 || la.SlackURL != lookalike {
+		t.Errorf("a plain URL containing hash_<hex> was touched: decrypted %v, unread %v, field %q", done, unread, la.SlackURL)
+	}
+
+	// no encryption key: the encrypted form stays, and is reported
+	nokey := newConf(nil, encrypted)
 	before := got(nokey)
-	if done := nokey.DecryptLegacyEncryptedURLs(); len(done) != 0 || !reflect.DeepEqual(before, got(nokey)) {
-		t.Errorf("decrypted without the key: %v", done)
+	if done, unread := nokey.DecryptLegacyEncryptedURLs(); len(done) != 0 || len(unread) != len(urls) || !reflect.DeepEqual(before, got(nokey)) {
+		t.Errorf("without the key: decrypted %v, unread %v", done, unread)
+	}
+
+	// another key: the cipher has no integrity check, the bytes it gives are not a URL
+	other := newConf([]byte("fedcba9876543210"), encrypted)
+	before = got(other)
+	if done, unread := other.DecryptLegacyEncryptedURLs(); len(done) != 0 || len(unread) != len(urls) || !reflect.DeepEqual(before, got(other)) {
+		t.Errorf("with another key: decrypted %v, unread %v", done, unread)
+	}
+
+	// an encrypted token the decrypt leaves as it is (odd number of hex digits): reported
+	odd := newConf(keyed.SecretKey, func(string) string { return "https:hash_00112233445566778899aabbccddeeff001122334" })
+	if done, unread := odd.DecryptLegacyEncryptedURLs(); len(done) != 0 || len(unread) != len(urls) {
+		t.Errorf("an unreadable token: decrypted %v, unread %v", done, unread)
 	}
 }

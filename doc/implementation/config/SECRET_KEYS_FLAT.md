@@ -61,9 +61,17 @@ and encrypts everything after it, so the host is encrypted too. Removing the key
 `Config.DecryptLegacyEncryptedURLs` reads the encrypted form back as the URL, with
 `GetDecryptedEmbedded` (it decrypts every `hash_<hex>` token of a string, so it gives back the
 whole URL from the form above). `Cluster.SetClusterCredentialsFromConfig` runs it on the cluster
-config at start and at each reload, before `InitFromConf` configures the Slack hooks. It does
-nothing without the encryption key, and leaves a plain URL alone. The next save writes the URL in
-plain.
+config at start and at each reload, before `InitFromConf` configures the Slack hooks. The next
+save writes the URL in plain.
+
+- A field is read as the encrypted form only when the whole value is what `EncryptSecretValue`
+  writes for a URL (`legacyEncryptedURLRe`: comma-separated parts, each an optional clear prefix
+  up to a `:` and a `hash_<hex>` token). A plain URL that only contains `hash_` is left alone.
+- The decrypted value must contain `://`. The cipher has no integrity check, so a token that
+  another key encrypted decrypts to bytes, not an error; such a value is left as it was.
+- A value in the encrypted form that is not read (no encryption key, another key, a token the
+  decrypt leaves as it is) is logged as a warning with the key name, never the value, and the
+  alert is not sent until the URL is set again. A value that is read is logged as information.
 
 It runs on the cluster config only. Every reader of the four fields reads `cluster.Conf`; the
 server-level `repman.Conf` values are not used to send an alert.
@@ -112,8 +120,9 @@ one character or less.
     `notFlatSecrets` with the reason (the four alert URLs are there);
   - the tunnel and Consul credentials and the router password are masked in the API JSON;
   - `IsPath` on URLs;
-  - `DecryptLegacyEncryptedURLs`: the four URLs, a plain URL left alone, nothing decrypted
-    without the key.
+  - `DecryptLegacyEncryptedURLs`: the four URLs, a plain URL left alone (also one containing
+    `hash_<hex>`), and the encrypted form reported unread with no key, with another key and
+    with an unreadable token.
 - `cluster/cluster_secret_url_test.go`:
   - set → API JSON → save of the four URLs: shown on the API, saved in plain;
   - a config saved encrypted: the start reads the URLs, the next save writes them in plain (the
