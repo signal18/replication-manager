@@ -12,6 +12,7 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"unicode/utf8"
 )
 
 // restartingPeer gives a session at each login and accepts /api/clusters only with the session of
@@ -87,5 +88,21 @@ func TestConnectPeerAfterPeerRestart(t *testing.T) {
 	pm.setNodeConnectionError(ns, strings.Repeat("x", 2*maxConnectionErrorLen))
 	if len(ns.ConnectionError) != maxConnectionErrorLen {
 		t.Fatalf("the reason kept is bounded (F4): %d", len(ns.ConnectionError))
+	}
+	// a non-ASCII reason is cut on a character boundary (served as JSON)
+	pm.setNodeConnectionError(ns, strings.Repeat("é", maxConnectionErrorLen))
+	if !utf8.ValidString(ns.ConnectionError) || len(ns.ConnectionError) > maxConnectionErrorLen {
+		t.Fatalf("the cut reason is valid UTF-8 and bounded: %d bytes, valid %v", len(ns.ConnectionError), utf8.ValidString(ns.ConnectionError))
+	}
+	// health failing clears the connect reason (no connect was tried); a reconnect clears it
+	pm.setNodeError(ns, "failed to get health status: timeout")
+	if ns.ConnectionError != "" {
+		t.Fatalf("health failing clears the connect reason, got %q", ns.ConnectionError)
+	}
+	pm.setNodeError(ns, "")
+	pm.setNodeConnectionError(ns, "login: refused")
+	pm.setNodeConnectionError(ns, "")
+	if ns.ConnectionError != "" {
+		t.Fatal("a reconnect clears the reason")
 	}
 }

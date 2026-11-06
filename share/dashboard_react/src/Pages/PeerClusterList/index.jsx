@@ -518,8 +518,10 @@ function PeerClusterList({ onLogin, mode }) {
       return { color: 'green', tooltip: 'This is your own instance' }
     }
     const node = peerNodes?.[uri]
-    // The poll's last word first: a peer that was live once and lost its session (its
-    // restart, a refused login) keeps an old directUpdate, which is not "connected".
+    // Health failing first (red), then the poll's connect reason: a peer that was live once
+    // and lost its session (its restart, a refused login) keeps an old directUpdate, which
+    // is not "connected".
+    if (node?.Error) return { color: 'red', tooltip: `Direct connection failed: ${node.Error}` }
     if (node?.ConnectionError) return { color: 'orange', tooltip: `Health answers, but no session on the peer (live data stopped${directUpdate && directUpdate !== '0001-01-01T00:00:00Z' ? ' at ' + new Date(directUpdate).toLocaleString() : ''}): ${node.ConnectionError}` }
     // Strongest signal: the server captured this peer's /api/clusters (auto-connect
     // enrichment). If directUpdate is set we ARE connected, even if the health-poll
@@ -529,7 +531,6 @@ function PeerClusterList({ onLogin, mode }) {
     }
     const last = node?.LastUpdate
     const connected = last && last !== '0001-01-01T00:00:00Z'
-    if (node?.Error) return { color: 'red', tooltip: `Direct connection failed: ${node.Error}` }
     if (connected) return { color: 'green', tooltip: `Direct connection OK — last ${new Date(last).toLocaleString()}` }
     // Not polled directly (catalog only) — unknown, not a failure. Grey, not red.
     return { color: 'gray', tooltip: 'No direct connection attempted — health from the peer.json catalog (click the cluster to connect on demand)' }

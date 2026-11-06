@@ -670,6 +670,8 @@ func (pm *PeerManager) connectPeer(pclient *PeerClient, user, password string, b
 		}
 	}
 	if err := pm.GetClusterDetails(pclient); err != nil {
+		// a 401 dropped the session (next poll logs in again); any other refusal (403, 5xx)
+		// keeps it: the session is valid, the peer answered something else
 		return "clusters: " + err.Error()
 	}
 	return ""
@@ -678,7 +680,9 @@ func (pm *PeerManager) connectPeer(pclient *PeerClient, user, password string, b
 // setNodeConnectionError writes ns.ConnectionError under the lock, bounded.
 func (pm *PeerManager) setNodeConnectionError(ns *PeerNodeStatus, errMsg string) {
 	if len(errMsg) > maxConnectionErrorLen {
-		errMsg = errMsg[:maxConnectionErrorLen]
+		// cut on a character boundary: a peer's error body may be non-ASCII, and the
+		// status is served as JSON
+		errMsg = strings.ToValidUTF8(errMsg[:maxConnectionErrorLen], "")
 	}
 	pm.mu.Lock()
 	ns.ConnectionError = errMsg
@@ -690,6 +694,11 @@ func (pm *PeerManager) setNodeConnectionError(ns *PeerNodeStatus, errMsg string)
 func (pm *PeerManager) setNodeError(ns *PeerNodeStatus, errMsg string) {
 	pm.mu.Lock()
 	ns.Error = errMsg
+	if errMsg != "" {
+		// health failing: no connect was tried, an earlier "not connected" reason would
+		// describe a peer that no longer answers at all
+		ns.ConnectionError = ""
+	}
 	pm.mu.Unlock()
 }
 
