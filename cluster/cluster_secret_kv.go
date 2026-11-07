@@ -262,25 +262,45 @@ func (cluster *Cluster) secretWritePass() bool {
 		}
 		byEntry[it.Entry] = append(byEntry[it.Entry], it)
 	}
-	retry := false
+	// Each entry's sink writes concurrently, so a slow or unreachable store (a Vault entry or
+	// the orchestrator agent) never blocks the others or holds up the secret worker and the
+	// monitoring loop behind it (F2). Each WriteAll bounds its own writes by storeTimeout
+	// internally. setStoreBehind/setStoreWritten take the state mutex and the queue has its own
+	// mutex, so the only shared scalar is retry, kept atomic.
+	var retry atomic.Bool
+	var wg sync.WaitGroup
 	for _, name := range order {
-		e, ok := cluster.Conf.SecretKvActiveEntry(name)
-		if !ok {
-			// turned off or removed: its versions stop, what it holds stays
+		var w credstore.StoreWriter
+		if name == orchestratorStoreEntry {
+			// the reserved orchestrator sink (OpenSVC sec / K8s Secret), not a Vault entry
+			if ow := cluster.orchestratorStoreWriter(); ow != nil {
+				w = ow
+			}
+		} else if e, ok := cluster.Conf.SecretKvActiveEntry(name); ok {
+			w = cluster.vaultStore(e)
+		}
+		if w == nil {
+			// no sink: an entry turned off or removed, or an orchestrator-less cluster — its
+			// versions stop, what it holds stays
 			cluster.setStoreBehind(name, "")
 			continue
 		}
-		failed, err := cluster.vaultStore(e).WriteAll(context.Background(), byEntry[name], cluster.storeTimeout())
-		if err != nil {
-			cluster.setStoreBehind(name, err.Error())
-			q.Requeue(failed)
-			retry = true
-			continue
-		}
-		cluster.setStoreBehind(name, "")
-		cluster.setStoreWritten(name)
+		wg.Add(1)
+		go func(name string, w credstore.StoreWriter, items []credstore.StoreItem) {
+			defer wg.Done()
+			failed, err := w.WriteAll(context.Background(), items, cluster.storeTimeout())
+			if err != nil {
+				cluster.setStoreBehind(name, err.Error())
+				q.Requeue(failed)
+				retry.Store(true)
+				return
+			}
+			cluster.setStoreBehind(name, "")
+			cluster.setStoreWritten(name)
+		}(name, w, byEntry[name])
 	}
-	if !retry {
+	wg.Wait()
+	if !retry.Load() {
 		c.mu.Lock()
 		if q.Len() == 0 && c.dropsUnresolved {
 			// the queue drained after drops: a full pass writes the newest of every secret
@@ -289,7 +309,7 @@ func (cluster *Cluster) secretWritePass() bool {
 		}
 		c.mu.Unlock()
 	}
-	return retry
+	return retry.Load()
 }
 
 // setStoreBehind records why entry is behind, "" when it is not any more. The text names a
@@ -1062,6 +1082,9 @@ func (cluster *Cluster) reportOrchestratorSecret(object, key, value string) {
 		cluster.queueVersions("", key, []string{credstore.KindApps + "/" + object}, cluster.selfVersion(value), true)
 		return
 	}
+	// keep the orchestrator secret current through the version queue (#2356), with its one-deep
+	// _OLD history, instead of only the bespoke write: the DB root and shard proxy passwords.
+	cluster.queueOrchestrator(key, value)
 	switch orchestratorSecretKind[key] {
 	case credstore.KindDatabases:
 		for _, srv := range cluster.Servers {

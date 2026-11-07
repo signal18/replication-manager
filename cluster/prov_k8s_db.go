@@ -124,6 +124,23 @@ func k8sClusterSecretName(clusterName string) string {
 // object never has; a merge Patch also leaves any other key already on the
 // Secret (e.g. the other credential) untouched.
 func (cluster *Cluster) k8sPatchSecretValues(client kubernetes.Interface, values map[string]string) error {
+	if err := cluster.k8sPatchSecretValuesRaw(context.TODO(), client, values); err != nil {
+		return err
+	}
+	// the values set go to the credential stores, never read back (#2227 rule 7)
+	for k, v := range values {
+		cluster.reportOrchestratorSecret("env", k, v)
+	}
+	return nil
+}
+
+// k8sPatchSecretValuesRaw creates or merge-patches the cluster's shared Secret with the given
+// key/value pairs, WITHOUT reporting them to the credential stores. The StoreWriter copy path
+// (k8sStore, #2356) uses it: the version queue is already the store copy, so a report would
+// loop the orchestrator's value back into the stores. Update path is a merge Patch, not
+// Update() (which requires the current resourceVersion a freshly-built object never has); a
+// merge Patch also leaves any other key already on the Secret untouched.
+func (cluster *Cluster) k8sPatchSecretValuesRaw(ctx context.Context, client kubernetes.Interface, values map[string]string) error {
 	name := k8sClusterSecretName(cluster.Name)
 	secretsClient := client.CoreV1().Secrets(cluster.Name)
 	secret := &apiv1.Secret{
@@ -133,7 +150,7 @@ func (cluster *Cluster) k8sPatchSecretValues(client kubernetes.Interface, values
 		Type:       apiv1.SecretTypeOpaque,
 		StringData: values,
 	}
-	_, err := secretsClient.Create(context.TODO(), secret, metav1.CreateOptions{})
+	_, err := secretsClient.Create(ctx, secret, metav1.CreateOptions{})
 	if apierrors.IsAlreadyExists(err) {
 		// json.Marshal, not manual string concatenation: a credential can
 		// contain arbitrary characters, and Go's own quoting syntax
@@ -144,15 +161,11 @@ func (cluster *Cluster) k8sPatchSecretValues(client kubernetes.Interface, values
 		if marshalErr != nil {
 			return marshalErr
 		}
-		_, err = secretsClient.Patch(context.TODO(), name, ktypes.MergePatchType, patch, metav1.PatchOptions{})
+		_, err = secretsClient.Patch(ctx, name, ktypes.MergePatchType, patch, metav1.PatchOptions{})
 	}
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot provision Kubernetes secret %s ", err)
 		return err
-	}
-	// the values set go to the credential stores, never read back (#2227 rule 7)
-	for k, v := range values {
-		cluster.reportOrchestratorSecret("env", k, v)
 	}
 	return nil
 }

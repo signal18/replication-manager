@@ -321,6 +321,9 @@ func (cluster *Cluster) openSVCCreateMapsV2(svc opensvc.Collector, agent string)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to secrets: %s %s ", "REPLICATION_MANAGER_PASSWORD", err)
 	}
+	// also keep the admin API password current through the version queue (#2356); it is copied
+	// to the orchestrator secret only, never to the Chain/Vault (rule 6)
+	cluster.queueOrchestrator("REPLICATION_MANAGER_PASSWORD", cluster.APIUsers["admin"].Password)
 	err = svc.CreateSecretKeyValueV2(cluster.Name, "env", "MYSQL_ROOT_PASSWORD", cluster.GetDbPass())
 	if err == nil {
 		cluster.reportOrchestratorSecret("env", "MYSQL_ROOT_PASSWORD", cluster.GetDbPass())
@@ -389,6 +392,9 @@ func (cluster *Cluster) openSVCCreateMapsV3(svc opensvc.Collector, agent string)
 	if err != nil {
 		errs["REPLICATION_MANAGER_PASSWORD"] = err
 	}
+	// also keep the admin API password current through the version queue (#2356); it is copied
+	// to the orchestrator secret only, never to the Chain/Vault (rule 6)
+	cluster.queueOrchestrator("REPLICATION_MANAGER_PASSWORD", cluster.APIUsers["admin"].Password)
 	err = svc.CreateSecretKeyValue(cluster.Name, "env", "MYSQL_ROOT_PASSWORD", cluster.GetDbPass())
 	if err == nil {
 		cluster.reportOrchestratorSecret("env", "MYSQL_ROOT_PASSWORD", cluster.GetDbPass())

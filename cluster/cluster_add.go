@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"net/mail"
 	"path"
 	"slices"
 	"strings"
@@ -405,6 +406,29 @@ func (cluster *Cluster) AddUser(userform UserForm, delegator string, reloadACL b
 	return cluster.addUser(userform, delegator, reloadACL, true)
 }
 
+// AddAPIUser adds an account through the users/add API and the GUI (#2359). On a Cloud18
+// instance, an email added without a password is a Cloud18 identity: it is added SSO-only
+// (AddSSOOnlyUser), since a random password would make it local-only (IsLocalOnlyAccount) and
+// every SSO session of it (a Cloud18 login, another instance's realm token) would be refused.
+// Anything else gets AddUser's password: the given one, or a random one users/send-credentials
+// sends.
+func (cluster *Cluster) AddAPIUser(userform UserForm, delegator string, reloadACL bool) error {
+	if cluster.isSSOOnlyAdd(userform) {
+		return cluster.AddSSOOnlyUser(userform, delegator, reloadACL)
+	}
+	return cluster.AddUser(userform, delegator, reloadACL)
+}
+
+// isSSOOnlyAdd: no password given, a Cloud18 instance, and the user is an email (the check of
+// the alert recipients, cluster_mail.go).
+func (cluster *Cluster) isSSOOnlyAdd(userform UserForm) bool {
+	if userform.Password != "" || !cluster.Conf.Cloud18 {
+		return false
+	}
+	a, err := mail.ParseAddress(userform.Username)
+	return err == nil && a.Address == userform.Username
+}
+
 // AddSSOOnlyUser adds an account with no password: it can only act through an
 // SSO (GitLab) login, never with a local password (isValidACL,
 // IsLocalOnlyAccount). Used for self-service sponsors (issue #1838).
@@ -450,6 +474,8 @@ func (cluster *Cluster) addUser(userform UserForm, delegator string, reloadACL b
 			return err
 		}
 		cluster.Conf.APIUsersExternal = external
+		// recorded by the save callback, so the next start reads the account back (#2358)
+		cluster.MarkSecretVersionStoreDirty()
 
 		// Assign ACL before reloading
 		new_acl := user + ":" + grants + ":" + cluster.Name
@@ -589,17 +615,26 @@ func (cluster *Cluster) DropUser(userform UserForm, reloadACL bool) error {
 		return fmt.Errorf("User %s is not exist in cluster", user)
 		// cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "User %s is not exist in cluster. Unable to update roles and grants", user)
 	} else {
+		// the credentials as the chain holds them (what LoadAPIUsers and the next start read),
+		// not only the config field: kept there, a removed account came back at the next start
+		// (#2358)
 		new_cred := make([]string, 0)
-		list := strings.Split(cluster.Conf.APIUsersExternal, ",")
-		for _, cred := range list {
+		for _, cred := range strings.Split(cluster.Conf.GetDecryptedValue("api-credentials-external"), ",") {
+			if cred == "" {
+				continue
+			}
 			auser, _ := misc.SplitPair(cred)
 			if auser != user {
 				new_cred = append(new_cred, cred)
 			}
 		}
+		if err := cluster.CredentialChain().Set("api-credentials-external", strings.Join(new_cred, ",")); err != nil {
+			return err
+		}
 
 		cluster.deleteAPIUser(user)
 		cluster.Conf.APIUsersExternal = strings.Join(new_cred, ",")
+		cluster.MarkSecretVersionStoreDirty()
 		if reloadACL {
 			cluster.SaveAcls()
 			cluster.ConfigManager.SaveConfig(cluster, false)
