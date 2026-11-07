@@ -134,3 +134,108 @@ func TestAddedProxysqlKeepsItsLogin(t *testing.T) {
 		t.Fatal("no ProxySQL proxy after the add")
 	}
 }
+
+// An SSO-only account added (AddSSOOnlyUser) is kept with secret versioning on: the add marks
+// the version store dirty, so the save callback records the new api-credentials-external and the
+// next start reads it back. Before, the add changed the credential chain in memory only: the start
+// read the store's older version, the account was no user any more, and its SSO session was
+// refused with "No valid ACL" on every cluster call.
+func TestAddedUserSurvivesTheVersionStore(t *testing.T) {
+	cl := newSecretURLTestCluster(t, map[string]interface{}{})
+	cl.Conf.MonitoringSecretVersioning = true
+	// a running cluster: its store recorded at its start (Run marks it dirty), then clean
+	cl.MarkSecretVersionStoreDirty()
+	if err := cl.ReconcileSecretVersionStore(); err != nil {
+		t.Fatal(err)
+	}
+	cl.IsNeedConfigSave = false
+
+	if err := cl.AddSSOOnlyUser(UserForm{Username: "sso@x.io", Roles: "extsysops", Grants: "cluster show"}, "admin", false); err != nil {
+		t.Fatal(err)
+	}
+	cl.LoadAPIUsers()
+	if !cl.IsValidACL("sso@x.io", "", "/api/clusters/"+cl.Name, "oidc") {
+		t.Fatal("right after the add, the account's SSO session must pass the cluster ACL")
+	}
+	cl.secretVersionStoreMu.Lock()
+	dirty := cl.secretVersionStoreDirty
+	cl.secretVersionStoreMu.Unlock()
+	if !dirty || !cl.IsNeedConfigSave {
+		t.Fatalf("the add must mark the version store dirty and ask a save (dirty %v, save asked %v)", dirty, cl.IsNeedConfigSave)
+	}
+
+	// the save callback records it: the newest version is what the next start reads
+	if err := cl.ReconcileSecretVersionStore(); err != nil {
+		t.Fatal(err)
+	}
+	versions, err := cl.SecretVersionsInFile("api-credentials-external")
+	if err != nil || len(versions) == 0 || !strings.Contains(versions[len(versions)-1], "sso@x.io") {
+		t.Fatalf("the newest api-credentials-external in secret_store.json must hold the added account: %d versions, %v", len(versions), err)
+	}
+}
+
+// A removed account is recorded too (#2358): DropUser writes the credentials through the chain and
+// marks the store, so the next start does not read the account back from an older version.
+func TestDroppedUserStaysDroppedInTheVersionStore(t *testing.T) {
+	cl := newSecretURLTestCluster(t, map[string]interface{}{})
+	cl.Conf.MonitoringSecretVersioning = true
+	for _, u := range []string{"stays@x.io", "gone@x.io"} {
+		if err := cl.AddSSOOnlyUser(UserForm{Username: u, Roles: "extdbops", Grants: "db show"}, "admin", false); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cl.LoadAPIUsers()
+	if err := cl.ReconcileSecretVersionStore(); err != nil {
+		t.Fatal(err)
+	}
+	if err := cl.DropUser(UserForm{Username: "gone@x.io"}, false); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(cl.Conf.GetDecryptedValue("api-credentials-external"), "gone@x.io") {
+		t.Fatal("the removed account must leave the credentials the chain holds")
+	}
+	if err := cl.ReconcileSecretVersionStore(); err != nil {
+		t.Fatal(err)
+	}
+	versions, err := cl.SecretVersionsInFile("api-credentials-external")
+	if err != nil || len(versions) == 0 || strings.Contains(versions[len(versions)-1], "gone@x.io") || !strings.Contains(versions[len(versions)-1], "stays@x.io") {
+		t.Fatalf("the newest api-credentials-external in secret_store.json must hold the kept account, not the removed one: %d versions, %v", len(versions), err)
+	}
+}
+
+// users/add (AddAPIUser, #2359): on a Cloud18 instance an email added without a password is a
+// Cloud18 identity, added SSO-only, so its SSO session passes the cluster ACL; a non-email user, an
+// email on an instance that is not Cloud18, keep the random password users/send-credentials sends;
+// a given password is kept.
+func TestAddAPIUserSSOOnlyForCloud18Identities(t *testing.T) {
+	cases := []struct {
+		name, user, password string
+		cloud18, ssoOnly     bool
+	}{
+		{"Cloud18 email, no password", "ops@x.io", "", true, true},
+		{"Cloud18 email, a password", "pw@x.io", "given-pass", true, false},
+		{"Cloud18, not an email", "localops", "", true, false},
+		{"not Cloud18, an email", "mail@x.io", "", false, false},
+	}
+	for _, c := range cases {
+		cl := newSecretURLTestCluster(t, map[string]interface{}{})
+		cl.Conf.Cloud18 = c.cloud18
+		if err := cl.AddAPIUser(UserForm{Username: c.user, Password: c.password, Roles: "extsysops", Grants: "cluster show"}, "admin", false); err != nil {
+			t.Fatalf("%s: %v", c.name, err)
+		}
+		cl.LoadAPIUsers()
+		u, ok := cl.APIUsers[c.user]
+		if !ok {
+			t.Fatalf("%s: the account was not added", c.name)
+		}
+		if got := u.Password == ""; got != c.ssoOnly {
+			t.Errorf("%s: SSO-only %v, want %v", c.name, got, c.ssoOnly)
+		}
+		if c.ssoOnly && !cl.IsValidACL(c.user, "", "/api/clusters/"+cl.Name, "oidc") {
+			t.Errorf("%s: the SSO session must pass the cluster ACL", c.name)
+		}
+		if c.password != "" && u.Password != c.password {
+			t.Errorf("%s: the given password must be kept", c.name)
+		}
+	}
+}

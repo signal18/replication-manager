@@ -539,3 +539,18 @@ One epic issue for the interface, with these steps:
   using it without a license loses it at the upgrade: keep Vault *reads* in the free tier
   (only change and rotation enterprise), a grace period, or enterprise from a given
   release?
+
+## Cluster accounts and the version store (#2358, #2359)
+
+- **An added or removed account is recorded.** `addUser` and `DropUser` write `api-credentials-external`
+  through the chain, then mark the version store dirty (`MarkSecretVersionStoreDirty`), as
+  `setAddedProxysqlCredential` does. Before, an account added after the last start lived in memory only:
+  the next start read the store's older version first (#2227 rule 1) and the account was gone, and a
+  removed account came back. Known limit: removing the **last** external account leaves an empty value,
+  which the store does not record (it keeps encrypted values only), so that account comes back at the
+  next start; a cluster always keeps `system` there in practice.
+- **users/add creates an SSO-only account for a Cloud18 identity** (`AddAPIUser`): on a Cloud18 instance,
+  an email added without a password goes to `AddSSOOnlyUser`. With `AddUser`'s random password it was
+  local-only (`IsLocalOnlyAccount`), so every SSO session of it (a Cloud18 login, another instance's realm
+  token) was refused on each cluster ("No valid ACL", an empty `/api/clusters`). A non-email user, or an
+  instance that is not Cloud18, keeps the random password `users/send-credentials` sends.
