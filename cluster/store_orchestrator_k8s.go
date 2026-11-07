@@ -6,7 +6,6 @@ package cluster
 
 import (
 	"context"
-	"strings"
 	"time"
 
 	"github.com/signal18/replication-manager/config/credstore"
@@ -75,15 +74,18 @@ func (s *k8sStore) WriteAll(ctx context.Context, items []credstore.StoreItem, ti
 	values := make(map[string]string, len(items))
 	for _, it := range items {
 		key, val := it.Key, it.Version.Value
-		if cur != nil && !strings.HasSuffix(key, oldKeySuffix) {
-			if old, present := cur[key]; present {
-				if string(old) == val {
-					continue // already current: skip the redundant patch (and _OLD)
-				}
-				if string(old) != "" {
-					values[key+oldKeySuffix] = string(old)
-				}
+		curVal, curKnown := "", false
+		if cur != nil {
+			if b, present := cur[key]; present {
+				curVal, curKnown = string(b), true
 			}
+		}
+		skip, writeOld := orchestratorOldAndSkip(key, val, curVal, curKnown)
+		if skip {
+			continue // already current: skip the redundant patch (and _OLD)
+		}
+		if writeOld {
+			values[key+oldKeySuffix] = curVal
 		}
 		values[key] = val
 	}

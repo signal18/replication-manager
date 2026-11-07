@@ -339,7 +339,9 @@ outside the queue that drives the Vault entries. #2356 makes them `credstore.Sto
   F4/T18): the superseded value, for the rotation transition window and a cheap rollback,
   mirroring how the config versions its starting value.
 - The copied key set gains the **admin API password** (`REPLICATION_MANAGER_PASSWORD`), queued
-  to the orchestrator sink only — never the Chain/Vault (rule 6).
+  to the orchestrator sink only — never the Chain/Vault (rule 6). It is queued at
+  **provisioning/restart** (`openSVCCreateMaps*`); the admin credential is config-driven with no
+  runtime change site, so that is its currency — not a runtime re-queue.
 
 Staged (F8): the bespoke direct writes stay as the provisioning seed; removing them and folding
 WARN0275 onto `ReadCurrent` land once the T13 regtest proves the queue path. K8s uses its auth

@@ -35,6 +35,21 @@ const orchestratorEnvObject = "env"
 // the config versions its starting value.
 const oldKeySuffix = "_OLD"
 
+// orchestratorOldAndSkip is the one-deep history + unchanged-skip rule, shared by both sinks so
+// it lives in one place (#2356). For a key whose current stored value is curVal (curKnown says
+// whether it could be read), it reports whether to skip the write entirely (the agent is
+// already current) and whether to first copy curVal to <KEY>_OLD. A key that is itself an _OLD
+// slot is never given its own _OLD.
+func orchestratorOldAndSkip(key, newVal, curVal string, curKnown bool) (skip, writeOld bool) {
+	if !curKnown || strings.HasSuffix(key, oldKeySuffix) {
+		return false, false
+	}
+	if curVal == newVal {
+		return true, false
+	}
+	return false, curVal != ""
+}
+
 // withinTimeout runs fn — a blocking OpenSVC collector call that has no context of its own — and
 // returns its error, or a timeout error if it outlasts timeout. It bounds each call so one
 // unreachable agent cannot make WriteAll (and the secret worker's WaitGroup behind it) hang
@@ -111,10 +126,11 @@ func (s *openSVCStore) WriteAll(ctx context.Context, items []credstore.StoreItem
 				return e
 			})
 			if rerr == nil {
-				if old == val {
-					continue // already current: skip the redundant write (and _OLD)
+				skip, writeOld := orchestratorOldAndSkip(key, val, old, true)
+				if skip {
+					continue // already current: no redundant write, no _OLD
 				}
-				if old != "" {
+				if writeOld {
 					// best effort: the _OLD slot must never block the current write
 					_ = withinTimeout(timeout, "write "+key+oldKeySuffix, func() error {
 						return svc.CreateSecretKeyValue(s.cluster.Name, orchestratorEnvObject, key+oldKeySuffix, old)
