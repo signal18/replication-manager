@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 
+	"github.com/go-sql-driver/mysql"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/router/proxysql"
 	"github.com/signal18/replication-manager/utils/dbhelper"
@@ -14,8 +16,18 @@ import (
 	"github.com/spf13/pflag"
 )
 
+const (
+	proxysqlLocalAdmin    = "admin"
+	proxysqlExternalAdmin = "external"
+	// proxysqlLocalOnlyError is the error ProxySQL answers a remote login of its local-only admin
+	// user with ("User 'admin' can only connect locally").
+	proxysqlLocalOnlyError = 1040
+)
+
 type ProxySQLProxy struct {
 	Proxy
+	// adminLoginMu guards the admin login (User, Pass) Connect reads and may switch to external.
+	adminLoginMu sync.Mutex
 }
 
 func NewProxySQLProxy(placement int, cluster *Cluster, proxyHost string) *ProxySQLProxy {
@@ -85,10 +97,27 @@ func (proxy *ProxySQLProxy) AddFlags(flags *pflag.FlagSet, conf *config.Config) 
 	flags.StringVar(&conf.ProxysqlBinaryPath, "proxysql-binary-path", "/usr/sbin/proxysql", "proxysql binary location")
 }
 
-func (proxy *ProxySQLProxy) Connect() (proxysql.ProxySQL, error) {
+func (proxy *ProxySQLProxy) adminLogin() (string, string) {
+	proxy.adminLoginMu.Lock()
+	defer proxy.adminLoginMu.Unlock()
+	return proxy.User, proxy.Pass
+}
+
+// useExternalAdmin makes external the login, once: false when another caller already switched it.
+func (proxy *ProxySQLProxy) useExternalAdmin() bool {
+	proxy.adminLoginMu.Lock()
+	defer proxy.adminLoginMu.Unlock()
+	if proxy.User != proxysqlLocalAdmin {
+		return false
+	}
+	proxy.User = proxysqlExternalAdmin
+	return true
+}
+
+func (proxy *ProxySQLProxy) adminConnection(user string, password string) proxysql.ProxySQL {
 	psql := proxysql.ProxySQL{
-		User:     proxy.User,
-		Password: proxy.Pass,
+		User:     user,
+		Password: password,
 		Host:     proxy.Host,
 		Port:     proxy.Port,
 		WriterHG: fmt.Sprintf("%d", proxy.WriterHostgroup),
@@ -98,11 +127,47 @@ func (proxy *ProxySQLProxy) Connect() (proxysql.ProxySQL, error) {
 	if proxy.ClusterGroup.isPostgresCluster() {
 		psql.Flavor = proxysql.FlavorPgSQL
 	}
+	return psql
+}
 
-	if err := psql.Connect(); err != nil {
+// Connect logs in with the ProxySQL admin login. When ProxySQL refuses admin as local-only (1040),
+// it probes the external login the template creates with the same password and, if that
+// connects, keeps external as the login (proxysql-user). The login is a cluster-wide setting, so
+// every ProxySQL of the cluster then uses it. A login held in Vault is never switched.
+func (proxy *ProxySQLProxy) Connect() (proxysql.ProxySQL, error) {
+	user, pass := proxy.adminLogin()
+	psql := proxy.adminConnection(user, pass)
+	err := psql.Connect()
+	if err == nil {
+		return psql, nil
+	}
+	var myErr *mysql.MySQLError
+	if user != proxysqlLocalAdmin || !errors.As(err, &myErr) || myErr.Number != proxysqlLocalOnlyError {
 		return psql, err
 	}
-	return psql, nil
+	cluster := proxy.ClusterGroup
+	if cluster.proxysqlLoginInVault() {
+		// the login is held in Vault: a switch would write external into Vault (or leave the Vault
+		// user different from the one in use at every tick, HasProxyCredentialsRotation)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlDbg, "ProxySQL %s refuses %s as local-only, its login is held in Vault: not switching to %s", proxy.Host, proxysqlLocalAdmin, proxysqlExternalAdmin)
+		return psql, err
+	}
+	probe := proxy.adminConnection(proxysqlExternalAdmin, pass)
+	if perr := probe.Connect(); perr != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlDbg, "ProxySQL %s refuses %s as local-only and %s did not connect either: %s", proxy.Host, proxysqlLocalAdmin, proxysqlExternalAdmin, perr)
+		return psql, err
+	}
+	if proxy.useExternalAdmin() {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlInfo, "ProxySQL %s refuses %s as local-only, logging in as %s", proxy.Host, proxysqlLocalAdmin, proxysqlExternalAdmin)
+		cluster.setAddedProxysqlCredential(proxysqlExternalAdmin, "")
+	}
+	return probe, nil
+}
+
+// proxysqlLoginInVault is true when Vault holds the ProxySQL login: the user at a Vault path
+// (KV v2), or the user and password pair at the password's path (the other Vault mode).
+func (cluster *Cluster) proxysqlLoginInVault() bool {
+	return cluster.Conf.IsVaultUsed() && (cluster.Conf.IsPath(cluster.Conf.ProxysqlUser) || cluster.Conf.IsPath(cluster.Conf.ProxysqlPassword))
 }
 
 func (cluster *Cluster) AddShardProxy(proxysql *ProxySQLProxy, shardproxy *MariadbShardProxy) {
@@ -877,7 +942,9 @@ func (proxy *ProxySQLProxy) SetAdminCredentials(user string, password string) {
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlErr, "ProxySQL could not save admin variables to disk (%s)", err)
 	}
+	proxy.adminLoginMu.Lock()
 	proxy.Pass = password
+	proxy.adminLoginMu.Unlock()
 }
 
 func (proxy *ProxySQLProxy) Shutdown() {

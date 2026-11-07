@@ -120,7 +120,7 @@ func (psql *ProxySQL) Connect() error {
 	var err error
 	psql.Connection, err = sqlx.Connect("mysql", ProxysqlConfig.FormatDSN())
 	if err != nil {
-		return fmt.Errorf("Could not connect to ProxySQL (%s)", err)
+		return fmt.Errorf("Could not connect to ProxySQL (%w)", err)
 	}
 	return nil
 }
