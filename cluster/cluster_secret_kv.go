@@ -264,6 +264,24 @@ func (cluster *Cluster) secretWritePass() bool {
 	}
 	retry := false
 	for _, name := range order {
+		if name == orchestratorStoreEntry {
+			// the reserved orchestrator sink (OpenSVC sec / K8s Secret), not a Vault entry
+			w := cluster.orchestratorStoreWriter()
+			if w == nil {
+				cluster.setStoreBehind(name, "")
+				continue
+			}
+			failed, err := w.WriteAll(context.Background(), byEntry[name], cluster.storeTimeout())
+			if err != nil {
+				cluster.setStoreBehind(name, err.Error())
+				q.Requeue(failed)
+				retry = true
+				continue
+			}
+			cluster.setStoreBehind(name, "")
+			cluster.setStoreWritten(name)
+			continue
+		}
 		e, ok := cluster.Conf.SecretKvActiveEntry(name)
 		if !ok {
 			// turned off or removed: its versions stop, what it holds stays
@@ -1062,6 +1080,9 @@ func (cluster *Cluster) reportOrchestratorSecret(object, key, value string) {
 		cluster.queueVersions("", key, []string{credstore.KindApps + "/" + object}, cluster.selfVersion(value), true)
 		return
 	}
+	// keep the orchestrator secret current through the version queue (#2356), with its one-deep
+	// _OLD history, instead of only the bespoke write: the DB root and shard proxy passwords.
+	cluster.queueOrchestrator(key, value)
 	switch orchestratorSecretKind[key] {
 	case credstore.KindDatabases:
 		for _, srv := range cluster.Servers {

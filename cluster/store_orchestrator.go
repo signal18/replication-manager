@@ -8,6 +8,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/config/credstore"
 )
 
@@ -102,3 +103,43 @@ func (s *openSVCStore) WriteAll(ctx context.Context, items []credstore.StoreItem
 
 // compile-time check: openSVCStore is a credstore.StoreWriter.
 var _ credstore.StoreWriter = (*openSVCStore)(nil)
+
+// orchestratorStore is a cluster's orchestrator secret as a write-only copy sink: the version
+// queue drives WriteAll; ReadCurrent serves the WARN0275 drift reconciliation only (rule 7).
+type orchestratorStore interface {
+	credstore.StoreWriter
+	ReadCurrent(key string) (value string, ok bool, err error)
+}
+
+// orchestratorStoreEntry is the reserved version-queue entry whose writer is the cluster's
+// orchestrator secret — not a user-configurable Vault entry (the sponsor cannot turn it off).
+const orchestratorStoreEntry = "orchestrator"
+
+// orchestratorStoreWriter returns the sink for the cluster's orchestrator, or nil when the
+// cluster is not orchestrated by OpenSVC or Kubernetes (localhost/onpremise/slapos have no
+// shared secret object to copy a credential into).
+func (cluster *Cluster) orchestratorStoreWriter() orchestratorStore {
+	switch cluster.Conf.ProvOrchestrator {
+	case config.ConstOrchestratorOpenSVC:
+		return cluster.openSVCStore()
+	case config.ConstOrchestratorKubernetes:
+		return cluster.k8sStore()
+	default:
+		return nil
+	}
+}
+
+// queueOrchestrator queues one env-named credential to the orchestrator sink, so its copy is
+// kept current through the same bounded/timeout/requeue queue (T18) as the Vault entries,
+// instead of the bespoke per-orchestrator write path. Nothing on a standby monitor, an empty
+// value, or a cluster with no orchestrator secret.
+func (cluster *Cluster) queueOrchestrator(key, value string) {
+	if !cluster.IsActive() || value == "" {
+		return
+	}
+	if cluster.orchestratorStoreWriter() == nil {
+		return
+	}
+	cluster.storeQueue().Push(credstore.StoreItem{Entry: orchestratorStoreEntry, Key: key, Version: cluster.selfVersion(value)})
+	cluster.startSecretStores()
+}
