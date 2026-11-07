@@ -7,6 +7,7 @@ package cluster
 import (
 	"context"
 	"strings"
+	"time"
 
 	"github.com/signal18/replication-manager/config/credstore"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -16,12 +17,22 @@ import (
 // the twin of openSVCStore for a K8s-orchestrated cluster. Same contract: the version queue
 // drives it, it never reads a credential back as a Chain source (CREDENTIAL_STORES.md rule 7),
 // ReadCurrent is for the WARN0275 drift reconciliation only, and a rotation keeps a one-deep
-// <KEY>_OLD history.
+// <KEY>_OLD history. The Kubernetes client is context-native, so each call is bounded by the
+// store timeout through the context (F2).
 type k8sStore struct {
 	cluster *Cluster
 }
 
 func (cluster *Cluster) k8sStore() *k8sStore { return &k8sStore{cluster: cluster} }
+
+// k8sStoreTimeout bounds one Kubernetes call by the store timeout (a safe default when unset).
+func k8sStoreTimeout(parent context.Context, timeout credstore.Timeout) (context.Context, context.CancelFunc) {
+	d := time.Duration(timeout)
+	if d <= 0 {
+		d = time.Duration(credstore.DefaultStoreWriteTimeout)
+	}
+	return context.WithTimeout(parent, d)
+}
 
 // ReadCurrent reads the value the cluster Secret holds for key, for the drift reconciliation
 // only. The Secret's read side is Data (decoded bytes), StringData being write-only.
@@ -30,7 +41,9 @@ func (s *k8sStore) ReadCurrent(key string) (value string, ok bool, err error) {
 	if err != nil {
 		return "", false, err
 	}
-	sec, err := client.CoreV1().Secrets(s.cluster.Name).Get(context.TODO(), k8sClusterSecretName(s.cluster.Name), metav1.GetOptions{})
+	ctx, cancel := k8sStoreTimeout(context.Background(), s.cluster.storeTimeout())
+	defer cancel()
+	sec, err := client.CoreV1().Secrets(s.cluster.Name).Get(ctx, k8sClusterSecretName(s.cluster.Name), metav1.GetOptions{})
 	if err != nil {
 		return "", false, err
 	}
@@ -41,25 +54,35 @@ func (s *k8sStore) ReadCurrent(key string) (value string, ok bool, err error) {
 	return string(b), true, nil
 }
 
-// WriteAll patches the cluster Secret with the items' values in one merge Patch, within
-// timeout. For each key whose stored value changed it also writes <KEY>_OLD = the superseded
-// value (one-deep history, read from the Secret's Data). A failed patch requeues every item.
+// WriteAll patches the cluster Secret with the items' values in one merge Patch, bounded by the
+// store timeout. A key whose stored value already equals the new one is skipped (no redundant
+// patch, no spurious _OLD); for a key whose value changed it also writes <KEY>_OLD = the
+// superseded value (one-deep history, read from the Secret's Data). A failed patch requeues
+// every item.
 func (s *k8sStore) WriteAll(ctx context.Context, items []credstore.StoreItem, timeout credstore.Timeout) ([]credstore.StoreItem, error) {
 	client, err := s.cluster.K8SConnectAPI()
 	if err != nil {
 		return items, err
 	}
-	// current values, once, for the _OLD slot (best effort: absent Secret => no _OLD)
+	// current values, once, for the _OLD slot and the unchanged-skip (best effort: an absent
+	// Secret means no current value, so everything is written)
 	var cur map[string][]byte
-	if sec, gerr := client.CoreV1().Secrets(s.cluster.Name).Get(ctx, k8sClusterSecretName(s.cluster.Name), metav1.GetOptions{}); gerr == nil && sec != nil {
+	rctx, rcancel := k8sStoreTimeout(ctx, timeout)
+	if sec, gerr := client.CoreV1().Secrets(s.cluster.Name).Get(rctx, k8sClusterSecretName(s.cluster.Name), metav1.GetOptions{}); gerr == nil && sec != nil {
 		cur = sec.Data
 	}
+	rcancel()
 	values := make(map[string]string, len(items))
 	for _, it := range items {
 		key, val := it.Key, it.Version.Value
 		if cur != nil && !strings.HasSuffix(key, oldKeySuffix) {
-			if old, present := cur[key]; present && string(old) != "" && string(old) != val {
-				values[key+oldKeySuffix] = string(old)
+			if old, present := cur[key]; present {
+				if string(old) == val {
+					continue // already current: skip the redundant patch (and _OLD)
+				}
+				if string(old) != "" {
+					values[key+oldKeySuffix] = string(old)
+				}
 			}
 		}
 		values[key] = val
@@ -67,7 +90,9 @@ func (s *k8sStore) WriteAll(ctx context.Context, items []credstore.StoreItem, ti
 	if len(values) == 0 {
 		return nil, nil
 	}
-	if err := s.cluster.k8sPatchSecretValuesRaw(client, values); err != nil {
+	wctx, wcancel := k8sStoreTimeout(ctx, timeout)
+	defer wcancel()
+	if err := s.cluster.k8sPatchSecretValuesRaw(wctx, client, values); err != nil {
 		return items, err
 	}
 	return nil, nil
