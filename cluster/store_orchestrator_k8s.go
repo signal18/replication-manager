@@ -6,8 +6,8 @@ package cluster
 
 import (
 	"context"
-	"time"
 
+	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/config/credstore"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -24,15 +24,6 @@ type k8sStore struct {
 
 func (cluster *Cluster) k8sStore() *k8sStore { return &k8sStore{cluster: cluster} }
 
-// k8sStoreTimeout bounds one Kubernetes call by the store timeout (a safe default when unset).
-func k8sStoreTimeout(parent context.Context, timeout credstore.Timeout) (context.Context, context.CancelFunc) {
-	d := time.Duration(timeout)
-	if d <= 0 {
-		d = time.Duration(credstore.DefaultStoreWriteTimeout)
-	}
-	return context.WithTimeout(parent, d)
-}
-
 // ReadCurrent reads the value the cluster Secret holds for key, for the drift reconciliation
 // only. The Secret's read side is Data (decoded bytes), StringData being write-only.
 func (s *k8sStore) ReadCurrent(key string) (value string, ok bool, err error) {
@@ -40,7 +31,7 @@ func (s *k8sStore) ReadCurrent(key string) (value string, ok bool, err error) {
 	if err != nil {
 		return "", false, err
 	}
-	ctx, cancel := k8sStoreTimeout(context.Background(), s.cluster.storeTimeout())
+	ctx, cancel := orchestratorCallContext(context.Background(), s.cluster.storeTimeout())
 	defer cancel()
 	sec, err := client.CoreV1().Secrets(s.cluster.Name).Get(ctx, k8sClusterSecretName(s.cluster.Name), metav1.GetOptions{})
 	if err != nil {
@@ -65,12 +56,16 @@ func (s *k8sStore) WriteAll(ctx context.Context, items []credstore.StoreItem, ti
 	}
 	// current values, once, for the _OLD slot and the unchanged-skip (best effort: an absent
 	// Secret means no current value, so everything is written)
+	// one budget for the read and the patch, as on OpenSVC
+	bctx, cancel := orchestratorCallContext(ctx, timeout)
+	defer cancel()
 	var cur map[string][]byte
-	rctx, rcancel := k8sStoreTimeout(ctx, timeout)
-	if sec, gerr := client.CoreV1().Secrets(s.cluster.Name).Get(rctx, k8sClusterSecretName(s.cluster.Name), metav1.GetOptions{}); gerr == nil && sec != nil {
+	if sec, gerr := client.CoreV1().Secrets(s.cluster.Name).Get(bctx, k8sClusterSecretName(s.cluster.Name), metav1.GetOptions{}); gerr == nil && sec != nil {
 		cur = sec.Data
+	} else if gerr != nil {
+		// best effort: everything is written and no _OLD is kept; the error names no value
+		s.cluster.LogModulePrintf(s.cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlDbg, "Kubernetes secret read before write failed, writing without _OLD: %s", gerr)
 	}
-	rcancel()
 	values := make(map[string]string, len(items))
 	for _, it := range items {
 		key, val := it.Key, it.Version.Value
@@ -92,9 +87,7 @@ func (s *k8sStore) WriteAll(ctx context.Context, items []credstore.StoreItem, ti
 	if len(values) == 0 {
 		return nil, nil
 	}
-	wctx, wcancel := k8sStoreTimeout(ctx, timeout)
-	defer wcancel()
-	if err := s.cluster.k8sPatchSecretValuesRaw(wctx, client, values); err != nil {
+	if err := s.cluster.k8sPatchSecretValuesRaw(bctx, client, values); err != nil {
 		return items, err
 	}
 	return nil, nil

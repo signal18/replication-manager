@@ -730,14 +730,38 @@ func (collector *Collector) CreateConfigKeyValueV2(namespace string, service str
 }
 
 func (collector *Collector) CreateSecretKeyValue(namespace string, service string, key string, value string) error {
+	return collector.CreateSecretKeyValueCtx(context.Background(), namespace, service, key, value)
+}
+
+// CreateSecretKeyValueCtx is CreateSecretKeyValue bounded by the caller's context, on a v2 or a
+// v3 agent.
+func (collector *Collector) CreateSecretKeyValueCtx(ctx context.Context, namespace string, service string, key string, value string) error {
 	if collector.IsV3() {
-		return collector.CreateSecretKeyValueV3(namespace, service, key, value)
-	} else {
-		return collector.CreateSecretKeyValueV2(namespace, service, key, value)
+		return collector.CreateSecretKeyValueV3Ctx(ctx, namespace, service, key, value)
 	}
+	return collector.CreateSecretKeyValueV2Ctx(ctx, namespace, service, key, value)
+}
+
+// requestContext derives one request's context from the caller's: it ends at the first of the
+// caller's deadline/cancel and ContextTimeoutSecond. An unset ContextTimeoutSecond falls back to
+// 10 s: never an unbounded request, and never one expired before it starts.
+func (collector *Collector) requestContext(parent context.Context) (context.Context, context.CancelFunc) {
+	if parent == nil {
+		parent = context.Background()
+	}
+	d := time.Duration(collector.ContextTimeoutSecond) * time.Second
+	if d <= 0 {
+		d = 10 * time.Second
+	}
+	return context.WithTimeout(parent, d)
 }
 
 func (collector *Collector) CreateSecretKeyValueV2(namespace string, service string, key string, value string) error {
+	return collector.CreateSecretKeyValueV2Ctx(context.Background(), namespace, service, key, value)
+}
+
+// CreateSecretKeyValueV2Ctx is CreateSecretKeyValueV2 bounded by the caller's context.
+func (collector *Collector) CreateSecretKeyValueV2Ctx(ctx context.Context, namespace string, service string, key string, value string) error {
 
 	urlpost := fmt.Sprintf("https://%s:%s/key", collector.Host, collector.Port)
 
@@ -774,9 +798,10 @@ func (collector *Collector) CreateSecretKeyValueV2(namespace string, service str
 	req.Close = true
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("o-node", "ANY")
-	ctx, cancel := context.WithTimeout(req.Context(), 10*time.Second)
+	// 10 s as before, and never past the caller's own deadline
+	rctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	req = req.WithContext(ctx)
+	req = req.WithContext(rctx)
 	resp, err := client.Do(req)
 	if err != nil {
 		if collector.isLoggable(config.ConstLogModOrchestrator, config.LvlErr) {

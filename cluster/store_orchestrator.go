@@ -50,24 +50,16 @@ func orchestratorOldAndSkip(key, newVal, curVal string, curKnown bool) (skip, wr
 	return false, curVal != ""
 }
 
-// withinTimeout runs fn — a blocking OpenSVC collector call that has no context of its own — and
-// returns its error, or a timeout error if it outlasts timeout. It bounds each call so one
-// unreachable agent cannot make WriteAll (and the secret worker's WaitGroup behind it) hang
-// (F2). The detached goroutine ends when the collector's own HTTP timeout returns, so it does
-// not leak beyond that. The message names the key, never a value (F10).
-func withinTimeout(timeout credstore.Timeout, what string, fn func() error) error {
+// orchestratorCallContext bounds one orchestrator call by the store timeout (a safe default when
+// unset), under the caller's context: the HTTP request itself carries the deadline, so a dead
+// agent ends the call, no goroutine is left behind, and a timed-out write cannot land later (F2,
+// T18). Shared by the OpenSVC and Kubernetes sinks.
+func orchestratorCallContext(parent context.Context, timeout credstore.Timeout) (context.Context, context.CancelFunc) {
 	d := time.Duration(timeout)
 	if d <= 0 {
 		d = time.Duration(credstore.DefaultStoreWriteTimeout)
 	}
-	done := make(chan error, 1)
-	go func() { done <- fn() }()
-	select {
-	case err := <-done:
-		return err
-	case <-time.After(d):
-		return fmt.Errorf("orchestrator %s timed out after %s", what, d)
-	}
+	return context.WithTimeout(parent, d)
 }
 
 // openSVCStore is the OpenSVC `sec` object as a write-only copy sink (credstore.StoreWriter).
@@ -85,70 +77,60 @@ func (s *openSVCStore) ReadCurrent(key string) (value string, ok bool, err error
 	if !svc.IsV3() {
 		return "", false, nil
 	}
-	var b []byte
-	err = withinTimeout(s.cluster.storeTimeout(), "read "+key, func() error {
-		var e error
-		b, e = svc.GetSecretKeyValueV3(s.cluster.Name, orchestratorEnvObject, key)
-		return e
-	})
+	ctx, cancel := orchestratorCallContext(context.Background(), s.cluster.storeTimeout())
+	defer cancel()
+	b, err := svc.GetSecretKeyValueV3Ctx(ctx, s.cluster.Name, orchestratorEnvObject, key)
 	if err != nil {
 		return "", false, err
 	}
 	return string(b), true, nil
 }
 
-// WriteAll writes each item's value into the cluster's env secret, each call bounded by timeout,
-// and returns the items it could not write (the queue requeues them) with the first error.
-// Before it overwrites a key whose value changed, it copies the current value to <KEY>_OLD
-// (one-deep history; v3 only, since it needs a read). It stops on ctx cancellation. The value is
-// plain, as the agent needs it, and never reaches a log (F10).
+// WriteAll writes each item's value into the cluster's env secret and returns the items it
+// could not write (the queue requeues them) with the first error. The whole call is ONE budget:
+// a context derived from ctx with the store timeout, passed down to every HTTP request, so N
+// items against a dead agent end within one timeout, not 3·N (the remaining items fail at once
+// and are requeued). Before it overwrites a key whose value changed, it copies the current value
+// to <KEY>_OLD (one-deep history; v3 only, since it needs a read). The value is plain, as the
+// agent needs it, and never reaches a log (F10).
 func (s *openSVCStore) WriteAll(ctx context.Context, items []credstore.StoreItem, timeout credstore.Timeout) ([]credstore.StoreItem, error) {
 	svc := s.cluster.OpenSVCConnect()
 	v3 := svc.IsV3()
+	bctx, cancel := orchestratorCallContext(ctx, timeout)
+	defer cancel()
 	var failed []credstore.StoreItem
 	var firstErr error
 	for i, it := range items {
-		select {
-		case <-ctx.Done():
+		if err := bctx.Err(); err != nil {
+			// budget spent or caller cancelled: requeue the rest without calling the agent
 			failed = append(failed, items[i:]...)
 			if firstErr == nil {
-				firstErr = ctx.Err()
+				firstErr = fmt.Errorf("orchestrator write stopped before %s: %w", it.Key, err)
 			}
 			return failed, firstErr
-		default:
 		}
 		key, val := it.Key, it.Version.Value
 		if v3 && !strings.HasSuffix(key, oldKeySuffix) {
-			var old string
-			rerr := withinTimeout(timeout, "read "+key, func() error {
-				b, e := svc.GetSecretKeyValueV3(s.cluster.Name, orchestratorEnvObject, key)
-				old = string(b)
-				return e
-			})
+			b, rerr := svc.GetSecretKeyValueV3Ctx(bctx, s.cluster.Name, orchestratorEnvObject, key)
 			if rerr == nil {
+				old := string(b)
 				skip, writeOld := orchestratorOldAndSkip(key, val, old, true)
 				if skip {
 					continue // already current: no redundant write, no _OLD
 				}
 				if writeOld {
 					// best effort: the _OLD slot must never block the current write
-					_ = withinTimeout(timeout, "write "+key+oldKeySuffix, func() error {
-						return svc.CreateSecretKeyValue(s.cluster.Name, orchestratorEnvObject, key+oldKeySuffix, old)
-					})
+					_ = svc.CreateSecretKeyValueCtx(bctx, s.cluster.Name, orchestratorEnvObject, key+oldKeySuffix, old)
 				}
 			}
 		}
-		werr := withinTimeout(timeout, "write "+key, func() error {
-			if v3 {
-				// same call prov_opensvc.go uses on a v3 agent (openSVCCreateMapsV3)
-				return svc.CreateSecretKeyValue(s.cluster.Name, orchestratorEnvObject, key, val)
-			}
-			return svc.CreateSecretKeyValueV2(s.cluster.Name, orchestratorEnvObject, key, val)
-		})
+		// v3: the same call prov_opensvc.go uses (openSVCCreateMapsV3); v2: the v2 key API
+		werr := svc.CreateSecretKeyValueCtx(bctx, s.cluster.Name, orchestratorEnvObject, key, val)
 		if werr != nil {
 			failed = append(failed, it)
 			if firstErr == nil {
-				firstErr = werr
+				// the key, never the value (F10)
+				firstErr = fmt.Errorf("orchestrator write %s: %w", key, werr)
 			}
 		}
 	}

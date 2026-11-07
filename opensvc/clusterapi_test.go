@@ -1,6 +1,7 @@
 package opensvc
 
 import (
+	"context"
 	"crypto/md5"
 	"crypto/tls"
 	"encoding/json"
@@ -1235,5 +1236,61 @@ func TestCreateObjectV3_WaitsLocal(t *testing.T) {
 	}
 	if got != "POST wait_local=true" {
 		t.Fatalf("the create must ask the daemon to wait for the local object: got %q", got)
+	}
+}
+
+// TestCreateSecretKeyValueV2Ctx_CallerDeadline: an agent that never answers is cut by the
+// caller's context (here 300 ms), not left to the collector's own 10 s, so the secret store
+// writer's budget bounds the HTTP request itself.
+func TestCreateSecretKeyValueV2Ctx_CallerDeadline(t *testing.T) {
+	release := make(chan struct{})
+	mux := http.NewServeMux()
+	mux.HandleFunc("/key", func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-r.Context().Done():
+		case <-release:
+		}
+	})
+	server := httptest.NewUnstartedServer(mux)
+	server.EnableHTTP2 = true
+	server.TLS = &tls.Config{NextProtos: []string{"h2"}}
+	server.StartTLS()
+	defer server.Close()
+	defer close(release)
+
+	collector := newTestCollector(t, server)
+	collector.ContextTimeoutSecond = 10
+
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	err := collector.CreateSecretKeyValueV2Ctx(ctx, "ns", "env", "K", "secret-value")
+	elapsed := time.Since(start)
+	if err == nil {
+		t.Fatalf("expected a deadline error from a hung agent")
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("expected context.DeadlineExceeded, got %v", err)
+	}
+	if elapsed > 2*time.Second {
+		t.Fatalf("call took %s: the caller's 300ms deadline did not bound the request", elapsed)
+	}
+	if strings.Contains(err.Error(), "secret-value") {
+		t.Fatalf("error leaks the value (F10): %v", err)
+	}
+}
+
+// TestRequestContext_UnsetTimeoutIsBounded: an unset ContextTimeoutSecond never gives an
+// unbounded request nor one expired at once.
+func TestRequestContext_UnsetTimeoutIsBounded(t *testing.T) {
+	c := &Collector{}
+	ctx, cancel := c.requestContext(context.Background())
+	defer cancel()
+	dl, ok := ctx.Deadline()
+	if !ok {
+		t.Fatalf("no deadline with ContextTimeoutSecond unset")
+	}
+	if left := time.Until(dl); left < 9*time.Second || left > 11*time.Second {
+		t.Fatalf("deadline %s away, want about 10s", left)
 	}
 }

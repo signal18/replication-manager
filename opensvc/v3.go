@@ -580,6 +580,14 @@ func (collector *Collector) CreateConfigV3(namespace, service, agent string) err
 }
 
 func (collector *Collector) handleObjectKeyValueV3(operation, namespace, kind, service, key, value string) ([]byte, error) {
+	return collector.handleObjectKeyValueV3Ctx(context.Background(), operation, namespace, kind, service, key, value)
+}
+
+// handleObjectKeyValueV3Ctx is handleObjectKeyValueV3 under the caller's context: the request
+// ends at the first of the caller's deadline/cancel and the collector's ContextTimeoutSecond,
+// so a caller with a budget (the secret store writer) bounds the HTTP call itself instead of
+// abandoning a goroutine around it.
+func (collector *Collector) handleObjectKeyValueV3Ctx(parent context.Context, operation, namespace, kind, service, key, value string) ([]byte, error) {
 	var resp *http.Response
 	var err error
 
@@ -588,7 +596,7 @@ func (collector *Collector) handleObjectKeyValueV3(operation, namespace, kind, s
 		return nil, err
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(collector.ContextTimeoutSecond)*time.Second)
+	ctx, cancel := collector.requestContext(parent)
 	defer cancel()
 
 	if key == "" {
@@ -631,14 +639,25 @@ func (collector *Collector) handleObjectKeyValueV3(operation, namespace, kind, s
 }
 
 func (collector *Collector) GetSecretKeyValueV3(namespace, service, key string) ([]byte, error) {
-	return collector.handleObjectKeyValueV3("get", namespace, "sec", service, key, "")
+	return collector.GetSecretKeyValueV3Ctx(context.Background(), namespace, service, key)
+}
+
+// GetSecretKeyValueV3Ctx is GetSecretKeyValueV3 bounded by the caller's context.
+func (collector *Collector) GetSecretKeyValueV3Ctx(ctx context.Context, namespace, service, key string) ([]byte, error) {
+	return collector.handleObjectKeyValueV3Ctx(ctx, "get", namespace, "sec", service, key, "")
 }
 
 func (collector *Collector) CreateSecretKeyValueV3(namespace, service, key, value string) error {
-	_, err := collector.handleObjectKeyValueV3("create", namespace, "sec", service, key, value)
+	return collector.CreateSecretKeyValueV3Ctx(context.Background(), namespace, service, key, value)
+}
+
+// CreateSecretKeyValueV3Ctx is CreateSecretKeyValueV3 bounded by the caller's context (the
+// create, and the update it falls back to on 409, share it).
+func (collector *Collector) CreateSecretKeyValueV3Ctx(ctx context.Context, namespace, service, key, value string) error {
+	_, err := collector.handleObjectKeyValueV3Ctx(ctx, "create", namespace, "sec", service, key, value)
 	var se *StatusError
 	if err != nil && errors.As(err, &se) && se.StatusCode == 409 {
-		return collector.UpdateSecretKeyValueV3(namespace, service, key, value)
+		_, err = collector.handleObjectKeyValueV3Ctx(ctx, "update", namespace, "sec", service, key, value)
 	}
 	return err
 }
