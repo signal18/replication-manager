@@ -343,6 +343,26 @@ outside the queue that drives the Vault entries. #2356 makes them `credstore.Sto
   **provisioning/restart** (`openSVCCreateMaps*`); the admin credential is config-driven with no
   runtime change site, so that is its currency — not a runtime re-queue.
 
+**Timeouts: one budget per `WriteAll`, carried by our context down to the HTTP request.** Each
+sink derives one context from the pass with the store timeout (`secret-kv-write-timeout`,
+`orchestratorCallContext`) and hands it to every call: on OpenSVC the `...Ctx` collector calls
+(`GetSecretKeyValueV3Ctx`, `CreateSecretKeyValueCtx`), on Kubernetes the `Get` and the `Patch`.
+The read, the `<KEY>_OLD` write and the write of a key share that budget; once it is spent the
+remaining items are requeued without calling the agent, so N items against a dead agent end in
+about one timeout, not 3·N. Each request also keeps the collector's own cap
+(`ContextTimeoutSecond`, 10 s; an unset value falls back to 10 s, never "expired at once").
+Nothing is abandoned in a goroutine: an earlier version wrapped each call in one
+(`withinTimeout`), which left the request running after the timeout, so a stale write could land
+after a newer one. **Residual window:** cancelling the request closes it on our side, but an
+agent that already received the whole body may still apply it. The item is requeued and the
+next pass writes the newest value; the queue keeps the newer of a requeued and a pushed version
+(`Requeue` keepNewer), so the store converges.
+
+**No certificate, no call.** When the cluster's OpenSVC p12 cannot be loaded (WARN0099),
+`openSVCStore.WriteAll` and `ReadCurrent` return `errOpenSVCCertNotLoaded` at once, requeuing
+everything: the store-behind state names that cause instead of a TLS error after a timeout. The
+certificate state itself is described in `doc/implementation/opensvc/CLIENT_REUSE.md`.
+
 Staged (F8): the bespoke direct writes stay as the provisioning seed; removing them and folding
 WARN0275 onto `ReadCurrent` land once the T13 regtest proves the queue path. K8s uses its auth
 header (`REPMAN_AUTH_HEADER`), not `REPLICATION_MANAGER_PASSWORD`, so the admin copy is

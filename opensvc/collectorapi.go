@@ -31,6 +31,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/opensvc/om3/v3/util/httpclientcache"
 	"github.com/signal18/replication-manager/config"
 	sharedlog "github.com/signal18/replication-manager/utils/s18log/shared"
 	log "github.com/sirupsen/logrus"
@@ -263,6 +264,23 @@ func (collector *Collector) FromP12Bytes(bytes []byte, password string) (tls.Cer
 	}, nil
 }
 
+// P12Fingerprint identifies a p12 and its password: the PEM files GeneratePemFromP12 writes are
+// named after it, so om3 serves one cached HTTP client per fingerprint. A caller that sees the
+// fingerprint change knows the certificate rotated (see PurgeV3Clients).
+func P12Fingerprint(p12Data []byte, password string) string {
+	sum := sha256.Sum256(append(append([]byte{}, p12Data...), password...))
+	return hex.EncodeToString(sum[:8])
+}
+
+// PurgeV3Clients drops every HTTP client om3 caches for the life of the process
+// (httpclientcache), closing their idle connections. om3 never evicts an entry by itself, so a
+// rotated certificate would leave its old client and connections cached forever (F4): call it
+// when a certificate changes. The cache is process-wide, so the other clusters' clients go too
+// and are rebuilt at their next call.
+func PurgeV3Clients() {
+	httpclientcache.PurgeClients()
+}
+
 // GeneratePemFromP12 returns the key, certificate and CA chain files of the p12 for the om3
 // client, which only takes file paths. They are written once, in PemDir (shared by the
 // clusters, outside their directories), under a name from the p12's content: om3 caches
@@ -270,8 +288,7 @@ func (collector *Collector) FromP12Bytes(bytes []byte, password string) (tls.Cer
 // every call served nothing, raced the readers, and recreated the files in a cluster's
 // directory while DeleteCluster removed it. A new p12 gets new files, so a new client.
 func (collector *Collector) GeneratePemFromP12(p12Data []byte, password string) (string, string, string, error) {
-	sum := sha256.Sum256(append(append([]byte{}, p12Data...), password...))
-	base := filepath.Join(collector.PemDir, hex.EncodeToString(sum[:8]))
+	base := filepath.Join(collector.PemDir, P12Fingerprint(p12Data, password))
 	keyPath, certPath, chainPath := base+"-key.pem", base+"-cert.pem", base+"-chain.pem"
 
 	pemFileMu.Lock()

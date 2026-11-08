@@ -96,7 +96,7 @@ func TestVersionNewer(t *testing.T) {
 func TestVaultWriteFailsWithinTimeout(t *testing.T) {
 	v := vaultfake.New("kv", "role", "sid")
 	defer v.Close()
-	v.Delay = 2 * time.Second
+	v.SetDelay(2 * time.Second)
 	kv := NewVaultKV(kvSettings(v), nil)
 	items := []StoreItem{{Entry: "e", Path: "s/c1/databases/db1", Key: "k", Version: Version{Value: "x"}}}
 	start := time.Now()

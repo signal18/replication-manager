@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -1292,5 +1293,33 @@ func TestRequestContext_UnsetTimeoutIsBounded(t *testing.T) {
 	}
 	if left := time.Until(dl); left < 9*time.Second || left > 11*time.Second {
 		t.Fatalf("deadline %s away, want about 10s", left)
+	}
+}
+
+// TestV3CallsReuseConnection: two v3 calls to the same agent go over one connection. They used
+// to set req.Close, which closed it after each request and made every call pay a new TCP and
+// TLS handshake although om3 caches the client.
+func TestV3CallsReuseConnection(t *testing.T) {
+	var newConns atomic.Int32
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("value"))
+	}))
+	server.Config.ConnState = func(_ net.Conn, s http.ConnState) {
+		if s == http.StateNew {
+			newConns.Add(1)
+		}
+	}
+	server.StartTLS()
+	defer server.Close()
+
+	collector := newTestCollector(t, server)
+	collector.SetV3()
+	for i := 0; i < 3; i++ {
+		if _, err := collector.GetSecretKeyValueV3("ns", "env", "K"); err != nil {
+			t.Fatalf("call %d: %v", i, err)
+		}
+	}
+	if n := newConns.Load(); n != 1 {
+		t.Fatalf("%d connections for 3 calls, want 1 (reused)", n)
 	}
 }

@@ -467,7 +467,7 @@ type Cluster struct {
 	// handler and the cron scheduler), so TryLock() this before mutating any
 	// flag; a concurrent run is refused rather than interleaved.
 	rollingReprovMutex     sync.Mutex               `json:"-"`
-	failLoadP12Cert        bool                     `json:"-"`
+	openSVCCert            openSVCCertState         `json:"-"`
 	Mailer                 *mailer.Mailer           `json:"-"`
 	ResticManager          *backupmgr.ResticManager `json:"-"`
 	resolvedS3Mode         string                   // probe-resolved S3 mode during auto startup; "" if not yet probed

@@ -69,11 +69,20 @@ type openSVCStore struct {
 
 func (cluster *Cluster) openSVCStore() *openSVCStore { return &openSVCStore{cluster: cluster} }
 
+// certNotLoaded reports that the agent cannot be reached for want of a client certificate (the
+// collector-API mode uses none).
+func (s *openSVCStore) certNotLoaded() bool {
+	return !s.cluster.Conf.ProvOpensvcUseCollectorAPI && s.cluster.openSVCCertFailed()
+}
+
 // ReadCurrent reads the value the agent holds for key, for the WARN0275 drift reconciliation
 // only — never as a Chain source (rule 7). A v2 agent has no key read: it returns ok=false, so
 // a v2 drift is seen at the next rotation. The read is bounded by the store timeout (F2).
 func (s *openSVCStore) ReadCurrent(key string) (value string, ok bool, err error) {
 	svc := s.cluster.OpenSVCConnect()
+	if s.certNotLoaded() {
+		return "", false, errOpenSVCCertNotLoaded
+	}
 	if !svc.IsV3() {
 		return "", false, nil
 	}
@@ -95,6 +104,10 @@ func (s *openSVCStore) ReadCurrent(key string) (value string, ok bool, err error
 // agent needs it, and never reaches a log (F10).
 func (s *openSVCStore) WriteAll(ctx context.Context, items []credstore.StoreItem, timeout credstore.Timeout) ([]credstore.StoreItem, error) {
 	svc := s.cluster.OpenSVCConnect()
+	if s.certNotLoaded() {
+		// no client certificate: every call would fail on TLS after its timeout
+		return items, errOpenSVCCertNotLoaded
+	}
 	v3 := svc.IsV3()
 	bctx, cancel := orchestratorCallContext(ctx, timeout)
 	defer cancel()

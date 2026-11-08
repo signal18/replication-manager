@@ -79,9 +79,14 @@ func waitLocalV3() apiv3.RequestEditorFn {
 	}
 }
 
+// RequestCloserV3 is the per-request editor every v3 call passes. It used to set req.Close, which
+// closed the connection after each request and defeated the client om3 caches per certificate
+// (httpclientcache): every call paid a new TCP and TLS handshake to the agent. The connection is
+// now kept alive and reused; a dead one is bounded by the request's context deadline and the
+// client's own timeout, and a rotated certificate purges the cache (PurgeV3Clients). Kept as the
+// one hook for request-level settings.
 func (collector *Collector) RequestCloserV3() apiv3.RequestEditorFn {
 	return func(ctx context.Context, req *http.Request) error {
-		req.Close = true
 		return nil
 	}
 }
@@ -92,7 +97,7 @@ func (collector *Collector) GetAuthInfoV3() error {
 		return err
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(collector.ContextTimeoutSecond)*time.Second)
+	ctx, cancel := collector.requestContext(context.Background())
 	defer cancel()
 
 	// Use the client to check the API version
@@ -131,7 +136,7 @@ func (collector *Collector) GetNodesV3() ([]Host, error) {
 		return nil, err
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(collector.ContextTimeoutSecond)*time.Second)
+	ctx, cancel := collector.requestContext(context.Background())
 	defer cancel()
 
 	// Use the client to get the nodes
@@ -208,7 +213,7 @@ func (collector *Collector) getNodeSystemProperties(nodename string) ([]byte, er
 	if err != nil {
 		return nil, err
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(collector.ContextTimeoutSecond)*time.Second)
+	ctx, cancel := collector.requestContext(context.Background())
 	defer cancel()
 	resp, err := client.GetNodeSystemProperty(ctx, apiv3.InPathNodeName(nodename), collector.RequestCloserV3())
 	if err != nil {
@@ -245,7 +250,7 @@ func (collector *Collector) GetPoolInfoListV3() ([]PoolInfo, error) {
 		return nil, err
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(collector.ContextTimeoutSecond)*time.Second)
+	ctx, cancel := collector.requestContext(context.Background())
 	defer cancel()
 
 	resp, err := client.GetPools(ctx, nil, collector.RequestCloserV3())
@@ -290,7 +295,7 @@ func (collector *Collector) CreateObjectV3(namespace, kind, service string, data
 		return nil, err
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(collector.ContextTimeoutSecond)*time.Second)
+	ctx, cancel := collector.requestContext(context.Background())
 	defer cancel()
 
 	oKind := apiv3.Kind(kind)
@@ -325,7 +330,7 @@ func (collector *Collector) GetObjectConfigFileV3(namespace, kind, service strin
 		return nil, err
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(collector.ContextTimeoutSecond)*time.Second)
+	ctx, cancel := collector.requestContext(context.Background())
 	defer cancel()
 
 	oKind := apiv3.Kind(kind)
@@ -356,7 +361,7 @@ func (collector *Collector) UpdateObjectV3(namespace, kind, service string, data
 		return nil, err
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(collector.ContextTimeoutSecond)*time.Second)
+	ctx, cancel := collector.requestContext(context.Background())
 	defer cancel()
 
 	oKind := apiv3.Kind(kind)
@@ -392,7 +397,7 @@ func (collector *Collector) GetInstanceConfigChecksumV3(node, namespace, kind, n
 		return "", err
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(collector.ContextTimeoutSecond)*time.Second)
+	ctx, cancel := collector.requestContext(context.Background())
 	defer cancel()
 
 	path := fmt.Sprintf("%s/%s/%s", namespace, kind, name)
@@ -430,7 +435,7 @@ func (collector *Collector) GetInstanceConfigFileV3(node, namespace, kind, name 
 	if err != nil {
 		return nil, err
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(collector.ContextTimeoutSecond)*time.Second)
+	ctx, cancel := collector.requestContext(context.Background())
 	defer cancel()
 	resp, err := client.GetInstanceConfigFile(ctx, node, namespace, apiv3.Kind(kind), name, collector.RequestCloserV3())
 	if err != nil {
@@ -500,7 +505,7 @@ func (collector *Collector) GetObjectV3(namespace, kind, service string, getFunc
 		return nil, err
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(collector.ContextTimeoutSecond)*time.Second)
+	ctx, cancel := collector.requestContext(context.Background())
 	defer cancel()
 
 	oKind := apiv3.Kind(kind)
@@ -710,7 +715,7 @@ func (collector *Collector) listObjectKeysV3(namespace, kind, service string) ([
 	if err != nil {
 		return nil, err
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(collector.ContextTimeoutSecond)*time.Second)
+	ctx, cancel := collector.requestContext(context.Background())
 	defer cancel()
 	resp, err := client.GetObjectDataKeys(ctx, apiv3.InPathNamespace(namespace), apiv3.InPathKind(kind), apiv3.InPathName(service), nil, collector.RequestCloserV3())
 	if err != nil {
@@ -747,7 +752,7 @@ func (collector *Collector) handleObjectActionV3(namespace, kind, service, actio
 		return nil, err
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(collector.ContextTimeoutSecond)*time.Second)
+	ctx, cancel := collector.requestContext(context.Background())
 	defer cancel()
 
 	oKind := apiv3.Kind(kind)
@@ -878,7 +883,7 @@ func (collector *Collector) PGUpdateInstanceV3(node, svc, rid string) error {
 	if err != nil {
 		return err
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(collector.ContextTimeoutSecond)*time.Second)
+	ctx, cancel := collector.requestContext(context.Background())
 	defer cancel()
 
 	params := &apiv3.PostInstanceActionPGUpdateParams{}
@@ -908,7 +913,7 @@ func (collector *Collector) ResizeVolumeV3(namespace, volname, size string) (str
 	if err != nil {
 		return "", err
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(collector.ContextTimeoutSecond)*time.Second)
+	ctx, cancel := collector.requestContext(context.Background())
 	defer cancel()
 	body := apiv3.PostObjectActionResize{Size: &size}
 	resp, err := client.PostObjectActionResizeWithResponse(ctx, namespace, apiv3.Kind("vol"), volname, &apiv3.PostObjectActionResizeParams{}, body, collector.RequestCloserV3())
@@ -980,7 +985,7 @@ func (collector *Collector) WaitVolumeResizeV3(namespace, volname string, timeou
 	deadline := time.Now().Add(timeout)
 	sawResizing := false
 	for {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(collector.ContextTimeoutSecond)*time.Second)
+		ctx, cancel := collector.requestContext(context.Background())
 		resp, err := client.GetInstancesWithResponse(ctx, &apiv3.GetInstancesParams{Path: &path}, collector.RequestCloserV3())
 		cancel()
 		if err != nil {
@@ -1091,7 +1096,7 @@ func (collector *Collector) handleInstanceActionV3(node, namespace, kind, servic
 		return nil, err
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(collector.ContextTimeoutSecond)*time.Second)
+	ctx, cancel := collector.requestContext(context.Background())
 	defer cancel()
 
 	oKind := apiv3.Kind(kind)
@@ -1230,7 +1235,7 @@ func (collector *Collector) handleInstanceConsoleV3(node, namespace, kind, servi
 		return nil, err
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(collector.ContextTimeoutSecond)*time.Second)
+	ctx, cancel := collector.requestContext(context.Background())
 	defer cancel()
 
 	oKind := apiv3.Kind(kind)
