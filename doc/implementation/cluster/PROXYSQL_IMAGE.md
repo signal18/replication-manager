@@ -34,6 +34,36 @@ The regtest `testProvisionReplicationUser` ran on a dev instance, provisioning f
 `caching_sha2_password`, `mysql_native_password` DISABLED) and selected `proxysql/proxysql:3.0.12`.
 All servers were ONLINE, the proxy joined the primary, and the result was PASS.
 
+## Logins through a ProxySQL 3 proxy (#2360, reopened)
+
+The image choice alone left MySQL 8.4 behind ProxySQL unusable: the proxy routed, but two logins
+failed.
+
+**Client logins (the user copy).** `proxysql-copy-grants` loaded each user's
+`caching_sha2_password` hash into `mysql_users`. ProxySQL can use that hash neither to check a
+client's login nor to log in to the backend for the client, so every client was refused. Now:
+- **A user whose password repman knows** (the database user, the write heartbeat user:
+  `proxySQLClearUsers`, the set the PostgreSQL sync loads too) is loaded with that password.
+  ProxySQL 3 keeps it in clear, and both logins then work without TLS. Checked on a dev instance.
+- **Any other `caching_sha2_password` user** is not loaded, and WARN0319 names it. The MySQL
+  system accounts (`mysql.*`) and the replication user are not loaded either, and are not named.
+  They are no clients of the proxy.
+- **Native-hash users** (MariaDB, MySQL 8.0) are unchanged.
+
+**repman's admin login.** ProxySQL 2+ accepts `admin` only from its own host, and
+`proxysql-user` defaults to `admin`. Every config repman generates has declared a second admin
+login, `external`, with the same password, since 2017. All the ProxySQL instances on a preprod
+instance's nodes were checked. Now:
+- **The login:** for a proxy repman provisioned (its provision cookie), `adminLogin()` uses
+  `external` when the configured login is the default `admin`. The configuration is not changed.
+- **Rotation and credential change:** `SetAdminCredentials` writes both logins for such a proxy
+  (`admin:<pw>;external:<pw>`, plus the configured user if it is another one). Before, it wrote a
+  single `user:<pw>`, which deleted `external`, and with it repman's access to a ProxySQL 2+ proxy.
+- **Other proxies:** a proxy repman did not provision keeps the configured login and the single
+  credential, as before.
+- **Not covered:** the janitor's rotation (`ProxyJanitor.RotateProxyPasswords`) still writes a
+  single login.
+
 ## Not covered
 
 - **Client-side TLS on the proxy:** the `ssl` proxy tag's ruleset

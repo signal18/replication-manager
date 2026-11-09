@@ -86,9 +86,47 @@ func (proxy *ProxySQLProxy) AddFlags(flags *pflag.FlagSet, conf *config.Config) 
 	flags.StringVar(&conf.ProxysqlBinaryPath, "proxysql-binary-path", "/usr/sbin/proxysql", "proxysql binary location")
 }
 
+// proxysqlAdminLocalOnly is the login ProxySQL 2 and later only accept from the proxy's own host;
+// proxysqlAdminRemote is the second admin login every ProxySQL config repman generates declares,
+// with the same password, since 2017 (admin_credentials="admin:…;external:…").
+const (
+	proxysqlAdminLocalOnly = "admin"
+	proxysqlAdminRemote    = "external"
+)
+
+// adminLogin is the login replication-manager uses on the proxy's admin port (#2360). For a proxy
+// it provisioned, the default admin becomes external: ProxySQL 2+ refuses admin from another host,
+// and every MySQL 8.4 cluster now gets ProxySQL 3. The configuration is not changed, and a proxy
+// it did not provision keeps the configured login.
+func (proxy *ProxySQLProxy) adminLogin() string {
+	if proxy.User == proxysqlAdminLocalOnly && proxy.HasProvisionCookie() {
+		return proxysqlAdminRemote
+	}
+	return proxy.User
+}
+
+// adminCredentials is the value of ProxySQL's admin-admin_credentials for user:password. A proxy
+// replication-manager provisioned keeps both of its logins, admin and external, with the new
+// password, and the user if it is another one: a single login (what a rotation wrote) deleted
+// external, and locked replication-manager out of a ProxySQL 2+ proxy (#2360). Another proxy
+// gets user:password, as before.
+func (proxy *ProxySQLProxy) adminCredentials(user, password string) string {
+	if !proxy.HasProvisionCookie() {
+		return user + ":" + password
+	}
+	logins := []string{proxysqlAdminLocalOnly, proxysqlAdminRemote}
+	if user != proxysqlAdminLocalOnly && user != proxysqlAdminRemote {
+		logins = append(logins, user)
+	}
+	for i, l := range logins {
+		logins[i] = l + ":" + password
+	}
+	return strings.Join(logins, ";")
+}
+
 func (proxy *ProxySQLProxy) Connect() (proxysql.ProxySQL, error) {
 	psql := proxysql.ProxySQL{
-		User:     proxy.User,
+		User:     proxy.adminLogin(),
 		Password: proxy.Pass,
 		Host:     proxy.Host,
 		Port:     proxy.Port,
@@ -671,7 +709,11 @@ func (proxy *ProxySQLProxy) Refresh() error {
 				if dbhelper.IsCachingSha2Hash(u.Password) {
 					clear, ok := known[u.User]
 					if !ok || clear == "" {
-						unusable = append(unusable, u.User)
+						// not loaded; named in WARN0319 unless it is no client of the proxy: the
+						// MySQL system accounts (mysql.sys, mysql.session, …) and the replication user
+						if !strings.HasPrefix(u.User, "mysql.") && u.User != cluster.GetRplUser() {
+							unusable = append(unusable, u.User)
+						}
 						continue
 					}
 					cp := *u
@@ -889,7 +931,7 @@ func (proxy *ProxySQLProxy) SetAdminCredentials(user string, password string) {
 	}
 	defer psql.Connection.Close()
 
-	err = psql.SetMySQLVariable("admin-admin_credentials", user+":"+password)
+	err = psql.SetMySQLVariable("admin-admin_credentials", proxy.adminCredentials(user, password))
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlErr, "ProxySQL could not set mysql variables (%s)", err)
 	}
