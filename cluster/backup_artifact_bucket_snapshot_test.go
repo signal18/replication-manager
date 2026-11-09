@@ -146,3 +146,31 @@ func TestBucketETagSnapshotOffMount(t *testing.T) {
 		t.Fatalf("off the mount: want no listing, got %d", b.listings)
 	}
 }
+
+// A backup already recorded changed, whose bucket files are still the ones recorded with the
+// change, is recognised from the snapshot; changed again or back as registered, it is not.
+func TestBucketETagSnapshotSameAsKnownChange(t *testing.T) {
+	b := withFakeBucket(t)
+	p := filepath.Join(b.root, "backups", "mydumper.2")
+	b.etags[filepath.Join(p, "db.sql")] = "etag-rewritten"
+	now, err := restoreArtifactFingerprintBounded(p, backupProofWalkMax)
+	if err != nil {
+		t.Fatal(err)
+	}
+	change := &BackupRegistrationChange{Dest: p, Now: now}
+
+	b.listings = 0
+	if !newBucketETagSnapshot().sameAsKnownChange(p, change) {
+		t.Fatalf("same files as the recorded change: want it recognised")
+	}
+	if b.listings != 1 {
+		t.Fatalf("want 1 folder listing, got %d", b.listings)
+	}
+	b.etags[filepath.Join(p, "db.sql")] = "etag-rewritten-again"
+	if newBucketETagSnapshot().sameAsKnownChange(p, change) {
+		t.Fatalf("changed again: must go to the exact check")
+	}
+	if newBucketETagSnapshot().sameAsKnownChange(p, &BackupRegistrationChange{Dest: p}) {
+		t.Fatalf("a change without its files (unreadable) must go to the exact check")
+	}
+}

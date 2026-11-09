@@ -174,7 +174,12 @@ is fingerprinted from that listing with the same walk and digest
 a backup that does not match is checked again the exact way
 (`artifactUnchangedBounded`: its upload synced, its own listing) before it is
 recorded as changed, so a file still uploading when the folder was listed never
-raises WARN0249. A failed folder listing leaves its backups to the per-backup path.
+raises WARN0249. A backup already recorded changed (WARN0249) whose files in the
+listing are still the ones recorded with that change (`sameAsKnownChange`) is not
+read again: the change stands, its `Checked` time is refreshed. Without that, every
+run listed each changed backup twice more (the exact check, then the description),
+which on the dev instance above was all of its 9 backups. A failed folder listing
+leaves its backups to the per-backup path.
 Only this periodic check uses the snapshot; discovery, registration and the checks
 before a restore keep the per-backup listing (one-off). `bucketServes` and
 `bucketETags` hold the mount's functions so the tests can stand a fake bucket in.

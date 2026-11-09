@@ -672,6 +672,14 @@ func (server *ServerMonitor) checkRegisteredBackups(budget *int) {
 			}
 			continue
 		}
+		// already recorded changed, and the bucket shows the files it had then: nothing new to
+		// read, the change stands (#2362)
+		if prev, ok := cluster.backupChanges.Load(meta.Id); ok && snap.sameAsKnownChange(meta.Dest, prev.(*BackupRegistrationChange)) {
+			still := *prev.(*BackupRegistrationChange) // a copy: readers hold the stored one
+			still.Checked = time.Now()
+			cluster.backupChanges.Store(meta.Id, &still)
+			continue
+		}
 		if artifactUnchangedIn(snap, meta.Dest, rec, backupProofWalkMax) {
 			cluster.backupChanges.Delete(meta.Id)
 			continue

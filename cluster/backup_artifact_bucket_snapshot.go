@@ -101,6 +101,18 @@ func (s *bucketETagSnapshot) fingerprint(path string, maxEntries int) (fp *backu
 	return fp, true, err
 }
 
+// sameAsKnownChange: the backup at path, already recorded changed (c), shows in the snapshot
+// the files recorded with that change: the change stands and its backup is not listed again.
+// Anything else (changed again, back as registered, not on a listed folder) is false: the
+// exact check runs.
+func (s *bucketETagSnapshot) sameAsKnownChange(path string, c *BackupRegistrationChange) bool {
+	if c == nil || c.Now == nil || c.Dest != path {
+		return false
+	}
+	fp, ok, err := s.fingerprint(path, backupProofWalkMax)
+	return ok && err == nil && fp.Same(*c.Now)
+}
+
 // artifactUnchangedIn is artifactUnchangedBounded reading the ETags from snap when the
 // backup is on a listed folder of the mount. A backup that does not match is checked again
 // the exact way (its upload synced, its own listing) before it is called changed: a file
