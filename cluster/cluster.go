@@ -1838,6 +1838,10 @@ func (cluster *Cluster) launchLogicalReseed(servertoreseed *ServerMonitor) {
 	switch config.TaskName(task) {
 	case config.ConstTaskReseedDump, config.ConstTaskReseedMydumper:
 	default:
+		// WARN0075 open without a logical reseed armed: a finished reseed's stale
+		// trigger, or a server armed for another task. Logged so a reseed that never
+		// starts shows why.
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "Logical reseed of %s not launched: the server is armed for %q, not a logical reseed", servertoreseed.URL, task)
 		return
 	}
 	if !servertoreseed.logicalReseedDispatching.CompareAndSwap(false, true) {
