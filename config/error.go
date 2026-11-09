@@ -77,6 +77,7 @@ var ClusterError = map[string]string{
 	"ERR00055":  "Arbitrator unreachable (%s)",
 	"ERR00056":  "Master user %s is not defined on replication candidate %s",
 	"ERR00057":  "Database duplicate users not allowed in proxysql %s",
+	"WARN0319":  "ProxySQL %s: users not loaded, their caching_sha2_password hash cannot be checked by ProxySQL and repman does not know their password: %s",
 	"ERR00058":  "Sphinx connection error: %s",
 	"ERR00059":  "Ignored server %s not found in configured server list",
 	"ERR00060":  "Too many non-closed tasks in scheduler, donor may not work on server %s",

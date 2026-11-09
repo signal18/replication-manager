@@ -3,6 +3,7 @@ package cluster
 import (
 	"errors"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -697,7 +698,7 @@ func (proxy *ProxySQLProxy) Refresh() error {
 				// PostgreSQL does not expose passwords and ProxySQL needs the
 				// clear one to authenticate on the backend: load the cluster
 				// credential and the write heartbeat one only.
-				pgUsers, conflict := cluster.postgresProxySQLUsers()
+				pgUsers, conflict := cluster.proxySQLClearUsers()
 				if conflict {
 					cluster.SetState("WARN0233", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0233"], proxy.Name, cluster.GetDbUser()), ErrFrom: "PRX", ServerUrl: proxy.Name})
 				}
@@ -708,7 +709,28 @@ func (proxy *ProxySQLProxy) Refresh() error {
 				}
 				users = nil
 			}
+			// a caching_sha2_password hash (MySQL 8.4+) is no use to ProxySQL: it cannot check a
+			// client's login with it, nor log in to the backend for the client (#2360, seen on a
+			// dev instance: every client login refused). A user whose password repman knows is
+			// loaded with it; any other is not loaded, and named in WARN0319.
+			known := make(map[string]string)
+			if clear, _ := cluster.proxySQLClearUsers(); len(clear) > 0 {
+				for _, g := range clear {
+					known[g.User] = g.Password
+				}
+			}
+			var unusable []string
 			for _, u := range users {
+				if dbhelper.IsCachingSha2Hash(u.Password) {
+					clear, ok := known[u.User]
+					if !ok || clear == "" {
+						unusable = append(unusable, u.User)
+						continue
+					}
+					cp := *u
+					cp.Password = clear
+					u = &cp
+				}
 				user, ok := uniUsers[u.User+":"+u.Password]
 				if ok {
 					dupUsers[user.User] = user.User
@@ -723,6 +745,10 @@ func (proxy *ProxySQLProxy) Refresh() error {
 						}
 					}
 				}
+			}
+			if len(unusable) > 0 {
+				sort.Strings(unusable)
+				cluster.SetState("WARN0319", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0319"], proxy.Name, strings.Join(unusable, ", ")), ErrFrom: "PRX", ServerUrl: proxy.Name})
 			}
 			changedUser := false
 			for _, user := range uniUsers {
