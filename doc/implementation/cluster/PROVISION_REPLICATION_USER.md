@@ -25,6 +25,18 @@ It is skipped when:
   everywhere;
 - the topology is active-passive, which has no replication.
 
+## Servers not reachable yet
+
+The servers were just provisioned: a name may not resolve, or a port may not answer, yet. A dev
+instance on MySQL 8.0.41 had db3 still missing from DNS 36 s after the provision began.
+`WaitDatabaseCanConn` did not catch it, because it only checks that a connection object exists,
+and db3 still had one from its previous life. db3 got no account and its replica never connected.
+
+So each server is tried again until it answers, every monitoring tick, within the budget of
+`WaitDatabaseCanConn` (`monitoring-wait-retry` x the ticker). Only "cannot reach it yet" and "engine
+not known yet" are retried; an error from the server itself is final. While retries remain the
+failure is logged at debug; the last attempt logs it as a warning.
+
 ## Every node, outside the binary log
 
 The user is created on **every** server, each on its own, with `SET SESSION sql_log_bin=0`:
@@ -78,5 +90,7 @@ statements of that function, and the clear password they log, are #2033.
   CREATE USER), and PostgreSQL (a new role, an existing role). No logged statement holds the password.
 - **Skip rules:** `cluster/prov_replication_user_test.go` covers the switch off, the replication user
   being the database user, and no credential. No server is touched in any of them.
+- **Retries:** the same file checks that a server answering late is created on a later attempt, that one
+  never answering gets a last attempt told so, and that a final error is not retried.
 - **T13:** the gate is a provisioned cluster with a separate replication user, replicating after the
   bootstrap.
