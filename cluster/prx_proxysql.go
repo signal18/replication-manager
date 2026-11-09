@@ -133,7 +133,7 @@ func (proxy *ProxySQLProxy) adminConnection(user string, password string) proxys
 // Connect logs in with the ProxySQL admin login. When ProxySQL refuses admin as local-only (1040),
 // it probes the external login the template creates with the same password and, if that
 // connects, keeps external as the login (proxysql-user). The login is a cluster-wide setting, so
-// every ProxySQL of the cluster then uses it. A login held in Vault is never switched.
+// every ProxySQL of the cluster then uses it.
 func (proxy *ProxySQLProxy) Connect() (proxysql.ProxySQL, error) {
 	user, pass := proxy.adminLogin()
 	psql := proxy.adminConnection(user, pass)
@@ -146,12 +146,6 @@ func (proxy *ProxySQLProxy) Connect() (proxysql.ProxySQL, error) {
 		return psql, err
 	}
 	cluster := proxy.ClusterGroup
-	if cluster.proxysqlLoginInVault() {
-		// the login is held in Vault: a switch would write external into Vault (or leave the Vault
-		// user different from the one in use at every tick, HasProxyCredentialsRotation)
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlDbg, "ProxySQL %s refuses %s as local-only, its login is held in Vault: not switching to %s", proxy.Host, proxysqlLocalAdmin, proxysqlExternalAdmin)
-		return psql, err
-	}
 	probe := proxy.adminConnection(proxysqlExternalAdmin, pass)
 	if perr := probe.Connect(); perr != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlDbg, "ProxySQL %s refuses %s as local-only and %s did not connect either: %s", proxy.Host, proxysqlLocalAdmin, proxysqlExternalAdmin, perr)
@@ -162,12 +156,6 @@ func (proxy *ProxySQLProxy) Connect() (proxysql.ProxySQL, error) {
 		cluster.setAddedProxysqlCredential(proxysqlExternalAdmin, "")
 	}
 	return probe, nil
-}
-
-// proxysqlLoginInVault is true when Vault holds the ProxySQL login: the user at a Vault path
-// (KV v2), or the user and password pair at the password's path (the other Vault mode).
-func (cluster *Cluster) proxysqlLoginInVault() bool {
-	return cluster.Conf.IsVaultUsed() && (cluster.Conf.IsPath(cluster.Conf.ProxysqlUser) || cluster.Conf.IsPath(cluster.Conf.ProxysqlPassword))
 }
 
 func (cluster *Cluster) AddShardProxy(proxysql *ProxySQLProxy, shardproxy *MariadbShardProxy) {

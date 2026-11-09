@@ -17,9 +17,7 @@ If the probe connects, `external` becomes the login: the proxy uses it and the `
 secret is written through the credential chain (`setAddedProxysqlCredential`), so it survives a
 restart. If the probe fails, the original error is returned and nothing changes.
 
-Any other error, or any other configured user, never probes. A login held in Vault (Vault in use and
-`proxysql-user` or `proxysql-password` a Vault path) is never switched: the probe would write `external` into Vault, and
-`HasProxyCredentialsRotation` would then see a Vault user different from the one in use at every tick. A probe that does not connect is
+Any other error, or any other configured user, never probes. A probe that does not connect is
 logged at debug level with its error.
 
 `proxysql-user` is a cluster-wide setting: after the switch every ProxySQL of the cluster logs in
