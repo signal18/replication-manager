@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strings"
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/misc"
@@ -16,30 +17,40 @@ import (
 )
 
 // galeraNameWaitSeconds is how long a Galera node's start waits for its own name.
-const galeraNameWaitSeconds = 60
+const galeraNameWaitSeconds = 30
 
-// galeraNameWaitCommand is the blocking_pre_start of a Galera node's container#db: a name is
-// published asynchronously after the orchestrator gives the node its address, and a joiner that
-// starts before that gets no state transfer (the donor cannot reach it by name) and aborts. The
-// final dot asks for that exact name: without it the host's search domains can answer for a name
-// not published yet, which is how wait_dns of OpenSVC v3 ends at once. The wait ends after
-// galeraNameWaitSeconds and the start goes on: it never blocks a start. "" for an address, which
-// has no name to wait for.
-func galeraNameWaitCommand(host string) string {
+// galeraNameWaitMark identifies the command replication-manager wrote (galeraNameWaitCommand).
+const galeraNameWaitMark = "not resolvable after"
+
+// galeraNameWaitCommand is the blocking_pre_start of a Galera node's container#db: the start in two
+// steps, the network, then the database. OpenSVC v3 publishes a name only once the instance status
+// says up or warn, and during a start that status stays down until the database container runs: a
+// joiner gets no state transfer, the donor cannot reach it by name, and it aborts. So the status is
+// refreshed once the network is up (warn: it publishes the name, as wait_dns did on v2), then the
+// exact name is waited for: the final dot keeps the host's search domains out of it, which is how
+// wait_dns of OpenSVC v3 ends at once. The wait ends after galeraNameWaitSeconds and the start goes
+// on: it never blocks a start. "" for an address, which has no name to wait for.
+func galeraNameWaitCommand(host, service string) string {
 	host = misc.Unbracket(host)
 	if host == "" || net.ParseIP(host) != nil {
 		return ""
 	}
-	return fmt.Sprintf("sh -c 'i=0; while [ $i -lt %d ]; do getent hosts %s. >/dev/null && exit 0; i=$((i+1)); sleep 1; done; echo %s not resolvable after %ds, starting anyway >&2'",
-		galeraNameWaitSeconds, host, host, galeraNameWaitSeconds)
+	return fmt.Sprintf("sh -c 'timeout 20 om %s instance status -r >/dev/null 2>&1; i=0; while [ $i -lt %d ]; do getent hosts %s. >/dev/null && exit 0; i=$((i+1)); sleep 1; done; echo %s %s %ds, starting anyway >&2'",
+		service, galeraNameWaitSeconds, host, host, galeraNameWaitMark, galeraNameWaitSeconds)
 }
 
-// galeraNameWaitPatch sets the wait on a service provisioned before it existed. A
-// blocking_pre_start other than this one is the operator's and is left alone.
-func galeraNameWaitPatch(section *ini.Section, host string) (changed bool) {
-	want := galeraNameWaitCommand(host)
-	if want == "" || section.HasKey("blocking_pre_start") {
+// galeraNameWaitPatch sets the wait on a service provisioned before it existed, or with an older
+// version of it. Any other blocking_pre_start is the operator's and is left alone.
+func galeraNameWaitPatch(section *ini.Section, host, service string) (changed bool) {
+	want := galeraNameWaitCommand(host, service)
+	if want == "" {
 		return false
+	}
+	if section.HasKey("blocking_pre_start") {
+		current := section.Key("blocking_pre_start").String()
+		if current == want || !strings.Contains(current, galeraNameWaitMark) {
+			return false
+		}
 	}
 	section.Key("blocking_pre_start").SetValue(want)
 	return true

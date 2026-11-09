@@ -428,7 +428,7 @@ func (cluster *Cluster) openSVCSyncGaleraBootstrapCommandV3(svc opensvc.Collecto
 	}
 	bootstrap := cluster.isGaleraBootstrapNode(server)
 	commandChanged := galeraCommandPatch(section, bootstrap)
-	waitChanged := galeraNameWaitPatch(section, server.Host)
+	waitChanged := galeraNameWaitPatch(section, server.Host, server.ServiceName)
 	if !commandChanged && !waitChanged {
 		return nil
 	}
@@ -797,7 +797,7 @@ func (server *ServerMonitor) OpenSVCGetDBContainerSection() map[string]string {
 		}
 
 		if server.ClusterGroup.GetTopologyTarget() == config.TopoMultiMasterWsrep {
-			if wait := galeraNameWaitCommand(server.Host); wait != "" {
+			if wait := galeraNameWaitCommand(server.Host, server.ServiceName); wait != "" {
 				svccontainer["blocking_pre_start"] = wait
 			}
 		}
