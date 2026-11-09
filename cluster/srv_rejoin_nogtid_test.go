@@ -181,3 +181,34 @@ func TestAddMySQLGTIDTag(t *testing.T) {
 		}
 	}
 }
+
+// An operator rejoin of a server whose crash is still pending (auto-rejoin off: the
+// failover's crash stays in the working set) arms that crash itself. A copy appended
+// behind it was never run: the first working crash of the server, without a method, is
+// the one ProcessArmedRejoins and RejoinMaster read (#2365).
+func TestRearmRejoinArmsThePendingCrash(t *testing.T) {
+	c := &Cluster{Name: "t", Conf: &config.Config{}}
+	c.WorkingDir = t.TempDir()
+	url := "db1:3306"
+	pending := &Crash{URL: url, UnixTimestamp: 100, ElectedMasterURL: "db2:3306"}
+	c.Crashes = append(c.Crashes, pending)
+	c.FailoverHistory = append(c.FailoverHistory, &Crash{URL: url, UnixTimestamp: 100})
+	if !c.rearmRejoin(url, RejoinMethodLogicalBkp) {
+		t.Fatal("the pending crash can be armed")
+	}
+	if len(c.Crashes) != 1 {
+		t.Fatalf("one working crash per server, got %d", len(c.Crashes))
+	}
+	cr := c.getCrashFromJoiner(url)
+	if cr != pending || cr.RejoinMethod != RejoinMethodLogicalBkp || !cr.Rearmed {
+		t.Fatalf("the first working crash of %s must carry the method: %+v", url, cr)
+	}
+	// a finished crash is not re-armed in place: a new attempt comes from the history
+	pending.RejoinResult = RejoinResultFailed
+	if !c.rearmRejoin(url, RejoinMethodLogicalDump) {
+		t.Fatal("a finished crash can be re-armed from the history")
+	}
+	if len(c.Crashes) != 2 || c.Crashes[1].RejoinMethod != RejoinMethodLogicalDump || c.Crashes[1].RejoinResult != "" {
+		t.Fatalf("expected a fresh copy from the history: %+v", c.Crashes)
+	}
+}
