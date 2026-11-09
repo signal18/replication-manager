@@ -24,9 +24,17 @@ This document describes the current asynchronous flow for logical reseed jobs st
 2. **Cluster state signal** (handoff):
    - `JobReseedLogicalBackupPrepare` sets cluster state `WARN0075` with the server URL.
    - Job table polling (`JobsUpdateEntries`) also sets `WARN0075` when it sees `reseedmysqldump` or `reseedmydumper` tasks.
+     In API jobs mode the same signal comes from `jobsCheckRunningFromMemory`, which must
+     know both tasks too (`config.ConstTaskReseedDump`, `config.ConstTaskReseedMydumper`):
+     a task it ignores never opens `WARN0075` and its reseed is never launched (#2365).
 
 3. **Process phase** (asynchronous):
-   - The monitoring loop in `cluster/cluster.go` consumes `WARN0075` and calls `ProcessReseedLogical(task)` for the target server.
+   - The monitoring loop in `cluster/cluster.go` consumes `WARN0075` and calls `launchLogicalReseed`, which runs `ProcessReseedLogical(task)` for the target server.
+   - The task is the one the server was armed with (`GetReseedingState`), never derived from
+     `backup-logical-type`: a reseed may restore a backup of the other logical tool (a
+     discovered backup, a parent's), and a server that ran a reseed with the configured tool
+     keeps that finished job result. Deriving the task from the setting named the wrong one,
+     the launcher returned every tick and the server stayed reseeding forever (#2365).
    - This is the point where the actual restore work begins.
 
 ## Payload

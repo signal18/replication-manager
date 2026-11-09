@@ -1829,20 +1829,15 @@ func (cluster *Cluster) dispatchPhysicalJob(server *ServerMonitor, task string, 
 //     server, which is a correctness/data-safety issue, not just a
 //     bookkeeping one.
 func (cluster *Cluster) launchLogicalReseed(servertoreseed *ServerMonitor) {
-	task := "reseed" + cluster.Conf.BackupLogicalType
-	if servertoreseed.JobResults.Get(task) == nil {
-		servertoreseed.JobResults.Callback(func(key string, value *config.Task) bool {
-			switch key {
-			case "reseed" + config.ConstBackupLogicalTypeMysqldump, "reseed" + config.ConstBackupLogicalTypeMydumper:
-				task = key
-				return false
-			default:
-				return true
-			}
-		})
-	}
-
-	if !servertoreseed.HasReseedingState(task) {
+	// The task is the one the server was armed with at request time
+	// (TrySetInReseedBackup), never guessed from backup-logical-type: a reseed may
+	// restore a backup of the other logical tool (a discovered backup, a parent's),
+	// and a server that ran a reseed with the configured tool before keeps that job
+	// result, so a guess named the wrong task and the reseed never started (#2365).
+	_, task := servertoreseed.GetReseedingState()
+	switch config.TaskName(task) {
+	case config.ConstTaskReseedDump, config.ConstTaskReseedMydumper:
+	default:
 		return
 	}
 	if !servertoreseed.logicalReseedDispatching.CompareAndSwap(false, true) {
