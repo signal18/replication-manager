@@ -305,7 +305,20 @@ func (regtest *RegTest) TestGaleraFullRestartNotLastFirst(cl *cluster.Cluster, c
 			}
 		}
 	}
-	if !waitFor(600*time.Second, func() bool { _, err = galeraHealthy(cl, n); return err == nil }) {
+	// The node started alone aborted, and the orchestrator can take minutes to see its container
+	// gone: until then it answers "already started" and the start above does nothing. Starting
+	// what is still down, once a minute, is what an operator does.
+	lastStart := time.Now()
+	if !waitFor(600*time.Second, func() bool {
+		if _, err = galeraHealthy(cl, n); err == nil {
+			return true
+		}
+		if time.Since(lastStart) >= time.Minute {
+			lastStart = time.Now()
+			restartAll()
+		}
+		return false
+	}) {
 		logf("FAIL GaleraFullRestartNotLastFirst: the cluster did not come back whole 600s after the starts: %s", err)
 		restartAll()
 		return false
