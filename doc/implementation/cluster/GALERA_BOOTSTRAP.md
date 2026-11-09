@@ -157,6 +157,15 @@ node it routes the writes to, so moving it is a switchover, never a promotion.
   (`galeraCommandPatch`): set on the bootstrap node of a cluster entirely down
   (`isGaleraBootstrapNode`), removed from any other start. Any other command is the operator's and
   is left alone. OpenSVC v2 (the per-pod `container#20<pod>` section) is not covered yet.
+- **A node waits for its own name before its database starts.** A name is published
+  asynchronously after the orchestrator gives the node its address, and a joiner that starts before
+  that gets no state transfer: the donor reaches it by name, cannot, and the joiner aborts. OpenSVC
+  v3's `wait_dns` ends at once (it takes any answer, including the one the host's search domains
+  give for a name not published yet, and stops on "not found"; v2 waited for the peers). So
+  `container#db` carries a `blocking_pre_start` (`galeraNameWaitCommand`): `getent hosts <name>.`,
+  the final dot asking for that exact name, up to 60 s, and the start goes on after that. It is set
+  at provisioning, and before a start on a service provisioned earlier
+  (`openSVCSyncGaleraBootstrapCommandV3`). An operator's own command is left alone.
 - **A failed join does not block the next one.** A state transfer that aborts leaves
   `wsrep_sst.pid` and `sst_in_progress` in the datadir. Every later start then waits for a
   transfer that no longer exists and aborts. The OpenSVC `bootstrap` init script, which runs before

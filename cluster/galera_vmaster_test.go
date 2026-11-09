@@ -5,6 +5,10 @@
 package cluster
 
 import (
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/signal18/replication-manager/config"
@@ -152,6 +156,41 @@ func TestGaleraElectWithForgottenMaster(t *testing.T) {
 	cl.master, cl.vmaster = nil, db2
 	if got := cl.galeraElectVirtualMaster(); got != db2 || cl.master != db2 {
 		t.Fatal("an electable virtual master is kept, the writes do not move")
+	}
+}
+
+// #2350: a Galera node's database starts once its own name resolves: exactly that name (the final
+// dot keeps the host's search domains out of it), on a service provisioned before the wait too.
+func TestGaleraNameWait(t *testing.T) {
+	cmd := galeraNameWaitCommand("db3.c.svc.cloud18")
+	if !strings.Contains(cmd, "getent hosts db3.c.svc.cloud18. ") {
+		t.Fatalf("the exact name, with its final dot: %s", cmd)
+	}
+	for _, addr := range []string{"10.0.0.3", "[fd00::3]", ""} {
+		if galeraNameWaitCommand(addr) != "" {
+			t.Fatalf("%q has no name to wait for", addr)
+		}
+	}
+	// the command runs and returns as soon as the name answers
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "getent"), []byte("#!/bin/sh\nexit 0\n"), 0o755)
+	run := exec.Command("sh", "-c", strings.TrimSuffix(strings.TrimPrefix(cmd, "sh -c '"), "'"))
+	run.Env = append(os.Environ(), "PATH="+dir+":"+os.Getenv("PATH"))
+	if out, err := run.CombinedOutput(); err != nil || len(out) != 0 {
+		t.Fatalf("the name answers: %v %s", err, out)
+	}
+
+	f := ini.Empty()
+	s, _ := f.NewSection("container#db")
+	if !galeraNameWaitPatch(s, "db3.c.svc.cloud18") || s.Key("blocking_pre_start").String() != cmd {
+		t.Fatal("a service provisioned before the wait gets it")
+	}
+	if galeraNameWaitPatch(s, "db3.c.svc.cloud18") {
+		t.Fatal("already there: no write")
+	}
+	s.Key("blocking_pre_start").SetValue("/usr/local/bin/mine")
+	if galeraNameWaitPatch(s, "db3.c.svc.cloud18") || s.Key("blocking_pre_start").String() != "/usr/local/bin/mine" {
+		t.Fatal("an operator's own command is left alone")
 	}
 }
 

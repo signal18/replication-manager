@@ -6,10 +6,44 @@ package cluster
 
 import (
 	"encoding/json"
+	"fmt"
+	"net"
 	"os"
 
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/misc"
+	ini "gopkg.in/ini.v1"
 )
+
+// galeraNameWaitSeconds is how long a Galera node's start waits for its own name.
+const galeraNameWaitSeconds = 60
+
+// galeraNameWaitCommand is the blocking_pre_start of a Galera node's container#db: a name is
+// published asynchronously after the orchestrator gives the node its address, and a joiner that
+// starts before that gets no state transfer (the donor cannot reach it by name) and aborts. The
+// final dot asks for that exact name: without it the host's search domains can answer for a name
+// not published yet, which is how wait_dns of OpenSVC v3 ends at once. The wait ends after
+// galeraNameWaitSeconds and the start goes on: it never blocks a start. "" for an address, which
+// has no name to wait for.
+func galeraNameWaitCommand(host string) string {
+	host = misc.Unbracket(host)
+	if host == "" || net.ParseIP(host) != nil {
+		return ""
+	}
+	return fmt.Sprintf("sh -c 'i=0; while [ $i -lt %d ]; do getent hosts %s. >/dev/null && exit 0; i=$((i+1)); sleep 1; done; echo %s not resolvable after %ds, starting anyway >&2'",
+		galeraNameWaitSeconds, host, host, galeraNameWaitSeconds)
+}
+
+// galeraNameWaitPatch sets the wait on a service provisioned before it existed. A
+// blocking_pre_start other than this one is the operator's and is left alone.
+func galeraNameWaitPatch(section *ini.Section, host string) (changed bool) {
+	want := galeraNameWaitCommand(host)
+	if want == "" || section.HasKey("blocking_pre_start") {
+		return false
+	}
+	section.Key("blocking_pre_start").SetValue(want)
+	return true
+}
 
 // isGaleraBootstrapNode tells whether server starts the Galera cluster
 // (--wsrep_new_cluster) when the whole cluster is down:

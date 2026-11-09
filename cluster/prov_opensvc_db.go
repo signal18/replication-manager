@@ -427,7 +427,9 @@ func (cluster *Cluster) openSVCSyncGaleraBootstrapCommandV3(svc opensvc.Collecto
 		return nil // not a database container service: nothing to do
 	}
 	bootstrap := cluster.isGaleraBootstrapNode(server)
-	if !galeraCommandPatch(section, bootstrap) {
+	commandChanged := galeraCommandPatch(section, bootstrap)
+	waitChanged := galeraNameWaitPatch(section, server.Host)
+	if !commandChanged && !waitChanged {
 		return nil
 	}
 	var buf bytes.Buffer
@@ -436,6 +438,13 @@ func (cluster *Cluster) openSVCSyncGaleraBootstrapCommandV3(svc opensvc.Collecto
 	}
 	if _, err := svc.UpdateObjectV3(parts[0], parts[1], parts[2], buf.Bytes()); err != nil {
 		return err
+	}
+	if waitChanged {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
+			"Galera: %s waits for its own name before its database starts (blocking_pre_start set on its container#db)", server.URL)
+	}
+	if !commandChanged {
+		return nil
 	}
 	if bootstrap {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
@@ -787,6 +796,11 @@ func (server *ServerMonitor) OpenSVCGetDBContainerSection() map[string]string {
 			svccontainer["image_pull_policy"] = "always"
 		}
 
+		if server.ClusterGroup.GetTopologyTarget() == config.TopoMultiMasterWsrep {
+			if wait := galeraNameWaitCommand(server.Host); wait != "" {
+				svccontainer["blocking_pre_start"] = wait
+			}
+		}
 		//Proceed with galera specific: the DECLARED topology, a cluster never started has
 		// discovered nothing (master-slave by default) and no node would bootstrap
 		if server.ClusterGroup.isGaleraBootstrapNode(server) {
