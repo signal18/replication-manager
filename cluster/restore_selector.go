@@ -99,6 +99,11 @@ type ResolveContext struct {
 	HeadGtid   string // the master's current GTID head
 	MasterURL  string // resolves origin=master
 	TargetURL  string // resolves origin=mine (the node being reseeded)
+	// RejoinBoundGtid, in a rejoin of a failed primary: the position the new primary had
+	// received from it at the failover (the crash's FailoverIOGtid, MariaDB). A backup ahead
+	// of it holds transactions the new primary never received: restoring it brings back
+	// what the failover lost and the server cannot replicate (#2365). Hard gate, "" = none.
+	RejoinBoundGtid string
 }
 
 // ResolveRestore returns the best backup for the selector, or nil if nothing
@@ -135,8 +140,57 @@ func gatePass(sel RestoreSelector, e BackupCatalogEntry, ctx ResolveContext) boo
 	if len(sel.Tool) > 0 && !slices.Contains(sel.Tool, e.Tool) {
 		return false
 	}
+	// rejoin — never a backup ahead of what the new primary received at the failover
+	if ctx.RejoinBoundGtid != "" && !gtidNotAheadOf(e.Gtid, ctx.RejoinBoundGtid) {
+		return false
+	}
 	// time — replayability window vs the master's binlog range
 	return timeGatePass(sel, e, ctx)
+}
+
+// gtidNotAheadOf reports whether the MariaDB GTID position backup is at or before bound in
+// every replication domain: each domain of backup is in bound with a sequence not greater.
+// A position that cannot be compared (empty, not domain-server-seq, a domain bound does not
+// have) counts as ahead: the rejoin gate never restores a backup it cannot place.
+func gtidNotAheadOf(backup, bound string) bool {
+	b, okB := mariadbDomainSeqs(backup)
+	m, okM := mariadbDomainSeqs(bound)
+	if !okB || !okM || len(b) == 0 {
+		return false
+	}
+	for domain, seq := range b {
+		max, ok := m[domain]
+		if !ok || seq > max {
+			return false
+		}
+	}
+	return true
+}
+
+// mariadbDomainSeqs parses a MariaDB GTID list ("0-1-10,1-2-30") into its highest sequence
+// per domain; false when any element is not domain-server-seq.
+func mariadbDomainSeqs(list string) (map[uint64]uint64, bool) {
+	seqs := map[uint64]uint64{}
+	for _, part := range strings.Split(list, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		f := strings.Split(part, "-")
+		if len(f) != 3 {
+			return nil, false
+		}
+		domain, err1 := strconv.ParseUint(f[0], 10, 32)
+		_, err2 := strconv.ParseUint(f[1], 10, 32)
+		seq, err3 := strconv.ParseUint(f[2], 10, 64)
+		if err1 != nil || err2 != nil || err3 != nil {
+			return nil, false
+		}
+		if seq > seqs[domain] {
+			seqs[domain] = seq
+		}
+	}
+	return seqs, true
 }
 
 // entryHasType reports whether the entry satisfies one `type` value — either its

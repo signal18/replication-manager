@@ -3250,8 +3250,25 @@ func (server *ServerMonitor) JobFlashbackLogicalBackup() error {
 		// is, an archive-only one fetched back first.
 		sel := cluster.getAutorejoinBackupSelector("logical")
 		sel.Tool = []string{backtype} // restore dispatch is backtype-based → force the tool for consistency
-		pick := ResolveRestore(cluster.buildBackupCatalog(), sel,
-			ResolveContext{MasterURL: master.URL, TargetURL: server.URL})
+		catalog := cluster.buildBackupCatalog()
+		rctx := ResolveContext{MasterURL: master.URL, TargetURL: server.URL, RejoinBoundGtid: server.rejoinBackupBoundGtid()}
+		pick := ResolveRestore(catalog, sel, rctx)
+		// a rejoin restores no backup ahead of what the new primary received at the failover,
+		// and never falls back to the on-disk lookup below, which would take any file (#2365)
+		if rctx.RejoinBoundGtid != "" {
+			for _, e := range catalog {
+				if e.Kind == "logical" && e.Tool == backtype && !gtidNotAheadOf(e.Gtid, rctx.RejoinBoundGtid) {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "flashback %s on %s: backup %s of %s at GTID %q not restored, ahead of the failover position %s (it may hold transactions the new primary never received)", backtype, server.URL, e.Path, e.Server, e.Gtid, rctx.RejoinBoundGtid)
+				}
+			}
+			if pick == nil {
+				err = fmt.Errorf("no logical %s backup at or before the failover position %s: a backup ahead of it would bring back transactions the new primary never received", backtype, rctx.RejoinBoundGtid)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "flashback %s on %s refused: %s", backtype, server.URL, err)
+				server.JobsUpdateStateRuntimeOnly(task, err.Error(), 5, 1)
+				server.SetInReseedBackup("")
+				return err
+			}
+		}
 		// a backup picked for being proven is checked again now: the proof refresh runs
 		// every 30 heartbeats, its file may have changed since (#2023)
 		if sel.Proven && pick != nil && !cluster.provenStillUnchanged(pick) {

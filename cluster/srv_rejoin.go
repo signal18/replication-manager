@@ -1008,6 +1008,22 @@ func (server *ServerMonitor) rejoinSlave(ss dbhelper.SlaveStatus) error {
 	return nil
 }
 
+// rejoinBackupBoundGtid is the position a backup restored in the rejoin of server must not
+// pass: what the new primary had received from it at the failover (its pending crash's
+// FailoverIOGtid). MariaDB only, where both positions are domain-server-seq lists; "" when
+// server has no pending crash (not a rejoin) or is not MariaDB: no gate (#2365).
+func (server *ServerMonitor) rejoinBackupBoundGtid() string {
+	cluster := server.ClusterGroup
+	if !server.IsMariaDB() {
+		return ""
+	}
+	crash := cluster.getCrashFromJoiner(server.URL)
+	if crash == nil || crash.FailoverIOGtid == nil || len(*crash.FailoverIOGtid) == 0 {
+		return ""
+	}
+	return crash.FailoverIOGtid.Sprint()
+}
+
 func (server *ServerMonitor) isReplicationAheadOfMasterElection(crash *Crash) bool {
 	cluster := server.ClusterGroup
 	if server.UsedGtidAtElection(crash) {

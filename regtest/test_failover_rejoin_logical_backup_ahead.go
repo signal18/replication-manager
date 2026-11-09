@@ -21,6 +21,7 @@ const aheadSchema = "rejoin_ahead"
 // received (#2365). The replicas stop receiving (STOP SLAVE IO_THREAD), 100 rows are written
 // on the primary, the primary is backed up with mydumper (the backup holds the 100 rows), the
 // primary fails over (the new primary has none of them), then is rejoined by "logical-backup".
+// A replica's mydumper backup, taken before the 100 rows, is the one the rejoin may restore.
 // PASS only when the old primary ends without the 100 rows and replicating; every observed
 // fact is logged either way: the backup picked, the rows on each side, the replication state.
 func (regtest *RegTest) TestFailoverRejoinLogicalBackupAheadOfFailover(cl *cluster.Cluster, conf string, test *cluster.Test) bool {
@@ -68,6 +69,14 @@ func (regtest *RegTest) TestFailoverRejoinLogicalBackupAheadOfFailover(cl *clust
 	}
 	time.Sleep(5 * time.Second) // the table reaches the replicas
 	replicas := cl.GetSlaves()
+	if len(replicas) == 0 {
+		return fail("no replica")
+	}
+	// the safe backup: a replica's, before the rows the new primary will never receive
+	if err := replicas[0].JobBackupLogical(context.Background()); err != nil {
+		return fail("mydumper backup of %s: %s", replicas[0].URL, err)
+	}
+	logf("mydumper backup of %s taken before the 100 rows: the one a rejoin may restore", replicas[0].URL)
 	for _, sl := range replicas {
 		logs, err := sl.StopSlaveIOThread()
 		cl.LogSQL(logs, err, sl.URL, "Rejoin", config.LvlErr, "STOP SLAVE IO_THREAD on %s: %s", sl.URL, err)
