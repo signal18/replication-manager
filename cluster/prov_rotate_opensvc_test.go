@@ -257,3 +257,18 @@ func TestOpenSVCSecretCheckedAfterStart(t *testing.T) {
 		t.Fatal("WARN0275 still raised once the secret is written")
 	}
 }
+
+// #2357 review point 7: a v2 agent has no read of a key, so no _OLD by design: two rotations
+// write the key twice and nothing else.
+func TestOpenSVCRotationV2WritesNoOld(t *testing.T) {
+	agent := &fakeOpenSVCKeyAgent{}
+	cl := rotateOpenSVCTestCluster(t, agent)
+	for _, pw := range []string{"first", "second"} {
+		if err := cl.ProvisionRotatePasswords(pw); err != nil {
+			t.Fatalf("rotation %s: %v", pw, err)
+		}
+	}
+	if _, key, data, n := agent.last(); n != 2 || key != "MYSQL_ROOT_PASSWORD" || data != "second" {
+		t.Fatalf("v2 writes: last key %q, %d write(s); want MYSQL_ROOT_PASSWORD twice, no _OLD", key, n)
+	}
+}

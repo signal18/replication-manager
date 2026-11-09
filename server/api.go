@@ -1444,7 +1444,7 @@ func (repman *ReplicationManager) handlerMuxAddClusterUser(w http.ResponseWriter
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, delegator := repman.IsValidClusterACL(r, mycluster); valid {
-			err := mycluster.AddUser(userform, delegator, true)
+			err := mycluster.AddAPIUser(userform, delegator, true)
 			if err != nil {
 				http.Error(w, "Error adding new user: "+err.Error(), http.StatusInternalServerError)
 				return

@@ -321,6 +321,53 @@ test counts from what the file holds when it starts.
   keeps an old `MYSQL_ROOT_PASSWORD`, rule 7).
 - **Writers to wire later** call `Cluster.CopySecret(kind, object, key, value)`.
 
+### Orchestrator copy through the StoreWriter queue (#2356, follow-up)
+
+Rule 7 keeps: the orchestrator is a **consumer, not a store**, nothing is read back as a Chain
+source. What changes is the *write side*. Before #2356 the OpenSVC `sec` object and the
+Kubernetes `Secret` were written by bespoke provisioning code with their own WARN0275 retry,
+outside the queue that drives the Vault entries. #2356 makes them `credstore.StoreWriter`s:
+
+- `openSVCStore` / `k8sStore` (`cluster/store_orchestrator*.go`) implement `WriteAll` and a
+  `ReadCurrent` used only by the WARN0275 drift reconciliation (F5: the drift is observed,
+  never trusted as a source).
+- The worker (`secretWritePass`) dispatches a reserved, always-on queue entry `orchestrator`
+  (not a user Vault entry; the sponsor cannot turn it off) to the sink chosen by
+  `prov-orchestrator`. The orchestrator copy gets the same bounded/timeout/requeue/behind
+  machinery (T18, WARN0271/0272) as the Vault entries.
+- A rotation keeps a **one-deep `<KEY>_OLD` history** in the flat orchestrator secret (bounded,
+  F4/T18): the superseded value, for the rotation transition window and a cheap rollback,
+  mirroring how the config versions its starting value.
+- The copied key set gains the **admin API password** (`REPLICATION_MANAGER_PASSWORD`), queued
+  to the orchestrator sink only — never the Chain/Vault (rule 6). It is queued at
+  **provisioning/restart** (`openSVCCreateMaps*`); the admin credential is config-driven with no
+  runtime change site, so that is its currency — not a runtime re-queue.
+
+**Timeouts: one budget per `WriteAll`, carried by our context down to the HTTP request.** Each
+sink derives one context from the pass with the store timeout (`secret-kv-write-timeout`,
+`orchestratorCallContext`) and hands it to every call: on OpenSVC the `...Ctx` collector calls
+(`GetSecretKeyValueV3Ctx`, `CreateSecretKeyValueCtx`), on Kubernetes the `Get` and the `Patch`.
+The read, the `<KEY>_OLD` write and the write of a key share that budget; once it is spent the
+remaining items are requeued without calling the agent, so N items against a dead agent end in
+about one timeout, not 3·N. Each request also keeps the collector's own cap
+(`ContextTimeoutSecond`, 10 s; an unset value falls back to 10 s, never "expired at once").
+Nothing is abandoned in a goroutine: an earlier version wrapped each call in one
+(`withinTimeout`), which left the request running after the timeout, so a stale write could land
+after a newer one. **Residual window:** cancelling the request closes it on our side, but an
+agent that already received the whole body may still apply it. The item is requeued and the
+next pass writes the newest value; the queue keeps the newer of a requeued and a pushed version
+(`Requeue` keepNewer), so the store converges.
+
+**No certificate, no call.** When the cluster's OpenSVC p12 cannot be loaded (WARN0099),
+`openSVCStore.WriteAll` and `ReadCurrent` return `errOpenSVCCertNotLoaded` at once, requeuing
+everything: the store-behind state names that cause instead of a TLS error after a timeout. The
+certificate state itself is described in `doc/implementation/opensvc/CLIENT_REUSE.md`.
+
+Staged (F8): the bespoke direct writes stay as the provisioning seed; removing them and folding
+WARN0275 onto `ReadCurrent` land once the T13 regtest proves the queue path. K8s uses its auth
+header (`REPMAN_AUTH_HEADER`), not `REPLICATION_MANAGER_PASSWORD`, so the admin copy is
+OpenSVC-only.
+
 ### The Cloud18 vault entry
 
 On a Cloud18-registered instance the marketplace catalogue offers a `secret_kv-vault` entry
@@ -514,3 +561,18 @@ One epic issue for the interface, with these steps:
   using it without a license loses it at the upgrade: keep Vault *reads* in the free tier
   (only change and rotation enterprise), a grace period, or enterprise from a given
   release?
+
+## Cluster accounts and the version store (#2358, #2359)
+
+- **An added or removed account is recorded.** `addUser` and `DropUser` write `api-credentials-external`
+  through the chain, then mark the version store dirty (`MarkSecretVersionStoreDirty`), as
+  `setAddedProxysqlCredential` does. Before, an account added after the last start lived in memory only:
+  the next start read the store's older version first (#2227 rule 1) and the account was gone, and a
+  removed account came back. Known limit: removing the **last** external account leaves an empty value,
+  which the store does not record (it keeps encrypted values only), so that account comes back at the
+  next start; a cluster always keeps `system` there in practice.
+- **users/add creates an SSO-only account for a Cloud18 identity** (`AddAPIUser`): on a Cloud18 instance,
+  an email added without a password goes to `AddSSOOnlyUser`. With `AddUser`'s random password it was
+  local-only (`IsLocalOnlyAccount`), so every SSO session of it (a Cloud18 login, another instance's realm
+  token) was refused on each cluster ("No valid ACL", an empty `/api/clusters`). A non-email user, or an
+  instance that is not Cloud18, keeps the random password `users/send-credentials` sends.

@@ -85,6 +85,9 @@ func (cluster *Cluster) Bootstrap() error {
 	// is the master) answered "already has an existing master/slave setup" and the
 	// provision failed after the service was up (#2004)
 	if !cluster.HasConfigTopoActivePassive() {
+		// the containers only get the root password: a separate replication user must exist on
+		// every server before the replicas connect (#2360)
+		cluster.createReplicationUser()
 		err = cluster.BootstrapReplication(true, false)
 		if err != nil {
 			return err
@@ -133,6 +136,11 @@ func (cluster *Cluster) ProvisionServices() error {
 	// (volume creation, etc.) keeps its concurrency.
 	cluster.provisioningMutex.Lock()
 	defer cluster.provisioningMutex.Unlock()
+	// the configurator copies the generated TLS set to every database and proxy: it must be
+	// whole first, or ProxySQL 2+ refuses to start on a partial set (#2360)
+	if err := cluster.completeCertificates(); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Provisioning with an incomplete TLS set (WARN0318): %s", err)
+	}
 	hasConfigPath := make(map[string]bool)
 	cluster.StateMachine.SetFailoverState()
 	// delete the cluster state here

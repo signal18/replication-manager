@@ -1,39 +1,18 @@
 package opensvc
 
 import (
-	"crypto/ecdsa"
-	"crypto/elliptic"
-	"crypto/rand"
 	"crypto/tls"
-	"crypto/x509"
-	"crypto/x509/pkix"
-	"math/big"
 	"os"
 	"path/filepath"
 	"sync"
 	"testing"
 	"time"
 
-	pkcs12 "software.sslmate.com/src/go-pkcs12"
+	"github.com/signal18/replication-manager/opensvc/opensvctest"
 )
 
 func testP12(t *testing.T, cn string) []byte {
-	t.Helper()
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
-	tpl := &x509.Certificate{SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: cn}, NotBefore: time.Now(), NotAfter: time.Now().Add(time.Hour)}
-	der, err := x509.CreateCertificate(rand.Reader, tpl, tpl, &key.PublicKey, key)
-	if err != nil {
-		t.Fatal(err)
-	}
-	cert, _ := x509.ParseCertificate(der)
-	p12, err := pkcs12.Modern.Encode(key, cert, nil, "secret")
-	if err != nil {
-		t.Fatal(err)
-	}
-	return p12
+	return opensvctest.P12(t, cn, "secret")
 }
 
 // The om3 client's files are written once, outside the cluster's directory, and a new

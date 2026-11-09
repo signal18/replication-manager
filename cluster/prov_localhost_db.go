@@ -8,6 +8,7 @@ package cluster
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -18,6 +19,7 @@ import (
 
 	"github.com/jmoiron/sqlx"
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/dbhelper"
 )
 
 func (cluster *Cluster) LocalhostUnprovisionDatabaseService(server *ServerMonitor) error {
@@ -205,6 +207,10 @@ func (cluster *Cluster) LocalhostStartDatabaseServiceFistTime(server *ServerMoni
 		}
 		dsn := user + ":@unix(" + server.GetDatabaseSocket() + ")/?timeout=15s"
 		conn, err2 := sqlx.Open("mysql", dsn)
+		if err2 == nil {
+			// one connection: the session settings below (sql_log_bin=0) apply to every statement
+			conn.SetMaxOpenConns(1)
+		}
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlDbg, "DNS start prov localhost first time : %s\n", dsn)
 		if err2 == nil {
 			defer conn.Close()
@@ -240,24 +246,24 @@ func (cluster *Cluster) LocalhostStartDatabaseServiceFistTime(server *ServerMoni
 				haveerror = true
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, " %s %s ", grants, err)
 			}
-			grants = "grant all on *.* to '" + server.ClusterGroup.GetRplUser() + "'@'localhost' identified by '" + server.ClusterGroup.GetRplPass() + "'"
-			_, err = conn.Exec(grants)
-			if err != nil {
-				haveerror = true
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, " %s %s ", grants, err)
-			}
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "%s", grants)
-			grants = "grant all on *.* to '" + server.ClusterGroup.GetRplUser() + "'@'%' identified by '" + server.ClusterGroup.GetRplPass() + "'"
-			_, err = conn.Exec(grants)
-			if err != nil {
-				haveerror = true
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, " %s %s ", grants, err)
-			}
-			grants = "grant all on *.* to '" + server.ClusterGroup.GetRplUser() + "'@'127.0.0.1' identified by '" + server.ClusterGroup.GetRplPass() + "'"
-			_, err = conn.Exec(grants)
-			if err != nil {
-				haveerror = true
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, " %s %s ", grants, err)
+			// the replication user: the same creation as the orchestrated provisioning (#2360),
+			// the replication grant only, on a connection of its own
+			if rpl := cluster.GetRplUser(); rpl != "" && rpl != server.User {
+				ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+				if rconn, rerr := conn.Connx(ctx); rerr == nil {
+					logs, rerr := dbhelper.CreateReplicationUser(ctx, rconn, server.DBVersion, replicationUserHost, rpl, cluster.GetRplPass())
+					rconn.Close()
+					if rerr != nil {
+						haveerror = true
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "%s %s", logs, rerr)
+					} else {
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "%s", logs)
+					}
+				} else {
+					haveerror = true
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot create the replication user: %s", rerr)
+				}
+				cancel()
 			}
 			_, err = conn.Exec("flush privileges")
 			if err != nil {

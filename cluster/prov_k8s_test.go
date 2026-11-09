@@ -5098,3 +5098,26 @@ func TestK8SProxyPortSpecs_RegistryPortNotMistakenForImageTag(t *testing.T) {
 		t.Fatalf("expected the registry port not to be mistaken for a pinloki image tag, got error: %s", err)
 	}
 }
+
+// The rotation keeps the superseded password in MYSQL_ROOT_PASSWORD_OLD (#2356): it writes through
+// the store writer, which reads the Secret's Data before it patches.
+func TestK8SRotatePasswordsWithClient_KeepsOldPassword(t *testing.T) {
+	client := fake.NewSimpleClientset(&apiv1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: k8sClusterSecretName("k8stest"), Namespace: "k8stest"},
+		Data:       map[string][]byte{k8sSecretKeyRootPassword: []byte("old-pass")},
+	})
+	cluster := newTestCluster("k8stest")
+	if err := cluster.k8sRotatePasswordsWithClient(client, "new-pass"); err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	secret, err := client.CoreV1().Secrets("k8stest").Get(context.TODO(), k8sClusterSecretName("k8stest"), metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	if secret.StringData[k8sSecretKeyRootPassword] != "new-pass" {
+		t.Fatalf("MYSQL_ROOT_PASSWORD not the rotated password")
+	}
+	if secret.StringData[k8sSecretKeyRootPassword+oldKeySuffix] != "old-pass" {
+		t.Fatalf("MYSQL_ROOT_PASSWORD_OLD does not hold the superseded password")
+	}
+}

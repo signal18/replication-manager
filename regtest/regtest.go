@@ -172,6 +172,7 @@ var tests = []string{
 	"testCreateStagingSplitdump",
 	"testCreateChildSplitdump",
 	"testAlterEngine",
+	"testProvisionReplicationUser",
 }
 
 // TestTarget is the setup a test applies to. An empty target means any: a test without
@@ -294,6 +295,7 @@ var testTargets = map[string][]TestTarget{
 	"testRollingRestart":                                           anyCluster,
 	"testRollingUpgrade":                                           anyCluster,
 	"testRollingReprovReseed":                                      anyCluster,
+	"testProvisionReplicationUser":                                 {{TopologyTarget: []string{config.TopoMasterSlave}, NumberNodesTarget: 2, ConfigVariableMustSet: map[string]string{"prov-db-create-replication-user": "true"}}},
 	"testGaleraBootstrap":                                          {{TopologyTarget: []string{config.TopoMultiMasterWsrep}, NumberNodesTarget: 2, FlavorTarget: []string{"mariadb"}}},
 	"testGaleraSwitchover":                                         {{TopologyTarget: []string{config.TopoMultiMasterWsrep}, NumberNodesTarget: 2, FlavorTarget: []string{"mariadb"}}},
 	// the Primary component keeps a majority after losing the write node only from 3 nodes
