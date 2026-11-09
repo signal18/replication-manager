@@ -18,6 +18,9 @@ import (
 // certificateCompletion is the state of the background completion: the last attempt, why the set
 // is not whole yet, and whether one is running.
 type certificateCompletion struct {
+	// gen serialises the completions: the start's and a tick's ran together on a dev instance,
+	// and two runs each generating a key could sign a certificate for the other's key
+	gen     sync.Mutex
 	mu      sync.Mutex
 	tried   time.Time
 	why     string
@@ -65,6 +68,8 @@ func (cluster *Cluster) CheckCertificates() {
 // remediation of WARN0318, automatic or asked (FixSecState).
 func (cluster *Cluster) completeCertificates() error {
 	c := &cluster.certificates
+	c.gen.Lock()
+	defer c.gen.Unlock()
 	before := cluster.missingCertificateFiles()
 	err := cluster.createKeys()
 	c.mu.Lock()

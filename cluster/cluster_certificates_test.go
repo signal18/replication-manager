@@ -161,3 +161,20 @@ func TestCheckCertificatesState(t *testing.T) {
 		t.Fatal("WARN0318 open on a whole set")
 	}
 }
+
+// Concurrent completions (the start's and a tick's, seen on a dev instance) give one consistent
+// set: each certificate verifies against the CA and is for its key.
+func TestCompleteCertificatesConcurrent(t *testing.T) {
+	cl := certTestCluster(t, "db1")
+	done := make(chan error, 8)
+	for i := 0; i < 8; i++ {
+		go func() { done <- cl.completeCertificates() }()
+	}
+	for i := 0; i < 8; i++ {
+		if err := <-done; err != nil {
+			t.Fatal(err)
+		}
+	}
+	verifyLeaf(t, cl.certificateDir(), "server", x509.ExtKeyUsageServerAuth)
+	verifyLeaf(t, cl.certificateDir(), "client", x509.ExtKeyUsageClientAuth)
+}
