@@ -640,6 +640,8 @@ func (server *ServerMonitor) checkRegisteredBackups(budget *int) {
 		}
 		return true
 	})
+	// one listing of each backups folder on the bucket for the run, not two per backup (#2362)
+	snap := newBucketETagSnapshot()
 	for _, meta := range metas {
 		if cluster.isDuplicateScheduledBackup(meta) {
 			server.removeScheduledBackupRecord(meta)
@@ -670,7 +672,7 @@ func (server *ServerMonitor) checkRegisteredBackups(budget *int) {
 			}
 			continue
 		}
-		if artifactUnchangedBounded(meta.Dest, rec, backupProofWalkMax) {
+		if artifactUnchangedIn(snap, meta.Dest, rec, backupProofWalkMax) {
 			cluster.backupChanges.Delete(meta.Id)
 			continue
 		}

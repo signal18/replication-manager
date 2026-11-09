@@ -161,6 +161,27 @@ CompareAndSwap), each server under its guard (skipped while a discovery or a
 registration holds it). It runs whatever `backup-discovery`: the refusals depend
 on it.
 
+**On the backups folder mount (#2362).** A bucket fingerprint reads the S3 ETags
+of the backup's files (`s3fuse.ETags`: a 1-key listing of the backup, then a
+listing of its folder), two bucket requests per backup and run, so N backups cost
+2N requests a minute, each one also a line in the gateway's access log (seen on a
+dev instance: about 17 backups, 67 requests a minute). The check now takes a
+`bucketETagSnapshot` per server and run
+(`cluster/backup_artifact_bucket_snapshot.go`): the first backup of a folder lists
+that folder once (`s3fuse.ETags` on the folder, paginated), and every backup in it
+is fingerprinted from that listing with the same walk and digest
+(`artifactFingerprint`). `artifactUnchangedIn` accepts a match from the snapshot;
+a backup that does not match is checked again the exact way
+(`artifactUnchangedBounded`: its upload synced, its own listing) before it is
+recorded as changed, so a file still uploading when the folder was listed never
+raises WARN0249. A failed folder listing leaves its backups to the per-backup path.
+Only this periodic check uses the snapshot; discovery, registration and the checks
+before a restore keep the per-backup listing (one-off). `bucketServes` and
+`bucketETags` hold the mount's functions so the tests can stand a fake bucket in.
+Tests: `cluster/backup_artifact_bucket_snapshot_test.go` (same digests as the
+per-backup path with one listing for six backups, a changed backup reported, a
+stale snapshot checked again, a path off the mount not covered).
+
 For each discovered backup of the server:
 
 - kept only in its archive: no change (nothing on disk to compare);
