@@ -1227,10 +1227,10 @@ func TestOwnBackupLockedUntilRegistered(t *testing.T) {
 		t.Fatalf("an unchanged backup is locked: %v", err)
 	}
 
-	// replaced by hand under the same name, later: within a few milliseconds Linux gives the file
-	// the same times, and the same size and inode make it the same file for the fingerprint
+	// replaced by hand under the same name, with its own time: within a few milliseconds Linux gives
+	// the file the same times, and the same size and inode make it the same file for the fingerprint
 	writeDiscoveryGzip(t, path, strings.Replace(discoveryDump, "4521", "7777", 1)+discoveryDumpFooter)
-	replacedAt := time.Now().Add(time.Minute)
+	replacedAt := time.Now().Add(-time.Hour) // not in the future: registering refuses a file still changing
 	if err := os.Chtimes(path, replacedAt, replacedAt); err != nil {
 		t.Fatal(err)
 	}
