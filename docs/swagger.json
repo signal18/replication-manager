@@ -29006,6 +29006,10 @@
                     "description": "AppMonitorExpectStatus: the accepted status codes of the http/https check (default\n\"200\"), same syntax as a route's monitor expect-status.",
                     "type": "string"
                 },
+                "appMonitorInterval": {
+                    "description": "AppMonitorInterval: seconds between two runs of the app's check while it passes (#2362):\nthe app-monitor-mode probe of an app without a route, and the default of its routes'\nmonitor interval (0: 60). A failing check runs at every monitoring tick until it passes.",
+                    "type": "integer"
+                },
                 "appMonitorMode": {
                     "description": "AppMonitorMode: how an app without a route is probed. \"port\" (default) connects to\napp-port over TCP; \"ping\" sends an ICMP echo to the app host, for a process that\nlistens on nothing (ERPNext worker and scheduler, #1919). The port stays the identity.\n\"http\" and \"https\" send a GET to \u003cmode\u003e://\u003capp-host\u003e:\u003capp-port\u003e\u003capp-monitor-path\u003e and\nexpect app-monitor-expect-status, for a web service that accepts connections and may\nnever answer (#2209); a full app-host name (with a dot) is called as is. \"https-cert\"\nis https that also verifies the certificate and its expiry (app-monitor-cert-expire-days).",
                     "type": "string"
@@ -29447,6 +29451,10 @@
                 },
                 "expectStatus": {
                     "type": "string"
+                },
+                "interval": {
+                    "description": "Interval: seconds between two runs of this route's check (local and external) while it\npasses (#2362); 0 = the app's app-monitor-interval. A failing check runs at every\nmonitoring tick until it passes again, so a failure is confirmed in seconds.",
+                    "type": "integer"
                 },
                 "path": {
                     "type": "string"

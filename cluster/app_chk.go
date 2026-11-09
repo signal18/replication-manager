@@ -132,8 +132,13 @@ func (app *App) GetMonitoringStatus() string {
 		// answers the expected status in time, https-cert also when its certificate is
 		// valid and not about to expire (else AppWarning).
 		app.ResetAppErrConsecutiveCntExcept("app-port") // routes gone: their debounce counters go with them
-		if errKey, err := app.probeNoRoute(time.Duration(cluster.Conf.Timeout) * time.Second); err != nil {
-			debouncedRecordAppErr("app-port", []state.State{{ErrType: "WARN", ErrKey: errKey, ErrDesc: app.noRouteProbeErrDesc(errKey, err), ServerUrl: app.Host}}, err)
+		res := app.runCheck("app-port", appCheckInterval(app.AppConfig), time.Now(), func() appCheckResult {
+			errKey, err := app.probeNoRoute(time.Duration(cluster.Conf.Timeout) * time.Second)
+			return appCheckResult{err: err, errKey: errKey}
+		})
+		app.keepCheckResults(map[string]bool{"app-port": true})
+		if res.err != nil {
+			debouncedRecordAppErr("app-port", []state.State{{ErrType: "WARN", ErrKey: res.errKey, ErrDesc: app.noRouteProbeErrDesc(res.errKey, res.err), ServerUrl: app.Host}}, res.err)
 		} else {
 			app.ResetAppErrConsecutiveCnt("app-port")
 		}
@@ -163,22 +168,42 @@ func (app *App) GetMonitoringStatus() string {
 	}
 	appHost := app.GetHost()
 	localCache := make(map[string]*localResult)
+	// Each check runs on its interval (#2362): a local endpoint shared by several routes
+	// on the shortest of theirs.
+	now := time.Now()
+	checkKeys := make(map[string]bool)
+	localInterval := make(map[string]time.Duration)
+	for _, route := range routes {
+		lKey := buildLocalCheckKey(appHost, route)
+		iv := routeCheckInterval(app.AppConfig, route)
+		if cur, seen := localInterval[lKey]; !seen || iv < cur {
+			localInterval[lKey] = iv
+		}
+	}
 	for _, route := range routes {
 		lKey := buildLocalCheckKey(appHost, route)
 		if _, seen := localCache[lKey]; seen {
 			continue
 		}
+		checkKey := "local " + lKey
 		switch route.Protocol {
 		case "https", "http":
-			status, _, err := app.GetAppLocalHTTPStatus(route, false)
-			res := &localResult{err: err, status: status, errKey: ErrAppConnectFailed}
-			if isAppUnexpectedStatus(err) {
-				res.errKey = ErrAppUnexpectedStatus
-			}
-			localCache[lKey] = res
+			checkKeys[checkKey] = true
+			r := app.runCheck(checkKey, localInterval[lKey], now, func() appCheckResult {
+				status, _, err := app.GetAppLocalHTTPStatus(route, false)
+				res := appCheckResult{err: err, status: status, errKey: ErrAppConnectFailed}
+				if isAppUnexpectedStatus(err) {
+					res.errKey = ErrAppUnexpectedStatus
+				}
+				return res
+			})
+			localCache[lKey] = &localResult{err: r.err, status: r.status, errKey: r.errKey}
 		case "tcp":
-			err := app.GetAppLocalTCPStatus(route)
-			localCache[lKey] = &localResult{err: err, errKey: ErrAppTCPConnectFailed}
+			checkKeys[checkKey] = true
+			r := app.runCheck(checkKey, localInterval[lKey], now, func() appCheckResult {
+				return appCheckResult{err: app.GetAppLocalTCPStatus(route), errKey: ErrAppTCPConnectFailed}
+			})
+			localCache[lKey] = &localResult{err: r.err, errKey: r.errKey}
 		default:
 			localCache[lKey] = &localResult{err: fmt.Errorf("unsupported protocol: %s", route.Protocol)}
 		}
@@ -205,7 +230,13 @@ func (app *App) GetMonitoringStatus() string {
 				debouncedRecordAppErr(routeKey, []state.State{{ErrType: "WARN", ErrKey: localRes.errKey, ErrDesc: errDesc + routeLabel, ServerUrl: app.Host}}, localRes.err)
 				routeStatus.Status = stateFailed
 			} else {
-				extStatus, _, extErr := app.GetAppHTTPStatus(route, false)
+				checkKey := "external " + routeKey
+				checkKeys[checkKey] = true
+				ext := app.runCheck(checkKey, routeCheckInterval(app.AppConfig, route), now, func() appCheckResult {
+					status, _, err := app.GetAppHTTPStatus(route, false)
+					return appCheckResult{err: err, status: status}
+				})
+				extStatus, extErr := ext.status, ext.err
 				if extErr == nil {
 					markSuccessfulRouteCheck(routeKey)
 				} else {
@@ -228,10 +259,17 @@ func (app *App) GetMonitoringStatus() string {
 					{ErrType: "WARN", ErrKey: ErrAppConnectFailed, ErrDesc: fmt.Sprintf(config.ClusterError[ErrAppConnectFailed], app.GetId(), localRes.err) + routeLabel, ServerUrl: app.Host},
 				}, localRes.err)
 				routeStatus.Status = stateFailed
-			} else if extErr := app.GetAppTCPStatus(route); extErr != nil {
-				routeStatus.Status = stateAppWarning
 			} else {
-				markSuccessfulRouteCheck(routeKey)
+				checkKey := "external " + routeKey
+				checkKeys[checkKey] = true
+				ext := app.runCheck(checkKey, routeCheckInterval(app.AppConfig, route), now, func() appCheckResult {
+					return appCheckResult{err: app.GetAppTCPStatus(route)}
+				})
+				if ext.err != nil {
+					routeStatus.Status = stateAppWarning
+				} else {
+					markSuccessfulRouteCheck(routeKey)
+				}
 			}
 		default:
 			// Keep APPERR004 argument order aligned with config.ClusterError format string.
@@ -285,6 +323,7 @@ func (app *App) GetMonitoringStatus() string {
 		}
 	}
 	app.SetRouteStatuses(routeStatuses)
+	app.keepCheckResults(checkKeys)
 
 	return primaryStatus
 }

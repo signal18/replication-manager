@@ -105,6 +105,44 @@ monitor-only, so its plan units and service actions are unchanged.
   published on the cluster's gateway and checked on the cluster address (found on preprod).
   Adding a route by hand would publish that route like any app's.
 
+## Check interval (#2362)
+
+The apps are refreshed at every monitoring tick (`maybeRefreshAppsAsync`, one goroutine
+per app); before #2362 every check ran at every tick, so an HTTP route cost a local GET and
+an external GET through the public gateway every 2 s. Seen on a managed instance: about 8
+requests/s through the gateway, 29% of the central log volume.
+
+Each check now has its own interval (`cluster/app_chk_interval.go`):
+
+- **Settings.** `monitor.interval` on a route (`config.RouteMonitor.Interval`, seconds,
+  API key `monitor.interval`, GUI Routes editor, any protocol); `app-monitor-interval` on
+  the app (`config.AppConfig.AppMonitorInterval`, app setting, GUI General section): the
+  no-route probe and the default of the routes. `0` = 60 s (`appMonitorDefaultInterval`).
+  Resolution: `routeCheckInterval` (route, else app) and `appCheckInterval` (app, else 60 s).
+- **Checks.** Three kinds, each named in `App.CheckResults`: `app-port` (no-route probe),
+  `local <lKey>` (a local endpoint, shared by the routes with the same `buildLocalCheckKey`,
+  on the shortest of their intervals), `external <routeKey>` (a route's external check).
+- **Due rule** (`runCheck`): run when never run, when its last result failed, when any
+  check of the app is still debouncing (`AppErrConsecutiveMap` not empty), or when its
+  interval has elapsed. Otherwise the last result is returned. So a failure is confirmed
+  at the debounce threshold in ticks, not in intervals, and a recovery is seen at the
+  next tick; a passing check costs one run per interval.
+- **No flapping.** Reused results feed the same debounce and state code as fresh ones,
+  and `EmitAppErrors` re-emits the last published batch at every tick, so the states stay
+  identical between runs.
+- **Bounded (T18).** `keepCheckResults` drops the entries of checks that no longer exist
+  (route removed or changed) at the end of each pass: one entry per current check.
+- **Off-switch.** An interval at or below `monitoring-ticker` runs the check every tick,
+  the former behaviour.
+
+Trade-off accepted: a check that passed and then breaks is seen at its next run, at most
+one interval later (60 s by default), then confirmed in `app-error-debounce-threshold`
+ticks.
+
+Tests: `cluster/app_chk_interval_test.go` (one probe per interval on a counting listener,
+failing check every tick and recovery at the next tick, TCP route on its monitor interval,
+precedence, pruning of removed checks, negative interval normalized).
+
 ## Route label
 
 `config.Route.Label()` names a host route by its public URL and the destination port

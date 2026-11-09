@@ -92,7 +92,11 @@ type App struct {
 	TemplateMD5Prov      string                 `json:"templateMD5Prov"`
 	TemplateMD5          string                 `json:"templateMD5"`
 	IsHashingTemplate    bool                   `json:"isHashingTemplate"`
-	*sync.Mutex          `json:"-"`
+
+	// CheckResults: the last result of each check, by check, for its interval (#2362).
+	CheckResults map[string]appCheckResult `json:"-"`
+
+	*sync.Mutex `json:"-"`
 }
 
 type appList []*App

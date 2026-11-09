@@ -1939,6 +1939,12 @@ definitions:
           AppMonitorExpectStatus: the accepted status codes of the http/https check (default
           "200"), same syntax as a route's monitor expect-status.
         type: string
+      appMonitorInterval:
+        description: |-
+          AppMonitorInterval: seconds between two runs of the app's check while it passes (#2362):
+          the app-monitor-mode probe of an app without a route, and the default of its routes'
+          monitor interval (0: 60). A failing check runs at every monitoring tick until it passes.
+        type: integer
       appMonitorMode:
         description: |-
           AppMonitorMode: how an app without a route is probed. "port" (default) connects to
@@ -2265,6 +2271,12 @@ definitions:
         type: string
       expectStatus:
         type: string
+      interval:
+        description: |-
+          Interval: seconds between two runs of this route's check (local and external) while it
+          passes (#2362); 0 = the app's app-monitor-interval. A failing check runs at every
+          monitoring tick until it passes again, so a failure is confirmed in seconds.
+        type: integer
       path:
         type: string
     type: object

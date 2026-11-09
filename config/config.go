@@ -1252,6 +1252,10 @@ type AppConfig struct {
 	// AppMonitorCertExpireDays: in app-monitor-mode https-cert, the certificate warns when it
 	// expires within this many days (0: 14).
 	AppMonitorCertExpireDays int `mapstructure:"app-monitor-cert-expire-days" toml:"app-monitor-cert-expire-days" json:"appMonitorCertExpireDays"`
+	// AppMonitorInterval: seconds between two runs of the app's check while it passes (#2362):
+	// the app-monitor-mode probe of an app without a route, and the default of its routes'
+	// monitor interval (0: 60). A failing check runs at every monitoring tick until it passes.
+	AppMonitorInterval int `mapstructure:"app-monitor-interval" toml:"app-monitor-interval" json:"appMonitorInterval"`
 	// AppMonitorOnly: the app was added without image nor template to watch a service that
 	// runs elsewhere (#2209): checked by app-monitor-mode, never provisioned, reserves no plan unit.
 	AppMonitorOnly bool `mapstructure:"app-monitor-only" toml:"app-monitor-only" json:"appMonitorOnly"`
