@@ -7,8 +7,12 @@ package cluster
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"sync"
 	"testing"
+
+	"github.com/signal18/replication-manager/utils/s3fuse"
 )
 
 // fakeBucket stands for the backups folder mount: every file under root is "on the bucket",
@@ -31,6 +35,9 @@ func (b *fakeBucket) list(path string, max int) (map[string]string, error) {
 	out := map[string]string{}
 	for k, v := range b.etags {
 		if strings.HasPrefix(k, path+string(filepath.Separator)) {
+			if max > 0 && len(out) >= max {
+				return nil, s3fuse.ErrTooManyObjects
+			}
 			out[k] = v
 		}
 	}
@@ -104,34 +111,24 @@ func TestBucketETagSnapshotSameFingerprintsOneListing(t *testing.T) {
 	}
 }
 
-// Unchanged backups match from the snapshot; a changed one is reported changed; a backup the
-// snapshot holds stale (still uploading when the folder was listed) is checked again the
-// exact way and not reported changed.
-func TestArtifactUnchangedInSnapshotAndFallback(t *testing.T) {
+// From the snapshot: the registered backup is unchanged, a rewritten one is not (left to
+// the exact check), a stale listing never calls a backup changed by itself.
+func TestBucketETagSnapshotCheckUnchangedAndChanged(t *testing.T) {
 	b := withFakeBucket(t)
 	p := filepath.Join(b.root, "backups", "mydumper.1")
 	rec, err := restoreArtifactFingerprintBounded(p, backupProofWalkMax)
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	snap := newBucketETagSnapshot()
-	if !artifactUnchangedIn(snap, p, rec, backupProofWalkMax) {
-		t.Fatalf("unchanged backup reported changed")
+	if unchanged, _ := newBucketETagSnapshot().check(p, rec, nil); !unchanged {
+		t.Fatalf("registered backup not recognised unchanged")
 	}
-
-	// changed on the bucket: changed from the snapshot and from the exact check
 	b.etags[filepath.Join(p, "db.sql")] = "etag-rewritten"
-	if artifactUnchangedIn(newBucketETagSnapshot(), p, rec, backupProofWalkMax) {
-		t.Fatalf("changed backup reported unchanged")
+	if unchanged, same := newBucketETagSnapshot().check(p, rec, nil); unchanged || same {
+		t.Fatalf("rewritten backup: want neither unchanged nor a known change, got %v %v", unchanged, same)
 	}
-
-	// stale snapshot: listed before the upload ended, the bucket now holds what rec recorded
-	stale := newBucketETagSnapshot()
-	stale.covers(p)
-	b.etags[filepath.Join(p, "db.sql")] = "etag-backups/mydumper.1/db.sql"
-	if !artifactUnchangedIn(stale, p, rec, backupProofWalkMax) {
-		t.Fatalf("a backup the snapshot holds stale must be checked again the exact way")
+	if artifactUnchangedBounded(p, rec, backupProofWalkMax) {
+		t.Fatalf("the exact check must call it changed")
 	}
 }
 
@@ -147,11 +144,16 @@ func TestBucketETagSnapshotOffMount(t *testing.T) {
 	}
 }
 
-// A backup already recorded changed, whose bucket files are still the ones recorded with the
-// change, is recognised from the snapshot; changed again or back as registered, it is not.
-func TestBucketETagSnapshotSameAsKnownChange(t *testing.T) {
+// A backup already recorded changed is recognised from the snapshot while its files are
+// those of the change; changed again, it is not; re-registered (rec = the change's files),
+// it is unchanged, so the stale change is dropped, never kept.
+func TestBucketETagSnapshotCheckKnownChange(t *testing.T) {
 	b := withFakeBucket(t)
 	p := filepath.Join(b.root, "backups", "mydumper.2")
+	rec, err := restoreArtifactFingerprintBounded(p, backupProofWalkMax)
+	if err != nil {
+		t.Fatal(err)
+	}
 	b.etags[filepath.Join(p, "db.sql")] = "etag-rewritten"
 	now, err := restoreArtifactFingerprintBounded(p, backupProofWalkMax)
 	if err != nil {
@@ -160,17 +162,49 @@ func TestBucketETagSnapshotSameAsKnownChange(t *testing.T) {
 	change := &BackupRegistrationChange{Dest: p, Now: now}
 
 	b.listings = 0
-	if !newBucketETagSnapshot().sameAsKnownChange(p, change) {
-		t.Fatalf("same files as the recorded change: want it recognised")
+	if unchanged, same := newBucketETagSnapshot().check(p, rec, change); unchanged || !same {
+		t.Fatalf("same files as the recorded change: want sameAsKnown, got %v %v", unchanged, same)
 	}
 	if b.listings != 1 {
 		t.Fatalf("want 1 folder listing, got %d", b.listings)
 	}
+	if unchanged, _ := newBucketETagSnapshot().check(p, now, change); !unchanged {
+		t.Fatalf("re-registered (rec = the change's files): want unchanged, so the change is dropped")
+	}
 	b.etags[filepath.Join(p, "db.sql")] = "etag-rewritten-again"
-	if newBucketETagSnapshot().sameAsKnownChange(p, change) {
+	if _, same := newBucketETagSnapshot().check(p, rec, change); same {
 		t.Fatalf("changed again: must go to the exact check")
 	}
-	if newBucketETagSnapshot().sameAsKnownChange(p, &BackupRegistrationChange{Dest: p}) {
+	if _, same := newBucketETagSnapshot().check(p, rec, &BackupRegistrationChange{Dest: p}); same {
 		t.Fatalf("a change without its files (unreadable) must go to the exact check")
+	}
+}
+
+// The refreshed change is written back only over the entry read: one deleted meanwhile (a
+// Register, an Unregister) is not brought back.
+func TestKnownChangeRefreshDoesNotResurrect(t *testing.T) {
+	var changes sync.Map
+	c := &BackupRegistrationChange{ID: 7, Dest: "/x"}
+	changes.Store(int64(7), c)
+	prev, _ := changes.Load(int64(7))
+	changes.Delete(int64(7)) // a Register during the listing
+	still := *prev.(*BackupRegistrationChange)
+	changes.CompareAndSwap(int64(7), prev, &still)
+	if _, ok := changes.Load(int64(7)); ok {
+		t.Fatalf("a deleted change was brought back")
+	}
+}
+
+// A folder holding more files than the walk reads is not listed whole: its backups go to
+// the per-backup path.
+func TestBucketETagSnapshotCapsTheListing(t *testing.T) {
+	b := withFakeBucket(t)
+	dir := filepath.Join(b.root, "backups", "big")
+	for i := 0; i <= backupProofWalkMax; i++ {
+		b.etags[filepath.Join(dir, "f", strconv.Itoa(i))] = "e"
+	}
+	snap := newBucketETagSnapshot()
+	if snap.covers(filepath.Join(dir, "f")) {
+		t.Fatalf("a folder over the cap must not be covered")
 	}
 }

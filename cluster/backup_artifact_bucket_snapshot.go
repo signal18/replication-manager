@@ -45,7 +45,8 @@ func (s *bucketETagSnapshot) covers(path string) bool {
 	if listed, seen := s.listed[dir]; seen {
 		return listed
 	}
-	etags, err := bucketETags(dir, 0)
+	// bounded like the per-backup walk (T18): a larger folder is left to the per-backup path
+	etags, err := bucketETags(dir, backupProofWalkMax)
 	if err != nil {
 		s.listed[dir] = false
 		return false
@@ -101,28 +102,20 @@ func (s *bucketETagSnapshot) fingerprint(path string, maxEntries int) (fp *backu
 	return fp, true, err
 }
 
-// sameAsKnownChange: the backup at path, already recorded changed (c), shows in the snapshot
-// the files recorded with that change: the change stands and its backup is not listed again.
-// Anything else (changed again, back as registered, not on a listed folder) is false: the
-// exact check runs.
-func (s *bucketETagSnapshot) sameAsKnownChange(path string, c *BackupRegistrationChange) bool {
-	if c == nil || c.Now == nil || c.Dest != path {
-		return false
+// check compares the backup at path, from the snapshot, with its registration rec first,
+// then with the change already recorded for it (known, may be nil): unchanged when it is
+// the registered backup, sameAsKnown when it still is the changed backup recorded. Both
+// false (no match, not on a listed folder, unreadable): the exact check decides.
+func (s *bucketETagSnapshot) check(path string, rec *backupmgr.ArtifactFingerprint, known *BackupRegistrationChange) (unchanged, sameAsKnown bool) {
+	if rec == nil {
+		return false, false
 	}
 	fp, ok, err := s.fingerprint(path, backupProofWalkMax)
-	return ok && err == nil && fp.Same(*c.Now)
-}
-
-// artifactUnchangedIn is artifactUnchangedBounded reading the ETags from snap when the
-// backup is on a listed folder of the mount. A backup that does not match is checked again
-// the exact way (its upload synced, its own listing) before it is called changed: a file
-// still being uploaded when the folder was listed is never reported changed.
-func artifactUnchangedIn(snap *bucketETagSnapshot, path string, rec *backupmgr.ArtifactFingerprint, maxEntries int) bool {
-	if rec == nil {
-		return false
+	if !ok || err != nil {
+		return false, false
 	}
-	if fp, ok, err := snap.fingerprint(path, maxEntries); ok && err == nil && fp.Same(*rec) {
-		return true
+	if fp.Same(*rec) {
+		return true, false
 	}
-	return artifactUnchangedBounded(path, rec, maxEntries)
+	return false, known != nil && known.Now != nil && known.Dest == path && fp.Same(*known.Now)
 }

@@ -672,15 +672,27 @@ func (server *ServerMonitor) checkRegisteredBackups(budget *int) {
 			}
 			continue
 		}
-		// already recorded changed, and the bucket shows the files it had then: nothing new to
-		// read, the change stands (#2362)
-		if prev, ok := cluster.backupChanges.Load(meta.Id); ok && snap.sameAsKnownChange(meta.Dest, prev.(*BackupRegistrationChange)) {
-			still := *prev.(*BackupRegistrationChange) // a copy: readers hold the stored one
-			still.Checked = time.Now()
-			cluster.backupChanges.Store(meta.Id, &still)
+		// from the bucket's listing (#2362): the registered backup, or the change already
+		// recorded and nothing new to read; else the exact check below
+		prev, hadChange := cluster.backupChanges.Load(meta.Id)
+		var known *BackupRegistrationChange
+		if hadChange {
+			known = prev.(*BackupRegistrationChange)
+		}
+		unchanged, sameAsKnown := snap.check(meta.Dest, rec, known)
+		if unchanged {
+			cluster.backupChanges.Delete(meta.Id)
 			continue
 		}
-		if artifactUnchangedIn(snap, meta.Dest, rec, backupProofWalkMax) {
+		if sameAsKnown {
+			still := *known // a copy: readers hold the stored one
+			still.Checked = time.Now()
+			// only over the entry read: one a Register or an Unregister deleted or replaced
+			// meanwhile is not brought back
+			cluster.backupChanges.CompareAndSwap(meta.Id, prev, &still)
+			continue
+		}
+		if artifactUnchangedBounded(meta.Dest, rec, backupProofWalkMax) {
 			cluster.backupChanges.Delete(meta.Id)
 			continue
 		}

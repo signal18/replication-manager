@@ -165,27 +165,30 @@ on it.
 of the backup's files (`s3fuse.ETags`: a 1-key listing of the backup, then a
 listing of its folder), two bucket requests per backup and run, so N backups cost
 2N requests a minute, each one also a line in the gateway's access log (seen on a
-dev instance: about 17 backups, 67 requests a minute). The check now takes a
+dev instance: 9 backups, 50 requests a minute). The check now takes a
 `bucketETagSnapshot` per server and run
 (`cluster/backup_artifact_bucket_snapshot.go`): the first backup of a folder lists
-that folder once (`s3fuse.ETags` on the folder, paginated), and every backup in it
-is fingerprinted from that listing with the same walk and digest
-(`artifactFingerprint`). `artifactUnchangedIn` accepts a match from the snapshot;
-a backup that does not match is checked again the exact way
-(`artifactUnchangedBounded`: its upload synced, its own listing) before it is
-recorded as changed, so a file still uploading when the folder was listed never
-raises WARN0249. A backup already recorded changed (WARN0249) whose files in the
-listing are still the ones recorded with that change (`sameAsKnownChange`) is not
-read again: the change stands, its `Checked` time is refreshed. Without that, every
-run listed each changed backup twice more (the exact check, then the description),
-which on the dev instance above was all of its 9 backups. A failed folder listing
-leaves its backups to the per-backup path.
-Only this periodic check uses the snapshot; discovery, registration and the checks
-before a restore keep the per-backup listing (one-off). `bucketServes` and
-`bucketETags` hold the mount's functions so the tests can stand a fake bucket in.
+that folder once (`s3fuse.ETags` on the folder: two requests plus its pages,
+capped at `backupProofWalkMax` files, T18; a larger folder, or a failed listing,
+is left to the per-backup path), and every backup in it is fingerprinted from that
+listing with the same walk and digest (`artifactFingerprint`). `check` compares
+that fingerprint with the registration first (a match: unchanged, a recorded
+change is dropped, so a backup re-registered in place never keeps a stale change),
+then with the change already recorded (`sameAsKnown`: the change stands, its
+`Checked` time refreshed with a `CompareAndSwap` over the entry read, so a change
+a Register or an Unregister deleted during the listing is not brought back).
+Anything else goes to the exact check (`artifactUnchangedBounded`: its upload
+synced, its own listing) before a change is recorded, so a file still uploading
+when the folder was listed never raises WARN0249. The snapshot skips the sync: a
+same-size rewrite still buffered in GeeseFS is seen one run later, once uploaded.
+Only this periodic check uses the snapshot; discovery, registration, the proofs and
+the check before a restore keep the per-backup listing.
+`bucketServes` and `bucketETags` hold the mount's functions so the tests can stand
+a fake bucket in.
 Tests: `cluster/backup_artifact_bucket_snapshot_test.go` (same digests as the
-per-backup path with one listing for six backups, a changed backup reported, a
-stale snapshot checked again, a path off the mount not covered).
+per-backup path with one listing for six backups, unchanged and changed backups,
+a known change recognised and a re-registered one dropped, a deleted change not
+brought back, a folder over the cap not covered, a path off the mount not covered).
 
 For each discovered backup of the server:
 
