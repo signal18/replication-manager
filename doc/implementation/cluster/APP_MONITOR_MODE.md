@@ -136,7 +136,8 @@ Each check now has its own interval (`cluster/app_chk_interval.go`):
 - **Bounded (T18).** `keepCheckResults` drops the entries of checks that no longer exist
   (route removed or changed) at the end of each pass: one entry per current check.
 - **Off-switch.** An interval at or below `monitoring-ticker` runs the check every tick,
-  the former behaviour.
+  the former behaviour: a check is due up to `appCheckSlack` (1 s) early, so the tick's
+  jitter never pushes a run to the next tick.
 
 Trade-off accepted: a check that passed and then breaks is seen at its next run, at most
 one interval later (60 s by default), then confirmed in `app-error-debounce-threshold`

@@ -223,6 +223,9 @@ func (app *App) GetMonitoringStatus() string {
 		case "https", "http":
 			localRes := localCache[lKey]
 			if localRes.err != nil {
+				// The external check is not run while the local one fails, and its kept
+				// result is dropped at the end of the pass: once the local check passes
+				// again, the external one runs fresh (#2362).
 				errDesc := fmt.Sprintf(config.ClusterError[ErrAppConnectFailed], app.GetId(), localRes.err)
 				if localRes.errKey == ErrAppUnexpectedStatus {
 					errDesc = fmt.Sprintf(config.ClusterError[ErrAppUnexpectedStatus], app.GetId(), localRes.status)

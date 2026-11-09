@@ -35,6 +35,20 @@ func countingListener(t *testing.T) (port string, conns *int64, stop func()) {
 	return strconv.Itoa(ln.Addr().(*net.TCPAddr).Port), &n, func() { ln.Close() }
 }
 
+// expectConns waits until the listener accepted want connections (deadline 2 s), then
+// checks no more arrive: the probes connect asynchronously to the accept loop.
+func expectConns(t *testing.T, conns *int64, want int64, what string) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for atomic.LoadInt64(conns) < want && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	time.Sleep(50 * time.Millisecond)
+	if got := atomic.LoadInt64(conns); got != want {
+		t.Fatalf("%s: want %d connections, got %d", what, want, got)
+	}
+}
+
 // ageCheckResults moves every last check result back by d, as if d had elapsed.
 func ageCheckResults(app *App, d time.Duration) {
 	app.Lock()
@@ -57,17 +71,11 @@ func TestAppCheckIntervalNoRouteProbeRunsOncePerInterval(t *testing.T) {
 			t.Fatalf("tick %d: want %s, got %s", i, stateAppRunning, st)
 		}
 	}
-	time.Sleep(50 * time.Millisecond)
-	if got := atomic.LoadInt64(conns); got != 1 {
-		t.Fatalf("5 ticks within the interval: want 1 probe, got %d", got)
-	}
+	expectConns(t, conns, 1, "5 ticks within the interval")
 
 	ageCheckResults(app, appMonitorDefaultInterval)
 	app.GetMonitoringStatus()
-	time.Sleep(50 * time.Millisecond)
-	if got := atomic.LoadInt64(conns); got != 2 {
-		t.Fatalf("after the interval: want 2 probes, got %d", got)
-	}
+	expectConns(t, conns, 2, "after the interval")
 }
 
 // A failing check runs at every tick: the debounce reaches its threshold in 3 ticks, not
@@ -99,7 +107,7 @@ func TestAppCheckIntervalFailingCheckRunsEveryTick(t *testing.T) {
 	// Recovery on the same port: seen at the next tick, no interval to wait.
 	ln, err := net.Listen("tcp", "127.0.0.1:"+port)
 	if err != nil {
-		t.Skipf("port %s taken again by another process: %v", port, err)
+		t.Fatalf("could not listen again on port %s: %v", port, err)
 	}
 	defer ln.Close()
 	go func() {
@@ -137,16 +145,10 @@ func TestAppCheckIntervalTCPRouteUsesMonitorInterval(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		app.GetMonitoringStatus()
 	}
-	time.Sleep(50 * time.Millisecond)
-	if got := atomic.LoadInt64(conns); got != first {
-		t.Fatalf("within the route's 300 s: want %d probes, got %d", first, got)
-	}
+	expectConns(t, conns, first, "within the route's 300 s")
 	ageCheckResults(app, 300*time.Second)
 	app.GetMonitoringStatus()
-	time.Sleep(50 * time.Millisecond)
-	if got := atomic.LoadInt64(conns); got != 2*first {
-		t.Fatalf("after the route's interval: want %d probes, got %d", 2*first, got)
-	}
+	expectConns(t, conns, 2*first, "after the route's interval")
 }
 
 func TestAppCheckIntervalPrecedence(t *testing.T) {
@@ -205,16 +207,59 @@ func TestAppCheckIntervalSettingChangeRunsAgain(t *testing.T) {
 	app.AppConfig.AppPort = port
 	app.GetMonitoringStatus()
 	app.GetMonitoringStatus()
-	time.Sleep(50 * time.Millisecond)
-	if got := atomic.LoadInt64(conns); got != 1 {
-		t.Fatalf("same settings: want 1 probe, got %d", got)
-	}
+	expectConns(t, conns, 1, "same settings")
 	if err := app.SetSetting("app-monitor-cert-expire-days", "30"); err != nil {
 		t.Fatalf("set: %v", err)
 	}
 	app.GetMonitoringStatus()
-	time.Sleep(50 * time.Millisecond)
-	if got := atomic.LoadInt64(conns); got != 2 {
-		t.Fatalf("settings changed: want a new probe (2), got %d", got)
+	expectConns(t, conns, 2, "settings changed")
+}
+
+// A failure still debouncing on one route makes every check of the app due: the app is
+// re-checked whole at each tick until its state settles.
+func TestAppCheckIntervalPendingFailureMakesOtherChecksDue(t *testing.T) {
+	upPort, upConns, stopUp := countingListener(t)
+	defer stopUp()
+	downPort, _, stopDown := countingListener(t)
+	app := newMonitoringTestApp([]config.Route{
+		{Protocol: "tcp", CName: "127.0.0.1", Port: upPort, Primary: true},
+		{Protocol: "tcp", CName: "127.0.0.1", Port: downPort},
+	})
+	app.AppConfig.AppPort = upPort
+	app.GetMonitoringStatus()
+	expectConns(t, upConns, 2, "first tick on the healthy route (local + external)")
+	stopDown()
+	ageCheckResults(app, appMonitorDefaultInterval) // the down route is due once to see its failure
+	app.GetMonitoringStatus()
+	expectConns(t, upConns, 4, "the tick that sees the other route fail")
+	// the down route is debouncing: the healthy one runs at every tick too
+	app.GetMonitoringStatus()
+	expectConns(t, upConns, 6, "a tick while the other route debounces")
+}
+
+// Two routes on the same local endpoint share one local check, on the shorter interval.
+func TestAppCheckIntervalSharedLocalCheckUsesShortestInterval(t *testing.T) {
+	port, _, stop := countingListener(t)
+	defer stop()
+	app := newMonitoringTestApp([]config.Route{
+		{Protocol: "tcp", CName: "127.0.0.1", Port: port, Primary: true, Monitor: &config.RouteMonitor{Interval: 300}},
+		{Protocol: "tcp", CName: "localhost", Port: port, Monitor: &config.RouteMonitor{Interval: 30}},
+	})
+	app.AppConfig.AppPort = port
+	app.GetMonitoringStatus()
+	lKey := buildLocalCheckKey(app.GetHost(), app.AppConfig.Deployment.Routes[0])
+	if lKey != buildLocalCheckKey(app.GetHost(), app.AppConfig.Deployment.Routes[1]) {
+		t.Fatalf("the two routes should share one local endpoint")
+	}
+	app.Lock()
+	before := app.CheckResults["local "+lKey].at
+	app.Unlock()
+	ageCheckResults(app, 30*time.Second)
+	app.GetMonitoringStatus()
+	app.Lock()
+	after := app.CheckResults["local "+lKey].at
+	app.Unlock()
+	if !after.After(before.Add(-30 * time.Second)) {
+		t.Fatalf("after 30 s the shared local check (intervals 300 and 30) should have run again")
 	}
 }

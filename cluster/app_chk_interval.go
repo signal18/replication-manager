@@ -23,6 +23,11 @@ import (
 // appMonitorDefaultInterval: app-monitor-interval when unset.
 const appMonitorDefaultInterval = 60 * time.Second
 
+// appCheckSlack: a check is due up to this much before its interval has elapsed, so the
+// tick's jitter never pushes a run to the next tick (an interval equal to the monitoring
+// ticker runs at every tick; a 60 s interval runs at 59-61 s, not at 62).
+const appCheckSlack = time.Second
+
 // appCheckResult is the outcome of one check run: err nil = passed. status is the HTTP
 // status (0 for TCP, ping), errKey the APPERR key of a failure.
 type appCheckResult struct {
@@ -56,7 +61,7 @@ func routeCheckInterval(cnf *config.AppConfig, route config.Route) time.Duration
 func (app *App) runCheck(key, sig string, interval time.Duration, now time.Time, probe func() appCheckResult) appCheckResult {
 	app.Lock()
 	last, ok := app.CheckResults[key]
-	due := !ok || last.sig != sig || last.err != nil || len(app.AppErrConsecutiveMap) > 0 || now.Sub(last.at) >= interval
+	due := !ok || last.sig != sig || last.err != nil || len(app.AppErrConsecutiveMap) > 0 || now.Sub(last.at)+appCheckSlack >= interval
 	app.Unlock()
 	if !due {
 		return last
