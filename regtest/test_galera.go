@@ -88,6 +88,89 @@ func galeraGate(cl *cluster.Cluster, name string) bool {
 	return true
 }
 
+// galeraProxyProbeTable holds the node a write made through a proxy landed on.
+const galeraProxyProbeTable = "regtest_proxy_route"
+
+// galeraProvisionProxies provisions the cluster's proxies that are down and waits for them: moving
+// the virtual master exists so that the writes follow it, a test without a proxy proves nothing
+// (SKIP, never PASS).
+func galeraProvisionProxies(cl *cluster.Cluster, name string, test *cluster.Test) bool {
+	if len(cl.Proxies) == 0 {
+		test.SkipReason = "needs a proxy: the test checks that the proxies follow the virtual master"
+		return false
+	}
+	for _, p := range cl.Proxies {
+		if p.IsDown() {
+			cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Provisioning proxy %s", p.GetURL())
+			if err := cl.InitProxyService(p); err != nil {
+				cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "FAIL %s: cannot provision proxy %s: %s", name, p.GetURL(), err)
+				return false
+			}
+		}
+	}
+	var down string
+	if !waitFor(300*time.Second, func() bool {
+		down = ""
+		for _, p := range cl.Proxies {
+			if p.IsDown() {
+				down = p.GetURL()
+			}
+		}
+		return down == ""
+	}) {
+		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "FAIL %s: proxy %s still down 300s after its provision", name, down)
+		return false
+	}
+	return true
+}
+
+// galeraProxiesFollow writes through each proxy's write port until the write lands on master. A
+// read proves nothing here and any node accepts a Galera write: the row records the node that
+// executed it, and the master's own connection reads it back.
+func galeraProxiesFollow(cl *cluster.Cluster, master *cluster.ServerMonitor, timeout time.Duration) error {
+	table := rollingProbeSchema + "." + galeraProxyProbeTable
+	if _, err := master.Conn.Exec("CREATE TABLE IF NOT EXISTS " + table + " (id INT PRIMARY KEY, node VARCHAR(255))"); err != nil {
+		return fmt.Errorf("cannot create %s on %s: %s", table, master.URL, err)
+	}
+	defer func() {
+		if m := cl.GetMaster(); m != nil && m.Conn != nil {
+			m.Conn.Exec("DROP TABLE IF EXISTS " + table)
+		}
+	}()
+	var want string
+	if err := master.Conn.QueryRow("SELECT @@hostname").Scan(&want); err != nil {
+		return fmt.Errorf("cannot read the hostname of %s: %s", master.URL, err)
+	}
+	for _, p := range cl.Proxies {
+		var got string
+		var lastErr error
+		if !waitFor(timeout, func() bool {
+			db, err := p.GetClusterConnection()
+			if err != nil {
+				lastErr = err
+				return false
+			}
+			defer db.Close()
+			if _, err = db.Exec("REPLACE INTO " + table + " VALUES (1, @@hostname)"); err != nil {
+				lastErr = err
+				return false
+			}
+			lastErr = nil
+			if err = master.Conn.QueryRow("SELECT node FROM " + table + " WHERE id = 1").Scan(&got); err != nil {
+				lastErr = err
+				return false
+			}
+			return got == want
+		}) {
+			if lastErr != nil {
+				return fmt.Errorf("proxy %s: no write reached master %s within %s: %s", p.GetURL(), master.URL, timeout, lastErr)
+			}
+			return fmt.Errorf("proxy %s: writes land on %s, not on the virtual master %s (%s), %s after the move", p.GetURL(), got, master.URL, want, timeout)
+		}
+	}
+	return nil
+}
+
 // TestGaleraBootstrap checks a bootstrapped Galera cluster: every server Synced in one Primary
 // component of the cluster's size, replication-manager's master one of them, and a write on it
 // reaching every node.
@@ -95,7 +178,7 @@ func (regtest *RegTest) TestGaleraBootstrap(cl *cluster.Cluster, conf string, te
 	logf := func(format string, args ...interface{}) {
 		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", format, args...)
 	}
-	if !galeraGate(cl, "GaleraBootstrap") {
+	if !galeraGate(cl, "GaleraBootstrap") || !galeraProvisionProxies(cl, "GaleraBootstrap", test) {
 		return false
 	}
 	var master *cluster.ServerMonitor
@@ -110,7 +193,11 @@ func (regtest *RegTest) TestGaleraBootstrap(cl *cluster.Cluster, conf string, te
 		logf("FAIL GaleraBootstrap: %s", err)
 		return false
 	}
-	logf("PASS GaleraBootstrap: %d Synced nodes in the Primary component, master %s, writes reach every node", len(cl.Servers), master.URL)
+	if err := galeraProxiesFollow(cl, master, 60*time.Second); err != nil {
+		logf("FAIL GaleraBootstrap: %s", err)
+		return false
+	}
+	logf("PASS GaleraBootstrap: %d Synced nodes in the Primary component, master %s, writes reach every node, proxies route to it", len(cl.Servers), master.URL)
 	return true
 }
 
@@ -120,7 +207,7 @@ func (regtest *RegTest) TestGaleraSwitchover(cl *cluster.Cluster, conf string, t
 	logf := func(format string, args ...interface{}) {
 		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", format, args...)
 	}
-	if !galeraGate(cl, "GaleraSwitchover") {
+	if !galeraGate(cl, "GaleraSwitchover") || !galeraProvisionProxies(cl, "GaleraSwitchover", test) {
 		return false
 	}
 	before, err := galeraHealthy(cl, len(cl.Servers))
@@ -146,7 +233,11 @@ func (regtest *RegTest) TestGaleraSwitchover(cl *cluster.Cluster, conf string, t
 		logf("FAIL GaleraSwitchover: %s", err)
 		return false
 	}
-	logf("PASS GaleraSwitchover: master %s -> %s, every node Synced, writes reach every node", before.URL, after.URL)
+	if err := galeraProxiesFollow(cl, after, 60*time.Second); err != nil {
+		logf("FAIL GaleraSwitchover: %s", err)
+		return false
+	}
+	logf("PASS GaleraSwitchover: master %s -> %s, every node Synced, writes reach every node, proxies follow", before.URL, after.URL)
 	return true
 }
 
@@ -159,7 +250,7 @@ func (regtest *RegTest) TestGaleraMasterLoss(cl *cluster.Cluster, conf string, t
 	logf := func(format string, args ...interface{}) {
 		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", format, args...)
 	}
-	if !galeraGate(cl, "GaleraMasterLoss") {
+	if !galeraGate(cl, "GaleraMasterLoss") || !galeraProvisionProxies(cl, "GaleraMasterLoss", test) {
 		return false
 	}
 	n := len(cl.Servers)
@@ -202,6 +293,12 @@ func (regtest *RegTest) TestGaleraMasterLoss(cl *cluster.Cluster, conf string, t
 		return false
 	}
 
+	if err := galeraProxiesFollow(cl, elected, 60*time.Second); err != nil {
+		logf("FAIL GaleraMasterLoss: %s", err)
+		cl.StartDatabaseService(lost)
+		return false
+	}
+
 	logf("Starting %s again", lost.URL)
 	if err := cl.StartDatabaseService(lost); err != nil {
 		logf("FAIL GaleraMasterLoss: cannot start %s: %s", lost.URL, err)
@@ -215,7 +312,7 @@ func (regtest *RegTest) TestGaleraMasterLoss(cl *cluster.Cluster, conf string, t
 		logf("FAIL GaleraMasterLoss: %s rejoined without the write made while it was down (%v)", lost.URL, err)
 		return false
 	}
-	logf("PASS GaleraMasterLoss: %s lost, master moved to %s, %s rejoined Synced with the writes", lost.URL, elected.URL, lost.URL)
+	logf("PASS GaleraMasterLoss: %s lost, master moved to %s, proxies followed, %s rejoined Synced with the writes", lost.URL, elected.URL, lost.URL)
 	return true
 }
 
@@ -229,7 +326,7 @@ func (regtest *RegTest) TestGaleraFullRestartNotLastFirst(cl *cluster.Cluster, c
 	logf := func(format string, args ...interface{}) {
 		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", format, args...)
 	}
-	if !galeraGate(cl, "GaleraFullRestartNotLastFirst") {
+	if !galeraGate(cl, "GaleraFullRestartNotLastFirst") || !galeraProvisionProxies(cl, "GaleraFullRestartNotLastFirst", test) {
 		return false
 	}
 	n := len(cl.Servers)
@@ -329,6 +426,15 @@ func (regtest *RegTest) TestGaleraFullRestartNotLastFirst(cl *cluster.Cluster, c
 			return false
 		}
 	}
-	logf("PASS GaleraFullRestartNotLastFirst: %s started first formed no cluster; the cluster came back whole, state UUID %s kept", first.URL, uuid)
+	m := cl.GetMaster()
+	if m == nil {
+		logf("FAIL GaleraFullRestartNotLastFirst: no master after the restart")
+		return false
+	}
+	if err := galeraProxiesFollow(cl, m, 60*time.Second); err != nil {
+		logf("FAIL GaleraFullRestartNotLastFirst: %s", err)
+		return false
+	}
+	logf("PASS GaleraFullRestartNotLastFirst: %s started first formed no cluster; the cluster came back whole, state UUID %s kept, proxies follow %s", first.URL, uuid, m.URL)
 	return true
 }

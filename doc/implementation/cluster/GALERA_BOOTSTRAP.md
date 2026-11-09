@@ -157,6 +157,11 @@ node it routes the writes to, so moving it is a switchover, never a promotion.
   (`galeraCommandPatch`): set on the bootstrap node of a cluster entirely down
   (`isGaleraBootstrapNode`), removed from any other start. Any other command is the operator's and
   is left alone. OpenSVC v2 (the per-pod `container#20<pod>` section) is not covered yet.
+- **Regtests and proxies.** Every Galera regtest provisions the proxies that are down
+  (`galeraProvisionProxies`; none declared: SKIP) and checks that each one follows the virtual
+  master (`galeraProxiesFollow`): a write through the proxy's write port records the node that
+  executed it, read back on the master. Galera accepts a write on any node, so a read or a
+  successful write would prove nothing.
 - **Regtest** (`TestGaleraMasterLoss`): the master must move by itself in either mode, with no
   `FailoverNow` and no ERR00002, and the lost node must rejoin Synced. `galeraGate` fails a
   cluster declared Galera but not discovered Galera. It used to log "Skipping" and return PASS.
