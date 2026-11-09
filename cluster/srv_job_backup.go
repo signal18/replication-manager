@@ -3458,7 +3458,11 @@ func (server *ServerMonitor) JobFlashbackLogicalBackup() error {
 // applyMyLoaderReplicaPosition sets the replication state of server, which myloader just
 // loaded, to the position of the mydumper backup (its metadata), before its replication
 // starts. myloader puts the data back to the backup's state and nothing else:
-//   - MariaDB with GTID and a GTID set in the backup: gtid_slave_pos;
+//   - MariaDB with GTID and a GTID set in the backup: the binary logs reset, then
+//     gtid_slave_pos. The replica's own binary logs keep the GTIDs it applied before the
+//     restore (gtid_binlog_pos): left in place, the first transaction after the backup is
+//     older than them and gtid_strict_mode stops replication ("out-of-order sequence
+//     number", #2365). The mysqldump reseed resets them the same way before its load;
 //   - MySQL/Percona with GTID: the binary logs and GTIDs reset, then GTID_PURGED. The replica
 //     kept the GTIDs of what it applied before the restore: with auto-position it would never
 //     ask for the transactions written after the backup, and diverge. A backup without a GTID
@@ -3473,6 +3477,11 @@ func (server *ServerMonitor) applyMyLoaderReplicaPosition(meta config.MyDumperMe
 	gtid := myLoaderGtidSet(meta.BinLogUuid)
 	switch {
 	case server.IsMariaDB() && server.HaveMariaDBGTID && gtid != "":
+		logs, err := server.ResetMaster()
+		cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed to reset the binary logs of %s after the mydumper restore: %s", server.URL, err)
+		if err != nil {
+			return fmt.Errorf("reset the binary logs of %s: %w", server.URL, err)
+		}
 		if err := server.ExecQueryNoBinLog("SET GLOBAL gtid_slave_pos='"+gtid+"'", time.Second); err != nil {
 			return fmt.Errorf("set gtid_slave_pos on %s from the mydumper metadata: %w", server.URL, err)
 		}
