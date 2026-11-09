@@ -207,6 +207,10 @@ func (cluster *Cluster) LocalhostStartDatabaseServiceFistTime(server *ServerMoni
 		}
 		dsn := user + ":@unix(" + server.GetDatabaseSocket() + ")/?timeout=15s"
 		conn, err2 := sqlx.Open("mysql", dsn)
+		if err2 == nil {
+			// one connection: the session settings below (sql_log_bin=0) apply to every statement
+			conn.SetMaxOpenConns(1)
+		}
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlDbg, "DNS start prov localhost first time : %s\n", dsn)
 		if err2 == nil {
 			defer conn.Close()

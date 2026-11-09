@@ -53,6 +53,18 @@ state of a cluster created through the add API, where the hosts are set afterwar
 On upgrade, a cluster already in the partial state gets its missing files from its existing CA
 and server key. A set that is already whole is never touched.
 
+## Limits
+
+- **Provisioning goes on with an incomplete set.** If the server certificate cannot be written
+  yet, provisioning logs a warning and continues. ProxySQL 2+ will then refuse to start until the
+  set is whole. WARN0318 names it, and its remediation completes the set as soon as the servers
+  are known.
+- **At start, the server certificate can take up to a minute.** `Run()` may start the completion
+  before the servers are loaded. The retry comes on the next WARN0318 interval.
+- **The set is not regenerated when the server list changes.** A server added later is not in
+  the server certificate's names, and WARN0318 does not flag it, because every file exists.
+  `KeyRotation` regenerates the whole set, and goes through the same lock as the completion.
+
 ## Tests
 
 `cluster/cluster_certificates_test.go` covers:

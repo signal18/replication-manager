@@ -43,10 +43,24 @@ func (cluster *Cluster) createReplicationUser() {
 	if wait <= 0 {
 		wait = 2 * time.Minute
 	}
+	// F1: only the servers this provisioning created (their provision cookie, set when their
+	// service was provisioned without error); never a relay or a MaxScale binlog server
+	var targets []*ServerMonitor
+	for _, s := range cluster.Servers {
+		if s != nil && s.HasProvisionCookie() && !s.IsRelay && !s.IsMaxscale {
+			targets = append(targets, s)
+		}
+	}
+	created := 0
 	// a server still unreachable at the end was logged as a warning by its last attempt
-	createReplicationUserOn(cluster.Servers, func(s *ServerMonitor, last bool) bool {
-		return s.createReplicationUser(user, pass, last)
+	createReplicationUserOn(targets, func(s *ServerMonitor, last bool) bool {
+		retry, ok := s.createReplicationUser(user, pass, last)
+		if ok {
+			created++
+		}
+		return retry
 	}, wait, step)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Replication user %s created on %d of %d provisioned servers", user, created, len(targets))
 }
 
 // createReplicationUserOn calls attempt on every server, then again on those it asks to retry,
@@ -79,33 +93,33 @@ func createReplicationUserOn(servers []*ServerMonitor, attempt func(s *ServerMon
 
 // createReplicationUser creates the replication user on this server, on a connection of its own
 // (the session setting that keeps it out of the binary log must not reach the monitor's pool).
-// It returns true when the server cannot be reached yet, or its engine is not known yet, so the
-// caller tries again; an error from the server itself is final. Either failure is logged as a
-// warning (at debug while retries remain) and leaves the bootstrap to go on: ERR00007 then names
-// the server.
-func (server *ServerMonitor) createReplicationUser(user, pass string, last bool) (retry bool) {
+// The engine is read on that same connection, never through the monitor's Refresh, which would
+// race the monitor loop on the server's state (#2360 review). It returns retry when the server
+// cannot be reached yet or its engine is not known yet, ok when the account exists; an error from
+// the server itself is final. A failure is logged as a warning (at debug while retries remain) and
+// leaves the bootstrap to go on: ERR00007 then names the server.
+func (server *ServerMonitor) createReplicationUser(user, pass string, last bool) (retry, ok bool) {
 	cluster := server.ClusterGroup
-	notYet := func(format string, args ...interface{}) bool {
+	notYet := func(format string, args ...interface{}) (bool, bool) {
 		level := config.LvlDbg
 		if last {
 			level = config.LvlWarn
 		}
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, level, "Cannot create the replication user %s on %s: "+format, append([]interface{}{user, server.URL}, args...)...)
-		return true
-	}
-	// the statements depend on the engine: a server never read yet is read, and one whose engine
-	// is still unknown gets nothing rather than another engine's SQL (T23)
-	if server.neverAnswered() {
-		server.Refresh()
-	}
-	if server.neverAnswered() || server.DBVersion.Flavor == "" {
-		return notYet("the server's engine is not known yet")
+		return true, false
 	}
 	db, err := server.GetNewDBConn()
 	if err != nil {
 		return notYet("%s", err)
 	}
+	// a dedicated pool, closed below: the session setting cannot reach the monitor's
 	defer db.Close()
+	// the statements depend on the engine: one not known gets nothing rather than another
+	// engine's SQL (T23)
+	ver, _, err := dbhelper.GetDBVersion(db)
+	if err != nil || ver == nil || ver.Flavor == "" || ver.Major == 0 {
+		return notYet("the server's engine is not known yet (%v)", err)
+	}
 	timeout := time.Duration(cluster.Conf.ExecTimeout) * time.Second
 	if timeout <= 0 {
 		timeout = 10 * time.Second
@@ -117,13 +131,13 @@ func (server *ServerMonitor) createReplicationUser(user, pass string, last bool)
 		return notYet("%s", err)
 	}
 	defer conn.Close()
-	logs, err := dbhelper.CreateReplicationUser(ctx, conn, server.DBVersion, replicationUserHost, user, pass)
+	logs, err := dbhelper.CreateReplicationUser(ctx, conn, ver, replicationUserHost, user, pass)
 	cluster.LogSQL(logs, err, server.URL, "Provision", config.LvlErr, "Create the replication user: %s", err)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Cannot create the replication user %s on %s: %s", user, server.URL, err)
-		return false
+		return false, false
 	}
 	// F11: what was done, where, the statements with the password masked
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Replication user %s created on %s, outside the binary log: %s", user, server.URL, logs)
-	return false
+	return false, true
 }

@@ -328,3 +328,34 @@ func TestOpenSVCRotationFailingAgentThenRecovers(t *testing.T) {
 		t.Fatal("MYSQL_ROOT_PASSWORD_OLD does not hold the password before the failed rotation")
 	}
 }
+
+// #2357 review point 1: the seed against a failing agent leaves each password key in the version
+// queue, which retries it (the direct write it replaced was followed by an unconditional queue
+// push), and returns each key's error.
+func TestOpenSVCProvisionSeedFailingAgentQueues(t *testing.T) {
+	agent := &kvAgent{keys: map[string]string{}, fail: true}
+	cl := kvAgentCluster(t, agent)
+	if cl.Conf.Secrets == nil {
+		cl.Conf.Secrets = config.NewSecrets(nil)
+	}
+	cl.Conf.Secrets.Set("db-servers-credential", config.Secret{Value: "root:pw"})
+	cl.Conf.Secrets.Set("shardproxy-credential", config.Secret{Value: "root:spw"})
+	cl.APIUsers = map[string]APIUser{"admin": {User: "admin", Password: "apw"}}
+	errs := cl.seedOrchestratorPasswords(cl.OpenSVCConnect())
+	for _, k := range []string{"REPLICATION_MANAGER_PASSWORD", "MYSQL_ROOT_PASSWORD", "SHARDPROXY_ROOT_PASSWORD"} {
+		if errs[k] == nil {
+			t.Fatalf("%s: no error from a failing agent", k)
+		}
+	}
+	queued := map[string]bool{}
+	for _, it := range cl.storeQueue().Take() {
+		if it.Entry == orchestratorStoreEntry {
+			queued[it.Key] = true
+		}
+	}
+	for _, k := range []string{"REPLICATION_MANAGER_PASSWORD", "MYSQL_ROOT_PASSWORD", "SHARDPROXY_ROOT_PASSWORD"} {
+		if !queued[k] {
+			t.Fatalf("%s not queued for a retry (queued %v)", k, queued)
+		}
+	}
+}

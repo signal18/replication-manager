@@ -415,7 +415,11 @@ func (cluster *Cluster) KeyRotation() {
 	os.Remove(cluster.WorkingDir + "/server-key.pem")
 	os.Remove(cluster.WorkingDir + "/client-cert.pem")
 	os.Remove(cluster.WorkingDir + "/client-key.pem")
-	cluster.createKeys()
+	// serialised with the background completion (#2360 review): a WARN0318 run while the files
+	// are removed could otherwise write part of a set beside this one
+	if err := cluster.completeCertificates(); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Key rotation: the new TLS set is not complete: %s", err)
+	}
 	cluster.tlsoldconf = cluster.tlsconf
 	cluster.HaveDBTLSOldCert = true
 	for _, srv := range cluster.Servers {

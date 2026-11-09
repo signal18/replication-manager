@@ -37,6 +37,17 @@ So each server is tried again until it answers, every monitoring tick, within th
 not known yet" are retried; an error from the server itself is final. While retries remain the
 failure is logged at debug; the last attempt logs it as a warning.
 
+## Which servers (F1)
+
+The user is created only on the servers this provisioning created: those with a provision
+cookie, which `ProvisionServices` sets when a server's service was provisioned without error. A
+server whose provisioning failed is skipped, even if a database already answers at its address,
+and so are relay and MaxScale binlog servers. A summary line gives "created on N of M provisioned
+servers".
+
+The engine is read with `SELECT version()` on the dedicated connection. The monitor's `Refresh()`
+is never called, because it would race the monitor loop on the server's state.
+
 ## Every node, outside the binary log
 
 The user is created on **every** server, each on its own, with `SET SESSION sql_log_bin=0`:
@@ -94,3 +105,18 @@ statements of that function, and the clear password they log, are #2033.
   never answering gets a last attempt told so, and that a final error is not retried.
 - **T13:** the gate is a provisioned cluster with a separate replication user, replicating after the
   bootstrap.
+
+## Notes
+
+- **Host `%`.** The account is open to every host, because the replicas connect from addresses
+  the provisioning does not know. A deployment that wants it bound to a subnet changes the host
+  afterwards; a configuration key for it can come later.
+- **`super_read_only`.** On MySQL, `super_read_only=ON` would make `CREATE USER` fail. Fresh
+  containers do not have it, and the failure would be a warning.
+- **Localhost provisioning.** It now creates `'repl'@'%'` with the replication grant only, where
+  it used to create the account on `localhost`, `%` and `127.0.0.1` with `ALL`. Replication
+  connects over TCP, which `%` matches. The anonymous accounts that could match more specifically
+  are dropped earlier in the same function. The localhost pool uses one connection, so its
+  `sql_log_bin=0` applies to every statement.
+- **Release notes.** The switch is on by default, so a re-bootstrap of an existing cluster with
+  its own replication user now creates that user.

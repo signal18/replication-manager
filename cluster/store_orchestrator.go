@@ -6,7 +6,9 @@ package cluster
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 
@@ -132,6 +134,12 @@ func (s *openSVCStore) writeWith(ctx context.Context, svc opensvc.Collector, ite
 		key, val := it.Key, it.Version.Value
 		if v3 && !strings.HasSuffix(key, oldKeySuffix) {
 			b, rerr := svc.GetSecretKeyValueV3Ctx(bctx, s.cluster.Name, orchestratorEnvObject, key)
+			var se *opensvc.StatusError
+			if rerr != nil && !(errors.As(rerr, &se) && se.StatusCode == http.StatusNotFound) && bctx.Err() == nil {
+				// the key is written without its rollback copy: say so (#2357 review), the key
+				// only, never a value (F10); an absent key has nothing to keep
+				s.cluster.LogModulePrintf(s.cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "Orchestrator secret %s/sec/%s: %s read before write failed, writing without %s%s: %s", s.cluster.Name, orchestratorEnvObject, key, key, oldKeySuffix, rerr)
+			}
 			if rerr == nil {
 				old := string(b)
 				skip, writeOld := orchestratorOldAndSkip(key, val, old, true)
@@ -211,18 +219,27 @@ func (cluster *Cluster) queueOrchestrator(key, value string) {
 // <KEY>_OLD, as a rotation does. The database and proxy passwords then go to the stores as a
 // version (reportOrchestratorSecret). It returns the error of each key it could not write.
 func (cluster *Cluster) seedOrchestratorPasswords(svc opensvc.Collector) map[string]error {
-	errs := make(map[string]error)
-	for _, kv := range []struct{ key, value string }{
+	values := []struct{ key, value string }{
 		{"REPLICATION_MANAGER_PASSWORD", cluster.APIUsers["admin"].Password},
 		{"MYSQL_ROOT_PASSWORD", cluster.GetDbPass()},
 		{"SHARDPROXY_ROOT_PASSWORD", cluster.GetShardPass()},
-	} {
+	}
+	items := make([]credstore.StoreItem, 0, len(values))
+	for _, kv := range values {
 		// written even when empty, as before: a service template may reference the key
-		_, err := cluster.openSVCStore().writeWith(context.Background(), svc, []credstore.StoreItem{{
-			Entry: orchestratorStoreEntry, Key: kv.key, Version: cluster.selfVersion(kv.value),
-		}}, cluster.storeTimeout())
-		if err != nil {
-			errs[kv.key] = err
+		items = append(items, credstore.StoreItem{Entry: orchestratorStoreEntry, Key: kv.key, Version: cluster.selfVersion(kv.value)})
+	}
+	// one budget for the three keys, as a queue pass (#2357 review)
+	failed, err := cluster.openSVCStore().writeWith(context.Background(), svc, items, cluster.storeTimeout())
+	errs := make(map[string]error)
+	for _, it := range failed {
+		errs[it.Key] = err
+	}
+	for _, kv := range values {
+		if _, ko := errs[kv.key]; ko {
+			// not written: the version queue retries it, as it does a Vault entry; the direct
+			// write it replaced was followed by an unconditional queue push (#2357 review)
+			cluster.queueOrchestrator(kv.key, kv.value)
 			continue
 		}
 		if kv.key != "REPLICATION_MANAGER_PASSWORD" {

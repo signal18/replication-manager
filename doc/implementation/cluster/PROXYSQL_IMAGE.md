@@ -24,6 +24,9 @@ service env and the collector template) and on Kubernetes. Monitor hooks report 
    `8.4.3-3` or `8.4-oracle` is read up to the dash. An unreadable tag keeps the default.
 3. **Anything else** (MariaDB, MySQL 8.0, PostgreSQL) keeps the default.
 
+Setting the default value itself (`signal18/proxysql:1.4`) counts as no choice. On MySQL 8.4 it
+is replaced by 3.0.12, because 1.4 cannot work there.
+
 ## Verified
 
 The regtest `testProvisionReplicationUser` ran on a dev instance, provisioning from scratch with
