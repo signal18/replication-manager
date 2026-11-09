@@ -3,6 +3,7 @@ package cluster
 import (
 	"errors"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -74,7 +75,10 @@ func (proxy *ProxySQLProxy) AddFlags(flags *pflag.FlagSet, conf *config.Config) 
 	flags.StringVar(&conf.ProxysqlAdminPort, "proxysql-admin-port", "6032", "ProxySQL admin interface port")
 	flags.StringVar(&conf.ProxysqlReaderHostgroup, "proxysql-reader-hostgroup", "1", "ProxySQL reader hostgroup")
 	flags.StringVar(&conf.ProxysqlWriterHostgroup, "proxysql-writer-hostgroup", "0", "ProxySQL writer hostgroup")
-	flags.StringVar(&conf.ProxysqlUser, "proxysql-user", "admin", "ProxySQL admin user")
+	// empty: the login depends on the orchestrator (GetProxysqlUser): admin with localhost, where
+	// ProxySQL runs on repman's own host, external otherwise, the login ProxySQL 2+ accepts from
+	// another host and every generated config declares (#2360)
+	flags.StringVar(&conf.ProxysqlUser, "proxysql-user", "", "ProxySQL admin user (empty: admin with the localhost orchestrator, external otherwise)")
 	flags.StringVar(&conf.ProxysqlPassword, "proxysql-password", "admin", "ProxySQL admin password")
 	flags.BoolVar(&conf.ProxysqlCopyGrants, "proxysql-bootstrap-users", true, "Copy users from master")
 	flags.BoolVar(&conf.ProxysqlMultiplexing, "proxysql-multiplexing", false, "Multiplexing")
@@ -644,7 +648,7 @@ func (proxy *ProxySQLProxy) Refresh() error {
 				// PostgreSQL does not expose passwords and ProxySQL needs the
 				// clear one to authenticate on the backend: load the cluster
 				// credential and the write heartbeat one only.
-				pgUsers, conflict := cluster.postgresProxySQLUsers()
+				pgUsers, conflict := cluster.proxySQLClearUsers()
 				if conflict {
 					cluster.SetState("WARN0233", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0233"], proxy.Name, cluster.GetDbUser()), ErrFrom: "PRX", ServerUrl: proxy.Name})
 				}
@@ -655,7 +659,32 @@ func (proxy *ProxySQLProxy) Refresh() error {
 				}
 				users = nil
 			}
+			// a caching_sha2_password hash (MySQL 8.4+) is no use to ProxySQL: it cannot check a
+			// client's login with it, nor log in to the backend for the client (#2360, seen on a
+			// dev instance: every client login refused). A user whose password repman knows is
+			// loaded with it; any other is not loaded, and named in WARN0319.
+			known := make(map[string]string)
+			if clear, _ := cluster.proxySQLClearUsers(); len(clear) > 0 {
+				for _, g := range clear {
+					known[g.User] = g.Password
+				}
+			}
+			var unusable []string
 			for _, u := range users {
+				if dbhelper.IsCachingSha2Hash(u.Password) {
+					clear, ok := known[u.User]
+					if !ok || clear == "" {
+						// not loaded; named in WARN0319 unless it is no client of the proxy: the
+						// MySQL system accounts (mysql.sys, mysql.session, …) and the replication user
+						if !strings.HasPrefix(u.User, "mysql.") && u.User != cluster.GetRplUser() {
+							unusable = append(unusable, u.User)
+						}
+						continue
+					}
+					cp := *u
+					cp.Password = clear
+					u = &cp
+				}
 				user, ok := uniUsers[u.User+":"+u.Password]
 				if ok {
 					dupUsers[user.User] = user.User
@@ -670,6 +699,10 @@ func (proxy *ProxySQLProxy) Refresh() error {
 						}
 					}
 				}
+			}
+			if len(unusable) > 0 {
+				sort.Strings(unusable)
+				cluster.SetState("WARN0319", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0319"], proxy.Name, strings.Join(unusable, ", ")), ErrFrom: "PRX", ServerUrl: proxy.Name})
 			}
 			changedUser := false
 			for _, user := range uniUsers {

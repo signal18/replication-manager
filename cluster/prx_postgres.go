@@ -62,12 +62,14 @@ func (cluster *Cluster) postgresProxyCredential() (string, string) {
 	return cluster.GetDbUser(), cluster.GetDbPass()
 }
 
-// postgresProxySQLUsers is the credential set the PostgreSQL user sync loads in
+// proxySQLClearUsers is the credential set repman knows in clear and loads in ProxySQL where a
+// copied hash is no use: the PostgreSQL user sync, and MySQL 8.4+ caching_sha2_password users
+// (#2360). It was named postgresProxySQLUsers. For PostgreSQL, the set the user sync loads in
 // pgsql_users: the cluster credential, and the write heartbeat credential when
 // one is configured, since postgresProxyConnection connects with it. ProxySQL
 // holds one password per username: when both credentials share a username with
 // different passwords, the heartbeat one is kept and conflict is true.
-func (cluster *Cluster) postgresProxySQLUsers() (users []*dbhelper.Grant, conflict bool) {
+func (cluster *Cluster) proxySQLClearUsers() (users []*dbhelper.Grant, conflict bool) {
 	dbUser, dbPass := cluster.GetDbUser(), cluster.GetDbPass()
 	if cluster.Conf.MonitorWriteHeartbeatCredential == "" {
 		return []*dbhelper.Grant{{User: dbUser, Password: dbPass}}, false
