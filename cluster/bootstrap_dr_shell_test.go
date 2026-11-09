@@ -117,6 +117,54 @@ func TestOpenSVCBootstrapScriptLoginFallsBackWithFakeWget(t *testing.T) {
 	}
 }
 
+// #2350: the lock files of an aborted Galera state transfer are removed before the node starts,
+// never while a Galera node is running in the service.
+func TestOpenSVCBootstrapRemovesStaleGaleraSSTLocks(t *testing.T) {
+	b, err := os.ReadFile("../share/dashboard/static/configurator/opensvc/bootstrap")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := regexp.MustCompile(`(?s)\nif \[ -f /bootstrap/data/wsrep_sst\.pid \].*?\nfi\n`).Find(b)
+	if m == nil {
+		t.Fatal("state transfer lock cleanup not found in the bootstrap script")
+	}
+	run := func(listening string, withLocks bool) (string, bool) {
+		dir := t.TempDir()
+		bin := filepath.Join(dir, "bin")
+		data := filepath.Join(dir, "data")
+		os.MkdirAll(bin, 0755)
+		os.MkdirAll(data, 0755)
+		os.WriteFile(filepath.Join(bin, "netstat"), []byte("#!/bin/sh\necho 'tcp 0 0 0.0.0.0:"+listening+" 0.0.0.0:* LISTEN'\n"), 0755)
+		locks := []string{filepath.Join(data, "wsrep_sst.pid"), filepath.Join(data, "sst_in_progress")}
+		if withLocks {
+			for _, l := range locks {
+				os.WriteFile(l, []byte("12"), 0644)
+			}
+		}
+		cmd := exec.Command("sh", "-c", strings.ReplaceAll(string(m), "/bootstrap/data", data))
+		cmd.Env = append(os.Environ(), "PATH="+bin+":"+os.Getenv("PATH"))
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("%v: %s", err, out)
+		}
+		_, e1 := os.Stat(locks[0])
+		_, e2 := os.Stat(locks[1])
+		if (e1 == nil) != (e2 == nil) {
+			t.Fatal("both lock files go together")
+		}
+		return string(out), e1 == nil
+	}
+	if out, kept := run("3306", true); kept || !strings.Contains(out, "removing") {
+		t.Fatalf("no Galera running: the stale locks are removed (kept %v): %q", kept, out)
+	}
+	if out, kept := run("4567", true); !kept || !strings.Contains(out, "kept") {
+		t.Fatalf("a Galera node is running: the locks stay (kept %v): %q", kept, out)
+	}
+	if out, _ := run("3306", false); out != "" {
+		t.Fatalf("no lock files: nothing to do: %q", out)
+	}
+}
+
 // Kubernetes: the generated init command picks the first URL answering /api/version.
 func TestK8SInitPickWithFakeWget(t *testing.T) {
 	cl := newTestCluster("k8stest")

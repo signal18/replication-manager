@@ -157,6 +157,10 @@ node it routes the writes to, so moving it is a switchover, never a promotion.
   (`galeraCommandPatch`): set on the bootstrap node of a cluster entirely down
   (`isGaleraBootstrapNode`), removed from any other start. Any other command is the operator's and
   is left alone. OpenSVC v2 (the per-pod `container#20<pod>` section) is not covered yet.
+- **A failed join does not block the next one.** A state transfer that aborts leaves
+  `wsrep_sst.pid` and `sst_in_progress` in the datadir. Every later start then waits for a
+  transfer that no longer exists and aborts. The OpenSVC `bootstrap` init script, which runs before
+  the database container, removes them when the Galera port (4567) is not listening in the service.
 - **Regtests and proxies.** Every Galera regtest provisions the proxies that are down
   (`galeraProvisionProxies`; none declared: SKIP) and checks that each one follows the virtual
   master (`galeraProxiesFollow`): a write through the proxy's write port records the node that
