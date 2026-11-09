@@ -12,8 +12,11 @@ COMMON_ARGS="--user=repman --http-root=$SHAREDIR/dashboard --monitoring-sharedir
 # directly) goes to CONSOLE_LOG. repman's own log is log-file, rotated by repman itself;
 # this file is not, so each start begins a fresh one and keeps the previous run's as .1
 # (the run that may have crashed). Never appended forever: it reached GBs on a long-lived
-# instance (law F3). Called after wait.sh, once the previous monitor is gone.
-CONSOLE_LOG=/var/log/replication-manager/replication-manager.log
+# instance (law F3). Its own name, never a log-file path: where log-file was this same
+# file, repman's rotation renamed and deleted it under the console, which then wrote to
+# a deleted file nobody could see or purge until the next restart. Called after wait.sh,
+# once the previous monitor is gone.
+CONSOLE_LOG=/var/log/replication-manager/repman-console.log
 new_console_log() {
 	if [ -f "$CONSOLE_LOG" ]; then
 		mv -f "$CONSOLE_LOG" "$CONSOLE_LOG.1"
