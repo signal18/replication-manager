@@ -5,61 +5,41 @@
 package cluster
 
 import (
-	"os"
+	"errors"
 	"testing"
 )
 
-func adminLoginTestProxy(t *testing.T, user string, provisioned bool) *ProxySQLProxy {
-	t.Helper()
-	prx := &ProxySQLProxy{Proxy: Proxy{User: user, Datadir: t.TempDir()}}
-	if provisioned {
-		if err := os.WriteFile(prx.Datadir+"/@cookie_prov", nil, 0600); err != nil {
-			t.Fatal(err)
-		}
+// #2360: only ProxySQL's "admin can only connect locally" refusal sends a connection to external.
+func TestIsAdminLocalOnly(t *testing.T) {
+	if !isAdminLocalOnly(errors.New("Error 1040 (42000): User 'admin' can only connect locally")) {
+		t.Fatal("the local-only refusal was not recognised")
 	}
-	return prx
-}
-
-// #2360: a proxy replication-manager provisioned is reached as external when the configured login
-// is the default admin (ProxySQL 2+ refuses admin from another host); any other proxy, or another
-// configured login, is used as configured.
-func TestProxySQLAdminLogin(t *testing.T) {
-	cases := []struct {
-		user        string
-		provisioned bool
-		want        string
-	}{
-		{"admin", true, "external"},
-		{"admin", false, "admin"},
-		{"external", true, "external"},
-		{"ops", true, "ops"},
-		{"ops", false, "ops"},
-	}
-	for _, c := range cases {
-		if got := adminLoginTestProxy(t, c.user, c.provisioned).adminLogin(); got != c.want {
-			t.Errorf("user %q provisioned=%v: adminLogin() = %q, want %q", c.user, c.provisioned, got, c.want)
+	for _, err := range []error{nil, errors.New("Error 1045 (28000): Access denied"), errors.New("dial tcp: no such host")} {
+		if isAdminLocalOnly(err) {
+			t.Fatalf("%v taken for the local-only refusal", err)
 		}
 	}
 }
 
-// #2360: a rotation on a provisioned proxy keeps both of its logins (the single login it wrote
-// deleted external and locked replication-manager out of a ProxySQL 2+ proxy); another proxy
-// gets the single login, as before.
-func TestProxySQLAdminCredentials(t *testing.T) {
+// #2360: a rotation gives the new password to every login the proxy has (the single login it
+// wrote deleted external, repman's only way into a ProxySQL 2+ proxy), adds the configured user
+// when it is not one of them, and falls back to the single login when the logins are unknown.
+func TestAdminCredentials(t *testing.T) {
 	cases := []struct {
-		user        string
-		provisioned bool
-		want        string
+		logins []string
+		user   string
+		want   string
 	}{
-		{"admin", true, "admin:pw;external:pw"},
-		{"external", true, "admin:pw;external:pw"},
-		{"ops", true, "admin:pw;external:pw;ops:pw"},
-		{"admin", false, "admin:pw"},
-		{"ops", false, "ops:pw"},
+		{[]string{"admin", "external"}, "admin", "admin:pw;external:pw"},
+		{[]string{"admin", "external"}, "external", "admin:pw;external:pw"},
+		{[]string{"admin", "external"}, "ops", "admin:pw;external:pw;ops:pw"},
+		{[]string{"admin"}, "admin", "admin:pw"},
+		{nil, "admin", "admin:pw"},
+		{[]string{"radmin", "admin"}, "admin", "radmin:pw;admin:pw"},
 	}
 	for _, c := range cases {
-		if got := adminLoginTestProxy(t, "admin", c.provisioned).adminCredentials(c.user, "pw"); got != c.want {
-			t.Errorf("user %q provisioned=%v: adminCredentials() = %q, want %q", c.user, c.provisioned, got, c.want)
+		if got := adminCredentials(c.logins, c.user, "pw"); got != c.want {
+			t.Errorf("adminCredentials(%v, %q) = %q, want %q", c.logins, c.user, got, c.want)
 		}
 	}
 }

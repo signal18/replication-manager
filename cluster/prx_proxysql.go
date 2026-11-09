@@ -94,39 +94,32 @@ const (
 	proxysqlAdminRemote    = "external"
 )
 
-// adminLogin is the login replication-manager uses on the proxy's admin port (#2360). For a proxy
-// it provisioned, the default admin becomes external: ProxySQL 2+ refuses admin from another host,
-// and every MySQL 8.4 cluster now gets ProxySQL 3. The configuration is not changed, and a proxy
-// it did not provision keeps the configured login.
-func (proxy *ProxySQLProxy) adminLogin() string {
-	if proxy.User == proxysqlAdminLocalOnly && proxy.HasProvisionCookie() {
-		return proxysqlAdminRemote
-	}
-	return proxy.User
+// isAdminLocalOnly tells whether ProxySQL refused the login because admin only connects locally
+// (ProxySQL 2+: "User 'admin' can only connect locally").
+func isAdminLocalOnly(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "can only connect locally")
 }
 
-// adminCredentials is the value of ProxySQL's admin-admin_credentials for user:password. A proxy
-// replication-manager provisioned keeps both of its logins, admin and external, with the new
-// password, and the user if it is another one: a single login (what a rotation wrote) deleted
-// external, and locked replication-manager out of a ProxySQL 2+ proxy (#2360). Another proxy
-// gets user:password, as before.
-func (proxy *ProxySQLProxy) adminCredentials(user, password string) string {
-	if !proxy.HasProvisionCookie() {
-		return user + ":" + password
+// adminCredentials is the value of ProxySQL's admin-admin_credentials that gives password to every
+// login the proxy has now (logins, from AdminLogins) and to user, added when it is not one of them
+// (#2360). A rotation used to write user:password alone, which deleted the other logins: on a proxy
+// repman provisioned, external, its only way in on ProxySQL 2+. Without the current logins (they
+// could not be read), it is user:password, as before.
+func adminCredentials(logins []string, user, password string) string {
+	names := make([]string, 0, len(logins)+1)
+	seen := make(map[string]bool)
+	for _, l := range append(append([]string{}, logins...), user) {
+		if l != "" && !seen[l] {
+			seen[l] = true
+			names = append(names, l+":"+password)
+		}
 	}
-	logins := []string{proxysqlAdminLocalOnly, proxysqlAdminRemote}
-	if user != proxysqlAdminLocalOnly && user != proxysqlAdminRemote {
-		logins = append(logins, user)
-	}
-	for i, l := range logins {
-		logins[i] = l + ":" + password
-	}
-	return strings.Join(logins, ";")
+	return strings.Join(names, ";")
 }
 
 func (proxy *ProxySQLProxy) Connect() (proxysql.ProxySQL, error) {
 	psql := proxysql.ProxySQL{
-		User:     proxy.adminLogin(),
+		User:     proxy.User,
 		Password: proxy.Pass,
 		Host:     proxy.Host,
 		Port:     proxy.Port,
@@ -138,7 +131,15 @@ func (proxy *ProxySQLProxy) Connect() (proxysql.ProxySQL, error) {
 		psql.Flavor = proxysql.FlavorPgSQL
 	}
 
-	if err := psql.Connect(); err != nil {
+	err := psql.Connect()
+	if isAdminLocalOnly(err) && proxy.User == proxysqlAdminLocalOnly {
+		// ProxySQL 2+ accepts admin only from its own host, and every MySQL 8.4 cluster now gets
+		// ProxySQL 3 (#2360): this connection tries external, the second login of every config
+		// repman generates, with the same password. The configuration is not changed.
+		psql.User = proxysqlAdminRemote
+		err = psql.Connect()
+	}
+	if err != nil {
 		return psql, err
 	}
 	return psql, nil
@@ -931,7 +932,12 @@ func (proxy *ProxySQLProxy) SetAdminCredentials(user string, password string) {
 	}
 	defer psql.Connection.Close()
 
-	err = psql.SetMySQLVariable("admin-admin_credentials", proxy.adminCredentials(user, password))
+	// every login the proxy has keeps working with the new password (#2360)
+	logins, lerr := psql.AdminLogins()
+	if lerr != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlWarn, "ProxySQL %s: the current admin logins cannot be read (%s), only %s is set", proxy.Name, lerr, user)
+	}
+	err = psql.SetMySQLVariable("admin-admin_credentials", adminCredentials(logins, user, password))
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlErr, "ProxySQL could not set mysql variables (%s)", err)
 	}

@@ -2,6 +2,7 @@ package proxysql
 
 import (
 	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
@@ -214,5 +215,19 @@ func TestSetReaderOnlineSoftLeavesWriter(t *testing.T) {
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// #2360: the runtime admin logins come back by name, in order, without their passwords.
+func TestAdminLogins(t *testing.T) {
+	psql, mock := newMock(t, FlavorMySQL)
+	mock.ExpectQuery("^" + regexp.QuoteMeta("SELECT variable_value FROM runtime_global_variables WHERE variable_name='admin-admin_credentials'") + "$").
+		WillReturnRows(sqlmock.NewRows([]string{"variable_value"}).AddRow("admin:s3cr3t;external:s3cr3t; ops:x"))
+	logins, err := psql.AdminLogins()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(logins, ",") != "admin,external,ops" {
+		t.Fatalf("logins %v, want admin,external,ops", logins)
 	}
 }

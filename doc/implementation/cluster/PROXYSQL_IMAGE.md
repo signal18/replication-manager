@@ -54,13 +54,18 @@ client's login nor to log in to the backend for the client, so every client was 
 `proxysql-user` defaults to `admin`. Every config repman generates has declared a second admin
 login, `external`, with the same password, since 2017. All the ProxySQL instances on a preprod
 instance's nodes were checked. Now:
-- **The login:** for a proxy repman provisioned (its provision cookie), `adminLogin()` uses
-  `external` when the configured login is the default `admin`. The configuration is not changed.
-- **Rotation and credential change:** `SetAdminCredentials` writes both logins for such a proxy
-  (`admin:<pw>;external:<pw>`, plus the configured user if it is another one). Before, it wrote a
-  single `user:<pw>`, which deleted `external`, and with it repman's access to a ProxySQL 2+ proxy.
-- **Other proxies:** a proxy repman did not provision keeps the configured login and the single
-  credential, as before.
+- **The login:** when ProxySQL refuses the configured `admin` with "can only connect locally",
+  `Connect()` tries `external` with the same password, for that connection. The configuration is
+  not changed, unlike the closed approach that switched the cluster-wide `proxysql-user`. A proxy
+  without `external` still answers the original error.
+- **Rotation and credential change:** `SetAdminCredentials` reads the proxy's current admin logins
+  (`AdminLogins`) and gives the new password to each of them, adding the configured user when it is
+  not one of them. Before, it wrote a single `user:<pw>`, which deleted `external`, and with it
+  repman's access to a ProxySQL 2+ proxy. When the logins cannot be read, it writes the single
+  login, as before, with a warning.
+- **Why not the provision cookie:** `IsProvisioned()` creates the cookie for any proxy that is up,
+  including one repman only monitors. So the cookie does not mean "repman created this proxy", and
+  a rule based on it could have locked repman out of a client's own proxy.
 - **Not covered:** the janitor's rotation (`ProxyJanitor.RotateProxyPasswords`) still writes a
   single login.
 
