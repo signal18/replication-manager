@@ -174,11 +174,22 @@ func TestOpenSVCStoreWriteAllDeadAgentV3(t *testing.T) {
 type kvAgent struct {
 	mu   sync.Mutex
 	keys map[string]string
+	fail bool // every request answers 500 (an agent failing)
+}
+
+func (a *kvAgent) setFail(b bool) {
+	a.mu.Lock()
+	a.fail = b
+	a.mu.Unlock()
 }
 
 func (a *kvAgent) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	if a.fail {
+		http.Error(w, `{"status":500}`, http.StatusInternalServerError)
+		return
+	}
 	name := r.URL.Query().Get("name")
 	cur, ok := a.keys[name]
 	switch r.Method {
@@ -239,5 +250,81 @@ func TestOpenSVCRotationKeepsOldPasswordV3(t *testing.T) {
 	}
 	if v, ok := agent.get("MYSQL_ROOT_PASSWORD_OLD"); !ok || v != "first" {
 		t.Fatalf("MYSQL_ROOT_PASSWORD_OLD does not hold the superseded password (present=%v)", ok)
+	}
+}
+
+// kvAgentCluster is a v3 cluster whose agent is a kvAgent.
+func kvAgentCluster(t *testing.T, agent *kvAgent) *Cluster {
+	t.Helper()
+	server := httptest.NewTLSServer(agent)
+	t.Cleanup(server.Close)
+	u, err := url.Parse(server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p12Path := filepath.Join(t.TempDir(), "cluster.p12")
+	if err := os.WriteFile(p12Path, opensvctest.P12(t, "repman", ""), 0600); err != nil {
+		t.Fatal(err)
+	}
+	return openSVCStoreTestCluster(t, p12Path, u.Host)
+}
+
+// #2357 review point 1: the provisioning seeds went through a direct write, so a reprovision over
+// an existing secret lost <KEY>_OLD, as the rotation did. Through the store writer, the
+// superseded root password lands in MYSQL_ROOT_PASSWORD_OLD.
+func TestOpenSVCProvisionSeedKeepsOldPassword(t *testing.T) {
+	agent := &kvAgent{keys: map[string]string{"MYSQL_ROOT_PASSWORD": "before"}}
+	cl := kvAgentCluster(t, agent)
+	if cl.Conf.Secrets == nil {
+		cl.Conf.Secrets = config.NewSecrets(nil)
+	}
+	cl.Conf.Secrets.Set("db-servers-credential", config.Secret{Value: "root:after"})
+	if errs := cl.seedOrchestratorPasswords(cl.OpenSVCConnect()); len(errs) != 0 {
+		t.Fatalf("seed errors: %v", errs)
+	}
+	if v, _ := agent.get("MYSQL_ROOT_PASSWORD"); v != "after" {
+		t.Fatal("MYSQL_ROOT_PASSWORD not the provisioned password")
+	}
+	if v, ok := agent.get("MYSQL_ROOT_PASSWORD_OLD"); !ok || v != "before" {
+		t.Fatalf("MYSQL_ROOT_PASSWORD_OLD does not hold the superseded password (present=%v)", ok)
+	}
+	if _, ok := agent.get("SHARDPROXY_ROOT_PASSWORD"); !ok {
+		t.Fatal("SHARDPROXY_ROOT_PASSWORD not written (an empty value is written, as before)")
+	}
+}
+
+// #2357 review point 7: a rotation against a failing agent keeps WARN0275's cause open; once the
+// agent answers, the retry writes the password and _OLD holds the one before the failed rotation.
+func TestOpenSVCRotationFailingAgentThenRecovers(t *testing.T) {
+	agent := &kvAgent{keys: map[string]string{}}
+	cl := kvAgentCluster(t, agent)
+	if err := cl.ProvisionRotatePasswords("first"); err != nil {
+		t.Fatalf("first rotation: %v", err)
+	}
+	agent.setFail(true)
+	if err := cl.ProvisionRotatePasswords("second"); err == nil {
+		t.Fatal("a failing agent accepted the write")
+	}
+	cl.secretKv.mu.Lock()
+	behind := cl.secretKv.orchestratorBehind
+	cl.secretKv.mu.Unlock()
+	if behind == "" {
+		t.Fatal("no WARN0275 cause after the failed write")
+	}
+	agent.setFail(false)
+	if err := cl.writeOpenSVCRootPassword(cl.OpenSVCConnect(), "second"); err != nil {
+		t.Fatalf("retry: %v", err)
+	}
+	cl.secretKv.mu.Lock()
+	behind = cl.secretKv.orchestratorBehind
+	cl.secretKv.mu.Unlock()
+	if behind != "" {
+		t.Fatalf("WARN0275 cause kept after the retry: %s", behind)
+	}
+	if v, _ := agent.get("MYSQL_ROOT_PASSWORD"); v != "second" {
+		t.Fatal("the retry did not write the rotated password")
+	}
+	if v, _ := agent.get("MYSQL_ROOT_PASSWORD_OLD"); v != "first" {
+		t.Fatal("MYSQL_ROOT_PASSWORD_OLD does not hold the password before the failed rotation")
 	}
 }

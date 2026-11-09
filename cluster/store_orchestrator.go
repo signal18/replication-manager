@@ -140,7 +140,11 @@ func (s *openSVCStore) writeWith(ctx context.Context, svc opensvc.Collector, ite
 				}
 				if writeOld {
 					// best effort: the _OLD slot must never block the current write
-					_ = svc.CreateSecretKeyValueCtx(bctx, s.cluster.Name, orchestratorEnvObject, key+oldKeySuffix, old)
+					if oerr := svc.CreateSecretKeyValueCtx(bctx, s.cluster.Name, orchestratorEnvObject, key+oldKeySuffix, old); oerr != nil {
+						// the key is still written below; the rollback copy is what is lost: say so,
+						// the key only, never a value (F10)
+						s.cluster.LogModulePrintf(s.cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "Orchestrator secret %s/sec/%s: %s%s not written, the superseded value is not kept: %s", s.cluster.Name, orchestratorEnvObject, key, oldKeySuffix, oerr)
+					}
 				}
 			}
 		}
@@ -198,4 +202,32 @@ func (cluster *Cluster) queueOrchestrator(key, value string) {
 	}
 	cluster.storeQueue().Push(credstore.StoreItem{Entry: orchestratorStoreEntry, Key: key, Version: cluster.selfVersion(value)})
 	cluster.startSecretStores()
+}
+
+// seedOrchestratorPasswords writes the provisioning's password keys of the env secret through
+// the store writer (#2356): REPLICATION_MANAGER_PASSWORD (the admin API password, copied to the
+// orchestrator secret only, never to the Chain/Vault, rule 6), MYSQL_ROOT_PASSWORD and
+// SHARDPROXY_ROOT_PASSWORD. A reprovision over an existing secret keeps the superseded value in
+// <KEY>_OLD, as a rotation does. The database and proxy passwords then go to the stores as a
+// version (reportOrchestratorSecret). It returns the error of each key it could not write.
+func (cluster *Cluster) seedOrchestratorPasswords(svc opensvc.Collector) map[string]error {
+	errs := make(map[string]error)
+	for _, kv := range []struct{ key, value string }{
+		{"REPLICATION_MANAGER_PASSWORD", cluster.APIUsers["admin"].Password},
+		{"MYSQL_ROOT_PASSWORD", cluster.GetDbPass()},
+		{"SHARDPROXY_ROOT_PASSWORD", cluster.GetShardPass()},
+	} {
+		// written even when empty, as before: a service template may reference the key
+		_, err := cluster.openSVCStore().writeWith(context.Background(), svc, []credstore.StoreItem{{
+			Entry: orchestratorStoreEntry, Key: kv.key, Version: cluster.selfVersion(kv.value),
+		}}, cluster.storeTimeout())
+		if err != nil {
+			errs[kv.key] = err
+			continue
+		}
+		if kv.key != "REPLICATION_MANAGER_PASSWORD" {
+			cluster.reportOrchestratorSecret("env", kv.key, kv.value)
+		}
+	}
+	return errs
 }

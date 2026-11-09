@@ -9,6 +9,7 @@ import (
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/config/credstore"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 )
@@ -69,9 +70,11 @@ func (s *k8sStore) writeWith(ctx context.Context, client kubernetes.Interface, i
 	var cur map[string][]byte
 	if sec, gerr := client.CoreV1().Secrets(s.cluster.Name).Get(bctx, k8sClusterSecretName(s.cluster.Name), metav1.GetOptions{}); gerr == nil && sec != nil {
 		cur = sec.Data
-	} else if gerr != nil {
-		// best effort: everything is written and no _OLD is kept; the error names no value
-		s.cluster.LogModulePrintf(s.cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlDbg, "Kubernetes secret read before write failed, writing without _OLD: %s", gerr)
+	} else if gerr != nil && !apierrors.IsNotFound(gerr) {
+		// best effort: everything is written and no _OLD is kept, which loses the rollback copy:
+		// a warning, the error naming no value (F10). An absent Secret (the first provision) has
+		// nothing to keep.
+		s.cluster.LogModulePrintf(s.cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "Kubernetes secret read before write failed, writing without _OLD: %s", gerr)
 	}
 	values := make(map[string]string, len(items))
 	for _, it := range items {

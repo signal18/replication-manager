@@ -301,26 +301,10 @@ func (cluster *Cluster) openSVCCreateMapsV2(svc opensvc.Collector, agent string)
 		}
 	}
 
-	err = svc.CreateSecretKeyValueV2(cluster.Name, "env", "REPLICATION_MANAGER_PASSWORD", cluster.APIUsers["admin"].Password)
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to secrets: %s %s ", "REPLICATION_MANAGER_PASSWORD", err)
-	}
-	// also keep the admin API password current through the version queue (#2356); it is copied
-	// to the orchestrator secret only, never to the Chain/Vault (rule 6)
-	cluster.queueOrchestrator("REPLICATION_MANAGER_PASSWORD", cluster.APIUsers["admin"].Password)
-	err = svc.CreateSecretKeyValueV2(cluster.Name, "env", "MYSQL_ROOT_PASSWORD", cluster.GetDbPass())
-	if err == nil {
-		cluster.reportOrchestratorSecret("env", "MYSQL_ROOT_PASSWORD", cluster.GetDbPass())
-	}
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to secrets: %s %s ", "MYSQL_ROOT_PASSWORD", err)
-	}
-	err = svc.CreateSecretKeyValueV2(cluster.Name, "env", "SHARDPROXY_ROOT_PASSWORD", cluster.GetShardPass())
-	if err == nil {
-		cluster.reportOrchestratorSecret("env", "SHARDPROXY_ROOT_PASSWORD", cluster.GetShardPass())
-	}
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to secrets: %s %s ", "SHARDPROXY_ROOT_PASSWORD", err)
+	// the password seeds go through the store writer, the single writer of these keys (#2356):
+	// a direct write first left the queue nothing to save, so a reprovision lost <KEY>_OLD
+	for key, err := range cluster.seedOrchestratorPasswords(svc) {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to secrets: %s %s ", key, err)
 	}
 	// APU (Compute) sensor credential -- see openSVCCreateMapsV3 for the rationale.
 	err = svc.CreateSecretKeyValueV2(cluster.Name, "env", "SENSOR_API_KEY", cluster.GetSystemAPIKey())
@@ -372,26 +356,10 @@ func (cluster *Cluster) openSVCCreateMapsV3(svc opensvc.Collector, agent string)
 	}
 
 	errs := make(map[string]error)
-	err = svc.CreateSecretKeyValue(cluster.Name, "env", "REPLICATION_MANAGER_PASSWORD", cluster.APIUsers["admin"].Password)
-	if err != nil {
-		errs["REPLICATION_MANAGER_PASSWORD"] = err
-	}
-	// also keep the admin API password current through the version queue (#2356); it is copied
-	// to the orchestrator secret only, never to the Chain/Vault (rule 6)
-	cluster.queueOrchestrator("REPLICATION_MANAGER_PASSWORD", cluster.APIUsers["admin"].Password)
-	err = svc.CreateSecretKeyValue(cluster.Name, "env", "MYSQL_ROOT_PASSWORD", cluster.GetDbPass())
-	if err == nil {
-		cluster.reportOrchestratorSecret("env", "MYSQL_ROOT_PASSWORD", cluster.GetDbPass())
-	}
-	if err != nil {
-		errs["MYSQL_ROOT_PASSWORD"] = err
-	}
-	err = svc.CreateSecretKeyValue(cluster.Name, "env", "SHARDPROXY_ROOT_PASSWORD", cluster.GetShardPass())
-	if err == nil {
-		cluster.reportOrchestratorSecret("env", "SHARDPROXY_ROOT_PASSWORD", cluster.GetShardPass())
-	}
-	if err != nil {
-		errs["SHARDPROXY_ROOT_PASSWORD"] = err
+	// the password seeds go through the store writer, the single writer of these keys (#2356):
+	// a direct write first left the queue nothing to save, so a reprovision lost <KEY>_OLD
+	for key, e := range cluster.seedOrchestratorPasswords(svc) {
+		errs[key] = e
 	}
 	// APU (Compute) sensor credential: the derived `system` API key, delivered via the
 	// OpenSVC SECRET channel (never svcenv/git). app_job.sh logs in as `system` with it
