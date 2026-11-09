@@ -88,6 +88,31 @@ func galeraGate(cl *cluster.Cluster, name string) bool {
 	return true
 }
 
+// galeraWaitWhole waits for want Synced nodes and starts what is still down once a minute, as an
+// operator does: a node's start can abort for a reason of its own (the state transfer could not
+// resolve the joiner's name just after its restart), and the orchestrator can take minutes to see
+// the container gone, answering "already started" until then. It returns why the cluster is not
+// whole, nil once it is.
+func galeraWaitWhole(cl *cluster.Cluster, want int, timeout time.Duration) error {
+	var err error
+	lastStart := time.Now()
+	waitFor(timeout, func() bool {
+		if _, err = galeraHealthy(cl, want); err == nil {
+			return true
+		}
+		if time.Since(lastStart) >= time.Minute {
+			lastStart = time.Now()
+			for _, s := range cl.Servers {
+				if s.IsDown() {
+					cl.StartDatabaseService(s)
+				}
+			}
+		}
+		return false
+	})
+	return err
+}
+
 // galeraProxyProbeTable holds the node a write made through a proxy landed on.
 const galeraProxyProbeTable = "regtest_proxy_route"
 
@@ -304,8 +329,8 @@ func (regtest *RegTest) TestGaleraMasterLoss(cl *cluster.Cluster, conf string, t
 		logf("FAIL GaleraMasterLoss: cannot start %s: %s", lost.URL, err)
 		return false
 	}
-	if !waitFor(300*time.Second, func() bool { _, err = galeraHealthy(cl, n); return err == nil }) {
-		logf("FAIL GaleraMasterLoss: %s did not rejoin Synced 300s after its start: %s", lost.URL, err)
+	if err = galeraWaitWhole(cl, n, 600*time.Second); err != nil {
+		logf("FAIL GaleraMasterLoss: %s did not rejoin Synced 600s after its start: %s", lost.URL, err)
 		return false
 	}
 	if ok, err := probeTablePresent(lost); err != nil || !ok {
@@ -402,20 +427,7 @@ func (regtest *RegTest) TestGaleraFullRestartNotLastFirst(cl *cluster.Cluster, c
 			}
 		}
 	}
-	// The node started alone aborted, and the orchestrator can take minutes to see its container
-	// gone: until then it answers "already started" and the start above does nothing. Starting
-	// what is still down, once a minute, is what an operator does.
-	lastStart := time.Now()
-	if !waitFor(600*time.Second, func() bool {
-		if _, err = galeraHealthy(cl, n); err == nil {
-			return true
-		}
-		if time.Since(lastStart) >= time.Minute {
-			lastStart = time.Now()
-			restartAll()
-		}
-		return false
-	}) {
+	if err = galeraWaitWhole(cl, n, 600*time.Second); err != nil {
 		logf("FAIL GaleraFullRestartNotLastFirst: the cluster did not come back whole 600s after the starts: %s", err)
 		restartAll()
 		return false
