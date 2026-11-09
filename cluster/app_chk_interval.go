@@ -57,11 +57,24 @@ func routeCheckInterval(cnf *config.AppConfig, route config.Route) time.Duration
 
 // runCheck returns the result of the check named key: its last result while it is not
 // due, else a fresh run of probe. Due = never run, its configuration (sig) changed since,
-// failed last time, a failure of the app still debouncing, or its interval elapsed.
+// failed last time, a failure of the app still being confirmed (below the debounce
+// threshold), or its interval elapsed. A confirmed failure keeps only its own check at
+// every tick: an app with one broken route keeps the interval on its other checks.
 func (app *App) runCheck(key, sig string, interval time.Duration, now time.Time, probe func() appCheckResult) appCheckResult {
+	threshold := appErrFailureThreshold
+	if app.ClusterGroup != nil && app.ClusterGroup.Conf != nil {
+		threshold = appErrorDebounceThreshold(app.ClusterGroup.Conf)
+	}
 	app.Lock()
 	last, ok := app.CheckResults[key]
-	due := !ok || last.sig != sig || last.err != nil || len(app.AppErrConsecutiveMap) > 0 || now.Sub(last.at)+appCheckSlack >= interval
+	confirming := false
+	for _, n := range app.AppErrConsecutiveMap {
+		if n > 0 && n < threshold {
+			confirming = true
+			break
+		}
+	}
+	due := !ok || last.sig != sig || last.err != nil || confirming || now.Sub(last.at)+appCheckSlack >= interval
 	app.Unlock()
 	if !due {
 		return last
@@ -76,6 +89,12 @@ func (app *App) runCheck(key, sig string, interval time.Duration, now time.Time,
 	app.CheckResults[key] = res
 	app.Unlock()
 	return res
+}
+
+// externalCheckSig: the configuration of a route's external check: what builds its URL or
+// address (name, mode, protocol, ports) and the monitor contract carried by its local key.
+func externalCheckSig(route config.Route, lKey string) string {
+	return strings.Join([]string{route.CName, route.Mode, route.Protocol, route.Port, route.SourcePort, route.DestinationPort, lKey}, "|")
 }
 
 // noRouteCheckSig: the configuration of the check of an app without a route.

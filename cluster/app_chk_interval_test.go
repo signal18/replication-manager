@@ -263,3 +263,33 @@ func TestAppCheckIntervalSharedLocalCheckUsesShortestInterval(t *testing.T) {
 		t.Fatalf("after 30 s the shared local check (intervals 300 and 30) should have run again")
 	}
 }
+
+// Once a route's failure is confirmed (debounce threshold reached), the app's other checks
+// go back to their interval: only the broken check keeps running at every tick.
+func TestAppCheckIntervalConfirmedFailureReleasesOtherChecks(t *testing.T) {
+	upPort, upConns, stopUp := countingListener(t)
+	defer stopUp()
+	downPort, _, stopDown := countingListener(t)
+	app := newMonitoringTestApp([]config.Route{
+		{Protocol: "tcp", CName: "127.0.0.1", Port: upPort, Primary: true},
+		{Protocol: "tcp", CName: "127.0.0.1", Port: downPort},
+	})
+	app.AppConfig.AppPort = upPort
+	app.GetMonitoringStatus()
+	expectConns(t, upConns, 2, "first tick")
+	stopDown()
+	ageCheckResults(app, appMonitorDefaultInterval)
+	// threshold 3: the failing route is seen and confirmed in 3 ticks, the healthy one
+	// runs at each of them (2 connections a tick)
+	for i := 0; i < 3; i++ {
+		app.GetMonitoringStatus()
+	}
+	expectConns(t, upConns, 8, "3 ticks while the failure is being confirmed")
+	if _, ok := app.ErrState[ErrAppTCPConnectFailed]; !ok {
+		t.Fatalf("want %s confirmed after 3 ticks", ErrAppTCPConnectFailed)
+	}
+	for i := 0; i < 3; i++ {
+		app.GetMonitoringStatus()
+	}
+	expectConns(t, upConns, 8, "confirmed failure: the healthy route is back on its interval")
+}

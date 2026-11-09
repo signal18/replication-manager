@@ -235,7 +235,7 @@ func (app *App) GetMonitoringStatus() string {
 			} else {
 				checkKey := "external " + routeKey
 				checkKeys[checkKey] = true
-				ext := app.runCheck(checkKey, route.CName+"|"+lKey, routeCheckInterval(app.AppConfig, route), now, func() appCheckResult {
+				ext := app.runCheck(checkKey, externalCheckSig(route, lKey), routeCheckInterval(app.AppConfig, route), now, func() appCheckResult {
 					status, _, err := app.GetAppHTTPStatus(route, false)
 					return appCheckResult{err: err, status: status}
 				})
@@ -265,7 +265,7 @@ func (app *App) GetMonitoringStatus() string {
 			} else {
 				checkKey := "external " + routeKey
 				checkKeys[checkKey] = true
-				ext := app.runCheck(checkKey, route.CName+"|"+lKey, routeCheckInterval(app.AppConfig, route), now, func() appCheckResult {
+				ext := app.runCheck(checkKey, externalCheckSig(route, lKey), routeCheckInterval(app.AppConfig, route), now, func() appCheckResult {
 					return appCheckResult{err: app.GetAppTCPStatus(route)}
 				})
 				if ext.err != nil {

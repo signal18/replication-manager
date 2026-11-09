@@ -123,13 +123,18 @@ Each check now has its own interval (`cluster/app_chk_interval.go`):
   `local <lKey>` (a local endpoint, shared by the routes with the same `buildLocalCheckKey`,
   on the shortest of their intervals), `external <routeKey>` (a route's external check).
 - **Due rule** (`runCheck`): run when never run, when its configuration changed (each
-  result carries a signature: the local key with the monitor contract, the route's name,
-  or the app's monitor settings, so an edit is checked at the next tick), when its last
-  result failed, when any
-  check of the app is still debouncing (`AppErrConsecutiveMap` not empty), or when its
-  interval has elapsed. Otherwise the last result is returned. So a failure is confirmed
-  at the debounce threshold in ticks, not in intervals, and a recovery is seen at the
-  next tick; a passing check costs one run per interval.
+  result carries a signature: the local key with the monitor contract; for the external
+  check also the route's name, mode, protocol and ports; for the no-route probe the
+  app's monitor settings; so an edit is checked at the next tick), when its last result
+  failed, when a failure of the app is still being confirmed (a counter of
+  `AppErrConsecutiveMap` between 1 and the debounce threshold), or when its interval has
+  elapsed. Otherwise the last result is returned. So a failure is confirmed at the
+  debounce threshold in ticks, not in intervals, and a recovery is seen at the next tick;
+  a passing check costs one run per interval. A confirmed failure keeps only its own
+  check at every tick: an app with one broken route keeps the interval on the others.
+- **Tick granularity.** Checks run on monitoring ticks: an interval runs at the first
+  tick after it has elapsed (minus the 1 s slack), so with a 30 s ticker a 45 s interval
+  runs every 60 s.
 - **No flapping.** Reused results feed the same debounce and state code as fresh ones,
   and `EmitAppErrors` re-emits the last published batch at every tick, so the states stay
   identical between runs.

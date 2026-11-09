@@ -156,7 +156,9 @@ func (regtest *RegTest) TestAppCheckInterval(cl *cluster.Cluster, conf string, t
 		logf(config.LvlErr, "TEST app-check-interval: FAIL %s", err)
 		return false
 	}
-	recoverLimit := 3*tick + 5*time.Second
+	// reopen, one tick for the local check, the external one in the same pass; room for
+	// a tick skipped while a refresh is still in progress
+	recoverLimit := 5*tick + 5*time.Second
 	took, ok = waitState(recoverLimit, running)
 	if !ok {
 		logf(config.LvlErr, "TEST app-check-interval: FAIL the backend is back and the app is still %s after %s", app.GetState(), recoverLimit)
