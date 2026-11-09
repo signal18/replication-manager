@@ -614,6 +614,18 @@ Start create an account in https://gitlab.signal18.io
       )
     }] : []),
     ...(config?.cloud18 ? [{
+      globalSetting: 'cloud18-sso-login',
+      key: 'Sign in with Cloud18',
+      help: h(`**Sign in with Cloud18**\n\nThe login page offers **Sign in with Cloud18** and **Sign up**: the browser signs in at the Cloud18 realm and comes back here, and one Cloud18 session signs the person in on every partner instance that offers it (#2185). It also lets peers open their live session on this instance.\n\n- Needs a public https address (API Public URL), and this instance's callback (\`<api-public-url>/api/auth/cloud18/callback\`) listed by the Cloud18 realm.\n- Takes effect at once, no restart. Admin only.\n\nOff: the login page keeps the Sign in form only; it still checks Cloud18 accounts.\n\nConfig: \`cloud18-sso-login\``, 'Sign in with Cloud18'),
+      value: (
+        <RMSwitch
+          confirmTitle='Confirm switch global settings for cloud18-sso-login?'
+          onChange={() => dispatch(switchGlobalSetting({ setting: 'cloud18-sso-login' }))}
+          isChecked={config?.cloud18SsoLogin}
+        />
+      )
+    }] : []),
+    ...(config?.cloud18 ? [{
       globalSetting: 'cloud18-login-resume',
       key: 'Keep Sessions Across Restarts',
       help: h(`**Keep Sessions Across Restarts**\n\nA restart of replication-manager no longer signs out the people signed in with their Cloud18 account (#2341).\n\n- The live Cloud18 logins are kept, encrypted with this instance's key, in the data directory (\`cloud18-logins.json\`, never pushed to git).\n- After a restart, a session comes back only when the Cloud18 realm still accepts its login, and it ends when it would have ended.\n- Local (password) logins still end at a restart.\n\nOff: every restart signs everyone out, and the kept logins are removed at once.\n\nConfig: \`cloud18-login-resume\``, 'Keep Sessions Across Restarts'),

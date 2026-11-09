@@ -162,3 +162,20 @@ func TestSwitchRepmanSetting_LogHistoryEnable(t *testing.T) {
 		t.Fatal("expected LogHistoryEnable to be false after second switch")
 	}
 }
+
+// TestSwitchRepmanSetting_Cloud18SSOLogin (#2367): the admin switches Sign in with Cloud18 in the
+// global settings instead of "setting not found".
+func TestSwitchRepmanSetting_Cloud18SSOLogin(t *testing.T) {
+	repman := &ReplicationManager{
+		Conf:          &config.Config{Secrets: config.NewSecrets(nil)},
+		ConfigManager: newConfigManagerForTest(),
+	}
+	for _, want := range []bool{true, false} {
+		if err := repman.switchRepmanSetting("cloud18-sso-login"); err != nil {
+			t.Fatalf("switchRepmanSetting(\"cloud18-sso-login\"): %v", err)
+		}
+		if repman.Conf.Cloud18SSOLogin != want {
+			t.Fatalf("Cloud18SSOLogin = %v after switch, want %v", repman.Conf.Cloud18SSOLogin, want)
+		}
+	}
+}
