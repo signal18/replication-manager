@@ -290,7 +290,7 @@ var errArtifactWalkBudget = errors.New("more entries than the fingerprint check 
 // entries of a folder (0: all of them). On the backups folder mount it is a bucket
 // fingerprint, its files' S3 ETags in place of the mount's inodes and times.
 func restoreArtifactFingerprintBounded(path string, maxEntries int) (*backupmgr.ArtifactFingerprint, error) {
-	if !s3fuse.Serves(path) {
+	if !bucketServes(path) {
 		return artifactFingerprint(path, maxEntries, nil)
 	}
 	// the ETags of what is uploaded, not of a previous upload of a file still buffered
@@ -303,7 +303,7 @@ func restoreArtifactFingerprintBounded(path string, maxEntries int) (*backupmgr.
 	}
 	// the bucket's listing, not GeeseFS's attribute: after an upload in parts it is the
 	// file's MD5, the listing the bucket's ETag
-	etags, err := s3fuse.ETags(target, maxEntries)
+	etags, err := bucketETags(target, maxEntries)
 	if errors.Is(err, s3fuse.ErrTooManyObjects) {
 		return nil, errArtifactWalkBudget
 	}

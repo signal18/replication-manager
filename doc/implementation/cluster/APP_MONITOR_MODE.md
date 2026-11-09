@@ -105,6 +105,58 @@ monitor-only, so its plan units and service actions are unchanged.
   published on the cluster's gateway and checked on the cluster address (found on preprod).
   Adding a route by hand would publish that route like any app's.
 
+## Check interval (#2362)
+
+The apps are refreshed at every monitoring tick (`maybeRefreshAppsAsync`, one goroutine
+per app); before #2362 every check ran at every tick, so an HTTP route cost a local GET and
+an external GET through the public gateway every 2 s. Seen on a managed instance: about 8
+requests/s through the gateway, 29% of the central log volume.
+
+Each check now has its own interval (`cluster/app_chk_interval.go`):
+
+- **Settings.** `monitor.interval` on a route (`config.RouteMonitor.Interval`, seconds,
+  API key `monitor.interval`, GUI Routes editor, any protocol); `app-monitor-interval` on
+  the app (`config.AppConfig.AppMonitorInterval`, app setting, GUI General section): the
+  no-route probe and the default of the routes. `0` = 60 s (`appMonitorDefaultInterval`).
+  Resolution: `routeCheckInterval` (route, else app) and `appCheckInterval` (app, else 60 s).
+- **Checks.** Three kinds, each named in `App.CheckResults`: `app-port` (no-route probe),
+  `local <lKey>` (a local endpoint, shared by the routes with the same `buildLocalCheckKey`,
+  on the shortest of their intervals), `external <routeKey>` (a route's external check).
+- **Due rule** (`runCheck`): run when never run, when its configuration changed (each
+  result carries a signature: the local key with the monitor contract; for the external
+  check also the route's name, mode, protocol and ports; for the no-route probe the
+  app's monitor settings; so an edit is checked at the next tick), when its last result
+  failed, when a failure of the app is still being confirmed (a counter of
+  `AppErrConsecutiveMap` between 1 and the debounce threshold), or when its interval has
+  elapsed. Otherwise the last result is returned. So a failure is confirmed at the
+  debounce threshold in ticks, not in intervals, and a recovery is seen at the next tick;
+  a passing check costs one run per interval. A confirmed failure keeps only its own
+  check at every tick: an app with one broken route keeps the interval on the others.
+- **Tick granularity.** Checks run on monitoring ticks: an interval runs at the first
+  tick after it has elapsed (minus the 1 s slack), so with a 30 s ticker a 45 s interval
+  runs every 60 s.
+- **No flapping.** Reused results feed the same debounce and state code as fresh ones,
+  and `EmitAppErrors` re-emits the last published batch at every tick, so the states stay
+  identical between runs.
+- **Bounded (T18).** `keepCheckResults` drops the entries of checks that no longer exist
+  (route removed or changed) at the end of each pass: one entry per current check.
+- **Off-switch.** An interval at or below `monitoring-ticker` runs the check every tick,
+  the former behaviour: a check is due up to `appCheckSlack` (1 s) early, so the tick's
+  jitter never pushes a run to the next tick.
+
+Trade-off accepted: a check that passed and then breaks is seen at its next run, at most
+one interval later (60 s by default), then confirmed in `app-error-debounce-threshold`
+ticks.
+
+Tests: `cluster/app_chk_interval_test.go` (one probe per interval on a counting listener,
+failing check every tick and recovery at the next tick, TCP route on its monitor interval,
+a settings change runs the check again, precedence, pruning of removed checks, negative
+interval normalized). Regtest `testAppCheckInterval` (`regtest/test_app_check_interval.go`)
+runs the same through the ticking monitor: connections counted over 50 s on a 20 s
+interval, outage seen within one interval, recovery within a few ticks. The regtests
+`testAppWarningDebounceAndRecovery` and `testAppMonitorHTTP` count debounce cycles tick
+by tick, so they set `app-monitor-interval = 1` (every tick, as when they were written).
+
 ## Route label
 
 `config.Route.Label()` names a host route by its public URL and the destination port

@@ -640,6 +640,8 @@ func (server *ServerMonitor) checkRegisteredBackups(budget *int) {
 		}
 		return true
 	})
+	// one listing of each backups folder on the bucket for the run, not two per backup (#2362)
+	snap := newBucketETagSnapshot()
 	for _, meta := range metas {
 		if cluster.isDuplicateScheduledBackup(meta) {
 			server.removeScheduledBackupRecord(meta)
@@ -668,6 +670,26 @@ func (server *ServerMonitor) checkRegisteredBackups(budget *int) {
 					server.adoptOwnBackup(meta)
 				}
 			}
+			continue
+		}
+		// from the bucket's listing (#2362): the registered backup, or the change already
+		// recorded and nothing new to read; else the exact check below
+		prev, hadChange := cluster.backupChanges.Load(meta.Id)
+		var known *BackupRegistrationChange
+		if hadChange {
+			known = prev.(*BackupRegistrationChange)
+		}
+		unchanged, sameAsKnown := snap.check(meta.Dest, rec, known)
+		if unchanged {
+			cluster.backupChanges.Delete(meta.Id)
+			continue
+		}
+		if sameAsKnown {
+			still := *known // a copy: readers hold the stored one
+			still.Checked = time.Now()
+			// only over the entry read: one a Register or an Unregister deleted or replaced
+			// meanwhile is not brought back
+			cluster.backupChanges.CompareAndSwap(meta.Id, prev, &still)
 			continue
 		}
 		if artifactUnchangedBounded(meta.Dest, rec, backupProofWalkMax) {

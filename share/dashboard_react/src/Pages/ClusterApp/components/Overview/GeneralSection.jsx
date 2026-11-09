@@ -91,7 +91,7 @@ const GeneralSection = ({ clusterName, appId, appName, appHost, config, appConfi
     provAppDockerImg = '', provAppDockerCmd = '', provAppTemplate = '', provAppStartTimeout = '',
     provAppAgents = '', provAppHaTopology = '',
     provAppSizingMode: appSizingMode = '', provAppCpuCores = '', provAppMemory = '', provAppDiskSize = '',
-    appS3Provider = false, appStateful = false, appMonitorMode = '', appMonitorPath = '', appMonitorExpectStatus = '', appMonitorCertExpireDays = 0,
+    appS3Provider = false, appStateful = false, appMonitorMode = '', appMonitorPath = '', appMonitorExpectStatus = '', appMonitorCertExpireDays = 0, appMonitorInterval = 0,
     appDbAutoCreate = false, appDbOwned = false, appDbSchema = '', appDbUser = ''
   } = appConfig;
 
@@ -197,6 +197,7 @@ const GeneralSection = ({ clusterName, appId, appName, appHost, config, appConfi
 
   const onSaveMonitorPath = useCallback((value) => dispatch(setAppSetting({ clusterName: clusterName, appId: appId, setting: 'app-monitor-path', value: value })), [clusterName, appId, dispatch])
   const onSaveMonitorExpectStatus = useCallback((value) => dispatch(setAppSetting({ clusterName: clusterName, appId: appId, setting: 'app-monitor-expect-status', value: value })), [clusterName, appId, dispatch])
+  const onSaveMonitorInterval = useCallback((value) => dispatch(setAppSetting({ clusterName: clusterName, appId: appId, setting: 'app-monitor-interval', value: value })), [clusterName, appId, dispatch])
   const onSaveMonitorCertExpireDays = useCallback((value) => dispatch(setAppSetting({ clusterName: clusterName, appId: appId, setting: 'app-monitor-cert-expire-days', value: value })), [clusterName, appId, dispatch])
   const onMonitorModeChange = useCallback((value) => { dispatch(setAppSetting({ clusterName: clusterName, appId: appId, setting: 'app-monitor-mode', value: value })) }, [clusterName, appId, dispatch])
   const onHATopologyChange = useCallback((value) => { dispatch(setAppSetting({ clusterName: clusterName, appId: appId, setting: 'prov-app-ha-topology', value: value })) }, [clusterName, appId, dispatch])
@@ -359,6 +360,18 @@ const GeneralSection = ({ clusterName, appId, appName, appHost, config, appConfi
             onChange={onMonitorModeChange}
             options={monitorModeOptions}
             selectedValue={appMonitorMode || 'port'}
+          />
+        )
+      },
+      {
+        key: 'Check interval (seconds)',
+        value: (
+          <TextForm
+            value={appMonitorInterval ? String(appMonitorInterval) : ''}
+            placeholder='60'
+            confirmTitle="Check Interval Change"
+            confirmBody='Seconds between two runs of the app check while it passes; also the default of its routes. A failing check runs at every monitoring tick. Change "app-monitor-interval" to: '
+            onSave={onSaveMonitorInterval}
           />
         )
       },
@@ -606,7 +619,7 @@ const GeneralSection = ({ clusterName, appId, appName, appHost, config, appConfi
     onSaveAppAsTemplate, templateOptions, provAppTemplate, onPreviewTemplate,
     onResetAppFromTemplate, onRefreshAndResetAppFromTemplate,
     agentList, onAgentsChange, provAppAgents, onHATopologyChange, provAppHaTopology, haTopologyOptions, onMonitorModeChange, appMonitorMode, monitorModeOptions,
-    appMonitorPath, appMonitorExpectStatus, onSaveMonitorPath, onSaveMonitorExpectStatus, appMonitorCertExpireDays, onSaveMonitorCertExpireDays,
+    appMonitorPath, appMonitorExpectStatus, onSaveMonitorPath, onSaveMonitorExpectStatus, appMonitorCertExpireDays, onSaveMonitorCertExpireDays, appMonitorInterval, onSaveMonitorInterval,
     appS3Provider, onS3ProviderChange, appStateful, onStatefulChange,
     isUnitMode, isManualMode, isLegacyMode,
     appSizingMode, clusterSizingMode, provAppSizingMode,
@@ -692,6 +705,11 @@ GeneralSection.propTypes = {
     provAppCpuCores: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
     provAppMemory: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
     provAppDiskSize: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
+    appMonitorMode: PropTypes.string,
+    appMonitorPath: PropTypes.string,
+    appMonitorExpectStatus: PropTypes.string,
+    appMonitorCertExpireDays: PropTypes.number,
+    appMonitorInterval: PropTypes.number,
   }).isRequired,
   dockerTemplates: PropTypes.arrayOf(PropTypes.string),
   substitution: PropTypes.array,

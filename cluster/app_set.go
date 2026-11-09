@@ -422,6 +422,16 @@ func (app *App) SetSetting(key, value string) error {
 			days = n
 		}
 		app.AppConfig.AppMonitorCertExpireDays = days
+	case "app-monitor-interval":
+		seconds := 0
+		if v := strings.TrimSpace(value); v != "" {
+			n, err := strconv.Atoi(v)
+			if err != nil || n < 0 {
+				return fmt.Errorf("app-monitor-interval: %q is not a number of seconds", value)
+			}
+			seconds = n
+		}
+		app.AppConfig.AppMonitorInterval = seconds
 	case "app-stateful":
 		// Stateful app (minio and the like): accounted as DBU, not APU. The plan and the
 		// billing re-project on the spot; the sensor's next push lands on the DBU track.
