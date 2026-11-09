@@ -96,7 +96,7 @@ func (cluster *Cluster) monitorHookProxy(prxType, host, port string, prx Databas
 	case config.ConstProxyMaxscale:
 		img = cluster.Conf.ProvProxMaxscaleImg
 	case config.ConstProxySqlproxy:
-		img = cluster.Conf.ProvProxProxysqlImg
+		img = cluster.ProxysqlImage()
 	case config.ConstProxySpider:
 		img = cluster.Conf.ProvProxShardingImg
 	case config.ConstProxyMysqlrouter:

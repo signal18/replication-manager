@@ -136,6 +136,11 @@ func (cluster *Cluster) ProvisionServices() error {
 	// (volume creation, etc.) keeps its concurrency.
 	cluster.provisioningMutex.Lock()
 	defer cluster.provisioningMutex.Unlock()
+	// the configurator copies the generated TLS set to every database and proxy: it must be
+	// whole first, or ProxySQL 2+ refuses to start on a partial set (#2360)
+	if err := cluster.completeCertificates(); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Provisioning with an incomplete TLS set (WARN0318): %s", err)
+	}
 	hasConfigPath := make(map[string]bool)
 	cluster.StateMachine.SetFailoverState()
 	// delete the cluster state here

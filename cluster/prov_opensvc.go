@@ -135,7 +135,7 @@ func (cluster *Cluster) OpenSVCConnect() opensvc.Collector {
 	svc.ProvProxFSPath = cluster.Conf.ProvProxDiskDevice
 	svc.ProvProxDockerMaxscaleImg = cluster.Conf.ProvProxMaxscaleImg
 	svc.ProvProxDockerHaproxyImg = cluster.Conf.ProvProxHaproxyImg
-	svc.ProvProxDockerProxysqlImg = cluster.Conf.ProvProxProxysqlImg
+	svc.ProvProxDockerProxysqlImg = cluster.ProxysqlImage()
 	svc.ProvProxDockerShardproxyImg = cluster.Conf.ProvProxShardingImg
 	svc.ProvNetCNI = cluster.Conf.ProvNetCNI
 	svc.ProvProxTags = cluster.Conf.ProvProxTags

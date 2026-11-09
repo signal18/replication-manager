@@ -624,7 +624,7 @@ func (cluster *Cluster) OpenSVCGetProxyEnvSection(servers string, prx DatabasePr
 	svcenv["sphinx_mem"] = cluster.Conf.ProvSphinxMem
 	svcenv["sphinx_max_children"] = cluster.Conf.ProvSphinxMaxChildren
 	svcenv["haproxy_img"] = cluster.Conf.ProvProxHaproxyImg
-	svcenv["proxysql_img"] = cluster.Conf.ProvProxProxysqlImg
+	svcenv["proxysql_img"] = cluster.ProxysqlImage()
 	svcenv["maxscale_img"] = cluster.Conf.ProvProxMaxscaleImg
 	svcenv["shardproxy_img"] = cluster.Conf.ProvProxShardingImg
 	svcenv["maxscale_maxinfo_port"] = strconv.Itoa(cluster.Conf.MxsMaxinfoPort)

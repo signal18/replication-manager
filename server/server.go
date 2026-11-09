@@ -603,6 +603,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.User, "db-servers-credential", "root:mariadb", "Database login, specified in the [user]:[password] format")
 	flags.StringVar(&conf.Hosts, "db-servers-hosts", "", "Database hosts list to monitor, IP and port (optional), specified in the host:[port] format and separated by commas")
 	flags.BoolVar(&conf.DBServersTLSUseGeneratedCertificate, "db-servers-tls-use-generated-cert", false, "Use the auto generated certificates to connect to database backend")
+	flags.BoolVar(&conf.DBServersTLSCompleteGeneratedCertificate, "db-servers-tls-complete-generated-cert", true, "Complete the cluster's generated TLS set when a file is missing (WARN0318): the missing files only, signed by the cluster's CA, never overwriting one")
 	flags.StringVar(&conf.HostsTLSCA, "db-servers-tls-ca-cert", "", "Database TLS authority certificate")
 	flags.StringVar(&conf.HostsTlsCliKey, "db-servers-tls-client-key", "", "Database TLS client key")
 	flags.StringVar(&conf.HostsTlsCliCert, "db-servers-tls-client-cert", "", "Database TLS client certificate")

@@ -113,27 +113,161 @@ func (cluster *Cluster) loadDBOldCertificates(path string) error {
 	return nil
 }
 
-func (cluster *Cluster) createKeys() error {
+// clusterCertificateFiles is the cluster's TLS set, in its working directory: the CA, the server
+// certificate the databases and proxies present, the client certificate repman and the
+// replicas use. The configurator copies them to every database and proxy it provisions.
+var clusterCertificateFiles = []string{"ca-cert.pem", "ca-key.pem", "server-cert.pem", "server-key.pem", "client-cert.pem", "client-key.pem"}
 
-	// start generate key
+// errCertificatesNoServers: the server certificate names the servers; a cluster added before its
+// servers (the add API) gets it once they are known.
+var errCertificatesNoServers = errors.New("the server certificate waits for the cluster's servers")
+
+func (cluster *Cluster) certificateDir() string {
+	return cluster.Conf.WorkingDir + "/" + cluster.Name
+}
+
+// missingCertificateFiles lists the files of the cluster's TLS set that do not exist.
+func (cluster *Cluster) missingCertificateFiles() []string {
+	var missing []string
+	for _, f := range clusterCertificateFiles {
+		if _, err := os.Stat(cluster.certificateDir() + "/" + f); os.IsNotExist(err) {
+			missing = append(missing, f)
+		}
+	}
+	return missing
+}
+
+// createKeys completes the cluster's TLS set: it writes the files that are missing and never
+// overwrites one that exists (WARN0318). The CA is loaded when both its files exist and created
+// when neither does; a leaf key that exists signs its missing certificate. A cluster added before
+// its servers used to stop after the CA and the server key, and the set stayed incomplete for
+// good: the start only ran this when ca-key.pem was missing (6 of 15 clusters on a preprod
+// instance, 2026-11-09; ProxySQL 2+ refuses to start on a partial set).
+//
+// What cannot be completed without overwriting (a certificate whose key is gone, half a CA) is
+// returned as an error: KeyRotation regenerates the whole set.
+func (cluster *Cluster) createKeys() error {
+	dir := cluster.certificateDir()
+	if err := os.MkdirAll(dir, os.ModePerm); err != nil {
+		return err
+	}
+	if len(cluster.missingCertificateFiles()) == 0 {
+		return nil
+	}
 	notBefore := time.Now()
 	notAfter := notBefore.Add(365 * 24 * time.Hour * 100)
-	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
-	serialNumber, err := rand.Int(rand.Reader, serialNumberLimit)
+	rootCert, rootKey, err := cluster.loadOrCreateCA(dir, notBefore, notAfter)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "failed to generate serial number: %s", err)
+		return err
 	}
+	// the client pair first: it names no server, so a cluster without servers yet gets it
+	if cluster.certificateMissing(dir, "client") {
+		clientTemplate := x509.Certificate{
+			SerialNumber: new(big.Int).SetInt64(4),
+			Subject: pkix.Name{
+				Organization:  []string{"Signal18"},
+				CommonName:    "Signal18Client",
+				Country:       []string{"FR"},
+				Province:      []string{""},
+				Locality:      []string{"Paris"},
+				StreetAddress: []string{"16 Villa Saint Michel"},
+				PostalCode:    []string{"75018"},
+			},
+			NotBefore:             notBefore,
+			NotAfter:              notAfter,
+			KeyUsage:              x509.KeyUsageDigitalSignature,
+			ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+			BasicConstraintsValid: true,
+			IsCA:                  false,
+		}
+		if err := cluster.signLeaf(dir, "client", &clientTemplate, rootCert, rootKey); err != nil {
+			return err
+		}
+	}
+	if cluster.certificateMissing(dir, "server") {
+		if len(cluster.Servers) == 0 {
+			return errCertificatesNoServers
+		}
+		var dnsNames []string
+		for _, h := range cluster.Servers {
+			if h == nil {
+				return errCertificatesNoServers
+			}
+			dnsNames = append(dnsNames, h.Host)
+		}
+		serial, err := certificateSerial()
+		if err != nil {
+			return err
+		}
+		leafTemplate := x509.Certificate{
+			SerialNumber: serial,
+			Subject: pkix.Name{
+				Organization:  []string{"Signal18"},
+				CommonName:    "Signal18Admin",
+				Country:       []string{"FR"},
+				Province:      []string{""},
+				Locality:      []string{"Paris"},
+				StreetAddress: []string{"16 Villa Saint Michel"},
+				PostalCode:    []string{"75018"},
+			},
+			NotBefore:             notBefore,
+			NotAfter:              notAfter,
+			SubjectKeyId:          []byte{1, 2, 3, 4, 6},
+			ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth},
+			KeyUsage:              x509.KeyUsageDigitalSignature,
+			BasicConstraintsValid: true,
+			IsCA:                  false,
+			DNSNames:              dnsNames,
+		}
+		if err := cluster.signLeaf(dir, "server", &leafTemplate, rootCert, rootKey); err != nil {
+			return err
+		}
+	}
+	return nil
+}
 
-	//	rootKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+func certificateSerial() (*big.Int, error) {
+	return rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
+}
+
+// certificateMissing tells whether <name>-cert.pem or <name>-key.pem is missing.
+func (cluster *Cluster) certificateMissing(dir, name string) bool {
+	_, certErr := os.Stat(dir + "/" + name + "-cert.pem")
+	_, keyErr := os.Stat(dir + "/" + name + "-key.pem")
+	return os.IsNotExist(certErr) || os.IsNotExist(keyErr)
+}
+
+// loadOrCreateCA loads the CA when both its files exist, creates it when neither does, and
+// refuses half a CA: a new key would not match the certificate the servers already trust.
+func (cluster *Cluster) loadOrCreateCA(dir string, notBefore, notAfter time.Time) (*x509.Certificate, *rsa.PrivateKey, error) {
+	certPath, keyPath := dir+"/ca-cert.pem", dir+"/ca-key.pem"
+	_, certErr := os.Stat(certPath)
+	_, keyErr := os.Stat(keyPath)
+	switch {
+	case certErr == nil && keyErr == nil:
+		cert, err := readCertificate(certPath)
+		if err != nil {
+			return nil, nil, fmt.Errorf("CA certificate: %w", err)
+		}
+		key, err := readRSAKey(keyPath)
+		if err != nil {
+			return nil, nil, fmt.Errorf("CA key: %w", err)
+		}
+		return cert, key, nil
+	case os.IsNotExist(certErr) && os.IsNotExist(keyErr):
+	default:
+		return nil, nil, errors.New("half of the CA is missing: only a key rotation can rebuild it")
+	}
 	rootKey, err := rsa.GenerateKey(rand.Reader, 4096)
 	if err != nil {
-		panic(err)
+		return nil, nil, err
 	}
-
-	cluster.keyToFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/ca-key.pem", rootKey)
-
+	serial, err := certificateSerial()
+	if err != nil {
+		return nil, nil, err
+	}
 	rootTemplate := x509.Certificate{
-		SerialNumber: serialNumber,
+		SerialNumber: serial,
 		Subject: pkix.Name{
 			Organization:  []string{"Signal18"},
 			CommonName:    cluster.Name + "." + cluster.GetCloudSubDomain() + ".cloud18.io",
@@ -148,93 +282,83 @@ func (cluster *Cluster) createKeys() error {
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth},
 		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
 		BasicConstraintsValid: true,
+		IsCA:                  true,
 	}
-
-	rootTemplate.IsCA = true
-	rootTemplate.KeyUsage |= x509.KeyUsageCertSign
-
-	derBytes, err := x509.CreateCertificate(rand.Reader, &rootTemplate, &rootTemplate, &rootKey.PublicKey, rootKey)
+	der, err := x509.CreateCertificate(rand.Reader, &rootTemplate, &rootTemplate, &rootKey.PublicKey, rootKey)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Failed to create certificate: %s", err)
+		return nil, nil, fmt.Errorf("CA certificate: %w", err)
 	}
-	cluster.certToFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/ca-cert.pem", derBytes)
+	cluster.keyToFile(keyPath, rootKey)
+	cluster.certToFile(certPath, der)
+	cert, err := x509.ParseCertificate(der)
+	return cert, rootKey, err
+}
 
-	leafKey, err := rsa.GenerateKey(rand.Reader, 4096)
-	if err != nil {
-		panic(err)
-	}
-	cluster.keyToFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/server-key.pem", leafKey)
-	serialNumber, err = rand.Int(rand.Reader, serialNumberLimit)
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "failed to generate serial number: %s", err)
-	}
-	leafTemplate := x509.Certificate{
-		SerialNumber: serialNumber,
-		Subject: pkix.Name{
-			Organization:  []string{"Signal18"},
-			CommonName:    "Signal18Admin",
-			Country:       []string{"FR"},
-			Province:      []string{""},
-			Locality:      []string{"Paris"},
-			StreetAddress: []string{"16 Villa Saint Michel"},
-			PostalCode:    []string{"75018"},
-		},
-		NotBefore:             notBefore,
-		NotAfter:              notAfter,
-		SubjectKeyId:          []byte{1, 2, 3, 4, 6},
-		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth},
-		KeyUsage:              x509.KeyUsageDigitalSignature,
-		BasicConstraintsValid: true,
-		IsCA:                  false,
-	}
-	if len(cluster.Servers) == 0 {
-		return errors.New("No servers list")
-	}
-	for _, h := range cluster.Servers {
-		if h == nil {
-			return errors.New("No servers list")
+// signLeaf writes <name>-cert.pem signed by the CA, with the key in <name>-key.pem, created when
+// missing. A certificate whose key is gone cannot be completed without overwriting it.
+func (cluster *Cluster) signLeaf(dir, name string, template *x509.Certificate, ca *x509.Certificate, caKey *rsa.PrivateKey) error {
+	certPath, keyPath := dir+"/"+name+"-cert.pem", dir+"/"+name+"-key.pem"
+	_, certErr := os.Stat(certPath)
+	_, keyErr := os.Stat(keyPath)
+	var key *rsa.PrivateKey
+	var err error
+	switch {
+	case certErr == nil && os.IsNotExist(keyErr):
+		return fmt.Errorf("%s certificate without its key: only a key rotation can rebuild it", name)
+	case keyErr == nil:
+		if key, err = readRSAKey(keyPath); err != nil {
+			return fmt.Errorf("%s key: %w", name, err)
 		}
-		leafTemplate.DNSNames = append(leafTemplate.DNSNames, h.Host)
+	default:
+		if key, err = rsa.GenerateKey(rand.Reader, 4096); err != nil {
+			return err
+		}
+		cluster.keyToFile(keyPath, key)
 	}
-	derBytes, err = x509.CreateCertificate(rand.Reader, &leafTemplate, &rootTemplate, &leafKey.PublicKey, rootKey)
+	if certErr == nil {
+		return nil
+	}
+	der, err := x509.CreateCertificate(rand.Reader, template, ca, &key.PublicKey, caKey)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "failed to generate cert: %s", err)
+		return fmt.Errorf("%s certificate: %w", name, err)
 	}
-	cluster.certToFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/server-cert.pem", derBytes)
-
-	clientKey, err := rsa.GenerateKey(rand.Reader, 4096)
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "failed to generate client key: %s", err)
-	}
-	cluster.keyToFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/client-key.pem", clientKey)
-
-	clientTemplate := x509.Certificate{
-		SerialNumber: new(big.Int).SetInt64(4),
-		Subject: pkix.Name{
-			Organization:  []string{"Signal18"},
-			CommonName:    "Signal18Client",
-			Country:       []string{"FR"},
-			Province:      []string{""},
-			Locality:      []string{"Paris"},
-			StreetAddress: []string{"16 Villa Saint Michel"},
-			PostalCode:    []string{"75018"},
-		},
-		NotBefore:             notBefore,
-		NotAfter:              notAfter,
-		KeyUsage:              x509.KeyUsageDigitalSignature,
-		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
-		BasicConstraintsValid: true,
-		IsCA:                  false,
-	}
-
-	derBytes, err = x509.CreateCertificate(rand.Reader, &clientTemplate, &rootTemplate, &clientKey.PublicKey, rootKey)
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "failed to generate client cert: %s", err)
-	}
-
-	cluster.certToFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/client-cert.pem", derBytes)
-
+	cluster.certToFile(certPath, der)
 	return nil
+}
+
+func readCertificate(path string) (*x509.Certificate, error) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	block, _ := pem.Decode(b)
+	if block == nil {
+		return nil, errors.New("no PEM block")
+	}
+	return x509.ParseCertificate(block.Bytes)
+}
+
+func readRSAKey(path string) (*rsa.PrivateKey, error) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	block, _ := pem.Decode(b)
+	if block == nil {
+		return nil, errors.New("no PEM block")
+	}
+	if k, err := x509.ParsePKCS1PrivateKey(block.Bytes); err == nil {
+		return k, nil
+	}
+	k, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+	if err != nil {
+		return nil, err
+	}
+	rk, ok := k.(*rsa.PrivateKey)
+	if !ok {
+		return nil, errors.New("not an RSA key")
+	}
+	return rk, nil
 }
 
 func (cluster *Cluster) keyToFile(filename string, key *rsa.PrivateKey) {

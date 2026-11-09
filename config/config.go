@@ -229,6 +229,7 @@ type Config struct {
 	HostsDelayed                             string                       `mapstructure:"replication-delayed-hosts" toml:"replication-delayed-hosts" json:"replicationDelayedHosts"`
 	HostsDelayedTime                         int                          `mapstructure:"replication-delayed-time" toml:"replication-delayed-time" json:"replicationDelayedTime"`
 	DBServersTLSUseGeneratedCertificate      bool                         `mapstructure:"db-servers-tls-use-generated-cert" toml:"db-servers-tls-use-generated-cert" json:"dbServersUseGeneratedCert"`
+	DBServersTLSCompleteGeneratedCertificate bool                         `mapstructure:"db-servers-tls-complete-generated-cert" toml:"db-servers-tls-complete-generated-cert" json:"dbServersTlsCompleteGeneratedCert"`
 	HostsTLSCA                               string                       `mapstructure:"db-servers-tls-ca-cert" toml:"db-servers-tls-ca-cert" json:"dbServersTlsCaCert"`
 	HostsTlsCliKey                           string                       `mapstructure:"db-servers-tls-client-key" toml:"db-servers-tls-client-key" json:"dbServersTlsClientKey"`
 	HostsTlsCliCert                          string                       `mapstructure:"db-servers-tls-client-cert" toml:"db-servers-tls-client-cert" json:"dbServersTlsClientCert"`
