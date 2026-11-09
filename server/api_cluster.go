@@ -3682,6 +3682,8 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.Conf.ProvAutoUpdateCompliance = !mycluster.Conf.ProvAutoUpdateCompliance
 	case "prov-db-compliance-auto-agree":
 		mycluster.Conf.ProvDBComplianceAutoAgree = !mycluster.Conf.ProvDBComplianceAutoAgree
+	case "prov-db-create-replication-user":
+		mycluster.Conf.ProvDBCreateReplicationUser = !mycluster.Conf.ProvDBCreateReplicationUser
 	case "prov-db-dynamic-resource":
 		if err := mycluster.SwitchProvDBDynamicResource(); err != nil {
 			return err
@@ -5698,6 +5700,8 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.RplChecks = applyIsActive(mycluster.Conf.RplChecks, isactive)
 	case "failover-falsepositive-heartbeat":
 		mycluster.Conf.CheckFalsePositiveHeartbeat = applyIsActive(mycluster.Conf.CheckFalsePositiveHeartbeat, isactive)
+	case "prov-db-create-replication-user":
+		mycluster.Conf.ProvDBCreateReplicationUser = applyIsActive(mycluster.Conf.ProvDBCreateReplicationUser, isactive)
 	case "failover-falsepositive-heartbeat-timeout":
 		val, err := strconv.Atoi(value)
 		if err != nil || val < 0 {

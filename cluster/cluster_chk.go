@@ -1478,7 +1478,7 @@ func (cluster *Cluster) CheckHasFailCertLoadP12() {
 		return
 	}
 
-	if cluster.failLoadP12Cert {
+	if cluster.openSVCCertFailed() {
 		cluster.GetStateMachine().PreserveState("WARN0099")
 	}
 }

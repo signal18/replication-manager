@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/config/credstore"
 	"github.com/signal18/replication-manager/utils/state"
 	appsv1 "k8s.io/api/apps/v1"
 	apiv1 "k8s.io/api/core/v1"
@@ -124,6 +125,23 @@ func k8sClusterSecretName(clusterName string) string {
 // object never has; a merge Patch also leaves any other key already on the
 // Secret (e.g. the other credential) untouched.
 func (cluster *Cluster) k8sPatchSecretValues(client kubernetes.Interface, values map[string]string) error {
+	if err := cluster.k8sPatchSecretValuesRaw(context.TODO(), client, values); err != nil {
+		return err
+	}
+	// the values set go to the credential stores, never read back (#2227 rule 7)
+	for k, v := range values {
+		cluster.reportOrchestratorSecret("env", k, v)
+	}
+	return nil
+}
+
+// k8sPatchSecretValuesRaw creates or merge-patches the cluster's shared Secret with the given
+// key/value pairs, WITHOUT reporting them to the credential stores. The StoreWriter copy path
+// (k8sStore, #2356) uses it: the version queue is already the store copy, so a report would
+// loop the orchestrator's value back into the stores. Update path is a merge Patch, not
+// Update() (which requires the current resourceVersion a freshly-built object never has); a
+// merge Patch also leaves any other key already on the Secret untouched.
+func (cluster *Cluster) k8sPatchSecretValuesRaw(ctx context.Context, client kubernetes.Interface, values map[string]string) error {
 	name := k8sClusterSecretName(cluster.Name)
 	secretsClient := client.CoreV1().Secrets(cluster.Name)
 	secret := &apiv1.Secret{
@@ -133,7 +151,7 @@ func (cluster *Cluster) k8sPatchSecretValues(client kubernetes.Interface, values
 		Type:       apiv1.SecretTypeOpaque,
 		StringData: values,
 	}
-	_, err := secretsClient.Create(context.TODO(), secret, metav1.CreateOptions{})
+	_, err := secretsClient.Create(ctx, secret, metav1.CreateOptions{})
 	if apierrors.IsAlreadyExists(err) {
 		// json.Marshal, not manual string concatenation: a credential can
 		// contain arbitrary characters, and Go's own quoting syntax
@@ -144,15 +162,11 @@ func (cluster *Cluster) k8sPatchSecretValues(client kubernetes.Interface, values
 		if marshalErr != nil {
 			return marshalErr
 		}
-		_, err = secretsClient.Patch(context.TODO(), name, ktypes.MergePatchType, patch, metav1.PatchOptions{})
+		_, err = secretsClient.Patch(ctx, name, ktypes.MergePatchType, patch, metav1.PatchOptions{})
 	}
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot provision Kubernetes secret %s ", err)
 		return err
-	}
-	// the values set go to the credential stores, never read back (#2227 rule 7)
-	for k, v := range values {
-		cluster.reportOrchestratorSecret("env", k, v)
 	}
 	return nil
 }
@@ -162,7 +176,15 @@ func (cluster *Cluster) k8sPatchSecretValues(client kubernetes.Interface, values
 // s.Pass, so ProvisionRotatePasswords (prov.go) can call it directly with
 // the freshly rotated value.
 func (cluster *Cluster) k8sEnsureDatabaseSecret(client kubernetes.Interface, password string) error {
-	return cluster.k8sPatchSecretValues(client, map[string]string{k8sSecretKeyRootPassword: password})
+	// through the store writer, which keeps the superseded value in <KEY>_OLD (#2356), then the
+	// stores get the value (rule 7), as k8sPatchSecretValues does
+	if _, err := cluster.k8sStore().writeWith(context.TODO(), client, []credstore.StoreItem{{
+		Entry: orchestratorStoreEntry, Key: k8sSecretKeyRootPassword, Version: cluster.selfVersion(password),
+	}}, cluster.storeTimeout()); err != nil {
+		return err
+	}
+	cluster.reportOrchestratorSecret("env", k8sSecretKeyRootPassword, password)
+	return nil
 }
 
 // k8sAPIAuthHeaderValue computes the base64 "admin:<password>" Basic Auth

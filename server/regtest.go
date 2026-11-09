@@ -288,6 +288,9 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 		if test.Name == "testMisplacedReplicaNotRelay" {
 			res = regtest.TestMisplacedReplicaNotRelay(cl, test.ConfigFile, &test)
 		}
+		if test.Name == "testProvisionReplicationUser" {
+			res = regtest.TestProvisionReplicationUser(cl, test.ConfigFile, &test)
+		}
 		if test.Name == "testStagingRecoverNoReadOnly" {
 			res = regtest.TestStagingRecoverNoReadOnly(cl, test.ConfigFile, &test)
 		}

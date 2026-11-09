@@ -175,7 +175,7 @@ func k8sUnsupportedProxyTypeErr(proxyType string) error {
 func (cluster *Cluster) k8sProxyImage(prx DatabaseProxy) (string, error) {
 	switch prx.GetType() {
 	case config.ConstProxySqlproxy:
-		return cluster.Conf.ProvProxProxysqlImg, nil
+		return cluster.ProxysqlImage(), nil
 	case config.ConstProxyHaproxy:
 		return cluster.Conf.ProvProxHaproxyImg, nil
 	case config.ConstProxyMaxscale:

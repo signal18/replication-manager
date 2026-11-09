@@ -124,6 +124,12 @@ Config: \`prov-db-upgrade-major-reprov\``, 'Reprovision On Major Upgrade'),
       value: (<RMSwitch confirmTitle={'Confirm switch settings for prov-db-compliance-auto-agree?'} onChange={() => dispatch(switchSetting({ clusterName, setting: 'prov-db-compliance-auto-agree' }))} isDisabled={disabled} isChecked={cfg.provDbComplianceAutoAgree} />)
     },
     {
+      clusterSetting: 'prov-db-create-replication-user',
+      key: 'Create Replication User',
+      help: h(`**Create Replication User**\n\nAt provisioning, creates the replication user (\`replication-credential\`) on every database server, outside the binary log, with the replication grant only, when it is not the database user. Every node gets its own copy, so any of them can be promoted by a failover. Never applied to a database repman did not provision.\n\nConfig: \`prov-db-create-replication-user\``, 'Create Replication User'),
+      value: (<RMSwitch confirmTitle={'Confirm switch settings for prov-db-create-replication-user?'} onChange={() => dispatch(switchSetting({ clusterName, setting: 'prov-db-create-replication-user' }))} isDisabled={disabled} isChecked={cfg.provDbCreateReplicationUser} />)
+    },
+    {
       clusterSetting: 'prov-db-resource-align',
       key: 'Resource Alignment On Start',
       help: h(`**Resource Alignment On Start**\n\nAligns the container memory cap (the outer ceiling, applied when the container is (re)started) to the DBU tier.\n\n- **plan** (default): tier = the plan / node count\n- **up**: tier = max-axis config DBU (coherence/debug)\n- **off**: cap = prov-db-memory (legacy)\n\nConfig: \`prov-db-resource-align\``, 'Resource Alignment On Start'),

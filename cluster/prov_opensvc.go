@@ -83,23 +83,7 @@ func (cluster *Cluster) OpenSVCConnect() opensvc.Collector {
 	if !cluster.Conf.ProvOpensvcUseCollectorAPI {
 		svc.CertsDERSecret = cluster.Conf.GetDecryptedValue("opensvc-p12-secret")
 		err := svc.LoadCert(cluster.Conf.ProvOpensvcP12Certificate)
-		if err != nil {
-			// Log at Err only on the state transition: WARN0099 carries the
-			// persistent condition and alerts once; re-logging on every
-			// OpenSVCConnect() call floods the alert channels (a missing p12
-			// on a hot loop produced ~8K Slack messages/day, 2026-09).
-			firstFailure := !cluster.failLoadP12Cert
-			cluster.failLoadP12Cert = true
-			cluster.SetState("WARN0099", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0099"], cluster.Conf.ProvOpensvcP12Certificate, err), ErrFrom: "OpenSVC"})
-			if firstFailure {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot load OpenSVC cluster certificate %s ", err)
-			} else {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlDbg, "Cannot load OpenSVC cluster certificate %s ", err)
-			}
-		} else {
-			cluster.failLoadP12Cert = false
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlDbg, "Load OpenSVC cluster certificate %s ", cluster.Conf.ProvOpensvcP12Certificate)
-		}
+		cluster.recordOpenSVCCertLoad(svc.CertsDER, svc.CertsDERSecret, err)
 	}
 	svc.Host, svc.Port = misc.SplitHostPort(cluster.Conf.ProvHost)
 	svc.User, svc.Pass = misc.SplitPair(cluster.Conf.ProvAdminUser)
@@ -135,7 +119,7 @@ func (cluster *Cluster) OpenSVCConnect() opensvc.Collector {
 	svc.ProvProxFSPath = cluster.Conf.ProvProxDiskDevice
 	svc.ProvProxDockerMaxscaleImg = cluster.Conf.ProvProxMaxscaleImg
 	svc.ProvProxDockerHaproxyImg = cluster.Conf.ProvProxHaproxyImg
-	svc.ProvProxDockerProxysqlImg = cluster.Conf.ProvProxProxysqlImg
+	svc.ProvProxDockerProxysqlImg = cluster.ProxysqlImage()
 	svc.ProvProxDockerShardproxyImg = cluster.Conf.ProvProxShardingImg
 	svc.ProvNetCNI = cluster.Conf.ProvNetCNI
 	svc.ProvProxTags = cluster.Conf.ProvProxTags
@@ -317,23 +301,10 @@ func (cluster *Cluster) openSVCCreateMapsV2(svc opensvc.Collector, agent string)
 		}
 	}
 
-	err = svc.CreateSecretKeyValueV2(cluster.Name, "env", "REPLICATION_MANAGER_PASSWORD", cluster.APIUsers["admin"].Password)
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to secrets: %s %s ", "REPLICATION_MANAGER_PASSWORD", err)
-	}
-	err = svc.CreateSecretKeyValueV2(cluster.Name, "env", "MYSQL_ROOT_PASSWORD", cluster.GetDbPass())
-	if err == nil {
-		cluster.reportOrchestratorSecret("env", "MYSQL_ROOT_PASSWORD", cluster.GetDbPass())
-	}
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to secrets: %s %s ", "MYSQL_ROOT_PASSWORD", err)
-	}
-	err = svc.CreateSecretKeyValueV2(cluster.Name, "env", "SHARDPROXY_ROOT_PASSWORD", cluster.GetShardPass())
-	if err == nil {
-		cluster.reportOrchestratorSecret("env", "SHARDPROXY_ROOT_PASSWORD", cluster.GetShardPass())
-	}
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to secrets: %s %s ", "SHARDPROXY_ROOT_PASSWORD", err)
+	// the password seeds go through the store writer, the single writer of these keys (#2356):
+	// a direct write first left the queue nothing to save, so a reprovision lost <KEY>_OLD
+	for key, err := range cluster.seedOrchestratorPasswords(svc) {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to secrets: %s %s ", key, err)
 	}
 	// APU (Compute) sensor credential -- see openSVCCreateMapsV3 for the rationale.
 	err = svc.CreateSecretKeyValueV2(cluster.Name, "env", "SENSOR_API_KEY", cluster.GetSystemAPIKey())
@@ -385,23 +356,10 @@ func (cluster *Cluster) openSVCCreateMapsV3(svc opensvc.Collector, agent string)
 	}
 
 	errs := make(map[string]error)
-	err = svc.CreateSecretKeyValue(cluster.Name, "env", "REPLICATION_MANAGER_PASSWORD", cluster.APIUsers["admin"].Password)
-	if err != nil {
-		errs["REPLICATION_MANAGER_PASSWORD"] = err
-	}
-	err = svc.CreateSecretKeyValue(cluster.Name, "env", "MYSQL_ROOT_PASSWORD", cluster.GetDbPass())
-	if err == nil {
-		cluster.reportOrchestratorSecret("env", "MYSQL_ROOT_PASSWORD", cluster.GetDbPass())
-	}
-	if err != nil {
-		errs["MYSQL_ROOT_PASSWORD"] = err
-	}
-	err = svc.CreateSecretKeyValue(cluster.Name, "env", "SHARDPROXY_ROOT_PASSWORD", cluster.GetShardPass())
-	if err == nil {
-		cluster.reportOrchestratorSecret("env", "SHARDPROXY_ROOT_PASSWORD", cluster.GetShardPass())
-	}
-	if err != nil {
-		errs["SHARDPROXY_ROOT_PASSWORD"] = err
+	// the password seeds go through the store writer, the single writer of these keys (#2356):
+	// a direct write first left the queue nothing to save, so a reprovision lost <KEY>_OLD
+	for key, e := range cluster.seedOrchestratorPasswords(svc) {
+		errs[key] = e
 	}
 	// APU (Compute) sensor credential: the derived `system` API key, delivered via the
 	// OpenSVC SECRET channel (never svcenv/git). app_job.sh logs in as `system` with it

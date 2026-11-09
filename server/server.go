@@ -158,8 +158,12 @@ type ReplicationManager struct {
 	licensePullRefused  string     `json:"-"`
 	licensePullChecksum string     `json:"-"`
 	//Adding default flags from AddFlags
-	CommandLineFlag             []string                    `json:"-"`
-	ConfigPathList              []string                    `json:"-"`
+	CommandLineFlag []string `json:"-"`
+	ConfigPathList  []string `json:"-"`
+	// ReadOnlyCommand: the configuration load only reads (the decrypt command): InitConfig creates no
+	// key, no directory and removes no legacy file. The command itself then removes the old *.reveal
+	// output files (config.RemoveRevealFiles), on purpose.
+	ReadOnlyCommand             bool                        `json:"-"`
 	Logs                        s18log.HttpLog              `json:"logs"`
 	GlobalLogs                  s18log.HttpLog              `json:"globalLogs"`
 	MonitorType                 map[string]string           `json:"monitorType"`
@@ -599,6 +603,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.User, "db-servers-credential", "root:mariadb", "Database login, specified in the [user]:[password] format")
 	flags.StringVar(&conf.Hosts, "db-servers-hosts", "", "Database hosts list to monitor, IP and port (optional), specified in the host:[port] format and separated by commas")
 	flags.BoolVar(&conf.DBServersTLSUseGeneratedCertificate, "db-servers-tls-use-generated-cert", false, "Use the auto generated certificates to connect to database backend")
+	flags.BoolVar(&conf.DBServersTLSCompleteGeneratedCertificate, "db-servers-tls-complete-generated-cert", true, "Complete the cluster's generated TLS set when a file is missing (WARN0318): the missing files only, signed by the cluster's CA, never overwriting one")
 	flags.StringVar(&conf.HostsTLSCA, "db-servers-tls-ca-cert", "", "Database TLS authority certificate")
 	flags.StringVar(&conf.HostsTlsCliKey, "db-servers-tls-client-key", "", "Database TLS client key")
 	flags.StringVar(&conf.HostsTlsCliCert, "db-servers-tls-client-cert", "", "Database TLS client certificate")
@@ -1456,6 +1461,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 		flags.StringVar(&conf.ProvProxyCompliance, "prov-proxy-compliance", "", "Path of compliance file for Proxy configuration")
 		flags.BoolVar(&conf.ProvAutoUpdateCompliance, "prov-auto-update-compliance", true, "Auto-update compliance best practices from back office or binary upgrades")
 		flags.BoolVar(&conf.ProvDBComplianceAutoAgree, "prov-db-compliance-auto-agree", false, "Auto-agree value-differs config deltas to the compliance value on the DB (DB-side counterpart of prov-auto-update-compliance); off by default, value-changes only")
+		flags.BoolVar(&conf.ProvDBCreateReplicationUser, "prov-db-create-replication-user", true, "At provisioning, create the replication user (replication-credential) on every database server, outside the binary log, when it is not the database user")
 		flags.BoolVar(&conf.MeasurementAutoClampLimit, "measurement-auto-clamp-limit", false, "Auto clamp to allowed value for measurement if exceed the min-max boundaries")
 		flags.BoolVar(&conf.ProvObjectAllowOverwrite, "prov-object-allow-overwrite", true, "Allow overwriting config/secret keys when objects already exist")
 
@@ -1823,7 +1829,9 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 	//if repman is embed, create folders and load missing embedded files
 	repman.ServerScopeList = config.GetParamsByScope("server")
 
-	repman.initFS(conf)
+	if !repman.ReadOnlyCommand {
+		repman.initFS(conf)
+	}
 
 	//init viper to read config file .toml
 	firstRead := viper.GetViper()
@@ -1877,7 +1885,9 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 	//search for default section in config file and read
 	//setEnvPrefix is case insensitive
 	err := firstRead.ReadInConfig()
+	repman.ConfigPathList = nil // the files this load reads, in order (the decrypt command prints them)
 	if err == nil {
+		repman.ConfigPathList = append(repman.ConfigPathList, firstRead.ConfigFileUsed())
 		repman.Logrus.WithFields(log.Fields{
 			"file": firstRead.ConfigFileUsed(),
 		}).Debug("Using config file")
@@ -1955,6 +1965,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 				if err != nil {
 					repman.Logrus.Fatal("Config error in " + conf.ClusterConfigPath + "/" + f.Name() + ":" + err.Error())
 				}
+				repman.ConfigPathList = append(repman.ConfigPathList, conf.ClusterConfigPath+"/"+f.Name())
 
 				//recup tous les param set dans the include
 				//secRead = firstRead.Sub(cluster_name)
@@ -2022,6 +2033,8 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 			err = firstRead.MergeInConfig()
 			if err != nil {
 				repman.Logrus.Error("Config error in " + conf.WorkingDir + "/default.toml" + err.Error())
+			} else {
+				repman.ConfigPathList = append(repman.ConfigPathList, conf.WorkingDir+"/default.toml")
 			}
 
 			// repman.Logrus.WithField("cnf", savedConf.AllSettings()).Infof("Dynamic values after merge %s", conf.WorkingDir+"/default.toml")
@@ -2057,6 +2070,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 					if err != nil {
 						repman.Logrus.Fatal("Config error in " + conf.WorkingDir + "/" + f.Name() + "/" + f.Name() + ".toml" + ":" + err.Error())
 					}
+					repman.ConfigPathList = append(repman.ConfigPathList, conf.WorkingDir+"/"+f.Name()+"/"+f.Name()+".toml")
 				}
 			}
 		}
@@ -2064,11 +2078,16 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 		//to read and set cloud18.toml config file if exist
 		if _, err := os.Stat(conf.WorkingDir + "/.pull/cloud18.toml"); os.IsNotExist(err) {
 			repman.Logrus.Debugf("No cloud18 config found %s", conf.WorkingDir+"/.pull/cloud18.toml")
+		} else if tmp_read == nil {
+			// no [default] section: firstRead.Sub("default") is nil, merging into it panicked
+			repman.Logrus.Warningf("Cloud18 config %s not merged: the configuration has no [default] section", conf.WorkingDir+"/.pull/cloud18.toml")
 		} else {
 			tmp_read.SetConfigFile(conf.WorkingDir + "/.pull/cloud18.toml")
 			err := tmp_read.MergeInConfig()
 			if err != nil {
 				repman.Logrus.Error("Config error in " + conf.WorkingDir + "/.pull/cloud18.toml:" + err.Error())
+			} else {
+				repman.ConfigPathList = append(repman.ConfigPathList, conf.WorkingDir+"/.pull/cloud18.toml")
 			}
 		}
 
@@ -2120,7 +2139,9 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 			conf.WorkingDir = filepath.Join(repman.OsUser.HomeDir, ".local", "replication-manager", "data")
 			conf.ClusterConfigPath = filepath.Join(conf.WorkingDir, "cluster.d")
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Defaulting working directory to %s for non-root user", conf.WorkingDir)
-			if err := os.MkdirAll(conf.WorkingDir, 0o755); err != nil {
+			if repman.ReadOnlyCommand {
+				// the decrypt command only reads
+			} else if err := os.MkdirAll(conf.WorkingDir, 0o755); err != nil {
 				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Failed to ensure working directory %s: %v", conf.WorkingDir, err)
 			}
 		}
@@ -2161,8 +2182,12 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 		}
 	}
 
-	// Generate default keygen
-	conf.GenerateKey(repman.Logrus)
+	// Generate default keygen (never for the decrypt command: ReadOnlyCommand)
+	if repman.ReadOnlyCommand {
+		conf.FindExistingKey(repman.Logrus) // the decrypt command: look, never create
+	} else {
+		conf.GenerateKey(repman.Logrus)
+	}
 	k, _ := conf.LoadEncrytionKey()
 	if k == nil {
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "No existing password encryption key in global section")
@@ -2173,7 +2198,9 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 
 	//set cluster list
 	repman.ClusterList = strings.Split(strClusters, ",")
-	repman.removeLegacyP12Pem()
+	if !repman.ReadOnlyCommand {
+		repman.removeLegacyP12Pem()
+	}
 	repman.ImmuableFlagMaps["default"] = ImmuableMap
 	repman.DynamicFlagMaps["default"] = DynamicMap
 	conf.ImmuableFlagMap = ImmuableMap
@@ -3008,6 +3035,14 @@ func (repman *ReplicationManager) Run() error {
 
 	repman.initKeys()
 	repman.ensureLoginUpgradeInfra()
+	// output files of the decrypt command of older releases: removed, each named in the security log
+	removed, errs := config.RemoveRevealFiles(config.RevealOutputDir)
+	for _, f := range removed {
+		repman.logSecurityEvent("reveal_file_removed", "", "", "Removed "+f+", an output file of the decrypt command of an older release")
+	}
+	for _, err := range errs {
+		repman.logSecurityEvent("reveal_file_not_removed", "", "", "An output file of the decrypt command could not be removed: "+err.Error())
+	}
 	// the Cloud18 logins of the previous run: their sessions can be resumed (#2341)
 	if n, err := repman.Conf.LoadCloud18Logins(); err != nil {
 		repman.Logrus.Warnf("Cloud18 logins of the previous run not read: %s", err)

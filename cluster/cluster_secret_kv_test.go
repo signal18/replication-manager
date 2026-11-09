@@ -82,7 +82,7 @@ func TestFailingVaultNeverBlocksSetAll(t *testing.T) {
 	defer good.Close()
 	bad := vaultfake.New("kv", "role", "sid")
 	defer bad.Close()
-	bad.Delay = 3 * time.Second
+	bad.SetDelay(3 * time.Second)
 	cl := secretKvTestCluster(t, good, bad)
 
 	start := time.Now()
@@ -111,7 +111,7 @@ func TestFailingVaultNeverBlocksSetAll(t *testing.T) {
 		t.Fatalf("the failed versions are not queued again: %d", cl.storeQueue().Len())
 	}
 	// the store answers again: it gets the version, the state goes
-	bad.Delay = 0
+	bad.SetDelay(0)
 	if cl.secretWritePass() {
 		t.Fatal("still failing")
 	}
@@ -360,7 +360,7 @@ func TestReadVaultsAtStartRestores(t *testing.T) {
 func TestReadVaultsAtStartBounded(t *testing.T) {
 	v := vaultfake.New("kv", "role", "sid")
 	defer v.Close()
-	v.Delay = 3 * time.Second
+	v.SetDelay(3 * time.Second)
 	cl := secretKvTestCluster(t, v)
 	cl.Conf.SecretKvStartTimeout = 1
 	key := "monitoring-write-heartbeat-credential"
@@ -529,5 +529,72 @@ func TestConfigJSONForWireHidesSecretKvSecrets(t *testing.T) {
 	}
 	if !strings.Contains(s, `"secretsSet":["secret-id"]`) || !strings.Contains(s, "role-1") {
 		t.Fatalf("the entry is not sent with its settings and secretsSet: %s", s)
+	}
+}
+
+// A store that hangs does not hold up the others: with the slow entry first in the pass, the
+// good one is written while the slow one is still waiting (the sinks write concurrently).
+func TestSlowStoreDoesNotDelayOthers(t *testing.T) {
+	bad := vaultfake.New("kv", "role", "sid")
+	defer bad.Close()
+	bad.SetDelay(2 * time.Second)
+	good := vaultfake.New("kv", "role", "sid")
+	defer good.Close()
+	cl := secretKvTestCluster(t, bad, good)
+	if err := cl.CredentialChain().Set("db-servers-credential", "u:new"); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan bool, 1)
+	go func() { done <- cl.secretWritePass() }()
+	deadline := time.Now().Add(700 * time.Millisecond)
+	for good.Get(testSpace+"/databases/db1/db-servers-credential") == nil {
+		if time.Now().After(deadline) {
+			t.Fatal("the good store waited for the slow one")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if retry := <-done; !retry {
+		t.Fatal("the slow store did not fail")
+	}
+}
+
+// A version requeued after a failed write never replaces a newer one pushed meanwhile: the
+// queue keeps the newest, and the next pass writes it.
+func TestRequeueKeepsNewerVersion(t *testing.T) {
+	slow := vaultfake.New("kv", "role", "sid")
+	defer slow.Close()
+	slow.SetDelay(1500 * time.Millisecond) // above the 1 s store timeout
+	cl := secretKvTestCluster(t, slow)
+	if err := cl.CredentialChain().Set("db-servers-credential", "u:v1"); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan bool, 1)
+	go func() { done <- cl.secretWritePass() }()
+	time.Sleep(200 * time.Millisecond) // v1 is in flight
+	if err := cl.CredentialChain().Set("db-servers-credential", "u:v2"); err != nil {
+		t.Fatal(err)
+	}
+	if retry := <-done; !retry {
+		t.Fatal("the slow write did not time out")
+	}
+	items := cl.storeQueue().Take()
+	if len(items) == 0 {
+		t.Fatal("nothing queued after the failed pass")
+	}
+	for _, it := range items {
+		if it.Version.Value != "u:v2" {
+			t.Fatalf("%s/%s queued %q, want the newer u:v2", it.Entry, it.Key, it.Version.Value)
+		}
+	}
+	cl.storeQueue().Requeue(items)
+	// the late v1 the slow server still applies (the residual window) must land before the
+	// catch-up pass, or this test would race it: wait it out, then catch up
+	time.Sleep(1500 * time.Millisecond)
+	slow.SetDelay(0)
+	if cl.secretWritePass() {
+		t.Fatal("still failing")
+	}
+	if d := slow.Get(testSpace + "/databases/db1/db-servers-credential"); d["db-servers-credential"] != "u:v2" {
+		t.Fatalf("store holds %v, want u:v2", d)
 	}
 }

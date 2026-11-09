@@ -412,6 +412,22 @@ Example (2026-10-16): four PRs announced "ready to merge": one reviewed on a sup
 version, one never reviewed, two approved with open points, one of them a real bug (a
 state that could stay open forever).
 
+**T29. One open PR per agent: what its tests need goes into that PR.** A working session
+(an AI agent, or a developer on one task) owns one open PR at a time. A blocker found while
+getting it green (a missing fix its regtest needs, a bug the review finds, a related gap) is
+fixed on that PR's branch: the PR description and its issue list grow, no second branch and no
+second PR. Every extra PR is one more review, one more T13 gate and one more place where work
+stalls; none of them finishes.
+- Before opening a PR, check whether this session already has one open. If it does, commit on
+  its branch and extend its description and issues.
+- Work unrelated to the PR's tests waits until that PR is merged, or is handed to another
+  session; it is not started in parallel by the same session.
+- When two PRs already exist for the same session, merge one branch into the other, list both
+  issues on the PR that remains, and close the other with a pointer to it.
+Example (2026-11-09): one session had #2357 (orchestrator secret copy) and opened #2361 for the
+replication user, then planned a third branch for the certificate and ProxySQL gaps #2361's
+MySQL 8.4 regtest needed. #2361 was merged into #2357's branch and closed.
+
 ## Debugging discipline — investigate FULLY before you unblock
 
 **Never unblock a stuck issue before you have investigated it fully.** A restart, a

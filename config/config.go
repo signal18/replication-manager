@@ -29,7 +29,9 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
+	"unicode/utf8"
 
 	masker "github.com/ggwhite/go-masker"
 	"github.com/go-git/go-git/v5"
@@ -227,6 +229,7 @@ type Config struct {
 	HostsDelayed                             string                       `mapstructure:"replication-delayed-hosts" toml:"replication-delayed-hosts" json:"replicationDelayedHosts"`
 	HostsDelayedTime                         int                          `mapstructure:"replication-delayed-time" toml:"replication-delayed-time" json:"replicationDelayedTime"`
 	DBServersTLSUseGeneratedCertificate      bool                         `mapstructure:"db-servers-tls-use-generated-cert" toml:"db-servers-tls-use-generated-cert" json:"dbServersUseGeneratedCert"`
+	DBServersTLSCompleteGeneratedCertificate bool                         `mapstructure:"db-servers-tls-complete-generated-cert" toml:"db-servers-tls-complete-generated-cert" json:"dbServersTlsCompleteGeneratedCert"`
 	HostsTLSCA                               string                       `mapstructure:"db-servers-tls-ca-cert" toml:"db-servers-tls-ca-cert" json:"dbServersTlsCaCert"`
 	HostsTlsCliKey                           string                       `mapstructure:"db-servers-tls-client-key" toml:"db-servers-tls-client-key" json:"dbServersTlsClientKey"`
 	HostsTlsCliCert                          string                       `mapstructure:"db-servers-tls-client-cert" toml:"db-servers-tls-client-cert" json:"dbServersTlsClientCert"`
@@ -779,6 +782,7 @@ type Config struct {
 	ProvProxyCompliance                       string            `mapstructure:"prov-proxy-compliance" toml:"prov-proxy-compliance" json:"provProxyCompliance"`
 	ProvAutoUpdateCompliance                  bool              `mapstructure:"prov-auto-update-compliance" toml:"prov-auto-update-compliance" json:"provAutoUpdateCompliance"`
 	ProvDBComplianceAutoAgree                 bool              `mapstructure:"prov-db-compliance-auto-agree" toml:"prov-db-compliance-auto-agree" json:"provDbComplianceAutoAgree"`
+	ProvDBCreateReplicationUser               bool              `mapstructure:"prov-db-create-replication-user" toml:"prov-db-create-replication-user" json:"provDbCreateReplicationUser"`
 	ProvDockerRegistryCredentials             string            `mapstructure:"prov-docker-registry-credentials" toml:"prov-docker-registry-credentials" json:"provDockerRegistryCredentials"`
 	AppOn                                     bool              `mapstructure:"app" toml:"app" json:"app"`
 	AppHosts                                  string            `mapstructure:"app-hosts" toml:"app-hosts" json:"appHosts"`
@@ -2424,38 +2428,148 @@ func (conf *Config) GetDecryptedPassword(key string, value string) string {
 	return value
 }
 
-func (conf *Config) Reveal(clusterName string, tmpDir string) {
-	fileName := fmt.Sprintf("%s/%s.reveal", tmpDir, clusterName)
-	file, err := os.Create(fileName)
-	if err != nil {
-		fmt.Printf("Erreur lors de la création du fichier %s: %v\n", fileName, err)
-		return
+// Reveal prints each configuration source file to w as it is written, every encrypted value
+// (hash_, alone or inside a list such as user:hash_,user:hash_) in clear, so the operator reads
+// the file and the key each secret belongs to. It writes to w only.
+func (conf *Config) Reveal(w io.Writer, files []string) error {
+	if conf.SecretKey == nil {
+		conf.LoadEncrytionKey()
 	}
-	defer file.Close()
+	if conf.SecretKey == nil {
+		return errors.New("no encryption key (monitoring-key-path): nothing can be decrypted")
+	}
+	for _, f := range files {
+		data, err := os.ReadFile(f)
+		if err != nil {
+			fmt.Fprintf(w, "# ==== %s: %s\n", revealSafe(f), revealSafe(err.Error()))
+			continue
+		}
+		fmt.Fprintf(w, "# ==== %s\n", revealSafe(f))
+		for _, line := range strings.Split(strings.TrimRight(string(data), "\n"), "\n") {
+			fmt.Fprintln(w, revealSafe(conf.revealLine(line)))
+		}
+	}
+	return nil
+}
 
-	// Utiliser la réflexion pour parcourir les champs de Config
+// revealLine decrypts every hash_ token of a line; a token that does not decrypt to printable text
+// (another key, a corrupted value) is shown as <not decryptable with this key>, never as bytes. A
+// heuristic only: AES-CFB has no integrity check, a short value decrypted with another key can come
+// out printable by chance.
+func (conf *Config) revealLine(line string) string {
+	if conf.SecretKey == nil || !strings.Contains(line, "hash_") {
+		return line
+	}
+	return encryptedTokenRe.ReplaceAllStringFunc(line, func(tok string) string {
+		clear := conf.GetDecryptedEmbedded("", tok)
+		if clear == tok {
+			return tok // not a ciphertext: as written
+		}
+		for _, r := range clear {
+			if r == utf8.RuneError || (r != '\t' && revealEscapes(r)) {
+				return "<not decryptable with this key>"
+			}
+		}
+		return clear
+	})
+}
+
+// revealSafe escapes every control character but the tab (\xNN): the files decrypt prints, as
+// root, are written by the daemon's own account (default.toml, the saved cluster files), and their
+// content must never drive the operator's terminal.
+func revealSafe(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		switch {
+		case r == '\t' || !revealEscapes(r):
+			b.WriteRune(r)
+		case r < 0xa0:
+			fmt.Fprintf(&b, "\\x%02x", r)
+		default:
+			fmt.Fprintf(&b, "\\u%04x", r)
+		}
+	}
+	return b.String()
+}
+
+// revealEscapes: a character that would drive or mislead the terminal: C0 and C1 controls, DEL,
+// and the zero-width and bidirectional controls (they reorder or hide what is shown). One rule for
+// revealSafe (escape it) and revealLine (a decrypted value holding one is not trusted as clear).
+func revealEscapes(r rune) bool {
+	return r < 0x20 || r == 0x7f || (r >= 0x80 && r < 0xa0) || r == 0x061c ||
+		(r >= 0x200b && r <= 0x200f) || r == 0x2028 || r == 0x2029 ||
+		(r >= 0x202a && r <= 0x202e) || (r >= 0x2066 && r <= 0x2069) || r == 0xfeff
+}
+
+// RevealEffective prints, after the source files, the encrypted values of a cluster's effective
+// configuration in clear: what the cluster runs with, environment variables and command-line flags
+// included, which no file shows.
+func (conf *Config) RevealEffective(w io.Writer, clusterName string) error {
+	if conf.SecretKey == nil {
+		conf.LoadEncrytionKey()
+	}
+	if conf.SecretKey == nil {
+		return errors.New("no encryption key (monitoring-key-path) for cluster " + clusterName + ": nothing can be decrypted")
+	}
+	fmt.Fprintf(w, "# ==== effective encrypted values of cluster %s (files, environment, flags)\n", revealSafe(clusterName))
 	val := reflect.ValueOf(conf).Elem()
 	for i := 0; i < val.NumField(); i++ {
 		field := val.Field(i)
-		key := val.Type().Field(i).Name
-
-		if field.Kind() == reflect.String && strings.HasPrefix(field.String(), "hash_") {
-			decryptedValue := conf.GetDecryptedPassword(key, field.String())
-			fmt.Fprintf(file, "Key: %s, Decrypted Value: %s\n", key, decryptedValue)
+		if field.Kind() != reflect.String || !strings.Contains(field.String(), "hash_") {
+			continue
 		}
+		name := val.Type().Field(i).Name
+		if tag := val.Type().Field(i).Tag.Get("mapstructure"); tag != "" {
+			name = tag
+		}
+		fmt.Fprintf(w, "%s = %s\n", name, revealSafe(`"`+conf.revealLine(field.String())+`"`))
 	}
-
-	// Lecture et affichage du contenu du fichier
-	readAndPrintFile(fileName)
+	return nil
 }
 
-func readAndPrintFile(fileName string) {
-	content, err := os.ReadFile(fileName)
+// RevealOutputDir is where the decrypt command of older releases wrote its output files
+// (<cluster>.reveal): the only place RemoveRevealFiles looks.
+const RevealOutputDir = "/etc/replication-manager"
+
+// RemoveRevealFiles removes the output files the decrypt command of older releases left in dir:
+// only *.reveal files whose content is that command's ("Key: <name>, Decrypted Value: ..."), never
+// another file. It returns the paths removed and the errors met, never the content.
+func RemoveRevealFiles(dir string) (removed []string, errs []error) {
+	matches, err := filepath.Glob(filepath.Join(dir, "*.reveal"))
 	if err != nil {
-		fmt.Printf("Erreur lors de la lecture du fichier %s: %v\n", fileName, err)
-		return
+		return nil, []error{err}
 	}
-	fmt.Printf("Contenu de %s:\n%s\n", fileName, string(content))
+	for _, m := range matches {
+		if fi, err := os.Lstat(m); err != nil || !fi.Mode().IsRegular() {
+			continue
+		}
+		// O_NOFOLLOW|O_NONBLOCK and Fstat of what was opened: an entry swapped for a FIFO or a symlink
+		// after the Lstat never blocks the start of the monitor (F2) and is never followed
+		f, err := os.OpenFile(m, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
+		if err != nil {
+			continue
+		}
+		if fi, err := f.Stat(); err != nil || !fi.Mode().IsRegular() {
+			f.Close()
+			continue
+		}
+		head := make([]byte, 4096)
+		n, rerr := f.Read(head)
+		f.Close()
+		h := string(head[:n])
+		if i := strings.IndexByte(h, '\n'); i >= 0 {
+			h = h[:i] // the first line: "Key: <field name>, Decrypted Value: ..."
+		}
+		if rerr != nil || !(strings.HasPrefix(h, "Key: ") && strings.Contains(h, ", Decrypted Value: ")) {
+			continue // unreadable, empty, or not that command's output: left alone
+		}
+		if err := os.Remove(m); err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		removed = append(removed, m)
+	}
+	return removed, errs
 }
 
 func (conf *Config) IsPath(str string) bool {
@@ -2489,89 +2603,108 @@ func (conf *Config) IsMonitoringSecretVersioningEnabled() bool {
 	return conf.MonitoringSecretVersioning || conf.BackupEncryption
 }
 
-func (conf *Config) GenerateKey(Logger *logrus.Logger) error {
-	_, err := os.Stat(conf.MonitoringKeyPath)
-	// Check if the file does not exist
-	if err == nil {
+// keyFallback is the alternative key location: <monitoring-confdir-extra>/.replication-manager.key,
+// else ~/.config/replication-manager/.replication-manager.key.
+func (conf *Config) keyFallback() (dir, path string) {
+	dir = conf.ConfDirExtra
+	if dir == "" {
+		if homeDir, homeErr := os.UserHomeDir(); homeErr == nil {
+			dir = filepath.Join(homeDir, ".config", "replication-manager")
+		}
+	}
+	if dir != "" {
+		path = filepath.Join(dir, ".replication-manager.key")
+	}
+	return dir, path
+}
+
+// FindExistingKey looks for the encryption key where GenerateKey would use it, without ever creating
+// one: monitoring-key-path, else the alternative location, which then becomes monitoring-key-path.
+// found is false when there is none (the decrypt command uses it alone: it never creates a key).
+func (conf *Config) FindExistingKey(Logger *logrus.Logger) (found bool, err error) {
+	statErr := error(nil)
+	if _, err := os.Stat(conf.MonitoringKeyPath); err == nil {
 		Logger.Debugf("Repman discovered that key is already generated. Using existing key.")
-		return nil
-	} else {
-		if !os.IsNotExist(err) {
-			Logger.Errorf("Error when checking key for encryption: %v", err)
-			return err
-		}
-
-		fallbackDir := conf.ConfDirExtra
-		if fallbackDir == "" {
-			if homeDir, homeErr := os.UserHomeDir(); homeErr == nil {
-				fallbackDir = filepath.Join(homeDir, ".config", "replication-manager")
-			}
-		}
-		fallbackPath := ""
-		if fallbackDir != "" {
-			fallbackPath = filepath.Join(fallbackDir, ".replication-manager.key")
-			Logger.Debugf("Key not found. Checking in extra path : %s", fallbackPath)
-
-			_, err = os.Stat(fallbackPath)
-			if err == nil {
-				Logger.Debugf("Repman discovered key in alternative path. Using existing key on %s", fallbackPath)
-				conf.MonitoringKeyPath = fallbackPath
-				return nil
-			}
-		}
-
-		Logger.Debugf("Key not found. Generating : %s", conf.MonitoringKeyPath)
-
-		if err = misc.TryOpenFile(conf.MonitoringKeyPath, os.O_WRONLY|os.O_CREATE, 0600, true); err != nil && conf.WithEmbed == "OFF" {
-			if fallbackPath == "" {
-				Logger.Errorf("File %s is not accessible and no fallback path is available", conf.MonitoringKeyPath)
-				return err
-			}
-
-			Logger.Debugf("File %s is not accessible. Try using alternative path: %s", conf.MonitoringKeyPath, fallbackPath)
-
-			_, err := os.Stat(fallbackPath)
-			if err == nil {
-				Logger.Infof("Repman discovered key in alternative path. Using existing key on %s", fallbackPath)
-				conf.MonitoringKeyPath = fallbackPath
-				return nil
-			}
-
-			_, err = os.Stat(fallbackDir)
-			if err != nil {
-				if !os.IsNotExist(err) {
-					Logger.Errorf("Can't access %s : %v", fallbackDir, err)
-					return err
-				}
-				err = os.MkdirAll(fallbackDir, 0755)
-				if err != nil {
-					Logger.Errorf("Can't create directory %s : %v", fallbackDir, err)
-					return err
-				}
-			}
-
-			if err := misc.TryOpenFile(fallbackPath, os.O_WRONLY|os.O_CREATE, 0600, true); err != nil {
-				Logger.Errorf("Can't write keys in %s : %v", fallbackDir, err)
-				return err
-			}
-
-			// New path is writable
+		return true, nil
+	} else if !os.IsNotExist(err) {
+		// not readable here (permissions): the alternative location may still hold the key
+		statErr = err
+	}
+	if _, fallbackPath := conf.keyFallback(); fallbackPath != "" {
+		Logger.Debugf("Key not found. Checking in extra path : %s", fallbackPath)
+		if _, err := os.Stat(fallbackPath); err == nil {
+			Logger.Debugf("Repman discovered key in alternative path. Using existing key on %s", fallbackPath)
 			conf.MonitoringKeyPath = fallbackPath
-			Logger.Debugf("Path writable. Flag 'monitoring-key-path' set to: %s.", fallbackPath)
-			Logger.Debugf("Generating key on: %s", conf.MonitoringKeyPath)
+			return true, nil
+		}
+	}
+	if statErr != nil {
+		Logger.Errorf("Error when checking key for encryption: %v", statErr)
+	}
+	return false, statErr
+}
+
+func (conf *Config) GenerateKey(Logger *logrus.Logger) error {
+	found, err := conf.FindExistingKey(Logger)
+	if err != nil {
+		return err
+	}
+	if found {
+		return nil
+	}
+	fallbackDir, fallbackPath := conf.keyFallback()
+
+	Logger.Debugf("Key not found. Generating : %s", conf.MonitoringKeyPath)
+
+	if err = misc.TryOpenFile(conf.MonitoringKeyPath, os.O_WRONLY|os.O_CREATE, 0600, true); err != nil && conf.WithEmbed == "OFF" {
+		if fallbackPath == "" {
+			Logger.Errorf("File %s is not accessible and no fallback path is available", conf.MonitoringKeyPath)
+			return err
 		}
 
-		p := crypto.Password{}
-		p.Key, err = crypto.Keygen()
+		Logger.Debugf("File %s is not accessible. Try using alternative path: %s", conf.MonitoringKeyPath, fallbackPath)
+
+		_, err := os.Stat(fallbackPath)
+		if err == nil {
+			Logger.Infof("Repman discovered key in alternative path. Using existing key on %s", fallbackPath)
+			conf.MonitoringKeyPath = fallbackPath
+			return nil
+		}
+
+		_, err = os.Stat(fallbackDir)
 		if err != nil {
-			Logger.Errorf("Error when generating key for encryption: %v", err)
+			if !os.IsNotExist(err) {
+				Logger.Errorf("Can't access %s : %v", fallbackDir, err)
+				return err
+			}
+			err = os.MkdirAll(fallbackDir, 0755)
+			if err != nil {
+				Logger.Errorf("Can't create directory %s : %v", fallbackDir, err)
+				return err
+			}
+		}
+
+		if err := misc.TryOpenFile(fallbackPath, os.O_WRONLY|os.O_CREATE, 0600, true); err != nil {
+			Logger.Errorf("Can't write keys in %s : %v", fallbackDir, err)
 			return err
 		}
-		err = crypto.WriteKey(p.Key, conf.MonitoringKeyPath, false)
-		if err != nil {
-			Logger.Errorf("Error when writing key for encryption: %v", err)
-			return err
-		}
+
+		// New path is writable
+		conf.MonitoringKeyPath = fallbackPath
+		Logger.Debugf("Path writable. Flag 'monitoring-key-path' set to: %s.", fallbackPath)
+		Logger.Debugf("Generating key on: %s", conf.MonitoringKeyPath)
+	}
+
+	p := crypto.Password{}
+	p.Key, err = crypto.Keygen()
+	if err != nil {
+		Logger.Errorf("Error when generating key for encryption: %v", err)
+		return err
+	}
+	err = crypto.WriteKey(p.Key, conf.MonitoringKeyPath, false)
+	if err != nil {
+		Logger.Errorf("Error when writing key for encryption: %v", err)
+		return err
 	}
 
 	return nil

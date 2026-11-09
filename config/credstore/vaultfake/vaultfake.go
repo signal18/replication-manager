@@ -30,8 +30,8 @@ type Vault struct {
 	maxVersions map[string]int
 	static      map[string]string // database engine: user -> password
 	rotations   map[string]int
-	Fail        bool          // every KV call answers 500
-	Delay       time.Duration // every KV call waits first
+	fail        bool          // every KV call answers 500 (SetFail)
+	delay       time.Duration // every KV call waits first (SetDelay)
 	Logins      int
 	Writes      int
 }
@@ -42,6 +42,20 @@ func New(mount, roleID, secretID string) *Vault {
 		maxVersions: map[string]int{}, static: map[string]string{}, rotations: map[string]int{}}
 	v.Server = httptest.NewServer(http.HandlerFunc(v.handle))
 	return v
+}
+
+// SetDelay makes every KV call wait d first (0 = none). Safe while requests are in flight.
+func (v *Vault) SetDelay(d time.Duration) {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	v.delay = d
+}
+
+// SetFail makes every KV call answer 500. Safe while requests are in flight.
+func (v *Vault) SetFail(fail bool) {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	v.fail = fail
 }
 
 // SetStatic sets a database engine static role's password.
@@ -152,10 +166,13 @@ func (v *Vault) handle(w http.ResponseWriter, r *http.Request) {
 		reply(w, 200, map[string]interface{}{"data": map[string]interface{}{"username": user, "password": pass, "last_vault_rotation": time.Now().UTC().Format(time.RFC3339Nano)}})
 		return
 	}
-	if v.Delay > 0 {
-		time.Sleep(v.Delay)
+	v.mu.Lock()
+	delay, fail := v.delay, v.fail
+	v.mu.Unlock()
+	if delay > 0 {
+		time.Sleep(delay)
 	}
-	if v.Fail {
+	if fail {
 		reply(w, 500, map[string]interface{}{"errors": []string{"vault is failing"}})
 		return
 	}
