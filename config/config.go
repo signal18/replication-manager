@@ -781,6 +781,7 @@ type Config struct {
 	ProvProxyCompliance                       string            `mapstructure:"prov-proxy-compliance" toml:"prov-proxy-compliance" json:"provProxyCompliance"`
 	ProvAutoUpdateCompliance                  bool              `mapstructure:"prov-auto-update-compliance" toml:"prov-auto-update-compliance" json:"provAutoUpdateCompliance"`
 	ProvDBComplianceAutoAgree                 bool              `mapstructure:"prov-db-compliance-auto-agree" toml:"prov-db-compliance-auto-agree" json:"provDbComplianceAutoAgree"`
+	ProvDBCreateReplicationUser               bool              `mapstructure:"prov-db-create-replication-user" toml:"prov-db-create-replication-user" json:"provDbCreateReplicationUser"`
 	ProvDockerRegistryCredentials             string            `mapstructure:"prov-docker-registry-credentials" toml:"prov-docker-registry-credentials" json:"provDockerRegistryCredentials"`
 	AppOn                                     bool              `mapstructure:"app" toml:"app" json:"app"`
 	AppHosts                                  string            `mapstructure:"app-hosts" toml:"app-hosts" json:"appHosts"`

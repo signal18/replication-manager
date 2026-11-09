@@ -85,6 +85,9 @@ func (cluster *Cluster) Bootstrap() error {
 	// is the master) answered "already has an existing master/slave setup" and the
 	// provision failed after the service was up (#2004)
 	if !cluster.HasConfigTopoActivePassive() {
+		// the containers only get the root password: a separate replication user must exist on
+		// every server before the replicas connect (#2360)
+		cluster.createReplicationUser()
 		err = cluster.BootstrapReplication(true, false)
 		if err != nil {
 			return err

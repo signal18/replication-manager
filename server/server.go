@@ -1460,6 +1460,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 		flags.StringVar(&conf.ProvProxyCompliance, "prov-proxy-compliance", "", "Path of compliance file for Proxy configuration")
 		flags.BoolVar(&conf.ProvAutoUpdateCompliance, "prov-auto-update-compliance", true, "Auto-update compliance best practices from back office or binary upgrades")
 		flags.BoolVar(&conf.ProvDBComplianceAutoAgree, "prov-db-compliance-auto-agree", false, "Auto-agree value-differs config deltas to the compliance value on the DB (DB-side counterpart of prov-auto-update-compliance); off by default, value-changes only")
+		flags.BoolVar(&conf.ProvDBCreateReplicationUser, "prov-db-create-replication-user", true, "At provisioning, create the replication user (replication-credential) on every database server, outside the binary log, when it is not the database user")
 		flags.BoolVar(&conf.MeasurementAutoClampLimit, "measurement-auto-clamp-limit", false, "Auto clamp to allowed value for measurement if exceed the min-max boundaries")
 		flags.BoolVar(&conf.ProvObjectAllowOverwrite, "prov-object-allow-overwrite", true, "Allow overwriting config/secret keys when objects already exist")
 

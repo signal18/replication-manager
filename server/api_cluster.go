@@ -3682,6 +3682,8 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.Conf.ProvAutoUpdateCompliance = !mycluster.Conf.ProvAutoUpdateCompliance
 	case "prov-db-compliance-auto-agree":
 		mycluster.Conf.ProvDBComplianceAutoAgree = !mycluster.Conf.ProvDBComplianceAutoAgree
+	case "prov-db-create-replication-user":
+		mycluster.Conf.ProvDBCreateReplicationUser = !mycluster.Conf.ProvDBCreateReplicationUser
 	case "prov-db-dynamic-resource":
 		if err := mycluster.SwitchProvDBDynamicResource(); err != nil {
 			return err
