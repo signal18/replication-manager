@@ -110,6 +110,51 @@ func TestGaleraElectVirtualMaster(t *testing.T) {
 	}
 }
 
+// #2350: the master forgotten when the cluster went down stays in cluster.vmaster: the failed node
+// must not block the election once a majority is back, and CheckFailed must reach it. A virtual
+// master still electable is kept, even when another node is preferred: the writes do not move.
+func TestGaleraElectWithForgottenMaster(t *testing.T) {
+	for _, interactive := range []bool{true, false} {
+		cl := galeraCluster(interactive)
+		db1 := galeraNode(cl, "db1:3306", stateFailed, false, false)
+		db2 := galeraNode(cl, "db2:3306", stateSlave, true, true)
+		cl.Servers = []*ServerMonitor{db1, db2}
+		cl.master, cl.vmaster = nil, db1
+
+		cl.CheckFailed()
+		if cl.master != db2 || cl.vmaster != db2 || cl.GetMaster() != db2 {
+			t.Fatalf("interactive=%v: a stale failed vmaster must not block the election", interactive)
+		}
+		if !cl.StateMachine.CurState.Search("WARN0006") {
+			t.Fatalf("interactive=%v: the election is a state (WARN0006)", interactive)
+		}
+	}
+
+	cl := galeraCluster(true)
+	db1 := galeraNode(cl, "db1:3306", stateFailed, false, false)
+	db2 := galeraNode(cl, "db2:3306", stateSlave, true, true)
+	db3 := galeraNode(cl, "db3:3306", stateSlave, true, true)
+	cl.Servers = []*ServerMonitor{db1, db2, db3}
+
+	// no majority back: nothing is elected, the stale vmaster stays as it was
+	db2.Status.Set("WSREP_CLUSTER_STATUS", "NON-PRIMARY")
+	db3.Status.Set("WSREP_CLUSTER_STATUS", "NON-PRIMARY")
+	cl.master, cl.vmaster = nil, db1
+	if got := cl.galeraElectVirtualMaster(); got != nil || cl.master != nil || cl.vmaster != db1 {
+		t.Fatal("no Primary component: no election, the stale vmaster stays as it was")
+	}
+
+	// the virtual master is electable: kept over the preferred master
+	db2.Status.Set("WSREP_CLUSTER_STATUS", "PRIMARY")
+	db3.Status.Set("WSREP_CLUSTER_STATUS", "PRIMARY")
+	cl.Conf.PrefMaster = "db3:3306"
+	db3.Prefered = true
+	cl.master, cl.vmaster = nil, db2
+	if got := cl.galeraElectVirtualMaster(); got != db2 || cl.master != db2 {
+		t.Fatal("an electable virtual master is kept, the writes do not move")
+	}
+}
+
 // #2350: the bootstrap option on container#db is set for the start that bootstraps a cluster
 // entirely down, removed from any other start, and an operator's own command is never touched.
 func TestGaleraCommandPatch(t *testing.T) {

@@ -45,27 +45,39 @@ func (cluster *Cluster) galeraHasMajority() bool {
 	return len(cluster.galeraElectable()) > 0
 }
 
-// galeraElectVirtualMaster elects a virtual master when there is none: after a restart of
-// replication-manager whose last master is the failed node, or a cluster never routed. The
-// preferred master when it is electable, else the first electable node in declared order. With
-// no majority, nothing is elected. It returns the node elected, nil when none.
+// galeraPickVirtualMaster: the first wanted node that is electable, else the first electable
+// node in declared order. electable is never empty.
+func galeraPickVirtualMaster(electable []*ServerMonitor, wanted ...*ServerMonitor) *ServerMonitor {
+	for _, w := range wanted {
+		if w == nil {
+			continue
+		}
+		for _, s := range electable {
+			if s.URL == w.URL {
+				return s
+			}
+		}
+	}
+	return electable[0]
+}
+
+// galeraElectVirtualMaster elects a virtual master when the cluster has no master: after a
+// restart of replication-manager whose last master is the failed node, a cluster never routed,
+// or a master forgotten when the cluster went down. It tests cluster.master, not GetMaster: the
+// forgotten master stays in cluster.vmaster, and GetMaster would answer with that stale node
+// forever (neither the discovery nor CheckFailed would ever replace it). The virtual master it
+// still has when that node is electable (the writes do not move), else the preferred master
+// when electable, else the first electable node in declared order. With no majority, nothing is
+// elected. It returns the node elected, nil when none.
 func (cluster *Cluster) galeraElectVirtualMaster() *ServerMonitor {
-	if !cluster.isGaleraTopology() || cluster.GetMaster() != nil {
+	if !cluster.isGaleraTopology() || cluster.master != nil {
 		return nil
 	}
 	electable := cluster.galeraElectable()
 	if len(electable) == 0 {
 		return nil
 	}
-	elected := electable[0]
-	if p := cluster.getOnePreferedMaster(); p != nil {
-		for _, s := range electable {
-			if s.URL == p.URL {
-				elected = s
-				break
-			}
-		}
-	}
+	elected := galeraPickVirtualMaster(electable, cluster.vmaster, cluster.getOnePreferedMaster())
 	cluster.vmaster = elected
 	cluster.master = elected
 	elected.SetMaster()

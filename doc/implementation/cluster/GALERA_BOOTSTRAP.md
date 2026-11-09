@@ -117,9 +117,12 @@ node it routes the writes to, so moving it is a switchover, never a promotion.
     forever). `failover-limit` and `failover-time-limit` do not apply either: they guard
     master-slave promotions, and a cluster losing a node every day would stop routing after five.
   - No master (the last one failed before a restart of replication-manager, so `lastmaster` is a
-    failed node): `CheckFailed` elects one (`galeraElectVirtualMaster`): the preferred master
-    when electable, else the first electable node in declared order. The election is the state
-    WARN0006.
+    failed node, or the master was forgotten when the whole cluster went down): `CheckFailed`
+    elects one (`galeraElectVirtualMaster`): the virtual master it still has when that node is
+    electable, else the preferred master when electable, else the first electable node in
+    declared order. The election is the state WARN0006. It tests `cluster.master`, not
+    `GetMaster()`: a forgotten master stays in `cluster.vmaster`, and `GetMaster()` would keep
+    answering with that failed node, so nothing would ever replace it.
   - The manual-mode gate applies to Galera only since `06c9757c4` (v3.1.44). Before, Galera
     clusters were discovered as master-slave.
 - **The empty member list is never a delta.** A bootstrap node runs with
