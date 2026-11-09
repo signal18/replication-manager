@@ -241,6 +241,8 @@ var autoFixable = map[string]bool{
 	"SEC0115": true, // password_reuse_check (MariaDB 10.7+)
 	"SEC0116": true, // validate_password plugin/component not loaded (MySQL — same pwdchecksimple tag)
 	"SEC0117": true, // password_history + password_reuse_interval both 0 (MySQL 8.0+ — same pwdcheckreuse tag)
+
+	"WARN0318": true, // write the missing files of the generated TLS set, never overwriting one (#2360)
 }
 
 // GetRemediationPlan assembles the current remediation plan from all open security findings.
@@ -299,6 +301,16 @@ func (cluster *Cluster) GetRemediationPlan() RemediationPlan {
 			})
 		}
 		// SEC0108 (wildcard host) — no automated fix, informational only.
+
+		// WARN0318 — the generated TLS set is incomplete: write what is missing (#2360).
+		if baseKey == "WARN0318" {
+			fixes = append(fixes, RemediationFix{
+				Type:        "fix_state",
+				Description: "Write the missing files of the cluster's TLS set, signed by its CA; no existing file is overwritten",
+				Risk:        "safe",
+				URL:         fmt.Sprintf("clusters/%s/security/fix-state/WARN0318", cluster.Name),
+			})
+		}
 
 		// WARN0314 — plugins present but log-plugin disabled: one-click settings switch.
 		if baseKey == "WARN0314" {
@@ -425,6 +437,8 @@ var socketPlugins = map[string]bool{
 //	SEC0117 — add pwdcheckreuse tag    (password_history/reuse_interval, MySQL 8.0+ — same tag)
 func (cluster *Cluster) FixSecState(errKey string, preferredTag ...string) error {
 	switch errKey {
+	case "WARN0318":
+		return cluster.completeCertificates()
 	case "SEC0100":
 		return cluster.fixNoPasswordUsers()
 	case "SEC0103":

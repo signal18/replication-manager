@@ -229,6 +229,7 @@ type Config struct {
 	HostsDelayed                             string                       `mapstructure:"replication-delayed-hosts" toml:"replication-delayed-hosts" json:"replicationDelayedHosts"`
 	HostsDelayedTime                         int                          `mapstructure:"replication-delayed-time" toml:"replication-delayed-time" json:"replicationDelayedTime"`
 	DBServersTLSUseGeneratedCertificate      bool                         `mapstructure:"db-servers-tls-use-generated-cert" toml:"db-servers-tls-use-generated-cert" json:"dbServersUseGeneratedCert"`
+	DBServersTLSCompleteGeneratedCertificate bool                         `mapstructure:"db-servers-tls-complete-generated-cert" toml:"db-servers-tls-complete-generated-cert" json:"dbServersTlsCompleteGeneratedCert"`
 	HostsTLSCA                               string                       `mapstructure:"db-servers-tls-ca-cert" toml:"db-servers-tls-ca-cert" json:"dbServersTlsCaCert"`
 	HostsTlsCliKey                           string                       `mapstructure:"db-servers-tls-client-key" toml:"db-servers-tls-client-key" json:"dbServersTlsClientKey"`
 	HostsTlsCliCert                          string                       `mapstructure:"db-servers-tls-client-cert" toml:"db-servers-tls-client-cert" json:"dbServersTlsClientCert"`
@@ -781,6 +782,7 @@ type Config struct {
 	ProvProxyCompliance                       string            `mapstructure:"prov-proxy-compliance" toml:"prov-proxy-compliance" json:"provProxyCompliance"`
 	ProvAutoUpdateCompliance                  bool              `mapstructure:"prov-auto-update-compliance" toml:"prov-auto-update-compliance" json:"provAutoUpdateCompliance"`
 	ProvDBComplianceAutoAgree                 bool              `mapstructure:"prov-db-compliance-auto-agree" toml:"prov-db-compliance-auto-agree" json:"provDbComplianceAutoAgree"`
+	ProvDBCreateReplicationUser               bool              `mapstructure:"prov-db-create-replication-user" toml:"prov-db-create-replication-user" json:"provDbCreateReplicationUser"`
 	ProvDockerRegistryCredentials             string            `mapstructure:"prov-docker-registry-credentials" toml:"prov-docker-registry-credentials" json:"provDockerRegistryCredentials"`
 	AppOn                                     bool              `mapstructure:"app" toml:"app" json:"app"`
 	AppHosts                                  string            `mapstructure:"app-hosts" toml:"app-hosts" json:"appHosts"`

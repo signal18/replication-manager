@@ -639,16 +639,77 @@ func errOptionPreventsStatement(err error) bool {
 // statements in their binary log themselves (IDENTIFIED WITH plugin AS 'hash'): they
 // get the password, their default authentication plugin decides the hash.
 func execAccountStatement(db *sqlx.DB, myver *version.Version, prefix, password string) error {
+	return execAccountStatementContext(context.Background(), db, myver, prefix, password)
+}
+
+// execAccountStatementContext is execAccountStatement on any executor: a pool, or the one
+// connection a session setting (sql_log_bin) applies to.
+func execAccountStatementContext(ctx context.Context, ex sqlx.ExecerContext, myver *version.Version, prefix, password string) error {
 	clear := prefix + " IDENTIFIED BY " + QuoteMySQLString(password)
 	if myver == nil || !myver.IsMariaDB() {
-		_, err := db.Exec(clear)
+		_, err := ex.ExecContext(ctx, clear)
 		return err
 	}
-	_, err := db.Exec(prefix + " IDENTIFIED BY PASSWORD " + QuoteMySQLString(passwordHashNative(password)))
+	_, err := ex.ExecContext(ctx, prefix+" IDENTIFIED BY PASSWORD "+QuoteMySQLString(passwordHashNative(password)))
 	if errOptionPreventsStatement(err) {
-		_, err = db.Exec(clear)
+		_, err = ex.ExecContext(ctx, clear)
 	}
 	return err
+}
+
+// CreateReplicationUser creates the replication account on one server, without writing it to
+// the server's binary log (#2360). Every node gets its own copy, so any of them can become the
+// primary after a failover, and the account is no transaction that replicates (no errant GTID
+// on a replica). conn must be a connection of its own: the session setting applies to it.
+//
+//   - MariaDB, MySQL, Percona: SET SESSION sql_log_bin=0, CREATE USER IF NOT EXISTS (MariaDB
+//     10.1.3+, MySQL 5.7+), GRANT REPLICATION SLAVE ON *.* (the alias of REPLICATION REPLICA
+//     on MariaDB 10.5+ and MySQL 8.0.22+), then sql_log_bin back to 1. An existing account
+//     keeps its password and gets the grant if it lacked it.
+//   - PostgreSQL: CREATE ROLE ... WITH REPLICATION LOGIN PASSWORD when the role does not exist,
+//     ALTER ROLE ... WITH REPLICATION when it does (its password unchanged). There is no binary
+//     log, and host is not used: pg_hba stays with the provisioning.
+//
+// The returned statements are the LOGGED ones: the password is masked.
+func CreateReplicationUser(ctx context.Context, conn *sqlx.Conn, myver *version.Version, host, user, password string) (string, error) {
+	if err := ValidateIdentifier(user); err != nil {
+		return "", fmt.Errorf("invalid username: %w", err)
+	}
+	if myver != nil && myver.IsPostgreSQL() {
+		var exists bool
+		query := "SELECT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = $1)"
+		if err := conn.QueryRowxContext(ctx, query, user).Scan(&exists); err != nil {
+			return query, err
+		}
+		if exists {
+			query = "ALTER ROLE " + QuotePostgresIdentifier(user) + " WITH REPLICATION"
+			_, err := conn.ExecContext(ctx, query)
+			return query, err
+		}
+		query = "CREATE ROLE " + QuotePostgresIdentifier(user) + " WITH REPLICATION LOGIN PASSWORD "
+		_, err := conn.ExecContext(ctx, query+QuotePostgresLiteral(password))
+		return query + "'*****'", err
+	}
+	if err := validateDBHost(host); err != nil {
+		return "", fmt.Errorf("invalid host: %w", err)
+	}
+	logs := "SET SESSION sql_log_bin=0"
+	if _, err := conn.ExecContext(ctx, logs); err != nil {
+		return logs, err
+	}
+	// back to logging for whoever uses the connection next; a failure here is the caller's
+	// to see (it closes the connection)
+	defer conn.ExecContext(context.Background(), "SET SESSION sql_log_bin=1")
+	account := QuoteMySQLIdentifier(user) + "@" + QuoteMySQLIdentifier(host)
+	prefix := "CREATE USER IF NOT EXISTS " + account
+	logs += "; " + prefix + " IDENTIFIED BY '*****'"
+	if err := execAccountStatementContext(ctx, conn, myver, prefix, password); err != nil {
+		return logs, err
+	}
+	grant := "GRANT REPLICATION SLAVE ON *.* TO " + account
+	logs += "; " + grant
+	_, err := conn.ExecContext(ctx, grant)
+	return logs, err
 }
 
 // validateDBHost validates a MySQL host string.

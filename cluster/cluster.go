@@ -567,6 +567,8 @@ type Cluster struct {
 	secretVersionStoreDirty bool             `json:"-"`
 	// secretKv: the versions written to the credential store entries (#2227)
 	secretKv secretKvStores `json:"-"`
+	// certificates: the background completion of the generated TLS set (WARN0318, #2360)
+	certificates certificateCompletion `json:"-"`
 	// scheduledRotationSkipped: why the last scheduled password rotation was skipped (#2269)
 	scheduledRotationMu      sync.Mutex `json:"-"`
 	scheduledRotationSkipped string     `json:"-"`
@@ -1178,9 +1180,10 @@ func (cluster *Cluster) Run() {
 	interval := time.Second
 
 	// createKeys do nothing yet
-	if _, err := os.Stat(cluster.Conf.WorkingDir + "/" + cluster.Name + "/ca-key.pem"); os.IsNotExist(err) {
-		os.MkdirAll(cluster.Conf.WorkingDir+"/"+cluster.Name, os.ModePerm)
-		go cluster.createKeys()
+	// the generated TLS set: created whole, or completed when a file is missing (a cluster added
+	// before its servers stopped after the CA, #2360); CheckCertificates retries what is left
+	if len(cluster.missingCertificateFiles()) > 0 {
+		go cluster.completeCertificates()
 	}
 
 	cluster.Lock()
@@ -1548,6 +1551,8 @@ func (cluster *Cluster) tickBody() {
 		// a failover is evaluated: CheckFailed returns early without a master (#2191)
 		cluster.IsSameWsrepUUID()
 		cluster.CheckReplicationTLS()
+		// the generated TLS set: WARN0318 while a file is missing, completed in the background
+		cluster.CheckCertificates()
 		cluster.CheckSecretLoginLegacy()
 		cluster.CheckJobStreamRefused()
 		cluster.CheckJobLoginRefused()
