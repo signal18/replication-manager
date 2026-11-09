@@ -122,7 +122,10 @@ Each check now has its own interval (`cluster/app_chk_interval.go`):
 - **Checks.** Three kinds, each named in `App.CheckResults`: `app-port` (no-route probe),
   `local <lKey>` (a local endpoint, shared by the routes with the same `buildLocalCheckKey`,
   on the shortest of their intervals), `external <routeKey>` (a route's external check).
-- **Due rule** (`runCheck`): run when never run, when its last result failed, when any
+- **Due rule** (`runCheck`): run when never run, when its configuration changed (each
+  result carries a signature: the local key with the monitor contract, the route's name,
+  or the app's monitor settings, so an edit is checked at the next tick), when its last
+  result failed, when any
   check of the app is still debouncing (`AppErrConsecutiveMap` not empty), or when its
   interval has elapsed. Otherwise the last result is returned. So a failure is confirmed
   at the debounce threshold in ticks, not in intervals, and a recovery is seen at the
@@ -141,7 +144,12 @@ ticks.
 
 Tests: `cluster/app_chk_interval_test.go` (one probe per interval on a counting listener,
 failing check every tick and recovery at the next tick, TCP route on its monitor interval,
-precedence, pruning of removed checks, negative interval normalized).
+a settings change runs the check again, precedence, pruning of removed checks, negative
+interval normalized). Regtest `testAppCheckInterval` (`regtest/test_app_check_interval.go`)
+runs the same through the ticking monitor: connections counted over 50 s on a 20 s
+interval, outage seen within one interval, recovery within a few ticks. The regtests
+`testAppWarningDebounceAndRecovery` and `testAppMonitorHTTP` count debounce cycles tick
+by tick, so they set `app-monitor-interval = 1` (every tick, as when they were written).
 
 ## Route label
 

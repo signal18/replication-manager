@@ -7,6 +7,8 @@
 package cluster
 
 import (
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/signal18/replication-manager/config"
@@ -24,6 +26,7 @@ const appMonitorDefaultInterval = 60 * time.Second
 // appCheckResult is the outcome of one check run: err nil = passed. status is the HTTP
 // status (0 for TCP, ping), errKey the APPERR key of a failure.
 type appCheckResult struct {
+	sig    string // the check's configuration when it ran: another one makes it due
 	at     time.Time
 	err    error
 	status int
@@ -48,17 +51,18 @@ func routeCheckInterval(cnf *config.AppConfig, route config.Route) time.Duration
 }
 
 // runCheck returns the result of the check named key: its last result while it is not
-// due, else a fresh run of probe. Due = never run, failed last time, a failure of the app
-// still debouncing, or its interval elapsed.
-func (app *App) runCheck(key string, interval time.Duration, now time.Time, probe func() appCheckResult) appCheckResult {
+// due, else a fresh run of probe. Due = never run, its configuration (sig) changed since,
+// failed last time, a failure of the app still debouncing, or its interval elapsed.
+func (app *App) runCheck(key, sig string, interval time.Duration, now time.Time, probe func() appCheckResult) appCheckResult {
 	app.Lock()
 	last, ok := app.CheckResults[key]
-	due := !ok || last.err != nil || len(app.AppErrConsecutiveMap) > 0 || now.Sub(last.at) >= interval
+	due := !ok || last.sig != sig || last.err != nil || len(app.AppErrConsecutiveMap) > 0 || now.Sub(last.at) >= interval
 	app.Unlock()
 	if !due {
 		return last
 	}
 	res := probe()
+	res.sig = sig
 	res.at = now
 	app.Lock()
 	if app.CheckResults == nil {
@@ -67,6 +71,14 @@ func (app *App) runCheck(key string, interval time.Duration, now time.Time, prob
 	app.CheckResults[key] = res
 	app.Unlock()
 	return res
+}
+
+// noRouteCheckSig: the configuration of the check of an app without a route.
+func noRouteCheckSig(cnf *config.AppConfig, host string) string {
+	if cnf == nil {
+		return host
+	}
+	return strings.Join([]string{host, cnf.AppPort, cnf.AppMonitorMode, cnf.AppMonitorPath, cnf.AppMonitorExpectStatus, strconv.Itoa(cnf.AppMonitorCertExpireDays)}, "|")
 }
 
 // keepCheckResults drops the results of checks that no longer exist (a route removed or

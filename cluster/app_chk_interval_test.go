@@ -195,3 +195,26 @@ func TestRouteMonitorNormalizeNegativeInterval(t *testing.T) {
 		t.Fatalf("negative interval: want 0 (the app's), got %d", m.Interval)
 	}
 }
+
+// A change of the check's settings runs it again at the next tick: the result kept for
+// the former settings does not stand for the new ones.
+func TestAppCheckIntervalSettingChangeRunsAgain(t *testing.T) {
+	port, conns, stop := countingListener(t)
+	defer stop()
+	app := newMonitoringTestApp(nil)
+	app.AppConfig.AppPort = port
+	app.GetMonitoringStatus()
+	app.GetMonitoringStatus()
+	time.Sleep(50 * time.Millisecond)
+	if got := atomic.LoadInt64(conns); got != 1 {
+		t.Fatalf("same settings: want 1 probe, got %d", got)
+	}
+	if err := app.SetSetting("app-monitor-cert-expire-days", "30"); err != nil {
+		t.Fatalf("set: %v", err)
+	}
+	app.GetMonitoringStatus()
+	time.Sleep(50 * time.Millisecond)
+	if got := atomic.LoadInt64(conns); got != 2 {
+		t.Fatalf("settings changed: want a new probe (2), got %d", got)
+	}
+}

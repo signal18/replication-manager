@@ -132,7 +132,7 @@ func (app *App) GetMonitoringStatus() string {
 		// answers the expected status in time, https-cert also when its certificate is
 		// valid and not about to expire (else AppWarning).
 		app.ResetAppErrConsecutiveCntExcept("app-port") // routes gone: their debounce counters go with them
-		res := app.runCheck("app-port", appCheckInterval(app.AppConfig), time.Now(), func() appCheckResult {
+		res := app.runCheck("app-port", noRouteCheckSig(app.AppConfig, app.GetHost()), appCheckInterval(app.AppConfig), time.Now(), func() appCheckResult {
 			errKey, err := app.probeNoRoute(time.Duration(cluster.Conf.Timeout) * time.Second)
 			return appCheckResult{err: err, errKey: errKey}
 		})
@@ -189,7 +189,7 @@ func (app *App) GetMonitoringStatus() string {
 		switch route.Protocol {
 		case "https", "http":
 			checkKeys[checkKey] = true
-			r := app.runCheck(checkKey, localInterval[lKey], now, func() appCheckResult {
+			r := app.runCheck(checkKey, lKey, localInterval[lKey], now, func() appCheckResult {
 				status, _, err := app.GetAppLocalHTTPStatus(route, false)
 				res := appCheckResult{err: err, status: status, errKey: ErrAppConnectFailed}
 				if isAppUnexpectedStatus(err) {
@@ -200,7 +200,7 @@ func (app *App) GetMonitoringStatus() string {
 			localCache[lKey] = &localResult{err: r.err, status: r.status, errKey: r.errKey}
 		case "tcp":
 			checkKeys[checkKey] = true
-			r := app.runCheck(checkKey, localInterval[lKey], now, func() appCheckResult {
+			r := app.runCheck(checkKey, lKey, localInterval[lKey], now, func() appCheckResult {
 				return appCheckResult{err: app.GetAppLocalTCPStatus(route), errKey: ErrAppTCPConnectFailed}
 			})
 			localCache[lKey] = &localResult{err: r.err, errKey: r.errKey}
@@ -232,7 +232,7 @@ func (app *App) GetMonitoringStatus() string {
 			} else {
 				checkKey := "external " + routeKey
 				checkKeys[checkKey] = true
-				ext := app.runCheck(checkKey, routeCheckInterval(app.AppConfig, route), now, func() appCheckResult {
+				ext := app.runCheck(checkKey, route.CName+"|"+lKey, routeCheckInterval(app.AppConfig, route), now, func() appCheckResult {
 					status, _, err := app.GetAppHTTPStatus(route, false)
 					return appCheckResult{err: err, status: status}
 				})
@@ -262,7 +262,7 @@ func (app *App) GetMonitoringStatus() string {
 			} else {
 				checkKey := "external " + routeKey
 				checkKeys[checkKey] = true
-				ext := app.runCheck(checkKey, routeCheckInterval(app.AppConfig, route), now, func() appCheckResult {
+				ext := app.runCheck(checkKey, route.CName+"|"+lKey, routeCheckInterval(app.AppConfig, route), now, func() appCheckResult {
 					return appCheckResult{err: app.GetAppTCPStatus(route)}
 				})
 				if ext.err != nil {

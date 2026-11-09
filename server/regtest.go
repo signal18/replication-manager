@@ -489,6 +489,9 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 		if test.Name == "testAppMonitorHTTP" {
 			res = regtest.TestAppMonitorHTTP(cl, test.ConfigFile, &test)
 		}
+		if test.Name == "testAppCheckInterval" {
+			res = regtest.TestAppCheckInterval(cl, test.ConfigFile, &test)
+		}
 		if test.Name == "testAppConditionalVariablesOpenSVC" {
 			res = regtest.TestAppConditionalVariablesOpenSVC(cl, test.ConfigFile, &test)
 		}
