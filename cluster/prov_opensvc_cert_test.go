@@ -7,6 +7,7 @@ package cluster
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -165,5 +166,78 @@ func TestOpenSVCStoreWriteAllDeadAgentV3(t *testing.T) {
 	}
 	if n := requests.Load(); n != 1 {
 		t.Fatalf("agent saw %d requests, want 1 (the first read, then the budget is spent)", n)
+	}
+}
+
+// kvAgent is a v3 agent that keeps one value per key of the env secret: GET 404 on an absent
+// key, POST 409 on an existing one (the client then PUTs), PUT stores.
+type kvAgent struct {
+	mu   sync.Mutex
+	keys map[string]string
+}
+
+func (a *kvAgent) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	name := r.URL.Query().Get("name")
+	cur, ok := a.keys[name]
+	switch r.Method {
+	case http.MethodGet:
+		if !ok {
+			http.Error(w, `{"status":404}`, http.StatusNotFound)
+			return
+		}
+		w.Write([]byte(cur))
+	case http.MethodPost:
+		if ok {
+			http.Error(w, `{"status":409}`, http.StatusConflict)
+			return
+		}
+		fallthrough
+	case http.MethodPut:
+		b, _ := io.ReadAll(r.Body)
+		a.keys[name] = string(b)
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+func (a *kvAgent) get(k string) (string, bool) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	v, ok := a.keys[k]
+	return v, ok
+}
+
+// Seen on dev4: the rotation wrote MYSQL_ROOT_PASSWORD directly, then queued it; the queue found
+// the new value already there and wrote no _OLD, the old password was lost. The rotation now
+// writes through the store writer: the superseded password lands in MYSQL_ROOT_PASSWORD_OLD.
+func TestOpenSVCRotationKeepsOldPasswordV3(t *testing.T) {
+	agent := &kvAgent{keys: map[string]string{}}
+	server := httptest.NewTLSServer(agent)
+	defer server.Close()
+	u, err := url.Parse(server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p12Path := filepath.Join(t.TempDir(), "cluster.p12")
+	if err := os.WriteFile(p12Path, opensvctest.P12(t, "repman", ""), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cl := openSVCStoreTestCluster(t, p12Path, u.Host)
+
+	if err := cl.ProvisionRotatePasswords("first"); err != nil {
+		t.Fatalf("first rotation: %v", err)
+	}
+	if _, ok := agent.get("MYSQL_ROOT_PASSWORD_OLD"); ok {
+		t.Fatalf("an _OLD written on the first value")
+	}
+	if err := cl.ProvisionRotatePasswords("second"); err != nil {
+		t.Fatalf("second rotation: %v", err)
+	}
+	if v, _ := agent.get("MYSQL_ROOT_PASSWORD"); v != "second" {
+		t.Fatalf("MYSQL_ROOT_PASSWORD not the rotated password")
+	}
+	if v, ok := agent.get("MYSQL_ROOT_PASSWORD_OLD"); !ok || v != "first" {
+		t.Fatalf("MYSQL_ROOT_PASSWORD_OLD does not hold the superseded password (present=%v)", ok)
 	}
 }

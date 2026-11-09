@@ -1228,7 +1228,12 @@ func (cluster *Cluster) writeOpenSVCRootPassword(svc opensvc.Collector, password
 	c.orchestratorWrites++
 	write := c.orchestratorWrites
 	c.mu.Unlock()
-	err := svc.CreateSecretKeyValue(cluster.Name, "env", "MYSQL_ROOT_PASSWORD", password)
+	// through the store writer: it saves the superseded value to MYSQL_ROOT_PASSWORD_OLD before
+	// it overwrites the key, within one bounded budget (#2356). A direct write here would leave the
+	// queue nothing to save: the old password would be lost.
+	_, err := cluster.openSVCStore().writeWith(context.Background(), svc, []credstore.StoreItem{{
+		Entry: orchestratorStoreEntry, Key: "MYSQL_ROOT_PASSWORD", Version: cluster.selfVersion(password),
+	}}, cluster.storeTimeout())
 	c.mu.Lock()
 	wasBehind := c.orchestratorBehind != ""
 	c.orchestratorTried = time.Now()

@@ -12,6 +12,7 @@ import (
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/config/credstore"
+	"github.com/signal18/replication-manager/opensvc"
 )
 
 // Orchestrator credential copy as a StoreWriter (#2356, follow-up #2227).
@@ -103,7 +104,13 @@ func (s *openSVCStore) ReadCurrent(key string) (value string, ok bool, err error
 // to <KEY>_OLD (one-deep history; v3 only, since it needs a read). The value is plain, as the
 // agent needs it, and never reaches a log (F10).
 func (s *openSVCStore) WriteAll(ctx context.Context, items []credstore.StoreItem, timeout credstore.Timeout) ([]credstore.StoreItem, error) {
-	svc := s.cluster.OpenSVCConnect()
+	return s.writeWith(ctx, s.cluster.OpenSVCConnect(), items, timeout)
+}
+
+// writeWith is WriteAll on a given agent client. It is the ONLY writer of the env secret's keys
+// that keeps <KEY>_OLD: a caller that wrote the key itself first (the rotation did) left the
+// queue nothing to save, the old value was already gone (seen on dev4, #2356).
+func (s *openSVCStore) writeWith(ctx context.Context, svc opensvc.Collector, items []credstore.StoreItem, timeout credstore.Timeout) ([]credstore.StoreItem, error) {
 	if s.certNotLoaded() {
 		// no client certificate: every call would fail on TLS after its timeout
 		return items, errOpenSVCCertNotLoaded

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/config/credstore"
 	"github.com/signal18/replication-manager/utils/state"
 	appsv1 "k8s.io/api/apps/v1"
 	apiv1 "k8s.io/api/core/v1"
@@ -175,7 +176,15 @@ func (cluster *Cluster) k8sPatchSecretValuesRaw(ctx context.Context, client kube
 // s.Pass, so ProvisionRotatePasswords (prov.go) can call it directly with
 // the freshly rotated value.
 func (cluster *Cluster) k8sEnsureDatabaseSecret(client kubernetes.Interface, password string) error {
-	return cluster.k8sPatchSecretValues(client, map[string]string{k8sSecretKeyRootPassword: password})
+	// through the store writer, which keeps the superseded value in <KEY>_OLD (#2356), then the
+	// stores get the value (rule 7), as k8sPatchSecretValues does
+	if _, err := cluster.k8sStore().writeWith(context.TODO(), client, []credstore.StoreItem{{
+		Entry: orchestratorStoreEntry, Key: k8sSecretKeyRootPassword, Version: cluster.selfVersion(password),
+	}}, cluster.storeTimeout()); err != nil {
+		return err
+	}
+	cluster.reportOrchestratorSecret("env", k8sSecretKeyRootPassword, password)
+	return nil
 }
 
 // k8sAPIAuthHeaderValue computes the base64 "admin:<password>" Basic Auth

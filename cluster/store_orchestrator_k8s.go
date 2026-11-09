@@ -10,6 +10,7 @@ import (
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/config/credstore"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
 )
 
 // k8sStore is the Kubernetes Secret as a write-only copy sink (credstore.StoreWriter, #2356),
@@ -54,6 +55,12 @@ func (s *k8sStore) WriteAll(ctx context.Context, items []credstore.StoreItem, ti
 	if err != nil {
 		return items, err
 	}
+	return s.writeWith(ctx, client, items, timeout)
+}
+
+// writeWith is WriteAll on a given client. It is the only writer of the Secret's keys that keeps
+// <KEY>_OLD: the rotation goes through it too, a direct patch first would leave nothing to save.
+func (s *k8sStore) writeWith(ctx context.Context, client kubernetes.Interface, items []credstore.StoreItem, timeout credstore.Timeout) ([]credstore.StoreItem, error) {
 	// current values, once, for the _OLD slot and the unchanged-skip (best effort: an absent
 	// Secret means no current value, so everything is written)
 	// one budget for the read and the patch, as on OpenSVC
