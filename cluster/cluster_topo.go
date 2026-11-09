@@ -707,22 +707,30 @@ func (cluster *Cluster) AllServersFailed() bool {
 	return true
 }
 
+// aliveSlaves lists the replicas still answering (or only suspected), the ignored ones left out.
+func (cluster *Cluster) aliveSlaves() []*ServerMonitor {
+	var alive []*ServerMonitor
+	for _, s := range cluster.slaves {
+		if s.State != stateFailed && s.State != stateErrorAuth && !s.IsIgnored() {
+			alive = append(alive, s)
+		}
+	}
+	return alive
+}
+
 // TopologyClusterDown track state of unvailable cluster
 func (cluster *Cluster) TopologyClusterDown() bool {
 	// search for all cluster down
 	master := cluster.GetMaster()
 	if master == nil || master.State == stateFailed {
-		allslavefailed := true
-		for _, s := range cluster.slaves {
-			if s.State != stateFailed && s.State != stateErrorAuth && !s.IsIgnored() {
-				allslavefailed = false
-			}
-		}
-		if allslavefailed {
+		alive := cluster.aliveSlaves()
+		if len(alive) == 0 {
 			if cluster.IsDiscovered() {
 				if cluster.master != nil {
-					cluster.lastmaster = cluster.master
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlInfo, "Backing up last seen master: %s for safe failover restart", cluster.master.URL)
+					if !cluster.keepsGaleraLastNodeSeen() {
+						cluster.lastmaster = cluster.master
+					}
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlInfo, "Backing up last seen master: %s for safe failover restart", cluster.lastmaster.URL)
 					cluster.Save() // lastMaster in clusterstate.json: a full Galera start bootstraps it
 
 					if !cluster.Conf.FailRestartUnsafe {
@@ -733,11 +741,16 @@ func (cluster *Cluster) TopologyClusterDown() bool {
 				}
 			}
 			cluster.SetState("ERR00021", state.State{ErrType: "ERROR", ErrDesc: clusterError["ERR00021"], ErrFrom: "TOPO"})
+			if cluster.galeraLastNodeUnknown.Load() {
+				cluster.SetState("WARN0317", state.State{ErrType: "WARNING", ErrDesc: clusterError["WARN0317"], ErrFrom: "TOPO"})
+			}
 			cluster.IsClusterDown = true
 			return true
 		}
+		cluster.trackGaleraLastNodeSeen(alive)
 		cluster.IsClusterDown = false
-
+	} else {
+		cluster.trackGaleraLastNodeSeen(nil)
 	}
 	cluster.IsDown = false
 	return false

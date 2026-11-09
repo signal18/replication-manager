@@ -15,7 +15,7 @@ import (
 // (--wsrep_new_cluster) when the whole cluster is down:
 //   - the master still known (GetMaster): a remembered vmaster used to make GetMaster
 //     non-nil, so NO node bootstrapped and the cluster could not restart;
-//   - else lastmaster, the master seen when the cluster went down (TopologyClusterDown),
+//   - lastmaster, the last node seen when the cluster went down (TopologyClusterDown),
 //     from memory or from clusterstate.json after a restart of replication-manager;
 //   - else, no master ever seen: the first declared server, never "any node": the empty
 //     member list (GetGComm) and the start option are rendered separately, each node
@@ -38,12 +38,15 @@ func (cluster *Cluster) isGaleraBootstrapNode(server *ServerMonitor) bool {
 
 // galeraBootstrapURL is the URL of the node a full Galera start bootstraps (see
 // isGaleraBootstrapNode), "" with no server.
+//
+// lastmaster comes first: GetMaster can still answer with a failed virtual master that left
+// before the others, the one node Galera will not let bootstrap (safe_to_bootstrap: 0).
 func (cluster *Cluster) galeraBootstrapURL() string {
-	if m := cluster.GetMaster(); m != nil {
-		return m.URL
-	}
 	if u := cluster.lastMasterURL(); u != "" && cluster.GetServerFromURL(u) != nil {
 		return u
+	}
+	if m := cluster.GetMaster(); m != nil {
+		return m.URL
 	}
 	if len(cluster.Servers) > 0 {
 		return cluster.Servers[0].URL
@@ -78,6 +81,30 @@ func (cluster *Cluster) galeraProvisionOrder() []*ServerMonitor {
 		}
 	}
 	return cluster.Servers
+}
+
+// trackGaleraLastNodeSeen keeps lastmaster on the node seen last while a Galera cluster goes down.
+// The master moves to a surviving node given the time, but nodes lost within its failure retries
+// leave the first one stopped as master, and the last node to leave is the one Galera lets
+// bootstrap. alive is the replicas still up while the master has failed, nil with a healthy
+// master. One survivor is that node; with several, or a healthy master, there is none yet: an
+// earlier partial outage must not name the node of a later one.
+func (cluster *Cluster) trackGaleraLastNodeSeen(alive []*ServerMonitor) {
+	if cluster.GetTopologyTarget() != config.TopoMultiMasterWsrep {
+		return
+	}
+	cluster.galeraLastNodeUnknown.Store(len(alive) > 1)
+	if len(alive) == 1 {
+		cluster.lastmaster = alive[0]
+	} else if cluster.lastmaster != nil {
+		cluster.lastmaster = nil
+	}
+}
+
+// keepsGaleraLastNodeSeen: the cluster is entirely down and lastmaster already holds the last
+// Galera node seen (trackGaleraLastNodeSeen), which the failed master must not overwrite.
+func (cluster *Cluster) keepsGaleraLastNodeSeen() bool {
+	return cluster.GetTopologyTarget() == config.TopoMultiMasterWsrep && cluster.lastmaster != nil
 }
 
 // lastMasterURL is lastmaster's URL, from memory, else as saved in clusterstate.json

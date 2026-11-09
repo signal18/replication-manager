@@ -29,8 +29,9 @@ The split was not reported either: `IsSameWsrepUUID` (ERR00083) ran only inside
 `isGaleraBootstrapNode(server)` is the only rule. It answers true, on a wsrep topology
 target with the cluster down, for:
 
-1. the master still known (`GetMaster`, including a remembered vmaster);
-2. else lastmaster, from memory, else from clusterstate.json;
+1. lastmaster, from memory, else from clusterstate.json: the last node seen when the cluster
+   went down (see below);
+2. else the master still known (`GetMaster`, including a remembered vmaster);
 3. else the **first declared server** (`cluster.Servers[0]`): never "any node", since the
    member list and the start option are rendered at different times.
 
@@ -48,6 +49,24 @@ The `Servers[0]` fallback depends on the declared order. If both the master and 
 are unknown and a config reload reorders `db-servers-hosts` between two renders, two nodes
 could each be "first"; the provision pin below covers a full provision, a hand-made
 reorder in the middle of a manual restart is not covered.
+
+## The last node seen (#2350)
+
+Galera lets only the last node to leave bootstrap (`safe_to_bootstrap: 1`); any other refuses,
+which protects the data but leaves the cluster down. Given the time, the virtual master moves to
+a surviving node, so the master is the last one. Nodes lost within the master's failure retries
+(`failcount`, about 10 s) leave the node stopped first as master, and the last one elsewhere.
+
+`TopologyClusterDown` keeps `lastmaster` on the right node (`trackGaleraLastNodeSeen`): while the
+master has failed and one node is left, that node is `lastmaster`, and the failed master does not
+overwrite it when the cluster is entirely down. With a healthy master, or several nodes left,
+there is none: a survivor of an earlier partial outage is never reused. Several nodes lost in the
+same monitor tick leave the last one unknown: the master stays the choice and WARN0317 says so.
+Master and replicas lost in one tick look like the master leaving last, with no state.
+
+`lastmaster` is read before `GetMaster` for the same reason: `GetMaster` still answers with the
+failed virtual master. When repman did not see the end of the outage (it was down), or after a hard
+crash (every node at `safe_to_bootstrap: 0`), Galera refuses the start and an operator decides.
 
 ## Provision order
 
