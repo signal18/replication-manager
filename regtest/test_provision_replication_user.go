@@ -5,11 +5,15 @@
 package regtest
 
 import (
+	"errors"
+	"fmt"
+	"net/http"
 	"strings"
 	"time"
 
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/opensvc"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
 )
@@ -47,6 +51,10 @@ func (regtest *RegTest) TestProvisionReplicationUser(cl *cluster.Cluster, conf s
 	}
 	if err := cl.WaitClusterStop(); err != nil {
 		tlsLogf(cl, "FAIL Provision Replication User: the cluster did not stop: %s", err)
+		return false
+	}
+	if err := waitOpenSVCServicesGone(cl, provisionReplicationUserWait); err != nil {
+		tlsLogf(cl, "FAIL Provision Replication User: %s", err)
 		return false
 	}
 	tlsLogf(cl, "Provision Replication User: provisioning %s", cl.Name)
@@ -119,4 +127,36 @@ func serverURL(s *cluster.ServerMonitor) string {
 		return "<nil>"
 	}
 	return s.URL
+}
+
+// waitOpenSVCServicesGone waits until the orchestrator no longer knows the database services.
+// An OpenSVC v3 purge is asynchronous: Unprovision returns once it is asked, and a provisioning
+// in the meantime answers 404 on the objects being purged (seen on a dev instance: the three
+// database services failed, the bootstrap went on without them). Other orchestrators: nothing.
+func waitOpenSVCServicesGone(cl *cluster.Cluster, timeout time.Duration) error {
+	if cl.Conf.ProvOrchestrator != config.ConstOrchestratorOpenSVC {
+		return nil
+	}
+	svc := cl.OpenSVCConnect()
+	if !svc.IsV3() {
+		return nil
+	}
+	var left []string
+	for deadline := time.Now().Add(timeout); time.Now().Before(deadline); time.Sleep(5 * time.Second) {
+		left = left[:0]
+		for _, s := range cl.Servers {
+			if s == nil {
+				continue
+			}
+			_, err := svc.GetObjectConfigFileV3(cl.Name, "svc", s.Name)
+			var se *opensvc.StatusError
+			if !errors.As(err, &se) || se.StatusCode != http.StatusNotFound {
+				left = append(left, cl.Name+"/svc/"+s.Name)
+			}
+		}
+		if len(left) == 0 {
+			return nil
+		}
+	}
+	return fmt.Errorf("the orchestrator still knows %s after %s", strings.Join(left, ", "), timeout)
 }
