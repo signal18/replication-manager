@@ -75,7 +75,10 @@ func (proxy *ProxySQLProxy) AddFlags(flags *pflag.FlagSet, conf *config.Config) 
 	flags.StringVar(&conf.ProxysqlAdminPort, "proxysql-admin-port", "6032", "ProxySQL admin interface port")
 	flags.StringVar(&conf.ProxysqlReaderHostgroup, "proxysql-reader-hostgroup", "1", "ProxySQL reader hostgroup")
 	flags.StringVar(&conf.ProxysqlWriterHostgroup, "proxysql-writer-hostgroup", "0", "ProxySQL writer hostgroup")
-	flags.StringVar(&conf.ProxysqlUser, "proxysql-user", "admin", "ProxySQL admin user")
+	// empty: the login depends on the orchestrator (GetProxysqlUser): admin with localhost, where
+	// ProxySQL runs on repman's own host, external otherwise, the login ProxySQL 2+ accepts from
+	// another host and every generated config declares (#2360)
+	flags.StringVar(&conf.ProxysqlUser, "proxysql-user", "", "ProxySQL admin user (empty: admin with the localhost orchestrator, external otherwise)")
 	flags.StringVar(&conf.ProxysqlPassword, "proxysql-password", "admin", "ProxySQL admin password")
 	flags.BoolVar(&conf.ProxysqlCopyGrants, "proxysql-bootstrap-users", true, "Copy users from master")
 	flags.BoolVar(&conf.ProxysqlMultiplexing, "proxysql-multiplexing", false, "Multiplexing")
@@ -84,37 +87,6 @@ func (proxy *ProxySQLProxy) AddFlags(flags *pflag.FlagSet, conf *config.Config) 
 	flags.BoolVar(&conf.ProxysqlBootstrapHG, "proxysql-bootstrap-hostgroups", false, "Bootstrap ProxySQL hostgroups")
 	flags.BoolVar(&conf.ProxysqlBootstrapQueryRules, "proxysql-bootstrap-query-rules", false, "Bootstrap Query rules into ProxySQL")
 	flags.StringVar(&conf.ProxysqlBinaryPath, "proxysql-binary-path", "/usr/sbin/proxysql", "proxysql binary location")
-}
-
-// proxysqlAdminLocalOnly is the login ProxySQL 2 and later only accept from the proxy's own host;
-// proxysqlAdminRemote is the second admin login every ProxySQL config repman generates declares,
-// with the same password, since 2017 (admin_credentials="admin:…;external:…").
-const (
-	proxysqlAdminLocalOnly = "admin"
-	proxysqlAdminRemote    = "external"
-)
-
-// isAdminLocalOnly tells whether ProxySQL refused the login because admin only connects locally
-// (ProxySQL 2+: "User 'admin' can only connect locally").
-func isAdminLocalOnly(err error) bool {
-	return err != nil && strings.Contains(err.Error(), "can only connect locally")
-}
-
-// adminCredentials is the value of ProxySQL's admin-admin_credentials that gives password to every
-// login the proxy has now (logins, from AdminLogins) and to user, added when it is not one of them
-// (#2360). A rotation used to write user:password alone, which deleted the other logins: on a proxy
-// repman provisioned, external, its only way in on ProxySQL 2+. Without the current logins (they
-// could not be read), it is user:password, as before.
-func adminCredentials(logins []string, user, password string) string {
-	names := make([]string, 0, len(logins)+1)
-	seen := make(map[string]bool)
-	for _, l := range append(append([]string{}, logins...), user) {
-		if l != "" && !seen[l] {
-			seen[l] = true
-			names = append(names, l+":"+password)
-		}
-	}
-	return strings.Join(names, ";")
 }
 
 func (proxy *ProxySQLProxy) Connect() (proxysql.ProxySQL, error) {
@@ -131,15 +103,7 @@ func (proxy *ProxySQLProxy) Connect() (proxysql.ProxySQL, error) {
 		psql.Flavor = proxysql.FlavorPgSQL
 	}
 
-	err := psql.Connect()
-	if isAdminLocalOnly(err) && proxy.User == proxysqlAdminLocalOnly {
-		// ProxySQL 2+ accepts admin only from its own host, and every MySQL 8.4 cluster now gets
-		// ProxySQL 3 (#2360): this connection tries external, the second login of every config
-		// repman generates, with the same password. The configuration is not changed.
-		psql.User = proxysqlAdminRemote
-		err = psql.Connect()
-	}
-	if err != nil {
+	if err := psql.Connect(); err != nil {
 		return psql, err
 	}
 	return psql, nil
@@ -932,12 +896,7 @@ func (proxy *ProxySQLProxy) SetAdminCredentials(user string, password string) {
 	}
 	defer psql.Connection.Close()
 
-	// every login the proxy has keeps working with the new password (#2360)
-	logins, lerr := psql.AdminLogins()
-	if lerr != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlWarn, "ProxySQL %s: the current admin logins cannot be read (%s), only %s is set", proxy.Name, lerr, user)
-	}
-	err = psql.SetMySQLVariable("admin-admin_credentials", adminCredentials(logins, user, password))
+	err = psql.SetMySQLVariable("admin-admin_credentials", user+":"+password)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlErr, "ProxySQL could not set mysql variables (%s)", err)
 	}

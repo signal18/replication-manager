@@ -478,22 +478,6 @@ func (psql *ProxySQL) LoadQueryRulesToRuntime() error {
 	return err
 }
 
-// AdminLogins returns the login names of admin-admin_credentials at runtime, in order, without
-// their passwords. A rotation rewrites every one of them (#2360).
-func (psql *ProxySQL) AdminLogins() ([]string, error) {
-	var value string
-	if err := psql.Connection.Get(&value, "SELECT variable_value FROM runtime_global_variables WHERE variable_name='admin-admin_credentials'"); err != nil {
-		return nil, err
-	}
-	var logins []string
-	for _, cred := range strings.Split(value, ";") {
-		if name, _, _ := strings.Cut(strings.TrimSpace(cred), ":"); name != "" {
-			logins = append(logins, name)
-		}
-	}
-	return logins, nil
-}
-
 func (psql *ProxySQL) GetVariables() (map[string]string, error) {
 	vars := make(map[string]string)
 	query := "SELECT UPPER(Variable_name) AS variable_name, UPPER(Variable_Value) AS value FROM runtime_global_variables"

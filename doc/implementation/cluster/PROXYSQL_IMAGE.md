@@ -50,24 +50,17 @@ client's login nor to log in to the backend for the client, so every client was 
   They are no clients of the proxy.
 - **Native-hash users** (MariaDB, MySQL 8.0) are unchanged.
 
-**repman's admin login.** ProxySQL 2+ accepts `admin` only from its own host, and
-`proxysql-user` defaults to `admin`. Every config repman generates has declared a second admin
-login, `external`, with the same password, since 2017. All the ProxySQL instances on a preprod
-instance's nodes were checked. Now:
-- **The login:** when ProxySQL refuses the configured `admin` with "can only connect locally",
-  `Connect()` tries `external` with the same password, for that connection. The configuration is
-  not changed, unlike the closed approach that switched the cluster-wide `proxysql-user`. A proxy
-  without `external` still answers the original error.
-- **Rotation and credential change:** `SetAdminCredentials` reads the proxy's current admin logins
-  (`AdminLogins`) and gives the new password to each of them, adding the configured user when it is
-  not one of them. Before, it wrote a single `user:<pw>`, which deleted `external`, and with it
-  repman's access to a ProxySQL 2+ proxy. When the logins cannot be read, it writes the single
-  login, as before, with a warning.
-- **Why not the provision cookie:** `IsProvisioned()` creates the cookie for any proxy that is up,
-  including one repman only monitors. So the cookie does not mean "repman created this proxy", and
-  a rule based on it could have locked repman out of a client's own proxy.
-- **Not covered:** the janitor's rotation (`ProxyJanitor.RotateProxyPasswords`) still writes a
-  single login.
+**repman's admin login.** ProxySQL 2+ accepts `admin` only from its own host. Every config repman
+generates has declared a second admin login, `external`, with the same password, since 2017. The
+sample configs of the orchestrated setups set `proxysql-user = "external"`, and so does repman's
+automatic proxy add. But the default was `admin`, so a cluster that never set it (a proxy added
+without a user) could not reach a ProxySQL 2+ proxy. Now an unset `proxysql-user` depends on the
+orchestrator, in `GetProxysqlUser()`:
+- **localhost:** `admin`, because ProxySQL runs on repman's own host.
+- **any other orchestrator:** `external`.
+
+A configured or runtime value always wins. The rotation is unchanged: it rewrites the login repman
+uses.
 
 ## Not covered
 
