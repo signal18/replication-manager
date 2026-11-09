@@ -91,6 +91,9 @@ var tests = []string{
 	// testBackupDiscovery is not in this list either: it copies backups in the primary's
 	// backup folder and reseeds the first replica from them. Run it by name:
 	// /api/clusters/<cluster>/tests/actions/run/testBackupDiscovery
+	// testFailoverRejoinLogicalBackupMydumper is not in this list either: it fails the primary
+	// over and rejoins it from a mydumper backup (MariaDB, #2365). Run it by name:
+	// /api/clusters/<cluster>/tests/actions/run/testFailoverRejoinLogicalBackupMydumper
 	// testBackupRegisterArchive is not in this list either: it registers copies of a backup,
 	// archives them to restic, reseeds the first replica and needs backup-restic and
 	// backup-verification-host. Run it by name:

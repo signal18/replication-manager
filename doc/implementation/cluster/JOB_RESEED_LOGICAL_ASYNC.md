@@ -117,6 +117,10 @@ If `cluster.Conf.BackupLoadScript` is set:
   and MySQL alike, as the mysqldump reseed does before its load): they keep the GTIDs the replica
   applied before the restore, newer than the backup, and under `gtid_strict_mode` the first
   transaction after the backup stops replication as an out-of-order sequence number (#2365).
+  The reset drops the replica's own binary logs: a replica that relays to others (a cascading
+  replica) or whose binary logs feed a binlog backup or a streaming tool loses that history, as
+  with the mysqldump reseed, which resets them the same way before its load. The data they
+  described was replaced by the restore anyway.
 - Update job state to completed or failed.
 
 ## The replica's replication links (law T27, #2093)
