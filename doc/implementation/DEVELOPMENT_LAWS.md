@@ -204,7 +204,11 @@ reloadable like any other. Any setting, server-scope or not, is **immutable only
 when it is set in the configuration file under `/etc`** (or on the command line or
 in the environment): then no API call changes it, and repman never writes that
 file. A server-scope setting with no global-settings API case is a gap to code,
-not a reason to edit `/etc` and restart.
+not a reason to edit `/etc` and restart. **Exception: credentials.** A credential locked as
+immutable in `/etc` can still be rotated when its background store is versioned
+(secret versioning, a Vault or credential store): the rotation writes the new value
+to the versioned store, which then wins over the `/etc` value. "Immutable" never
+blocks a credential rotation.
 
 **T17. NEVER put frequently-changing data in the git push.** Only stable config/
 state goes into the config repos. High-churn data (per-tick metrics, fast-changing
