@@ -437,6 +437,23 @@ Example (2026-11-09): one session had #2357 (orchestrator secret copy) and opene
 replication user, then planned a third branch for the certificate and ProxySQL gaps #2361's
 MySQL 8.4 regtest needed. #2361 was merged into #2357's branch and closed.
 
+**T30. The repman repository is the product's, not our operations'.** Its issues, PRs and docs
+are what a repman user reads, often an on-premise client paying for support: they speak of what
+every user gets. Our Cloud18 operations (our instances and their credentials, the marketplace,
+billing and resources, the gateways, the CRM, Vault, the back office) go to the private back-office
+repository (`signal18/dbaas-portal`), never here.
+- A repman change Cloud18 needs that every user also gets stays here, written as a product
+  change, without naming Cloud18 or an instance (T15).
+- Orchestrator support (OpenSVC, Kubernetes) is product: it stays here, labelled `opensvc` or
+  `Kubernetes`, so an on-premise user filters it out with
+  `-label:opensvc -label:Kubernetes -label:cloud18`. The configurator and its compliance are
+  product.
+- Before opening an issue: was it asked for, and is it product or operations? Operations are
+  filed in the back office, or not at all.
+Example (2026-11-10): an AI session opened a repman issue on where Cloud18 keeps each
+instance's login list; it was deleted. About 30% of the issues opened since August were Cloud18
+subjects; the operational ones were moved to the back office and the orchestrator ones labelled.
+
 ## Debugging discipline — investigate FULLY before you unblock
 
 **Never unblock a stuck issue before you have investigated it fully.** A restart, a
