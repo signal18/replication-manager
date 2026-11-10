@@ -408,6 +408,18 @@ func (cluster *Cluster) rejoinAlreadyAttempted(url string) bool {
 // finished rejoin runs again — never automatic. Wired to the GUI/API rejoin action.
 // method "" means automatic. Returns false if there is no history record to re-arm.
 func (cluster *Cluster) rearmRejoin(url string, method string) bool {
+	// A crash of url still in the working set (no rejoin attempted yet: auto-rejoin off,
+	// or the server not back) takes the method itself. A copy appended behind it was
+	// never run: ProcessArmedRejoins and RejoinMaster read the FIRST working crash of a
+	// server, the one without a method (#2365).
+	for _, cr := range cluster.Crashes {
+		if cr != nil && cr.URL == url && cr.RejoinResult == "" {
+			cr.RejoinMethod = method
+			cr.Rearmed = true
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rejoin armed for %s (explicit, method=%q) on its pending crash", url, method)
+			return true
+		}
+	}
 	var newest *Crash
 	cluster.rejoinMarkerMu.Lock()
 	history := cluster.FailoverHistory

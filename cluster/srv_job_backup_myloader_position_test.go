@@ -121,8 +121,19 @@ func TestApplyMyLoaderReplicaPositionFailures(t *testing.T) {
 			t.Fatal(err)
 		}
 	})
+	t.Run("MariaDB: reset of the binary logs fails, gtid_slave_pos not set", func(t *testing.T) {
+		server, mock := newMyLoaderPositionServer(t, myloaderMariaDB, true)
+		mock.ExpectExec("^RESET MASTER$").WillReturnError(errors.New("denied"))
+		if err := server.applyMyLoaderReplicaPosition(myloaderMeta); err == nil || !strings.Contains(err.Error(), "reset the binary logs") {
+			t.Fatalf("want the reset error, got %v", err)
+		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Fatal(err)
+		}
+	})
 	t.Run("MariaDB: gtid_slave_pos fails", func(t *testing.T) {
 		server, mock := newMyLoaderPositionServer(t, myloaderMariaDB, true)
+		mock.ExpectExec("^RESET MASTER$").WillReturnResult(sqlmock.NewResult(0, 0))
 		mock.ExpectExec("set session sql_log_bin=0").WillReturnResult(sqlmock.NewResult(0, 0))
 		mock.ExpectExec("SET GLOBAL gtid_slave_pos").WillReturnError(errors.New("denied"))
 		if err := server.applyMyLoaderReplicaPosition(myloaderMeta); err == nil || !strings.Contains(err.Error(), "gtid_slave_pos") {
@@ -155,13 +166,16 @@ func TestApplyMyLoaderReplicaPositionFailures(t *testing.T) {
 	})
 }
 
-// MariaDB with GTID sets gtid_slave_pos (the set sanitised as MySQL's); without a GTID set in
+// MariaDB with GTID resets the replica's binary logs, then sets gtid_slave_pos (the set
+// sanitised as MySQL's): the binary logs kept from before the restore hold GTIDs newer than
+// the backup, which gtid_strict_mode refuses to follow (#2365). Without a GTID set in
 // the backup, or without GTID, the replica is pointed at the backup's file and position.
 func TestApplyMyLoaderReplicaPositionMariaDBAndPositional(t *testing.T) {
 	t.Run("MariaDB with GTID: gtid_slave_pos, quotes doubled, lines joined", func(t *testing.T) {
 		server, mock := newMyLoaderPositionServer(t, myloaderMariaDB, true)
 		meta := myloaderMeta
 		meta.BinLogUuid = "0-90125166-665,\n97-90125166-2'x"
+		mock.ExpectExec("^RESET MASTER$").WillReturnResult(sqlmock.NewResult(0, 0))
 		mock.ExpectExec("set session sql_log_bin=0").WillReturnResult(sqlmock.NewResult(0, 0))
 		mock.ExpectExec(`SET GLOBAL gtid_slave_pos='0-90125166-665,97-90125166-2''x'`).WillReturnResult(sqlmock.NewResult(0, 0))
 		if err := server.applyMyLoaderReplicaPosition(meta); err != nil {

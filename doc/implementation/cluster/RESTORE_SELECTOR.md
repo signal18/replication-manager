@@ -199,6 +199,46 @@ The loop this closes:
 operator (and the auto path) picks from this validated set — so a client only ever auto-rejoins with a
 method already **proven on their own setup**.
 
+## Rejoin gate: never a backup ahead of the failover (#2365)
+
+The rejoin of a failed primary by logical backup (`JobFlashbackLogicalBackup`, auto-rejoin
+and operator rejoin) restores no backup holding transactions the new primary never received.
+The old primary's own backup, taken after the replicas stopped receiving, brought them back:
+it ended with rows the new primary did not have, its IO thread stopped on error 1236, and the
+job reported success.
+
+- **Bound** (`setRejoinBound`, `ResolveContext.RejoinBoundGtid`): the `FailoverIOGtid` of the
+  first working crash of the server's URL, the one the rejoin runs: what the new primary had
+  received at the failover.
+- **Passes** (`rejoinBackupAllowed`, a hard gate in `gatePass`):
+  - a backup at or before the bound in every domain (`gtidNotAheadOf`). A position that
+    cannot be compared (empty, malformed, a domain the bound lacks) counts as ahead;
+  - a backup of the new primary (`Crash.ElectedMasterURL`) that ended after the failover
+    (`Crash.UnixTimestamp`): past the bound, but only the new primary's own data.
+- **None passes**: the rejoin is refused, with the reason in the job state. It never falls
+  back to the on-disk lookup, which would take any file. Each backup refused is logged with
+  its position.
+- **No gate** (the behaviour before #2365): not MariaDB; MariaDB in positional replication
+  (`HasGTIDReplication` false, below); no working crash (not a rejoin); a crash whose
+  `FailoverIOGtid` was not captured.
+- **Assumption:** the sequence alone is compared, not the server_id. That is exact under
+  `gtid_strict_mode`, where a domain's sequence only grows; without it two servers can
+  interleave in a domain.
+- **Not analysed, open:**
+  - positional replication. A GTID gate there is not proven right: depending on the MariaDB
+    version, a GTID position can be the wrong tool to restore with (the primary must find it
+    in its binary logs), and a positional restore can be the better one. Needs its own
+    analysis before any gate.
+  - MySQL and Percona: no gate.
+  - the physical rejoin (`JobFlashbackPhysicalBackup`): no selector, no gate.
+  - `HasCatalogBackupForRejoin` (WARN0190/WARN0191) checks without the bound: it can report a
+    rejoin backup that the gate then refuses (loudly, in the job state).
+
+Regtests (run by name): `testFailoverRejoinLogicalBackupAheadOfFailover` (the old primary's
+own backup is refused, a replica's from before the rows is restored),
+`testFailoverRejoinLogicalBackupOfNewPrimary` (the new primary's backup after the failover is
+restored).
+
 ## Open questions (decide before building the resolver)
 
 1. ~~**Catalog** — what source of truth?~~ **RESOLVED: a unified backup catalog**

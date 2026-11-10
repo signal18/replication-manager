@@ -1165,7 +1165,7 @@ func newWarn0075TestCluster(t *testing.T, monitorScheduler bool, schedulerJobsMo
 
 	cluster := &Cluster{
 		Name:                 "test",
-		Conf:                 &config.Config{MonitorScheduler: monitorScheduler, SchedulerJobsMode: schedulerJobsMode},
+		Conf:                 &config.Config{MonitorScheduler: monitorScheduler, SchedulerJobsMode: schedulerJobsMode, BackupLogicalType: config.ConstBackupLogicalTypeMysqldump},
 		StateMachine:         sm,
 		WorkloadStateMachine: new(state.StateMachine),
 		SecurityStateMachine: new(state.StateMachine),
@@ -1303,6 +1303,54 @@ func TestStateProcessing_WARN0075SurvivesModeFlipMidReseed(t *testing.T) {
 	}
 	if second.Result != first.Result || second.State != first.State {
 		t.Fatalf("mode flip between ticks caused a relaunch: tick1=%+v tick2=%+v", first, second)
+	}
+}
+
+// TestLaunchLogicalReseed_OtherToolAfterAnEarlierReseed is the regression guard for
+// #2365: backup-logical-type is mysqldump, the server ran a mysqldump reseed before (its
+// finished result stays in JobResults), and is now armed for a reseed from a mydumper
+// backup. The launcher must start the task the server is armed with; it used to name
+// reseedmysqldump from the setting, see the server not armed for it and return every tick,
+// leaving the server reseeding forever.
+func TestLaunchLogicalReseed_OtherToolAfterAnEarlierReseed(t *testing.T) {
+	cluster, srv := newWarn0075TestCluster(t, true, "api")
+	earlier := string(config.ConstTaskReseedDump)
+	srv.JobResults.Set(earlier, &config.Task{Task: earlier, Done: 1, State: 3, Result: "Reseed completed"})
+	task := string(config.ConstTaskReseedMydumper)
+	if ok, _ := srv.TrySetInReseedBackup(task); !ok {
+		t.Fatal("setup: failed to arm server for the mydumper reseed")
+	}
+
+	cluster.launchLogicalReseed(srv)
+	cluster.tickWG.Wait()
+
+	if srv.HasReseedingState(task) {
+		t.Fatal("the mydumper reseed was never started: the server is still armed for it")
+	}
+	if got := srv.JobResults.Get(task); got == nil {
+		t.Fatal("expected an outcome recorded for the mydumper reseed, got none")
+	}
+	if got := srv.JobResults.Get(earlier); got == nil || got.Result != "Reseed completed" {
+		t.Fatalf("the earlier mysqldump reseed result was touched: %+v", got)
+	}
+}
+
+// TestLaunchLogicalReseed_NotALogicalReseedIsNoop: a server armed for a physical reseed
+// (or nothing) is not the logical launcher's business.
+func TestLaunchLogicalReseed_NotALogicalReseedIsNoop(t *testing.T) {
+	cluster, srv := newWarn0075TestCluster(t, true, "api")
+	cluster.launchLogicalReseed(srv)
+	physical := string(config.ConstTaskReseedMB)
+	if ok, _ := srv.TrySetInReseedBackup(physical); !ok {
+		t.Fatal("setup: failed to arm server for a physical reseed")
+	}
+	cluster.launchLogicalReseed(srv)
+	cluster.tickWG.Wait()
+	if !srv.HasReseedingState(physical) {
+		t.Fatal("the logical launcher acted on a physical reseed")
+	}
+	if got := srv.JobResults.Get(physical); got != nil {
+		t.Fatalf("the logical launcher recorded an outcome for a physical reseed: %+v", got)
 	}
 }
 

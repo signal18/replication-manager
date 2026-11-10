@@ -978,11 +978,11 @@ func (server *ServerMonitor) jobsCheckRunningFromMemory() error {
 			cluster.SetState("WARN0175", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0175"], t.Task, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
 		case config.ConstTaskReseedXB, config.ConstTaskReseedMB:
 			cluster.SetState("WARN0074", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0074"], t.Task, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
-		case config.ConstTaskReseedDump:
+		case config.ConstTaskReseedDump, config.ConstTaskReseedMydumper:
 			cluster.SetState("WARN0075", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0075"], t.Task, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
 		case config.ConstTaskFlashXB, config.ConstTaskFlashMB:
 			cluster.SetState("WARN0076", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0076"], t.Task, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
-		case config.ConstTaskFlashDump:
+		case config.ConstTaskFlashDump, config.ConstTaskFlashMydumper:
 			cluster.SetState("WARN0077", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0077"], t.Task, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
 		}
 		return true

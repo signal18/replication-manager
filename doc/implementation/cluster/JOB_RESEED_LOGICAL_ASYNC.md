@@ -24,9 +24,17 @@ This document describes the current asynchronous flow for logical reseed jobs st
 2. **Cluster state signal** (handoff):
    - `JobReseedLogicalBackupPrepare` sets cluster state `WARN0075` with the server URL.
    - Job table polling (`JobsUpdateEntries`) also sets `WARN0075` when it sees `reseedmysqldump` or `reseedmydumper` tasks.
+     In API jobs mode the same signal comes from `jobsCheckRunningFromMemory`, which must
+     know both tasks too (`config.ConstTaskReseedDump`, `config.ConstTaskReseedMydumper`):
+     a task it ignores never opens `WARN0075` and its reseed is never launched (#2365).
 
 3. **Process phase** (asynchronous):
-   - The monitoring loop in `cluster/cluster.go` consumes `WARN0075` and calls `ProcessReseedLogical(task)` for the target server.
+   - The monitoring loop in `cluster/cluster.go` consumes `WARN0075` and calls `launchLogicalReseed`, which runs `ProcessReseedLogical(task)` for the target server.
+   - The task is the one the server was armed with (`GetReseedingState`), never derived from
+     `backup-logical-type`: a reseed may restore a backup of the other logical tool (a
+     discovered backup, a parent's), and a server that ran a reseed with the configured tool
+     keeps that finished job result. Deriving the task from the setting named the wrong one,
+     the launcher returned every tick and the server stayed reseeding forever (#2365).
    - This is the point where the actual restore work begins.
 
 ## Payload
@@ -104,7 +112,15 @@ If `cluster.Conf.BackupLoadScript` is set:
 ### Mydumper restore
 
 - Run `JobReseedMyLoader`.
-- If successful and not PITR, parse mydumper metadata to apply MariaDB GTID and restart replication.
+- If successful and not PITR, parse mydumper metadata to apply MariaDB GTID and restart replication
+  (`applyMyLoaderReplicaPosition`). With GTID, the replica's binary logs are reset first (MariaDB
+  and MySQL alike, as the mysqldump reseed does before its load): they keep the GTIDs the replica
+  applied before the restore, newer than the backup, and under `gtid_strict_mode` the first
+  transaction after the backup stops replication as an out-of-order sequence number (#2365).
+  The reset drops the replica's own binary logs: a replica that relays to others (a cascading
+  replica) or whose binary logs feed a binlog backup or a streaming tool loses that history, as
+  with the mysqldump reseed, which resets them the same way before its load. The data they
+  described was replaced by the restore anyway.
 - Update job state to completed or failed.
 
 ## The replica's replication links (law T27, #2093)
@@ -188,7 +204,8 @@ A reseed restores data; it does not own the replica's links. Since #2093:
     Percona dump is decided by its header alone (no such layout read).
   - MySQL/Percona with GTID: the channel keeps its auto-position. The dump's
     `SET @@GLOBAL.GTID_PURGED` sets the position; its file/position `CHANGE MASTER` is refused
-    (error 1776): skipped with `--force` in `backup-mysqlclient-options` (the default); the
+    (error 1776): skipped only with `--force` in `backup-mysqlclient-options` (no longer the
+    default, #2365: a `--force` load reports success when its connection dropped); the
     dump's `START SLAVE`, when it has the apply statements, then starts replication on
     auto-position, otherwise `pointLogicalReseedReplica` starts it. Without `--force` the restore
     stops there, before any data, and the reseed fails; repman does not add `--force`

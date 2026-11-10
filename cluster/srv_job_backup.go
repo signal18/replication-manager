@@ -3187,6 +3187,33 @@ func isSplitDumpName(path string) bool {
 	return err == nil
 }
 
+// resolveRejoinLogicalBackup is the logical backup of tool backtype a rejoin of server
+// restores, with the selector, catalog and context it was chosen from: any node's backup,
+// held to the rejoin gate (setRejoinBound). nil when none passes. JobFlashbackLogicalBackup
+// restores it; RejoinLogicalBackupPick shows the same choice (#2365).
+func (server *ServerMonitor) resolveRejoinLogicalBackup(master *ServerMonitor, backtype string) (RestoreSelector, []BackupCatalogEntry, ResolveContext, *BackupCatalogEntry) {
+	cluster := server.ClusterGroup
+	sel := cluster.getAutorejoinBackupSelector("logical")
+	sel.Tool = []string{backtype} // restore dispatch is backtype-based → force the tool for consistency
+	catalog := cluster.buildBackupCatalog()
+	rctx := ResolveContext{MasterURL: master.URL, TargetURL: server.URL}
+	server.setRejoinBound(&rctx)
+	return sel, catalog, rctx, ResolveRestore(catalog, sel, rctx)
+}
+
+// RejoinLogicalBackupPick is the server a rejoin of server by a logical backup of tool
+// backtype would restore from, "" when none passes the rejoin gate: what the regtests check.
+func (server *ServerMonitor) RejoinLogicalBackupPick(backtype string) string {
+	master := server.ClusterGroup.GetMaster()
+	if master == nil {
+		return ""
+	}
+	if _, _, _, pick := server.resolveRejoinLogicalBackup(master, backtype); pick != nil {
+		return pick.Server
+	}
+	return ""
+}
+
 func (server *ServerMonitor) JobFlashbackLogicalBackup() error {
 	var dest, backupfile string
 	var err error
@@ -3248,10 +3275,23 @@ func (server *ServerMonitor) JobFlashbackLogicalBackup() error {
 		// consistent backup works — replication catches up the delta — so the source
 		// node does not matter. A local or remote (mounted bucket) backup is read where it
 		// is, an archive-only one fetched back first.
-		sel := cluster.getAutorejoinBackupSelector("logical")
-		sel.Tool = []string{backtype} // restore dispatch is backtype-based → force the tool for consistency
-		pick := ResolveRestore(cluster.buildBackupCatalog(), sel,
-			ResolveContext{MasterURL: master.URL, TargetURL: server.URL})
+		sel, catalog, rctx, pick := server.resolveRejoinLogicalBackup(master, backtype)
+		// a rejoin restores no backup ahead of what the new primary received at the failover,
+		// and never falls back to the on-disk lookup below, which would take any file (#2365)
+		if rctx.RejoinBoundGtid != "" {
+			for _, e := range catalog {
+				if e.Kind == "logical" && e.Tool == backtype && !rejoinBackupAllowed(e, rctx) {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "flashback %s on %s: backup %s of %s at GTID %q not restored, ahead of the failover position %s (it may hold transactions the new primary never received)", backtype, server.URL, e.Path, e.Server, e.Gtid, rctx.RejoinBoundGtid)
+				}
+			}
+			if pick == nil {
+				err = fmt.Errorf("no logical %s backup at or before the failover position %s, nor of the new primary %s since the failover: a backup ahead of it would bring back transactions the new primary never received", backtype, rctx.RejoinBoundGtid, rctx.RejoinElectedURL)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "flashback %s on %s refused: %s", backtype, server.URL, err)
+				server.JobsUpdateStateRuntimeOnly(task, err.Error(), 5, 1)
+				server.SetInReseedBackup("")
+				return err
+			}
+		}
 		// a backup picked for being proven is checked again now: the proof refresh runs
 		// every 30 heartbeats, its file may have changed since (#2023)
 		if sel.Proven && pick != nil && !cluster.provenStillUnchanged(pick) {
@@ -3458,7 +3498,11 @@ func (server *ServerMonitor) JobFlashbackLogicalBackup() error {
 // applyMyLoaderReplicaPosition sets the replication state of server, which myloader just
 // loaded, to the position of the mydumper backup (its metadata), before its replication
 // starts. myloader puts the data back to the backup's state and nothing else:
-//   - MariaDB with GTID and a GTID set in the backup: gtid_slave_pos;
+//   - MariaDB with GTID and a GTID set in the backup: the binary logs reset, then
+//     gtid_slave_pos. The replica's own binary logs keep the GTIDs it applied before the
+//     restore (gtid_binlog_pos): left in place, the first transaction after the backup is
+//     older than them and gtid_strict_mode stops replication ("out-of-order sequence
+//     number", #2365). The mysqldump reseed resets them the same way before its load;
 //   - MySQL/Percona with GTID: the binary logs and GTIDs reset, then GTID_PURGED. The replica
 //     kept the GTIDs of what it applied before the restore: with auto-position it would never
 //     ask for the transactions written after the backup, and diverge. A backup without a GTID
@@ -3473,6 +3517,11 @@ func (server *ServerMonitor) applyMyLoaderReplicaPosition(meta config.MyDumperMe
 	gtid := myLoaderGtidSet(meta.BinLogUuid)
 	switch {
 	case server.IsMariaDB() && server.HaveMariaDBGTID && gtid != "":
+		logs, err := server.ResetMaster()
+		cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed to reset the binary logs of %s after the mydumper restore: %s", server.URL, err)
+		if err != nil {
+			return fmt.Errorf("reset the binary logs of %s: %w", server.URL, err)
+		}
 		if err := server.ExecQueryNoBinLog("SET GLOBAL gtid_slave_pos='"+gtid+"'", time.Second); err != nil {
 			return fmt.Errorf("set gtid_slave_pos on %s from the mydumper metadata: %w", server.URL, err)
 		}
@@ -3768,7 +3817,7 @@ func (server *ServerMonitor) JobReseedMysqldump(ctx context.Context, backupfile 
 	go func() {
 		defer wg.Done()
 		defer clientOutR.Close()
-		clientTail = server.copyLogsTail(clientOutR, config.ConstLogModBackupStream, config.LvlDbg, stderrTailLines)
+		clientTail = server.copyLogsTail(clientOutR, config.ConstLogModBackupStream, mysqlClientLineLevel, stderrTailLines)
 	}()
 
 	type reseedPumpResult struct {
@@ -5739,12 +5788,46 @@ func (server *ServerMonitor) copyLogsHook(r io.Reader, module int, level string,
 	}
 }
 
+// fixedLogLevel logs every line of an output at one level (copyLogsTail).
+func fixedLogLevel(level string) func(string) string {
+	return func(string) string { return level }
+}
+
+// mysqlClientLineLevel is the level of a line the mysql/mariadb client writes while it loads
+// a dump (copyLogsTail): its errors (ERROR <code> ... at line <n>) at ERROR, every other line
+// at debug. A load whose connection dropped wrote only such errors, at debug, and no file nor
+// state showed them (#2365).
+func mysqlClientLineLevel(line string) string {
+	if strings.HasPrefix(strings.TrimSpace(line), "ERROR ") {
+		return config.LvlErr
+	}
+	return config.LvlDbg
+}
+
+// withoutClientForce removes --force (-f) from the mysql client options. With --force the
+// client goes on after an error and exits 0: a load whose connection dropped at its first
+// statement failed every statement after it, exited 0, and the reseed reported "completed"
+// and started replication on a server that had loaded nothing (#2365). dropped reports
+// whether the options had it.
+func withoutClientForce(options []string) (kept []string, dropped bool) {
+	kept = make([]string, 0, len(options))
+	for _, o := range options {
+		if o == "--force" || o == "-f" {
+			dropped = true
+			continue
+		}
+		kept = append(kept, o)
+	}
+	return kept, dropped
+}
+
 // copyLogsTail behaves like copyLogs (streams every non-empty line to the
-// module log) and additionally keeps a bounded tail of at most maxLines of the
-// most recent output, so a caller can fold a short excerpt into a returned
-// error without an unbounded buffer (T18). Oldest lines are dropped by
-// reslicing into a fresh backing array so they don't keep old strings alive.
-func (server *ServerMonitor) copyLogsTail(r io.Reader, module int, level string, maxLines int) []string {
+// module log, at the level levelOf gives the line) and additionally keeps a
+// bounded tail of at most maxLines of the most recent output, so a caller can
+// fold a short excerpt into a returned error without an unbounded buffer (T18).
+// Oldest lines are dropped by reslicing into a fresh backing array so they
+// don't keep old strings alive.
+func (server *ServerMonitor) copyLogsTail(r io.Reader, module int, levelOf func(line string) string, maxLines int) []string {
 	cluster := server.ClusterGroup
 	tail := make([]string, 0, maxLines)
 	appendTail := func(line string) {
@@ -5769,7 +5852,7 @@ func (server *ServerMonitor) copyLogsTail(r io.Reader, module int, level string,
 		if strings.TrimSpace(line) == "" {
 			continue
 		}
-		cluster.LogModulePrintf(cluster.Conf.Verbose, module, level, "[%s] %s", server.Name, line)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, module, levelOf(line), "[%s] %s", server.Name, line)
 		appendTail(line)
 	}
 	// Scanner.Err() is nil on a clean EOF (the normal case: the pipe closes
@@ -6665,7 +6748,12 @@ func (cluster *Cluster) JobRejoinMysqldumpFromSource(source *ServerMonitor, dest
 	dumpCmd := exec.CommandContext(ctx, cluster.GetMysqlDumpPath(), dumpOptions...)
 
 	cliParams := append(cluster.GetDumpCredentials(dest), dest.GetSSLClientParam("client")...)
-	cliParams = append(cliParams, strings.Split(cluster.Conf.BackupMysqlclientOptions, " ")...)
+	clientOptions, forceDropped := withoutClientForce(strings.Split(cluster.Conf.BackupMysqlclientOptions, " "))
+	if forceDropped {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn,
+			"Direct reseed of %s: --force of backup-mysqlclient-options not used, the load stops at its first error", dest.URL)
+	}
+	cliParams = append(cliParams, clientOptions...)
 
 	clientCmd := exec.CommandContext(ctx, cluster.GetMysqlclientPath(), misc.RemoveEmptyString(cliParams)...)
 
@@ -6831,12 +6919,12 @@ func (cluster *Cluster) JobRejoinMysqldumpFromSource(source *ServerMonitor, dest
 	go func() {
 		defer wg.Done()
 		defer dumpStderrR.Close()
-		dumpTail = source.copyLogsTail(dumpStderrR, config.ConstLogModBackupStream, config.LvlDbg, stderrTailLines)
+		dumpTail = source.copyLogsTail(dumpStderrR, config.ConstLogModBackupStream, fixedLogLevel(config.LvlDbg), stderrTailLines)
 	}()
 	go func() {
 		defer wg.Done()
 		defer clientStderrR.Close()
-		clientTail = dest.copyLogsTail(clientStderrR, config.ConstLogModBackupStream, config.LvlDbg, stderrTailLines)
+		clientTail = dest.copyLogsTail(clientStderrR, config.ConstLogModBackupStream, mysqlClientLineLevel, stderrTailLines)
 	}()
 
 	// Write/read-stall watchdog: every fix above reacts to a subprocess

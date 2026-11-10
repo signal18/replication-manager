@@ -725,6 +725,37 @@ func TestJobsCheckRunningFromMemory_RunningTaskDoesNotReopenWarnState(t *testing
 	}
 }
 
+// TestJobsCheckRunningFromMemory_MydumperReseedOpensWarn0075 (#2365): in API mode a queued
+// mydumper reseed must open WARN0075 like a mysqldump one, since WARN0075 is what launches
+// a logical reseed (StateProcessing -> launchLogicalReseed); and a queued mydumper
+// flashback opens WARN0077 like a mysqldump one.
+func TestJobsCheckRunningFromMemory_MydumperReseedOpensWarn0075(t *testing.T) {
+	for _, tc := range []struct {
+		task config.TaskName
+		warn string
+	}{
+		{config.ConstTaskReseedDump, "WARN0075"},
+		{config.ConstTaskReseedMydumper, "WARN0075"},
+		{config.ConstTaskFlashDump, "WARN0077"},
+		{config.ConstTaskFlashMydumper, "WARN0077"},
+	} {
+		t.Run(string(tc.task), func(t *testing.T) {
+			cluster, server := newTestRuntimeOnlyClusterServer(t, "reconcile-cluster", "target", "3307")
+			cluster.Conf.SchedulerJobsMode = "api"
+			server.JobResults.Store(string(tc.task), &config.Task{Task: string(tc.task), State: JobStateAvailable, Done: 0})
+			if err := server.jobsCheckRunningFromMemory(); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			for _, s := range cluster.StateMachine.GetOpenStates() {
+				if s.ErrKey == tc.warn {
+					return
+				}
+			}
+			t.Fatalf("expected %s to open for a queued %s", tc.warn, tc.task)
+		})
+	}
+}
+
 // TestWaitAndSendSSTReady_APIMode guards the handoff immediately after
 // WARN0074 resolves: WaitAndSendSST/WaitAndSendSSTStream poll
 // waitAndSendSSTReady in a loop before starting the SST send. In SQL mode
