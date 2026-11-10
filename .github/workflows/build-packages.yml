@@ -20,12 +20,13 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  build-and-publish:
-    name: Build Linux Packages and Publish Repos
+  build:
+    name: Build Linux Packages
     runs-on: [self-hosted, linux, x64]
+    outputs:
+      tag: ${{ steps.buildtag.outputs.tag }}
 
-    # Full run (amd64 + arm64 build + both repo publishes) takes ~20-21 min;
-    # the previous 20 min limit killed the RPM publish mid-run on 2026-07-21.
+    # amd64 + arm64 build takes ~15 min; the publish is its own job below.
     timeout-minutes: 35
 
     steps:
@@ -111,22 +112,43 @@ jobs:
           bash -x ./package_linux.sh
           mv build/release/* /builds/"$branch"/
 
-      - name: Publish DEB repo
-        run: |
-          tag="${{ steps.buildtag.outputs.tag }}"
-          cleantag="${tag#v}"
-          docker run --rm \
-            -v /root/.gnupg:/root/.gnupg \
-            -v /home/repo:/home/repo \
-            -v /builds:/builds \
-            signal18/reprepro:latest "$cleantag"
+      # The packages go to the publish job through an artifact: the publisher runs
+      # where the package repo is served, not on this build host.
+      - name: Upload packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: packages-${{ steps.buildtag.outputs.tag }}
+          path: /builds/${{ steps.buildtag.outputs.tag }}/
+          compression-level: 0
+          retention-days: 3
+          if-no-files-found: error
 
-      - name: Publish RPM repo
-        run: /usr/local/bin/rpmrepo.sh
+  publish:
+    name: Publish DEB and RPM Repos
+    needs: build
+    # The runner of the package repo service: it publishes into the copy that
+    # repo.signal18.io serves (publish-repo is provided by that runner).
+    runs-on: [repo-publish]
+    timeout-minutes: 30
+    steps:
+      - name: Download packages
+        uses: actions/download-artifact@v4
+        with:
+          name: packages-${{ needs.build.outputs.tag }}
+          path: ${{ runner.temp }}/packages
 
+      - name: Publish
+        run: publish-repo "${{ needs.build.outputs.tag }}" "${{ runner.temp }}/packages"
+
+  notify:
+    name: Notify Mattermost
+    needs: [build, publish]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
       # Mattermost: notify on success
       - name: Notify Mattermost (success)
-        if: success()
+        if: needs.build.result == 'success' && needs.publish.result == 'success'
         uses: mattermost/action-mattermost-notify@2.0.0
         with:
           MATTERMOST_WEBHOOK_URL: ${{ secrets.MATTERMOST_WEBHOOK_URL }}
@@ -136,7 +158,7 @@ jobs:
 
       # Mattermost: notify on cancelled (aborted)
       - name: Notify Mattermost (cancelled)
-        if: cancelled()
+        if: needs.build.result == 'cancelled' || needs.publish.result == 'cancelled'
         uses: mattermost/action-mattermost-notify@2.0.0
         with:
           MATTERMOST_WEBHOOK_URL: ${{ secrets.MATTERMOST_WEBHOOK_URL }}
@@ -146,7 +168,7 @@ jobs:
 
       # Mattermost: notify on failure
       - name: Notify Mattermost (failure)
-        if: failure()
+        if: needs.build.result == 'failure' || needs.publish.result == 'failure'
         uses: mattermost/action-mattermost-notify@2.0.0
         with:
           MATTERMOST_WEBHOOK_URL: ${{ secrets.MATTERMOST_WEBHOOK_URL }}
