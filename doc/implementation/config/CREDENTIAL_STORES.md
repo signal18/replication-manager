@@ -404,7 +404,10 @@ request, and every API token it owns is revoked (`revokeUserAPITokens`).
 - **Tokens:** a revocation that fails (the token store not saved) is undone in memory and said in
   the answer (`tokensError`) and in the GUI: a ban with live tokens is not a ban.
 - **Limits:** rotations are serialized among themselves, not with the user add, update and drop
-  paths, which write the cluster's own list. A token caller is checked with its owner's grants.
+  paths, which write the cluster's own list. A token caller is checked with its owner's grants:
+  the owner could do the same directly. Rotating one's own password through a token revokes that
+  token too; the answer carrying the new password is its last. Token revocation takes the clusters
+  before the token store's lock, never the manager's lock under it.
 
 ### The Cloud18 vault entry
 

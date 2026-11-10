@@ -180,7 +180,7 @@ func (repman *ReplicationManager) rotateAPIUserPassword(cl *cluster.Cluster, use
 		// the ban holds wherever the password changed: the tokens go too
 		if res.TokensRevoked, err = repman.revokeUserAPITokens(user, "password rotation by "+by); err != nil {
 			// a ban with live tokens is not a ban: said in the answer, not only logged
-			res.TokensError = "API tokens NOT revoked, they may still be valid: " + err.Error()
+			res.TokensError = "API tokens NOT revoked, they may still be valid (rotate again to retry): " + err.Error()
 			repman.Logrus.Warnf("Password rotation of %s: %s", user, res.TokensError)
 		}
 	}

@@ -710,6 +710,8 @@ func (repman *ReplicationManager) createAPITokenAs(owner, ownerAuthType string, 
 // revokeUserAPITokens revokes every live token of owner: a rotation of its password bans
 // them with it. It returns how many were revoked.
 func (repman *ReplicationManager) revokeUserAPITokens(owner, by string) (int, error) {
+	// the clusters first: the manager's lock is never taken under the token store's
+	clusters := repman.clustersSnapshot()
 	st := &repman.apiTokens
 	st.Lock()
 	defer st.Unlock()
@@ -735,7 +737,7 @@ func (repman *ReplicationManager) revokeUserAPITokens(owner, by string) (int, er
 		}
 		return 0, err
 	}
-	for _, cl := range repman.clustersSnapshot() {
+	for _, cl := range clusters {
 		for _, id := range ids {
 			cl.DropTokenPrincipal(id)
 		}
