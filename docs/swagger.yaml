@@ -4543,6 +4543,8 @@ definitions:
         type: string
       schedulerSlaRotateCron:
         type: string
+      secretKvCopyApiCredentials:
+        type: boolean
       secretKvQueueLimit:
         type: integer
       secretKvRetryInterval:

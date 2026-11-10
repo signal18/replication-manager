@@ -136,6 +136,18 @@ function GlobalSettings({ config, cards }) {
       )
     },
     {
+      globalSetting: 'secret-kv-copy-api-credentials',
+      key: 'Copy Users After Rotation',
+      help: h(`**Copy Users After Rotation**\n\nAfter a user's password rotation, the list of the instance's users (api-credentials) is copied, in clear, to the OpenSVC secret system/sec/repman under the key <api host>_api-credentials, so the infrastructure keeps the current value.`, 'Copy Users After Rotation'),
+      value: (
+        <RMSwitch
+          confirmTitle='Confirm switch global settings for secret-kv-copy-api-credentials?'
+          onChange={(_v, setRefresh) => dispatch(switchGlobalSetting({ setting: 'secret-kv-copy-api-credentials', setRefresh }))}
+          isChecked={config?.secretKvCopyApiCredentials}
+        />
+      )
+    },
+    {
       globalSetting: 'api-token-timeout',
       key: 'API Token Timeout in Hours',
       help: h(hTokenTimeout, 'API Token Timeout'),

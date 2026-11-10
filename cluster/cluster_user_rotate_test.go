@@ -8,11 +8,15 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	"github.com/signal18/replication-manager/config"
 )
 
 func rotateTestCluster(t *testing.T, list string) *Cluster {
 	t.Helper()
 	cl := secretKvTestCluster(t)
+	cl.Grants = config.GetGrantType()
+	cl.Roles = config.GetRoleType()
 	cl.Conf.MonitoringSecretVersioning = true
 	cl.Conf.APIUsers = list
 	cl.Conf.DynamicFlagMap[apiCredentialsKey] = list
@@ -113,5 +117,34 @@ func TestAdoptConfigFileValueOverRecordedHistory(t *testing.T) {
 	}
 	if vs.AdoptConfigFileValue(apiCredentialsKey, "admin:infile") {
 		t.Fatal("adopted twice")
+	}
+}
+
+// The caller gets the new password: it may rotate its own, or that of a user holding no grant
+// it lacks, never a user with more rights.
+func TestCanRotateFor(t *testing.T) {
+	cl := rotateTestCluster(t, "admin:first,ops:second,dev:third")
+	cl.Conf.APIUsersACLAllow = "admin:cluster db proxy prov global grant show,ops:cluster db show,dev:db show"
+	cl.LoadAPIUsers()
+	if err := cl.CanRotateFor("ops", "admin"); err == nil {
+		t.Fatal("ops may rotate admin, who holds more grants")
+	}
+	if err := cl.CanRotateFor("ops", "dev"); err != nil {
+		t.Fatalf("ops on dev: %v", err)
+	}
+	if err := cl.CanRotateFor("dev", "dev"); err != nil {
+		t.Fatalf("own password: %v", err)
+	}
+	if err := cl.CanRotateFor("admin", "ops"); err != nil {
+		t.Fatalf("admin on ops: %v", err)
+	}
+}
+
+func TestSetAPIUserPasswordRefusesASeparator(t *testing.T) {
+	cl := rotateTestCluster(t, "admin:first,ops:second")
+	for _, p := range []string{"", "a,b", "a:b", "a b"} {
+		if err := cl.SetAPIUserPassword("ops", APIUserScopeInstance, p); err == nil {
+			t.Fatalf("%q accepted", p)
+		}
 	}
 }

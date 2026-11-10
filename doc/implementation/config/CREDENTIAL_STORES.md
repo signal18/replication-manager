@@ -378,6 +378,12 @@ request, and every API token it owns is revoked (`revokeUserAPITokens`).
 - **Who:** the rotation grant (`cluster-rotate-passwords`), held by sysops and extsysops; dbops,
   extdbops and sponsors do not hold it. No role reads a password: the new one is shown to the one
   who rotated it, once.
+- **No escalation:** the caller rotates its own password, or that of a user holding no grant the
+  caller lacks (`CanRotateFor`), on every cluster concerned: the new password is handed to the
+  caller, so rotating a user with more rights would hand those over.
+- **One at a time:** rotations are serialized (each reads a list, changes one entry, writes it).
+- **Half-way failure:** what was rotated stays rotated and the user's tokens are revoked; the
+  answer names the clusters done. Undoing it would give the compromised password back.
 - **Which list:** a user of the instance's list (`api-credentials`, read by every cluster) gets the
   new password on every cluster holding it, all checked before any change; a user of a cluster's
   own list (`api-credentials-external`) on that cluster. Every other user keeps its password.
@@ -390,7 +396,8 @@ request, and every API token it owns is revoked (`revokeUserAPITokens`).
   accounts without a local password (they sign in with Cloud18: rotate at the identity provider).
 - **Copy:** the instance's list, in clear, goes to the OpenSVC secret `system/sec/repman`, key
   `<host of api-public-url>_api-credentials`, through the first cluster on OpenSVC; the answer says
-  whether it was written, skipped or failed. The Vault copy is not written here yet.
+  whether it was written, skipped or failed. Off with `secret-kv-copy-api-credentials` (server
+  scope, global settings). The Vault copy is not written here yet.
 
 ### The Cloud18 vault entry
 

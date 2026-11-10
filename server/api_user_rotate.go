@@ -12,6 +12,8 @@ import (
 	"net/url"
 	"sort"
 	"strings"
+	"sync"
+	"unicode"
 
 	"github.com/gorilla/mux"
 	"github.com/signal18/replication-manager/cluster"
@@ -64,14 +66,15 @@ func (repman *ReplicationManager) handlerMuxUserRotatePassword(w http.ResponseWr
 		return
 	}
 	var form UserRotateForm
-	if err := json.NewDecoder(r.Body).Decode(&form); err != nil || strings.TrimSpace(form.Username) == "" {
-		http.Error(w, "Invalid request: a username is needed", http.StatusBadRequest)
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&form); err != nil || !validUsername(strings.TrimSpace(form.Username)) {
+		http.Error(w, "Invalid request: a username is needed, without ',', ':' or control characters", http.StatusBadRequest)
 		return
 	}
-	res, err := repman.rotateAPIUserPassword(mycluster, strings.TrimSpace(form.Username), delegator)
+	user := strings.TrimSpace(form.Username)
+	res, err := repman.rotateAPIUserPassword(mycluster, user, delegator)
 	if err != nil {
-		repman.logSecurityEvent("api_user_password_rotation_refused", form.Username, r.RemoteAddr,
-			fmt.Sprintf("Password rotation of %s by %s refused: %s", form.Username, delegator, err))
+		repman.logSecurityEvent("api_user_password_rotation_refused", user, r.RemoteAddr,
+			fmt.Sprintf("Password rotation of %s by %s refused: %s", user, delegator, err))
 		switch {
 		case errors.Is(err, cluster.ErrAPIUserUnknown):
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -92,11 +95,45 @@ func (repman *ReplicationManager) handlerMuxUserRotatePassword(w http.ResponseWr
 
 var errRotateRefused = errors.New("rotation refused")
 
+// rotateMu serializes the rotations: each reads a list, changes one entry and writes it back.
+var rotateMu sync.Mutex
+
+// validUsername: a name a user:password list can hold, safe in a log line.
+func validUsername(u string) bool {
+	if u == "" || strings.ContainsAny(u, ",:") {
+		return false
+	}
+	for _, c := range u {
+		if unicode.IsControl(c) {
+			return false
+		}
+	}
+	return true
+}
+
+// clustersSnapshot is the clusters in name order, read under the manager's lock.
+func (repman *ReplicationManager) clustersSnapshot() []*cluster.Cluster {
+	repman.Lock()
+	out := make([]*cluster.Cluster, 0, len(repman.Clusters))
+	for _, c := range repman.Clusters {
+		if c != nil {
+			out = append(out, c)
+		}
+	}
+	repman.Unlock()
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out
+}
+
 // rotateAPIUserPassword gives user a new generated password: on every cluster holding it in
 // the instance's list, or on cl alone for the cluster's own list. Every cluster is checked
 // before any change. Then the user's API tokens are revoked and the instance's list is copied
-// to OpenSVC.
+// to OpenSVC. The caller may rotate only its own password or that of a user holding no grant it
+// lacks. A failure half-way keeps what was done, tokens revoked: undoing it would give the
+// compromised password back.
 func (repman *ReplicationManager) rotateAPIUserPassword(cl *cluster.Cluster, user, by string) (*UserRotateResult, error) {
+	rotateMu.Lock()
+	defer rotateMu.Unlock()
 	scope := cl.APIUserScope(user)
 	if scope == "" {
 		return nil, cluster.ErrAPIUserUnknown
@@ -112,22 +149,31 @@ func (repman *ReplicationManager) rotateAPIUserPassword(cl *cluster.Cluster, use
 			}
 			return nil, fmt.Errorf("%w on %s: %s", errRotateRefused, t.Name, err)
 		}
+		if err := t.CanRotateFor(by, user); err != nil {
+			return nil, fmt.Errorf("%w: %s", errRotateRefused, err)
+		}
 	}
 	pass, err := cl.GeneratePasswordLength(rotatedPasswordLength)
 	if err != nil {
 		return nil, err
 	}
 	res := &UserRotateResult{Username: user, Password: pass, Scope: scope}
+	var setErr error
 	for _, t := range targets {
 		if err := t.SetAPIUserPassword(user, scope, pass); err != nil {
-			// what changed is said: the clusters already rotated keep the new password
-			return nil, fmt.Errorf("rotated on %v, failed on %s: %s", res.Clusters, t.Name, err)
+			setErr = fmt.Errorf("rotated on %v, failed on %s: %s", res.Clusters, t.Name, err)
+			break
 		}
 		res.Clusters = append(res.Clusters, t.Name)
 	}
-	res.TokensRevoked, err = repman.revokeUserAPITokens(user, "password rotation by "+by)
-	if err != nil {
-		repman.Logrus.Warnf("Password rotation of %s: API tokens not revoked: %s", user, err)
+	if len(res.Clusters) > 0 {
+		// the ban holds wherever the password changed: the tokens go too
+		if res.TokensRevoked, err = repman.revokeUserAPITokens(user, "password rotation by "+by); err != nil {
+			repman.Logrus.Warnf("Password rotation of %s: API tokens not revoked: %s", user, err)
+		}
+	}
+	if setErr != nil {
+		return nil, setErr
 	}
 	res.Copy = "not applicable: a cluster's own list is not copied"
 	if scope == cluster.APIUserScopeInstance {
@@ -139,38 +185,35 @@ func (repman *ReplicationManager) rotateAPIUserPassword(cl *cluster.Cluster, use
 // clustersWithInstanceUser are the clusters holding user in the instance's list, in name order.
 func (repman *ReplicationManager) clustersWithInstanceUser(user string) []*cluster.Cluster {
 	var out []*cluster.Cluster
-	for _, c := range repman.Clusters {
-		if c != nil && c.APIUserScope(user) == cluster.APIUserScopeInstance {
+	for _, c := range repman.clustersSnapshot() {
+		if c.APIUserScope(user) == cluster.APIUserScopeInstance {
 			out = append(out, c)
 		}
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out
 }
 
 // copyAPICredentialsToOpenSVC writes the instance's list, in clear, to the OpenSVC secret
-// system/sec/repman, key <api host>_api-credentials (the place jbond007 indexes), through
-// the first cluster on OpenSVC. It returns what happened, never the value.
+// system/sec/repman, key <api host>_api-credentials (where the infrastructure index points),
+// through the first cluster on OpenSVC. Off with secret-kv-copy-api-credentials. It returns
+// what happened, never the value.
 func (repman *ReplicationManager) copyAPICredentialsToOpenSVC(src *cluster.Cluster) string {
+	if !repman.Conf.SecretKvCopyApiCredentials {
+		return "skipped: secret-kv-copy-api-credentials is off"
+	}
 	host := apiPublicHost(repman.Conf.APIPublicURL)
 	if host == "" {
 		return "skipped: api-public-url is not set"
 	}
-	names := make([]string, 0, len(repman.Clusters))
-	for name := range repman.Clusters {
-		names = append(names, name)
-	}
-	sort.Strings(names)
 	key := host + "_api-credentials"
-	for _, name := range names {
-		c := repman.Clusters[name]
-		if c == nil || c.GetOrchestrator() != config.ConstOrchestratorOpenSVC {
+	for _, c := range repman.clustersSnapshot() {
+		if c.GetOrchestrator() != config.ConstOrchestratorOpenSVC {
 			continue
 		}
 		if err := c.WriteOpenSVCSecretKey("system", "repman", key, src.DecryptedAPIUserList()); err != nil {
-			return "failed through " + name + ": " + err.Error()
+			return "failed through " + c.Name + ": " + err.Error()
 		}
-		return "written to system/sec/repman key " + key + " through " + name
+		return "written to system/sec/repman key " + key + " through " + c.Name
 	}
 	return "skipped: no cluster on OpenSVC"
 }

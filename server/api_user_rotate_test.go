@@ -4,7 +4,10 @@
 
 package server
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestRevokeUserAPITokens(t *testing.T) {
 	repman, cl := newTokenTestManager(t)
@@ -41,5 +44,28 @@ func TestAPIPublicHost(t *testing.T) {
 		if got := apiPublicHost(in); got != want {
 			t.Fatalf("%q: %q, want %q", in, got, want)
 		}
+	}
+}
+
+func TestValidUsername(t *testing.T) {
+	for u, want := range map[string]bool{"ops": true, "a@b.io": true, "": false, "a,b": false, "a:b": false, "a\nb": false} {
+		if validUsername(u) != want {
+			t.Fatalf("%q: want %v", u, want)
+		}
+	}
+}
+
+func TestCopyAPICredentialsSkipped(t *testing.T) {
+	repman, cl := newTokenTestManager(t)
+	if got := repman.copyAPICredentialsToOpenSVC(cl); !strings.Contains(got, "skipped") {
+		t.Fatalf("off: %q", got)
+	}
+	repman.Conf.SecretKvCopyApiCredentials = true
+	if got := repman.copyAPICredentialsToOpenSVC(cl); !strings.Contains(got, "api-public-url") {
+		t.Fatalf("no url: %q", got)
+	}
+	repman.Conf.APIPublicURL = "https://repman.example"
+	if got := repman.copyAPICredentialsToOpenSVC(cl); !strings.Contains(got, "no cluster on OpenSVC") {
+		t.Fatalf("no OpenSVC cluster: %q", got)
 	}
 }

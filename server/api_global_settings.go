@@ -880,6 +880,9 @@ func (repman *ReplicationManager) switchRepmanSetting(name string) error {
 		// above when set in the configuration file (#2262). Cloud18SSO() reads it at each login, so
 		// the Sign in with Cloud18 button appears or goes at once (#2367).
 		repman.Conf.Cloud18SSOLogin = !repman.Conf.Cloud18SSOLogin
+	case "secret-kv-copy-api-credentials":
+		// scope:"server": the admin's, in the global settings
+		repman.Conf.SecretKvCopyApiCredentials = !repman.Conf.SecretKvCopyApiCredentials
 	case "cloud18-login-resume":
 		// scope:"server" — persisted to default.toml by SaveDynamic (value != default). Applied at
 		// once: off removes the kept logins, on keeps them from now on (#2341).

@@ -32871,6 +32871,9 @@ const docTemplate = `{
                 "schedulerSlaRotateCron": {
                     "type": "string"
                 },
+                "secretKvCopyApiCredentials": {
+                    "type": "boolean"
+                },
                 "secretKvQueueLimit": {
                     "type": "integer"
                 },

@@ -95,11 +95,37 @@ func (cluster *Cluster) CanRotateAPIUserPassword(user string) error {
 	return nil
 }
 
+// CanRotateFor says whether caller may rotate target's password: its own, or a user holding no
+// grant the caller does not hold. The new password is returned to the caller, so rotating a
+// user with more rights would hand them over.
+func (cluster *Cluster) CanRotateFor(caller, target string) error {
+	if caller == target {
+		return nil
+	}
+	c, ok := cluster.APIUsers[caller]
+	if !ok {
+		return errors.New(caller + " is not a user of cluster " + cluster.Name)
+	}
+	t, ok := cluster.APIUsers[target]
+	if !ok {
+		return ErrAPIUserUnknown
+	}
+	for g, on := range t.Grants {
+		if on && !c.Grants[g] {
+			return fmt.Errorf("%s holds the grant %s that %s does not hold on %s", target, g, caller, cluster.Name)
+		}
+	}
+	return nil
+}
+
 // SetAPIUserPassword writes pass as user's password in the list of scope, through the
 // credential chain (a new version where a store keeps versions), and reloads the accounts:
 // a session carrying the old password is refused from the next request. Every other user
 // of the list keeps its password.
 func (cluster *Cluster) SetAPIUserPassword(user, scope, pass string) error {
+	if pass == "" || strings.ContainsAny(pass, ",: \t\n") {
+		return errors.New("a password in a user:password list cannot be empty nor hold ',', ':' or a space")
+	}
 	key := apiUserListKey(scope)
 	list, found := listWithPassword(cluster.Conf.GetDecryptedValue(key), user, pass)
 	if !found {

@@ -933,6 +933,7 @@ type Config struct {
 	SecretKvWriteTimeout                      int               `mapstructure:"secret-kv-write-timeout" toml:"secret-kv-write-timeout" json:"secretKvWriteTimeout"`
 	SecretKvRetryInterval                     int               `mapstructure:"secret-kv-retry-interval" toml:"secret-kv-retry-interval" json:"secretKvRetryInterval"`
 	SecretKvStartTimeout                      int               `mapstructure:"secret-kv-start-timeout" toml:"secret-kv-start-timeout" json:"secretKvStartTimeout"`
+	SecretKvCopyApiCredentials                bool              `scope:"server" mapstructure:"secret-kv-copy-api-credentials" toml:"secret-kv-copy-api-credentials" json:"secretKvCopyApiCredentials"`
 	BackupArchiveRemoveOriginal               bool              `mapstructure:"backup-archive-remove-original" toml:"backup-archive-remove-original" json:"backupArchiveRemoveOriginal"`
 	BackupDiscovery                           bool              `mapstructure:"backup-discovery" toml:"backup-discovery" json:"backupDiscovery"`
 	BackupDiscoveryCandidateMax               int               `mapstructure:"backup-discovery-candidate-max" toml:"backup-discovery-candidate-max" json:"backupDiscoveryCandidateMax"`
