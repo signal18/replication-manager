@@ -99,7 +99,7 @@ func TestIsValidACL_AuthGuards(t *testing.T) {
 // TestIsLocalOnlyAccount checks the single-source-of-truth helper shared by
 // IsValidACL's OIDC branch and the OIDC-callback collision guard.
 func TestIsLocalOnlyAccount(t *testing.T) {
-	c := newAuthGuardCluster() // Cloud18GitUser = "owner"
+	c := newAuthGuardCluster()                                         // Cloud18GitUser = "owner"
 	c.APIUsers["dba"] = APIUser{User: "dba", Password: "secret"}       // local
 	c.APIUsers["peer@corp.com"] = APIUser{User: "peer@corp.com"}       // SSO (no password)
 	c.APIUsers["owner"] = APIUser{User: "owner", Password: "gitlabpw"} // owner, exempt
@@ -133,6 +133,19 @@ func TestIsLocalOnlyAccount_Cloud18Identity(t *testing.T) {
 	}
 	if !c.IsValidACL("ops@corp.com", "", "/api/monitor", "oidc") {
 		t.Error("the Cloud18 session of an email account with a stored password must pass")
+	}
+	// not an address, or with a display name: not a Cloud18 identity, stays local
+	for _, name := range []string{"a@", "Ops <ops@corp.com>"} {
+		c.APIUsers[name] = APIUser{User: name, Password: "secret"}
+		if !c.IsLocalOnlyAccount(name) {
+			t.Errorf("%q is not a plain email address: it must stay local only", name)
+		}
+	}
+	// the registered account keeps its exemption, email or not
+	c.Conf.Cloud18GitUser = "owner@corp.com"
+	c.APIUsers["owner@corp.com"] = APIUser{User: "owner@corp.com", Password: "kept"}
+	if c.IsLocalOnlyAccount("owner@corp.com") {
+		t.Error("the registered account must accept its Cloud18 sign-in")
 	}
 	c.Conf.Cloud18 = false
 	if !c.IsLocalOnlyAccount("ops@corp.com") {

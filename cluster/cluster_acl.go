@@ -154,8 +154,13 @@ func (cluster *Cluster) IsLocalOnlyAccount(strUser string) bool {
 // Cloud18 sign-in (and another instance's realm token for it) is accepted even when the account
 // carries a stored password: before the SSO-only add, users/add gave such an account a random
 // password nobody knows, which refused the person's sign-in on every cluster.
+//
+// Safe because the email of a Cloud18 session is proven: every Cloud18 path (the Sign in form,
+// Sign in with Cloud18, a realm token, a resumed session) goes through VerifyCloud18Token, which
+// refuses a token without a verified email; the realm verifies emails, allows no duplicate and no
+// username change, and its identity providers pass only emails they verified.
 func (cluster *Cluster) isCloud18Identity(user string) bool {
-	if !cluster.Conf.Cloud18 {
+	if !cluster.Conf.Cloud18 || !strings.Contains(user, "@") {
 		return false
 	}
 	a, err := mail.ParseAddress(user)

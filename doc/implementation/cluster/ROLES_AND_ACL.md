@@ -93,3 +93,20 @@ own sysops; they get no access to the tools through these groups.
 - From the review of #2303: dots in cluster names inside the group path, a renamed URI or cluster,
   the claim size for a user on many clusters, whether the `pending-*`, `quote-*`, `unsubscribed-*`
   states are pushed too.
+
+## Local accounts and Cloud18 identities (#2359)
+
+An account with a stored password is **local**: it signs in with that password only, and a Cloud18
+session of the same name is refused (`IsLocalOnlyAccount`), so an identity elsewhere never rides a
+local account. Two exceptions accept the Cloud18 sign-in despite a stored password:
+
+- the account the instance is registered with (`cloud18-gitlab-user`);
+- on a Cloud18 instance, any **email** account (`isCloud18Identity`): an email is a Cloud18 identity.
+  Before the SSO-only add, `users/add` gave an account added without a password a random password
+  nobody knows, which refused the person's Cloud18 sign-in, and the peers' realm tokens for it, on
+  every cluster. Plain-name accounts (`admin`, `dba`) stay local; off Cloud18 nothing changes; no
+  configuration is rewritten.
+
+This relies on the email of a Cloud18 session being proven: every Cloud18 path goes through
+`VerifyCloud18Token`, which refuses a token without a verified email, and the realm verifies emails,
+allows no duplicate email and no username change, and trusts only identity providers that verify them.
