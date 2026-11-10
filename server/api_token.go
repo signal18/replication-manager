@@ -707,6 +707,37 @@ func (repman *ReplicationManager) createAPITokenAs(owner, ownerAuthType string, 
 	return &t, nil
 }
 
+// revokeUserAPITokens revokes every live token of owner: a rotation of its password bans
+// them with it. It returns how many were revoked.
+func (repman *ReplicationManager) revokeUserAPITokens(owner, by string) (int, error) {
+	st := &repman.apiTokens
+	st.Lock()
+	defer st.Unlock()
+	if err := repman.loadAPITokenStoreLocked(); err != nil {
+		return 0, err
+	}
+	var ids []string
+	for id, t := range st.tokens {
+		if t.User == owner && !t.IsRevoked() {
+			t.RevokedAt = time.Now()
+			t.RevokedBy = by
+			ids = append(ids, id)
+		}
+	}
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	if err := repman.saveAPITokenStoreLocked(); err != nil {
+		return 0, err
+	}
+	for _, cl := range repman.Clusters {
+		for _, id := range ids {
+			cl.DropTokenPrincipal(id)
+		}
+	}
+	return len(ids), nil
+}
+
 // revokeAPIToken marks a token revoked. The owner always may; anyone else needs
 // token-manage on every cluster the token covers.
 func (repman *ReplicationManager) revokeAPIToken(id string, by string, r *http.Request) (*APIToken, error) {

@@ -8944,9 +8944,11 @@ const docTemplate = `{
                             "reseedxtrabackup",
                             "reseedmariabackup",
                             "reseedmysqldump",
+                            "reseedmydumper",
                             "flashbackxtrabackup",
                             "flashbackmariadbackup",
                             "flashbackmysqldump",
+                            "flashbackmydumper",
                             "stop",
                             "restart",
                             "start",
@@ -19202,9 +19204,11 @@ const docTemplate = `{
                             "reseedxtrabackup",
                             "reseedmariabackup",
                             "reseedmysqldump",
+                            "reseedmydumper",
                             "flashbackxtrabackup",
                             "flashbackmariadbackup",
                             "flashbackmysqldump",
+                            "flashbackmydumper",
                             "stop",
                             "restart",
                             "start",
@@ -20011,9 +20015,11 @@ const docTemplate = `{
                             "reseedxtrabackup",
                             "reseedmariabackup",
                             "reseedmysqldump",
+                            "reseedmydumper",
                             "flashbackxtrabackup",
                             "flashbackmariadbackup",
                             "flashbackmysqldump",
+                            "flashbackmydumper",
                             "stop",
                             "restart",
                             "start",
@@ -23772,6 +23778,79 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Error dropping user\" or \"No valid cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/users/rotate-password": {
+            "post": {
+                "description": "Gives the user a new generated password, returned once. A user of the instance's list (api-credentials) gets it on every cluster; a user of the cluster's own list (api-credentials-external) on this cluster. The user's open sessions are refused from the next request and its API tokens are revoked: this is how a compromised user is banned. The instance's list is copied to the OpenSVC secret system/sec/repman when a cluster is on OpenSVC.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "User"
+                ],
+                "summary": "Rotate a user's password",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "User",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/server.UserRotateForm"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The new password, shown once",
+                        "schema": {
+                            "$ref": "#/definitions/server.UserRotateResult"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request or unknown user",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "409": {
+                        "description": "This user's password cannot be rotated",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Rotation failed",
                         "schema": {
                             "type": "string"
                         }
@@ -30836,6 +30915,9 @@ const docTemplate = `{
                 "dbServersTlsClientKey": {
                     "type": "string"
                 },
+                "dbServersTlsCompleteGeneratedCert": {
+                    "type": "boolean"
+                },
                 "dbServersTlsServerCert": {
                     "type": "string"
                 },
@@ -32031,6 +32113,9 @@ const docTemplate = `{
                 },
                 "provDbCpuCores": {
                     "type": "string"
+                },
+                "provDbCreateReplicationUser": {
+                    "type": "boolean"
                 },
                 "provDbDatadirVersion": {
                     "type": "string"
@@ -34329,6 +34414,40 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "zone": {
+                    "type": "string"
+                }
+            }
+        },
+        "server.UserRotateForm": {
+            "type": "object",
+            "properties": {
+                "username": {
+                    "type": "string"
+                }
+            }
+        },
+        "server.UserRotateResult": {
+            "type": "object",
+            "properties": {
+                "clusters": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "copy": {
+                    "type": "string"
+                },
+                "password": {
+                    "type": "string"
+                },
+                "scope": {
+                    "type": "string"
+                },
+                "tokensRevoked": {
+                    "type": "integer"
+                },
+                "username": {
                     "type": "string"
                 }
             }

@@ -368,6 +368,30 @@ WARN0275 onto `ReadCurrent` land once the T13 regtest proves the queue path. K8s
 header (`REPMAN_AUTH_HEADER`), not `REPLICATION_MANAGER_PASSWORD`, so the admin copy is
 OpenSVC-only.
 
+### A user's password rotation (the ban of a compromised user)
+
+`POST /api/clusters/{cluster}/users/rotate-password` `{"username"}` gives one API user a new
+generated password (24 characters, `GeneratePasswordLength`), returned once, never logged. It is the
+way to ban a compromised user: its sessions carry its password, so they are refused from the next
+request, and every API token it owns is revoked (`revokeUserAPITokens`).
+
+- **Who:** the rotation grant (`cluster-rotate-passwords`), held by sysops and extsysops; dbops,
+  extdbops and sponsors do not hold it. No role reads a password: the new one is shown to the one
+  who rotated it, once.
+- **Which list:** a user of the instance's list (`api-credentials`, read by every cluster) gets the
+  new password on every cluster holding it, all checked before any change; a user of a cluster's
+  own list (`api-credentials-external`) on that cluster. Every other user keeps its password.
+- **Repman is the reference:** `api-credentials` is versioned (`isVersionedKey`): the change is a
+  version in the local store, with no OpenSVC and no Vault needed. A value set in a configuration
+  file is rotated as versions (rule 9); refused only with no store keeping versions. A value edited
+  in the file is taken at the next start, and at the upgrade the file's value wins once over a
+  history recorded before the list was versioned (`AdoptConfigFileValue`).
+- **Refused:** `system` (its key is derived from the instance key), the registered Cloud18 user and
+  accounts without a local password (they sign in with Cloud18: rotate at the identity provider).
+- **Copy:** the instance's list, in clear, goes to the OpenSVC secret `system/sec/repman`, key
+  `<host of api-public-url>_api-credentials`, through the first cluster on OpenSVC; the answer says
+  whether it was written, skipped or failed. The Vault copy is not written here yet.
+
 ### The Cloud18 vault entry
 
 On a Cloud18-registered instance the marketplace catalogue offers a `secret_kv-vault` entry

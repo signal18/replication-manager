@@ -201,6 +201,7 @@ export const clusterService = {
   acceptSubscription,
   rejectSubscription,
   sendCredentials,
+  rotateUserPassword,
   endSubscription,
 
   subscribeExternalRole,
@@ -923,6 +924,10 @@ function updateGrants(clusterName, username, grants, roles, baseURL) {
 
 function dropUser(clusterName, username, baseURL) {
   return getApi(baseURL).post(`clusters/${clusterName}/users/drop`, { username })
+}
+
+function rotateUserPassword(clusterName, username, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/users/rotate-password`, { username })
 }
 
 function sendCredentials(clusterName, username, type, baseURL) {

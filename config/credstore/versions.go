@@ -241,6 +241,37 @@ func (s *VersionStore) TakeConfigFileValue(key, plain string) bool {
 	return true
 }
 
+// AdoptConfigFileValue makes the value a config file holds the current version of a key that
+// already has a history here but no version marked from_config_file: a key that became
+// versioned after the file recorded it. The config file was the truth until then, so its value
+// wins over the recorded history, once. Without history TakeConfigFileValue records it.
+func (s *VersionStore) AdoptConfigFileValue(key, plain string) bool {
+	conf := s.conf()
+	if !s.Holds(key) || plain == "" || !canEncrypt(conf) {
+		return false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	vs := s.versions[key]
+	if len(vs) == 0 {
+		return false
+	}
+	for _, v := range vs {
+		if v.FromConfigFile {
+			return false
+		}
+	}
+	s.versions[key] = append(vs, FileVersion{
+		Version:        vs[len(vs)-1].Version + 1,
+		HashValue:      conf.EncryptSecretValue(plain),
+		RotatedAt:      time.Now().UTC().Format(time.RFC3339Nano),
+		WrittenBy:      conf.ArbitrationSasUniqueId,
+		FromConfigFile: true,
+	})
+	s.dirty = true
+	return true
+}
+
 // EncryptKeptAsRead encrypts, once the key is there, the versions kept as they were read
 // without it (a vault read with versioning off, versioning then turned on). encrypted says
 // whether a stored value is already encrypted. False when such a version remains and the key

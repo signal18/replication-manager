@@ -998,6 +998,11 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxDropClusterUser)),
 	))
 
+	router.Handle("/api/clusters/{clusterName}/users/rotate-password", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxUserRotatePassword)),
+	))
+
 	router.Handle("/api/clusters/{clusterName}/users/send-credentials", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSendCredentials)),
