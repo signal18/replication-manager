@@ -3984,11 +3984,20 @@ func (repman *ReplicationManager) handlerMuxSetSettings(w http.ResponseWriter, r
 	mycluster := repman.getClusterByName(cName)
 	if mycluster != nil {
 		valid, delegator := repman.IsValidClusterACL(r, mycluster)
-		if valid && isExternalOpsSetting(setting) && delegator != "admin" && delegator != repman.Conf.Cloud18GitUser {
+		if valid && isExternalOpsSetting(setting) && !repman.canAssignExternalOps(delegator) {
 			// the external SysOps / DBOps drives invoicing: the admin's or the registered account's
 			// assignment, not a cluster-settings right (#2371)
 			http.Error(w, "Only the admin or the registered account sets "+setting, http.StatusForbidden)
 			return
+		}
+		if valid && isExternalOpsSetting(setting) {
+			// who changed an invoicing field, from what to what (#2371)
+			old := mycluster.Conf.Cloud18ExternalSysOps + " (" + mycluster.Conf.Cloud18ExternalSysOpsStatus + ")"
+			if setting == "cloud18-external-dbops" {
+				old = mycluster.Conf.Cloud18ExternalDbOps + " (" + mycluster.Conf.Cloud18ExternalDbOpsStatus + ")"
+			}
+			repman.logSecurityEvent("cluster_external_ops_assigned", delegator, r.RemoteAddr,
+				fmt.Sprintf("%s on cluster %s: %q -> %q", setting, mycluster.Name, old, strings.TrimSpace(value)))
 		}
 		if valid {
 			err := repman.setClusterSetting(mycluster, setting, value)
@@ -12337,6 +12346,12 @@ func seededServerHost(srvtype, host, port string) string {
 		return host + ":" + port + "/postgres"
 	}
 	return host + ":" + port
+}
+
+// canAssignExternalOps: the admin, or the account the instance is registered with (never an empty
+// name, when the instance is not registered) (#2371).
+func (repman *ReplicationManager) canAssignExternalOps(user string) bool {
+	return user == "admin" || (repman.Conf.Cloud18GitUser != "" && user == repman.Conf.Cloud18GitUser)
 }
 
 // isExternalOpsSetting: the cluster settings that name the external SysOps / DBOps (#2371).

@@ -2306,3 +2306,19 @@ func TestSetClusterSetting_ExternalOps(t *testing.T) {
 		t.Fatalf("dbops: err=%v status=%q", err, cl.Conf.Cloud18ExternalDbOpsStatus)
 	}
 }
+
+// TestCanAssignExternalOps (#2371): the admin and the registered account only; an empty name never
+// passes, even on an instance that is not registered.
+func TestCanAssignExternalOps(t *testing.T) {
+	repman := &ReplicationManager{Conf: &config.Config{}}
+	if repman.canAssignExternalOps("") {
+		t.Error("an empty name must not pass on an unregistered instance")
+	}
+	if !repman.canAssignExternalOps("admin") {
+		t.Error("admin must pass")
+	}
+	repman.Conf.Cloud18GitUser = "ops@corp.com"
+	if !repman.canAssignExternalOps("ops@corp.com") || repman.canAssignExternalOps("other@corp.com") || repman.canAssignExternalOps("") {
+		t.Error("only the registered account passes besides admin")
+	}
+}
