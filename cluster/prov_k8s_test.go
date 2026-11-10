@@ -3430,16 +3430,20 @@ func TestGetDomain_OpenSVCUnaffectedByKubernetesChange(t *testing.T) {
 	}
 }
 
-// prov-net-cni set in [DEFAULT] must not leak a domain for a cluster whose
-// orchestrator isn't OpenSVC.
-func TestGetDomain_OnPremiseIgnoresProvNetCNI(t *testing.T) {
+// An on-premise cluster whose servers live on OpenSVC's CNI: a short name does
+// not cross namespaces there either, the suffix is the OpenSVC one.
+func TestGetDomain_OnPremiseWithProvNetCNI(t *testing.T) {
 	cluster := newTestCluster("clustera")
 	cluster.Conf.ProvNetCNI = true
 	cluster.Conf.ProvOrchestrator = config.ConstOrchestratorOnPremise
 	cluster.Conf.ProvOrchestratorCluster = "signal18.id"
 
+	if got, want := cluster.GetDomain(), ".clustera.svc.signal18.id"; got != want {
+		t.Fatalf("expected %q, got %q", want, got)
+	}
+	cluster.Conf.ProvNetCNI = false
 	if got := cluster.GetDomain(); got != "" {
-		t.Fatalf("expected prov-net-cni to have no effect on a non-OpenSVC orchestrator, got %q", got)
+		t.Fatalf("prov-net-cni off: expected no suffix, got %q", got)
 	}
 }
 

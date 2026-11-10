@@ -391,26 +391,21 @@ func (cluster *Cluster) GetMysqlServerBinaryPath() string {
 }
 
 // GetDomain returns the DNS suffix appended to a server's short s.Name to
-// build its connectable address (server.Domain / server.Host), gated on
-// prov-net-cni for both orchestrators. OpenSVC's CNI-published
-// ".<namespace>.svc.<domain>" resolves to a real, routable address;
-// Kubernetes' equivalent bare Service name resolves to a virtual,
-// in-cluster-only ClusterIP, so Kubernetes instead routes through a headless
-// Service (k8sHeadlessServiceName) for a real per-pod address. Each branch
-// checks its own orchestrator explicitly so the flag can never leak a
-// domain for a cluster using the other orchestrator (or a third one
-// inheriting the flag from [DEFAULT]).
+// build its connectable address (server.Domain / server.Host) when
+// prov-net-cni is on, whatever the orchestrator: a short name does not cross
+// namespaces, on OpenSVC's CNI (".<namespace>.svc.<domain>") as on
+// Kubernetes. Kubernetes' bare Service name resolves to a virtual ClusterIP,
+// so it routes through a headless Service (k8sHeadlessServiceName) for a real
+// per-pod address. An on-premise cluster whose servers live on OpenSVC's CNI
+// (prov-net-cni on) needs the suffix too.
 func (cluster *Cluster) GetDomain() string {
-	if cluster.GetOrchestrator() == config.ConstOrchestratorKubernetes {
-		if cluster.Conf.ProvNetCNI {
-			return "." + k8sHeadlessServiceName + "." + cluster.Name + ".svc." + k8sClusterDomain(cluster)
-		}
+	if !cluster.Conf.ProvNetCNI {
 		return ""
 	}
-	if cluster.Conf.ProvNetCNI && cluster.GetOrchestrator() == config.ConstOrchestratorOpenSVC {
-		return "." + cluster.Name + ".svc." + cluster.Conf.ProvOrchestratorCluster
+	if cluster.GetOrchestrator() == config.ConstOrchestratorKubernetes {
+		return "." + k8sHeadlessServiceName + "." + cluster.Name + ".svc." + k8sClusterDomain(cluster)
 	}
-	return ""
+	return "." + cluster.Name + ".svc." + cluster.Conf.ProvOrchestratorCluster
 }
 
 func (cluster *Cluster) GetOrchestrator() string {
@@ -420,16 +415,13 @@ func (cluster *Cluster) GetOrchestrator() string {
 // GetDomainHeadCluster is GetDomain for a child cluster resolving its
 // parent (cluster.Conf.ClusterHead).
 func (cluster *Cluster) GetDomainHeadCluster() string {
-	if cluster.GetOrchestrator() == config.ConstOrchestratorKubernetes {
-		if cluster.Conf.ProvNetCNI {
-			return "." + k8sHeadlessServiceName + "." + cluster.Conf.ClusterHead + ".svc." + k8sClusterDomain(cluster)
-		}
+	if !cluster.Conf.ProvNetCNI {
 		return ""
 	}
-	if cluster.Conf.ProvNetCNI && cluster.GetOrchestrator() == config.ConstOrchestratorOpenSVC {
-		return "." + cluster.Conf.ClusterHead + ".svc." + cluster.Conf.ProvOrchestratorCluster
+	if cluster.GetOrchestrator() == config.ConstOrchestratorKubernetes {
+		return "." + k8sHeadlessServiceName + "." + cluster.Conf.ClusterHead + ".svc." + k8sClusterDomain(cluster)
 	}
-	return ""
+	return "." + cluster.Conf.ClusterHead + ".svc." + cluster.Conf.ProvOrchestratorCluster
 }
 
 func (cluster *Cluster) GetPersistentState() error {
