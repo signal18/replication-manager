@@ -1135,7 +1135,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.BackupMysqldumpOptions, "backup-mysqldump-options", "--hex-blob --single-transaction --verbose --all-databases --routines=true --triggers=true --system=all", "Extra options")
 	flags.StringVar(&conf.BackupMysqlbinlogPath, "backup-mysqlbinlog-path", "", "Path to mysqlbinlog binary")
 	flags.StringVar(&conf.BackupMysqlclientPath, "backup-mysqlclient-path", "", "Path to mysql client binary")
-	flags.StringVar(&conf.BackupMysqlclientOptions, "backup-mysqlclient-options", "--force --batch", "Extra options")
+	flags.StringVar(&conf.BackupMysqlclientOptions, "backup-mysqlclient-options", "--batch", "Extra options of the client that loads a logical backup. --force lets the load go on after an error: never used by the direct reseed from the primary")
 	flags.BoolVar(&conf.BackupMysqldumpSplitDump, "backup-mysqldump-splitdump", false, "Split mysqldump output using splitdump")
 	flags.StringVar(&conf.BackupSplitdumpFileSize, "backup-splitdump-file-size", "1G", "Max file size before sharding splitdump output (e.g. 16MiB, 1G; 0 disables sharding)")
 	flags.BoolVar(&conf.BackupSplitdumpCreateDatabases, "backup-splitdump-create-databases", true, "Auto-create databases before splitdump restore (server-orchestrated)")

@@ -3794,7 +3794,7 @@ func (server *ServerMonitor) JobReseedMysqldump(ctx context.Context, backupfile 
 	go func() {
 		defer wg.Done()
 		defer clientOutR.Close()
-		clientTail = server.copyLogsTail(clientOutR, config.ConstLogModBackupStream, config.LvlDbg, stderrTailLines)
+		clientTail = server.copyLogsTail(clientOutR, config.ConstLogModBackupStream, mysqlClientLineLevel, stderrTailLines)
 	}()
 
 	type reseedPumpResult struct {
@@ -5765,12 +5765,46 @@ func (server *ServerMonitor) copyLogsHook(r io.Reader, module int, level string,
 	}
 }
 
+// fixedLogLevel logs every line of an output at one level (copyLogsTail).
+func fixedLogLevel(level string) func(string) string {
+	return func(string) string { return level }
+}
+
+// mysqlClientLineLevel is the level of a line the mysql/mariadb client writes while it loads
+// a dump (copyLogsTail): its errors (ERROR <code> ... at line <n>) at ERROR, every other line
+// at debug. A load whose connection dropped wrote only such errors, at debug, and no file nor
+// state showed them (#2365).
+func mysqlClientLineLevel(line string) string {
+	if strings.HasPrefix(strings.TrimSpace(line), "ERROR ") {
+		return config.LvlErr
+	}
+	return config.LvlDbg
+}
+
+// withoutClientForce removes --force (-f) from the mysql client options. With --force the
+// client goes on after an error and exits 0: a load whose connection dropped at its first
+// statement failed every statement after it, exited 0, and the reseed reported "completed"
+// and started replication on a server that had loaded nothing (#2365). dropped reports
+// whether the options had it.
+func withoutClientForce(options []string) (kept []string, dropped bool) {
+	kept = make([]string, 0, len(options))
+	for _, o := range options {
+		if o == "--force" || o == "-f" {
+			dropped = true
+			continue
+		}
+		kept = append(kept, o)
+	}
+	return kept, dropped
+}
+
 // copyLogsTail behaves like copyLogs (streams every non-empty line to the
-// module log) and additionally keeps a bounded tail of at most maxLines of the
-// most recent output, so a caller can fold a short excerpt into a returned
-// error without an unbounded buffer (T18). Oldest lines are dropped by
-// reslicing into a fresh backing array so they don't keep old strings alive.
-func (server *ServerMonitor) copyLogsTail(r io.Reader, module int, level string, maxLines int) []string {
+// module log, at the level levelOf gives the line) and additionally keeps a
+// bounded tail of at most maxLines of the most recent output, so a caller can
+// fold a short excerpt into a returned error without an unbounded buffer (T18).
+// Oldest lines are dropped by reslicing into a fresh backing array so they
+// don't keep old strings alive.
+func (server *ServerMonitor) copyLogsTail(r io.Reader, module int, levelOf func(line string) string, maxLines int) []string {
 	cluster := server.ClusterGroup
 	tail := make([]string, 0, maxLines)
 	appendTail := func(line string) {
@@ -5795,7 +5829,7 @@ func (server *ServerMonitor) copyLogsTail(r io.Reader, module int, level string,
 		if strings.TrimSpace(line) == "" {
 			continue
 		}
-		cluster.LogModulePrintf(cluster.Conf.Verbose, module, level, "[%s] %s", server.Name, line)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, module, levelOf(line), "[%s] %s", server.Name, line)
 		appendTail(line)
 	}
 	// Scanner.Err() is nil on a clean EOF (the normal case: the pipe closes
@@ -6691,7 +6725,12 @@ func (cluster *Cluster) JobRejoinMysqldumpFromSource(source *ServerMonitor, dest
 	dumpCmd := exec.CommandContext(ctx, cluster.GetMysqlDumpPath(), dumpOptions...)
 
 	cliParams := append(cluster.GetDumpCredentials(dest), dest.GetSSLClientParam("client")...)
-	cliParams = append(cliParams, strings.Split(cluster.Conf.BackupMysqlclientOptions, " ")...)
+	clientOptions, forceDropped := withoutClientForce(strings.Split(cluster.Conf.BackupMysqlclientOptions, " "))
+	if forceDropped {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn,
+			"Direct reseed of %s: --force of backup-mysqlclient-options not used, the load stops at its first error", dest.URL)
+	}
+	cliParams = append(cliParams, clientOptions...)
 
 	clientCmd := exec.CommandContext(ctx, cluster.GetMysqlclientPath(), misc.RemoveEmptyString(cliParams)...)
 
@@ -6857,12 +6896,12 @@ func (cluster *Cluster) JobRejoinMysqldumpFromSource(source *ServerMonitor, dest
 	go func() {
 		defer wg.Done()
 		defer dumpStderrR.Close()
-		dumpTail = source.copyLogsTail(dumpStderrR, config.ConstLogModBackupStream, config.LvlDbg, stderrTailLines)
+		dumpTail = source.copyLogsTail(dumpStderrR, config.ConstLogModBackupStream, fixedLogLevel(config.LvlDbg), stderrTailLines)
 	}()
 	go func() {
 		defer wg.Done()
 		defer clientStderrR.Close()
-		clientTail = dest.copyLogsTail(clientStderrR, config.ConstLogModBackupStream, config.LvlDbg, stderrTailLines)
+		clientTail = dest.copyLogsTail(clientStderrR, config.ConstLogModBackupStream, mysqlClientLineLevel, stderrTailLines)
 	}()
 
 	// Write/read-stall watchdog: every fix above reacts to a subprocess

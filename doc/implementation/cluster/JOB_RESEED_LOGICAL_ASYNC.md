@@ -204,7 +204,8 @@ A reseed restores data; it does not own the replica's links. Since #2093:
     Percona dump is decided by its header alone (no such layout read).
   - MySQL/Percona with GTID: the channel keeps its auto-position. The dump's
     `SET @@GLOBAL.GTID_PURGED` sets the position; its file/position `CHANGE MASTER` is refused
-    (error 1776): skipped with `--force` in `backup-mysqlclient-options` (the default); the
+    (error 1776): skipped only with `--force` in `backup-mysqlclient-options` (no longer the
+    default, #2365: a `--force` load reports success when its connection dropped); the
     dump's `START SLAVE`, when it has the apply statements, then starts replication on
     auto-position, otherwise `pointLogicalReseedReplica` starts it. Without `--force` the restore
     stops there, before any data, and the reseed fails; repman does not add `--force`
