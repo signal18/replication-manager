@@ -93,3 +93,16 @@ own sysops; they get no access to the tools through these groups.
 - From the review of #2303: dots in cluster names inside the group path, a renamed URI or cluster,
   the claim size for a user on many clusters, whether the `pending-*`, `quote-*`, `unsubscribed-*`
   states are pushed too.
+
+## Assigning the external SysOps / DBOps directly (#2371)
+
+`cloud18-external-sysops` / `cloud18-external-dbops` name a cluster's external operators; they drive
+invoicing. The sponsor's path is the ext-role workflow (subscribe, quote, accept, end, #983), and a
+service plan writes them when it is applied. Neither can correct a wrong value: `subscribe` refuses while
+one is set, cancel / end need the named account to exist, and re-applying a plan re-applies its resources.
+
+The cluster setting set API takes both, for the **admin or the instance's registered account only**
+(`handlerMuxSetSettings` answers 403 to anyone else, whatever their cluster grants). An email sets the
+field with status `active`, an empty value clears the field and its status (`setExternalOps`); no
+workflow runs and no email is sent; the configuration is saved by `setClusterSetting` as for any setting.
+The GUI shows the field ("Assign External Sys Ops / DB Ops (admin)") to those two accounts only.
