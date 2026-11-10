@@ -23,13 +23,13 @@ const galeraNameWaitSeconds = 30
 const galeraNameWaitMark = "not resolvable after"
 
 // galeraNameWaitCommand is the blocking_pre_start of a Galera node's container#db: the start in two
-// steps, the network, then the database. OpenSVC v3 publishes a name only once the instance status
-// says up or warn, and during a start that status stays down until the database container runs: a
-// joiner gets no state transfer, the donor cannot reach it by name, and it aborts. So the status is
-// refreshed once the network is up (warn: it publishes the name, as wait_dns did on v2), then the
-// exact name is waited for: the final dot keeps the host's search domains out of it, which is how
-// wait_dns of OpenSVC v3 ends at once. The wait ends after galeraNameWaitSeconds and the start goes
-// on: it never blocks a start. "" for an address, which has no name to wait for.
+// steps, the network, then the database. OpenSVC v3 adds a name to its internal DNS only once it
+// sees the node's IP resource up, and during a start the status is not refreshed before the database
+// container runs: a joiner gets no state transfer, the donor cannot reach it by name, and it aborts.
+// wait_dns of OpenSVC v3 does not hold the start: it does not refresh the status, and "not found"
+// ends its wait. So the status is refreshed once the network is up, as wait_dns did on v2, then the
+// exact name (the final dot) is retried on "not found". The wait ends after galeraNameWaitSeconds and
+// the start goes on: it never blocks a start. "" for an address, which has no name to wait for.
 func galeraNameWaitCommand(host, service string) string {
 	host = misc.Unbracket(host)
 	if host == "" || net.ParseIP(host) != nil {

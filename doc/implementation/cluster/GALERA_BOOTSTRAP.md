@@ -157,15 +157,16 @@ node it routes the writes to, so moving it is a switchover, never a promotion.
   (`galeraCommandPatch`): set on the bootstrap node of a cluster entirely down
   (`isGaleraBootstrapNode`), removed from any other start. Any other command is the operator's and
   is left alone. OpenSVC v2 (the per-pod `container#20<pod>` section) is not covered yet.
-- **The start is in two steps: the network, then the database.** OpenSVC v3 publishes a name
-  only once the instance status says up or warn, and during a start the status stays down until the
-  database container runs. A joiner then gets no state transfer: the donor reaches it by name,
-  cannot, and the joiner aborts. `wait_dns` on v3 does not help: it takes any answer, including the
-  one the host's search domains give for a name not published yet, and stops on "not found" (v2
-  refreshed the status first, then waited for the peers). So `container#db` carries a
-  `blocking_pre_start` (`galeraNameWaitCommand`): `om <service> instance status -r` publishes the
-  status once the network is up, then `getent hosts <name>.`, the final dot asking for that exact
-  name, up to 30 s, and the start goes on after that. It is set at provisioning, and before a start
+- **The start is in two steps: the network, then the database.** OpenSVC v3 adds a name to its
+  internal DNS only once it sees the node's IP resource up, and during a start the status is not
+  refreshed before the database container runs. A joiner then gets no state transfer: the donor
+  reaches it by name, cannot, and the joiner aborts. `wait_dns` on v3 (`WaitDNSRecord`) does not
+  help: it does not refresh the status, and any lookup error, "not found" included, ends its wait
+  (v2 refreshed the status, waited for the IP in the daemon's data and for a cluster sync, and
+  failed the start on a timeout). So `container#db` carries a `blocking_pre_start`
+  (`galeraNameWaitCommand`): `om <service> instance status -r` refreshes the status once the
+  network is up, then `getent hosts <name>.` retries on "not found", the final dot asking for that
+  exact name, up to 30 s, and the start goes on after that. It is set at provisioning, and before a start
   on a service provisioned earlier (`openSVCSyncGaleraBootstrapCommandV3`). An operator's own
   command is left alone.
 - **A failed join does not block the next one.** A state transfer that aborts leaves
