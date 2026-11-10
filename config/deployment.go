@@ -623,13 +623,18 @@ func (d *Deployment) GetVariableByName(name string, lock bool) (*VariableMapping
 
 type Routes []Route
 
-// RouteMonitor holds optional per-route monitoring customization for HTTP/HTTPS routes.
+// RouteMonitor holds optional per-route monitoring customization: path, auth and
+// expect-status for HTTP/HTTPS routes, interval for every route.
 type RouteMonitor struct {
 	Path          string `mapstructure:"path" toml:"path" json:"path,omitempty" groups:"apps"`
 	AuthType      string `mapstructure:"auth-type" toml:"auth-type" json:"authType,omitempty" groups:"apps"`
 	AuthUser      string `mapstructure:"auth-user" toml:"auth-user" json:"authUser,omitempty" groups:"apps"`
 	AuthSecretVar string `mapstructure:"auth-secret-var" toml:"auth-secret-var" json:"authSecretVar,omitempty" groups:"apps"`
 	ExpectStatus  string `mapstructure:"expect-status" toml:"expect-status" json:"expectStatus,omitempty" groups:"apps"`
+	// Interval: seconds between two runs of this route's check (local and external) while it
+	// passes (#2362); 0 = the app's app-monitor-interval. A failing check runs at every
+	// monitoring tick until it passes again, so a failure is confirmed in seconds.
+	Interval int `mapstructure:"interval" toml:"interval" json:"interval,omitempty" groups:"apps"`
 }
 
 // Normalize fills in defaults and canonicalizes all fields.  It is idempotent
@@ -651,6 +656,9 @@ func (m *RouteMonitor) Normalize() {
 	}
 	if m.ExpectStatus == "" {
 		m.ExpectStatus = "200"
+	}
+	if m.Interval < 0 {
+		m.Interval = 0
 	}
 }
 

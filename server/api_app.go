@@ -1591,6 +1591,22 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 						row.Monitor = &config.RouteMonitor{}
 					}
 					row.Monitor.ExpectStatus = newValue
+				case "monitor.interval":
+					seconds := 0
+					if v := strings.TrimSpace(newValue); v != "" {
+						n, perr := strconv.Atoi(v)
+						if perr != nil || n < 0 {
+							node.Unlock()
+							gwUnlock()
+							http.Error(w, "monitor interval: not a number of seconds", http.StatusBadRequest)
+							return
+						}
+						seconds = n
+					}
+					if row.Monitor == nil {
+						row.Monitor = &config.RouteMonitor{}
+					}
+					row.Monitor.Interval = seconds
 				default:
 					node.Unlock()
 					gwUnlock()

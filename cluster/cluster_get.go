@@ -816,11 +816,22 @@ func (cluster *Cluster) GetRplUser() string {
 // GetProxysqlUser is the ProxySQL admin login replication-manager uses, read where its password
 // is read: the proxysql-user secret, which keeps a user set at runtime (proxysql-servers-credential)
 // across a restart or a reload, else the configured user.
+//
+// Unset, it depends on the orchestrator (#2360): admin with localhost, where ProxySQL runs on
+// replication-manager's own host; external otherwise, since ProxySQL 2+ accepts admin only from its
+// own host and every config replication-manager generates declares external with the same password
+// (the sample configs of the orchestrated setups have always set it).
 func (cluster *Cluster) GetProxysqlUser() string {
 	if user := cluster.Conf.Secrets.Get("proxysql-user").Value; user != "" {
 		return user
 	}
-	return cluster.Conf.ProxysqlUser
+	if cluster.Conf.ProxysqlUser != "" {
+		return cluster.Conf.ProxysqlUser
+	}
+	if cluster.GetOrchestrator() == config.ConstOrchestratorLocalhost {
+		return "admin"
+	}
+	return "external"
 }
 
 func (cluster *Cluster) GetRplPass() string {

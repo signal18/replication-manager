@@ -198,8 +198,17 @@ goes to private channels.
 **T16. No config outside TOML.** Every config value is a Viper/TOML key
 (`config.Config` field + `AddFlags`), never ad-hoc or hardcoded. TOML gives us:
 change tracking, per-cluster AND global hot-reload (`SaveDynamic`), and Vault
-delegation for secrets. `scope:"server"` = immutable (`/etc`, repman doesn't
-write it); other scopes = reloadable.
+delegation for secrets. `scope:"server"` = an instance-wide setting that only the
+admin changes, in the global settings (API and GUI), never per cluster; it is
+reloadable like any other. Any setting, server-scope or not, is **immutable only
+when it is set in the configuration file under `/etc`** (or on the command line or
+in the environment): then no API call changes it, and repman never writes that
+file. A server-scope setting with no global-settings API case is a gap to code,
+not a reason to edit `/etc` and restart. **Exception: credentials.** A credential locked as
+immutable in `/etc` can still be rotated when its background store is versioned
+(secret versioning, a Vault or credential store): the rotation writes the new value
+to the versioned store, which then wins over the `/etc` value. "Immutable" never
+blocks a credential rotation.
 
 **T17. NEVER put frequently-changing data in the git push.** Only stable config/
 state goes into the config repos. High-churn data (per-tick metrics, fast-changing

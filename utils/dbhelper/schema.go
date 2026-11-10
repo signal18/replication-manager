@@ -2448,3 +2448,10 @@ func GaleraSSTAccountInitSQL(user_name string) (string, error) {
 	return "CREATE USER IF NOT EXISTS " + account + " IDENTIFIED VIA unix_socket;\n" +
 		"GRANT RELOAD, PROCESS, LOCK TABLES, REPLICATION CLIENT ON *.* TO " + account + ";\n", nil
 }
+
+// IsCachingSha2Hash tells whether an authentication string is a caching_sha2_password hash (MySQL
+// 8.0+, the only plugin from 8.4): "$A$" and a 3-digit rounds count. ProxySQL cannot use such a
+// hash, neither to check a client's login nor to log in to the backend for it (#2360).
+func IsCachingSha2Hash(authString string) bool {
+	return len(authString) > 7 && strings.HasPrefix(authString, "$A$") && authString[6] == '$'
+}

@@ -34,6 +34,34 @@ The regtest `testProvisionReplicationUser` ran on a dev instance, provisioning f
 `caching_sha2_password`, `mysql_native_password` DISABLED) and selected `proxysql/proxysql:3.0.12`.
 All servers were ONLINE, the proxy joined the primary, and the result was PASS.
 
+## Logins through a ProxySQL 3 proxy (#2360, reopened)
+
+The image choice alone left MySQL 8.4 behind ProxySQL unusable: the proxy routed, but two logins
+failed.
+
+**Client logins (the user copy).** `proxysql-copy-grants` loaded each user's
+`caching_sha2_password` hash into `mysql_users`. ProxySQL can use that hash neither to check a
+client's login nor to log in to the backend for the client, so every client was refused. Now:
+- **A user whose password repman knows** (the database user, the write heartbeat user:
+  `proxySQLClearUsers`, the set the PostgreSQL sync loads too) is loaded with that password.
+  ProxySQL 3 keeps it in clear, and both logins then work without TLS. Checked on a dev instance.
+- **Any other `caching_sha2_password` user** is not loaded, and WARN0319 names it. The MySQL
+  system accounts (`mysql.*`) and the replication user are not loaded either, and are not named.
+  They are no clients of the proxy.
+- **Native-hash users** (MariaDB, MySQL 8.0) are unchanged.
+
+**repman's admin login.** ProxySQL 2+ accepts `admin` only from its own host. Every config repman
+generates has declared a second admin login, `external`, with the same password, since 2017. The
+sample configs of the orchestrated setups set `proxysql-user = "external"`, and so does repman's
+automatic proxy add. But the default was `admin`, so a cluster that never set it (a proxy added
+without a user) could not reach a ProxySQL 2+ proxy. Now an unset `proxysql-user` depends on the
+orchestrator, in `GetProxysqlUser()`:
+- **localhost:** `admin`, because ProxySQL runs on repman's own host.
+- **any other orchestrator:** `external`.
+
+A configured or runtime value always wins. The rotation is unchanged: it rewrites the login repman
+uses.
+
 ## Not covered
 
 - **Client-side TLS on the proxy:** the `ssl` proxy tag's ruleset

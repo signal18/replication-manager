@@ -55,13 +55,13 @@ func TestPostgresProxySQLUsers(t *testing.T) {
 			if tc.heartbeat != "" {
 				cl.Conf.MonitorWriteHeartbeatCredential = "configured"
 			}
-			users, conflict := cl.postgresProxySQLUsers()
+			users, conflict := cl.proxySQLClearUsers()
 			var got []string
 			for _, u := range users {
 				got = append(got, u.User+":"+u.Password)
 			}
 			if strings.Join(got, ",") != strings.Join(tc.want, ",") || conflict != tc.wantConflict {
-				t.Errorf("postgresProxySQLUsers() = %v conflict=%v, want %v conflict=%v", got, conflict, tc.want, tc.wantConflict)
+				t.Errorf("proxySQLClearUsers() = %v conflict=%v, want %v conflict=%v", got, conflict, tc.want, tc.wantConflict)
 			}
 		})
 	}

@@ -88,17 +88,25 @@ function secretVariableOptions(variables) {
 function hasMonitorConfig(route) {
   const m = route.monitor;
   if (!m) return false;
-  return !!(m.path || m.authType || m.authUser || m.authSecretVar || m.expectStatus);
+  return !!(m.path || m.authType || m.authUser || m.authSecretVar || m.expectStatus || m.interval);
+}
+
+// Check interval in seconds (#2362): empty or 0 = the app's app-monitor-interval.
+function parseMonitorInterval(value) {
+  const n = parseInt(String(value || '').trim(), 10);
+  return Number.isFinite(n) && n > 0 ? n : 0;
 }
 
 function normalizeNewRouteMonitorDraft(draft) {
-  const { monitorPath, monitorAuthType, monitorAuthUser, monitorAuthSecretVar, monitorExpectStatus, ...routeFields } = draft;
+  const { monitorPath, monitorAuthType, monitorAuthUser, monitorAuthSecretVar, monitorExpectStatus, monitorInterval, ...routeFields } = draft;
   delete routeFields.id;
   const mode = routeFields.mode || 'host';
   const protocol = routeFields.protocol || (mode === 'host' ? 'https' : 'tcp');
   const httpCapable = (mode === 'host' && protocol === 'https') || (mode === 'port' && protocol === 'http');
-  if (!httpCapable) return routeFields;
-  const hasMonitor = monitorPath || (monitorAuthType && monitorAuthType !== 'none') || monitorAuthUser || monitorAuthSecretVar || monitorExpectStatus;
+  const interval = parseMonitorInterval(monitorInterval);
+  // Every route has a check interval; path, auth and status are for HTTP checks only.
+  if (!httpCapable) return interval ? { ...routeFields, monitor: { interval } } : routeFields;
+  const hasMonitor = monitorPath || (monitorAuthType && monitorAuthType !== 'none') || monitorAuthUser || monitorAuthSecretVar || monitorExpectStatus || interval;
   if (!hasMonitor) return routeFields;
   return {
     ...routeFields,
@@ -108,6 +116,7 @@ function normalizeNewRouteMonitorDraft(draft) {
       authUser: monitorAuthUser || '',
       authSecretVar: monitorAuthSecretVar || '',
       expectStatus: monitorExpectStatus || '',
+      interval,
     },
   };
 }
@@ -126,6 +135,7 @@ function routeToEditDraft(route) {
     monitorAuthUser: route.monitor?.authUser || '',
     monitorAuthSecretVar: route.monitor?.authSecretVar || '',
     monitorExpectStatus: route.monitor?.expectStatus || '',
+    monitorInterval: route.monitor?.interval ? String(route.monitor.interval) : '',
   };
 }
 
@@ -273,11 +283,14 @@ StatusBadge.propTypes = {
 
 function MonitoringSummary({ route }) {
   const m = route.monitor;
-  if (!isHTTPMonitorCapable(route) || !m) return <Text fontSize="xs" color="gray.400">—</Text>;
+  if (!m) return <Text fontSize="xs" color="gray.400">—</Text>;
   const parts = [];
-  if (m.path) parts.push(m.path);
-  if (m.expectStatus) parts.push(m.expectStatus);
-  if (m.authType && m.authType !== 'none') parts.push(m.authType.charAt(0).toUpperCase() + m.authType.slice(1));
+  if (isHTTPMonitorCapable(route)) {
+    if (m.path) parts.push(m.path);
+    if (m.expectStatus) parts.push(m.expectStatus);
+    if (m.authType && m.authType !== 'none') parts.push(m.authType.charAt(0).toUpperCase() + m.authType.slice(1));
+  }
+  if (m.interval) parts.push(`every ${m.interval}s`);
   if (!parts.length) return <Text fontSize="xs" color="gray.400">—</Text>;
   return <Text fontSize="xs" color="gray.600" whiteSpace="nowrap">{parts.join(' · ')}</Text>;
 }
@@ -292,6 +305,7 @@ MonitoringSummary.propTypes = {
       authUser: PropTypes.string,
       authSecretVar: PropTypes.string,
       expectStatus: PropTypes.string,
+      interval: PropTypes.number,
     }),
   }).isRequired,
 }
@@ -395,6 +409,7 @@ const Routes = React.memo(function Routes({
       monitorAuthUser: '',
       monitorAuthSecretVar: '',
       monitorExpectStatus: '',
+      monitorInterval: '',
     }]);
     onPauseAutoReload();
   };
@@ -437,11 +452,17 @@ const Routes = React.memo(function Routes({
     }
 
     if (normalized.monitor) {
-      requests.push(onRowArrayChange(fieldName, editingIndex, 'monitor.path', normalized.monitor.path || ''));
-      requests.push(onRowArrayChange(fieldName, editingIndex, 'monitor.auth-type', normalized.monitor.authType || ''));
-      requests.push(onRowArrayChange(fieldName, editingIndex, 'monitor.auth-user', normalized.monitor.authUser || ''));
-      requests.push(onRowArrayChange(fieldName, editingIndex, 'monitor.auth-secret-var', normalized.monitor.authSecretVar || ''));
-      requests.push(onRowArrayChange(fieldName, editingIndex, 'monitor.expect-status', normalized.monitor.expectStatus || ''));
+      if (!isHTTPMonitorCapable(normalized)) {
+        // a TCP route keeps only its interval: drop any HTTP field left from a former protocol
+        requests.push(onRowArrayChange(fieldName, editingIndex, 'monitor.clear', 'true'));
+      } else {
+        requests.push(onRowArrayChange(fieldName, editingIndex, 'monitor.path', normalized.monitor.path || ''));
+        requests.push(onRowArrayChange(fieldName, editingIndex, 'monitor.auth-type', normalized.monitor.authType || ''));
+        requests.push(onRowArrayChange(fieldName, editingIndex, 'monitor.auth-user', normalized.monitor.authUser || ''));
+        requests.push(onRowArrayChange(fieldName, editingIndex, 'monitor.auth-secret-var', normalized.monitor.authSecretVar || ''));
+        requests.push(onRowArrayChange(fieldName, editingIndex, 'monitor.expect-status', normalized.monitor.expectStatus || ''));
+      }
+      requests.push(onRowArrayChange(fieldName, editingIndex, 'monitor.interval', normalized.monitor.interval ? String(normalized.monitor.interval) : ''));
     } else {
       requests.push(onRowArrayChange(fieldName, editingIndex, 'monitor.clear', 'true'));
     }
@@ -704,6 +725,10 @@ const Routes = React.memo(function Routes({
                                       <Text fontSize="xs" color="gray.500" fontWeight="semibold">Expected status</Text>
                                       <Text fontSize="sm" fontFamily="mono" color={headingColor}>{p.monitor?.expectStatus || 'Default'}</Text>
                                     </Box>
+                                    <Box bg={insetBg} borderWidth="1px" borderColor={borderColor} borderRadius="lg" px={3} py={2}>
+                                      <Text fontSize="xs" color="gray.500" fontWeight="semibold">Check interval</Text>
+                                      <Text fontSize="sm" fontFamily="mono" color={headingColor}>{p.monitor?.interval ? `${p.monitor.interval}s` : 'App default'}</Text>
+                                    </Box>
                                   </SimpleGrid>
                                 </Td>
                               </Tr>
@@ -856,6 +881,19 @@ const Routes = React.memo(function Routes({
                                           Monitoring can only be configured for HTTPS host routes or HTTP port routes.
                                         </Text>
                                       )}
+
+                                      <Box maxW="xs">
+                                        <Text fontSize="xs" color="gray.500" fontWeight="semibold" mb={1}>Check interval (seconds)</Text>
+                                        <Input
+                                          value={editDraft.monitorInterval}
+                                          size="sm"
+                                          type="number"
+                                          min={0}
+                                          placeholder="App default (60)"
+                                          onChange={(e) => handleEditDraftChange('monitorInterval', e.target.value)}
+                                        />
+                                        <Text fontSize="xs" color={mutedColor} mt={1}>A failing check runs at every monitoring tick until it passes.</Text>
+                                      </Box>
 
                                       <HStack flexWrap="wrap">
                                         <RMButton onClick={handleSaveEdit}>Save Changes</RMButton>
@@ -1103,6 +1141,18 @@ const Routes = React.memo(function Routes({
                         Switch the route to HTTPS or HTTP to configure path-based health checks.
                       </Text>
                     )}
+                    <Box maxW="xs" mt={3}>
+                      <Text fontSize="xs" color="gray.500" fontWeight="semibold" mb={1}>Check interval (seconds)</Text>
+                      <Input
+                        name={`new_${p.id}.monitor.interval`}
+                        type="number"
+                        min={0}
+                        placeholder="App default (60)"
+                        value={p.monitorInterval}
+                        size="sm"
+                        onChange={(e) => handleArrayChange(index, 'monitorInterval', e.target.value)}
+                      />
+                    </Box>
                   </Box>
                 </VStack>
               </Box>

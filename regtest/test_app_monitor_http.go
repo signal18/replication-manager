@@ -87,7 +87,9 @@ func (regtest *RegTest) TestAppMonitorHTTP(cl *cluster.Cluster, conf string, tes
 		logf(config.LvlErr, "TEST app-monitor-http: FAIL a monitor-only app got routes (published on the gateway): %+v", routes)
 		return false
 	}
-	for k, v := range map[string]string{"app-monitor-mode": "http", "app-monitor-path": "/health"} {
+	// app-monitor-interval 1: the check runs at every tick, as when this test was written;
+	// the interval itself is testAppCheckInterval's (#2362).
+	for k, v := range map[string]string{"app-monitor-mode": "http", "app-monitor-path": "/health", "app-monitor-interval": "1"} {
 		if err := app.SetSetting(k, v); err != nil {
 			logf(config.LvlErr, "TEST app-monitor-http: FAIL setting %s: %s", k, err)
 			return false

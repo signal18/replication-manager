@@ -5,6 +5,7 @@
 package regtest
 
 import (
+	"bufio"
 	"bytes"
 	"compress/gzip"
 	"context"
@@ -477,41 +478,97 @@ func (e *edgeRun) waitServerState(key string, raised bool) bool {
 	return false
 }
 
-// editDump inserts lines before the footer of the gzipped dump at path, keeping its times.
+// editDump inserts lines before the footer ("-- Dump completed", its last occurrence) of the
+// gzipped dump at path, keeping its times. It streams: one line in memory at a time, plus
+// what follows the last footer seen (the footer is the dump's last line). A real dump is
+// several GB uncompressed, and the regtest runs in the monitor's process: reading it whole
+// (as before) got the monitor OOM-killed on preprod (#2362).
 func editDump(path, lines string) error {
 	info, err := os.Stat(path)
 	if err != nil {
 		return err
 	}
-	f, err := os.Open(path)
+	in, err := os.Open(path)
 	if err != nil {
 		return err
 	}
-	zr, err := gzip.NewReader(f)
-	if err != nil {
-		f.Close()
-		return err
-	}
-	data, err := io.ReadAll(zr)
-	f.Close()
+	defer in.Close()
+	zr, err := gzip.NewReader(in)
 	if err != nil {
 		return err
 	}
-	text := string(data)
-	i := strings.LastIndex(text, "-- Dump completed")
-	if i < 0 {
-		return errors.New("no footer")
+	tmp := path + ".edit.tmp"
+	out, err := os.OpenFile(tmp, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0644)
+	if err != nil {
+		return err
 	}
-	var buf bytes.Buffer
-	zw := gzip.NewWriter(&buf)
-	zw.Write([]byte(text[:i] + lines + text[i:]))
+	defer os.Remove(tmp) // gone once renamed
+	zw := gzip.NewWriter(out)
+	if err := insertBeforeLastFooter(zr, zw, "-- Dump completed", lines); err != nil {
+		out.Close()
+		return err
+	}
 	if err := zw.Close(); err != nil {
+		out.Close()
 		return err
 	}
-	if err := os.WriteFile(path, buf.Bytes(), 0644); err != nil {
+	if err := out.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, path); err != nil {
 		return err
 	}
 	return os.Chtimes(path, info.ModTime(), info.ModTime())
+}
+
+// editDumpPendingMax bounds what insertBeforeLastFooter holds after a footer: past it, the
+// footer was not the dump's end and what it held is written out.
+const editDumpPendingMax = 64 << 20
+
+// insertBeforeLastFooter copies r to w with lines inserted before the start of the last
+// line containing footer: lines from a footer on are held until another footer or the end.
+func insertBeforeLastFooter(r io.Reader, w io.Writer, footer, lines string) error {
+	br := bufio.NewReaderSize(r, 1<<20)
+	var pending bytes.Buffer
+	found := false
+	for {
+		line, err := br.ReadBytes('\n')
+		if len(line) > 0 {
+			if bytes.Contains(line, []byte(footer)) {
+				if _, werr := w.Write(pending.Bytes()); werr != nil {
+					return werr
+				}
+				pending.Reset()
+				found = true
+			}
+			if found {
+				pending.Write(line)
+				if pending.Len() > editDumpPendingMax {
+					if _, werr := w.Write(pending.Bytes()); werr != nil {
+						return werr
+					}
+					pending.Reset()
+					found = false
+				}
+			} else if _, werr := w.Write(line); werr != nil {
+				return werr
+			}
+		}
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return err
+		}
+	}
+	if !found {
+		return errors.New("no footer")
+	}
+	if _, err := io.WriteString(w, lines); err != nil {
+		return err
+	}
+	_, err := w.Write(pending.Bytes())
+	return err
 }
 
 // toolInstalled tells whether path names an executable file.

@@ -147,6 +147,9 @@ func (regtest *RegTest) TestAppWarningDebounceAndRecovery(cl *cluster.Cluster, c
 
 	appHost := "127.0.0.1"
 	appcnf := cl.NewAppConfig(appHost, portA)
+	// This test counts debounce cycles tick by tick: every check runs at every tick
+	// (an interval at or below the ticker, #2362), as it did when it was written.
+	appcnf.AppMonitorInterval = 1
 	appcnf.Deployment.Routes = []config.Route{
 		{Protocol: "tcp", CName: appHost, Port: portA, DestinationPort: portA, Primary: true},
 		{Protocol: "tcp", CName: appHost, Port: portB, DestinationPort: portB, Primary: false},
