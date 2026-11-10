@@ -143,6 +143,7 @@ var tests = []string{
 	"testGaleraBootstrap",
 	"testGaleraSwitchover",
 	"testGaleraMasterLoss",
+	"testGaleraFullRestartNotLastFirst",
 	"testK8SProvisionSchedulerVolumeBinding",
 	"testK8SStopStartDatabaseService",
 	"testSchemaPlugin",
@@ -301,6 +302,7 @@ var testTargets = map[string][]TestTarget{
 	"testGaleraSwitchover":                                         {{TopologyTarget: []string{config.TopoMultiMasterWsrep}, NumberNodesTarget: 2, FlavorTarget: []string{"mariadb"}}},
 	// the Primary component keeps a majority after losing the write node only from 3 nodes
 	"testGaleraMasterLoss":                                         {{TopologyTarget: []string{config.TopoMultiMasterWsrep}, NumberNodesTarget: 3, FlavorTarget: []string{"mariadb"}}},
+	"testGaleraFullRestartNotLastFirst":                            {{TopologyTarget: []string{config.TopoMultiMasterWsrep}, NumberNodesTarget: 3, FlavorTarget: []string{"mariadb"}}},
 	"testGroupReplicationBootstrap":                                {{TopologyTarget: []string{config.TopoMultiMasterGrouprep}, NumberNodesTarget: 2, FlavorTarget: []string{"mysql", "percona"}}},
 	"testGroupReplicationSwitchover":                               {{TopologyTarget: []string{config.TopoMultiMasterGrouprep}, NumberNodesTarget: 2, FlavorTarget: []string{"mysql", "percona"}}},
 	// the group keeps a majority after losing its PRIMARY only from 3 members

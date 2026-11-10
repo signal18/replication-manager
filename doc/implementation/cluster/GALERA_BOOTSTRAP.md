@@ -29,8 +29,9 @@ The split was not reported either: `IsSameWsrepUUID` (ERR00083) ran only inside
 `isGaleraBootstrapNode(server)` is the only rule. It answers true, on a wsrep topology
 target with the cluster down, for:
 
-1. the master still known (`GetMaster`, including a remembered vmaster);
-2. else lastmaster, from memory, else from clusterstate.json;
+1. lastmaster, from memory, else from clusterstate.json: the last node seen when the cluster
+   went down (see below);
+2. else the master still known (`GetMaster`, including a remembered vmaster);
 3. else the **first declared server** (`cluster.Servers[0]`): never "any node", since the
    member list and the start option are rendered at different times.
 
@@ -48,6 +49,24 @@ The `Servers[0]` fallback depends on the declared order. If both the master and 
 are unknown and a config reload reorders `db-servers-hosts` between two renders, two nodes
 could each be "first"; the provision pin below covers a full provision, a hand-made
 reorder in the middle of a manual restart is not covered.
+
+## The last node seen (#2350)
+
+Galera lets only the last node to leave bootstrap (`safe_to_bootstrap: 1`); any other refuses,
+which protects the data but leaves the cluster down. Given the time, the virtual master moves to
+a surviving node, so the master is the last one. Nodes lost within the master's failure retries
+(`failcount`, about 10 s) leave the node stopped first as master, and the last one elsewhere.
+
+`TopologyClusterDown` keeps `lastmaster` on the right node (`trackGaleraLastNodeSeen`): while the
+master has failed and one node is left, that node is `lastmaster`, and the failed master does not
+overwrite it when the cluster is entirely down. With a healthy master, or several nodes left,
+there is none: a survivor of an earlier partial outage is never reused. Several nodes lost in the
+same monitor tick leave the last one unknown: the master stays the choice and WARN0317 says so.
+Master and replicas lost in one tick look like the master leaving last, with no state.
+
+`lastmaster` is read before `GetMaster` for the same reason: `GetMaster` still answers with the
+failed virtual master. When repman did not see the end of the outage (it was down), or after a hard
+crash (every node at `safe_to_bootstrap: 0`), Galera refuses the start and an operator decides.
 
 ## Provision order
 
@@ -102,3 +121,64 @@ replication re-reads its PRIMARY every tick).
   not move the bootstrap node), `TestGaleraBootstrapAfterSwitchoverThenTotalLoss` (the new
   master is saved as lastmaster and bootstraps).
 - Regtests (#2186): `testGaleraBootstrap`, `testGaleraSwitchover`, `testGaleraMasterLoss`.
+
+## After the bootstrap: losing the virtual master, and the rejoin (#2350)
+
+On Galera the cluster fails over by itself. As long as a majority is up, its nodes keep a Primary
+component and every one of them takes writes. replication-manager's virtual master is only the
+node it routes the writes to, so moving it is a switchover, never a promotion.
+
+- **The virtual master moves on its own** (`cluster/galera_vmaster.go`), in any failover mode, as
+  soon as the Primary component has a synced node (`galeraElectable`: Primary, synced, reachable,
+  not failed, ignored or in maintenance). With none there is no majority, and nothing moves.
+  - Failed master: `isAutomaticFailover` is true on Galera when a majority is up. There is no
+    manual-mode gate and no ERR00002 (the GUI has no failover for Galera, so the cluster waited
+    forever). `failover-limit` and `failover-time-limit` do not apply either: they guard
+    master-slave promotions, and a cluster losing a node every day would stop routing after five.
+  - No master (the last one failed before a restart of replication-manager, so `lastmaster` is a
+    failed node, or the master was forgotten when the whole cluster went down): `CheckFailed`
+    elects one (`galeraElectVirtualMaster`): the virtual master it still has when that node is
+    electable, else the preferred master when electable, else the first electable node in
+    declared order. The election is the state WARN0006. It tests `cluster.master`, not
+    `GetMaster()`: a forgotten master stays in `cluster.vmaster`, and `GetMaster()` would keep
+    answering with that failed node, so nothing would ever replace it.
+  - The manual-mode gate applies to Galera only since `06c9757c4` (v3.1.44). Before, Galera
+    clusters were discovered as master-slave.
+- **The empty member list is never a delta.** A bootstrap node runs with
+  `wsrep_cluster_address=gcomm://`. Kept as a runtime delta (`02_delta.cnf`), it made every later
+  start bootstrap a new cluster, and Galera refuses that (`safe_to_bootstrap: 0`).
+  `config.IsGaleraPerStartVariable` (`wsrep_cluster_address`, `wsrep_start_position`) keeps them
+  out of `WriteDeltaVariables`. The configurator strips them when it deploys `02_delta.cnf`
+  (`StripGaleraPerStartVariables`), which also cleans a file written before, on a node that is
+  down.
+- **The bootstrap option is set for one start only.** The provision writes
+  `container#db.command = --wsrep_new_cluster` on the node it bootstraps. Before each OpenSVC v3
+  start of a Galera node, `openSVCSyncGaleraBootstrapCommandV3` brings it in line with that start
+  (`galeraCommandPatch`): set on the bootstrap node of a cluster entirely down
+  (`isGaleraBootstrapNode`), removed from any other start. Any other command is the operator's and
+  is left alone. OpenSVC v2 (the per-pod `container#20<pod>` section) is not covered yet.
+- **The start is in two steps: the network, then the database.** OpenSVC v3 adds a name to its
+  internal DNS only once it sees the node's IP resource up, and during a start the status is not
+  refreshed before the database container runs. A joiner then gets no state transfer: the donor
+  reaches it by name, cannot, and the joiner aborts. `wait_dns` on v3 (`WaitDNSRecord`) does not
+  help: it does not refresh the status, and any lookup error, "not found" included, ends its wait
+  (v2 refreshed the status, waited for the IP in the daemon's data and for a cluster sync, and
+  failed the start on a timeout). So `container#db` carries a `blocking_pre_start`
+  (`galeraNameWaitCommand`): `om <service> instance status -r` refreshes the status once the
+  network is up, then `getent hosts <name>.` retries on "not found", the final dot asking for that
+  exact name, up to 30 s, and the start goes on after that. It is set at provisioning, and before a start
+  on a service provisioned earlier (`openSVCSyncGaleraBootstrapCommandV3`). An operator's own
+  command is left alone.
+- **A failed join does not block the next one.** A state transfer that aborts leaves
+  `wsrep_sst.pid` and `sst_in_progress` in the datadir. Every later start then waits for a
+  transfer that no longer exists and aborts. The OpenSVC `bootstrap` init script, which runs before
+  the database container, removes them when the Galera port (4567) is not listening in the service.
+- **Regtests and proxies.** Every Galera regtest provisions the proxies that are down
+  (`galeraProvisionProxies`; none declared: SKIP) and checks that each one follows the virtual
+  master (`galeraProxiesFollow`): a write through the proxy's write port records the node that
+  executed it, read back on the master. Galera accepts a write on any node, so a read or a
+  successful write would prove nothing.
+- **Regtest** (`TestGaleraMasterLoss`): the master must move by itself in either mode, with no
+  `FailoverNow` and no ERR00002, and the lost node must rejoin Synced. `galeraGate` fails a
+  cluster declared Galera but not discovered Galera. It used to log "Skipping" and return PASS.
+

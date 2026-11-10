@@ -36,8 +36,14 @@ func TestGaleraBootstrapNode(t *testing.T) {
 	if !c.isGaleraBootstrapNode(db2) || c.isGaleraBootstrapNode(db3) {
 		t.Fatal("lastmaster in memory bootstraps")
 	}
-	// a remembered (failed) vmaster: it bootstraps, it used to block every node
+	// a failed vmaster that left first does not take it from the last node seen (#2350)
 	c.vmaster = db1
+	if !c.isGaleraBootstrapNode(db2) || c.isGaleraBootstrapNode(db1) {
+		t.Fatal("lastmaster bootstraps, not a remembered failed vmaster")
+	}
+	// no lastmaster at all: a remembered (failed) vmaster bootstraps, it used to block every node
+	c.lastmaster = nil
+	os.Remove(dir + "/clusterstate.json")
 	if !c.isGaleraBootstrapNode(db1) || c.isGaleraBootstrapNode(db2) {
 		t.Fatal("the master still known bootstraps")
 	}
@@ -45,6 +51,90 @@ func TestGaleraBootstrapNode(t *testing.T) {
 	c.Conf.TopologyTarget = config.TopoMasterSlave
 	if c.isGaleraBootstrapNode(db1) {
 		t.Fatal("not Galera: no bootstrap")
+	}
+}
+
+// #2350: nodes lost within the master's failure retries leave the first one stopped as master.
+// The bootstrap node is the last one seen, the only one Galera lets bootstrap.
+func TestGaleraLastNodeSeenBootstraps(t *testing.T) {
+	newCluster := func(target string) (*Cluster, *ServerMonitor, *ServerMonitor, *ServerMonitor) {
+		db1, db2, db3 := &ServerMonitor{URL: "db1:3306", Host: "db1", Port: "3306", State: stateFailed}, &ServerMonitor{URL: "db2:3306", Host: "db2", Port: "3306", State: stateWsrep}, &ServerMonitor{URL: "db3:3306", Host: "db3", Port: "3306", State: stateWsrep}
+		c := &Cluster{Name: "g", WorkingDir: t.TempDir(), Conf: &config.Config{TopologyTarget: target}, Servers: []*ServerMonitor{db1, db2, db3}, StateMachine: new(state.StateMachine)}
+		c.StateMachine.Init()
+		c.StateMachine.Discovered = true
+		for _, s := range c.Servers {
+			s.ClusterGroup = c
+		}
+		c.master, c.vmaster = db1, db1
+		c.slaves = []*ServerMonitor{db2, db3}
+		return c, db1, db2, db3
+	}
+
+	// the master stops first, then db2, then db3: db3 is the last one seen
+	c, db1, db2, db3 := newCluster(config.TopoMultiMasterWsrep)
+	if c.TopologyClusterDown() || c.lastmaster != nil {
+		t.Fatal("two nodes still up: the cluster is not down, no last node yet")
+	}
+	db2.State = stateFailed
+	db3.State = stateSuspect
+	if c.TopologyClusterDown() || c.lastmaster != db3 {
+		t.Fatal("db3 is the only node left, even suspected: it is the last one seen")
+	}
+	db3.State = stateFailed
+	if !c.TopologyClusterDown() || c.lastmaster != db3 || c.master != nil {
+		t.Fatal("cluster down: lastmaster stays on db3, the failed master does not overwrite it")
+	}
+	if !c.isGaleraBootstrapNode(db3) || c.isGaleraBootstrapNode(db1) || c.isGaleraBootstrapNode(db2) {
+		t.Fatal("db3 bootstraps, not the stale vmaster db1")
+	}
+	if c.StateMachine.CurState.Search("WARN0317") {
+		t.Fatal("the last node is known: no WARN0317")
+	}
+
+	// the master goes last: it is the last one seen
+	c, db1, db2, db3 = newCluster(config.TopoMultiMasterWsrep)
+	db1.State, db2.State, db3.State = stateWsrep, stateFailed, stateFailed
+	if c.TopologyClusterDown() {
+		t.Fatal("the master is up: the cluster is not down")
+	}
+	db1.State = stateFailed
+	if !c.TopologyClusterDown() || c.lastmaster != db1 {
+		t.Fatal("the master left last: it is lastmaster")
+	}
+
+	// a survivor of a partial outage is not reused once the master is healthy again
+	c, db1, db2, db3 = newCluster(config.TopoMultiMasterWsrep)
+	db2.State = stateFailed
+	c.TopologyClusterDown()
+	if c.lastmaster != db3 {
+		t.Fatal("db3 is the survivor")
+	}
+	db1.State, db2.State = stateWsrep, stateWsrep
+	if c.TopologyClusterDown() || c.lastmaster != nil {
+		t.Fatal("master healthy: the survivor of the partial outage is forgotten")
+	}
+
+	// several nodes left in the same tick: unknown, the master stays the choice, and a state says so
+	c, db1, db2, db3 = newCluster(config.TopoMultiMasterWsrep)
+	c.TopologyClusterDown()
+	db2.State, db3.State = stateFailed, stateFailed
+	if !c.TopologyClusterDown() || c.lastmaster != db1 {
+		t.Fatal("no survivor recorded: the master stays the choice")
+	}
+	if !c.StateMachine.CurState.Search("WARN0317") {
+		t.Fatal("the last node is unknown: WARN0317")
+	}
+
+	// not Galera: lastmaster is the master, whatever survived
+	c, db1, db2, db3 = newCluster(config.TopoMasterSlave)
+	db2.State = stateFailed
+	c.TopologyClusterDown()
+	if c.lastmaster != nil {
+		t.Fatal("master-slave: no last node tracking")
+	}
+	db3.State = stateFailed
+	if !c.TopologyClusterDown() || c.lastmaster != db1 {
+		t.Fatal("master-slave: lastmaster is the master")
 	}
 }
 
@@ -185,8 +275,12 @@ func TestGaleraBootstrapPinnedDuringProvision(t *testing.T) {
 	if c.galeraProvisionBootstrap.Load() != nil {
 		t.Fatal("the provision ended: the pin is released")
 	}
+	if !c.isGaleraBootstrapNode(db3) {
+		t.Fatal("after the provision the rule applies again: the last node seen")
+	}
+	c.lastmaster = nil
 	if !c.isGaleraBootstrapNode(db1) || c.isGaleraBootstrapNode(db3) {
-		t.Fatal("after the provision the rule applies again")
+		t.Fatal("after the provision the rule applies again: no last node seen, the master")
 	}
 	// the cluster up at the start of a provision: nothing pinned
 	db1.State = stateMaster

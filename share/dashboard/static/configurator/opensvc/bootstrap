@@ -38,6 +38,19 @@ get() {
 
 mkdir -p /bootstrap
 
+# A Galera state transfer that aborted leaves its lock files behind: every later start of the node
+# waits for a transfer that no longer exists, gives up and stops, so the node can never rejoin.
+# This container runs before the database one: the Galera port not listening in the service's
+# network namespace means no Galera node is running here.
+if [ -f /bootstrap/data/wsrep_sst.pid ] || [ -f /bootstrap/data/sst_in_progress ]; then
+	if netstat -ltn | grep -q ":4567 "; then
+		echo "bootstrap: a Galera node is running, its state transfer lock files are kept" >&2
+	else
+		echo "bootstrap: removing the lock files of an aborted Galera state transfer" >&2
+		rm -f /bootstrap/data/wsrep_sst.pid /bootstrap/data/sst_in_progress
+	fi
+fi
+
 # The data volume owner must match the database container's numeric UID/GID,
 # which replication-manager passes when prov-db-run-as-uid is set (or for Percona
 # Server images: 1001). Without them the legacy owner 999:999 applies, which is

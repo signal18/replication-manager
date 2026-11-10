@@ -387,6 +387,7 @@ type Cluster struct {
 	backupChanges              sync.Map               `json:"-"`
 	backupRegistrationChecking atomic.Bool            `json:"-"`
 	injectTrafficInFlight      atomic.Bool            `json:"-"` // traffic marker injection running in the background (cluster_inject_traffic.go)
+	galeraLastNodeUnknown      atomic.Bool            `json:"-"` // several Galera nodes were up when the last seen were lost: the last to leave is unknown (WARN0317)
 	galeraProvisionBootstrap   atomic.Pointer[string] `json:"-"` // Galera bootstrap node URL kept during a full provision (galera_bootstrap.go)
 	injectTrafficSince         atomic.Int64           `json:"-"` // unix time the running injection started
 	injectTrafficStopped       atomic.Bool            `json:"-"` // traffic stopped since the last injection: the next one creates the marker table again (#2195)

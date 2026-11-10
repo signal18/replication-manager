@@ -40,6 +40,11 @@ func (cluster *Cluster) CheckFailed() {
 		return
 	}
 	if cluster.master == nil {
+		// Galera: no virtual master (its last one failed before a restart of replication-manager,
+		// or none ever routed) while a majority is up: elect one, in any failover mode (#2350)
+		if cluster.galeraElectVirtualMaster() != nil {
+			return
+		}
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Master not discovered, skipping failover check")
 		return
 	}
@@ -170,6 +175,12 @@ func (cluster *Cluster) isAutomaticFailover() bool {
 		cluster.SetState("WARN0244", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0244"], cluster.Name), ErrFrom: "CHECK"})
 		return false
 	}
+	// Galera: the cluster fails over by itself while a majority is up; replication-manager only
+	// moves its virtual master, a switchover, in any failover mode and with no operator, as soon
+	// as the Primary component has a synced node (#2350). With none, nothing moves.
+	if cluster.isGaleraTopology() {
+		return cluster.galeraHasMajority()
+	}
 	if !cluster.Conf.Interactive {
 		return true
 	}
@@ -211,7 +222,8 @@ func (cluster *Cluster) isMaxMasterFailedCountReached() bool {
 func (cluster *Cluster) isMaxClusterFailoverCountNotReached() bool {
 	// illimited failed count
 	//cluster.LogModulePrintf(cluster.Conf.Verbose,config.ConstLogModGeneral,"CHECK: Failover Counter Reach")
-	if cluster.Conf.FailLimit == 0 {
+	// Galera: moving the virtual master is a switchover, not a promotion: never limited (#2350)
+	if cluster.Conf.FailLimit == 0 || cluster.isGaleraTopology() {
 		return true
 	}
 	if cluster.FailoverCtr == cluster.Conf.FailLimit {
@@ -224,7 +236,7 @@ func (cluster *Cluster) isMaxClusterFailoverCountNotReached() bool {
 func (cluster *Cluster) isBetweenFailoverTimeValid() bool {
 	// illimited failed count
 	rem := (cluster.FailoverTs + cluster.Conf.FailTime) - time.Now().Unix()
-	if cluster.Conf.FailTime == 0 {
+	if cluster.Conf.FailTime == 0 || cluster.isGaleraTopology() { // Galera: a switchover (#2350)
 		return true
 	}
 	//	cluster.LogModulePrintf(cluster.Conf.Verbose,config.ConstLogModGeneral,"CHECK: Failover Time to short with previous failover")

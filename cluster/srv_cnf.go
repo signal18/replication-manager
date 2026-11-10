@@ -1027,6 +1027,11 @@ func (server *ServerMonitor) WriteDeltaVariables() error {
 				"Delta of %s: %s not kept, a tag ruleset renders it and the generated config no longer does (preserve it in 01_preserved.cnf to keep it)", server.URL, v.VariableName)
 			continue
 		}
+		// A per-start Galera variable is never a delta: a bootstrap node's gcomm:// kept here
+		// made every later start bootstrap a new cluster (#2350)
+		if config.IsGaleraPerStartVariable(v.VariableName) {
+			continue
+		}
 		// Skip variables that have preservation status set
 		// These are handled by 01_preserved.cnf or 03_agreed.cnf
 		if v.Preserved != nil {
