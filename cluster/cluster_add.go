@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"maps"
-	"net/mail"
 	"path"
 	"slices"
 	"strings"
@@ -422,11 +421,7 @@ func (cluster *Cluster) AddAPIUser(userform UserForm, delegator string, reloadAC
 // isSSOOnlyAdd: no password given, a Cloud18 instance, and the user is an email (the check of
 // the alert recipients, cluster_mail.go).
 func (cluster *Cluster) isSSOOnlyAdd(userform UserForm) bool {
-	if userform.Password != "" || !cluster.Conf.Cloud18 {
-		return false
-	}
-	a, err := mail.ParseAddress(userform.Username)
-	return err == nil && a.Address == userform.Username
+	return userform.Password == "" && cluster.isCloud18Identity(userform.Username)
 }
 
 // AddSSOOnlyUser adds an account with no password: it can only act through an

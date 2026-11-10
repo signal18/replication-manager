@@ -116,3 +116,26 @@ func TestIsLocalOnlyAccount(t *testing.T) {
 		}
 	}
 }
+
+// TestIsLocalOnlyAccount_Cloud18Identity (#2359): on a Cloud18 instance an email account is a
+// Cloud18 identity, its sign-in accepted even with a stored (generated) password; a plain-name
+// account stays local; off Cloud18 nothing changes.
+func TestIsLocalOnlyAccount_Cloud18Identity(t *testing.T) {
+	c := newAuthGuardCluster()
+	c.Conf.Cloud18 = true
+	c.APIUsers["dba"] = APIUser{User: "dba", Password: "secret"}
+	c.APIUsers["ops@corp.com"] = APIUser{User: "ops@corp.com", Password: "generated"}
+	if !c.IsLocalOnlyAccount("dba") {
+		t.Error("a plain-name account with a password must stay local only")
+	}
+	if c.IsLocalOnlyAccount("ops@corp.com") {
+		t.Error("an email account must accept its Cloud18 sign-in on a Cloud18 instance")
+	}
+	if !c.IsValidACL("ops@corp.com", "", "/api/monitor", "oidc") {
+		t.Error("the Cloud18 session of an email account with a stored password must pass")
+	}
+	c.Conf.Cloud18 = false
+	if !c.IsLocalOnlyAccount("ops@corp.com") {
+		t.Error("off Cloud18, an account with a password stays local only")
+	}
+}

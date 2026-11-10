@@ -9,6 +9,7 @@ package cluster
 import (
 	"crypto/subtle"
 	"fmt"
+	"net/mail"
 	"slices"
 	"sort"
 	"strings"
@@ -146,7 +147,19 @@ func (cluster *Cluster) IsLocalOnlyAccount(strUser string) bool {
 	if !ok {
 		return false
 	}
-	return user.Password != "" && strUser != cluster.Conf.Cloud18GitUser
+	return user.Password != "" && strUser != cluster.Conf.Cloud18GitUser && !cluster.isCloud18Identity(strUser)
+}
+
+// isCloud18Identity (#2359): on a Cloud18 instance, an email account is a Cloud18 identity. Its
+// Cloud18 sign-in (and another instance's realm token for it) is accepted even when the account
+// carries a stored password: before the SSO-only add, users/add gave such an account a random
+// password nobody knows, which refused the person's sign-in on every cluster.
+func (cluster *Cluster) isCloud18Identity(user string) bool {
+	if !cluster.Conf.Cloud18 {
+		return false
+	}
+	a, err := mail.ParseAddress(user)
+	return err == nil && a.Address == user
 }
 
 // AuthMethodSubmittedPassword is the auth method of a password a client typed (/api/login,
