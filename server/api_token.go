@@ -728,9 +728,14 @@ func (repman *ReplicationManager) revokeUserAPITokens(owner, by string) (int, er
 		return 0, nil
 	}
 	if err := repman.saveAPITokenStoreLocked(); err != nil {
+		// memory and disk must agree: not saved, not revoked (the caller says so)
+		for _, id := range ids {
+			st.tokens[id].RevokedAt = time.Time{}
+			st.tokens[id].RevokedBy = ""
+		}
 		return 0, err
 	}
-	for _, cl := range repman.Clusters {
+	for _, cl := range repman.clustersSnapshot() {
 		for _, id := range ids {
 			cl.DropTokenPrincipal(id)
 		}

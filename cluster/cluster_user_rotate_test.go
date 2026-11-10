@@ -148,3 +148,29 @@ func TestSetAPIUserPasswordRefusesASeparator(t *testing.T) {
 		}
 	}
 }
+
+// An encrypted list: the other users keep their password, nothing is decrypted twice.
+func TestRotateEncryptedList(t *testing.T) {
+	cl := rotateTestCluster(t, "admin:first,ops:second")
+	enc := "admin:" + cl.Conf.GetEncryptedString("first") + ",ops:" + cl.Conf.GetEncryptedString("second")
+	cl.Conf.DynamicFlagMap[apiCredentialsKey] = enc
+	cl.CredentialChain().Refresh()
+	cl.LoadAPIUsers()
+	if cl.APIUsers["admin"].Password != "first" {
+		t.Fatalf("setup: admin %q", cl.APIUsers["admin"].Password)
+	}
+	if err := cl.SetAPIUserPassword("ops", APIUserScopeInstance, "Rotated-2"); err != nil {
+		t.Fatal(err)
+	}
+	cl.CredentialChain().Refresh()
+	cl.LoadAPIUsers()
+	if got := cl.APIUsers["admin"].Password; got != "first" {
+		t.Fatalf("admin password became %q", got)
+	}
+	if got := cl.APIUsers["ops"].Password; got != "Rotated-2" {
+		t.Fatalf("ops password %q", got)
+	}
+	if got := cl.DecryptedAPIUserList(); got != "admin:first,ops:Rotated-2" {
+		t.Fatalf("decrypted list %q", got)
+	}
+}

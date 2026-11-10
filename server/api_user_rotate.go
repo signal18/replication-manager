@@ -32,6 +32,7 @@ type UserRotateResult struct {
 	Scope         string   `json:"scope"`
 	Clusters      []string `json:"clusters"`
 	TokensRevoked int      `json:"tokensRevoked"`
+	TokensError   string   `json:"tokensError,omitempty"`
 	Copy          string   `json:"copy"`
 }
 
@@ -85,9 +86,13 @@ func (repman *ReplicationManager) handlerMuxUserRotatePassword(w http.ResponseWr
 		}
 		return
 	}
+	tokens := fmt.Sprintf("%d API token(s) revoked", res.TokensRevoked)
+	if res.TokensError != "" {
+		tokens = res.TokensError
+	}
 	repman.logSecurityEvent("api_user_password_rotated", res.Username, r.RemoteAddr,
-		fmt.Sprintf("Password of %s rotated by %s on %s (%s list), %d API token(s) revoked, copy: %s",
-			res.Username, delegator, strings.Join(res.Clusters, ","), res.Scope, res.TokensRevoked, res.Copy))
+		fmt.Sprintf("Password of %s rotated by %s on %s (%s list), %s, copy: %s",
+			res.Username, delegator, strings.Join(res.Clusters, ","), res.Scope, tokens, res.Copy))
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
 	json.NewEncoder(w).Encode(res)
@@ -159,9 +164,14 @@ func (repman *ReplicationManager) rotateAPIUserPassword(cl *cluster.Cluster, use
 	}
 	res := &UserRotateResult{Username: user, Password: pass, Scope: scope}
 	var setErr error
-	for _, t := range targets {
+	for i, t := range targets {
 		if err := t.SetAPIUserPassword(user, scope, pass); err != nil {
-			setErr = fmt.Errorf("rotated on %v, failed on %s: %s", res.Clusters, t.Name, err)
+			var left []string
+			for _, o := range targets[i:] {
+				left = append(left, o.Name)
+			}
+			setErr = fmt.Errorf("rotated on %v; failed on %s: %s; %v still accept the old password: rotate again to set one password everywhere",
+				res.Clusters, t.Name, err, left)
 			break
 		}
 		res.Clusters = append(res.Clusters, t.Name)
@@ -169,7 +179,9 @@ func (repman *ReplicationManager) rotateAPIUserPassword(cl *cluster.Cluster, use
 	if len(res.Clusters) > 0 {
 		// the ban holds wherever the password changed: the tokens go too
 		if res.TokensRevoked, err = repman.revokeUserAPITokens(user, "password rotation by "+by); err != nil {
-			repman.Logrus.Warnf("Password rotation of %s: API tokens not revoked: %s", user, err)
+			// a ban with live tokens is not a ban: said in the answer, not only logged
+			res.TokensError = "API tokens NOT revoked, they may still be valid: " + err.Error()
+			repman.Logrus.Warnf("Password rotation of %s: %s", user, res.TokensError)
 		}
 	}
 	if setErr != nil {

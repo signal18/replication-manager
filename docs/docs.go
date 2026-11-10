@@ -34447,6 +34447,9 @@ const docTemplate = `{
                 "scope": {
                     "type": "string"
                 },
+                "tokensError": {
+                    "type": "string"
+                },
                 "tokensRevoked": {
                     "type": "integer"
                 },

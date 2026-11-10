@@ -5640,6 +5640,8 @@ definitions:
         type: string
       scope:
         type: string
+      tokensError:
+        type: string
       tokensRevoked:
         type: integer
       username:

@@ -398,6 +398,13 @@ request, and every API token it owns is revoked (`revokeUserAPITokens`).
   `<host of api-public-url>_api-credentials`, through the first cluster on OpenSVC; the answer says
   whether it was written, skipped or failed. Off with `secret-kv-copy-api-credentials` (server
   scope, global settings). The Vault copy is not written here yet.
+- **Trade-off of the copy:** it holds every user's password of the instance's list in clear, readable
+  by the infrastructure's administrators only (the OpenSVC system namespace); it lets them reach a
+  repman whose own login is lost. Turn it off where that trade is not wanted.
+- **Tokens:** a revocation that fails (the token store not saved) is undone in memory and said in
+  the answer (`tokensError`) and in the GUI: a ban with live tokens is not a ban.
+- **Limits:** rotations are serialized among themselves, not with the user add, update and drop
+  paths, which write the cluster's own list. A token caller is checked with its owner's grants.
 
 ### The Cloud18 vault entry
 
