@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/mail"
 	"net/url"
 	"os"
 	"os/exec"
@@ -3983,6 +3984,12 @@ func (repman *ReplicationManager) handlerMuxSetSettings(w http.ResponseWriter, r
 	mycluster := repman.getClusterByName(cName)
 	if mycluster != nil {
 		valid, delegator := repman.IsValidClusterACL(r, mycluster)
+		if valid && isExternalOpsSetting(setting) && delegator != "admin" && delegator != repman.Conf.Cloud18GitUser {
+			// the external SysOps / DBOps drives invoicing: the admin's or the registered account's
+			// assignment, not a cluster-settings right (#2371)
+			http.Error(w, "Only the admin or the registered account sets "+setting, http.StatusForbidden)
+			return
+		}
 		if valid {
 			err := repman.setClusterSetting(mycluster, setting, value)
 			if err != nil {
@@ -4328,6 +4335,12 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	}
 
 	switch name {
+	case "cloud18-external-sysops", "cloud18-external-dbops":
+		// a direct assignment by the admin (#2371): empty clears it and its status, an email sets it
+		// active; no workflow, no email. The ext-role workflow (#983) stays the sponsor's path.
+		if err := setExternalOps(mycluster, name, value); err != nil {
+			return err
+		}
 	case "cloud18-marketplace-gwu-free-units":
 		// per-cluster override of the free GWU traffic allowance (#1872)
 		n, err := strconv.Atoi(strings.TrimSpace(value))
@@ -12324,4 +12337,32 @@ func seededServerHost(srvtype, host, port string) string {
 		return host + ":" + port + "/postgres"
 	}
 	return host + ":" + port
+}
+
+// isExternalOpsSetting: the cluster settings that name the external SysOps / DBOps (#2371).
+func isExternalOpsSetting(name string) bool {
+	return name == "cloud18-external-sysops" || name == "cloud18-external-dbops"
+}
+
+// setExternalOps sets or clears a cluster's external SysOps / DBOps and its status (#2371); the
+// caller (setClusterSetting) saves the configuration.
+func setExternalOps(mycluster *cluster.Cluster, name string, value string) error {
+	v := strings.TrimSpace(value)
+	if v != "" {
+		if a, err := mail.ParseAddress(v); err != nil || a.Address != v {
+			return fmt.Errorf("%s must be an email address or empty, got %q", name, value)
+		}
+	}
+	status := ""
+	if v != "" {
+		status = config.ExternalActive
+	}
+	if name == "cloud18-external-sysops" {
+		mycluster.SetCloud18ExternalSysOps(v)
+		mycluster.Conf.Cloud18ExternalSysOpsStatus = status
+	} else {
+		mycluster.SetCloud18ExternalDbOps(v)
+		mycluster.Conf.Cloud18ExternalDbOpsStatus = status
+	}
+	return nil
 }

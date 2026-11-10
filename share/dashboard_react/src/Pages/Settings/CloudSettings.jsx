@@ -111,6 +111,9 @@ function CloudSettings({ selectedCluster, user }) {
     closeTermsModal()
   }
 
+  // #2371: assigning the external SysOps / DBOps directly is the admin's or the registered account's
+  const loggedUser = localStorage.getItem('username')
+  const canAssignExternalOps = loggedUser === 'admin' || (!!monitor?.config?.cloud18GitUser && loggedUser === monitor?.config?.cloud18GitUser)
   const hasDbops = selectedCluster?.config?.cloud18ExternalDbOps
   const dbopsPending = selectedCluster?.config?.cloud18ExternalDbOpsStatus == "pending"
   const dbopsActive = selectedCluster?.config?.cloud18ExternalDbOpsStatus == "active"
@@ -198,6 +201,17 @@ function CloudSettings({ selectedCluster, user }) {
           </HStack>
         )
       },
+      ...(canAssignExternalOps ? ['sysops', 'dbops'].map((kind) => {
+        const setting = `cloud18-external-${kind}`
+        const label = kind === 'sysops' ? 'Sys Ops' : 'DB Ops'
+        const current = kind === 'sysops' ? selectedCluster?.config?.cloud18ExternalSysOps : selectedCluster?.config?.cloud18ExternalDbOps
+        return {
+          clusterSetting: setting,
+          key: `Assign External ${label} (admin)`,
+          help: h(`**Assign External ${label} (admin)**\n\nSets this cluster's external ${label} directly, without the subscription workflow and without any email: an email sets it active, an empty value clears it. It drives invoicing, so only the admin and the account the instance is registered with can change it (#2371).\n\nConfig: \`${setting}\``, `Assign External ${label} (admin)`),
+          value: (<TextForm value={current || ''} confirmTitle={`Confirm ${setting} to `} maxLength={254} className={styles.textbox} onSave={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting, value }))} />)
+        }
+      }) : []),
       { key: 'Cloud18 Sponsor User Credentials', help: h(hSponsor, 'Cloud18 Sponsor User Credentials'), value: (<RMIconButton icon={HiKey} onClick={() => { setCredentialType('cloud18-sponsor-user-credentials'); setIsCredentialModalOpen(true) }} />) },
     ] : [])
   ]

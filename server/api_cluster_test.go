@@ -2272,3 +2272,37 @@ func TestSetClusterSetting_Sysbench(t *testing.T) {
 		t.Fatalf("refused values changed the settings: %s %d %d %d %d", c.SysbenchTest, c.SysbenchTime, c.SysbenchThreads, c.SysbenchTables, c.SysbenchScale)
 	}
 }
+
+// TestSetClusterSetting_ExternalOps (#2371): the admin assigns or clears a cluster's external
+// SysOps / DBOps directly: an email sets it active, empty clears it and its status, anything else
+// is refused and the field kept.
+func TestSetClusterSetting_ExternalOps(t *testing.T) {
+	cl := newTestClusterForAPI(t)
+	cl.Conf.Secrets = config.NewSecrets(nil)
+	cl.ConfigManager = newConfigManagerForTest()
+	repman := newTestRepmanWithCluster(t, cl.Name, cl)
+	cl.Conf.Cloud18ExternalSysOps = "wrong@typo.example"
+	cl.Conf.Cloud18ExternalSysOpsStatus = config.ExternalPending
+
+	if err := repman.setClusterSetting(cl, "cloud18-external-sysops", "ops@corp.com"); err != nil {
+		t.Fatalf("set an email: %v", err)
+	}
+	if cl.Conf.Cloud18ExternalSysOps != "ops@corp.com" || cl.Conf.Cloud18ExternalSysOpsStatus != config.ExternalActive {
+		t.Fatalf("got %q / %q, want ops@corp.com / active", cl.Conf.Cloud18ExternalSysOps, cl.Conf.Cloud18ExternalSysOpsStatus)
+	}
+	if err := repman.setClusterSetting(cl, "cloud18-external-sysops", "not an email"); err == nil {
+		t.Fatal("a value that is not an email must be refused")
+	}
+	if cl.Conf.Cloud18ExternalSysOps != "ops@corp.com" {
+		t.Fatal("a refused value must keep the field")
+	}
+	if err := repman.setClusterSetting(cl, "cloud18-external-sysops", ""); err != nil {
+		t.Fatalf("clear: %v", err)
+	}
+	if cl.Conf.Cloud18ExternalSysOps != "" || cl.Conf.Cloud18ExternalSysOpsStatus != "" {
+		t.Fatalf("clear left %q / %q", cl.Conf.Cloud18ExternalSysOps, cl.Conf.Cloud18ExternalSysOpsStatus)
+	}
+	if err := repman.setClusterSetting(cl, "cloud18-external-dbops", "dba@corp.com"); err != nil || cl.Conf.Cloud18ExternalDbOpsStatus != config.ExternalActive {
+		t.Fatalf("dbops: err=%v status=%q", err, cl.Conf.Cloud18ExternalDbOpsStatus)
+	}
+}
