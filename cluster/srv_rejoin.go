@@ -1008,20 +1008,26 @@ func (server *ServerMonitor) rejoinSlave(ss dbhelper.SlaveStatus) error {
 	return nil
 }
 
-// rejoinBackupBoundGtid is the position a backup restored in the rejoin of server must not
-// pass: what the new primary had received from it at the failover (its pending crash's
-// FailoverIOGtid). MariaDB only, where both positions are domain-server-seq lists; "" when
-// server has no pending crash (not a rejoin) or is not MariaDB: no gate (#2365).
-func (server *ServerMonitor) rejoinBackupBoundGtid() string {
+// setRejoinBound sets the rejoin gate of ctx for server (#2365): the position a restored
+// backup must not pass, what the new primary had received from server at the failover (the
+// FailoverIOGtid of the first working crash of server's URL, the one the rejoin runs), and
+// the new primary and failover time, whose later backups pass whatever their position. No
+// gate when server is not MariaDB, does not replicate with GTID (positional replication:
+// not analysed, the behaviour before the gate is kept; a GTID position can be the wrong
+// tool there), has no working crash (not a rejoin), or its crash has no FailoverIOGtid (not
+// captured at the failover: the behaviour before the gate).
+func (server *ServerMonitor) setRejoinBound(ctx *ResolveContext) {
 	cluster := server.ClusterGroup
-	if !server.IsMariaDB() {
-		return ""
+	if !server.IsMariaDB() || !server.HasGTIDReplication() {
+		return
 	}
 	crash := cluster.getCrashFromJoiner(server.URL)
 	if crash == nil || crash.FailoverIOGtid == nil || len(*crash.FailoverIOGtid) == 0 {
-		return ""
+		return
 	}
-	return crash.FailoverIOGtid.Sprint()
+	ctx.RejoinBoundGtid = crash.FailoverIOGtid.Sprint()
+	ctx.RejoinElectedURL = crash.ElectedMasterURL
+	ctx.RejoinFailoverTs = crash.UnixTimestamp
 }
 
 func (server *ServerMonitor) isReplicationAheadOfMasterElection(crash *Crash) bool {

@@ -25,6 +25,21 @@ const aheadSchema = "rejoin_ahead"
 // PASS only when the old primary ends without the 100 rows and replicating; every observed
 // fact is logged either way: the backup picked, the rows on each side, the replication state.
 func (regtest *RegTest) TestFailoverRejoinLogicalBackupAheadOfFailover(cl *cluster.Cluster, conf string, test *cluster.Test) bool {
+	return rejoinBackupAheadScenario(cl, false)
+}
+
+// TestFailoverRejoinLogicalBackupOfNewPrimary: the same failover, without the replica's backup
+// taken before the rows; after the failover 10 rows are written on the new primary and it is
+// backed up with mydumper. That backup is past the failover position, but holds only the new
+// primary's data: the rejoin must restore it (#2365). PASS only when the rejoin picks it and
+// the old primary ends with the new primary's data, replicating.
+func (regtest *RegTest) TestFailoverRejoinLogicalBackupOfNewPrimary(cl *cluster.Cluster, conf string, test *cluster.Test) bool {
+	return rejoinBackupAheadScenario(cl, true)
+}
+
+// rejoinBackupAheadScenario runs both: newPrimaryBackup false, the restored backup is a
+// replica's from before the rows; true, the new primary's from after the failover.
+func rejoinBackupAheadScenario(cl *cluster.Cluster, newPrimaryBackup bool) bool {
 	saved := *cl.Conf
 	defer func() {
 		cl.SetBackupLogicalType(saved.BackupLogicalType)
@@ -73,10 +88,12 @@ func (regtest *RegTest) TestFailoverRejoinLogicalBackupAheadOfFailover(cl *clust
 		return fail("no replica")
 	}
 	// the safe backup: a replica's, before the rows the new primary will never receive
-	if err := replicas[0].JobBackupLogical(context.Background()); err != nil {
-		return fail("mydumper backup of %s: %s", replicas[0].URL, err)
+	if !newPrimaryBackup {
+		if err := replicas[0].JobBackupLogical(context.Background()); err != nil {
+			return fail("mydumper backup of %s: %s", replicas[0].URL, err)
+		}
+		logf("mydumper backup of %s taken before the 100 rows: the one a rejoin may restore", replicas[0].URL)
 	}
-	logf("mydumper backup of %s taken before the 100 rows: the one a rejoin may restore", replicas[0].URL)
 	for _, sl := range replicas {
 		logs, err := sl.StopSlaveIOThread()
 		cl.LogSQL(logs, err, sl.URL, "Rejoin", config.LvlErr, "STOP SLAVE IO_THREAD on %s: %s", sl.URL, err)
@@ -112,6 +129,18 @@ func (regtest *RegTest) TestFailoverRejoinLogicalBackupAheadOfFailover(cl *clust
 	for _, sl := range cl.GetSlaves() {
 		sl.StartSlave()
 	}
+	if newPrimaryBackup {
+		for i := 1001; i <= 1010; i++ {
+			if _, err := newMaster.Conn.Exec(fmt.Sprintf("INSERT INTO %s.t VALUES (%d)", aheadSchema, i)); err != nil {
+				return fail("insert on %s: %s", newMaster.URL, err)
+			}
+		}
+		time.Sleep(2 * time.Second) // the backup ends after the failover second
+		if err := newMaster.JobBackupLogical(context.Background()); err != nil {
+			return fail("mydumper backup of %s: %s", newMaster.URL, err)
+		}
+		logf("10 rows written on the new primary %s, then its mydumper backup: past the failover position, its own data", newMaster.URL)
+	}
 
 	cl.StartDatabaseService(master)
 	deadline := time.Now().Add(3 * time.Minute)
@@ -122,6 +151,16 @@ func (regtest *RegTest) TestFailoverRejoinLogicalBackupAheadOfFailover(cl *clust
 		time.Sleep(2 * time.Second)
 	}
 	logf("%s back, rows there before the rejoin: %s", oldURL, count(master))
+	pick := master.RejoinLogicalBackupPick(config.ConstBackupLogicalTypeMydumper)
+	logf("backup the rejoin of %s restores: the one of %q", oldURL, pick)
+	switch {
+	case pick == "":
+		return fail("no backup passes the rejoin gate")
+	case pick == oldURL:
+		return fail("the rejoin picks the old primary's own backup, ahead of the failover position")
+	case newPrimaryBackup && pick != newMaster.URL:
+		return fail("the rejoin picks %s, not the new primary %s's backup taken after the failover", pick, newMaster.URL)
+	}
 
 	task := "flashback" + config.ConstBackupLogicalTypeMydumper
 	requested := time.Now().Unix()

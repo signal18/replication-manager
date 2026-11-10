@@ -104,6 +104,24 @@ type ResolveContext struct {
 	// of it holds transactions the new primary never received: restoring it brings back
 	// what the failover lost and the server cannot replicate (#2365). Hard gate, "" = none.
 	RejoinBoundGtid string
+	// RejoinElectedURL and RejoinFailoverTs, with RejoinBoundGtid: the new primary and the
+	// failover time. A backup of the new primary taken after the failover holds only its
+	// data, the reference of the rejoin: it passes the gate whatever its position.
+	RejoinElectedURL string
+	RejoinFailoverTs int64
+}
+
+// rejoinBackupAllowed reports whether the rejoin gate lets e be restored: no gate (not a
+// rejoin), a backup at or before the failover position, or a backup of the new primary
+// taken after the failover (#2365).
+func rejoinBackupAllowed(e BackupCatalogEntry, ctx ResolveContext) bool {
+	if ctx.RejoinBoundGtid == "" {
+		return true
+	}
+	if ctx.RejoinElectedURL != "" && e.Server == ctx.RejoinElectedURL && ctx.RejoinFailoverTs > 0 && e.Timestamp >= ctx.RejoinFailoverTs {
+		return true
+	}
+	return gtidNotAheadOf(e.Gtid, ctx.RejoinBoundGtid)
 }
 
 // ResolveRestore returns the best backup for the selector, or nil if nothing
@@ -141,7 +159,7 @@ func gatePass(sel RestoreSelector, e BackupCatalogEntry, ctx ResolveContext) boo
 		return false
 	}
 	// rejoin — never a backup ahead of what the new primary received at the failover
-	if ctx.RejoinBoundGtid != "" && !gtidNotAheadOf(e.Gtid, ctx.RejoinBoundGtid) {
+	if !rejoinBackupAllowed(e, ctx) {
 		return false
 	}
 	// time — replayability window vs the master's binlog range
@@ -150,6 +168,8 @@ func gatePass(sel RestoreSelector, e BackupCatalogEntry, ctx ResolveContext) boo
 
 // gtidNotAheadOf reports whether the MariaDB GTID position backup is at or before bound in
 // every replication domain: each domain of backup is in bound with a sequence not greater.
+// The sequence alone is compared, not the server_id: exact under gtid_strict_mode, where a
+// domain's sequence only grows; without it two servers can interleave in a domain.
 // A position that cannot be compared (empty, not domain-server-seq, a domain bound does not
 // have) counts as ahead: the rejoin gate never restores a backup it cannot place.
 func gtidNotAheadOf(backup, bound string) bool {

@@ -3187,6 +3187,33 @@ func isSplitDumpName(path string) bool {
 	return err == nil
 }
 
+// resolveRejoinLogicalBackup is the logical backup of tool backtype a rejoin of server
+// restores, with the selector, catalog and context it was chosen from: any node's backup,
+// held to the rejoin gate (setRejoinBound). nil when none passes. JobFlashbackLogicalBackup
+// restores it; RejoinLogicalBackupPick shows the same choice (#2365).
+func (server *ServerMonitor) resolveRejoinLogicalBackup(master *ServerMonitor, backtype string) (RestoreSelector, []BackupCatalogEntry, ResolveContext, *BackupCatalogEntry) {
+	cluster := server.ClusterGroup
+	sel := cluster.getAutorejoinBackupSelector("logical")
+	sel.Tool = []string{backtype} // restore dispatch is backtype-based → force the tool for consistency
+	catalog := cluster.buildBackupCatalog()
+	rctx := ResolveContext{MasterURL: master.URL, TargetURL: server.URL}
+	server.setRejoinBound(&rctx)
+	return sel, catalog, rctx, ResolveRestore(catalog, sel, rctx)
+}
+
+// RejoinLogicalBackupPick is the server a rejoin of server by a logical backup of tool
+// backtype would restore from, "" when none passes the rejoin gate: what the regtests check.
+func (server *ServerMonitor) RejoinLogicalBackupPick(backtype string) string {
+	master := server.ClusterGroup.GetMaster()
+	if master == nil {
+		return ""
+	}
+	if _, _, _, pick := server.resolveRejoinLogicalBackup(master, backtype); pick != nil {
+		return pick.Server
+	}
+	return ""
+}
+
 func (server *ServerMonitor) JobFlashbackLogicalBackup() error {
 	var dest, backupfile string
 	var err error
@@ -3248,21 +3275,17 @@ func (server *ServerMonitor) JobFlashbackLogicalBackup() error {
 		// consistent backup works — replication catches up the delta — so the source
 		// node does not matter. A local or remote (mounted bucket) backup is read where it
 		// is, an archive-only one fetched back first.
-		sel := cluster.getAutorejoinBackupSelector("logical")
-		sel.Tool = []string{backtype} // restore dispatch is backtype-based → force the tool for consistency
-		catalog := cluster.buildBackupCatalog()
-		rctx := ResolveContext{MasterURL: master.URL, TargetURL: server.URL, RejoinBoundGtid: server.rejoinBackupBoundGtid()}
-		pick := ResolveRestore(catalog, sel, rctx)
+		sel, catalog, rctx, pick := server.resolveRejoinLogicalBackup(master, backtype)
 		// a rejoin restores no backup ahead of what the new primary received at the failover,
 		// and never falls back to the on-disk lookup below, which would take any file (#2365)
 		if rctx.RejoinBoundGtid != "" {
 			for _, e := range catalog {
-				if e.Kind == "logical" && e.Tool == backtype && !gtidNotAheadOf(e.Gtid, rctx.RejoinBoundGtid) {
+				if e.Kind == "logical" && e.Tool == backtype && !rejoinBackupAllowed(e, rctx) {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "flashback %s on %s: backup %s of %s at GTID %q not restored, ahead of the failover position %s (it may hold transactions the new primary never received)", backtype, server.URL, e.Path, e.Server, e.Gtid, rctx.RejoinBoundGtid)
 				}
 			}
 			if pick == nil {
-				err = fmt.Errorf("no logical %s backup at or before the failover position %s: a backup ahead of it would bring back transactions the new primary never received", backtype, rctx.RejoinBoundGtid)
+				err = fmt.Errorf("no logical %s backup at or before the failover position %s, nor of the new primary %s since the failover: a backup ahead of it would bring back transactions the new primary never received", backtype, rctx.RejoinBoundGtid, rctx.RejoinElectedURL)
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "flashback %s on %s refused: %s", backtype, server.URL, err)
 				server.JobsUpdateStateRuntimeOnly(task, err.Error(), 5, 1)
 				server.SetInReseedBackup("")

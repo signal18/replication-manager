@@ -3,7 +3,7 @@ package cluster
 import "testing"
 
 // The rejoin of a failed primary restores no backup ahead of what the new primary received
-// at the failover (#2365): on dev4, the old primary's own mydumper backup, holding 100 rows
+// at the failover (#2365): on a MariaDB test cluster, the old primary's own mydumper backup, holding 100 rows
 // the new primary never received, was restored and the old primary diverged.
 func TestResolveRestore_RejoinBoundExcludesABackupAheadOfTheFailover(t *testing.T) {
 	sel := RestoreSelector{Type: []string{"logical"}, Tool: []string{"mydumper"}, Origin: OriginAny, Repo: RepoAny, Order: []string{"last", "local"}}
@@ -23,6 +23,32 @@ func TestResolveRestore_RejoinBoundExcludesABackupAheadOfTheFailover(t *testing.
 	catalog = catalog[1:]
 	if pick := ResolveRestore(catalog, sel, ctx); pick != nil {
 		t.Fatalf("only a backup ahead of the failover position: none to restore, got %+v", pick)
+	}
+}
+
+// A backup of the new primary taken after the failover holds only the new primary's data: it
+// passes the rejoin gate whatever its position. One of the new primary from before the
+// failover, or of another server, is still held to the failover position.
+func TestResolveRestore_RejoinAcceptsTheNewPrimaryBackupAfterTheFailover(t *testing.T) {
+	sel := RestoreSelector{Type: []string{"logical"}, Tool: []string{"mydumper"}, Origin: OriginAny, Repo: RepoAny, Order: []string{"last", "local"}}
+	ctx := ResolveContext{MasterURL: "db2:3306", TargetURL: "db1:3306", RejoinBoundGtid: "1-100-1000", RejoinElectedURL: "db2:3306", RejoinFailoverTs: 1500}
+	catalog := []BackupCatalogEntry{
+		{ID: 1, Server: "db1:3306", Kind: "logical", Tool: "mydumper", Timestamp: 1400, Gtid: "1-100-1100"}, // old primary, ahead
+		{ID: 2, Server: "db2:3306", Kind: "logical", Tool: "mydumper", Timestamp: 2000, Gtid: "1-200-1300"}, // new primary, after the failover
+	}
+	if pick := ResolveRestore(catalog, sel, ctx); pick == nil || pick.ID != 2 {
+		t.Fatalf("the new primary's backup after the failover must be picked, got %+v", pick)
+	}
+	for _, e := range []BackupCatalogEntry{
+		{Server: "db2:3306", Timestamp: 1400, Gtid: "1-100-1100"}, // new primary, before the failover, ahead
+		{Server: "db3:3306", Timestamp: 2000, Gtid: "1-200-1300"}, // another server after the failover, ahead
+	} {
+		if rejoinBackupAllowed(e, ctx) {
+			t.Errorf("%+v passes the rejoin gate, want refused", e)
+		}
+	}
+	if !rejoinBackupAllowed(BackupCatalogEntry{Server: "db1:3306", Gtid: "1-100-1100"}, ResolveContext{}) {
+		t.Errorf("no rejoin bound: every backup passes")
 	}
 }
 
