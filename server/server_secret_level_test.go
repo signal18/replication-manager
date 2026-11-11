@@ -186,8 +186,14 @@ func TestServerLevelAdoptsClusterVersionsAtUpgrade(t *testing.T) {
 	globals := &cluster.ServerGlobals{ServerSecrets: repman.serverSecretLevel(), AdoptServerVersions: repman.adoptServerVersionsFromCluster}
 	cl := &cluster.Cluster{Name: "c1", Conf: serverLevelConf(dir, "admin:first,ops:second"), ServerGlobals: globals,
 		APIUsers: map[string]cluster.APIUser{}, Grants: config.GetGrantType(), Roles: config.GetRoleType(), SecurityLogrus: log.New(), Logrus: log.New()}
+	// as on an instance: the cluster's config holds every secret, the server's ones included
+	cl.Conf.Secrets = config.NewSecrets(map[string]config.Secret{
+		apiCredentialsKey:       {Value: cl.Conf.GetEncryptedString("admin:first,ops:second")},
+		"db-servers-credential": {Value: cl.Conf.GetEncryptedString("root:db")},
+	})
 	cl.CredentialChain().Refresh()
 	cl.LoadAPIUsers()
+	cl.MarkSecretVersionStoreDirty()
 	if _, err := cl.GetAPIUser("ops", "Rotated-old"); err != nil {
 		t.Fatalf("the cluster does not take the rotated password: %v", err)
 	}

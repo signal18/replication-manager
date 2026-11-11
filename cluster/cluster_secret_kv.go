@@ -631,6 +631,11 @@ func (cluster *Cluster) versionStore() *credstore.VersionStore {
 	return c.versions
 }
 
+// isServerSecret: key is a server secret, read from the server's chain, never versioned here.
+func (cluster *Cluster) isServerSecret(key string) bool {
+	return cluster.ServerGlobals != nil && cluster.ServerGlobals.ServerSecrets.Holds(key)
+}
+
 // handOverServerVersions gives the server the versions of server secrets an older release kept
 // in this cluster's file; the file is written without them at the next save.
 func (cluster *Cluster) handOverServerVersions(vs *credstore.VersionStore) {

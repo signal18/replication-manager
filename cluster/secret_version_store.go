@@ -148,7 +148,8 @@ func (cluster *Cluster) getTrackedSecretStoreValuesWithWarnings(logWarnings bool
 	}
 
 	for key, secret := range cluster.Conf.Secrets.Snapshot() {
-		if secret.Value == "" {
+		// a server secret's versions are the server's only (CREDENTIAL_STORES.md "Two levels")
+		if secret.Value == "" || cluster.isServerSecret(key) {
 			continue
 		}
 
