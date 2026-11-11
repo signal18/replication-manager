@@ -122,14 +122,18 @@ function InstanceNameModal() {
     <Modal size='3xl' isOpen={isOpen} onClose={close} closeOnOverlayClick={false}>
       <ModalOverlay />
       <ModalContent className={theme === 'light' ? parentStyles.modalLightContent : parentStyles.modalDarkContent}>
-        <ModalHeader>Name this replication-manager</ModalHeader>
+        <ModalHeader>Version and rotate your secrets</ModalHeader>
         <ModalCloseButton />
         <ModalBody>
           <Stack spacing='5'>
+            <Text fontWeight='semibold'>
+              To version and rotate your secrets, starting with the admin API user's password, in an
+              encrypted local file, Vault, OpenSVC or Kubernetes, name this replication-manager.
+            </Text>
             <Text>
               Every replication-manager in your network needs a unique name. It tells this one apart from
               the others wherever they share a place: a key-value store that keeps its secrets (Vault,
-              OpenSVC) and a GitLab that backs up its configuration.
+              OpenSVC, Kubernetes) and a GitLab that backs up its configuration.
             </Text>
             <Text>
               The name has three parts. The hostname is filled in; enter your company and where this
