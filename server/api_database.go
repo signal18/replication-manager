@@ -5417,14 +5417,14 @@ func (repman *ReplicationManager) handlerMuxServerJobsCheckReceiver(w http.Respo
 // returns the receiver address. Used in API job mode so the dbjobs script can
 // discover where to stream data (backups, logs) without polling the jobs table.
 // @Summary Open a TCP receiver for a remote task
-// @Description For mysqldump (scheduler-jobs-exec-remote lists it) the receiver opens only while a logical backup of the server waits for it, and the answer also carries the dump arguments: base64 of the arguments, one per line, without the connection arguments the DB host provides.
+// @Description For xtrabackup and mariabackup the answer is the receiver the running physical backup of the server opened (one receiver per backup). For mysqldump (scheduler-jobs-exec-remote lists it) the receiver opens only while a logical backup of the server waits for it, and the answer also carries the dump arguments: base64 of the arguments, one per line, without the connection arguments the DB host provides.
 // @Tags DatabaseTasks
 // @Param clusterName path string true "Cluster name"
 // @Param serverName path string true "Server hostname"
 // @Param serverPort path string true "Server port"
 // @Param taskname path string true "Task name (xtrabackup, mariabackup, mysqldump, errorlog, etc.)"
 // @Success 200 {string} string "RECEIVER_PORT=<port>, for mysqldump RECEIVER_PORT=<port> DUMP_ARGS=<base64>, then LOCK_DDL=1 when dbjobs blocks DDL around the dump client"
-// @Failure 500 {string} string "No remote mysqldump backup waiting on <server>"
+// @Failure 500 {string} string "No remote mysqldump backup waiting on <server>, or for xtrabackup/mariabackup, No physical backup <task> waiting for its stream on <server>"
 // @Router /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/actions/receive-task/{taskname} [post]
 func (repman *ReplicationManager) handlerMuxServerReceiveTask(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -5453,15 +5453,13 @@ func (repman *ReplicationManager) handlerMuxServerReceiveTask(w http.ResponseWri
 	var rcvPort string
 	switch config.TaskName(taskname) {
 	case config.ConstTaskXB, config.ConstTaskMB:
-		backupext := ".xbtream"
-		if mycluster.GetConf().CompressBackups {
-			backupext += ".gz"
-		}
-		dest = node.GetMyBackupDirectory() + mycluster.GetConf().BackupPhysicalType + backupext
-		if mycluster.GetConf().CompressBackups {
-			rcvPort, err = mycluster.SSTRunReceiverToGZip(node, dest, cluster.ConstJobCreateFile, taskname)
-		} else {
-			rcvPort, err = mycluster.SSTRunReceiverToFile(node, dest, cluster.ConstJobCreateFile, taskname)
+		// The physical backup of this server opened its receiver when it started (destination,
+		// staging and metadata are its own): hand that one out. A second receiver on the same
+		// file, left unused, would rewrite the finished backup when its accept deadline ends.
+		rcvPort, err = node.PhysicalBackupReceiverPort(taskname)
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
 		}
 	case config.ConstTaskError, config.ConstTaskSlowQuery, config.ConstTaskAuditLog, config.ConstTaskSqlError:
 		// Fetched DB log tasks must land in the same canonical, helper-selected
