@@ -293,6 +293,11 @@ func isWarnObjectRefusal(err error) bool {
 // live object without a reprovisioning, the next restart runs the new definition. Returns
 // once the node has loaded it (#1792).
 func (cluster *Cluster) OpenSVCUpdateAppTemplate(app *App) error {
+	// a monitor-only app's service is not ours: replacing its definition with our template
+	// would break it (it was written by hand, with containers our template does not have)
+	if err := cluster.refuseMonitorOnlyApp(app); err != nil {
+		return err
+	}
 	svc := cluster.OpenSVCConnect()
 	if !svc.IsV3() {
 		return fmt.Errorf("the service definition update requires the OpenSVC v3 API")
@@ -407,6 +412,9 @@ func (cluster *Cluster) OpenSVCAbortAppService(app *App) error {
 }
 
 func (cluster *Cluster) OpenSVCClearAppInstanceState(app *App, node string) error {
+	if err := cluster.refuseMonitorOnlyApp(app); err != nil {
+		return err
+	}
 	svc := cluster.OpenSVCConnect()
 	if cluster.Conf.ProvOpensvcUseCollectorAPI || !svc.IsV3() {
 		err := ErrOpenSVCClearNotSupported
@@ -964,6 +972,11 @@ func (cluster *Cluster) OpenSVCFoundAppAgent(app *App) (opensvc.Host, error) {
 }
 
 func (cluster *Cluster) OpenSVCPushAppVariableMaps(app *App) error {
+	// a monitor-only app has no config or secret object of ours: creating them would write
+	// into the namespace of a service that is not ours
+	if err := cluster.refuseMonitorOnlyApp(app); err != nil {
+		return err
+	}
 	// Agent is used only for the object-creation step (CreateSecret/CreateConfig).
 	// On V3 the agent argument is ignored entirely; on V2 it becomes the o-node
 	// header, with an empty string falling back to "ANY". Key-value writes always
@@ -990,7 +1003,7 @@ func (cluster *Cluster) OpenSVCUpdateAppConfig(app *App) error {
 		return err
 	}
 	svc := cluster.OpenSVCConnect()
-	if cluster.Conf.ProvOpensvcUseCollectorAPI || app.AppConfig.IsMonitorOnly() {
+	if cluster.Conf.ProvOpensvcUseCollectorAPI {
 		return nil
 	}
 	if !svc.IsV3() {
