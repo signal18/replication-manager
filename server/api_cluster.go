@@ -5168,7 +5168,7 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		if err != nil {
 			return errors.New("unable to decode")
 		}
-		if err := mycluster.CredentialChain().Set("mail-smtp-password", string(val)); err != nil {
+		if err := mycluster.SetCredential("mail-smtp-password", string(val)); err != nil {
 			return err
 		}
 		mycluster.Conf.MailSMTPPassword = string(val)
@@ -5204,7 +5204,7 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		if err != nil {
 			return errors.New("unable to decode")
 		}
-		if err := mycluster.CredentialChain().Set("cloud18-gitlab-password", string(val)); err != nil {
+		if err := mycluster.SetCredential("cloud18-gitlab-password", string(val)); err != nil {
 			return err
 		}
 		mycluster.Conf.Cloud18GitPassword = string(val)
@@ -5213,7 +5213,7 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		if err != nil {
 			return errors.New("unable to decode")
 		}
-		if err := mycluster.CredentialChain().Set("cloud18-domain-secret", string(val)); err != nil {
+		if err := mycluster.SetCredential("cloud18-domain-secret", string(val)); err != nil {
 			return err
 		}
 		mycluster.Conf.Cloud18DomainSecret = string(val)

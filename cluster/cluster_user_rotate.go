@@ -32,39 +32,15 @@ func apiUserListKey(scope string) string {
 	return "api-credentials-external"
 }
 
-// listHasUser: list (user:password,...) has an entry for user.
-func listHasUser(list, user string) bool {
-	for _, e := range strings.Split(list, ",") {
-		if u, _, _ := strings.Cut(strings.TrimSpace(e), ":"); u == user {
-			return true
-		}
-	}
-	return false
-}
-
-// listWithPassword returns list with user's password set to pass, every other entry as it is.
-func listWithPassword(list, user, pass string) (string, bool) {
-	entries := strings.Split(list, ",")
-	found := false
-	for i, e := range entries {
-		u, _, _ := strings.Cut(strings.TrimSpace(e), ":")
-		if u == user {
-			entries[i] = user + ":" + pass
-			found = true
-		}
-	}
-	return strings.Join(entries, ","), found
-}
-
 // APIUserScope says which list holds user's local password on this cluster, "" when none.
 func (cluster *Cluster) APIUserScope(user string) string {
 	if user == "" {
 		return ""
 	}
-	if listHasUser(cluster.Conf.GetDecryptedValue(apiCredentialsKey), user) {
+	if config.APIUserListHas(cluster.Conf.GetDecryptedValue(apiCredentialsKey), user) {
 		return APIUserScopeInstance
 	}
-	if listHasUser(cluster.Conf.GetDecryptedValue("api-credentials-external"), user) {
+	if config.APIUserListHas(cluster.Conf.GetDecryptedValue("api-credentials-external"), user) {
 		return APIUserScopeCluster
 	}
 	return ""
@@ -88,6 +64,10 @@ func (cluster *Cluster) CanRotateAPIUserPassword(user string) error {
 	}
 	if u, ok := cluster.APIUsers[user]; !ok || u.Password == "" {
 		return errors.New(user + " has no local password: it signs in with Cloud18")
+	}
+	if scope == APIUserScopeInstance {
+		// a server secret: the server's chain takes it, checked by the server
+		return nil
 	}
 	if err := cluster.CredentialChain().CanSet(apiUserListKey(scope)); err != nil {
 		return fmt.Errorf("%s cannot take a new value here: %s", apiUserListKey(scope), credstore.Reason(err))
@@ -118,16 +98,31 @@ func (cluster *Cluster) CanRotateFor(caller, target string) error {
 	return nil
 }
 
-// SetAPIUserPassword writes pass as user's password in the list of scope, through the
-// credential chain (a new version where a store keeps versions), and reloads the accounts:
-// a session carrying the old password is refused from the next request. Every other user
-// of the list keeps its password.
-func (cluster *Cluster) SetAPIUserPassword(user, scope, pass string) error {
+// ErrInvalidListPassword refuses a password a user:password list cannot hold.
+var ErrInvalidListPassword = errors.New("a password in a user:password list cannot be empty nor hold ',', ':' or a space")
+
+// ValidListPassword: pass can stand in a user:password list.
+func ValidListPassword(pass string) error {
 	if pass == "" || strings.ContainsAny(pass, ",: \t\n") {
-		return errors.New("a password in a user:password list cannot be empty nor hold ',', ':' or a space")
+		return ErrInvalidListPassword
+	}
+	return nil
+}
+
+// SetAPIUserPassword writes pass as user's password in the cluster's own list
+// (api-credentials-external), through the credential chain (a new version where a store keeps
+// versions), and reloads the accounts: a session carrying the old password is refused from the
+// next request. Every other user of the list keeps its password. The instance's list is a
+// server secret: the server changes it (SetServerSecret).
+func (cluster *Cluster) SetAPIUserPassword(user, scope, pass string) error {
+	if err := ValidListPassword(pass); err != nil {
+		return err
+	}
+	if scope == APIUserScopeInstance {
+		return credstore.ErrServerSecret
 	}
 	key := apiUserListKey(scope)
-	list, found := listWithPassword(cluster.Conf.GetDecryptedValue(key), user, pass)
+	list, found := config.APIUserListWithPassword(cluster.Conf.GetDecryptedValue(key), user, pass)
 	if !found {
 		return ErrAPIUserUnknown
 	}
@@ -139,17 +134,15 @@ func (cluster *Cluster) SetAPIUserPassword(user, scope, pass string) error {
 	return nil
 }
 
-// DecryptedAPIUserList is the instance's list (api-credentials) with every password in clear,
-// for the copy an infrastructure secret holds. Never logged (F10).
-func (cluster *Cluster) DecryptedAPIUserList() string {
-	entries := strings.Split(cluster.Conf.GetDecryptedValue(apiCredentialsKey), ",")
-	for i, e := range entries {
-		u, p, ok := strings.Cut(strings.TrimSpace(e), ":")
-		if ok {
-			entries[i] = u + ":" + cluster.Conf.GetDecryptedPassword(apiCredentialsKey, p)
-		}
+// SetCredential writes key through the cluster's chain. A server secret is the server's: the
+// server wrote it first (a global setting fans out to every cluster), so the cluster reads it
+// again from the server instead of keeping a copy.
+func (cluster *Cluster) SetCredential(key, value string) error {
+	if cluster.ServerGlobals != nil && cluster.ServerGlobals.ServerSecrets.Holds(key) {
+		cluster.CredentialChain().Refresh()
+		return nil
 	}
-	return strings.Join(entries, ",")
+	return cluster.CredentialChain().Set(key, value)
 }
 
 // WriteOpenSVCSecretKey writes one key of an OpenSVC secret object through this cluster's

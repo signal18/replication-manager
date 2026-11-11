@@ -2152,6 +2152,10 @@ func (cluster *Cluster) CredentialChain() *credstore.Chain {
 	if cluster.credChain == nil || cluster.credChain.Conf() != cluster.Conf {
 		// the version store first: the config keeps the starting value (#2227 rule 1)
 		cluster.credChain = credstore.NewVersionedChain(cluster.Conf, cluster.Save, cluster.versionStore())
+		if cluster.ServerGlobals != nil && cluster.ServerGlobals.ServerSecrets != nil {
+			// the server secrets first: the server's, never a cluster's own copy
+			cluster.credChain = credstore.NewClusterChain(cluster.Conf, cluster.Save, cluster.ServerGlobals.ServerSecrets, cluster.versionStore())
+		}
 		// each change is a version in every active store, queued after the chain's lock (#2227)
 		cluster.credChain.OnSet(cluster.onCredentialChange)
 	}

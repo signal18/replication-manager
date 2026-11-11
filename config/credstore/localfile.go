@@ -141,6 +141,12 @@ func (s *ServerLevel) held(key string) (*Chain, bool) {
 	return c, c != nil
 }
 
+// Holds: key is a server secret this store answers.
+func (s *ServerLevel) Holds(key string) bool {
+	_, ok := s.held(key)
+	return ok
+}
+
 func (s *ServerLevel) Get(key string) (string, bool, error) {
 	c, ok := s.held(key)
 	if !ok {

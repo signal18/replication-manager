@@ -47,8 +47,8 @@ var proxySecretKeys = map[string]string{
 	"proxyjanitor-password": config.ConstProxyJanitor,
 }
 
-// apiCredentialsKey is the instance's list of local API users (user:password,...): versioned
-// like a credential, so a user's password can be rotated with repman as the reference.
+// apiCredentialsKey is the instance's list of local API users (user:password,...): a server
+// secret, read from the server's chain (CREDENTIAL_STORES.md "Two levels").
 const apiCredentialsKey = "api-credentials"
 
 // engineSecretKeys are the credentials a Vault database engine makes: their user is the
@@ -591,10 +591,10 @@ func (cluster *Cluster) versionsKeepError() error {
 }
 
 // isVersionedKey: a secret of the cluster the version store holds (rule 1): the database and
-// proxy credentials and the instance's list of API users. The archive secrets stay in their
-// archive's entry, the other instance secrets in the config.
+// proxy credentials. The archive secrets stay in their archive's entry; the server secrets
+// (the instance's list of API users among them) are the server's versions.
 func isVersionedKey(key string) bool {
-	return isDatabaseSecretKey(key) || proxySecretKeys[key] != "" || key == apiCredentialsKey
+	return isDatabaseSecretKey(key) || proxySecretKeys[key] != ""
 }
 
 // keepCurrentCredentialInConfig: when no store keeps versions (versioning turned off, the vault
@@ -687,8 +687,11 @@ func (cluster *Cluster) writeSecretVersionFile() error {
 // credential pinned to a Vault path, WARN0275 while the OpenSVC env secret is behind. It only
 // queues: never blocks.
 func (cluster *Cluster) CheckSecretKvStores() {
-	// a standby takes the versions the active monitor pushed (rule 11)
+	// a standby takes the versions the active monitor pushed (rule 11), the server's too
 	cluster.reloadVersionsFromPeer()
+	if cluster.ServerGlobals != nil && cluster.ServerGlobals.CheckServerSecrets != nil {
+		cluster.ServerGlobals.CheckServerSecrets()
+	}
 	q := cluster.storeQueue()
 	c := &cluster.secretKv
 	c.mu.Lock()
@@ -974,8 +977,7 @@ func (cluster *Cluster) takeConfigFileCredentials() {
 		return
 	}
 	vs := cluster.versionStore()
-	// the API users' list has no folder in the stores (never copied), its edits are taken too
-	for _, key := range append(cluster.secretKeys(), apiCredentialsKey) {
+	for _, key := range cluster.secretKeys() {
 		raw, pinned := cluster.Conf.GetImmuableFlag(key)
 		if !pinned || raw == nil {
 			continue
@@ -983,10 +985,6 @@ func (cluster *Cluster) takeConfigFileCredentials() {
 		v := fmt.Sprintf("%v", raw)
 		if v == "" || cluster.Conf.IsPath(v) {
 			continue
-		}
-		if key == apiCredentialsKey {
-			// versioned now: a history the file recorded before must not win over the file
-			vs.AdoptConfigFileValue(key, cluster.Conf.DecryptSecretValue(key, v))
 		}
 		if vs.TakeConfigFileValue(key, cluster.Conf.DecryptSecretValue(key, v)) {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, config.LvlInfo, "Credential stores: %s was edited in a config file, its value is the current version", key)

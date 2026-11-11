@@ -807,7 +807,7 @@ type Config struct {
 	ProvAppTemplateRepoAllowOverride          bool              `scope:"server" mapstructure:"prov-app-template-repo-allow-override" toml:"prov-app-template-repo-allow-override" json:"provAppTemplateRepoAllowOverride"`
 	TemplateVariableMaxDepth                  int               `mapstructure:"template-var-max-depth" toml:"template-var-max-depth" json:"templateVarMaxDepth"`
 	TemplateStrict                            bool              `mapstructure:"template-strict" toml:"template-strict" json:"templateStrict"`
-	APIUsers                                  string            `mapstructure:"api-credentials" toml:"api-credentials" json:"apiCredentials"`
+	APIUsers                                  string            `scope:"server" mapstructure:"api-credentials" toml:"api-credentials" json:"apiCredentials"`
 	APIUsersExternal                          string            `mapstructure:"api-credentials-external" toml:"api-credentials-external" json:"apiCredentialsExternal"`
 	APIUsersACLAllow                          string            `mapstructure:"api-credentials-acl-allow" toml:"api-credentials-acl-allow" json:"apiCredentialsACLAllow"`
 	APIUsersACLAllowExternal                  string            `mapstructure:"api-credentials-acl-allow-external" toml:"api-credentials-acl-allow-external" json:"apiCredentialsACLAllowExternal"`

@@ -18,6 +18,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/config/credstore"
 )
 
 // UserRotateForm names the user whose password is rotated.
@@ -158,23 +159,26 @@ func (repman *ReplicationManager) rotateAPIUserPassword(cl *cluster.Cluster, use
 			return nil, fmt.Errorf("%w: %s", errRotateRefused, err)
 		}
 	}
+	if scope == cluster.APIUserScopeInstance {
+		if err := repman.CredentialChain().CanSet(apiCredentialsKey); err != nil {
+			return nil, fmt.Errorf("%w: %s cannot take a new value: %s", errRotateRefused, apiCredentialsKey, credstore.Reason(err))
+		}
+	}
 	pass, err := cl.GeneratePasswordLength(rotatedPasswordLength)
 	if err != nil {
 		return nil, err
 	}
 	res := &UserRotateResult{Username: user, Password: pass, Scope: scope}
 	var setErr error
-	for i, t := range targets {
-		if err := t.SetAPIUserPassword(user, scope, pass); err != nil {
-			var left []string
-			for _, o := range targets[i:] {
-				left = append(left, o.Name)
+	if scope == cluster.APIUserScopeInstance {
+		// a server secret: one version at the server level, every cluster reads it
+		if setErr = repman.setInstanceUserPassword(user, pass); setErr == nil {
+			for _, t := range targets {
+				res.Clusters = append(res.Clusters, t.Name)
 			}
-			setErr = fmt.Errorf("rotated on %v; failed on %s: %s; %v still accept the old password: rotate again to set one password everywhere",
-				res.Clusters, t.Name, err, left)
-			break
 		}
-		res.Clusters = append(res.Clusters, t.Name)
+	} else if setErr = cl.SetAPIUserPassword(user, scope, pass); setErr == nil {
+		res.Clusters = append(res.Clusters, cl.Name)
 	}
 	if len(res.Clusters) > 0 {
 		// the ban holds wherever the password changed: the tokens go too
@@ -189,9 +193,28 @@ func (repman *ReplicationManager) rotateAPIUserPassword(cl *cluster.Cluster, use
 	}
 	res.Copy = "not applicable: a cluster's own list is not copied"
 	if scope == cluster.APIUserScopeInstance {
-		res.Copy = repman.copyAPICredentialsToOpenSVC(targets[0])
+		res.Copy = repman.copyAPICredentialsToOpenSVC()
 	}
 	return res, nil
+}
+
+// apiCredentialsKey is the instance's list of API users, a server secret.
+const apiCredentialsKey = "api-credentials"
+
+// setInstanceUserPassword writes pass as user's password in the instance's list, a server
+// secret: one version, every other user keeps its password, every cluster reloads its users.
+func (repman *ReplicationManager) setInstanceUserPassword(user, pass string) error {
+	if err := cluster.ValidListPassword(pass); err != nil {
+		return err
+	}
+	list, found := config.APIUserListWithPassword(repman.Conf.GetDecryptedValue(apiCredentialsKey), user, pass)
+	if !found {
+		return cluster.ErrAPIUserUnknown
+	}
+	if err := repman.SetServerSecret(apiCredentialsKey, list); err != nil {
+		return fmt.Errorf("%s not changed: %s", apiCredentialsKey, credstore.Reason(err))
+	}
+	return nil
 }
 
 // clustersWithInstanceUser are the clusters holding user in the instance's list, in name order.
@@ -209,7 +232,7 @@ func (repman *ReplicationManager) clustersWithInstanceUser(user string) []*clust
 // system/sec/repman, key <api host>_api-credentials (where the infrastructure index points),
 // through the first cluster on OpenSVC. Off with secret-kv-copy-api-credentials. It returns
 // what happened, never the value.
-func (repman *ReplicationManager) copyAPICredentialsToOpenSVC(src *cluster.Cluster) string {
+func (repman *ReplicationManager) copyAPICredentialsToOpenSVC() string {
 	if !repman.Conf.SecretKvCopyApiCredentials {
 		return "skipped: secret-kv-copy-api-credentials is off"
 	}
@@ -222,7 +245,7 @@ func (repman *ReplicationManager) copyAPICredentialsToOpenSVC(src *cluster.Clust
 		if c.GetOrchestrator() != config.ConstOrchestratorOpenSVC {
 			continue
 		}
-		if err := c.WriteOpenSVCSecretKey("system", "repman", key, src.DecryptedAPIUserList()); err != nil {
+		if err := c.WriteOpenSVCSecretKey("system", "repman", key, repman.Conf.DecryptedAPIUserList()); err != nil {
 			return "failed through " + c.Name + ": " + err.Error()
 		}
 		return "written to system/sec/repman key " + key + " through " + c.Name

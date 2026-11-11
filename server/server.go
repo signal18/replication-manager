@@ -83,6 +83,7 @@ var RepMan *ReplicationManager
 type ReplicationManager struct {
 	credChain                    *credstore.Chain // CredentialChain (#2075)
 	credChainMu                  sync.Mutex
+	serverSecrets                serverSecrets                      // the server level's versions and file (server_secret_level.go)
 	selfServiceMu                sync.Mutex                         // guards selfServiceSnap and selfServiceVerdicts
 	selfServiceVerdicts          map[string]selfServiceVerdict      // identity -> enabled-script verdict within the cache TTL
 	selfServiceFlight            singleflight.Group                 // one snapshot computation, one script run per identity, at a time
@@ -2720,8 +2721,10 @@ func (repman *ReplicationManager) Run() error {
 
 	// Initialize instance-wide shared resources for all clusters
 	repman.serverGlobals = &cluster.ServerGlobals{
-		IssueAppAPIToken:  repman.issueAppAPIToken,
-		RevokeAppAPIToken: repman.revokeAppAPIToken,
+		IssueAppAPIToken:   repman.issueAppAPIToken,
+		RevokeAppAPIToken:  repman.revokeAppAPIToken,
+		ServerSecrets:      repman.serverSecretLevel(),
+		CheckServerSecrets: repman.reloadServerVersionsFromPeer,
 	}
 	if repman.Conf.BackupConcurrentSlots > 0 {
 		repman.serverGlobals.BackupSemaphore = make(chan struct{}, repman.Conf.BackupConcurrentSlots)
@@ -2760,6 +2763,7 @@ func (repman *ReplicationManager) Run() error {
 		repman.Logrus.Fatalln("ERROR: replication-manager could not get hostname from system")
 	}
 	repman.seedInstanceName()
+	repman.takeServerConfigFileCredentials()
 
 	if repman.Conf.LogSyslog {
 		hook, err := lSyslog.NewSyslogHook("udp", "localhost:514", syslog.LOG_INFO, "")
@@ -5021,7 +5025,8 @@ func (repman *ReplicationManager) CredentialChain() *credstore.Chain {
 	repman.credChainMu.Lock()
 	defer repman.credChainMu.Unlock()
 	if repman.credChain == nil || repman.credChain.Conf() != repman.Conf {
-		repman.credChain = credstore.NewConfigChain(repman.Conf, repman.Save)
+		// the server secrets' versions first, as a cluster's (CREDENTIAL_STORES.md "Two levels")
+		repman.credChain = credstore.NewVersionedChain(repman.Conf, repman.Save, repman.serverVersionStore())
 	}
 	return repman.credChain
 }
@@ -5053,6 +5058,10 @@ func (repman *ReplicationManager) SaveGlobalConfigs() error {
 	if ok {
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlDbg, "Saved called from %s#%d\n", file, no)
 	}
+
+	// the server secrets' versioned file, pushed with default.toml (logged on a failure; the
+	// version store stays dirty for the next save)
+	repman.writeServerSecretFile()
 
 	has_changed := false
 

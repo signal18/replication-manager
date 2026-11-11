@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/config/credstore"
 )
 
 func rotateTestCluster(t *testing.T, list string) *Cluster {
@@ -20,23 +21,11 @@ func rotateTestCluster(t *testing.T, list string) *Cluster {
 	cl.Conf.MonitoringSecretVersioning = true
 	cl.Conf.APIUsers = list
 	cl.Conf.DynamicFlagMap[apiCredentialsKey] = list
+	cl.Conf.ImmuableFlagMap = map[string]interface{}{}
 	cl.Conf.APIUsersACLAllow = "admin:cluster db proxy prov global grant show,ops:db show"
 	cl.CredentialChain().Refresh()
 	cl.LoadAPIUsers()
 	return cl
-}
-
-func TestListWithPassword(t *testing.T) {
-	got, ok := listWithPassword("admin:a,ops:b,dev:", "ops", "N3w")
-	if !ok || got != "admin:a,ops:N3w,dev:" {
-		t.Fatalf("%q %v", got, ok)
-	}
-	if _, ok := listWithPassword("admin:a", "ops", "x"); ok {
-		t.Fatal("an absent user was found")
-	}
-	if !listHasUser(" admin:a, ops:b", "ops") || listHasUser("admin:a", "adm") {
-		t.Fatal("listHasUser")
-	}
 }
 
 func TestGeneratePasswordLength(t *testing.T) {
@@ -47,33 +36,6 @@ func TestGeneratePasswordLength(t *testing.T) {
 	}
 	if p8, _ := cl.GeneratePassword(); len(p8) != 8 {
 		t.Fatalf("GeneratePassword changed length: %d", len(p8))
-	}
-}
-
-// A rotated user is refused with its old password at once (its session carries it), the
-// others keep theirs, and the change is a version in repman's own store.
-func TestRotateInstanceUserPassword(t *testing.T) {
-	cl := rotateTestCluster(t, "admin:first,ops:second")
-	if cl.APIUserScope("ops") != APIUserScopeInstance {
-		t.Fatalf("scope %q", cl.APIUserScope("ops"))
-	}
-	if err := cl.CanRotateAPIUserPassword("ops"); err != nil {
-		t.Fatal(err)
-	}
-	if err := cl.SetAPIUserPassword("ops", APIUserScopeInstance, "Rotated-1"); err != nil {
-		t.Fatal(err)
-	}
-	if got := cl.APIUsers["ops"].Password; got != "Rotated-1" {
-		t.Fatalf("ops password %q", got)
-	}
-	if got := cl.APIUsers["admin"].Password; got != "first" {
-		t.Fatalf("admin password changed: %q", got)
-	}
-	if v, ok := cl.versionStore().Latest(apiCredentialsKey); !ok || !strings.Contains(v.Value, "ops:Rotated-1") {
-		t.Fatalf("no version: %v %v", v, ok)
-	}
-	if _, err := cl.GetAPIUser("ops", "second"); err == nil {
-		t.Fatal("the old password still logs in")
 	}
 }
 
@@ -91,32 +53,6 @@ func TestRotateRefusals(t *testing.T) {
 	}
 	if err := cl.CanRotateAPIUserPassword("nobody"); !errors.Is(err, ErrAPIUserUnknown) {
 		t.Fatalf("unknown user: %v", err)
-	}
-}
-
-// Set in a configuration file with no store keeping versions: the one refusal (rule 9).
-func TestRotateRefusedWithoutVersionsOnAFileValue(t *testing.T) {
-	cl := rotateTestCluster(t, "admin:first,ops:second")
-	cl.Conf.MonitoringSecretVersioning = false
-	cl.Conf.ImmuableFlagMap[apiCredentialsKey] = "admin:first,ops:second"
-	if err := cl.CanRotateAPIUserPassword("ops"); err == nil {
-		t.Fatal("a file value with no versioned store was accepted")
-	}
-}
-
-// At the upgrade, a history recorded before the list was versioned does not win over the file.
-func TestAdoptConfigFileValueOverRecordedHistory(t *testing.T) {
-	cl := rotateTestCluster(t, "admin:infile")
-	vs := cl.versionStore()
-	vs.Insert(apiCredentialsKey, cl.selfVersion("admin:recorded"))
-	cl.Conf.ImmuableFlagMap[apiCredentialsKey] = "admin:infile"
-	cl.takeConfigFileCredentials()
-	cl.CredentialChain().Refresh()
-	if got := cl.Conf.Secrets.Get(apiCredentialsKey).Value; got != "admin:infile" {
-		t.Fatalf("current %q", got)
-	}
-	if vs.AdoptConfigFileValue(apiCredentialsKey, "admin:infile") {
-		t.Fatal("adopted twice")
 	}
 }
 
@@ -141,36 +77,32 @@ func TestCanRotateFor(t *testing.T) {
 }
 
 func TestSetAPIUserPasswordRefusesASeparator(t *testing.T) {
-	cl := rotateTestCluster(t, "admin:first,ops:second")
+	cl := rotateTestCluster(t, "admin:first")
+	cl.Conf.DynamicFlagMap["api-credentials-external"] = "ops:second"
+	cl.CredentialChain().Refresh()
 	for _, p := range []string{"", "a,b", "a:b", "a b"} {
-		if err := cl.SetAPIUserPassword("ops", APIUserScopeInstance, p); err == nil {
+		if err := cl.SetAPIUserPassword("ops", APIUserScopeCluster, p); err == nil {
 			t.Fatalf("%q accepted", p)
 		}
 	}
+	if err := cl.SetAPIUserPassword("admin", APIUserScopeInstance, "Valid-1"); !errors.Is(err, credstore.ErrServerSecret) {
+		t.Fatalf("the instance's list changed by a cluster: %v", err)
+	}
 }
 
-// An encrypted list: the other users keep their password, nothing is decrypted twice.
-func TestRotateEncryptedList(t *testing.T) {
-	cl := rotateTestCluster(t, "admin:first,ops:second")
-	enc := "admin:" + cl.Conf.GetEncryptedString("first") + ",ops:" + cl.Conf.GetEncryptedString("second")
-	cl.Conf.DynamicFlagMap[apiCredentialsKey] = enc
+// A cluster's own list: one version in the cluster's chain, the other users kept.
+func TestRotateClusterUserPassword(t *testing.T) {
+	cl := rotateTestCluster(t, "admin:first")
+	cl.Conf.DynamicFlagMap["api-credentials-external"] = "ops:second,dev:third"
 	cl.CredentialChain().Refresh()
 	cl.LoadAPIUsers()
-	if cl.APIUsers["admin"].Password != "first" {
-		t.Fatalf("setup: admin %q", cl.APIUsers["admin"].Password)
+	if cl.APIUserScope("ops") != APIUserScopeCluster {
+		t.Fatalf("scope %q", cl.APIUserScope("ops"))
 	}
-	if err := cl.SetAPIUserPassword("ops", APIUserScopeInstance, "Rotated-2"); err != nil {
+	if err := cl.SetAPIUserPassword("ops", APIUserScopeCluster, "Rotated-1"); err != nil {
 		t.Fatal(err)
 	}
-	cl.CredentialChain().Refresh()
-	cl.LoadAPIUsers()
-	if got := cl.APIUsers["admin"].Password; got != "first" {
-		t.Fatalf("admin password became %q", got)
-	}
-	if got := cl.APIUsers["ops"].Password; got != "Rotated-2" {
-		t.Fatalf("ops password %q", got)
-	}
-	if got := cl.DecryptedAPIUserList(); got != "admin:first,ops:Rotated-2" {
-		t.Fatalf("decrypted list %q", got)
+	if got := cl.Conf.GetDecryptedValue("api-credentials-external"); got != "ops:Rotated-1,dev:third" {
+		t.Fatalf("list %q", got)
 	}
 }

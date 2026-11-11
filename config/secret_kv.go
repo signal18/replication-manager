@@ -699,3 +699,41 @@ func ValidInstanceNamePart(s string) error {
 	}
 	return nil
 }
+
+// APIUserListWithPassword returns list (user:password,...) with user's password set to pass,
+// every other entry as it is; false when user is not in it.
+func APIUserListWithPassword(list, user, pass string) (string, bool) {
+	entries := strings.Split(list, ",")
+	found := false
+	for i, e := range entries {
+		u, _, _ := strings.Cut(strings.TrimSpace(e), ":")
+		if u == user {
+			entries[i] = user + ":" + pass
+			found = true
+		}
+	}
+	return strings.Join(entries, ","), found
+}
+
+// APIUserListHas: list (user:password,...) has an entry for user.
+func APIUserListHas(list, user string) bool {
+	for _, e := range strings.Split(list, ",") {
+		if u, _, _ := strings.Cut(strings.TrimSpace(e), ":"); u == user {
+			return true
+		}
+	}
+	return false
+}
+
+// DecryptedAPIUserList is the instance's list (api-credentials) with every password in clear.
+// Never logged (F10).
+func (conf *Config) DecryptedAPIUserList() string {
+	entries := strings.Split(conf.GetDecryptedValue("api-credentials"), ",")
+	for i, e := range entries {
+		u, p, ok := strings.Cut(strings.TrimSpace(e), ":")
+		if ok {
+			entries[i] = u + ":" + conf.GetDecryptedPassword("api-credentials", p)
+		}
+	}
+	return strings.Join(entries, ",")
+}

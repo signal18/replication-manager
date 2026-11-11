@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/config/credstore"
 	"github.com/signal18/replication-manager/utils/state"
 )
 
@@ -24,6 +25,12 @@ type ServerGlobals struct {
 	// server) refuses the token.
 	IssueAppAPIToken  func(clusterName, appName string) (id, token string, expires time.Time, err error)
 	RevokeAppAPIToken func(id string) error
+
+	// ServerSecrets answers the server secrets (scope:"server") in every cluster's chain, from
+	// the server's (CREDENTIAL_STORES.md "Two levels"); nil (tests, no server): the cluster's own
+	// stores answer. CheckServerSecrets has a standby merge the server's versioned file.
+	ServerSecrets      *credstore.ServerLevel
+	CheckServerSecrets func()
 }
 
 // AcquireBackupSlot blocks until a backup slot is available.

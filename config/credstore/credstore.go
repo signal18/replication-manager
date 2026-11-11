@@ -282,6 +282,12 @@ func NewVersionedChain(conf *config.Config, save func(), versions *VersionStore)
 	return NewChain(conf, versions, &ArchiveStore{conf: conf, save: save}, &DynamicConfig{conf: conf, save: save}, &PinnedConfig{conf: conf})
 }
 
+// NewClusterChain is a cluster's chain under a server (CREDENTIAL_STORES.md "Two levels"): the
+// server secrets read from the server's chain first (read only), then the versioned chain.
+func NewClusterChain(conf *config.Config, save func(), server *ServerLevel, versions *VersionStore) *Chain {
+	return NewChain(conf, server, versions, &ArchiveStore{conf: conf, save: save}, &DynamicConfig{conf: conf, save: save}, &PinnedConfig{conf: conf})
+}
+
 // NewChain returns a chain of stores, read and written in their order.
 func NewChain(conf *config.Config, stores ...CredentialStore) *Chain {
 	return &Chain{conf: conf, stores: stores}
