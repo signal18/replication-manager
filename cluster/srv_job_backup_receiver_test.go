@@ -844,6 +844,9 @@ func newEncryptingBackup(t *testing.T) *encryptingBackup {
 	meta := &backupmgr.BackupMetadata{Id: 1, BackupTool: task, Dest: logical + partialSuffixForCleanup, Source: server.URL, Compressed: true}
 	server.LastBackupMeta.Physical = meta
 	cl.BackupMetaMap.Set(meta.Id, meta)
+	// the task entry the dispatch (JobBackupPhysicalWithOptions) creates for a running backup: a job
+	// error with no entry is not the failure of a running backup
+	server.JobResults.Set(task, &config.Task{Task: task, State: JobStateAvailable})
 	e := &encryptingBackup{t: t, cl: cl, server: server, meta: meta, logical: logical, done: make(chan struct{})}
 	go func() {
 		defer close(e.done)

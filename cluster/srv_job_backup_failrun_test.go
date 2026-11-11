@@ -224,3 +224,55 @@ func concWait(t *testing.T, what string, cond func() bool) {
 	}
 	t.Fatalf("timed out waiting for: %s", what)
 }
+
+// After a restart of replication-manager JobResults holds no run, while the last valid encrypted
+// physical backup is loaded from disk. A stray error report of the backup task (a job of an
+// earlier run reporting late) is not the failure of a running backup: the artifact, the metadata
+// file and the registration of that backup stay as they are.
+func TestStrayJobErrorWithNoTrackedRunLeavesLastBackupIntact(t *testing.T) {
+	cl, server := newPhysicalBackupFixture(t, "api")
+	cl.Conf.BackupEncryption = true
+	cl.Conf.BackupKeepUntilValid = true
+	task := config.ConstBackupPhysicalTypeMariaBackup
+	dest := server.GetMyBackupDirectory() + task + ".xbtream.gz.enc"
+	if err := os.MkdirAll(server.GetMyBackupDirectory(), 0755); err != nil {
+		t.Fatal(err)
+	}
+	artifact := []byte("last valid encrypted backup")
+	if err := os.WriteFile(dest, artifact, 0600); err != nil {
+		t.Fatal(err)
+	}
+	last := &backupmgr.BackupMetadata{Id: failRunPreviousID, BackupMethod: backupmgr.BackupMethodPhysical, BackupTool: task,
+		Dest: dest, Encrypted: true, Completed: true, Source: server.URL}
+	metaFile := server.backupMetaFilePath(last)
+	metaBytes := []byte("{\"completed\": true}\n")
+	if err := os.WriteFile(metaFile, metaBytes, 0644); err != nil {
+		t.Fatal(err)
+	}
+	cl.BackupMetaMap.Set(int64(failRunPreviousID), last)
+	server.LastBackupMeta.Physical = last
+	if server.JobResults.Get(task) != nil {
+		t.Fatal("the restarted server must track no run of the task")
+	}
+
+	for i := 0; i < 2; i++ { // the first report creates a task entry already failed: a repeat does nothing either
+		server.JobsUpdateState(task, "error", JobStateErrorExec, 1)
+
+		if got, err := os.ReadFile(dest); err != nil || string(got) != string(artifact) {
+			t.Fatalf("report %d: the artifact of the last valid backup changed: %q, %v", i+1, got, err)
+		}
+		if got, err := os.ReadFile(metaFile); err != nil || string(got) != string(metaBytes) {
+			t.Fatalf("report %d: the metadata file of the last valid backup changed: %q, %v", i+1, got, err)
+		}
+		server.backupMetaMutex.Lock()
+		same := server.LastBackupMeta.Physical == last
+		altered := last.SourceJobFailed || !last.Completed || !last.Encrypted || last.Dest != dest || last.EncryptionFailed
+		server.backupMetaMutex.Unlock()
+		if !same || altered {
+			t.Fatalf("report %d: the last valid backup was altered: %+v", i+1, last)
+		}
+		if v, ok := cl.BackupMetaMap.Load(int64(failRunPreviousID)); !ok || v.(*backupmgr.BackupMetadata) != last {
+			t.Fatalf("report %d: the last valid backup is no longer registered", i+1)
+		}
+	}
+}

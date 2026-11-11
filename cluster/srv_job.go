@@ -1664,15 +1664,19 @@ func (server *ServerMonitor) JobsUpdateStateRuntimeOnly(task, result string, sta
 //   - The job had already reported a success: the receiver may be gone, nobody finalizes this
 //     report. The run's metadata is returned and jobsUpdateState withdraws it after the state
 //     is published, then rewrites the metadata (lateFailedPhysicalBackup).
-//   - The job had already reported an error: a repeated report, nothing to do.
+//   - The job had already reported an error, or no run of the task is tracked (a stray report,
+//     or one after a restart): nothing to do.
 func (server *ServerMonitor) failPhysicalBackupRun(task, result string, state, done int) (late *backupmgr.BackupMetadata) {
 	if done != 1 || state != JobStateErrorExec || (task != config.ConstBackupPhysicalTypeXtrabackup && task != config.ConstBackupPhysicalTypeMariaBackup) {
 		return nil
 	}
-	prior := JobStateAvailable
-	if t := server.JobResults.Get(task); t != nil {
-		prior = t.State
+	t := server.JobResults.Get(task)
+	if t == nil {
+		// No run of this task is tracked (a stray report, or one after a restart): the last
+		// physical backup on record is a finished one, not a run this error is about.
+		return nil
 	}
+	prior := t.State
 	if prior >= JobStateErrorExec {
 		return nil
 	}
@@ -1683,10 +1687,13 @@ func (server *ServerMonitor) failPhysicalBackupRun(task, result string, state, d
 		return meta
 	}
 	server.withdrawFailedPhysicalBackup(meta, result)
-	// the withdraw rewrote the run's metadata without the mutex: take it once, so those writes are
-	// ordered before the receiver's own lock, which it takes after it sees the terminal state
+	// The withdraw rewrote the run's metadata without the mutex. Taking and releasing it once here
+	// orders those writes before the receiver's own Lock, which it takes after it sees the terminal
+	// state: it does not guard the withdraw itself against a concurrent reader, and it does not
+	// remove the existing unsynchronized hand-off of the state (task.State is written by
+	// jobsUpdateState and polled by the receiver without a lock).
 	server.backupMetaMutex.Lock()
-	server.backupMetaMutex.Unlock() //nolint:staticcheck // ordering only
+	server.backupMetaMutex.Unlock() //nolint:staticcheck // ordering only, see above
 	if jobStateFailBeforePublish != nil {
 		jobStateFailBeforePublish() // test seam
 	}
