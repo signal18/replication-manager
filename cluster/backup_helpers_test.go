@@ -694,6 +694,7 @@ func TestMarkBackupPhysicalDoneRaceWithResticUpdate(t *testing.T) {
 	server.Datadir = t.TempDir()
 	server.LastBackupMeta.Physical = &backupmgr.BackupMetadata{
 		BackupTool: config.ConstBackupPhysicalTypeMariaBackup,
+		Completed:  true, // its stream was received whole: the receiver marked it (a done alone does not)
 	}
 	cluster.ResticManager = backupmgr.NewResticRepo("", nil, config.ConstLogModRestic)
 
@@ -713,8 +714,8 @@ func TestMarkBackupPhysicalDoneRaceWithResticUpdate(t *testing.T) {
 	}()
 	wg.Wait()
 
-	if !server.LastBackupMeta.Physical.Completed {
-		t.Fatalf("expected LastBackupMeta.Physical.Completed=true after MarkBackupPhysicalDone")
+	if !server.HasBackupMariabackupCookie() {
+		t.Fatalf("expected the backup cookie after MarkBackupPhysicalDone of a received backup")
 	}
 	if server.LastBackupMeta.Physical.ResticSnapshotID != "snap-id" {
 		t.Fatalf("ResticSnapshotID = %q, want %q", server.LastBackupMeta.Physical.ResticSnapshotID, "snap-id")

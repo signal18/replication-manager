@@ -1965,7 +1965,7 @@ func TestFinishReseedJobState_ClearsResticReseedCookie(t *testing.T) {
 // off the job-state "done" callback (server/api_database.go) instead.
 func TestMarkBackupPhysicalDone_SetsCookieForRegularBackup(t *testing.T) {
 	_, server := newTestRuntimeOnlyClusterServer(t, "backup-cluster", "target", "3307")
-	server.LastBackupMeta.Physical = &backupmgr.BackupMetadata{}
+	server.LastBackupMeta.Physical = &backupmgr.BackupMetadata{Completed: true} // its stream was received whole
 
 	server.MarkBackupPhysicalDone("mariabackup")
 
@@ -1976,7 +1976,23 @@ func TestMarkBackupPhysicalDone_SetsCookieForRegularBackup(t *testing.T) {
 		t.Fatal("expected HasBackupPhysicalCookie to see the newly set cookie")
 	}
 	if !server.LastBackupMeta.Physical.Completed {
-		t.Fatal("expected LastBackupMeta.Physical.Completed to be stamped true")
+		t.Fatal("expected LastBackupMeta.Physical.Completed to stay true")
+	}
+}
+
+// A job reporting done is not a backup: with no stream received (the receiver did not mark the
+// backup completed), done leaves no completed backup and no cookie that reloads it.
+func TestMarkBackupPhysicalDone_NoStreamNoCookieNoCompleted(t *testing.T) {
+	_, server := newTestRuntimeOnlyClusterServer(t, "backup-cluster", "target", "3307")
+	server.LastBackupMeta.Physical = &backupmgr.BackupMetadata{}
+
+	server.MarkBackupPhysicalDone("mariabackup")
+
+	if server.HasBackupPhysicalCookie() {
+		t.Fatal("a done without a received stream must not set the backup cookie")
+	}
+	if server.LastBackupMeta.Physical.Completed {
+		t.Fatal("a done without a received stream must not complete the backup")
 	}
 }
 

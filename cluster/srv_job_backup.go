@@ -369,8 +369,10 @@ func (server *ServerMonitor) FinishReseedJobState(task, reason string) {
 
 // MarkBackupPhysicalDone finishes a completed plain physical backup task
 // (task is "xtrabackup" or "mariabackup", not a reseed/flashback name):
-// mirrors the AfterJobProcess case above (SQL mode's terminal reconciliation)
-// by setting the tool-specific backup cookie and stamping Completed=true.
+// it sets the tool-specific backup cookie, like the AfterJobProcess case above
+// (SQL mode's terminal reconciliation), but only for a backup whose stream the
+// receiver ended cleanly. It no longer stamps Completed=true itself: a job that
+// reports done is not a backup by itself.
 //
 // JobFinishReceiveFile already wrote the .meta.json file and set
 // Completed=true the moment the SST stream finished receiving -- that part is
@@ -399,19 +401,18 @@ func (server *ServerMonitor) MarkBackupPhysicalDone(task string) {
 	// (UpdateBackupMetadataWithRestic) and, since this can now also run from
 	// the API job-state HTTP handler, must go through the same mutex that
 	// guards it there rather than the plain field access this used to be.
+	//
+	// The job reporting done is not a backup: only one whose stream ended cleanly on the receiver
+	// (it marked it Completed) gets the cookie. A job that reports done while nothing, or part
+	// of the stream, arrived leaves no completed backup and no cookie; a done that comes before
+	// the stream ends is picked up by the receiver's end (jobFinishReceiveFile).
 	server.backupMetaMutex.Lock()
-	physical := server.LastBackupMeta.Physical
+	received := server.LastBackupMeta.Physical != nil && server.LastBackupMeta.Physical.Completed
 	server.backupMetaMutex.Unlock()
 
-	if physical != nil {
+	if received {
 		server.SetBackupPhysicalCookie(task)
 	}
-
-	server.backupMetaMutex.Lock()
-	if server.LastBackupMeta.Physical != nil {
-		server.LastBackupMeta.Physical.Completed = true
-	}
-	server.backupMetaMutex.Unlock()
 }
 
 func (server *ServerMonitor) JobBackupPhysicalWithOptions(opts BackupRunOptions) (err error) {
@@ -565,12 +566,51 @@ func (server *ServerMonitor) JobBackupPhysicalWithOptions(opts BackupRunOptions)
 
 	cluster.BackupMetaMap.Set(server.LastBackupMeta.Physical.Id, server.LastBackupMeta.Physical)
 
+	// In API mode the jobs script learns where to stream from receive-task, not from the jobs
+	// table: that call hands out this receiver (PhysicalBackupReceiverPort) instead of opening a
+	// second one on the same file.
+	if cluster.Conf.SchedulerJobsMode == "api" && (physType == config.ConstBackupPhysicalTypeXtrabackup || physType == config.ConstBackupPhysicalTypeMariaBackup) {
+		server.registerPhysicalBackupReceiver(physType, port)
+	}
+
 	_, err = server.JobInsertTask(physType, port, cluster.Conf.MonitorAddress)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Failed to insert physical backup task: %s (backup continues via SST)", err)
 	}
 
 	return nil
+}
+
+func physicalReceiverKey(task string) string {
+	return "physical-backup-receiver:" + task
+}
+
+// registerPhysicalBackupReceiver records the port of the receiver the running physical backup
+// of task opened, until that receiver ends (releasePhysicalBackupReceiver).
+func (server *ServerMonitor) registerPhysicalBackupReceiver(task, port string) {
+	server.streamTasks.Store(physicalReceiverKey(task), port)
+}
+
+// releasePhysicalBackupReceiver forgets the receiver on port, unless a newer one of the same
+// task has been registered since: the end of an old receiver never drops the next backup's.
+func (server *ServerMonitor) releasePhysicalBackupReceiver(task, port string) {
+	server.streamTasks.CompareAndDelete(physicalReceiverKey(task), port)
+}
+
+// PhysicalBackupReceiverPort is the port the jobs script of an API-mode physical backup streams
+// to (receive-task): the receiver the backup opened for it, so one backup has one receiver and
+// one writer on its file. It fails when no physical backup of the task waits for its stream.
+func (server *ServerMonitor) PhysicalBackupReceiverPort(task string) (string, error) {
+	if v, ok := server.streamTasks.Load(physicalReceiverKey(task)); ok {
+		return v.(string), nil
+	}
+	return "", fmt.Errorf("No physical backup %s waiting for its stream on %s", task, server.URL)
+}
+
+// isPhysicalBackupStreamTask tells the tasks whose receiver is the stream of a MariaDB/MySQL
+// physical backup, the one whose receiver is opened by the backup and again by receive-task.
+func isPhysicalBackupStreamTask(task string) bool {
+	return task == config.ConstBackupPhysicalTypeXtrabackup || task == config.ConstBackupPhysicalTypeMariaBackup
 }
 
 func (server *ServerMonitor) JobReseedPhysicalBackup(backtype string) error {
@@ -8401,6 +8441,15 @@ func (server *ServerMonitor) waitForBinlogMeta(lastmeta *backupmgr.BackupMetadat
 }
 
 func (server *ServerMonitor) WriteBackupMetadata(backtype backupmgr.BackupMethod) {
+	server.writeBackupMetadata(backtype, true)
+}
+
+// writeBackupMetadata writes the metadata of the last backup of backtype. streamed is false for
+// the end of a physical backup's receiver whose stream did not end cleanly (no sender, nothing
+// sent, cut midway): the job's own report is then not enough to call the backup completed, so
+// the rest of the end (rollback to the previous backup when keep-until-valid is on) goes on as
+// for a failed backup.
+func (server *ServerMonitor) writeBackupMetadata(backtype backupmgr.BackupMethod, streamed bool) {
 	// CRITICAL FIX: Lock to prevent concurrent metadata updates from async Restic callbacks
 	server.backupMetaMutex.Lock()
 	defer server.backupMetaMutex.Unlock()
@@ -8491,6 +8540,10 @@ func (server *ServerMonitor) WriteBackupMetadata(backtype backupmgr.BackupMethod
 			// own job state re-derive Completed=true here and publish a
 			// failed-encryption backup as a successful, Restic-eligible one.
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Backup encryption failed for %s; writing metadata as incomplete", server.URL)
+		} else if !streamed {
+			// The job reported success, but the receiver that ends here did not get the stream
+			// a clean end: a backup another receiver completed stays so, any other is not completed.
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Backup of %s: its receiver did not get a cleanly ended stream, writing metadata without marking it completed", server.URL)
 		} else {
 			lastmeta.Completed = true
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Metadata completed: %v", lastmeta)
@@ -8498,6 +8551,11 @@ func (server *ServerMonitor) WriteBackupMetadata(backtype backupmgr.BackupMethod
 		}
 	} else {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Error occured in backup, writing incomplete metadata for backup in %s", server.URL)
+		if backtype == backupmgr.BackupMethodPhysical {
+			// The receiver marked the backup completed when its stream ended, before the job's
+			// own report was known: a job that failed leaves a backup that is not valid.
+			lastmeta.Completed = false
+		}
 	}
 
 	// a logical backup's file as written (after its encryption): a file changed since, a
@@ -8617,8 +8675,43 @@ func hasPrintDefaultsContent(tmpFile string) bool {
 	return false
 }
 
+// completeReceivedPhysicalBackup completes a physical backup whose stream ended cleanly: the
+// artifact is encrypted and published when backup-encryption is on, then the backup is marked
+// completed. Completed is set last, never before: the job's done (MarkBackupPhysicalDone, the
+// cookie) may arrive while the artifact is still being encrypted and must not find a completed
+// backup that an encryption failure then takes back. The job's error may arrive in the same
+// window: withdrawFailedPhysicalBackup then sees a staging path, publishes nothing to withdraw,
+// and only flags the failure, which is honoured here once the artifact is published.
+func (server *ServerMonitor) completeReceivedPhysicalBackup(meta *backupmgr.BackupMetadata) {
+	if encErr := server.finalizeBackupEncryption(meta, "physical"); encErr != nil {
+		server.reportBackupEncryptionFailure(meta, "physical", encErr)
+		return
+	}
+	server.backupMetaMutex.Lock()
+	jobFailed := meta.SourceJobFailed
+	server.backupMetaMutex.Unlock()
+	if jobFailed {
+		server.withdrawFailedPhysicalBackup(meta, "the backup job reported an error while its artifact was being encrypted")
+		return
+	}
+	server.backupMetaMutex.Lock()
+	meta.Completed = true
+	server.backupMetaMutex.Unlock()
+}
+
 func (server *ServerMonitor) JobFinishReceiveFile(task string) error {
+	return server.jobFinishReceiveFile(task, true)
+}
+
+// jobFinishReceiveFile ends the receiver of task. streamed is false when its stream did not
+// end cleanly: no sender before its accept deadline, nothing sent, a read or write error
+// midway. It then releases what the task held but never marks a physical backup completed,
+// publishes, archives or sizes it.
+func (server *ServerMonitor) jobFinishReceiveFile(task string, streamed bool) error {
 	cluster := server.ClusterGroup
+	if task == string(config.ConstTaskPgBaseBackup) {
+		streamed = true // PostgreSQL: the sidecar opens its receiver itself, nothing doubled; ends as before
+	}
 
 	switch task {
 	case "errorlog":
@@ -8653,25 +8746,38 @@ func (server *ServerMonitor) JobFinishReceiveFile(task string) error {
 		// restic was skipped ("physical backup not completed").
 		if server.LastBackupMeta.Physical != nil {
 			// the bytes the receiver counted are the next run's progress denominator
-			if p := cluster.backupProgressFor(server, "physical"); p != nil {
+			if p := cluster.backupProgressFor(server, "physical"); p != nil && streamed {
 				server.LastBackupMeta.Physical.StreamSize = p.View().BytesDone
 			}
-			if server.LastBackupMeta.Physical.SourceJobFailed && isBackupStagingPath(server.LastBackupMeta.Physical.Dest) {
+			// SourceJobFailed is set by the job-state callback, from another goroutine
+			server.backupMetaMutex.Lock()
+			sourceJobFailed := server.LastBackupMeta.Physical.SourceJobFailed
+			server.backupMetaMutex.Unlock()
+			if sourceJobFailed && isBackupStagingPath(server.LastBackupMeta.Physical.Dest) {
 				// The DB-side backup job already reported an error.
 				server.reportBackupEncryptionFailure(server.LastBackupMeta.Physical, "physical", errors.New("the backup job reported an error"))
 			} else if isEmptyBackupStaging(server.LastBackupMeta.Physical.Dest) {
 				// No sender connected or nothing was streamed: never publish
 				// an empty artifact as a valid encrypted backup.
 				server.reportBackupEncryptionFailure(server.LastBackupMeta.Physical, "physical", errors.New("no data received from the backup stream"))
+			} else if !streamed && isBackupStagingPath(server.LastBackupMeta.Physical.Dest) {
+				// the stream was cut (or failed to be written): never encrypt and publish a part
+				server.reportBackupEncryptionFailure(server.LastBackupMeta.Physical, "physical", errors.New("the backup stream did not end cleanly"))
+			} else if !streamed {
+				// No stream ended cleanly on this receiver (no sender, nothing sent, read error
+				// midway): what the file holds is not a backup, so its end does not complete it.
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Physical backup %s of %s: its receiver did not get a cleanly ended stream, the backup is not marked completed", task, server.URL)
 			} else {
-				server.LastBackupMeta.Physical.Completed = true
-				if encErr := server.finalizeBackupEncryption(server.LastBackupMeta.Physical, "physical"); encErr != nil {
-					server.reportBackupEncryptionFailure(server.LastBackupMeta.Physical, "physical", encErr)
-				}
+				server.completeReceivedPhysicalBackup(server.LastBackupMeta.Physical)
 			}
 		}
-		server.WriteBackupMetadata(backupmgr.BackupMethodPhysical)
-		if server.LastBackupMeta.Physical != nil && !server.LastBackupMeta.Physical.StartTime.IsZero() {
+		server.writeBackupMetadata(backupmgr.BackupMethodPhysical, streamed)
+		if streamed && server.LastBackupMeta.Physical != nil && server.LastBackupMeta.Physical.Completed && (task == config.ConstBackupPhysicalTypeXtrabackup || task == config.ConstBackupPhysicalTypeMariaBackup) {
+			// the job's "done" may have come before the stream ended: MarkBackupPhysicalDone then
+			// found the backup not received yet and left the cookie to this end
+			server.SetBackupPhysicalCookie(task)
+		}
+		if streamed && server.LastBackupMeta.Physical != nil && !server.LastBackupMeta.Physical.StartTime.IsZero() {
 			backupTool := server.LastBackupMeta.Physical.BackupTool
 			if backupTool == "" {
 				backupTool = cluster.Conf.BackupPhysicalType
@@ -8682,7 +8788,7 @@ func (server *ServerMonitor) JobFinishReceiveFile(task string) error {
 
 		// Transition from traditional backup lock to Restic lock atomically
 		// Set Restic flag BEFORE clearing physical backup flag
-		resticEnabled := server.LastBackupMeta.Physical != nil && server.LastBackupMeta.Physical.ResticEnabled && server.LastBackupMeta.Physical.Completed
+		resticEnabled := streamed && server.LastBackupMeta.Physical != nil && server.LastBackupMeta.Physical.ResticEnabled && server.LastBackupMeta.Physical.Completed
 		if resticEnabled {
 			cluster.SetInResticPhysicalBackupState(true)
 			// a snapshot is the server's backup directory in time, whatever the backup (#2091)

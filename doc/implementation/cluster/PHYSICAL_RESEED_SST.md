@@ -99,7 +99,7 @@ At this point the monitor has *armed* the reseed; the stream itself happens next
 - **Receiver (target/dbjob side):** listens on `SSTPort`; the monitor logs
   `"Listening for SST on port %d"` when it runs its own receiver variants
   (`SSTRunReceiverToFile` / `…ToGZip` / `…ToRestic`, used for the reverse direction —
-  streaming backups *from* the DB).
+  streaming backups *from* the DB; its lifecycle is in "The receiver of a physical backup" below).
 - **Sender (monitor side):** `SSTRunSender` (whole file) or `SSTRunSenderStream`
   (streamed source) — `net.Dial` the target's `SSTPort` and `io.CopyBuffer` the
   backup in (buffer = `SSTSendBuffer`, default 16 KiB). Gzip may be decompressed
@@ -260,3 +260,36 @@ what the backup already holds. A point-in-time restore without binary logs is un
 A position line that arrives after the deadline is still parsed into the server's physical
 backup metadata. The metadata file was already written without it; the next backup's metadata
 replaces it.
+
+## The receiver of a physical backup
+
+The stream of a physical backup (the DB host's `mariabackup`/`xtrabackup` piped to repman) has one
+receiver per backup, and the backup owns it.
+
+- **Opens:** `JobBackupPhysicalWithOptions` opens it on the backup's destination
+  (`openPhysicalBackupReceiver`, a staging name when backup-encryption is on). In
+  `scheduler-jobs-mode = api` it records the receiver's port (`registerPhysicalBackupReceiver`)
+  before `JobInsertTask` publishes the task, so the jobs script can never ask before the port exists.
+- **Lookup:** the jobs script asks `receive-task/mariabackup` (or `xtrabackup`), as often as it
+  likes. The handler opens nothing: it answers the recorded port (`PhysicalBackupReceiverPort`), or
+  `500 No physical backup <task> waiting for its stream on <server>` when no backup waits. A
+  second receiver on the same file, never used, would rewrite the finished backup when its accept
+  deadline ends. In SQL mode the port comes from the jobs table.
+- **Ends:** at the end of the stream, or at the accept deadline when nobody connects
+  (`tcp_con_handle_to_file` / `…_to_gzip`): it forgets its port (`releasePhysicalBackupReceiver`, a
+  compare-and-delete, so a newer backup's port is kept), then `jobFinishReceiveFile(task, streamed)`.
+- **`streamed`:** bytes were received, then EOF, with no read or write error. It is transport
+  only: not proof that the sender sent everything, nor that the backup is valid. A receiver that is not
+  `streamed` frees what it held but never completes, publishes, archives or sizes the backup, and
+  sets no cookie; a gzip receiver that got no byte does not close its writer (that would write an
+  empty member over the start of a backup another writer completed); a backup another
+  receiver completed stays completed.
+- **Completes:** with encryption on, the artifact is encrypted and published first; then
+  `Completed` is set, under `backupMetaMutex` (`completeReceivedPhysicalBackup`). The job's `done`
+  (`MarkBackupPhysicalDone`) sets the backup cookie only for a completed backup; if it came first,
+  the receiver's end sets it. The job's `error` sets `SourceJobFailed` (under `backupMetaMutex`), which
+  discards a staged stream or withdraws an encrypted artifact already published.
+
+Limits: a stream cut by the sender that still ends with a clean EOF is not detected. In SQL mode
+`AfterJobProcess` (`srv_job_backup.go`) still sets `Completed` and the cookie when the job row is
+done, as before: the "a done is not a backup" rule above holds for API mode only.

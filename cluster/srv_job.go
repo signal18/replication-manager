@@ -1697,6 +1697,11 @@ func (server *ServerMonitor) jobsUpdateState(task, result string, state, done in
 	// Stop here, or this would fall through to the SQL section below and run a
 	// no-op UPDATE against a row that was never inserted.
 	if runtimeOnly {
+		if done == 1 && state == JobStateErrorExec && (task == config.ConstBackupPhysicalTypeXtrabackup || task == config.ConstBackupPhysicalTypeMariaBackup) {
+			// API mode's counterpart of JobsCheckErrors: a failed physical backup job discards
+			// the staged stream, or withdraws the encrypted artifact already published.
+			server.failEncryptedPhysicalBackup(result)
+		}
 		return nil
 	}
 

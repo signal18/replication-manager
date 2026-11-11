@@ -5,6 +5,7 @@
 package regtest
 
 import (
+	"context"
 	"fmt"
 	"sort"
 	"strings"
@@ -109,6 +110,50 @@ func physReseedShapeDiff(s *clusterpkg.ServerMonitor) string {
 	return ""
 }
 
+// physReseedMarkerID is the key of a row written on the replica alone (binary log off) in a table
+// of the fixture database, the database the partial restore drops and recreates: it is gone only
+// if the restore really replaced the data.
+const physReseedMarkerID = 900
+
+// physReseedHasKey looks a row up by its primary key, the key bound as a parameter.
+func physReseedHasKey(s *clusterpkg.ServerMonitor, table string, key int64) (bool, error) {
+	if s.Conn == nil {
+		return false, fmt.Errorf("no db connection on %s", s.URL)
+	}
+	quoted, err := dbhelper.QuoteMySQLTableIdentifier(physReseedSchema + "." + table)
+	if err != nil {
+		return false, err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	var n int
+	if err := s.Conn.QueryRowxContext(ctx, "SELECT COUNT(*) FROM "+quoted+" WHERE id = ?", key).Scan(&n); err != nil {
+		return false, err
+	}
+	return n > 0, nil
+}
+
+// physReseedCountsDiff returns "" when the fixture tables of s hold exactly the expected number of
+// rows (dbhelper.CountTableRows), and the first difference when they do not. The fixture is
+// deterministic: two servers that are both wrong still differ from these numbers.
+func physReseedCountsDiff(s *clusterpkg.ServerMonitor, parent, child, part int64) string {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	for _, w := range []struct {
+		table string
+		want  int64
+	}{{"parent", parent}, {"child", child}, {"part", part}} {
+		n, _, err := dbhelper.CountTableRows(ctx, s.Conn, s.DBVersion, physReseedSchema, w.table)
+		if err != nil {
+			return fmt.Sprintf("%s on %s: %s", w.table, s.URL, err)
+		}
+		if n != w.want {
+			return fmt.Sprintf("%s on %s has %d rows, expected %d", w.table, s.URL, n, w.want)
+		}
+	}
+	return ""
+}
+
 // TestPhysicalReseedRestore validates the physical reseed of a replica
 // through the whole chain: the master's physical backup, its transfer to the
 // replica's jobs container, the restore into the running replica (the
@@ -123,6 +168,12 @@ func physReseedShapeDiff(s *clusterpkg.ServerMonitor) string {
 // foreign key, the stored generated column and the partitions, read from
 // information_schema, which a content digest does not see), to replicate
 // again, and to apply a later transaction.
+//
+// Two more rows prove the restore itself, not only a healthy end state: a marker row written
+// on the replica alone (binary log off) in a fixture table must be gone after the reseed (the
+// partial restore drops and recreates the fixture database), and rows committed on the master
+// after the backup completed must arrive by replication from the restored position. The row
+// counts are absolute. It does not prove which backup file was restored.
 //
 // It needs a cluster with a jobs container next to each database and a
 // physical backup tool matching the servers (mariabackup on MariaDB,
@@ -243,15 +294,59 @@ func (regtest *RegTest) TestPhysicalReseedRestore(cl *clusterpkg.Cluster, conf s
 		return fail("no completed %s backup of the master within 10 minutes", tool)
 	}
 
+	// committed after the backup completed: not in it, they must come by replication
+	step("commit rows 201-205 on the master after the backup")
+	rows = rows[:0]
+	for i := 201; i <= 205; i++ {
+		rows = append(rows,
+			fmt.Sprintf("INSERT INTO %s.parent VALUES (%d, 'after the backup %d')", physReseedSchema, i, i),
+			fmt.Sprintf("INSERT INTO %s.child (id, parent_id, note) VALUES (%d, %d, 'child after the backup %d')", physReseedSchema, i, i, i),
+			fmt.Sprintf("INSERT INTO %s.part VALUES (%d, '2030-01-01')", physReseedSchema, i))
+	}
+	if err := dbhelper.ExecStatements(mdb, rows...); err != nil {
+		return fail("rows committed after the backup: %s", err)
+	}
+
+	// written on the replica alone, with the binary log off, in a fixture table the restore replaces
+	step("write the marker row on the replica %s", slave.URL)
+	if err := slave.ExecQueryNoBinLog(fmt.Sprintf("INSERT INTO %s.parent VALUES (%d, 'replica-only marker')", physReseedSchema, physReseedMarkerID), 10*time.Second); err != nil {
+		return fail("the marker row cannot be written on the replica (read-only?): %s", err)
+	}
+	onReplica, errR := physReseedHasKey(slave, "parent", physReseedMarkerID)
+	onMaster, errM := physReseedHasKey(master, "parent", physReseedMarkerID)
+	if errR != nil || errM != nil || !onReplica || onMaster {
+		return fail("the marker must be on the replica (%v, %v) and not on the master (%v, %v)", onReplica, errR, onMaster, errM)
+	}
+
 	step("physical reseed of %s", slave.URL)
+	requested := time.Now().UnixNano()
 	if err := slave.JobReseedPhysicalBackup(tool); err != nil {
 		return fail("JobReseedPhysicalBackup: %s", err)
 	}
+	reseedFailed := ""
 	if !physReseedWait(30*time.Minute, func() bool {
+		// a failure repman itself recorded ends the wait at once
+		if reseedFailed = slave.ReseedFailedSince(requested); reseedFailed != "" {
+			return true
+		}
 		return !slave.HasAnyReseedingState() && !slave.HasReplicationIssue()
 	}) {
-		return fail("the replica is still reseeding or not replicating after 30 minutes (reseeding=%v, replication ok=%v)",
-			slave.HasReseedingState(task), !slave.HasReplicationIssue())
+		jobState := ""
+		if t := slave.JobResults.Get(task); t != nil { // for the message only
+			jobState = fmt.Sprintf("; job state %d done %d result %q", t.State, t.Done, t.Result)
+		}
+		return fail("the replica is still reseeding or not replicating after 30 minutes (reseeding=%v, replication ok=%v%s)",
+			slave.HasReseedingState(task), !slave.HasReplicationIssue(), jobState)
+	}
+	if reseedFailed != "" {
+		return fail("the reseed failed: %s", reseedFailed)
+	}
+
+	step("the marker row must be gone: the restore replaced the fixture database")
+	if survived, err := physReseedHasKey(slave, "parent", physReseedMarkerID); err != nil {
+		return fail("cannot look the marker up on the replica: %s", err)
+	} else if survived {
+		return fail("the replica-only marker row survived the reseed: the restore did not replace the data")
 	}
 
 	step("compare the replica with the master")
@@ -261,6 +356,12 @@ func (regtest *RegTest) TestPhysicalReseedRestore(cl *clusterpkg.Cluster, conf s
 		return ok
 	}) {
 		return fail("the replica differs from the master after the reseed: %s", lastDiff)
+	}
+	// rows 1-20, 101-110 and 201-205 of each table
+	for _, s := range []*clusterpkg.ServerMonitor{master, slave} {
+		if d := physReseedCountsDiff(s, 35, 35, 35); d != "" {
+			return fail("unexpected fixture content after the reseed: %s", d)
+		}
 	}
 
 	step("check the table definitions on the replica (foreign key, stored generated column, partitions)")
@@ -281,6 +382,11 @@ func (regtest *RegTest) TestPhysicalReseedRestore(cl *clusterpkg.Cluster, conf s
 		return ok
 	}) {
 		return fail("a transaction committed after the reseed did not reach the replica: %s", lastDiff)
+	}
+	for _, s := range []*clusterpkg.ServerMonitor{master, slave} {
+		if d := physReseedCountsDiff(s, 36, 35, 35); d != "" {
+			return fail("unexpected fixture content at the end: %s", d)
+		}
 	}
 
 	step("passed: the replica holds the master's data and replicates")
