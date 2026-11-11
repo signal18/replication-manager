@@ -2724,7 +2724,7 @@ func (repman *ReplicationManager) Run() error {
 		IssueAppAPIToken:   repman.issueAppAPIToken,
 		RevokeAppAPIToken:  repman.revokeAppAPIToken,
 		ServerSecrets:      repman.serverSecretLevel(),
-		CheckServerSecrets: repman.reloadServerVersionsFromPeer,
+		CheckServerSecrets: repman.reloadServerVersionsFromPeer, AdoptServerVersions: repman.adoptServerVersionsFromCluster,
 	}
 	if repman.Conf.BackupConcurrentSlots > 0 {
 		repman.serverGlobals.BackupSemaphore = make(chan struct{}, repman.Conf.BackupConcurrentSlots)

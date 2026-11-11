@@ -119,22 +119,6 @@ func (cluster *Cluster) ReconcileSecretVersionStore() error {
 	return nil
 }
 
-func (cluster *Cluster) getSecretVersionStoreAutoPruneSettings() (bool, int) {
-	if cluster == nil || cluster.Conf == nil {
-		return false, 0
-	}
-
-	if !cluster.Conf.MonitoringSecretVersioningAutoPrune {
-		return false, 0
-	}
-
-	if cluster.Conf.MonitoringSecretVersioningKeepLast < 1 {
-		return false, 0
-	}
-
-	return true, cluster.Conf.MonitoringSecretVersioningKeepLast
-}
-
 // TrackedSecretCompareSnapshot returns the current tracked secret semantic
 // values (decrypted/plaintext compare form) keyed by secret name.
 //
@@ -411,48 +395,9 @@ func PruneSecretVersionStoreFile(path string, keepLast int, dryRun bool) (Secret
 	return summary, nil
 }
 
+// pruneSecretVersionStore keeps the last keepLast versions of each key (credstore.PruneVersions).
 func pruneSecretVersionStore(store secretVersionStore, keepLast int) (secretVersionStore, int, int) {
-	if store == nil {
-		store = make(secretVersionStore)
-	}
-
-	pruned := make(secretVersionStore, len(store))
-	keysPruned := 0
-	versionsRemoved := 0
-
-	for key, versions := range store {
-		if len(versions) <= keepLast {
-			copied := append([]secretVersion(nil), versions...)
-			pruned[key] = copied
-			continue
-		}
-
-		start := len(versions) - keepLast
-		copied := append([]secretVersion(nil), versions[start:]...)
-		// the value a config file held when last seen stays, to tell an edit of the file
-		// (#2227 rule 9)
-		if seen := lastFromConfigFile(versions); seen >= 0 && seen < start {
-			copied = append([]secretVersion{versions[seen]}, copied...)
-			start--
-		}
-		pruned[key] = copied
-		if start > 0 {
-			keysPruned++
-		}
-		versionsRemoved += start
-	}
-
-	return pruned, keysPruned, versionsRemoved
-}
-
-// lastFromConfigFile is the index of the last version marked from_config_file, else -1.
-func lastFromConfigFile(versions []secretVersion) int {
-	for i := len(versions) - 1; i >= 0; i-- {
-		if versions[i].FromConfigFile {
-			return i
-		}
-	}
-	return -1
+	return credstore.PruneVersions(store, keepLast)
 }
 
 func resolveSecretStoreEntryByVersion(key string, versions []secretVersion, requestedVersion int) (SecretVersionStoreRestoreEntry, error) {

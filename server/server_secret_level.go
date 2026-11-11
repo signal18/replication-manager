@@ -82,7 +82,7 @@ func (repman *ReplicationManager) writeServerSecretFile() error {
 		return nil
 	}
 	vs := repman.serverVersionStore()
-	if err := repman.serverSecrets.file.Save(vs, credstore.LooksEncrypted, nil); err != nil {
+	if err := repman.serverSecrets.file.Save(vs, credstore.LooksEncrypted, credstore.AutoPrune(repman.Conf)); err != nil {
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "Failed to persist the server secret versions %s: %v", repman.serverSecrets.file.Path(), err)
 		return err
 	}
@@ -106,12 +106,59 @@ func (repman *ReplicationManager) reloadServerVersionsFromPeer() {
 	}
 }
 
+// adoptServerVersions merges the server secrets' versions an older release kept in a cluster's
+// file: the newest is the current one, so a rotation made before the upgrade stays in force.
+// True when one was added.
+func (repman *ReplicationManager) adoptServerVersions(file map[string][]credstore.FileVersion) bool {
+	kept := map[string][]credstore.FileVersion{}
+	for key, versions := range file {
+		if isServerSecretKey(key) && len(versions) > 0 {
+			kept[key] = versions
+		}
+	}
+	if len(kept) == 0 || !repman.serverVersionStore().Merge(kept) {
+		return false
+	}
+	for key := range kept {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModVault, config.LvlInfo, "Server credentials: the versions of %s kept by a cluster are the server's now", key)
+	}
+	repman.CredentialChain().Refresh()
+	return true
+}
+
+// adoptClusterServerVersions reads, at start and before the config files' values are checked,
+// the server secrets' versions an older release kept in the files of the configured clusters.
+func (repman *ReplicationManager) adoptClusterServerVersions() {
+	local := credstore.LocalFile{DataDir: repman.Conf.WorkingDir}
+	for _, name := range repman.ClusterList {
+		if name == "" {
+			continue
+		}
+		file, err := local.Load(credstore.ClusterScope(name))
+		if err != nil {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Server credential versions: %s not read: %s", local.Path(credstore.ClusterScope(name)), err)
+			continue
+		}
+		repman.adoptServerVersions(file)
+	}
+}
+
+// adoptServerVersionsFromCluster is the cluster's hand-over at its first load: a cluster loaded
+// after the start (added, or its file restored) may bring a newer version, which every cluster
+// then reads. Asynchronous: the cluster holds its store's lock.
+func (repman *ReplicationManager) adoptServerVersionsFromCluster(file map[string][]credstore.FileVersion) {
+	if repman.adoptServerVersions(file) {
+		go repman.applyServerSecrets()
+	}
+}
+
 // takeServerConfigFileCredentials is the start's check of the server secrets set in a config
 // file (immutable, rule 9): an edit of the file is the current version.
 func (repman *ReplicationManager) takeServerConfigFileCredentials() {
 	if !repman.Conf.IsMonitoringSecretVersioningEnabled() {
 		return
 	}
+	repman.adoptClusterServerVersions()
 	vs := repman.serverVersionStore()
 	for key := range serverSecretKeys {
 		raw, pinned := repman.Conf.GetImmuableFlag(key)

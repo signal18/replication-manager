@@ -31,6 +31,9 @@ type ServerGlobals struct {
 	// stores answer. CheckServerSecrets has a standby merge the server's versioned file.
 	ServerSecrets      *credstore.ServerLevel
 	CheckServerSecrets func()
+	// AdoptServerVersions takes the server secrets' versions an older release kept in a
+	// cluster's file (the server's file is their only place now)
+	AdoptServerVersions func(file map[string][]credstore.FileVersion)
 }
 
 // AcquireBackupSlot blocks until a backup slot is available.

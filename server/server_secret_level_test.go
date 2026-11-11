@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	log "github.com/sirupsen/logrus"
 
@@ -41,10 +42,10 @@ func newServerLevelTestManager(t *testing.T, list string) *ReplicationManager {
 	t.Helper()
 	dir := t.TempDir()
 	repman := &ReplicationManager{Conf: serverLevelConf(dir, list), Logrus: log.New(), Status: ConstMonitorActif, Clusters: map[string]*cluster.Cluster{}}
-	globals := &cluster.ServerGlobals{ServerSecrets: repman.serverSecretLevel(), CheckServerSecrets: repman.reloadServerVersionsFromPeer}
+	globals := &cluster.ServerGlobals{ServerSecrets: repman.serverSecretLevel(), CheckServerSecrets: repman.reloadServerVersionsFromPeer, AdoptServerVersions: repman.adoptServerVersionsFromCluster}
 	repman.CredentialChain().Refresh()
 	for _, name := range []string{"c1", "c2"} {
-		cl := &cluster.Cluster{Name: name, Conf: serverLevelConf(filepath.Join(dir, name), list), ServerGlobals: globals,
+		cl := &cluster.Cluster{Name: name, Conf: serverLevelConf(dir, list), ServerGlobals: globals,
 			APIUsers: map[string]cluster.APIUser{}, Grants: config.GetGrantType(), Roles: config.GetRoleType(), SecurityLogrus: log.New(), Logrus: log.New()}
 		cl.CredentialChain().Refresh()
 		cl.LoadAPIUsers()
@@ -150,5 +151,57 @@ func TestServerLevelFanOut(t *testing.T) {
 	}
 	if c1.CredentialChain().Source("mail-smtp-password") != credstore.SourceServer {
 		t.Fatalf("source %q", c1.CredentialChain().Source("mail-smtp-password"))
+	}
+}
+
+// The upgrade: an older release kept a rotation of the instance's list in each cluster's file.
+// The server takes it before it checks the config file, so the rotation stays in force over
+// the value still in /etc, and the cluster's file is written without it.
+func TestServerLevelAdoptsClusterVersionsAtUpgrade(t *testing.T) {
+	dir := t.TempDir()
+	conf := serverLevelConf(dir, "admin:first,ops:second")
+	conf.ImmuableFlagMap[apiCredentialsKey] = "admin:first,ops:second"
+	before := time.Now().Add(-time.Hour).UTC().Format(time.RFC3339Nano)
+	old := map[string][]credstore.FileVersion{
+		apiCredentialsKey:       {{Version: 1, HashValue: conf.GetEncryptedString("admin:first,ops:Rotated-old"), RotatedAt: before}},
+		"db-servers-credential": {{Version: 1, HashValue: conf.GetEncryptedString("root:db"), RotatedAt: before}},
+	}
+	local := credstore.LocalFile{DataDir: dir}
+	for _, name := range []string{"c1", "c2"} {
+		if err := os.MkdirAll(filepath.Join(dir, name), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := local.Write(credstore.ClusterScope(name), old); err != nil {
+			t.Fatal(err)
+		}
+	}
+	repman := &ReplicationManager{Conf: conf, Logrus: log.New(), Status: ConstMonitorActif, Clusters: map[string]*cluster.Cluster{}, ClusterList: []string{"c1", "c2"}}
+	repman.takeServerConfigFileCredentials()
+	if got := repman.Conf.DecryptedAPIUserList(); got != "admin:first,ops:Rotated-old" {
+		t.Fatalf("after the upgrade the list is %q", got)
+	}
+	if n := repman.serverVersionStore().Count(apiCredentialsKey); n < 1 {
+		t.Fatalf("%d server versions", n)
+	}
+	globals := &cluster.ServerGlobals{ServerSecrets: repman.serverSecretLevel(), AdoptServerVersions: repman.adoptServerVersionsFromCluster}
+	cl := &cluster.Cluster{Name: "c1", Conf: serverLevelConf(dir, "admin:first,ops:second"), ServerGlobals: globals,
+		APIUsers: map[string]cluster.APIUser{}, Grants: config.GetGrantType(), Roles: config.GetRoleType(), SecurityLogrus: log.New(), Logrus: log.New()}
+	cl.CredentialChain().Refresh()
+	cl.LoadAPIUsers()
+	if _, err := cl.GetAPIUser("ops", "Rotated-old"); err != nil {
+		t.Fatalf("the cluster does not take the rotated password: %v", err)
+	}
+	if err := cl.ReconcileSecretVersionStore(); err != nil {
+		t.Fatal(err)
+	}
+	file, err := local.Load(credstore.ClusterScope("c1"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := file[apiCredentialsKey]; ok {
+		t.Fatalf("the cluster's file still holds the server secret")
+	}
+	if _, ok := file["db-servers-credential"]; !ok {
+		t.Fatalf("the cluster's own secret was lost")
 	}
 }

@@ -625,9 +625,22 @@ func (cluster *Cluster) versionStore() *credstore.VersionStore {
 		c.file = &credstore.FileBinding{DataDir: func() string { return cluster.Conf.WorkingDir }, Scope: credstore.ClusterScope(cluster.Name)}
 		if cluster.Conf != nil && cluster.Conf.IsMonitoringSecretVersioningEnabled() {
 			c.file.LoadInto(c.versions)
+			cluster.handOverServerVersions(c.versions)
 		}
 	}
 	return c.versions
+}
+
+// handOverServerVersions gives the server the versions of server secrets an older release kept
+// in this cluster's file; the file is written without them at the next save.
+func (cluster *Cluster) handOverServerVersions(vs *credstore.VersionStore) {
+	g := cluster.ServerGlobals
+	if g == nil || g.ServerSecrets == nil || g.ServerSecrets.Held == nil || g.AdoptServerVersions == nil {
+		return
+	}
+	if taken := vs.Take(g.ServerSecrets.Held); len(taken) > 0 {
+		g.AdoptServerVersions(taken)
+	}
 }
 
 // reloadVersionsFromPeer: on a standby, the local file the config pull brought (written by
@@ -671,14 +684,7 @@ func (cluster *Cluster) writeSecretVersionFile() error {
 	// F9 whatever the order of events: a version kept in memory without the key (a vault read
 	// with versioning off, versioning then turned on) is encrypted once the key is there, and
 	// never written before.
-	var prune func(map[string][]credstore.FileVersion) (map[string][]credstore.FileVersion, bool)
-	if autoPrune, keepLast := cluster.getSecretVersionStoreAutoPruneSettings(); autoPrune {
-		prune = func(file map[string][]credstore.FileVersion) (map[string][]credstore.FileVersion, bool) {
-			pruned, _, removed := pruneSecretVersionStore(file, keepLast)
-			return pruned, removed > 0
-		}
-	}
-	return cluster.secretKv.file.Save(vs, credstore.LooksEncrypted, prune)
+	return cluster.secretKv.file.Save(vs, credstore.LooksEncrypted, credstore.AutoPrune(cluster.Conf))
 }
 
 // CheckSecretKvStores runs at each tick on the active monitor: the full pass at start, for a

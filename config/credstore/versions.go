@@ -372,6 +372,25 @@ func (s *VersionStore) Versions(key string) []FileVersion {
 	return append([]FileVersion(nil), s.versions[key]...)
 }
 
+// Take removes the versions of the keys held answers and returns them; the file is written
+// without them at the next save. A server secret's versions an older release kept in a
+// cluster's file are taken this way (CREDENTIAL_STORES.md "Two levels").
+func (s *VersionStore) Take(held func(string) bool) map[string][]FileVersion {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := map[string][]FileVersion{}
+	for k, vs := range s.versions {
+		if held(k) {
+			out[k] = vs
+			delete(s.versions, k)
+		}
+	}
+	if len(out) > 0 {
+		s.dirty = true
+	}
+	return out
+}
+
 // MarkDirty asks the next save to write the file.
 func (s *VersionStore) MarkDirty() {
 	s.mu.Lock()

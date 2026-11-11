@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/misc"
 )
 
@@ -112,6 +113,55 @@ func WriteVersionFile(path string, file map[string][]FileVersion) error {
 		return err
 	}
 	return misc.WriteFileDurable(path, payload, 0o600, "secret_store-*.tmp")
+}
+
+// PruneVersions keeps the last keepLast versions of each key, in new arrays; the value a
+// config file held when last seen stays, to tell an edit of the file (rule 9). It returns the
+// pruned versions, the number of keys pruned and of versions removed.
+func PruneVersions(file map[string][]FileVersion, keepLast int) (map[string][]FileVersion, int, int) {
+	pruned := make(map[string][]FileVersion, len(file))
+	keysPruned, removed := 0, 0
+	for key, versions := range file {
+		if len(versions) <= keepLast {
+			pruned[key] = append([]FileVersion(nil), versions...)
+			continue
+		}
+		start := len(versions) - keepLast
+		copied := append([]FileVersion(nil), versions[start:]...)
+		if seen := lastFromConfigFile(versions); seen >= 0 && seen < start {
+			copied = append([]FileVersion{versions[seen]}, copied...)
+			start--
+		}
+		pruned[key] = copied
+		if start > 0 {
+			keysPruned++
+		}
+		removed += start
+	}
+	return pruned, keysPruned, removed
+}
+
+// lastFromConfigFile is the index of the last version marked from_config_file, else -1.
+func lastFromConfigFile(versions []FileVersion) int {
+	for i := len(versions) - 1; i >= 0; i-- {
+		if versions[i].FromConfigFile {
+			return i
+		}
+	}
+	return -1
+}
+
+// AutoPrune is the bound of a versioned file under conf (monitoring-secret-versioning-auto-prune,
+// -keep-last), for FileBinding.Save; nil when auto-prune is off.
+func AutoPrune(conf *config.Config) func(map[string][]FileVersion) (map[string][]FileVersion, bool) {
+	if conf == nil || !conf.MonitoringSecretVersioningAutoPrune || conf.MonitoringSecretVersioningKeepLast < 1 {
+		return nil
+	}
+	keepLast := conf.MonitoringSecretVersioningKeepLast
+	return func(file map[string][]FileVersion) (map[string][]FileVersion, bool) {
+		pruned, _, removed := PruneVersions(file, keepLast)
+		return pruned, removed > 0
+	}
 }
 
 // SourceServer is the source of a server secret read in a cluster's chain.
