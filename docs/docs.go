@@ -868,7 +868,7 @@ const docTemplate = `{
                 }
             },
             "post": {
-                "description": "Sets the company, hostname and location (zone) of an unregistered replication-manager (each 1 to 63 letters, digits, '-', '_' or '.'). Refused on a registered one (409) and on a standby (409: change it on the active instance, the standby takes it from the config push).",
+                "description": "Sets the company, hostname and location (zone) of an unregistered replication-manager (each 1 to 63 letters, digits, '-', '_' or '.'). With declined true, records the answer \"no thank you, do not ask again\" instead (instance-name-declined). Refused on a registered one (409) and on a standby (409: change it on the active instance, the standby takes it from the config push).",
                 "consumes": [
                     "application/json"
                 ],
@@ -31371,6 +31371,9 @@ const docTemplate = `{
                     "description": "The instance's own name when it is not registered (CREDENTIAL_STORES.md \"Two levels\"): where\nits server secrets go in a shared store. Never copied into the cloud18-* keys above.",
                     "type": "string"
                 },
+                "instanceNameDeclined": {
+                    "type": "boolean"
+                },
                 "instanceSubDomain": {
                     "type": "string"
                 },
@@ -34219,6 +34222,10 @@ const docTemplate = `{
         "server.InstanceName": {
             "type": "object",
             "properties": {
+                "declined": {
+                    "description": "Declined: a sysops or extsysops answered \"no thank you, don't ask again\"",
+                    "type": "boolean"
+                },
                 "domain": {
                     "type": "string"
                 },
@@ -34240,6 +34247,10 @@ const docTemplate = `{
         "server.InstanceNameForm": {
             "type": "object",
             "properties": {
+                "declined": {
+                    "description": "Declined: \"no thank you, don't ask again\", the name parts are then ignored",
+                    "type": "boolean"
+                },
                 "domain": {
                     "type": "string"
                 },

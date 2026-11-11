@@ -1299,6 +1299,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.InstanceDomain, "instance-domain", "", "The company running this replication-manager when it is not registered with Cloud18: the first part of its name in a shared credential store (asked at the first sign-in to the GUI)")
 	flags.StringVar(&conf.InstanceSubDomain, "instance-sub-domain", "", "This replication-manager's name in its company when it is not registered with Cloud18: the hostname, read once at the first start and saved, changeable in the GUI")
 	flags.StringVar(&conf.InstanceSubDomainZone, "instance-sub-domain-zone", "", "Where this replication-manager runs when it is not registered with Cloud18 (an office, a country), entered in the GUI: with instance-domain and instance-sub-domain, its unique name in a shared credential store and a config backup")
+	flags.BoolVar(&conf.InstanceNameDeclined, "instance-name-declined", false, "A sysops or extsysops declined to name this replication-manager (no versioned secrets in a shared store, no Cloud18 registration): the GUI does not ask again")
 	flags.BoolVar(&conf.Cloud18Shared, "cloud18-shared", false, "Enable cluster sharing for Cloud 18 DBAAS")
 	flags.StringVar(&conf.Cloud18GitUser, "cloud18-gitlab-user", "", "Cloud 18 GitLab user")
 	flags.StringVar(&conf.Cloud18GitPassword, "cloud18-gitlab-password", "", "Cloud 18 GitLab password")

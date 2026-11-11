@@ -456,7 +456,12 @@ is treated the same; only the path a level maps to differs per store.
   sysops or extsysops (grant `cluster-server-credentials` on every cluster) through
   `/api/clusters/settings/actions/instance-name`. The `cloud18-*` settings are never filled
   with the local name: their readers take them as "registered". Name not complete: server
-  secrets stay in the local version store and the window asks again.
+  secrets stay in the local version store and the window asks again. "No thank you, don't ask again"
+  (for one who does not plan to version and rotate secrets, nor wants the security, workload and
+  schema monitoring plugins) sets `instance-name-declined`: the window no longer opens, for any
+  sysops or extsysops, until that global setting is switched off. The name stays local until
+  the instance is registered with a Cloud18 account (community plugins, config versioning in the
+  Cloud18 GitLab).
 - **The move.** When the name changes (a licence loaded, a registration, a renamed cluster for
   its cluster secrets), every server store gets every kept version of every server secret at
   the new name, oldest first, from repman's own version store (never read from the old path).

@@ -28,6 +28,12 @@ func TestSetInstanceName(t *testing.T) {
 	if n := repman.instanceName(); n.Name != "acme/repman1/paris" {
 		t.Fatalf("after: %+v", n)
 	}
+	if err := repman.setInstanceName(InstanceNameForm{Declined: true}); err != nil || !repman.instanceName().Declined {
+		t.Fatalf("decline: %v", err)
+	}
+	if n := repman.instanceName(); n.Name != "acme/repman1/paris" {
+		t.Fatalf("a decline changed the name: %+v", n)
+	}
 	// registered: the name is the registration, never changed here
 	repman.Conf.Cloud18, repman.Conf.Cloud18Domain, repman.Conf.Cloud18SubDomain, repman.Conf.Cloud18SubDomainZone = true, "s18", "dev3", "ovh2"
 	if n := repman.instanceName(); !n.Registered || n.Name != "s18/dev3/ovh2" {

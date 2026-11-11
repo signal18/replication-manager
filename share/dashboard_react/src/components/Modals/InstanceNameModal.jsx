@@ -52,7 +52,7 @@ function InstanceNameModal() {
     globalClustersService
       .getInstanceName()
       .then(({ data, status }) => {
-        if (status !== 200 || !data || data.registered || data.name) return
+        if (status !== 200 || !data || data.registered || data.declined || data.name) return
         setForm({ domain: data.domain || '', subDomain: data.subDomain || '', zone: data.zone || '' })
         setIsOpen(true)
       })
@@ -86,6 +86,19 @@ function InstanceNameModal() {
       })
       .catch((err) => {
         dispatch(showErrorToast({ title: 'Instance name not saved', description: err?.response?.data || err?.message || '' }))
+      })
+      .finally(() => setSaving(false))
+  }
+
+  // "No thank you, don't ask again": kept on the server, for every sysops and extsysops; the
+  // global setting instance-name-declined brings the window back
+  const decline = () => {
+    setSaving(true)
+    globalClustersService
+      .setInstanceName({ declined: true })
+      .then(() => setIsOpen(false))
+      .catch((err) => {
+        dispatch(showErrorToast({ title: 'Answer not saved', description: err?.response?.data || err?.message || '' }))
       })
       .finally(() => setSaving(false))
   }
@@ -130,13 +143,28 @@ function InstanceNameModal() {
               <Code>{preview}</Code>
             </Box>
             <Text fontSize='sm'>
+              Choose "No thank you, don't ask again" if you don't plan to version your secrets and rotate
+              them on a regular basis, and you're not interested in the security, workload and schema
+              monitoring plugins. A sysops can bring this window back in the global settings.
+            </Text>
+            <Text fontSize='sm'>
               This information stays local until you register this replication-manager with a Cloud18
               account, which activates the community plugins and the versioning of its configuration in
               the Cloud18 GitLab. Until the name is complete, its secrets stay in its local store only.
             </Text>
           </Stack>
         </ModalBody>
-        <ModalFooter gap={3} margin='auto'>
+        <ModalFooter gap={3} margin='auto' flexWrap='wrap' justifyContent='center'>
+          <RMButton
+            colorScheme='blue'
+            size='medium'
+            variant='outline'
+            onClick={decline}
+            isDisabled={saving}
+            title="I don't plan to version my secrets and rotate them on a regular basis, and I'm not interested in the security, workload and schema monitoring plugins."
+          >
+            No thank you, don't ask again
+          </RMButton>
           <RMButton colorScheme='blue' size='medium' variant='outline' onClick={close}>
             Later
           </RMButton>

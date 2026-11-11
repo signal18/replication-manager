@@ -1060,6 +1060,7 @@ type Config struct {
 	InstanceDomain                   string  `scope:"server" mapstructure:"instance-domain" toml:"instance-domain" json:"instanceDomain"`
 	InstanceSubDomain                string  `scope:"server" mapstructure:"instance-sub-domain" toml:"instance-sub-domain" json:"instanceSubDomain"`
 	InstanceSubDomainZone            string  `scope:"server" mapstructure:"instance-sub-domain-zone" toml:"instance-sub-domain-zone" json:"instanceSubDomainZone"`
+	InstanceNameDeclined             bool    `scope:"server" mapstructure:"instance-name-declined" toml:"instance-name-declined" json:"instanceNameDeclined"`
 	Cloud18GitUser                   string  `scope:"server" mapstructure:"cloud18-gitlab-user" toml:"cloud18-gitlab-user" json:"cloud18GitUser"`
 	Cloud18GitPassword               string  `scope:"server" mapstructure:"cloud18-gitlab-password" toml:"cloud18-gitlab-password" json:"-"`
 	Cloud18IdentityURL               string  `scope:"server" mapstructure:"cloud18-identity-url" toml:"cloud18-identity-url" json:"cloud18IdentityUrl"`

@@ -22,10 +22,14 @@ type InstanceName struct {
 	Zone       string `json:"zone"`
 	// Name is the full name, empty while the company is not entered
 	Name string `json:"name"`
+	// Declined: a sysops or extsysops answered "no thank you, don't ask again"
+	Declined bool `json:"declined"`
 }
 
 // InstanceNameForm is the own name of an unregistered instance, as entered in the GUI.
 type InstanceNameForm struct {
+	// Declined: "no thank you, don't ask again", the name parts are then ignored
+	Declined  bool   `json:"declined"`
 	Domain    string `json:"domain"`
 	SubDomain string `json:"subDomain"`
 	Zone      string `json:"zone"`
@@ -38,6 +42,7 @@ func (repman *ReplicationManager) instanceName() InstanceName {
 		n = InstanceName{Registered: true, Domain: c.Cloud18Domain, SubDomain: c.Cloud18SubDomain, Zone: c.Cloud18SubDomainZone}
 	}
 	n.Name, _ = c.InstanceStoreName()
+	n.Declined = c.InstanceNameDeclined
 	return n
 }
 
@@ -70,12 +75,18 @@ func (repman *ReplicationManager) setInstanceName(f InstanceNameForm) error {
 	if repman.instanceName().Registered {
 		return errInstanceNameRegistered
 	}
+	if f.Declined {
+		repman.Conf.InstanceNameDeclined = true
+		repman.Save()
+		return nil
+	}
 	for _, part := range []string{f.Domain, f.SubDomain, f.Zone} {
 		if err := config.ValidInstanceNamePart(part); err != nil {
 			return err
 		}
 	}
 	repman.Conf.InstanceDomain, repman.Conf.InstanceSubDomain, repman.Conf.InstanceSubDomainZone = f.Domain, f.SubDomain, f.Zone
+	repman.Conf.InstanceNameDeclined = false
 	repman.Save()
 	return nil
 }
@@ -99,7 +110,7 @@ func (repman *ReplicationManager) handlerMuxInstanceName(w http.ResponseWriter, 
 
 // handlerMuxSetInstanceName godoc
 // @Summary Set the name of this replication-manager in the shared stores
-// @Description Sets the company, hostname and location (zone) of an unregistered replication-manager (each 1 to 63 letters, digits, '-', '_' or '.'). Refused on a registered one (409) and on a standby (409: change it on the active instance, the standby takes it from the config push).
+// @Description Sets the company, hostname and location (zone) of an unregistered replication-manager (each 1 to 63 letters, digits, '-', '_' or '.'). With declined true, records the answer "no thank you, do not ask again" instead (instance-name-declined). Refused on a registered one (409) and on a standby (409: change it on the active instance, the standby takes it from the config push).
 // @Tags GlobalSetting
 // @Accept json
 // @Produce json

@@ -136,6 +136,18 @@ function GlobalSettings({ config, cards }) {
       )
     },
     {
+      globalSetting: 'instance-name-declined',
+      key: 'Instance Name Declined',
+      help: h(`**Instance Name Declined**\n\nOn: a sysops or extsysops answered "No thank you, don't ask again" to the window asking for this replication-manager's name (company, hostname, location), its unique identifier in a shared credential store and a config backup. Off: the window asks again at the next sign-in while the name is not complete.`, 'Instance Name Declined'),
+      value: (
+        <RMSwitch
+          confirmTitle='Confirm switch global settings for instance-name-declined?'
+          onChange={(_v, setRefresh) => dispatch(switchGlobalSetting({ setting: 'instance-name-declined', setRefresh }))}
+          isChecked={config?.instanceNameDeclined}
+        />
+      )
+    },
+    {
       globalSetting: 'secret-kv-copy-api-credentials',
       key: 'Copy Users After Rotation',
       help: h(`**Copy Users After Rotation**\n\nAfter a user's password rotation, the list of the instance's users (api-credentials) is copied, in clear, to the OpenSVC secret system/sec/repman under the key <api host>_api-credentials, so the infrastructure keeps the current value.`, 'Copy Users After Rotation'),
