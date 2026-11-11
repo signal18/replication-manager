@@ -657,3 +657,49 @@ func (conf *Config) EnsureMarketplaceVault(offer MarketplaceVaultOffer, pathPref
 	}
 	return changed, nil
 }
+
+// InstanceStoreName is this instance's name in a shared credential store, the folder of its
+// server secrets: <domain>/<subdomain>/<zone>. A registered instance is named by its
+// registration, any other by its own name (instance-domain, -sub-domain, -sub-domain-zone).
+// ok false while the name is not complete (no company entered yet): the server secrets then
+// stay in the local version store.
+func (conf *Config) InstanceStoreName() (string, bool) {
+	if conf.Cloud18 && conf.Cloud18Domain != "" && conf.Cloud18SubDomain != "" && conf.Cloud18SubDomainZone != "" {
+		return conf.Cloud18Domain + "/" + conf.Cloud18SubDomain + "/" + conf.Cloud18SubDomainZone, true
+	}
+	if conf.InstanceDomain != "" && conf.InstanceSubDomain != "" && conf.InstanceSubDomainZone != "" {
+		return conf.InstanceDomain + "/" + conf.InstanceSubDomain + "/" + conf.InstanceSubDomainZone, true
+	}
+	return "", false
+}
+
+// SeedInstanceName fills the parts of the instance's own name drawn at the first start: the
+// hostname and a random zone, each only when empty, never changed afterwards (a container given
+// a new hostname at each start keeps its first). The company is entered by a person. True when
+// it set one: the caller saves.
+func (conf *Config) SeedInstanceName(hostname string, zone func() string) bool {
+	changed := false
+	if conf.InstanceSubDomain == "" && hostname != "" {
+		conf.InstanceSubDomain = hostname
+		changed = true
+	}
+	if conf.InstanceSubDomainZone == "" {
+		conf.InstanceSubDomainZone = zone()
+		changed = true
+	}
+	return changed
+}
+
+// ValidInstanceNamePart: a part of the instance's name is one folder of a store path and one
+// part of an OpenSVC key: 1 to 63 letters, digits, '-', '_' or '.', no '..'.
+func ValidInstanceNamePart(s string) error {
+	if s == "" || len(s) > 63 || strings.Contains(s, "..") {
+		return fmt.Errorf("an instance name part is 1 to 63 characters, no '..': %q", s)
+	}
+	for _, r := range s {
+		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-' || r == '_' || r == '.') {
+			return fmt.Errorf("an instance name part holds letters, digits, '-', '_' or '.' only: %q", s)
+		}
+	}
+	return nil
+}

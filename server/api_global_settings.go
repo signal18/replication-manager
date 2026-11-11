@@ -302,6 +302,13 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 			return errors.New("Unable to change setting when cloud18 is ON")
 		}
 		repman.Conf.Cloud18SubDomainZone = value
+	case "instance-domain":
+		// the company, the first part of the instance's name in a shared credential store;
+		// its hostname and zone are drawn at the first start, never typed
+		if err := config.ValidInstanceNamePart(value); err != nil {
+			return err
+		}
+		repman.Conf.InstanceDomain = value
 	case "cloud18-gitlab-user":
 		if repman.Conf.Cloud18 {
 			return errors.New("Unable to change setting when cloud18 is ON")

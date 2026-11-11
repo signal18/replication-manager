@@ -1296,6 +1296,9 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.Cloud18Domain, "cloud18-domain", "", "DNS sub domain per organisation")
 	flags.StringVar(&conf.Cloud18SubDomain, "cloud18-sub-domain", "", "DNS sub domain per replication-manger instance")
 	flags.StringVar(&conf.Cloud18SubDomainZone, "cloud18-sub-domain-zone", "", "DNS sub domain geo zone per replication-manger instance")
+	flags.StringVar(&conf.InstanceDomain, "instance-domain", "", "The company running this replication-manager when it is not registered with Cloud18: the first part of its name in a shared credential store (asked at the first sign-in to the GUI)")
+	flags.StringVar(&conf.InstanceSubDomain, "instance-sub-domain", "", "This replication-manager's name in its company when it is not registered with Cloud18: the hostname, read once at the first start and saved")
+	flags.StringVar(&conf.InstanceSubDomainZone, "instance-sub-domain-zone", "", "A random number drawn once at the first start and saved: with instance-domain and instance-sub-domain, the unique name of an unregistered replication-manager in a shared credential store")
 	flags.BoolVar(&conf.Cloud18Shared, "cloud18-shared", false, "Enable cluster sharing for Cloud 18 DBAAS")
 	flags.StringVar(&conf.Cloud18GitUser, "cloud18-gitlab-user", "", "Cloud 18 GitLab user")
 	flags.StringVar(&conf.Cloud18GitPassword, "cloud18-gitlab-password", "", "Cloud 18 GitLab password")
@@ -2755,6 +2758,7 @@ func (repman *ReplicationManager) Run() error {
 	if err != nil {
 		repman.Logrus.Fatalln("ERROR: replication-manager could not get hostname from system")
 	}
+	repman.seedInstanceName()
 
 	if repman.Conf.LogSyslog {
 		hook, err := lSyslog.NewSyslogHook("udp", "localhost:514", syslog.LOG_INFO, "")
