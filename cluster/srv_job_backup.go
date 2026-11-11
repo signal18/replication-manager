@@ -8771,8 +8771,12 @@ func (server *ServerMonitor) jobFinishReceiveFile(task string, streamed bool) er
 				server.completeReceivedPhysicalBackup(server.LastBackupMeta.Physical)
 			}
 		}
+		// the run's own metadata: with backup-keep-until-valid a failed run's end rolls
+		// LastBackupMeta.Physical back to the previous backup, which is completed, and what follows
+		// (the cookie, restic) is about this run, not that one
+		run := server.LastBackupMeta.Physical
 		server.writeBackupMetadata(backupmgr.BackupMethodPhysical, streamed)
-		if streamed && server.LastBackupMeta.Physical != nil && server.LastBackupMeta.Physical.Completed && (task == config.ConstBackupPhysicalTypeXtrabackup || task == config.ConstBackupPhysicalTypeMariaBackup) {
+		if streamed && run != nil && run.Completed && (task == config.ConstBackupPhysicalTypeXtrabackup || task == config.ConstBackupPhysicalTypeMariaBackup) {
 			// the job's "done" may have come before the stream ended: MarkBackupPhysicalDone then
 			// found the backup not received yet and left the cookie to this end
 			server.SetBackupPhysicalCookie(task)
@@ -8788,12 +8792,12 @@ func (server *ServerMonitor) jobFinishReceiveFile(task string, streamed bool) er
 
 		// Transition from traditional backup lock to Restic lock atomically
 		// Set Restic flag BEFORE clearing physical backup flag
-		resticEnabled := streamed && server.LastBackupMeta.Physical != nil && server.LastBackupMeta.Physical.ResticEnabled && server.LastBackupMeta.Physical.Completed
+		resticEnabled := streamed && run != nil && run.ResticEnabled && run.Completed
 		if resticEnabled {
 			cluster.SetInResticPhysicalBackupState(true)
 			// a snapshot is the server's backup directory in time, whatever the backup (#2091)
 			resticPath := server.GetMyBackupDirectory()
-			server.BackupRestic(backupmgr.BackupMethodPhysical, server.LastBackupMeta.Physical, resticPath, server.BuildResticTags(backtype, cluster.Conf.BackupPhysicalType, server.LastBackupMeta.Physical)...)
+			server.BackupRestic(backupmgr.BackupMethodPhysical, run, resticPath, server.BuildResticTags(backtype, cluster.Conf.BackupPhysicalType, run)...)
 		}
 
 		cluster.SetInPhysicalBackupState(false)

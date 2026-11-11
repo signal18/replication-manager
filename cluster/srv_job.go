@@ -1652,10 +1652,76 @@ func (server *ServerMonitor) JobsUpdateStateRuntimeOnly(task, result string, sta
 	server.jobsUpdateState(task, result, state, done, true)
 }
 
+// failPhysicalBackupRun is API mode's counterpart of JobsCheckErrors for a physical backup job
+// that reports an error. It flags the run as failed and withdraws the encrypted artifact the
+// receiver already published, on the metadata of the run itself (never LastBackupMeta.Physical
+// read later: the receiver's keep-until-valid rollback switches it to the previous backup).
+//
+//   - The job was still running (state before the terminal ones): done here, BEFORE the terminal
+//     state is published. The receiver waits for that state, then finalizes the metadata and
+//     rolls back to the previous backup, so a handler running after the state could withdraw or
+//     rewrite that previous backup. The receiver writes the metadata; the handler does not.
+//   - The job had already reported a success: the receiver may be gone, nobody finalizes this
+//     report. The run's metadata is returned and jobsUpdateState withdraws it after the state
+//     is published, then rewrites the metadata (lateFailedPhysicalBackup).
+//   - The job had already reported an error: a repeated report, nothing to do.
+func (server *ServerMonitor) failPhysicalBackupRun(task, result string, state, done int) (late *backupmgr.BackupMetadata) {
+	if done != 1 || state != JobStateErrorExec || (task != config.ConstBackupPhysicalTypeXtrabackup && task != config.ConstBackupPhysicalTypeMariaBackup) {
+		return nil
+	}
+	prior := JobStateAvailable
+	if t := server.JobResults.Get(task); t != nil {
+		prior = t.State
+	}
+	if prior >= JobStateErrorExec {
+		return nil
+	}
+	server.backupMetaMutex.Lock()
+	meta := server.LastBackupMeta.Physical // the run this report is about
+	server.backupMetaMutex.Unlock()
+	if prior >= JobStateFinished {
+		return meta
+	}
+	server.withdrawFailedPhysicalBackup(meta, result)
+	// the withdraw rewrote the run's metadata without the mutex: take it once, so those writes are
+	// ordered before the receiver's own lock, which it takes after it sees the terminal state
+	server.backupMetaMutex.Lock()
+	server.backupMetaMutex.Unlock() //nolint:staticcheck // ordering only
+	if jobStateFailBeforePublish != nil {
+		jobStateFailBeforePublish() // test seam
+	}
+	return nil
+}
+
+// lateFailedPhysicalBackup withdraws the artifact of a run whose job reported an error after a
+// success, and rewrites its metadata as incomplete, unless the run is no longer the last physical
+// backup of the server (a rollback or a newer run took its place): the metadata written is the
+// last backup's, never another one's.
+func (server *ServerMonitor) lateFailedPhysicalBackup(meta *backupmgr.BackupMetadata, reason string) {
+	if !server.withdrawFailedPhysicalBackup(meta, reason) {
+		return
+	}
+	server.backupMetaMutex.Lock()
+	current := server.LastBackupMeta.Physical == meta
+	server.backupMetaMutex.Unlock()
+	if current {
+		server.WriteBackupMetadata(backupmgr.BackupMethodPhysical)
+	}
+}
+
+// jobStateFailBeforePublish is a test seam: called after the failed run is flagged and withdrawn,
+// before its terminal state is published.
+var jobStateFailBeforePublish func()
+
 func (server *ServerMonitor) jobsUpdateState(task, result string, state, done int, runtimeOnly bool) error {
 	var err error
 	cluster := server.ClusterGroup
 	now := time.Now().Unix()
+
+	var lateFailed *backupmgr.BackupMetadata
+	if runtimeOnly {
+		lateFailed = server.failPhysicalBackupRun(task, result, state, done)
+	}
 
 	if t, exists := server.JobResults.LoadOrStore(task, &config.Task{
 		Task:   task,
@@ -1697,10 +1763,8 @@ func (server *ServerMonitor) jobsUpdateState(task, result string, state, done in
 	// Stop here, or this would fall through to the SQL section below and run a
 	// no-op UPDATE against a row that was never inserted.
 	if runtimeOnly {
-		if done == 1 && state == JobStateErrorExec && (task == config.ConstBackupPhysicalTypeXtrabackup || task == config.ConstBackupPhysicalTypeMariaBackup) {
-			// API mode's counterpart of JobsCheckErrors: a failed physical backup job discards
-			// the staged stream, or withdraws the encrypted artifact already published.
-			server.failEncryptedPhysicalBackup(result)
+		if lateFailed != nil {
+			server.lateFailedPhysicalBackup(lateFailed, result)
 		}
 		return nil
 	}

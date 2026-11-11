@@ -288,7 +288,11 @@ receiver per backup, and the backup owns it.
   `Completed` is set, under `backupMetaMutex` (`completeReceivedPhysicalBackup`). The job's `done`
   (`MarkBackupPhysicalDone`) sets the backup cookie only for a completed backup; if it came first,
   the receiver's end sets it. The job's `error` sets `SourceJobFailed` (under `backupMetaMutex`), which
-  discards a staged stream or withdraws an encrypted artifact already published.
+  discards a staged stream or withdraws an encrypted artifact already published. In API mode
+  this happens in `failPhysicalBackupRun`, BEFORE the terminal state is published: the receiver
+  waits for that state, then writes the metadata and (backup-keep-until-valid) rolls back to the
+  previous backup, so a handler running after the state could withdraw or rewrite that previous
+  backup. The handler does not write the metadata; the receiver does.
 
 Limits: a stream cut by the sender that still ends with a clean EOF is not detected. In SQL mode
 `AfterJobProcess` (`srv_job_backup.go`) still sets `Completed` and the cookie when the job row is
