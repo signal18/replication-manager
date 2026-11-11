@@ -137,8 +137,11 @@ jobs:
           name: packages-${{ needs.build.outputs.tag }}
           path: ${{ runner.temp }}/packages
 
-      - name: Publish
-        run: publish-repo "${{ needs.build.outputs.tag }}" "${{ runner.temp }}/packages"
+      - name: Publish DEB
+        run: publish-repo "${{ needs.build.outputs.tag }}" "${{ runner.temp }}/packages" deb
+
+      - name: Publish RPM
+        run: publish-repo "${{ needs.build.outputs.tag }}" "${{ runner.temp }}/packages" rpm
 
   notify:
     name: Notify Mattermost

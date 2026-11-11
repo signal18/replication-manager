@@ -23,8 +23,9 @@ assets.
 
 ## Package build & repo publication (`build-packages.yml`)
 
-Runs on a **self-hosted linux x64 runner** (the packaging host — it holds the GPG key and
-the repo trees):
+Two jobs on two self-hosted runners:
+
+**`build`** (self-hosted linux x64, the build host):
 
 1. Checkout (full history + submodules). Manual dispatch checks out the given `tag`
    (defaults to the latest tag).
@@ -32,11 +33,24 @@ the repo trees):
    `architecture=arm64`. Each run does `make`, then builds `deb`+`rpm` for the four nfpm
    configs (`client`, `osc`, `prov`, `arbitrator`) into `build/release/`, moved to
    `/builds/<tag>/` on the runner.
-3. **DEB repo publish**: `signal18/reprepro:latest` container, mounting `/root/.gnupg`,
-   `/home/repo` (the served repo tree) and `/builds`, invoked with the tag **stripped of
-   its leading `v`** (`${tag#v}`).
-4. **RPM repo publish**: `/usr/local/bin/rpmrepo.sh` on the runner host.
-5. Mattermost notification (success/cancelled/failure).
+3. The packages are uploaded as the artifact `packages-<tag>` (kept 3 days).
+
+**`publish`** (runner label `repo-publish`: a runner inside the package repository
+service, so it writes into the tree the repository serves; it holds the signing key):
+
+4. Downloads the artifact.
+5. **Publish DEB**: `publish-repo <tag> <dir> deb` imports the `.deb` files with reprepro
+   into every distribution, one component per minor version (`3.1`, `3.0`…); the first
+   release of a new minor adds its component.
+6. **Publish RPM**: `publish-repo <tag> <dir> rpm` rebuilds the yum trees from every
+   build kept by the repository (each minor in its own directory; the newest minor and the
+   last builds of the previous one at the top level), then `createrepo_c`.
+
+`publish-repo` is provided by the runner's environment, not by this repository. One step
+per format, so a failed deb or rpm publish shows as its own failed step.
+
+**`notify`**: Mattermost notification (success/cancelled/failure) from the results of
+both jobs.
 
 Both arch builds run with `PLUGIN_PUSH=ON` — this workflow is the **single owner** of
 signed-plugin publication. Do not set `PLUGIN_PUSH` anywhere else; rationale and the
