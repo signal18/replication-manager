@@ -425,8 +425,15 @@ is treated the same; only the path a level maps to differs per store.
   delivery to the container that reads it, not a level, and stay as they are.
 - **Entries have a level too.** The cluster entries (`[[<cluster>.secret-kv]]`) get the cluster
   secrets, as today; a sponsor may switch them on and read them (rule 14). Server secrets go only
-  to server entries (`[[secret-kv]]` in the server config), set by the administrator in the
-  global settings: never to a cluster entry, so a sponsor or a member never reads one.
+  to server entries (`[[secret-kv]]` in the server config): never to a cluster entry, so a
+  sponsor or a member never reads one.
+- **One chain per level.** A server secret has one credential chain and one version store for the
+  instance (`<working-dir>/secret_store.json`, written by the server's save callback, T25, and
+  carried by its config push like the cluster files), not a copy per cluster: the clusters read
+  it from there. A rotation of `api-credentials` is one version, not one per cluster.
+- **Only sysops and extsysops reach the server level**: they alone set the server entries and
+  change a server-scope key, through one grant both hold (outside the `global` family, which
+  extsysops does not get). No other role reads or writes either.
 - **Plugins: config, vault, opensvc, kubernetes**, one interface. The core hands every active
   entry the same thing: a version of a key at a level (server, or cluster and its name). Where
   it lands is internal to the plugin: the core never builds a store path, and has no case per
@@ -451,7 +458,6 @@ is treated the same; only the path a level maps to differs per store.
   server credential is a version (it wins at once), then a copy in every server store, then the
   file: at the next start the file and the newest version agree. Not started as root, or the
   file not writable: the version still wins, and a state says the file is behind.
-- **Who:** a server credential is changed by sysops and extsysops, through a grant both hold.
 - **Replaces** the rotation's own OpenSVC copy and `secret-kv-copy-api-credentials`.
 
 ### The Cloud18 vault entry
