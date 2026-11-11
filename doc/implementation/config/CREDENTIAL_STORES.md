@@ -445,8 +445,21 @@ is treated the same; only the path a level maps to differs per store.
   | Server | `<mount>/system/repman/<host>/<key>` | `system/sec/repman`, key `<host>_<key>` |
   | Cluster | `<mount>/<path-prefix>/<cluster>/<key>` | `<cluster>/sec/repman`, key `<key>` |
 
-  `<host>` is the host of `api-public-url`. The OpenSVC cluster `env` secret (the
+  `<host>` stands for the instance's name below. The OpenSVC cluster `env` secret (the
   `MYSQL_ROOT_PASSWORD` the containers read) stays the provisioning's delivery, written as today.
+- **The instance's name** in a shared store is `<domain>/<subdomain>/<zone>`, never the URL (an
+  instance may be registered and not public, an on-prem URL may be a bare hostname). Registered:
+  the registration (`cloud18-domain`, `cloud18-sub-domain`, `cloud18-sub-domain-zone`). Not
+  registered: its own name, three server settings (`instance-domain`, `instance-sub-domain`,
+  `instance-sub-domain-zone`): the company, asked at the first sign-in to the GUI; the hostname,
+  read once at the first start and saved; a random number drawn once and saved. The `cloud18-*`
+  settings are never filled with the local name: their readers take them as "registered". No
+  company yet: server secrets stay in the local version store and a state asks for it.
+- **The move.** When the name changes (a licence loaded, a registration, a renamed cluster for
+  its cluster secrets), every server store gets every kept version of every server secret at
+  the new name, oldest first, from repman's own version store (never read from the old path).
+  The old copy stays (repman never deletes a secret), with a `moved-to` key naming the new one.
+  A store not yet moved is behind (WARN0271) until a pass writes it.
 - **A store holds its own login.** The Vault entry's secret id or the OpenSVC certificate's
   password are copied to that store too: the copy is information, the login is read through
   the chain (config first), so there is no loop.
