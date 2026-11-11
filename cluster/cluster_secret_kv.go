@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"os"
 	"sort"
 	"strings"
 	"sync"
@@ -65,9 +64,9 @@ type secretKvStores struct {
 	// versions: the in-memory versions of the cluster's secrets, head of its chain; the
 	// local file is their copy, written by the save callback only (T25)
 	versions *credstore.VersionStore
-	// fileModTime: the local file as last loaded or written: a standby loads it again when
-	// the config pull changes it (rule 11)
-	fileModTime time.Time
+	// file: the versions' local file (the secret_kv-config plugin's): a standby loads it
+	// again when the config pull changes it (rule 11)
+	file *credstore.FileBinding
 	// apply gives the servers a credential that changed; nil: the cluster's own setters
 	apply func(key string)
 
@@ -623,15 +622,9 @@ func (cluster *Cluster) versionStore() *credstore.VersionStore {
 	defer c.mu.Unlock()
 	if c.versions == nil {
 		c.versions = credstore.NewVersionStore(func() *config.Config { return cluster.Conf }, isVersionedKey, cluster.versionsKeepError, cluster.Save)
+		c.file = &credstore.FileBinding{DataDir: func() string { return cluster.Conf.WorkingDir }, Scope: credstore.ClusterScope(cluster.Name)}
 		if cluster.Conf != nil && cluster.Conf.IsMonitoringSecretVersioningEnabled() {
-			lf, scope := cluster.localFile()
-			path := lf.Path(scope)
-			if file, err := lf.Load(scope); err == nil {
-				c.versions.Load(file)
-				if st, err := os.Stat(path); err == nil {
-					c.fileModTime = st.ModTime()
-				}
-			}
+			c.file.LoadInto(c.versions)
 		}
 	}
 	return c.versions
@@ -645,32 +638,18 @@ func (cluster *Cluster) reloadVersionsFromPeer() {
 		return
 	}
 	vs := cluster.versionStore()
-	path := SecretVersionStorePath(cluster.Conf.WorkingDir, cluster.Name)
-	st, err := os.Stat(path)
-	if err != nil {
-		return
-	}
-	c := &cluster.secretKv
-	c.mu.Lock()
-	seen := !st.ModTime().After(c.fileModTime)
-	c.fileModTime = st.ModTime()
-	c.mu.Unlock()
-	if seen {
-		return
-	}
-	file, err := loadSecretVersionStore(path)
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Credential versions: %s not read: %s", path, err)
-		return
-	}
-	before := map[string]string{apiCredentialsKey: cluster.Conf.Secrets.Get(apiCredentialsKey).Value}
+	before := map[string]string{}
 	for _, key := range databaseSecretKeys {
 		before[key] = cluster.Conf.Secrets.Get(key).Value
 	}
-	if !vs.Merge(file) {
+	merged, err := cluster.secretKv.file.MergeIfChanged(vs)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Credential versions: %s not read: %s", cluster.secretKv.file.Path(), err)
 		return
 	}
-	vs.Export() // the standby does not write it back: the active monitor's file is the copy
+	if !merged {
+		return
+	}
 	cluster.CredentialChain().Refresh()
 	for key, old := range before {
 		if cluster.Conf.Secrets.Get(key).Value != old {
@@ -689,37 +668,17 @@ func (cluster *Cluster) writeSecretVersionFile() error {
 		return nil
 	}
 	vs := cluster.versionStore()
-	lf, scope := cluster.localFile()
-	path := lf.Path(scope)
 	// F9 whatever the order of events: a version kept in memory without the key (a vault read
 	// with versioning off, versioning then turned on) is encrypted once the key is there, and
-	// never written before. The test is a backstop (a token starting with hash_), not a proof
-	// of encryption.
-	if !vs.EncryptKeptAsRead(containsHashPrefixToken) {
-		vs.MarkDirty()
-		return errors.New("a credential version is not encrypted and there is no encryption key (monitoring-key-path): the file is not written")
-	}
-	file, changed := vs.Export()
+	// never written before.
+	var prune func(map[string][]credstore.FileVersion) (map[string][]credstore.FileVersion, bool)
 	if autoPrune, keepLast := cluster.getSecretVersionStoreAutoPruneSettings(); autoPrune {
-		if pruned, _, removed := pruneSecretVersionStore(file, keepLast); removed > 0 {
-			file, changed = pruned, true
-			vs.Load(pruned)
+		prune = func(file map[string][]credstore.FileVersion) (map[string][]credstore.FileVersion, bool) {
+			pruned, _, removed := pruneSecretVersionStore(file, keepLast)
+			return pruned, removed > 0
 		}
 	}
-	if !changed {
-		return nil
-	}
-	if err := lf.Write(scope, file); err != nil {
-		vs.MarkDirty()
-		return err
-	}
-	if st, err := os.Stat(path); err == nil {
-		c := &cluster.secretKv
-		c.mu.Lock()
-		c.fileModTime = st.ModTime()
-		c.mu.Unlock()
-	}
-	return nil
+	return cluster.secretKv.file.Save(vs, credstore.LooksEncrypted, prune)
 }
 
 // CheckSecretKvStores runs at each tick on the active monitor: the full pass at start, for a

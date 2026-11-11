@@ -304,6 +304,15 @@ func (c *Chain) raw(key string) (string, string, bool) {
 	return "", SourceDefault, false
 }
 
+// Raw is the raw value of key as the chain reads it (the first store holding it, else the flag
+// default): for a chain of another level reading it (ServerLevel).
+func (c *Chain) Raw(key string) (string, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	v, _, ok := c.raw(key)
+	return v, ok
+}
+
 // Source is the name of the store key is read from, SourceDefault when none holds it.
 func (c *Chain) Source(key string) string {
 	c.mu.Lock()

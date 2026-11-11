@@ -195,27 +195,9 @@ func (cluster *Cluster) getTrackedSecretStoreValuesWithWarnings(logWarnings bool
 	return values
 }
 
+// containsHashPrefixToken: the value holds a repman-encrypted token (credstore.LooksEncrypted).
 func containsHashPrefixToken(value string) bool {
-	if strings.TrimSpace(value) == "" {
-		return false
-	}
-
-	tokens := strings.FieldsFunc(value, func(r rune) bool {
-		switch r {
-		case ',', ':', ' ', '\t', '\n', '\r':
-			return true
-		default:
-			return false
-		}
-	})
-
-	for _, token := range tokens {
-		if strings.HasPrefix(token, secretHashPrefix) {
-			return true
-		}
-	}
-
-	return false
+	return credstore.LooksEncrypted(value)
 }
 
 // getStoredSecretCompareValue converts a stored encrypted/hash payload into the
@@ -256,11 +238,6 @@ func SecretVersionStorePath(workingDir string, clusterName string) string {
 // SecretVersionStoreExportPath is a cluster's exported copy, as the plugin places it.
 func SecretVersionStoreExportPath(confDir string, clusterName string) string {
 	return credstore.LocalFile{DataDir: confDir}.ExportPath(confDir, credstore.ClusterScope(clusterName))
-}
-
-// localFile is the cluster's versioned local file in the secret_kv-config plugin.
-func (cluster *Cluster) localFile() (credstore.LocalFile, credstore.Scope) {
-	return credstore.LocalFile{DataDir: cluster.Conf.WorkingDir}, credstore.ClusterScope(cluster.Name)
 }
 
 func CopySecretVersionStoreFile(srcPath string, dstPath string, dryRun bool, overwrite bool) (SecretVersionStoreCopySummary, error) {

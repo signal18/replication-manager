@@ -6,8 +6,13 @@ package credstore
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync"
+	"time"
 
 	"github.com/signal18/replication-manager/utils/misc"
 )
@@ -107,4 +112,157 @@ func WriteVersionFile(path string, file map[string][]FileVersion) error {
 		return err
 	}
 	return misc.WriteFileDurable(path, payload, 0o600, "secret_store-*.tmp")
+}
+
+// SourceServer is the source of a server secret read in a cluster's chain.
+const SourceServer = "server"
+
+// ErrServerSecret refuses a change of a server secret through a cluster: it is the
+// instance's, changed at the server level (CREDENTIAL_STORES.md "Two levels").
+var ErrServerSecret = errors.New("a server secret: it is changed at the server level, for every cluster")
+
+// ServerLevel is the first store of a cluster's chain: it answers the server secrets from the
+// server's chain, read only. A cluster never holds its own version of a server secret, so a
+// rotation at the server level is the value every cluster reads at its next refresh.
+type ServerLevel struct {
+	Chain func() *Chain         // the server's chain; nil: no server (tests), the key is not held
+	Held  func(key string) bool // the server secrets
+}
+
+func (s *ServerLevel) Name() string    { return SourceServer }
+func (s *ServerLevel) Versioned() bool { return true }
+func (s *ServerLevel) Generates() bool { return false }
+
+func (s *ServerLevel) held(key string) (*Chain, bool) {
+	if s == nil || s.Held == nil || s.Chain == nil || !s.Held(key) {
+		return nil, false
+	}
+	c := s.Chain()
+	return c, c != nil
+}
+
+func (s *ServerLevel) Get(key string) (string, bool, error) {
+	c, ok := s.held(key)
+	if !ok {
+		return "", false, nil
+	}
+	v, ok := c.Raw(key)
+	return v, ok, nil
+}
+
+func (s *ServerLevel) CanSet(key string) error {
+	if _, ok := s.held(key); !ok {
+		return fmt.Errorf("%s is not a server secret: %w", key, ErrNotHeld)
+	}
+	return &heldRefusal{ErrServerSecret}
+}
+
+func (s *ServerLevel) Set(key, value string) error { return s.CanSet(key) }
+
+// FileBinding ties a version store to its local file for one scope: loading it at start,
+// writing it from the save callback (T25), and, on a standby, merging the file the config pull
+// brought (rule 11). The same code for the server and every cluster.
+type FileBinding struct {
+	// DataDir is read at each use: a reload may move the data directory
+	DataDir func() string
+	Scope   Scope
+
+	mu      sync.Mutex
+	modTime time.Time
+}
+
+func (b *FileBinding) file() LocalFile { return LocalFile{DataDir: b.DataDir()} }
+
+// Path is the bound file.
+func (b *FileBinding) Path() string { return b.file().Path(b.Scope) }
+
+func (b *FileBinding) noteModTime() {
+	if st, err := os.Stat(b.Path()); err == nil {
+		b.mu.Lock()
+		b.modTime = st.ModTime()
+		b.mu.Unlock()
+	}
+}
+
+// LoadInto loads the file into vs (a missing file is an empty store).
+func (b *FileBinding) LoadInto(vs *VersionStore) error {
+	file, err := b.file().Load(b.Scope)
+	if err != nil {
+		return err
+	}
+	vs.Load(file)
+	b.noteModTime()
+	return nil
+}
+
+// ErrVersionNotEncrypted refuses to write a file holding a value that does not look encrypted
+// (F9: the file is in the config push).
+var ErrVersionNotEncrypted = errors.New("a credential version is not encrypted and there is no encryption key (monitoring-key-path): the file is not written")
+
+// Save writes vs to the file when a version changed: every value encrypted first (encrypted
+// tells an encrypted value), then prune (nil: none) bounds it. The file is left as it was on an
+// error, and vs stays dirty for the next save.
+func (b *FileBinding) Save(vs *VersionStore, encrypted func(string) bool, prune func(map[string][]FileVersion) (map[string][]FileVersion, bool)) error {
+	if !vs.EncryptKeptAsRead(encrypted) {
+		vs.MarkDirty()
+		return ErrVersionNotEncrypted
+	}
+	file, changed := vs.Export()
+	if prune != nil {
+		if pruned, did := prune(file); did {
+			file, changed = pruned, true
+			vs.Load(pruned)
+		}
+	}
+	if !changed {
+		return nil
+	}
+	if err := b.file().Write(b.Scope, file); err != nil {
+		vs.MarkDirty()
+		return err
+	}
+	b.noteModTime()
+	return nil
+}
+
+// MergeIfChanged merges into vs the file another monitor wrote, when it changed since it was
+// last seen; true when a version was added. A standby never writes it back.
+func (b *FileBinding) MergeIfChanged(vs *VersionStore) (bool, error) {
+	st, err := os.Stat(b.Path())
+	if err != nil {
+		return false, nil
+	}
+	b.mu.Lock()
+	seen := !st.ModTime().After(b.modTime)
+	b.modTime = st.ModTime()
+	b.mu.Unlock()
+	if seen {
+		return false, nil
+	}
+	file, err := b.file().Load(b.Scope)
+	if err != nil {
+		return false, err
+	}
+	if !vs.Merge(file) {
+		return false, nil
+	}
+	vs.Export()
+	return true, nil
+}
+
+// LooksEncrypted tells a value holding a repman-encrypted token (hash_...), alone or in a
+// user:password list: the backstop of F9 before a file is written, not a proof of encryption.
+func LooksEncrypted(value string) bool {
+	for _, token := range strings.FieldsFunc(value, func(r rune) bool {
+		switch r {
+		case ',', ':', ' ', '\t', '\n', '\r':
+			return true
+		}
+		return false
+	}) {
+		if strings.HasPrefix(token, "hash_") {
+			return true
+		}
+	}
+	return false
 }
