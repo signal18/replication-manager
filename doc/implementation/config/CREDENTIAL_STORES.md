@@ -137,8 +137,10 @@ settings (secrets encrypted, F9), on/off, forms drawn from the manifest.
 6. **What is a secret of the cluster**: the chain's credentials, the proxy passwords, the
    app secrets (generated password, secret variables, database user), the archive secrets.
    Instance secrets (git token, OAuth secret, the vault logins) stay instance-local and are
-   never copied.
-7. **Orchestrator objects are consumers, not stores**: the OpenSVC `sec` object and the
+   never copied. *Replaced 2026-11-11: see "Two levels, every store the same".*
+7. *(The orchestrator becomes a store too, 2026-11-11: see "Two levels, every store the
+   same". The `env` delivery below is unchanged.)*
+   **Orchestrator objects are consumers, not stores**: the OpenSVC `sec` object and the
    Kubernetes Secret get the current version at provisioning and after each rotation, as
    today. Their writers report the values they set (`CopySecret`); nothing reads them back.
    The rotation writes `MYSQL_ROOT_PASSWORD` in the OpenSVC `env` secret through the v2 or
@@ -408,6 +410,49 @@ request, and every API token it owns is revoked (`revokeUserAPITokens`).
   the owner could do the same directly. Rotating one's own password through a token revokes that
   token too; the answer carrying the new password is its last. Token revocation takes the clusters
   before the token store's lock, never the manager's lock under it.
+
+### Two levels, every store the same (design, 2026-11-11; reverses rules 6 and 7)
+
+Decided with the maintainer on 2026-11-11, in the rotation PR. Before it, an instance secret was
+never copied (rule 6), OpenSVC was a consumer and not a store (rule 7), and the rotation copied the
+instance's list to OpenSVC by a path of its own while Vault kept the old value. Now every store
+is treated the same; only the path a level maps to differs per store.
+
+- **The level comes from the config.** A secret whose setting is tagged `scope:"server"` is a
+  server secret: one value per repman instance. Every other secret is a cluster secret: a key of
+  the cluster's config. `api-credentials` gets the tag. There is no third level: the copies of
+  a database or proxy credential under each server (`databases/<server>`, `proxies/<proxy>`) are
+  delivery to the container that reads it, not a level, and stay as they are.
+- **Entries have a level too.** The cluster entries (`[[<cluster>.secret-kv]]`) get the cluster
+  secrets, as today; a sponsor may switch them on and read them (rule 14). Server secrets go only
+  to server entries (`[[secret-kv]]` in the server config), set by the administrator in the
+  global settings: never to a cluster entry, so a sponsor or a member never reads one.
+- **Plugins: config, vault, opensvc, kubernetes**, one interface. The core hands every active
+  entry the same thing: a version of a key at a level (server, or cluster and its name). Where
+  it lands is internal to the plugin: the core never builds a store path, and has no case per
+  store. The queue is shared (versions, newest wins, retry, bounds, WARN0271). What the
+  plugins do today, for reference only:
+
+  | Level | vault | opensvc |
+  |---|---|---|
+  | Server | `<mount>/system/repman/<host>/<key>` | `system/sec/repman`, key `<host>_<key>` |
+  | Cluster | `<mount>/<path-prefix>/<cluster>/<key>` | `<cluster>/sec/repman`, key `<key>` |
+
+  `<host>` is the host of `api-public-url`. The OpenSVC cluster `env` secret (the
+  `MYSQL_ROOT_PASSWORD` the containers read) stays the provisioning's delivery, written as today.
+- **A store holds its own login.** The Vault entry's secret id or the OpenSVC certificate's
+  password are copied to that store too: the copy is information, the login is read through
+  the chain (config first), so there is no loop.
+- **The `/etc` writer closes the loop.** repman starts as root and drops to `--user` (server.go);
+  before the drop it starts a child of its own binary (as the backups mount does, #2246) that
+  stays root. Its one request: replace credential K in file F, refused unless F is under
+  `/etc/replication-manager`, K is a credential tagged server and F already holds K; the value is
+  written encrypted with the repman key (F9), in place, owner and mode kept. A change of a
+  server credential is a version (it wins at once), then a copy in every server store, then the
+  file: at the next start the file and the newest version agree. Not started as root, or the
+  file not writable: the version still wins, and a state says the file is behind.
+- **Who:** a server credential is changed by sysops and extsysops, through a grant both hold.
+- **Replaces** the rotation's own OpenSVC copy and `secret-kv-copy-api-credentials`.
 
 ### The Cloud18 vault entry
 
