@@ -16,7 +16,7 @@ import (
 var secretLookingKey = regexp.MustCompile(`pass|secret|token|credential|webhook|slack-url|teams-url|teams-proxy-url`)
 
 // notFlatSecrets are string keys secretLookingKey matches that are not flat secrets: each
-// says why. A new key matching it goes in SecretKeys, or here with its reason.
+// says why. A new key matching it is tagged secret:"true", or goes here with its reason.
 var notFlatSecrets = map[string]string{
 	"api-credentials-acl-allow":            "ACL grants, no password",
 	"api-credentials-acl-allow-external":   "ACL grants, no password",
@@ -49,7 +49,7 @@ func TestSecretLookingKeysAreSecrets(t *testing.T) {
 			continue
 		}
 		if _, ok := notFlatSecrets[key]; !ok {
-			t.Errorf("%s (%s) is named like a credential: add it to SecretKeys with a save case, or to notFlatSecrets with the reason", key, f.Name)
+			t.Errorf("%s (%s) is named like a credential: tag it secret:\"true\" with a save case, or add it to notFlatSecrets with the reason", key, f.Name)
 		}
 	}
 }
