@@ -3990,6 +3990,15 @@ func (repman *ReplicationManager) handlerMuxSetSettings(w http.ResponseWriter, r
 			http.Error(w, "Only the admin or the registered account sets "+setting, http.StatusForbidden)
 			return
 		}
+		if valid && isExternalOpsSetting(setting) {
+			// who changed an invoicing field, from what to what (#2371)
+			old := mycluster.Conf.Cloud18ExternalSysOps + " (" + mycluster.Conf.Cloud18ExternalSysOpsStatus + ")"
+			if setting == "cloud18-external-dbops" {
+				old = mycluster.Conf.Cloud18ExternalDbOps + " (" + mycluster.Conf.Cloud18ExternalDbOpsStatus + ")"
+			}
+			repman.logSecurityEvent("cluster_external_ops_assigned", delegator, r.RemoteAddr,
+				fmt.Sprintf("%s on cluster %s: %q -> %q", setting, mycluster.Name, old, strings.TrimSpace(value)))
+		}
 		if valid {
 			err := repman.setClusterSetting(mycluster, setting, value)
 			if err != nil {
