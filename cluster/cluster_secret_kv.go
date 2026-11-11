@@ -624,8 +624,9 @@ func (cluster *Cluster) versionStore() *credstore.VersionStore {
 	if c.versions == nil {
 		c.versions = credstore.NewVersionStore(func() *config.Config { return cluster.Conf }, isVersionedKey, cluster.versionsKeepError, cluster.Save)
 		if cluster.Conf != nil && cluster.Conf.IsMonitoringSecretVersioningEnabled() {
-			path := SecretVersionStorePath(cluster.Conf.WorkingDir, cluster.Name)
-			if file, err := loadSecretVersionStore(path); err == nil {
+			lf, scope := cluster.localFile()
+			path := lf.Path(scope)
+			if file, err := lf.Load(scope); err == nil {
 				c.versions.Load(file)
 				if st, err := os.Stat(path); err == nil {
 					c.fileModTime = st.ModTime()
@@ -688,7 +689,8 @@ func (cluster *Cluster) writeSecretVersionFile() error {
 		return nil
 	}
 	vs := cluster.versionStore()
-	path := SecretVersionStorePath(cluster.Conf.WorkingDir, cluster.Name)
+	lf, scope := cluster.localFile()
+	path := lf.Path(scope)
 	// F9 whatever the order of events: a version kept in memory without the key (a vault read
 	// with versioning off, versioning then turned on) is encrypted once the key is there, and
 	// never written before. The test is a backstop (a token starting with hash_), not a proof
@@ -707,7 +709,7 @@ func (cluster *Cluster) writeSecretVersionFile() error {
 	if !changed {
 		return nil
 	}
-	if err := writeSecretVersionStoreAtomic(path, file); err != nil {
+	if err := lf.Write(scope, file); err != nil {
 		vs.MarkDirty()
 		return err
 	}

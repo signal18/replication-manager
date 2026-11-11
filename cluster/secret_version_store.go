@@ -2,10 +2,8 @@ package cluster
 
 import (
 	"crypto/sha256"
-	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -22,7 +20,7 @@ const SecretVersionLatest = "latest"
 // secretVersion is one version in the file: the version store's (#2227), with its writer.
 type secretVersion = credstore.FileVersion
 
-type secretVersionStore map[string][]secretVersion
+type secretVersionStore = map[string][]secretVersion
 
 type trackedSecretValue struct {
 	StoredValue  string
@@ -230,47 +228,14 @@ func (cluster *Cluster) getStoredSecretCompareValue(key string, value string) st
 	return cluster.Conf.DecryptSecretValue(key, value)
 }
 
-// loadSecretVersionStore reads secret_store.json.
-// Missing/empty files return an initialized empty store.
+// loadSecretVersionStore reads a versioned file: the secret_kv-config plugin's reader.
 func loadSecretVersionStore(path string) (secretVersionStore, error) {
-	store := make(secretVersionStore)
-
-	data, err := os.ReadFile(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return store, nil
-		}
-		return nil, err
-	}
-
-	if len(data) == 0 {
-		return store, nil
-	}
-
-	if err := json.Unmarshal(data, &store); err != nil {
-		return nil, err
-	}
-
-	if store == nil {
-		store = make(secretVersionStore)
-	}
-
-	return store, nil
+	return credstore.LoadVersionFile(path)
 }
 
-// writeSecretVersionStoreAtomic writes the store through a temp file + rename
-// sequence so readers never observe a partially written JSON file.
+// writeSecretVersionStoreAtomic writes a versioned file: the secret_kv-config plugin's writer.
 func writeSecretVersionStoreAtomic(path string, store secretVersionStore) error {
-	if store == nil {
-		store = make(secretVersionStore)
-	}
-
-	payload, err := json.MarshalIndent(store, "", "  ")
-	if err != nil {
-		return err
-	}
-
-	return writeFileAtomic(path, payload, "secret_store-*.tmp")
+	return credstore.WriteVersionFile(path, store)
 }
 
 func sortedTrackedSecretKeys(values map[string]trackedSecretValue) []string {
@@ -282,12 +247,20 @@ func sortedTrackedSecretKeys(values map[string]trackedSecretValue) []string {
 	return keys
 }
 
+// SecretVersionStorePath is a cluster's versioned local file, as the secret_kv-config plugin
+// places it (credstore.LocalFile).
 func SecretVersionStorePath(workingDir string, clusterName string) string {
-	return filepath.Join(workingDir, clusterName, secretVersionStoreFilename)
+	return credstore.LocalFile{DataDir: workingDir}.Path(credstore.ClusterScope(clusterName))
 }
 
+// SecretVersionStoreExportPath is a cluster's exported copy, as the plugin places it.
 func SecretVersionStoreExportPath(confDir string, clusterName string) string {
-	return filepath.Join(confDir, "cluster.d", clusterName+"_secret_store.json")
+	return credstore.LocalFile{DataDir: confDir}.ExportPath(confDir, credstore.ClusterScope(clusterName))
+}
+
+// localFile is the cluster's versioned local file in the secret_kv-config plugin.
+func (cluster *Cluster) localFile() (credstore.LocalFile, credstore.Scope) {
+	return credstore.LocalFile{DataDir: cluster.Conf.WorkingDir}, credstore.ClusterScope(cluster.Name)
 }
 
 func CopySecretVersionStoreFile(srcPath string, dstPath string, dryRun bool, overwrite bool) (SecretVersionStoreCopySummary, error) {
