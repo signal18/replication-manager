@@ -196,8 +196,7 @@ func (app *App) GetAppAPIView() *AppAPIView {
 	}
 	if app.AppConfig != nil {
 		cfg := cloneAppConfigForSubstitution(app.AppConfig)
-		cfg.AppDbPass = "*****"
-		MaskAppGeneratedSecrets(cfg)
+		MaskAppSecrets(cfg)
 		view.AppConfig = &appConfigAPIView{AppConfig: cfg}
 		if cfg.Deployment != nil {
 			view.Routes = cfg.Deployment.Routes
@@ -893,17 +892,9 @@ func (app *App) GetStartTimeout() string {
 	return "2m"
 }
 
-// MaskAppGeneratedSecrets masks, on a copy for the wire, the secrets replication-manager
-// generates for an app ({{app.randompassword}}, {{app.api.token}} #2158): stored encrypted,
-// never sent.
-func MaskAppGeneratedSecrets(cfg *config.AppConfig) {
-	if cfg == nil {
-		return
-	}
-	if cfg.AppRandomPassword != "" {
-		cfg.AppRandomPassword = "*****"
-	}
-	if cfg.AppAPIToken != "" {
-		cfg.AppAPIToken = "*****"
-	}
+// MaskAppSecrets masks, on a copy for the wire, an app's secret settings (tagged
+// secret:"true": its database password, the password and the API token replication-manager
+// generates for it #2158): stored encrypted, never sent.
+func MaskAppSecrets(cfg *config.AppConfig) {
+	config.MaskSecretFields(cfg)
 }

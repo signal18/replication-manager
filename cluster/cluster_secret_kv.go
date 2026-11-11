@@ -1090,7 +1090,7 @@ func IsAppSecretVersionKey(key string) bool {
 
 // appSecretValues are an app's secrets (rule 6) by their key in the stores, each value in
 // clear: the names provisioning writes to the orchestrator and reports (rule 7), so both land
-// on apps/<app name>/<key>, plus the generated password and the database password under their
+// on apps/<app name>/<key>, plus the app's secret settings (tagged secret:"true") under their
 // setting's name. Every value is decrypted with GetDecryptedEmbedded: a secret variable as
 // provisioning hands it to the container (its embedded ciphertexts too: a DSN), the others
 // whole. It decrypts only a token of a valid ciphertext's length; a value that starts with
@@ -1108,8 +1108,9 @@ func (cluster *Cluster) appSecretValues(app *App) map[string]string {
 			out[key] = value
 		}
 	}
-	put("app-random-password", conf.GetDecryptedEmbedded("app-random-password", app.AppConfig.AppRandomPassword))
-	put("app-db-pass", conf.GetDecryptedEmbedded("app-db-pass", app.AppConfig.AppDbPass))
+	for key, stored := range app.AppConfig.SecretValues() {
+		put(key, conf.GetDecryptedEmbedded(key, stored))
+	}
 	d := app.AppConfig.Deployment
 	if d == nil {
 		return out

@@ -23,6 +23,8 @@ var notFlatSecrets = map[string]string{
 	"api-credentials-acl-discard":          "ACL grants, no password",
 	"api-credentials-acl-discard-external": "ACL grants, no password",
 	"cloud18-git-token-expires":            "the git token's expiry date, not the token",
+	"app-api-token-id":                     "the app API token's id, to revoke it, not the token",
+	"app-api-token-expires":                "the app API token's expiry date, not the token",
 	"secret-kv":                            "structured secret-kv entries, their own secret model",
 	"scheduler-rotate-passwords-cron":      "the cron of the scheduled password rotation, no password",
 	"alert-slack-url":                      "an alert URL, plain: the back office reads it to find why an integration does not post",
@@ -38,18 +40,22 @@ func TestSecretLookingKeysAreSecrets(t *testing.T) {
 	for _, k := range SecretKeys {
 		secret[k] = true
 	}
-	typ := reflect.TypeOf(Config{})
-	for i := 0; i < typ.NumField(); i++ {
-		f := typ.Field(i)
-		key := f.Tag.Get("mapstructure")
-		if f.Type.Kind() != reflect.String || key == "" || !secretLookingKey.MatchString(key) {
-			continue
-		}
-		if secret[key] {
-			continue
-		}
-		if _, ok := notFlatSecrets[key]; !ok {
-			t.Errorf("%s (%s) is named like a credential: tag it secret:\"true\" with a save case, or add it to notFlatSecrets with the reason", key, f.Name)
+	for _, k := range AppSecretKeys {
+		secret[k] = true
+	}
+	for _, typ := range []reflect.Type{reflect.TypeOf(Config{}), reflect.TypeOf(AppConfig{})} {
+		for i := 0; i < typ.NumField(); i++ {
+			f := typ.Field(i)
+			key := f.Tag.Get("mapstructure")
+			if f.Type.Kind() != reflect.String || key == "" || !secretLookingKey.MatchString(key) {
+				continue
+			}
+			if secret[key] {
+				continue
+			}
+			if _, ok := notFlatSecrets[key]; !ok {
+				t.Errorf("%s (%s) is named like a credential: tag it secret:\"true\" with a save case, or add it to notFlatSecrets with the reason", key, f.Name)
+			}
 		}
 	}
 }

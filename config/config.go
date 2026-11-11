@@ -1217,16 +1217,15 @@ type AppConfig struct {
 	ProvAppAgentsFailover string `mapstructure:"prov-app-agents-failover" toml:"prov-app-agents-failover" json:"provAppAgentsFailover"`
 	ProvAppSizingMode     string `mapstructure:"prov-app-sizing-mode" toml:"prov-app-sizing-mode" json:"provAppSizingMode"`
 	ProvAppConfigurator   string `mapstructure:"prov-app-configurator" toml:"prov-app-configurator" json:"provAppConfigurator" groups:"apps"` // engine whose moduleset (share/opensvc/moduleset_<engine>.svc.mrm.db.json) is rendered from the app plan and handed to the container (postgres); empty = none
-	AppRandomPassword     string `mapstructure:"app-random-password" toml:"app-random-password" json:"appRandomPassword" groups:"apps"`       // generated when the template references {{app.randompassword}}, stored encrypted
-	AppAPIToken           string `mapstructure:"app-api-token" toml:"app-api-token" json:"appApiToken"`                                       // minted when the template references {{app.api.token}} (#2158), stored encrypted
+	AppRandomPassword     string `secret:"true" mapstructure:"app-random-password" toml:"app-random-password" json:"appRandomPassword" groups:"apps"`       // generated when the template references {{app.randompassword}}, stored encrypted
+	AppAPIToken           string `secret:"true" mapstructure:"app-api-token" toml:"app-api-token" json:"appApiToken"`                                       // minted when the template references {{app.api.token}} (#2158), stored encrypted
 	AppAPITokenID         string `mapstructure:"app-api-token-id" toml:"app-api-token-id" json:"appApiTokenId"`                               // the token's id in the API token store, to renew and revoke it
 	AppAPITokenExpires    string `mapstructure:"app-api-token-expires" toml:"app-api-token-expires" json:"appApiTokenExpires"`                // RFC3339, empty = never
 	AppHost               string `mapstructure:"app-host" toml:"app-host" json:"appHost"`
 	AppHostsIPV6          string `mapstructure:"app-hosts-ipv6" toml:"app-hosts-ipv6" json:"appHostsIpv6"`
 	AppPort               string `mapstructure:"app-port" toml:"app-port" json:"appPort"`
 	AppDbUser             string `mapstructure:"app-db-user" toml:"app-db-user" json:"appDbUser" groups:"apps"`
-	AppDbPass             string `mapstructure:"app-db-pass" toml:"app-db-pass" json:"appDbPass" groups:"apps"`
-	AppDbPassClear        string `mapstructure:"app-db-pass-clear" toml:"-" json:"-" app:"-"`
+	AppDbPass             string `secret:"true" mapstructure:"app-db-pass" toml:"app-db-pass" json:"appDbPass" groups:"apps"`
 	AppDbSchema           string `mapstructure:"app-db-schema" toml:"app-db-schema" json:"appDbSchema" groups:"apps"`
 	// AppDbAutoCreate (#1870): the app asks the cluster for its own schema, user and password
 	// ({{app.db.*}} template keys); created at provision, never on foreign objects.
@@ -2023,23 +2022,7 @@ func (conf *Config) GetSecrets() map[string]Secret {
 // SecretKeys are the config keys held as secrets in Conf.Secrets: each is rebuilt from its
 // source by RebuildSecrets. A secret is declared by the tag secret:"true" on its field, else a
 // reread drops it (#2017, #2075); a server secret is also tagged scope:"server".
-var SecretKeys = secretKeysFromTags()
-
-// secretKeysFromTags lists the config keys whose field is tagged secret:"true", in field order:
-// a secret is declared on its field, nowhere else.
-func secretKeysFromTags() []string {
-	var keys []string
-	typ := reflect.TypeOf(Config{})
-	for i := 0; i < typ.NumField(); i++ {
-		f := typ.Field(i)
-		if f.Tag.Get("secret") == "true" {
-			if key := f.Tag.Get("mapstructure"); key != "" {
-				keys = append(keys, key)
-			}
-		}
-	}
-	return keys
-}
+var SecretKeys = SecretFieldKeys(reflect.TypeOf(Config{}))
 
 // DecryptSecretsFromConfig rebuilds Conf.Secrets from the config maps: DynamicFlagMap, then
 // ImmuableFlagMap, then DefaultFlagMap.
