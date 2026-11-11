@@ -394,6 +394,8 @@ var globalSettingsACLRules = []ACLRule{
 	{"/api/clusters/settings/actions/cloud18-identity", nil, []string{config.GrantGlobalSettings, config.GrantGlobalAdminConf}},
 	// load a -pull package from a file (#2309)
 	{"/api/clusters/settings/actions/license-pull", nil, []string{config.GrantGlobalSettings, config.GrantGlobalAdminConf}},
+	// the instance's name in the shared stores: sysops and extsysops (CREDENTIAL_STORES.md "Two levels")
+	{"/api/clusters/settings/actions/instance-name", nil, []string{config.GrantClusterServerCredentials}},
 }
 
 // terminalACLRules defines ACL rules for terminal access

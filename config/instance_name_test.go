@@ -11,17 +11,18 @@ func TestInstanceStoreName(t *testing.T) {
 	if _, ok := c.InstanceStoreName(); ok {
 		t.Fatal("a name with no company")
 	}
-	if !c.SeedInstanceName("repman1", func() string { return "42" }) {
+	if !c.SeedInstanceName("repman1") {
 		t.Fatal("nothing seeded")
 	}
-	if c.SeedInstanceName("other", func() string { return "7" }) {
+	if c.SeedInstanceName("other") {
 		t.Fatal("seeded twice")
 	}
-	if _, ok := c.InstanceStoreName(); ok {
-		t.Fatal("still no company")
-	}
 	c.InstanceDomain = "acme"
-	if n, _ := c.InstanceStoreName(); n != "acme/repman1/42" {
+	if _, ok := c.InstanceStoreName(); ok {
+		t.Fatal("a name with no location")
+	}
+	c.InstanceSubDomainZone = "paris"
+	if n, _ := c.InstanceStoreName(); n != "acme/repman1/paris" {
 		t.Fatalf("local name %q", n)
 	}
 	// a registration wins; its keys are never filled with the local name

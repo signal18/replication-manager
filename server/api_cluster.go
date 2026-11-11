@@ -486,6 +486,14 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxCloud18Identity)),
 	)).Methods(http.MethodGet)
+	router.Handle("/api/clusters/settings/actions/instance-name", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxInstanceName)),
+	)).Methods(http.MethodGet)
+	router.Handle("/api/clusters/settings/actions/instance-name", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSetInstanceName)),
+	)).Methods(http.MethodPost)
 	router.Handle("/api/clusters/settings/actions/license-pull", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxLicensePull)),

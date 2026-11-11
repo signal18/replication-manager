@@ -660,8 +660,9 @@ func (conf *Config) EnsureMarketplaceVault(offer MarketplaceVaultOffer, pathPref
 
 // InstanceStoreName is this instance's name in a shared credential store, the folder of its
 // server secrets: <domain>/<subdomain>/<zone>. A registered instance is named by its
-// registration, any other by its own name (instance-domain, -sub-domain, -sub-domain-zone).
-// ok false while the name is not complete (no company entered yet): the server secrets then
+// registration, any other by its own name (instance-domain: the company, instance-sub-domain:
+// the hostname, instance-sub-domain-zone: the location, an office or a country).
+// ok false while the name is not complete (the company or the location not entered yet): the server secrets then
 // stay in the local version store.
 func (conf *Config) InstanceStoreName() (string, bool) {
 	if conf.Cloud18 && conf.Cloud18Domain != "" && conf.Cloud18SubDomain != "" && conf.Cloud18SubDomainZone != "" {
@@ -673,21 +674,16 @@ func (conf *Config) InstanceStoreName() (string, bool) {
 	return "", false
 }
 
-// SeedInstanceName fills the parts of the instance's own name drawn at the first start: the
-// hostname and a random zone, each only when empty, never changed afterwards (a container given
-// a new hostname at each start keeps its first). The company is entered by a person. True when
-// it set one: the caller saves.
-func (conf *Config) SeedInstanceName(hostname string, zone func() string) bool {
-	changed := false
+// SeedInstanceName fills the hostname part of the instance's own name at the first start, only
+// when empty, never changed afterwards (a container given a new hostname at each start keeps
+// its first). The company and the location (an office, a country) are entered by a person.
+// True when it set it: the caller saves.
+func (conf *Config) SeedInstanceName(hostname string) bool {
 	if conf.InstanceSubDomain == "" && hostname != "" {
 		conf.InstanceSubDomain = hostname
-		changed = true
+		return true
 	}
-	if conf.InstanceSubDomainZone == "" {
-		conf.InstanceSubDomainZone = zone()
-		changed = true
-	}
-	return changed
+	return false
 }
 
 // ValidInstanceNamePart: a part of the instance's name is one folder of a store path and one

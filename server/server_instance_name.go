@@ -4,38 +4,18 @@
 
 package server
 
-import (
-	"crypto/rand"
-	"math/big"
-	"strconv"
+import "github.com/signal18/replication-manager/config"
 
-	"github.com/signal18/replication-manager/config"
-)
-
-// instanceZoneMax bounds the random zone of an unregistered instance's name: six digits.
-const instanceZoneMax = 1000000
-
-// randomInstanceZone draws the zone of an unregistered instance's name.
-func randomInstanceZone() string {
-	n, err := rand.Int(rand.Reader, big.NewInt(instanceZoneMax))
-	if err != nil {
-		// crypto/rand does not fail on the supported systems; a fixed zone is still a name
-		return "0"
-	}
-	return strconv.FormatInt(n.Int64(), 10)
-}
-
-// seedInstanceName draws the parts of the instance's own name that are drawn once at the first
-// start (the hostname, a random zone) and saves them (CREDENTIAL_STORES.md "Two levels"). The
-// active monitor only: it writes default.toml and pushes it, the standby takes the same name
-// from it, so the pair share one name.
+// seedInstanceName saves the hostname as the middle part of the instance's own name at the
+// first start (CREDENTIAL_STORES.md "Two levels"); the company and the location are entered in
+// the GUI. The active monitor only: it writes default.toml and pushes it, the standby takes the
+// same name from it, so the pair share one name.
 func (repman *ReplicationManager) seedInstanceName() {
 	if repman.Status != ConstMonitorActif {
 		return
 	}
-	if repman.Conf.SeedInstanceName(repman.Hostname, randomInstanceZone) {
-		name := repman.Conf.InstanceSubDomain + "/" + repman.Conf.InstanceSubDomainZone
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlInfo, "Instance name drawn: %s (the company, instance-domain, is entered in the GUI)", name)
+	if repman.Conf.SeedInstanceName(repman.Hostname) {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlInfo, "Instance hostname saved for its name: %s (the company and the location are entered in the GUI)", repman.Conf.InstanceSubDomain)
 		repman.Save()
 	}
 }

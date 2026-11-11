@@ -451,10 +451,12 @@ is treated the same; only the path a level maps to differs per store.
   instance may be registered and not public, an on-prem URL may be a bare hostname). Registered:
   the registration (`cloud18-domain`, `cloud18-sub-domain`, `cloud18-sub-domain-zone`). Not
   registered: its own name, three server settings (`instance-domain`, `instance-sub-domain`,
-  `instance-sub-domain-zone`): the company, asked at the first sign-in to the GUI; the hostname,
-  read once at the first start and saved; a random number drawn once and saved. The `cloud18-*`
-  settings are never filled with the local name: their readers take them as "registered". No
-  company yet: server secrets stay in the local version store and a state asks for it.
+  `instance-sub-domain-zone`): the company, the hostname (read once at the first start and saved,
+  prefilled) and the location (an office, a country), asked in a window at the sign-in of a
+  sysops or extsysops (grant `cluster-server-credentials` on every cluster) through
+  `/api/clusters/settings/actions/instance-name`. The `cloud18-*` settings are never filled
+  with the local name: their readers take them as "registered". Name not complete: server
+  secrets stay in the local version store and the window asks again.
 - **The move.** When the name changes (a licence loaded, a registration, a renamed cluster for
   its cluster secrets), every server store gets every kept version of every server secret at
   the new name, oldest first, from repman's own version store (never read from the old path).
