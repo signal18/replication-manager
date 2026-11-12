@@ -34,6 +34,9 @@ type UserRotateResult struct {
 	TokensRevoked int      `json:"tokensRevoked"`
 	TokensError   string   `json:"tokensError,omitempty"`
 	PersistError  string   `json:"persistError,omitempty"`
+	// StoresBehind: the server credential stores already behind when the instance's list was
+	// rotated (GWARN024): they may still hold the compromised password
+	StoresBehind []string `json:"storesBehind,omitempty"`
 }
 
 // rotatedPasswordLength: a rotation bans a user who may be compromised, so a long password.
@@ -94,6 +97,9 @@ func (repman *ReplicationManager) handlerMuxUserRotatePassword(w http.ResponseWr
 	}
 	if res.PersistError != "" {
 		tokens += ", " + res.PersistError
+	}
+	if len(res.StoresBehind) > 0 {
+		tokens += ", server credential stores behind: " + strings.Join(res.StoresBehind, ",")
 	}
 	repman.logSecurityEvent("api_user_password_rotated", res.Username, r.RemoteAddr,
 		fmt.Sprintf("Password of %s rotated by %s on %s (%s list), %s",
@@ -212,6 +218,12 @@ func (repman *ReplicationManager) rotateAPIUserPassword(cl *cluster.Cluster, use
 	// the instance's list is a server secret: its new version goes to every server credential
 	// store (Vault, OpenSVC, Kubernetes) through the server chain's hook, a store behind says so
 	// (GWARN024); a cluster's own list goes to that cluster's stores
+	if scope == cluster.APIUserScopeInstance {
+		for name := range repman.ServerKvBehind() {
+			res.StoresBehind = append(res.StoresBehind, name)
+		}
+		sort.Strings(res.StoresBehind)
+	}
 	return res, nil
 }
 

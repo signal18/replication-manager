@@ -244,7 +244,7 @@ function Users({ selectedCluster, user }) {
       )}
       {isUserGrantModalOpen && <UserGrantModal clusterName={selectedCluster.name} selectedUser={selectedUser} isOpen={isUserGrantModalOpen} closeModal={closeUserGrantModal} />}
       {isConfirmModalOpen && <ConfirmModal title={title} isOpen={isConfirmModalOpen} onConfirmClick={handleConfirm} closeModal={closeConfirmModal} />}
-      {rotated && <CopyTextModal isOpen={!!rotated} closeModal={() => setRotated(null)} title={'New password of ' + rotated.username + ' (shown once)' + (rotated.tokensError ? ' — ' + rotated.tokensError : '') + (rotated.persistError ? ' — ' + rotated.persistError : '')} text={rotated.password} />}
+      {rotated && <CopyTextModal isOpen={!!rotated} closeModal={() => setRotated(null)} title={'New password of ' + rotated.username + ' (shown once)' + (rotated.tokensError ? ' — ' + rotated.tokensError : '') + (rotated.persistError ? ' — ' + rotated.persistError : '') + (rotated.storesBehind?.length ? ' — server credential stores behind, they may still hold the old password: ' + rotated.storesBehind.join(', ') : '')} text={rotated.password} />}
       {isTextModalOpen && <TextInputModal isOpen={isTextModalOpen} title={title} fieldname={'Reason'} onSave={handleConfirm} isRequired={true} closeModal={() => { setIsTextModalOpen(false);}} />}
     </>
   )

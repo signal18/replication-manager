@@ -389,3 +389,39 @@ func TestServerKvOrchestratorCluster(t *testing.T) {
 		t.Fatalf("behind: %v", repman.ServerKvBehind())
 	}
 }
+
+// Two instance names never share a key prefix in a flat orchestrator object.
+func TestServerKvOrchestratorPrefixNoCollision(t *testing.T) {
+	seen := map[string]string{}
+	for _, name := range []string{"a_b/c/d", "a/b_c/d", "a/b/c_d", "a__b/c/d", "a/b/c/d"} {
+		p := config.ServerOrchestratorKeyPrefix(name)
+		if other, ok := seen[p]; ok {
+			t.Fatalf("%s and %s share %s", name, other, p)
+		}
+		seen[p] = name
+	}
+	if config.ServerOrchestratorKeyPrefix("a_b/c/d") != "a__b_c_d" {
+		t.Fatal(config.ServerOrchestratorKeyPrefix("a_b/c/d"))
+	}
+	for _, part := range []string{"_a", "a_"} {
+		if config.ValidInstanceNamePart(part) == nil {
+			t.Fatalf("%q accepted", part)
+		}
+	}
+}
+
+// A rotation of the instance's list names the server stores already behind: they may still
+// hold the compromised password.
+func TestServerKvRotationSaysStoresBehind(t *testing.T) {
+	server := vaultfake.New("kv", "role", "sid")
+	defer server.Close()
+	repman := serverKvTestManager(t, true, server)
+	repman.setServerKvBehind("srv-a", "down")
+	res, err := repman.rotateAPIUserPassword(repman.Clusters["c1"], "ops", "admin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.StoresBehind) != 1 || res.StoresBehind[0] != "srv-a" {
+		t.Fatalf("stores behind: %v", res.StoresBehind)
+	}
+}

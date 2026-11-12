@@ -572,10 +572,17 @@ func (conf *Config) ServerSecretKvFolder(e SecretKvConfig, instance string) stri
 }
 
 // ServerOrchestratorKeyPrefix is the instance's keys' prefix in a flat orchestrator secret:
-// its name with "_" for "/". The name's parts hold letters, digits, '-', '_' and '.', which
-// the OpenSVC and Kubernetes keys both take.
+// each part's "_" doubled, the parts joined by a single "_". The name's parts hold letters,
+// digits, '-', '_' and '.', which the OpenSVC and Kubernetes keys both take, and never start
+// or end with '_' (ValidInstanceNamePart): a part's underscores then always come in even runs
+// and a separator is a lone one, so two names never give the same prefix (a_b/c is a__b_c,
+// a/b_c is a_b__c), as two Vault folders never coincide.
 func ServerOrchestratorKeyPrefix(instance string) string {
-	return strings.ReplaceAll(instance, "/", "_")
+	parts := strings.Split(instance, "/")
+	for i, p := range parts {
+		parts[i] = strings.ReplaceAll(p, "_", "__")
+	}
+	return strings.Join(parts, "_")
 }
 
 // ServerSecretKvLocation says where a server entry puts the instance's secrets, for the API
@@ -958,8 +965,9 @@ func (conf *Config) SeedInstanceName(hostname string) bool {
 // ValidInstanceNamePart: a part of the instance's name is one folder of a store path and one
 // part of an OpenSVC key: 1 to 63 letters, digits, '-', '_' or '.', no '..'.
 func ValidInstanceNamePart(s string) error {
-	if s == "" || len(s) > 63 || strings.Contains(s, "..") || strings.HasPrefix(s, ".") || strings.HasSuffix(s, ".") {
-		return fmt.Errorf("an instance name part is 1 to 63 characters, no '..', not starting or ending with '.': %q", s)
+	if s == "" || len(s) > 63 || strings.Contains(s, "..") || strings.HasPrefix(s, ".") || strings.HasSuffix(s, ".") ||
+		strings.HasPrefix(s, "_") || strings.HasSuffix(s, "_") {
+		return fmt.Errorf("an instance name part is 1 to 63 characters, no '..', not starting or ending with '.' or '_': %q", s)
 	}
 	for _, r := range s {
 		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-' || r == '_' || r == '.') {

@@ -102,6 +102,13 @@ func TestServerOrchestratorStore(t *testing.T) {
 	if own := osvc.openSVCStore(); own.namespace != "c1" || own.object != "env" || own.prefixed {
 		t.Fatalf("cluster env sink changed: %+v", own)
 	}
+	if _, _, err := s.ReadCurrent("api-credentials"); err != errPrefixedReadCurrent {
+		t.Fatalf("a server store's drift read: %v", err)
+	}
+	kw, _ := k8s.ServerOrchestratorStore(config.ConstSecretKvPluginKubernetes, "infra")
+	if _, _, err := kw.(*k8sStore).ReadCurrent("api-credentials"); err != errPrefixedReadCurrent {
+		t.Fatalf("a server Kubernetes store's drift read: %v", err)
+	}
 	if storeKey(true, credstore.StoreItem{Path: "acme_host_paris", Key: "api-credentials"}) != "acme_host_paris_api-credentials" {
 		t.Fatal("server key")
 	}

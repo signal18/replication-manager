@@ -572,8 +572,11 @@ sponsor or member never reaches them.
   Kubernetes client), refused at add and edit when that cluster is not monitored here or not on
   that orchestrator (`checkServerStoreCluster`), and behind with the reason at each pass when it
   goes away later (`serverKvWriter`, `failingStoreWriter`). The object is flat, so the keys are
-  `<instance name, "_" for "/">_<key>` (`ServerOrchestratorKeyPrefix`, the item's `Path`), the
-  characters both orchestrators take. The writers are the cluster's own sinks given another
+  `<prefix>_<key>`, the prefix being the instance's name with each part's `_` doubled and the
+  parts joined by one `_` (`ServerOrchestratorKeyPrefix`, the item's `Path`): `a_b/c/d` is
+  `a__b_c_d`, `a/b_c/d` is `a_b__c_d`. A name part never starts or ends with `_`
+  (`ValidInstanceNamePart`), so two names never share a prefix, as two Vault folders never
+  coincide; a name part that did is "not named" (nothing written, behind) until it is changed. The writers are the cluster's own sinks given another
   target (`openSVCStore`/`k8sStore` with a namespace, an object and the prefixed keys,
   `Cluster.ServerOrchestratorStore`): the same budget per pass, the `<KEY>_OLD` history and the
   unchanged-skip. They are driven by the server's queue, never the cluster's: a server secret
@@ -582,6 +585,21 @@ sponsor or member never reaches them.
   orchestrator's env secret stays the reserved `orchestrator` entry. Who reads the object is the
   orchestrator's business (the OpenSVC system namespace's administrators, whoever reads Secrets
   in the namespace), said in the form. An entry's plugin never changes: remove it and add another.
+  - **`<key>_OLD`**: as for a cluster's env secret, each changed key keeps the value it replaced
+    under `<prefix>_<key>_OLD`, one deep. After a ban, `_OLD` holds the list with the
+    compromised password, in the store's own protection; that password no longer signs in.
+  - **Kubernetes namespace**: any namespace the cluster's client may write, `kube-system`
+    included: give that client the narrowest role (create, get and patch on the Secret
+    `repman-system` in that namespace). A cluster's own namespace works too; whoever reads
+    Secrets there then reads the server secrets.
+  - **Drift read**: `ReadCurrent` (the WARN0275 reconciliation) is the cluster sinks' only; a
+    server store's writer refuses it (`errPrefixedReadCurrent`).
+  - **The rotation's answer** names the server stores already behind (`storesBehind`), which may
+    still hold the compromised password; the GUI shows it with the new password.
+  - **Upgrade**: the removed copy wrote `<api host>_api-credentials` in `system/sec/repman`; that
+    key stops changing. An OpenSVC server store writes `<prefix>_api-credentials` instead:
+    whatever read the old key reads the new one. A config file still holding
+    `secret-kv-copy-api-credentials` loads, the key ignored.
 - **Not yet:** the Cloud18 vault offered at the server level by the registration (a sysops adds
   it as an entry with `auth = jwt` meanwhile), and the move on a name change.
 

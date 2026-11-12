@@ -35,6 +35,9 @@ func (cluster *Cluster) k8sStore() *k8sStore {
 // ReadCurrent reads the value the cluster Secret holds for key, for the drift reconciliation
 // only. The Secret's read side is Data (decoded bytes), StringData being write-only.
 func (s *k8sStore) ReadCurrent(key string) (value string, ok bool, err error) {
+	if s.prefixed {
+		return "", false, errPrefixedReadCurrent
+	}
 	client, err := s.cluster.K8SConnectAPI()
 	if err != nil {
 		return "", false, err

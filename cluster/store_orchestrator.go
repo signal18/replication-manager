@@ -98,6 +98,9 @@ func (s *openSVCStore) certNotLoaded() bool {
 // only — never as a Chain source (rule 7). A v2 agent has no key read: it returns ok=false, so
 // a v2 drift is seen at the next rotation. The read is bounded by the store timeout (F2).
 func (s *openSVCStore) ReadCurrent(key string) (value string, ok bool, err error) {
+	if s.prefixed {
+		return "", false, errPrefixedReadCurrent
+	}
 	svc := s.cluster.OpenSVCConnect()
 	if s.certNotLoaded() {
 		return "", false, errOpenSVCCertNotLoaded
@@ -264,6 +267,10 @@ func (cluster *Cluster) seedOrchestratorPasswords(svc opensvc.Collector) map[str
 	}
 	return errs
 }
+
+// errPrefixedReadCurrent: a server entry's writer keys each item by its Path; the drift read
+// takes a bare key, so it is the cluster sink's only.
+var errPrefixedReadCurrent = errors.New("the drift read is the cluster's env secret's only, not a server store's")
 
 // errServerStoreOrchestrator: the cluster a server entry names is not on that entry's
 // orchestrator.
