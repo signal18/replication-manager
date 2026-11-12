@@ -287,4 +287,22 @@ func TestServerKvReservedPrefixEveryPath(t *testing.T) {
 	if err := conf.SetSecretKvEnabled("fromfile", true); !errors.Is(err, config.ErrSecretKvReservedPrefix) {
 		t.Fatalf("the API turns it on: %v", err)
 	}
+	// A peer's events in the other order: the switch first, on a valid prefix, then the prefix.
+	if err := conf.SetSecretKvSetting("ordered", "plugin", config.ConstSecretKvPluginVault, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := conf.SetSecretKvSetting("ordered", "path-prefix", "tenant", false); err != nil {
+		t.Fatal(err)
+	}
+	if err := conf.SetSecretKvSetting("ordered", "enabled", "true", false); err != nil {
+		t.Fatalf("switch on a valid prefix: %v", err)
+	}
+	if err := conf.SetSecretKvSetting("ordered", "path-prefix", "tenant/system", false); !errors.Is(err, config.ErrSecretKvReservedPrefix) {
+		t.Fatalf("prefix after the switch: %v", err)
+	}
+	for _, e := range conf.SecretKvs {
+		if e.Name == "ordered" && e.Settings["path-prefix"] != "tenant" {
+			t.Fatalf("prefix taken: %v", e.Settings["path-prefix"])
+		}
+	}
 }

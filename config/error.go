@@ -77,7 +77,7 @@ var ClusterError = map[string]string{
 	"ERR00055":  "Arbitrator unreachable (%s)",
 	"ERR00056":  "Master user %s is not defined on replication candidate %s",
 	"ERR00057":  "Database duplicate users not allowed in proxysql %s",
-	"WARN0321":  "Credential store %s is switched off: its path-prefix holds a segment system, . or .. and could reach the server's folder (system/repman/<instance name>) -- change its path-prefix in the config file, then turn it on",
+	"WARN0321":  "Credential store %s is switched off: its path-prefix holds a segment system, . or .. and could reach the server's folder (system/repman/<instance name>) -- change its path-prefix (in the GUI or the config file), then turn it on",
 	"WARN0320":  "Server credential store %s is behind -- the server secrets every cluster reads are not the current ones in it; the instance's sysops or extsysops see why in the global settings",
 	"WARN0319":  "ProxySQL %s: users not loaded, their caching_sha2_password hash cannot be checked by ProxySQL and repman does not know their password: %s",
 	"ERR00058":  "Sphinx connection error: %s",

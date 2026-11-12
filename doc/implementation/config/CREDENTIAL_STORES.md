@@ -541,7 +541,10 @@ sponsor or member never reaches them.
   (`ReservedSecretKvPrefix`, `ErrSecretKvReservedPrefix`) through the API (`PutSecretKvAt`) and a
   peer's event (`SetSecretKvSetting`, its prefix and its switch), and switched off when read from
   a config file (a WARN at the load and `WARN0321` on the cluster's config state until the
-  file is changed; turning it on is refused), so a cluster
+  prefix is changed, through the API or the file; turning it on is refused). `WARN0321` follows
+  the prefix alone, not the switch: an entry its owner turned off on purpose still warns while
+  it keeps that prefix. A peer that sends `enabled=true` before a reserved `path-prefix` gets the
+  switch, then the prefix refused, so the entry never runs with it. So a cluster
   folder never reaches `<prefix>/system/repman/...` whatever the server entry's own prefix, and
   the separation does not rest on the Vault policies alone. The prefix is compared as written,
   `/`-separated: Vault paths take no `\` separator and the value is never URL-decoded. Two of a client's instances collide only if the
