@@ -378,8 +378,10 @@ way to ban a compromised user: its sessions carry its password, so they are refu
 request, and every API token it owns is revoked (`revokeUserAPITokens`).
 
 - **Who:** the rotation grant (`cluster-rotate-passwords`), held by sysops and extsysops; dbops,
-  extdbops and sponsors do not hold it. No role reads a password: the new one is shown to the one
-  who rotated it, once.
+  extdbops and sponsors do not hold it. Another user of the instance's list (a server secret) is
+  rotated only by a holder of `cluster-server-credentials` on every cluster of the instance
+  (`holdsServerCredentials`), the rule of the instance's name; a user may always rotate its own
+  password. No role reads a password: the new one is shown to the one who rotated it, once.
 - **No escalation:** the caller rotates its own password, or that of a user holding no grant the
   caller lacks (`CanRotateFor`), on every cluster concerned: the new password is handed to the
   caller, so rotating a user with more rights would hand those over.
@@ -396,13 +398,21 @@ request, and every API token it owns is revoked (`revokeUserAPITokens`).
   history recorded before the list was versioned (`AdoptConfigFileValue`).
 - **Refused:** `system` (its key is derived from the instance key), the registered Cloud18 user and
   accounts without a local password (they sign in with Cloud18: rotate at the identity provider).
-- **Copy:** the instance's list, in clear, goes to the OpenSVC secret `system/sec/repman`, key
+- **On disk before the answer:** a change of a server secret writes the server's file at once
+  (`writeServerSecretFile`, the save callback's part for that file run synchronously, as
+  `SaveConfig(wait)` does for a shutdown or a registration; atomic, a temp file and a rename, and
+  ordered with the save's own write by a lock). A crash or a failover right after the answer keeps
+  the ban. When the file cannot be written, the new password stays in force (undoing it would give
+  the compromised one back) and the answer says so (`persistError`), as for the tokens.
+- **Copy:** off by default (`secret-kv-copy-api-credentials`, server scope, global settings). On,
+  the instance's list, in clear, goes to the OpenSVC secret `system/sec/repman`, key
   `<host of api-public-url>_api-credentials`, through the first cluster on OpenSVC; the answer says
-  whether it was written, skipped or failed. Off with `secret-kv-copy-api-credentials` (server
-  scope, global settings). The Vault copy is not written here yet.
+  whether it was written or skipped, and a failed copy is said (`copyError`): the copy then still
+  holds the compromised password. The Vault copy is not written here yet.
 - **Trade-off of the copy:** it holds every user's password of the instance's list in clear, readable
   by the infrastructure's administrators only (the OpenSVC system namespace); it lets them reach a
-  repman whose own login is lost. Turn it off where that trade is not wanted.
+  repman whose own login is lost. Turn it on only where that trade is wanted, until the OpenSVC
+  store replaces it.
 - **Tokens:** a revocation that fails (the token store not saved) is undone in memory and said in
   the answer (`tokensError`) and in the GUI: a ban with live tokens is not a ban.
 - **Limits:** rotations are serialized among themselves, not with the user add, update and drop
@@ -428,9 +438,30 @@ is treated the same; only the path a level maps to differs per store.
   to server entries (`[[secret-kv]]` in the server config): never to a cluster entry, so a
   sponsor or a member never reads one.
 - **One chain per level.** A server secret has one credential chain and one version store for the
-  instance (`<working-dir>/secret_store.json`, written by the server's save callback, T25, and
-  carried by its config push like the cluster files), not a copy per cluster: the clusters read
-  it from there. A rotation of `api-credentials` is one version, not one per cluster.
+  instance (`<working-dir>/secret_store.json`, written by the server's save callback, T25, and at
+  once by a change of a server secret, and carried by its config push like the cluster files),
+  not a copy per cluster: the clusters read it from there. A rotation of `api-credentials` is one
+  version, not one per cluster.
+- **A server secret is set in the global settings only.** `setServerSetting` asks the server
+  credentials grant on every cluster, sets it through the server's chain, then every cluster reads
+  it from the server and uses it (`Cluster.ApplyServerSecret`), and the server's file is written.
+  Through one cluster's settings it is refused (`Cluster.SetCredential`, `ErrServerSecret`). A
+  peer's event log never applies one to a cluster: the server's file in the config pull brings it.
+- **The upgrade.** An older release kept versions of server secrets in each cluster's file. At
+  start, before the config files' values are checked, the server reads every cluster's file and
+  merges them, and writes its own file. A cluster hands them over again at each load of its file
+  (`FileBinding.Loaded`), and drops its copy only once the server's file holds them; when the
+  server cannot write, the cluster keeps them. A cluster's file that cannot be read is never
+  overwritten (`ErrFileUnread`, read again at each save, then merged), and while one is unread the
+  value in `/etc` is not taken over the versions at that start. With versioning off there is no
+  versioned file: an older release kept the list in the config, which the server still reads. A
+  cluster section that sets `api-credentials` is not read: the server level answers first, the
+  cluster's own list is `api-credentials-external`.
+- **Clocks.** Versions are ordered by time when two monitors' files merge. A new version is never
+  stamped before the last one (`credstore.AfterLast`): after a failover to a monitor whose clock is
+  behind, its rotation still sorts after the version it replaces, and the banned value never comes
+  back as the current one. The clocks are still expected to be close (NTP): two rotations made on
+  two monitors at once, each before seeing the other's, are ordered by their clocks.
 - **Only sysops and extsysops reach the server level**: they alone set the server entries and
   change a server-scope key, through one grant both hold (outside the `global` family, which
   extsysops does not get). No other role reads or writes either.

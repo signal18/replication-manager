@@ -26,7 +26,10 @@ import { showErrorToast, showSuccessToast } from '../../redux/toastSlice'
 
 // A part of the name: one folder of a store path (InstanceNameForm, config.ValidInstanceNamePart)
 const partPattern = /^[A-Za-z0-9._-]{1,63}$/
-const partError = (v) => (!partPattern.test(v) || v.includes('..') ? '1 to 63 letters, digits, "-", "_" or "."' : '')
+const partError = (v) =>
+  !partPattern.test(v) || v.includes('..') || v.startsWith('.') || v.endsWith('.')
+    ? '1 to 63 letters, digits, "-", "_" or ".", not starting or ending with "."'
+    : ''
 
 // "Later" holds for this browser session only: the window comes back at the next sign-in
 const laterKey = 'instanceNameLater'

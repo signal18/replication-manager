@@ -34,7 +34,9 @@ type UserRotateResult struct {
 	Clusters      []string `json:"clusters"`
 	TokensRevoked int      `json:"tokensRevoked"`
 	TokensError   string   `json:"tokensError,omitempty"`
+	PersistError  string   `json:"persistError,omitempty"`
 	Copy          string   `json:"copy"`
+	CopyError     string   `json:"copyError,omitempty"`
 }
 
 // rotatedPasswordLength: a rotation bans a user who may be compromised, so a long password.
@@ -90,6 +92,12 @@ func (repman *ReplicationManager) handlerMuxUserRotatePassword(w http.ResponseWr
 	tokens := fmt.Sprintf("%d API token(s) revoked", res.TokensRevoked)
 	if res.TokensError != "" {
 		tokens = res.TokensError
+	}
+	if res.PersistError != "" {
+		tokens += ", " + res.PersistError
+	}
+	if res.CopyError != "" {
+		tokens += ", " + res.CopyError
 	}
 	repman.logSecurityEvent("api_user_password_rotated", res.Username, r.RemoteAddr,
 		fmt.Sprintf("Password of %s rotated by %s on %s (%s list), %s, copy: %s",
@@ -160,6 +168,13 @@ func (repman *ReplicationManager) rotateAPIUserPassword(cl *cluster.Cluster, use
 		}
 	}
 	if scope == cluster.APIUserScopeInstance {
+		// the instance's list is a server secret: another user's password in it is changed by
+		// its owners only (sysops, extsysops); a user may always ban its own password
+		if by != user {
+			if err := repman.holdsServerCredentials(by); err != nil {
+				return nil, fmt.Errorf("%w: %s", errRotateRefused, err)
+			}
+		}
 		if err := repman.CredentialChain().CanSet(apiCredentialsKey); err != nil {
 			return nil, fmt.Errorf("%w: %s cannot take a new value: %s", errRotateRefused, apiCredentialsKey, credstore.Reason(err))
 		}
@@ -172,7 +187,14 @@ func (repman *ReplicationManager) rotateAPIUserPassword(cl *cluster.Cluster, use
 	var setErr error
 	if scope == cluster.APIUserScopeInstance {
 		// a server secret: one version at the server level, every cluster reads it
-		if setErr = repman.setInstanceUserPassword(user, pass); setErr == nil {
+		setErr = repman.setInstanceUserPassword(user, pass)
+		if errors.Is(setErr, errServerSecretNotPersisted) {
+			// in force on every cluster, not on disk: said in the answer, not only logged
+			res.PersistError = setErr.Error() + " (rotate again to retry)"
+			repman.Logrus.Warnf("Password rotation of %s: %s", user, res.PersistError)
+			setErr = nil
+		}
+		if setErr == nil {
 			for _, t := range targets {
 				res.Clusters = append(res.Clusters, t.Name)
 			}
@@ -193,9 +215,31 @@ func (repman *ReplicationManager) rotateAPIUserPassword(cl *cluster.Cluster, use
 	}
 	res.Copy = "not applicable: a cluster's own list is not copied"
 	if scope == cluster.APIUserScopeInstance {
-		res.Copy = repman.copyAPICredentialsToOpenSVC()
+		var copyErr error
+		if res.Copy, copyErr = repman.copyAPICredentialsToOpenSVC(); copyErr != nil {
+			// the copy still holds the old list, the compromised password with it
+			res.CopyError = "the OpenSVC copy was NOT updated, it still holds the old password (rotate again to retry): " + copyErr.Error()
+			repman.Logrus.Warnf("Password rotation of %s: %s", user, res.CopyError)
+		}
 	}
 	return res, nil
+}
+
+// holdsServerCredentials: user holds the server credentials grant on every cluster of the
+// instance. A server secret is the instance's (CREDENTIAL_STORES.md "Two levels"), so a grant
+// on one cluster of a shared instance is not enough; the same rule as the instance's name.
+func (repman *ReplicationManager) holdsServerCredentials(user string) error {
+	clusters := repman.clustersSnapshot()
+	if len(clusters) == 0 {
+		return errors.New("no cluster: the server credentials grant cannot be checked")
+	}
+	for _, cl := range clusters {
+		u, ok := cl.GetACLUser(user)
+		if !ok || u.Granted(config.GrantClusterServerCredentials) != nil {
+			return fmt.Errorf("%s does not hold %s on %s: a server secret is changed by the instance's sysops and extsysops only", user, config.GrantClusterServerCredentials, cl.Name)
+		}
+	}
+	return nil
 }
 
 // apiCredentialsKey is the instance's list of API users, a server secret.
@@ -212,6 +256,9 @@ func (repman *ReplicationManager) setInstanceUserPassword(user, pass string) err
 		return cluster.ErrAPIUserUnknown
 	}
 	if err := repman.SetServerSecret(apiCredentialsKey, list); err != nil {
+		if errors.Is(err, errServerSecretNotPersisted) {
+			return err
+		}
 		return fmt.Errorf("%s not changed: %s", apiCredentialsKey, credstore.Reason(err))
 	}
 	return nil
@@ -230,15 +277,15 @@ func (repman *ReplicationManager) clustersWithInstanceUser(user string) []*clust
 
 // copyAPICredentialsToOpenSVC writes the instance's list, in clear, to the OpenSVC secret
 // system/sec/repman, key <api host>_api-credentials (where the infrastructure index points),
-// through the first cluster on OpenSVC. Off with secret-kv-copy-api-credentials. It returns
-// what happened, never the value.
-func (repman *ReplicationManager) copyAPICredentialsToOpenSVC() string {
+// through the first cluster on OpenSVC. Off by default, on with secret-kv-copy-api-credentials.
+// It returns what happened, never the value, and an error when the copy failed.
+func (repman *ReplicationManager) copyAPICredentialsToOpenSVC() (string, error) {
 	if !repman.Conf.SecretKvCopyApiCredentials {
-		return "skipped: secret-kv-copy-api-credentials is off"
+		return "skipped: secret-kv-copy-api-credentials is off", nil
 	}
 	host := apiPublicHost(repman.Conf.APIPublicURL)
 	if host == "" {
-		return "skipped: api-public-url is not set"
+		return "skipped: api-public-url is not set", nil
 	}
 	key := host + "_api-credentials"
 	for _, c := range repman.clustersSnapshot() {
@@ -246,11 +293,11 @@ func (repman *ReplicationManager) copyAPICredentialsToOpenSVC() string {
 			continue
 		}
 		if err := c.WriteOpenSVCSecretKey("system", "repman", key, repman.Conf.DecryptedAPIUserList()); err != nil {
-			return "failed through " + c.Name + ": " + err.Error()
+			return "failed through " + c.Name, err
 		}
-		return "written to system/sec/repman key " + key + " through " + c.Name
+		return "written to system/sec/repman key " + key + " through " + c.Name, nil
 	}
-	return "skipped: no cluster on OpenSVC"
+	return "skipped: no cluster on OpenSVC", nil
 }
 
 // apiPublicHost is the host of api-public-url, "" when unset or not a URL.

@@ -38,7 +38,7 @@ func TestValidInstanceNamePart(t *testing.T) {
 			t.Fatalf("%q refused: %v", ok, err)
 		}
 	}
-	for _, ko := range []string{"", "a/b", "a b", "..", "a..b", "é"} {
+	for _, ko := range []string{"", "a/b", "a b", ".", "..", "a..b", ".a", "a.", "é"} {
 		if ValidInstanceNamePart(ko) == nil {
 			t.Fatalf("%q accepted", ko)
 		}

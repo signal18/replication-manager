@@ -304,7 +304,14 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 		repman.Conf.Cloud18SubDomainZone = value
 	case "instance-domain":
 		// the company, the first part of the instance's name in a shared credential store;
-		// its hostname and zone are drawn at the first start, never typed
+		// its hostname and zone are drawn at the first start, never typed. Same rules as the
+		// instance-name endpoint: not on a registered instance, not on a standby
+		if repman.instanceName().Registered {
+			return errInstanceNameRegistered
+		}
+		if repman.Status != ConstMonitorActif {
+			return errors.New("this instance is a standby: set the name on the active instance, the standby takes it from the config push")
+		}
 		if err := config.ValidInstanceNamePart(value); err != nil {
 			return err
 		}
@@ -636,7 +643,9 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 			return err
 		}
 		repman.Conf.MailSMTPPassword = string(val)
-		repman.Mailer.UpdateAuth(repman.Conf.MailSMTPUser, repman.Conf.MailSMTPPassword)
+		if repman.Mailer != nil {
+			repman.Mailer.UpdateAuth(repman.Conf.MailSMTPUser, repman.Conf.MailSMTPPassword)
+		}
 	case "mail-smtp-user":
 		repman.Conf.SetMailSmtpUser(value)
 		repman.Mailer.UpdateAuth(repman.Conf.MailSMTPUser, repman.Conf.GetDecryptedValue("mail-smtp-password"))
@@ -934,6 +943,16 @@ func (repman *ReplicationManager) immutableGlobalSetting(name string) error {
 func (repman *ReplicationManager) setServerSetting(user string, URL string, name string, value string) error {
 	if err := repman.immutableGlobalSetting(name); err != nil {
 		return err
+	}
+	if isServerSecretKey(name) {
+		// a server secret: its owners only, then every cluster reads it from the server
+		if err := repman.holdsServerCredentials(user); err != nil {
+			return err
+		}
+		if err := repman.setRepmanSetting(name, value); err != nil {
+			return err
+		}
+		return repman.applyServerSecret(name)
 	}
 	err := repman.setRepmanSetting(name, value)
 	if err != nil {

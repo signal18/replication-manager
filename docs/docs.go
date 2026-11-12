@@ -34591,7 +34591,13 @@ const docTemplate = `{
                 "copy": {
                     "type": "string"
                 },
+                "copyError": {
+                    "type": "string"
+                },
                 "password": {
+                    "type": "string"
+                },
+                "persistError": {
                     "type": "string"
                 },
                 "scope": {

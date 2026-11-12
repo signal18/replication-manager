@@ -689,8 +689,8 @@ func (conf *Config) SeedInstanceName(hostname string) bool {
 // ValidInstanceNamePart: a part of the instance's name is one folder of a store path and one
 // part of an OpenSVC key: 1 to 63 letters, digits, '-', '_' or '.', no '..'.
 func ValidInstanceNamePart(s string) error {
-	if s == "" || len(s) > 63 || strings.Contains(s, "..") {
-		return fmt.Errorf("an instance name part is 1 to 63 characters, no '..': %q", s)
+	if s == "" || len(s) > 63 || strings.Contains(s, "..") || strings.HasPrefix(s, ".") || strings.HasSuffix(s, ".") {
+		return fmt.Errorf("an instance name part is 1 to 63 characters, no '..', not starting or ending with '.': %q", s)
 	}
 	for _, r := range s {
 		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-' || r == '_' || r == '.') {

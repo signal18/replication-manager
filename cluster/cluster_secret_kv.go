@@ -622,10 +622,12 @@ func (cluster *Cluster) versionStore() *credstore.VersionStore {
 	defer c.mu.Unlock()
 	if c.versions == nil {
 		c.versions = credstore.NewVersionStore(func() *config.Config { return cluster.Conf }, isVersionedKey, cluster.versionsKeepError, cluster.Save)
-		c.file = &credstore.FileBinding{DataDir: func() string { return cluster.Conf.WorkingDir }, Scope: credstore.ClusterScope(cluster.Name)}
+		c.file = &credstore.FileBinding{DataDir: func() string { return cluster.Conf.WorkingDir }, Scope: credstore.ClusterScope(cluster.Name), Loaded: cluster.handOverServerVersions}
 		if cluster.Conf != nil && cluster.Conf.IsMonitoringSecretVersioningEnabled() {
-			c.file.LoadInto(c.versions)
-			cluster.handOverServerVersions(c.versions)
+			if err := c.file.LoadInto(c.versions); err != nil {
+				// never overwritten until read: each save tries again (FileBinding.Save)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Credential versions: %s not read, it is not written until it is: %s", c.file.Path(), err)
+			}
 		}
 	}
 	return c.versions
@@ -637,14 +639,21 @@ func (cluster *Cluster) isServerSecret(key string) bool {
 }
 
 // handOverServerVersions gives the server the versions of server secrets an older release kept
-// in this cluster's file; the file is written without them at the next save.
+// in this cluster's file, at each load of the file. The server writes them to its own file
+// first; only then is this cluster's file written without them (at the next save). When the
+// server could not write them, they stay here: a rotation is never in no file.
 func (cluster *Cluster) handOverServerVersions(vs *credstore.VersionStore) {
 	g := cluster.ServerGlobals
 	if g == nil || g.ServerSecrets == nil || g.ServerSecrets.Held == nil || g.AdoptServerVersions == nil {
 		return
 	}
-	if taken := vs.Take(g.ServerSecrets.Held); len(taken) > 0 {
-		g.AdoptServerVersions(taken)
+	taken := vs.Take(g.ServerSecrets.Held)
+	if len(taken) == 0 {
+		return
+	}
+	if err := g.AdoptServerVersions(taken); err != nil {
+		vs.Merge(taken)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Credential versions: the server secrets' versions in %s are kept there, the server's file was not written: %s", cluster.secretKv.file.Path(), err)
 	}
 }
 
@@ -1017,10 +1026,12 @@ func AppendSecretVersionFile(path, key, hashValue string, by int) error {
 	}
 	versions := store[key]
 	n := 1
+	at := time.Now().UTC()
 	if len(versions) > 0 {
 		n = versions[len(versions)-1].Version + 1
+		at = credstore.AfterLast(at, versions[len(versions)-1].At())
 	}
-	store[key] = append(versions, secretVersion{Version: n, HashValue: hashValue, RotatedAt: time.Now().UTC().Format(time.RFC3339Nano), WrittenBy: by})
+	store[key] = append(versions, secretVersion{Version: n, HashValue: hashValue, RotatedAt: at.UTC().Format(time.RFC3339Nano), WrittenBy: by})
 	return writeSecretVersionStoreAtomic(path, store)
 }
 

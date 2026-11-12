@@ -779,7 +779,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.IntVar(&conf.SecretKvWriteTimeout, "secret-kv-write-timeout", 10, "Timeout in seconds of each write (and of the login) to a credential store entry")
 	flags.IntVar(&conf.SecretKvStartTimeout, "secret-kv-start-timeout", 3, "Timeout in seconds of the read of the vault entries at a cluster's start, for the secrets the local versioned file does not hold (versioning off, or no version yet); past it the cluster starts on what it has and the entry is behind (WARN0269)")
 	flags.IntVar(&conf.SecretKvRetryInterval, "secret-kv-retry-interval", 60, "Seconds between two tries of the writes to a credential store entry that failed")
-	flags.BoolVar(&conf.SecretKvCopyApiCredentials, "secret-kv-copy-api-credentials", true, "After a user's password rotation, copy the instance's api-credentials, in clear, to the OpenSVC secret system/sec/repman (key <api host>_api-credentials)")
+	flags.BoolVar(&conf.SecretKvCopyApiCredentials, "secret-kv-copy-api-credentials", false, "After a user's password rotation, copy the instance's api-credentials, in clear, to the OpenSVC secret system/sec/repman (key <api host>_api-credentials); a failed copy is reported in the rotation's answer. Off by default: the copy is in clear, until the OpenSVC credential store replaces it")
 	flags.BoolVar(&conf.LogVault, "log-vault", true, "Log vault debug")
 	flags.IntVar(&conf.LogVaultLevel, "log-level-vault", 1, "Log level for vault")
 

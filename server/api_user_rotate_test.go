@@ -57,15 +57,15 @@ func TestValidUsername(t *testing.T) {
 
 func TestCopyAPICredentialsSkipped(t *testing.T) {
 	repman, _ := newTokenTestManager(t)
-	if got := repman.copyAPICredentialsToOpenSVC(); !strings.Contains(got, "skipped") {
+	if got, _ := repman.copyAPICredentialsToOpenSVC(); !strings.Contains(got, "skipped") {
 		t.Fatalf("off: %q", got)
 	}
 	repman.Conf.SecretKvCopyApiCredentials = true
-	if got := repman.copyAPICredentialsToOpenSVC(); !strings.Contains(got, "api-public-url") {
+	if got, _ := repman.copyAPICredentialsToOpenSVC(); !strings.Contains(got, "api-public-url") {
 		t.Fatalf("no url: %q", got)
 	}
 	repman.Conf.APIPublicURL = "https://repman.example"
-	if got := repman.copyAPICredentialsToOpenSVC(); !strings.Contains(got, "no cluster on OpenSVC") {
+	if got, _ := repman.copyAPICredentialsToOpenSVC(); !strings.Contains(got, "no cluster on OpenSVC") {
 		t.Fatalf("no OpenSVC cluster: %q", got)
 	}
 }

@@ -176,3 +176,16 @@ func TestDecryptLegacyEncryptedURLs(t *testing.T) {
 		t.Errorf("an unreadable token: decrypted %v, unread %v", done, unread)
 	}
 }
+
+// A field tagged secret:"true" is a string: the masking, the encryption on save and the copy to
+// the stores handle strings only, so a secret of another type would be shown and saved in clear.
+func TestSecretTaggedFieldsAreStrings(t *testing.T) {
+	for _, typ := range []reflect.Type{reflect.TypeOf(Config{}), reflect.TypeOf(AppConfig{})} {
+		for i := 0; i < typ.NumField(); i++ {
+			f := typ.Field(i)
+			if f.Tag.Get("secret") == "true" && f.Type.Kind() != reflect.String {
+				t.Errorf("%s.%s is tagged secret:\"true\" but is a %s", typ.Name(), f.Name, f.Type.Kind())
+			}
+		}
+	}
+}

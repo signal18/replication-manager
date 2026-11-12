@@ -134,15 +134,34 @@ func (cluster *Cluster) SetAPIUserPassword(user, scope, pass string) error {
 	return nil
 }
 
-// SetCredential writes key through the cluster's chain. A server secret is the server's: the
-// server wrote it first (a global setting fans out to every cluster), so the cluster reads it
-// again from the server instead of keeping a copy.
+// SetCredential writes key through the cluster's chain. A server secret is refused: it is the
+// instance's, changed in the global settings by its owners (ErrServerSecret), never through
+// one cluster's settings.
 func (cluster *Cluster) SetCredential(key, value string) error {
-	if cluster.ServerGlobals != nil && cluster.ServerGlobals.ServerSecrets.Holds(key) {
-		cluster.CredentialChain().Refresh()
-		return nil
+	if cluster.isServerSecret(key) {
+		return fmt.Errorf("%s: %w", key, credstore.ErrServerSecret)
 	}
 	return cluster.CredentialChain().Set(key, value)
+}
+
+// ApplyServerSecret has the cluster read key, a server secret the server just changed, from
+// the server's chain, and use it: the global settings' fan-out. Nothing is written here.
+func (cluster *Cluster) ApplyServerSecret(key string) {
+	cluster.CredentialChain().Refresh()
+	v := cluster.Conf.GetDecryptedValue(key)
+	switch key {
+	case "mail-smtp-password":
+		cluster.Conf.MailSMTPPassword = v
+		if cluster.Mailer != nil {
+			cluster.Mailer.UpdateAuth(cluster.Conf.MailSMTPUser, v)
+		}
+	case "cloud18-gitlab-password":
+		cluster.Conf.Cloud18GitPassword = v
+	case "cloud18-domain-secret":
+		cluster.Conf.Cloud18DomainSecret = v
+	case "api-credentials":
+		cluster.LoadAPIUsers()
+	}
 }
 
 // WriteOpenSVCSecretKey writes one key of an OpenSVC secret object through this cluster's

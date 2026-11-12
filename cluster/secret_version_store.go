@@ -93,6 +93,10 @@ func (cluster *Cluster) recordDirtySecretVersions() {
 		current := currentValues[key]
 		vs.Record(key, current.StoredValue, current.CompareValue)
 	}
+	// asked to save: a file removed since is written again, even with no new version
+	if _, err := os.Stat(cluster.secretKv.file.Path()); os.IsNotExist(err) && !vs.Empty() {
+		vs.MarkDirty()
+	}
 }
 
 // ReconcileSecretVersionStore is the save callback's part for the local versioned file

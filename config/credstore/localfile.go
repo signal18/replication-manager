@@ -222,9 +222,15 @@ type FileBinding struct {
 	// DataDir is read at each use: a reload may move the data directory
 	DataDir func() string
 	Scope   Scope
+	// Loaded, when set, runs after each successful load of the file into a store (the cluster
+	// hands the server secrets' versions an older release kept there to the server)
+	Loaded func(vs *VersionStore)
 
 	mu      sync.Mutex
 	modTime time.Time
+	// unread: the file exists but could not be read; it is never overwritten until it is
+	// read (a rotation it holds would be lost), and every save tries again
+	unread error
 }
 
 func (b *FileBinding) file() LocalFile { return LocalFile{DataDir: b.DataDir()} }
@@ -240,14 +246,48 @@ func (b *FileBinding) noteModTime() {
 	}
 }
 
-// LoadInto loads the file into vs (a missing file is an empty store).
+// LoadInto loads the file into vs (a missing file is an empty store). A file that cannot be
+// read is not overwritten until a later save reads it (Save).
 func (b *FileBinding) LoadInto(vs *VersionStore) error {
 	file, err := b.file().Load(b.Scope)
+	b.mu.Lock()
+	b.unread = err
+	b.mu.Unlock()
 	if err != nil {
 		return err
 	}
 	vs.Load(file)
 	b.noteModTime()
+	if b.Loaded != nil {
+		b.Loaded(vs)
+	}
+	return nil
+}
+
+// ErrFileUnread refuses to write a file that exists but could not be read: writing it from the
+// store would drop the versions it holds.
+var ErrFileUnread = errors.New("the versioned file could not be read, it is not overwritten")
+
+// readAgain, when the file could not be read at the load, reads it now and merges it into vs.
+func (b *FileBinding) readAgain(vs *VersionStore) error {
+	b.mu.Lock()
+	unread := b.unread
+	b.mu.Unlock()
+	if unread == nil {
+		return nil
+	}
+	file, err := b.file().Load(b.Scope)
+	if err != nil {
+		return fmt.Errorf("%w: %s", ErrFileUnread, err)
+	}
+	b.mu.Lock()
+	b.unread = nil
+	b.mu.Unlock()
+	vs.Merge(file)
+	vs.MarkDirty()
+	if b.Loaded != nil {
+		b.Loaded(vs)
+	}
 	return nil
 }
 
@@ -259,6 +299,10 @@ var ErrVersionNotEncrypted = errors.New("a credential version is not encrypted a
 // tells an encrypted value), then prune (nil: none) bounds it. The file is left as it was on an
 // error, and vs stays dirty for the next save.
 func (b *FileBinding) Save(vs *VersionStore, encrypted func(string) bool, prune func(map[string][]FileVersion) (map[string][]FileVersion, bool)) error {
+	if err := b.readAgain(vs); err != nil {
+		vs.MarkDirty()
+		return err
+	}
 	if !vs.EncryptKeptAsRead(encrypted) {
 		vs.MarkDirty()
 		return ErrVersionNotEncrypted
@@ -306,19 +350,25 @@ func (b *FileBinding) MergeIfChanged(vs *VersionStore) (bool, error) {
 	return true, nil
 }
 
-// LooksEncrypted tells a value holding a repman-encrypted token (hash_...), alone or in a
-// user:password list: the backstop of F9 before a file is written, not a proof of encryption.
+// LooksEncrypted tells a value encrypted the way EncryptSecretValue writes it: every entry of a
+// user:password list with its password a repman-encrypted token (hash_...), or the value one
+// such token. A list where one password is in clear is not encrypted. The backstop of F9
+// before a file is written, not a proof of encryption.
 func LooksEncrypted(value string) bool {
-	for _, token := range strings.FieldsFunc(value, func(r rune) bool {
-		switch r {
-		case ',', ':', ' ', '\t', '\n', '\r':
-			return true
+	found := false
+	for _, entry := range strings.Split(value, ",") {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
+			continue
 		}
-		return false
-	}) {
-		if strings.HasPrefix(token, "hash_") {
-			return true
+		if strings.Contains(entry, ":") {
+			_, entry = misc.SplitPair(entry)
+			entry = strings.TrimSpace(entry)
 		}
+		if !strings.HasPrefix(entry, "hash_") {
+			return false
+		}
+		found = true
 	}
-	return false
+	return found
 }

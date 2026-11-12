@@ -184,16 +184,31 @@ func (s *VersionStore) KeepConfigValues(key string) {
 	s.trim(key, configKeeps)
 }
 
+// add appends a version of key, the current one. Its time is never before the last version's:
+// a merge orders the versions by time, so a monitor whose clock is behind (a standby after a
+// failover) would otherwise write a rotation that sorts before the ban it replaces, and the
+// compromised value would be the current one again (CREDENTIAL_STORES.md "Clocks").
 func (s *VersionStore) add(key, stored string, at time.Time, by int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	vs := s.versions[key]
 	n := 1
 	if len(vs) > 0 {
-		n = vs[len(vs)-1].Version + 1
+		last := vs[len(vs)-1]
+		n = last.Version + 1
+		at = AfterLast(at, last.At())
 	}
 	s.versions[key] = append(vs, FileVersion{Version: n, HashValue: stored, RotatedAt: at.UTC().Format(time.RFC3339Nano), WrittenBy: by})
 	s.dirty = true
+}
+
+// AfterLast is at, or just after last when at is not after it: a new version always sorts
+// after the one it replaces, whatever this monitor's clock says.
+func AfterLast(at, last time.Time) time.Time {
+	if !at.After(last) {
+		return last.Add(time.Nanosecond)
+	}
+	return at
 }
 
 // TakeConfigFileValue is the start's check of key set in a config file (immutable, rule 9),
@@ -232,10 +247,12 @@ func (s *VersionStore) TakeConfigFileValue(key, plain string) bool {
 		return false
 	}
 	v.Version = 1
+	at := time.Now().UTC()
 	if len(vs) > 0 {
 		v.Version = vs[len(vs)-1].Version + 1
+		at = AfterLast(at, vs[len(vs)-1].At())
 	}
-	v.RotatedAt = time.Now().UTC().Format(time.RFC3339Nano)
+	v.RotatedAt = at.Format(time.RFC3339Nano)
 	s.versions[key] = append(vs, v)
 	s.dirty = true
 	return true
@@ -445,6 +462,13 @@ func (s *VersionStore) restore(key string, raw interface{}, present bool) {
 func isHeldRefusal(err error) bool {
 	var h *heldRefusal
 	return errors.As(err, &h)
+}
+
+// Empty: no key has a version.
+func (s *VersionStore) Empty() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.versions) == 0
 }
 
 // Count is how many versions key has.

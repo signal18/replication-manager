@@ -32,8 +32,9 @@ type ServerGlobals struct {
 	ServerSecrets      *credstore.ServerLevel
 	CheckServerSecrets func()
 	// AdoptServerVersions takes the server secrets' versions an older release kept in a
-	// cluster's file (the server's file is their only place now)
-	AdoptServerVersions func(file map[string][]credstore.FileVersion)
+	// cluster's file (the server's file is their only place now); nil error once the server's
+	// file holds them, so the cluster may drop its copy
+	AdoptServerVersions func(file map[string][]credstore.FileVersion) error
 }
 
 // AcquireBackupSlot blocks until a backup slot is available.
