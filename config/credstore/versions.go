@@ -191,6 +191,11 @@ func (s *VersionStore) KeepConfigValues(key string) {
 func (s *VersionStore) add(key, stored string, at time.Time, by int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.addLocked(key, stored, at, by)
+}
+
+// addLocked is add, s.mu held.
+func (s *VersionStore) addLocked(key, stored string, at time.Time, by int) {
 	vs := s.versions[key]
 	n := 1
 	if len(vs) > 0 {
@@ -296,14 +301,14 @@ func (s *VersionStore) Insert(key string, v Version) {
 // it differs from the last one (the file's history of the other secrets, as before #2227).
 func (s *VersionStore) Record(key, stored, plain string) bool {
 	conf := s.conf()
+	// the check and the append under one lock: two saves at once record one version
 	s.mu.Lock()
+	defer s.mu.Unlock()
 	vs := s.versions[key]
 	if len(vs) > 0 && conf.DecryptSecretValue(key, vs[len(vs)-1].HashValue) == plain {
-		s.mu.Unlock()
 		return false
 	}
-	s.mu.Unlock()
-	s.add(key, stored, time.Now().UTC(), conf.ArbitrationSasUniqueId)
+	s.addLocked(key, stored, time.Now().UTC(), conf.ArbitrationSasUniqueId)
 	return true
 }
 

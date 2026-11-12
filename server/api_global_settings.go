@@ -949,6 +949,8 @@ func (repman *ReplicationManager) setServerSetting(user string, URL string, name
 		if err := repman.holdsServerCredentials(user); err != nil {
 			return err
 		}
+		repman.serverSecrets.setMu.Lock()
+		defer repman.serverSecrets.setMu.Unlock()
 		if err := repman.setRepmanSetting(name, value); err != nil {
 			return err
 		}

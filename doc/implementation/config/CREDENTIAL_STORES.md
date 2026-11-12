@@ -462,6 +462,14 @@ is treated the same; only the path a level maps to differs per store.
   behind, its rotation still sorts after the version it replaces, and the banned value never comes
   back as the current one. The clocks are still expected to be close (NTP): two rotations made on
   two monitors at once, each before seeing the other's, are ordered by their clocks.
+- **The standby is behind until its next pull.** The server's file is on the active monitor's disk
+  before the rotation is answered; it reaches the standby by the config push and pull only. A
+  standby promoted before that pull still holds the old list, so the banned password works there
+  until the pull (or until the operator rotates again on the new active monitor). The pair shares
+  the data directory where it can, which closes the window.
+- **One change of a server secret at a time.** `serverSecrets.setMu` is held by every change of a
+  server secret, across the read and the write of a rotation's read-modify-write of the list, and
+  by the global settings' setter: no change lands between a rotation's read and its write.
 - **Only sysops and extsysops reach the server level**: they alone set the server entries and
   change a server-scope key, through one grant both hold (outside the `global` family, which
   extsysops does not get). No other role reads or writes either.

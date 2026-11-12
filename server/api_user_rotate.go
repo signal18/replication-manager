@@ -251,11 +251,14 @@ func (repman *ReplicationManager) setInstanceUserPassword(user, pass string) err
 	if err := cluster.ValidListPassword(pass); err != nil {
 		return err
 	}
+	// the read and the write under one lock: no other change of the list lands in between
+	repman.serverSecrets.setMu.Lock()
+	defer repman.serverSecrets.setMu.Unlock()
 	list, found := config.APIUserListWithPassword(repman.Conf.GetDecryptedValue(apiCredentialsKey), user, pass)
 	if !found {
 		return cluster.ErrAPIUserUnknown
 	}
-	if err := repman.SetServerSecret(apiCredentialsKey, list); err != nil {
+	if err := repman.setServerSecretLocked(apiCredentialsKey, list); err != nil {
 		if errors.Is(err, errServerSecretNotPersisted) {
 			return err
 		}

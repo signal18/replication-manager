@@ -46,6 +46,9 @@ type serverSecrets struct {
 	// writeMu orders the file's writes: a save exporting an older state never writes after a
 	// rotation's write of a newer one
 	writeMu sync.Mutex
+	// setMu serializes the changes of the server secrets: a rotation reads the instance's list,
+	// changes one entry and writes it back, and no other change lands in between
+	setMu sync.Mutex
 }
 
 func (repman *ReplicationManager) serverVersionsKeepError() error {
@@ -216,6 +219,14 @@ func (repman *ReplicationManager) takeServerConfigFileCredentials() {
 // store keeps versions) and gives it to every cluster: the one write point of a server
 // secret.
 func (repman *ReplicationManager) SetServerSecret(key, value string) error {
+	repman.serverSecrets.setMu.Lock()
+	defer repman.serverSecrets.setMu.Unlock()
+	return repman.setServerSecretLocked(key, value)
+}
+
+// setServerSecretLocked is SetServerSecret, serverSecrets.setMu held: a read-modify-write of a
+// server secret holds the lock across the read and this write.
+func (repman *ReplicationManager) setServerSecretLocked(key, value string) error {
 	if !isServerSecretKey(key) {
 		return fmt.Errorf("%s is not a server secret", key)
 	}
