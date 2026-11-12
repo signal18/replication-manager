@@ -431,7 +431,9 @@ func (server *ServerMonitor) withdrawFailedPhysicalBackup(meta *backupmgr.Backup
 	if meta == nil {
 		return false
 	}
-	meta.SourceJobFailed = true
+	server.backupMetaMutex.Lock()
+	meta.SourceJobFailed = true // read by completeReceivedPhysicalBackup, from the receiver's goroutine
+	server.backupMetaMutex.Unlock()
 	if isBackupStagingPath(meta.Dest) || !meta.Encrypted || !strings.HasSuffix(meta.Dest, ".enc") {
 		return false
 	}

@@ -49,6 +49,8 @@ type SST struct {
 	Filename           string          // destination path, if this receiver writes to a file; used to detect an in-flight receiver for a given path (see IsFileOpenForSSTReceive)
 	progress           *BackupProgress // the running physical backup this receiver is the stream of, nil otherwise (cluster_backup_progress.go)
 	observe            func([]byte)    // reads the stream of a remote dump on its way, nil otherwise (srv_job_backup_remote.go)
+	rcvBytes           int64           // bytes the stream loop read from the sender; read once the loop has ended
+	rcvErr             error           // the first read error other than EOF, or write error, of the stream loop: the stream did not end cleanly
 	dbLogWriterRelease func()          // set when outfilewriter is a shared ServerMonitor.getDBLogRotatingWriter borrow; must be called exactly once when this receiver is done writing (see tcp_con_handle_to_file), so a concurrent cache eviction doesn't close the writer out from under this still-streaming receiver
 }
 
@@ -323,6 +325,7 @@ func (cluster *Cluster) SSTRunReceiverToGZip(server *ServerMonitor, filename str
 func (sst *SST) tcp_con_handle_to_gzip(server *ServerMonitor, task string) {
 
 	var err error
+	streamed := false // the stream ended cleanly: bytes received, EOF, no read or write error. Transport only: not proof the sender sent all, nor that the backup is valid
 
 	defer func() {
 		if sst.cluster.Conf.LogSST {
@@ -330,7 +333,13 @@ func (sst *SST) tcp_con_handle_to_gzip(server *ServerMonitor, task string) {
 		}
 		port := sst.listener.Addr().(*net.TCPAddr).Port
 		sst.tcplistener.Close()
-		sst.outfilegzipwriter.Close()
+		// Closing a gzip writer never written to still writes an empty member at the offset of
+		// this receiver's own descriptor, i.e. over the start of a backup another writer
+		// completed in the same file. A physical backup's receiver that got no bytes leaves
+		// the file alone (nothing was written, so nothing is leaked by not closing the writer).
+		if sst.rcvBytes > 0 || !isPhysicalBackupStreamTask(task) {
+			sst.outfilegzipwriter.Close()
+		}
 		sst.file.Close()
 		sst.listener.Close()
 		SSTs.Lock()
@@ -338,7 +347,8 @@ func (sst *SST) tcp_con_handle_to_gzip(server *ServerMonitor, task string) {
 		sst.cluster.SSTSenderFreePort(strconv.Itoa(port))
 		SSTs.Unlock()
 
-		server.JobFinishReceiveFile(task)
+		server.releasePhysicalBackupReceiver(task, strconv.Itoa(port))
+		server.jobFinishReceiveFile(task, streamed)
 	}()
 
 	var conn net.Conn
@@ -358,6 +368,7 @@ func (sst *SST) tcp_con_handle_to_gzip(server *ServerMonitor, task string) {
 	chan_to_stdout := sst.stream_copy_to_gzip()
 
 	<-chan_to_stdout
+	streamed = sst.rcvBytes > 0 && sst.rcvErr == nil
 	if sst.cluster.Conf.LogSST {
 		sst.cluster.LogModulePrintf(sst.cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "Chan SST out for %d", sst.listener.Addr().(*net.TCPAddr).Port)
 	}
@@ -366,6 +377,7 @@ func (sst *SST) tcp_con_handle_to_gzip(server *ServerMonitor, task string) {
 func (sst *SST) tcp_con_handle_to_file(server *ServerMonitor, task string) {
 
 	var err error
+	streamed := false // the stream ended cleanly: bytes received, EOF, no read or write error. Transport only: not proof the sender sent all, nor that the backup is valid
 
 	defer func() {
 		if sst.cluster.Conf.LogSST {
@@ -386,7 +398,8 @@ func (sst *SST) tcp_con_handle_to_file(server *ServerMonitor, task string) {
 		sst.cluster.SSTSenderFreePort(strconv.Itoa(port))
 		SSTs.Unlock()
 
-		server.JobFinishReceiveFile(task)
+		server.releasePhysicalBackupReceiver(task, strconv.Itoa(port))
+		server.jobFinishReceiveFile(task, streamed)
 	}()
 
 	var conn net.Conn
@@ -404,6 +417,7 @@ func (sst *SST) tcp_con_handle_to_file(server *ServerMonitor, task string) {
 	chan_to_stdout := sst.stream_copy_to_file()
 
 	<-chan_to_stdout
+	streamed = sst.rcvBytes > 0 && sst.rcvErr == nil
 	if sst.cluster.Conf.LogSST {
 		sst.cluster.LogModulePrintf(sst.cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "Chan SST out for %d", sst.listener.Addr().(*net.TCPAddr).Port)
 	}
@@ -473,13 +487,18 @@ func (sst *SST) stream_copy_to_file() <-chan int {
 			if err != nil {
 				if err != io.EOF {
 					sst.cluster.LogModulePrintf(sst.cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "Read error: %s", err)
+					sst.rcvErr = err
 				}
 				break
 			}
+			sst.rcvBytes += int64(nBytes)
 			sst.progress.AddBytes(int64(nBytes))
 			_, err = sst.outfilewriter.Write(buf[0:nBytes])
 			if err != nil {
 				sst.cluster.LogModulePrintf(sst.cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "Write error: %s", err)
+				if sst.rcvErr == nil {
+					sst.rcvErr = err
+				}
 			}
 		}
 	}()
@@ -513,10 +532,12 @@ func (sst *SST) stream_copy_to_gzip() <-chan int {
 			if err != nil {
 				if err != io.EOF {
 					sst.cluster.LogModulePrintf(sst.cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "Read error: %s", err)
+					sst.rcvErr = err
 				}
 				break
 			}
 
+			sst.rcvBytes += int64(nBytes)
 			sst.progress.AddBytes(int64(nBytes))
 			if sst.observe != nil {
 				sst.observe(buf[0:nBytes])
@@ -524,6 +545,9 @@ func (sst *SST) stream_copy_to_gzip() <-chan int {
 			_, err = sst.outfilegzipwriter.Write(buf[0:nBytes])
 			if err != nil {
 				sst.cluster.LogModulePrintf(sst.cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "Write error: %s", err)
+				if sst.rcvErr == nil {
+					sst.rcvErr = err
+				}
 			}
 		}
 

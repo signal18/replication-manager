@@ -2211,6 +2211,158 @@ pr_filter_backup_cnf() {
         -e 's/^([A-Za-z_][A-Za-z0-9_-]*)/loose-\1/p' "$1"
 }
 
+# pr_cnf_value prints the last value of option $2 (dash or underscore spelling) in the option
+# file $1, without surrounding blanks, quotes or a trailing slash (a lone / is kept).
+pr_cnf_value() {
+    local v
+    v=$(sed -nE "s/^[[:space:]]*${2//_/[-_]}[[:space:]]*=[[:space:]]*(.*[^[:space:]])?[[:space:]]*\$/\1/p" "$1" | tail -n 1)
+    if [[ ${#v} -ge 2 && ( "$v" == \"*\" || "$v" == "'"*"'" ) ]]; then v=${v:1:${#v}-2}; fi
+    [[ "$v" != "/" ]] && v=${v%/}
+    printf '%s' "$v"
+}
+
+# pr_file_problem prints why $1 is not a usable file of a backup, and returns 1; returns 0 for a
+# regular, non-empty file that is not a symbolic link.
+pr_file_problem() {
+    if [[ -L "$1" ]]; then echo "is a symbolic link"; return 1; fi
+    if [[ ! -e "$1" ]]; then echo "is missing"; return 1; fi
+    if [[ ! -f "$1" ]]; then echo "is not a regular file"; return 1; fi
+    if [[ ! -s "$1" ]]; then echo "is empty"; return 1; fi
+    return 0
+}
+
+# pr_resolve_undo_dir prints the directory of the staged backup that holds every file named after
+# its first argument (the value of innodb_undo_directory in backup-my.cnf, an untrusted hint),
+# and returns 1 when none does. Candidates: the hint when it is a path already under $BACKUPDIR or
+# a relative path without a ".." component (as a path under $BACKUPDIR), then $BACKUPDIR itself. A
+# candidate must be a directory that is not a symbolic link and really is inside the backup, and
+# its files regular, non-empty, not symbolic links. An absolute hint outside the backup, the
+# setting of the server the backup came from, is never a candidate: it is the live server's
+# directory, or nothing, on the restore host.
+pr_resolve_undo_dir() {
+    local cur="$1" cand real root f ok cands=()
+    shift
+    root=$(cd -P -- "$BACKUPDIR" 2>/dev/null && pwd -P) || return 1
+    case "$cur" in
+    "" | .) ;;
+    *)
+        if [[ "$cur" == "$BACKUPDIR" || "$cur" == "$BACKUPDIR"/* ]]; then
+            cands+=("$cur")
+        elif [[ "$cur" != /* && "/$cur/" != */../* ]]; then
+            cands+=("$BACKUPDIR/$cur")
+        fi
+        ;;
+    esac
+    cands+=("$BACKUPDIR")
+    for cand in "${cands[@]}"; do
+        [[ -d "$cand" && ! -L "$cand" ]] || continue
+        real=$(cd -P -- "$cand" 2>/dev/null && pwd -P) || continue
+        [[ "$real" == "$root" || "$real" == "$root"/* ]] || continue
+        ok=1
+        for f in "$@"; do
+            pr_file_problem "$cand/$f" >/dev/null || { ok=0; break; }
+        done
+        [[ $ok -eq 1 ]] && { printf '%s' "$cand"; return 0; }
+    done
+    return 1
+}
+
+# pr_stage_fail logs why a backup was not prepared ($1), to the log of the job and to the API.
+pr_stage_fail() {
+    pr_log "ERROR: $1; the backup was not prepared and nothing was changed."
+    send_lines_to_api "Backup not prepared: $1." "$job" "$LVL_ERROR"
+    return 1
+}
+
+# pr_stage_undo_dir points the undo tablespace directory of the backup configuration of an
+# extracted mariadb-backup (backup-my.cnf in $BACKUPDIR) at the undo tablespaces the backup itself
+# holds, before its "--prepare --export". backup-my.cnf records innodb_undo_directory as the SOURCE
+# server had it (/var/lib/mysql/.system/innodb/undo, or a relative undosub), while mariadb-backup
+# copies the undo tablespaces (undo001, ...) flat into the root of the backup (checked on MariaDB
+# 10.6, 10.11, 11.4 and 11.8, which also copy ib_logfile0 and ibdata1 to the root and record neither
+# innodb_log_group_home_dir nor innodb_data_home_dir: nothing else needs relocating). On the restore
+# host that path is the target's own LIVE undo directory, or nothing: the prepare's bootstrap then
+# fails with "Failed to open the undo tablespace undo002" (InnoDB is not registered, no .cfg is
+# written) or, when the files there can be opened, "completes" after rewriting them. A relative value
+# other than ./ names a directory the backup does not have. The temporary definition server
+# (pr_export_definitions) reads the same file.
+# Only the staged backup-my.cnf is changed, never the server's configuration nor the received
+# archive, and the value found there is never used as a location: the directory set is one of the
+# backup (pr_resolve_undo_dir) where the undo tablespaces the configuration expects are all found,
+# as regular non-empty files. An unset value, "." or "./" already means the backup directory: the
+# file is left untouched once its undo tablespaces are confirmed. A configuration with no undo
+# tablespace (innodb_undo_tablespaces=0, the default of 10.6 and 10.11) needs no file. When one is
+# missing, empty or a symbolic link, when backup-my.cnf is missing, or when innodb_undo_tablespaces is not a
+# number from 0 to 127, nothing is prepared and the reason is logged. The job then ends with an error
+# status without running the restore (the callers), whatever the log says.
+# $1: the log the reason goes to. Returns 1 when the backup must not be prepared.
+pr_stage_undo_dir() {
+    local PR_LOG="$1" cnf="$BACKUPDIR/backup-my.cnf" cur n shown max=0 dir f i reason e tmp
+    local -a req=()
+    # MariaDB clamps innodb_undo_tablespaces to 127 (checked on 10.6 and 11.8).
+    local -r max_undo=127
+    pr_paths_ok || { pr_stage_fail "the data directory is not set"; return 1; }
+    if [[ -L "$cnf" ]]; then
+        pr_stage_fail "$cnf is a symbolic link"
+        return 1
+    fi
+    # Every backup has one: without it the layout of the backup is unknown.
+    [[ -f "$cnf" ]] || { pr_stage_fail "$cnf is missing"; return 1; }
+    cur=$(pr_cnf_value "$cnf" innodb_undo_directory)
+    if grep -qE '^[[:space:]]*innodb[-_]undo[-_]tablespaces[[:space:]]*=' "$cnf"; then
+        n=$(pr_cnf_value "$cnf" innodb_undo_tablespaces)
+        if [[ ! "$n" =~ ^[0-9]{1,3}$ ]] || ((10#$n > max_undo)); then
+            # The value is the backup's, not trusted: it is shown without "!" (the banner pr_prepare_ok looks for) and cut.
+            shown=${n//!/?}
+            pr_stage_fail "innodb_undo_tablespaces='${shown:0:40}' in $cnf is not a number from 0 to $max_undo"
+            return 1
+        fi
+        n=$((10#$n))
+    else
+        # Not recorded: the undo tablespaces found are the ones expected, with no gap in their numbers.
+        for f in "$BACKUPDIR"/undo[0-9][0-9][0-9]; do
+            [[ -e "$f" || -L "$f" ]] || continue
+            i=${f##*/undo}
+            ((10#$i > max)) && max=$((10#$i))
+        done
+        if ((max > max_undo)); then
+            pr_stage_fail "an undo tablespace of the backup is numbered above $max_undo"
+            return 1
+        fi
+        n=$max
+    fi
+    for ((i = 1; i <= n; i++)); do printf -v f 'undo%03d' "$i"; req+=("$f"); done
+    # Same for innodb_undo_directory in what is logged (the log is also read for the banner of the prepare).
+    shown=${cur//!/?}
+    if ! dir=$(pr_resolve_undo_dir "$cur" "${req[@]}"); then
+        reason="the backup expects ${req[*]:-no undo tablespace} for innodb_undo_directory='${shown:0:200}' (innodb_undo_tablespaces=$n) but they are not all in the backup"
+        for f in "${req[@]}"; do
+            if ! e=$(pr_file_problem "$BACKUPDIR/$f"); then reason="$reason ($f $e in $BACKUPDIR)"; break; fi
+        done
+        pr_stage_fail "$reason"
+        return 1
+    fi
+    case "$cur" in "" | .) return 0 ;; esac
+    [[ "$cur" == "$dir" ]] && return 0
+    if [[ "$dir" == *$'\n'* || "$dir" == *"#"* || "$dir" == *"\\"* || "$dir" == *\"* || "$dir" == *"'"* ]]; then
+        pr_stage_fail "the backup directory $dir has a character that cannot be written to an option file"
+        return 1
+    fi
+    tmp=$(mktemp "$BACKUPDIR/.backup-my.cnf.XXXXXX") || { pr_stage_fail "cannot stage $cnf"; return 1; }
+    if cp -p -- "$cnf" "$tmp" &&
+        awk -v d="$dir" '
+            { k = $0; sub(/[[:space:]]*=.*/, "", k); sub(/^[[:space:]]+/, "", k); gsub(/-/, "_", k) }
+            k == "innodb_undo_directory" { print k "=" d; next }
+            { print }' "$cnf" >"$tmp" &&
+        mv -f -- "$tmp" "$cnf"; then
+        pr_log "Backup configuration: innodb_undo_directory '${shown:0:200}' (the source server's setting) set to '$dir', where the backup holds its ${#req[@]} undo tablespace(s)."
+        return 0
+    fi
+    rm -f -- "$tmp"
+    pr_stage_fail "cannot rewrite $cnf"
+    return 1
+}
+
 pr_export_definitions() {
     if ! pr_paths_ok; then
         pr_log "ERROR: the data directory is not set."
@@ -3459,8 +3611,16 @@ for job in "${JOBS[@]}"; do
             pauseJob "$job"
             if receiveBackup mbstream; then
                 # mbstream -p, --parallel
-                $MARIADB_BACKUP --prepare --export --target-dir=$BACKUPDIR 2>>"$LOG_DIR/reseed.out"
-                partialRestore
+                # pr_stage_undo_dir: backup-my.cnf holds the source server's undo directory
+                if pr_stage_undo_dir "$LOG_DIR/reseed.out"; then
+                    $MARIADB_BACKUP --prepare --export --target-dir=$BACKUPDIR 2>>"$LOG_DIR/reseed.out"
+                    partialRestore
+                else
+                    # no prepare, no restore: the job ends with an error status (PR_STATUS is what
+                    # doneJob() and the API result read) and carries no restore metadata
+                    PR_STATUS=1 PARTIAL_RESTORE_JSON=""
+                    echo "Backup not prepared, nothing was changed. See $LOG_DIR/reseed.out." >>"$LOG_DIR/$job.out"
+                fi
             fi
             ;;
         flashbackxtrabackup)
@@ -3481,8 +3641,13 @@ for job in "${JOBS[@]}"; do
             echo "Waiting backup." >"$LOG_DIR/$job.out"
             pauseJob "$job"
             if receiveBackup xbstream; then
-                $MARIADB_BACKUP --prepare --export --target-dir=$BACKUPDIR 2>>"$LOG_DIR/flash.out"
-                partialRestore
+                if pr_stage_undo_dir "$LOG_DIR/flash.out"; then
+                    $MARIADB_BACKUP --prepare --export --target-dir=$BACKUPDIR 2>>"$LOG_DIR/flash.out"
+                    partialRestore
+                else
+                    PR_STATUS=1 PARTIAL_RESTORE_JSON=""
+                    echo "Backup not prepared, nothing was changed. See $LOG_DIR/flash.out." >>"$LOG_DIR/$job.out"
+                fi
             fi
             ;;
         xtrabackup)
