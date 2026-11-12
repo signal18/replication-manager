@@ -5721,6 +5721,13 @@ definitions:
         type: string
       scope:
         type: string
+      storesBehind:
+        description: |-
+          StoresBehind: the server credential stores already behind when the instance's list was
+          rotated (GWARN024): they may still hold the compromised password
+        items:
+          type: string
+        type: array
       tokensError:
         type: string
       tokensRevoked:

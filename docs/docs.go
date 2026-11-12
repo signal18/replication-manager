@@ -34993,6 +34993,13 @@ const docTemplate = `{
                 "scope": {
                     "type": "string"
                 },
+                "storesBehind": {
+                    "description": "StoresBehind: the server credential stores already behind when the instance's list was\nrotated (GWARN024): they may still hold the compromised password",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
                 "tokensError": {
                     "type": "string"
                 },
