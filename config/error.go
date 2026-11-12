@@ -77,7 +77,7 @@ var ClusterError = map[string]string{
 	"ERR00055":  "Arbitrator unreachable (%s)",
 	"ERR00056":  "Master user %s is not defined on replication candidate %s",
 	"ERR00057":  "Database duplicate users not allowed in proxysql %s",
-	"WARN0320":  "Server credential store %s is behind (%s) -- the server secrets every cluster reads are not the current ones in it; a sysops or extsysops checks it in the global settings",
+	"WARN0320":  "Server credential store %s is behind -- the server secrets every cluster reads are not the current ones in it; the instance's sysops or extsysops see why in the global settings",
 	"WARN0319":  "ProxySQL %s: users not loaded, their caching_sha2_password hash cannot be checked by ProxySQL and repman does not know their password: %s",
 	"ERR00058":  "Sphinx connection error: %s",
 	"ERR00059":  "Ignored server %s not found in configured server list",

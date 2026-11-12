@@ -721,9 +721,11 @@ func (cluster *Cluster) CheckSecretKvStores() {
 			ErrDesc: fmt.Sprintf(clusterError["WARN0271"], name, why)})
 	}
 	if g := cluster.ServerGlobals; g != nil && g.ServerStoresBehind != nil {
-		for name, why := range g.ServerStoresBehind() {
+		// the entry's name only: its address, folder and error are the owners' (GWARN024 and
+		// the server list), a cluster's members and sponsor read this state
+		for name := range g.ServerStoresBehind() {
 			cluster.SecurityStateMachine.AddState("WARN0320", state.State{ErrType: "WARNING", ErrFrom: "SECURITY", ServerUrl: name,
-				ErrDesc: fmt.Sprintf(clusterError["WARN0320"], name, why)})
+				ErrDesc: fmt.Sprintf(clusterError["WARN0320"], name)})
 		}
 	}
 	if dropsUnresolved {

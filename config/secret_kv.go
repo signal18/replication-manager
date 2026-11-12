@@ -644,6 +644,9 @@ func (conf *Config) PutSecretKvAt(level SecretKvLevel, spec SecretKvSpec, create
 	if strings.TrimSpace(conf.secretKvSetting(&e, ConstSecretKvVaultAddress)) == "" {
 		return "", fmt.Errorf("credential store %s: an address is required", e.Name)
 	}
+	if level == SecretKvLevelCluster && ReservedSecretKvPrefix(conf.secretKvSetting(&e, ConstSecretKvVaultPathPrefix)) {
+		return "", fmt.Errorf("credential store %s: %w", e.Name, ErrSecretKvReservedPrefix)
+	}
 	if cur != nil {
 		*cur = e
 	} else {
@@ -690,6 +693,16 @@ func (conf *Config) DeleteSecretKvAt(level SecretKvLevel, name string) error {
 		}
 	}
 	return fmt.Errorf("unknown credential store %s", name)
+}
+
+// ErrSecretKvReservedPrefix refuses a cluster entry whose folder would be under the server's:
+// system/ is the server level's (system/repman/<instance name>), a cluster never writes there.
+var ErrSecretKvReservedPrefix = errors.New("the path-prefix system is the server level's (system/repman/<instance name>): a cluster's secrets never go there")
+
+// ReservedSecretKvPrefix: a cluster entry's path-prefix that reaches the server's folder.
+func ReservedSecretKvPrefix(prefix string) bool {
+	prefix = strings.Trim(strings.TrimSpace(prefix), "/")
+	return prefix == "system" || strings.HasPrefix(prefix, "system/")
 }
 
 // ErrSecretKvOfferManaged refuses a change of an entry a marketplace offer gives: the
@@ -755,13 +768,17 @@ func (conf *Config) EnsureMarketplaceVault(offer MarketplaceVaultOffer, pathPref
 // ok false while the name is not complete (the company or the location not entered yet): the server secrets then
 // stay in the local version store.
 func (conf *Config) InstanceStoreName() (string, bool) {
+	parts := []string{conf.InstanceDomain, conf.InstanceSubDomain, conf.InstanceSubDomainZone}
 	if conf.Cloud18 && conf.Cloud18Domain != "" && conf.Cloud18SubDomain != "" && conf.Cloud18SubDomainZone != "" {
-		return conf.Cloud18Domain + "/" + conf.Cloud18SubDomain + "/" + conf.Cloud18SubDomainZone, true
+		parts = []string{conf.Cloud18Domain, conf.Cloud18SubDomain, conf.Cloud18SubDomainZone}
 	}
-	if conf.InstanceDomain != "" && conf.InstanceSubDomain != "" && conf.InstanceSubDomainZone != "" {
-		return conf.InstanceDomain + "/" + conf.InstanceSubDomain + "/" + conf.InstanceSubDomainZone, true
+	// a part that is not a valid folder (a registered one included) never reaches a store path
+	for _, p := range parts {
+		if ValidInstanceNamePart(p) != nil {
+			return "", false
+		}
 	}
-	return "", false
+	return strings.Join(parts, "/"), true
 }
 
 // SeedInstanceName fills the hostname part of the instance's own name at the first start, only

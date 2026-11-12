@@ -535,22 +535,28 @@ sponsor or member never reaches them.
   `SecretKvActiveAt`, `SecretKvListAt`).
 - **Path:** `<mount>/<path-prefix>/system/repman/<instance name>/<key>`
   (`ServerSecretKvFolder`), the name being `InstanceStoreName`. While the name is not complete,
-  nothing is written and the entry is behind. Two of a client's instances collide only if the
+  or a part of it (a registered one included) is not a valid folder (`ValidInstanceNamePart`),
+  nothing is written and the entry is behind. The top-level folder `system` is the server
+  level's: a cluster entry whose `path-prefix` is `system` or under it is refused
+  (`ErrSecretKvReservedPrefix`), so the separation does not rest on the Vault policies alone. Two of a client's instances collide only if the
   client gives them the same prefix and the same name; on the Cloud18 vault the registration
   keeps the names apart.
 - **Writes:** the server chain's `OnSet` hook queues every change of a server secret (a
   rotation, a global setting); a full pass writes every server secret's current version (compare)
   at start, when an entry is added, changed or turned on, and after versions are taken over from
-  a cluster's file. Active monitor only. The queue and the worker are the cluster's
+  a cluster's file, and when a standby becomes active (a rotation made on the other monitor).
+  Active monitor only. A standby reads the list at its start, as every global setting: a list
+  changed on the active monitor reaches the standby at its next start. The queue and the worker are the cluster's
   (`credstore.StoreRunner`, shared): newest wins, bounded, retried every `secret-kv-retry-interval`.
 - **Who:** `/api/clusters/settings/actions/server-secret-kv` (list, `add`, `edit`, `enable`,
   `disable`, `remove`): the server credentials grant on every cluster (`instanceNameACL`, ACL rule
   `cluster-server-credentials`), the list included, so no other role sees an entry. Refused on a
   standby (409). Each change is a security event. GUI: the global settings, "Server Credential
   Stores" (`SecretKvEntries level='server'`).
-- **States:** a server entry behind is `GWARN024` on the server's state machine and `WARN0320`
-  on every cluster's security state machine (`ServerGlobals.ServerStoresBehind`): broken for the
-  server, broken for every cluster that reads the server secrets.
+- **States:** a server entry behind is `GWARN024` on the server's state machine, with why, and
+  `WARN0320` on every cluster's security state machine (`ServerGlobals.ServerStoresBehind`) with
+  the entry's name only: a cluster's members and sponsor read that state, the address, folder and
+  error are the owners'.
 - **Not yet:** the Cloud18 vault offered at the server level by the registration (a sysops adds
   it as an entry with `auth = jwt` meanwhile), the OpenSVC and Kubernetes stores, and the move on
   a name change.

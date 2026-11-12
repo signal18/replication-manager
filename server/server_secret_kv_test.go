@@ -5,8 +5,11 @@
 package server
 
 import (
+	"errors"
 	"strings"
 	"testing"
+
+	"github.com/spf13/viper"
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/config/credstore/vaultfake"
@@ -163,5 +166,102 @@ func TestServerKvToml(t *testing.T) {
 	}
 	if cl, _ := conf.SecretKvsTomlAt(config.SecretKvLevelCluster, "saved-default"); cl != "" {
 		t.Fatalf("the server list in the cluster table:\n%s", cl)
+	}
+}
+
+// A cluster entry never writes under the server's folder: the path-prefix system is refused at
+// the cluster level, allowed at the server level.
+func TestServerKvFolderReservedForTheServer(t *testing.T) {
+	conf := serverLevelConf(t.TempDir(), "")
+	for _, prefix := range []string{"system", "system/repman", "/system/repman/acme/"} {
+		_, err := conf.PutSecretKvAt(config.SecretKvLevelCluster, config.SecretKvSpec{Name: "client", Settings: map[string]interface{}{"address": "https://vault.example", "path-prefix": prefix}}, true)
+		if !errors.Is(err, config.ErrSecretKvReservedPrefix) {
+			t.Fatalf("cluster prefix %q: %v", prefix, err)
+		}
+	}
+	if _, err := conf.PutSecretKvAt(config.SecretKvLevelCluster, config.SecretKvSpec{Name: "client", Settings: map[string]interface{}{"address": "https://vault.example", "path-prefix": "systems"}}, true); err != nil {
+		t.Fatalf("an ordinary prefix refused: %v", err)
+	}
+	if _, err := conf.PutSecretKvAt(config.SecretKvLevelServer, config.SecretKvSpec{Name: "srv", Settings: map[string]interface{}{"address": "https://vault.example", "path-prefix": "tenant"}}, true); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A standby that becomes active gives the server entries a full pass: a rotation made on the
+// other monitor reaches them.
+func TestServerKvPassWhenBecomingActive(t *testing.T) {
+	server := vaultfake.New("kv", "role", "sid")
+	defer server.Close()
+	repman := serverKvTestManager(t, true, server)
+	repman.Status = ConstMonitorStandby
+	repman.checkServerSecretKvStores()
+	if repman.serverSecretKv.passDue.Load() {
+		t.Fatal("a standby asks a pass")
+	}
+	repman.Status = ConstMonitorActif
+	repman.checkServerSecretKvStores()
+	if !repman.serverSecretKv.passDue.Load() {
+		t.Fatal("no pass when becoming active")
+	}
+	repman.serverSecretKv.passDue.Store(false)
+	repman.checkServerSecretKvStores()
+	if repman.serverSecretKv.passDue.Load() {
+		t.Fatal("a pass at every tick")
+	}
+}
+
+// A name part that is not a valid folder, a registered one included, never reaches a path.
+func TestServerKvInvalidNameIsNotNamed(t *testing.T) {
+	conf := serverLevelConf(t.TempDir(), "")
+	conf.Cloud18, conf.Cloud18Domain, conf.Cloud18SubDomain, conf.Cloud18SubDomainZone = true, "acme", "../x", "paris"
+	if _, ok := conf.InstanceStoreName(); ok {
+		t.Fatal("an invalid registered name is used")
+	}
+	conf.Cloud18SubDomain = "repman1"
+	if name, ok := conf.InstanceStoreName(); !ok || name != "acme/repman1/paris" {
+		t.Fatalf("name %q", name)
+	}
+}
+
+// The server credentials grant is checked on each cluster: held on one of two, refused on the
+// other, so instanceNameACL (every cluster) refuses the server stores.
+func TestServerKvGrantOnEveryCluster(t *testing.T) {
+	repman := newServerLevelTestManager(t, "admin:first,half:second")
+	url := "/api/clusters/settings/actions/server-secret-kv"
+	c1, c2 := repman.Clusters["c1"], repman.Clusters["c2"]
+	c1.Conf.APIUsersACLAllow = serverLevelACL + ",half:cluster-server-credentials show"
+	c1.LoadAPIUsers()
+	c2.Conf.APIUsersACLAllow = serverLevelACL + ",half:show"
+	c2.LoadAPIUsers()
+	if !c1.IsURLPassACL("half", url, false) || c2.IsURLPassACL("half", url, false) {
+		t.Fatal("the grant is not checked per cluster")
+	}
+	if err := repman.holdsServerCredentials("half"); err == nil {
+		t.Fatal("the grant on one cluster of two is enough")
+	}
+}
+
+// A cluster's config never holds the server credential stores, whatever its section says.
+func TestServerKvNeverInAClusterConfig(t *testing.T) {
+	repman := newServerLevelTestManager(t, "admin:first")
+	v := viper.New()
+	v.SetConfigType("toml")
+	if err := v.ReadConfig(strings.NewReader("[c9]\ntitle = \"c9\"\n\n[[c9.server-secret-kv]]\nname = \"sneak\"\nplugin = \"secret_kv-vault\"\nenabled = true\naddress = \"https://vault.example\"\n")); err != nil {
+		t.Fatal(err)
+	}
+	base := *repman.Conf
+	base.ServerSecretKvs = []config.SecretKvConfig{{Name: "srv", Plugin: config.ConstSecretKvPluginVault, Enabled: true}}
+	if repman.ImmuableFlagMaps == nil {
+		repman.ImmuableFlagMaps = map[string]map[string]interface{}{}
+	}
+	if repman.DynamicFlagMaps == nil {
+		repman.DynamicFlagMaps = map[string]map[string]interface{}{}
+	}
+	if repman.VersionConfs == nil {
+		repman.VersionConfs = map[string]*config.ConfVersion{}
+	}
+	got := repman.GetClusterConfig(v, map[string]interface{}{}, map[string]interface{}{}, "c9", base)
+	if got.ServerSecretKvs != nil {
+		t.Fatalf("a cluster holds server stores: %+v", got.ServerSecretKvs)
 	}
 }

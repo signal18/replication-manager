@@ -30,6 +30,10 @@ type serverSecretKv struct {
 	running atomic.Bool
 	passDue atomic.Bool
 
+	// wasActive: the monitor was active at the last tick; a standby that becomes active gives
+	// the server entries a full pass (a rotation made on the other monitor, versions pulled)
+	wasActive atomic.Bool
+
 	mu          sync.Mutex
 	behind      map[string]string    // entry -> why it is behind (never a value)
 	lastWritten map[string]time.Time // entry -> its last successful write
@@ -204,7 +208,11 @@ func (repman *ReplicationManager) ServerKvBehind() map[string]string {
 // level (GWARN024); every cluster raises its own (WARN0320) from ServerKvBehind.
 func (repman *ReplicationManager) checkServerSecretKvStores() {
 	if repman.Status != ConstMonitorActif {
+		repman.serverSecretKv.wasActive.Store(false)
 		return
+	}
+	if !repman.serverSecretKv.wasActive.Swap(true) {
+		repman.startServerKvPass()
 	}
 	if q := repman.serverKvQueue(); q.Len() > 0 || repman.serverSecretKv.passDue.Load() {
 		repman.serverKvRunner().Start()
