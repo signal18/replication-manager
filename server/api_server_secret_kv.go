@@ -13,8 +13,8 @@ import (
 	"github.com/signal18/replication-manager/config"
 )
 
-// The server credential stores API (CREDENTIAL_STORES.md "Two levels"): the vault entries of
-// the server level, which hold the server secrets. The instance's sysops and extsysops only:
+// The server credential stores API (CREDENTIAL_STORES.md "Two levels"): the entries (Vault,
+// OpenSVC, Kubernetes) of the server level, which hold the server secrets. The instance's sysops and extsysops only:
 // the server credentials grant on every cluster (instanceNameACL), never a cluster's grant, so
 // a sponsor or a member never sees nor switches one. Secrets go in through add and edit and
 // never come back.
@@ -55,9 +55,38 @@ func (repman *ReplicationManager) serverSecretKvChange(w http.ResponseWriter, r 
 	writeArchiveJSON(w, map[string]string{"name": name})
 }
 
+// checkServerStoreCluster refuses an OpenSVC or Kubernetes server entry naming a cluster that is
+// not monitored here or not on that orchestrator: the store would only ever be behind. The
+// writer checks it again at each pass (a cluster removed or moved later).
+func (repman *ReplicationManager) checkServerStoreCluster(spec config.SecretKvSpec) error {
+	plugin, clusterName := spec.Plugin, ""
+	for _, e := range repman.Conf.SecretKvListAt(config.SecretKvLevelServer) {
+		if e.Name == spec.Name {
+			if plugin == "" {
+				plugin = e.Plugin
+			}
+			clusterName = repman.Conf.SecretKvSetting(e, config.ConstSecretKvOrchestratorCluster)
+		}
+	}
+	if v, ok := spec.Settings[config.ConstSecretKvOrchestratorCluster]; ok {
+		clusterName = fmt.Sprintf("%v", v)
+	}
+	if !config.IsOrchestratorSecretKvPlugin(plugin) || clusterName == "" {
+		return nil // the plugin's own checks say what is missing
+	}
+	cl := repman.getClusterByName(clusterName)
+	if cl == nil {
+		return fmt.Errorf("credential store %s: cluster %q is not monitored here", spec.Name, clusterName)
+	}
+	if _, err := cl.ServerOrchestratorStore(plugin, ""); err != nil {
+		return fmt.Errorf("credential store %s: cluster %s: %w", spec.Name, clusterName, err)
+	}
+	return nil
+}
+
 // handlerMuxServerSecretKvList lists the server credential stores.
 // @Summary List the server credential stores
-// @Description The vault entries of the server level, which hold the server secrets (api-credentials, SMTP, GitLab...) under <path-prefix>/system/repman/<instance name>: secrets never returned, only the names of those set; each one's state (last write, behind: GWARN024, WARN0320 on every cluster) and folder, the instance's name (empty while not complete), the server secrets' names, the plugins' manifests and whether a config file sets the list. The instance's sysops and extsysops only: the server credentials grant on every cluster.
+// @Description The entries of the server level, which hold the server secrets (api-credentials, SMTP, GitLab...): a vault under <path-prefix>/system/repman/<instance name>, the OpenSVC secret system/sec/repman or a Kubernetes Secret repman-system under the keys <instance name>_<key>: secrets never returned, only the names of those set; each one's state (last write, behind: GWARN024, WARN0320 on every cluster) and folder, the instance's name (empty while not complete), the server secrets' names, the plugins' manifests and whether a config file sets the list. The instance's sysops and extsysops only: the server credentials grant on every cluster.
 // @Tags GlobalSetting
 // @Produce json
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
@@ -73,7 +102,7 @@ func (repman *ReplicationManager) handlerMuxServerSecretKvList(w http.ResponseWr
 
 // handlerMuxServerSecretKvAdd adds a server credential store.
 // @Summary Add a server credential store
-// @Description Adds a vault entry of the server level (plugin secret_kv-vault: address, mount, path-prefix, mode, auth, role-id, secret-id written only). An enabled entry gets every version of every server secret, a full pass first, once the instance is named. Refused on a standby and when a config file sets the list.
+// @Description Adds an entry of the server level: plugin secret_kv-vault (address, mount, path-prefix, mode, auth, role-id, secret-id written only), secret_kv-opensvc (cluster: a cluster on OpenSVC whose agent writes system/sec/repman) or secret_kv-kubernetes (cluster: a cluster on Kubernetes, namespace: where the Secret repman-system is written). A cluster not monitored here or not on that orchestrator is refused. An enabled entry gets every version of every server secret, a full pass first, once the instance is named. Refused on a standby and when a config file sets the list.
 // @Tags GlobalSetting
 // @Accept json
 // @Produce json
@@ -90,13 +119,16 @@ func (repman *ReplicationManager) handlerMuxServerSecretKvAdd(w http.ResponseWri
 		return
 	}
 	repman.serverSecretKvChange(w, r, "added", func() (string, error) {
+		if err := repman.checkServerStoreCluster(spec); err != nil {
+			return "", err
+		}
 		return repman.Conf.PutSecretKvAt(config.SecretKvLevelServer, spec, true)
 	})
 }
 
 // handlerMuxServerSecretKvEdit changes a server credential store.
 // @Summary Edit a server credential store
-// @Description Changes a server vault entry's settings (an empty secret keeps the secret, unset clears names).
+// @Description Changes a server entry's settings (an empty secret keeps the secret, unset clears names); its plugin does not change.
 // @Tags GlobalSetting
 // @Accept json
 // @Produce json
@@ -115,6 +147,9 @@ func (repman *ReplicationManager) handlerMuxServerSecretKvEdit(w http.ResponseWr
 	}
 	spec.Name = mux.Vars(r)["entryName"]
 	repman.serverSecretKvChange(w, r, "changed", func() (string, error) {
+		if err := repman.checkServerStoreCluster(spec); err != nil {
+			return "", err
+		}
 		return repman.Conf.PutSecretKvAt(config.SecretKvLevelServer, spec, false)
 	})
 }

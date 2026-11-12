@@ -142,8 +142,13 @@ func (cluster *Cluster) k8sPatchSecretValues(client kubernetes.Interface, values
 // Update() (which requires the current resourceVersion a freshly-built object never has); a
 // merge Patch also leaves any other key already on the Secret untouched.
 func (cluster *Cluster) k8sPatchSecretValuesRaw(ctx context.Context, client kubernetes.Interface, values map[string]string) error {
-	name := k8sClusterSecretName(cluster.Name)
-	secretsClient := client.CoreV1().Secrets(cluster.Name)
+	return cluster.k8sPatchNamedSecretRaw(ctx, client, cluster.Name, k8sClusterSecretName(cluster.Name), values)
+}
+
+// k8sPatchNamedSecretRaw is k8sPatchSecretValuesRaw on any Secret: namespace/name (the server
+// level's repman-system goes through it too).
+func (cluster *Cluster) k8sPatchNamedSecretRaw(ctx context.Context, client kubernetes.Interface, namespace, name string, values map[string]string) error {
+	secretsClient := client.CoreV1().Secrets(namespace)
 	secret := &apiv1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,

@@ -1049,7 +1049,7 @@
         },
         "/api/clusters/settings/actions/server-secret-kv": {
             "get": {
-                "description": "The vault entries of the server level, which hold the server secrets (api-credentials, SMTP, GitLab...) under \u003cpath-prefix\u003e/system/repman/\u003cinstance name\u003e: secrets never returned, only the names of those set; each one's state (last write, behind: GWARN024, WARN0320 on every cluster) and folder, the instance's name (empty while not complete), the server secrets' names, the plugins' manifests and whether a config file sets the list. The instance's sysops and extsysops only: the server credentials grant on every cluster.",
+                "description": "The entries of the server level, which hold the server secrets (api-credentials, SMTP, GitLab...): a vault under \u003cpath-prefix\u003e/system/repman/\u003cinstance name\u003e, the OpenSVC secret system/sec/repman or a Kubernetes Secret repman-system under the keys \u003cinstance name\u003e_\u003ckey\u003e: secrets never returned, only the names of those set; each one's state (last write, behind: GWARN024, WARN0320 on every cluster) and folder, the instance's name (empty while not complete), the server secrets' names, the plugins' manifests and whether a config file sets the list. The instance's sysops and extsysops only: the server credentials grant on every cluster.",
                 "produces": [
                     "application/json"
                 ],
@@ -1085,7 +1085,7 @@
         },
         "/api/clusters/settings/actions/server-secret-kv/add": {
             "post": {
-                "description": "Adds a vault entry of the server level (plugin secret_kv-vault: address, mount, path-prefix, mode, auth, role-id, secret-id written only). An enabled entry gets every version of every server secret, a full pass first, once the instance is named. Refused on a standby and when a config file sets the list.",
+                "description": "Adds an entry of the server level: plugin secret_kv-vault (address, mount, path-prefix, mode, auth, role-id, secret-id written only), secret_kv-opensvc (cluster: a cluster on OpenSVC whose agent writes system/sec/repman) or secret_kv-kubernetes (cluster: a cluster on Kubernetes, namespace: where the Secret repman-system is written). A cluster not monitored here or not on that orchestrator is refused. An enabled entry gets every version of every server secret, a full pass first, once the instance is named. Refused on a standby and when a config file sets the list.",
                 "consumes": [
                     "application/json"
                 ],
@@ -1206,7 +1206,7 @@
         },
         "/api/clusters/settings/actions/server-secret-kv/edit/{entryName}": {
             "post": {
-                "description": "Changes a server vault entry's settings (an empty secret keeps the secret, unset clears names).",
+                "description": "Changes a server entry's settings (an empty secret keeps the secret, unset clears names); its plugin does not change.",
                 "consumes": [
                     "application/json"
                 ],
@@ -30121,6 +30121,10 @@
                 "name": {
                     "type": "string"
                 },
+                "serverOnly": {
+                    "description": "ServerOnly: an entry of the server's list only, never of a cluster's",
+                    "type": "boolean"
+                },
                 "settings": {
                     "type": "array",
                     "items": {
@@ -33310,9 +33314,6 @@
                 "schedulerSlaRotateCron": {
                     "type": "string"
                 },
-                "secretKvCopyApiCredentials": {
-                    "type": "boolean"
-                },
                 "secretKvQueueLimit": {
                     "type": "integer"
                 },
@@ -34971,12 +34972,6 @@
                     "items": {
                         "type": "string"
                     }
-                },
-                "copy": {
-                    "type": "string"
-                },
-                "copyError": {
-                    "type": "string"
                 },
                 "password": {
                     "type": "string"

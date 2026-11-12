@@ -5,7 +5,6 @@
 package cluster
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -162,19 +161,4 @@ func (cluster *Cluster) ApplyServerSecret(key string) {
 	case "api-credentials":
 		cluster.LoadAPIUsers()
 	}
-}
-
-// WriteOpenSVCSecretKey writes one key of an OpenSVC secret object through this cluster's
-// agent connection, bounded by the store timeout. The value is never logged (F10).
-func (cluster *Cluster) WriteOpenSVCSecretKey(namespace, object, key, value string) error {
-	if cluster.GetOrchestrator() != config.ConstOrchestratorOpenSVC {
-		return errors.New("cluster " + cluster.Name + " is not on OpenSVC")
-	}
-	if cluster.openSVCStore().certNotLoaded() {
-		return errOpenSVCCertNotLoaded
-	}
-	ctx, cancel := orchestratorCallContext(context.Background(), cluster.storeTimeout())
-	defer cancel()
-	svc := cluster.OpenSVCConnect()
-	return svc.CreateSecretKeyValueCtx(ctx, namespace, object, key, value)
 }

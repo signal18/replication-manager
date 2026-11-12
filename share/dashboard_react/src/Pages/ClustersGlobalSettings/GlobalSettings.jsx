@@ -150,20 +150,8 @@ function GlobalSettings({ config, cards }) {
     },
     {
       key: 'Server Credential Stores',
-      help: h(`**Server Credential Stores**\n\nThe vaults that keep every version of this instance's server secrets (the API users' list api-credentials, the SMTP and GitLab passwords...), under path-prefix/system/repman/<instance name>. They are never copied to a cluster's vaults, which a cluster's sponsor may switch on. Only the sysops and extsysops of this instance see and change them (the server credentials grant on every cluster). Nothing is written until the instance is named. A vault behind shows a state here and on every cluster.`, 'Server Credential Stores'),
+      help: h(`**Server Credential Stores**\n\nThe stores that keep every version of this instance's server secrets (the API users' list api-credentials, the SMTP and GitLab passwords...). A store is a vault (path-prefix/system/repman/<instance name>), the OpenSVC secret system/sec/repman or a Kubernetes Secret repman-system (keys <instance name>_<key>), the last two through the connection of a cluster on that orchestrator. They are never copied to a cluster's stores, which a cluster's sponsor may switch on. Only the sysops and extsysops of this instance see and change them (the server credentials grant on every cluster). Nothing is written until the instance is named. A store behind shows a state here and on every cluster.`, 'Server Credential Stores'),
       value: <SecretKvEntries level='server' />
-    },
-    {
-      globalSetting: 'secret-kv-copy-api-credentials',
-      key: 'Copy Users After Rotation',
-      help: h(`**Copy Users After Rotation**\n\nAfter a user's password rotation, the list of the instance's users (api-credentials) is copied, in clear, to the OpenSVC secret system/sec/repman under the key <api host>_api-credentials, so the infrastructure keeps the current value.`, 'Copy Users After Rotation'),
-      value: (
-        <RMSwitch
-          confirmTitle='Confirm switch global settings for secret-kv-copy-api-credentials?'
-          onChange={(_v, setRefresh) => dispatch(switchGlobalSetting({ setting: 'secret-kv-copy-api-credentials', setRefresh }))}
-          isChecked={config?.secretKvCopyApiCredentials}
-        />
-      )
     },
     {
       globalSetting: 'api-token-timeout',

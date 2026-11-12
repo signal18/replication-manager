@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"net/url"
 	"sort"
 	"strings"
 	"sync"
@@ -35,8 +34,6 @@ type UserRotateResult struct {
 	TokensRevoked int      `json:"tokensRevoked"`
 	TokensError   string   `json:"tokensError,omitempty"`
 	PersistError  string   `json:"persistError,omitempty"`
-	Copy          string   `json:"copy"`
-	CopyError     string   `json:"copyError,omitempty"`
 }
 
 // rotatedPasswordLength: a rotation bans a user who may be compromised, so a long password.
@@ -98,12 +95,9 @@ func (repman *ReplicationManager) handlerMuxUserRotatePassword(w http.ResponseWr
 	if res.PersistError != "" {
 		tokens += ", " + res.PersistError
 	}
-	if res.CopyError != "" {
-		tokens += ", " + res.CopyError
-	}
 	repman.logSecurityEvent("api_user_password_rotated", res.Username, r.RemoteAddr,
-		fmt.Sprintf("Password of %s rotated by %s on %s (%s list), %s, copy: %s",
-			res.Username, delegator, strings.Join(res.Clusters, ","), res.Scope, tokens, res.Copy))
+		fmt.Sprintf("Password of %s rotated by %s on %s (%s list), %s",
+			res.Username, delegator, strings.Join(res.Clusters, ","), res.Scope, tokens))
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
 	json.NewEncoder(w).Encode(res)
@@ -215,15 +209,9 @@ func (repman *ReplicationManager) rotateAPIUserPassword(cl *cluster.Cluster, use
 	if setErr != nil {
 		return nil, setErr
 	}
-	res.Copy = "not applicable: a cluster's own list is not copied"
-	if scope == cluster.APIUserScopeInstance {
-		var copyErr error
-		if res.Copy, copyErr = repman.copyAPICredentialsToOpenSVC(); copyErr != nil {
-			// the copy still holds the old list, the compromised password with it
-			res.CopyError = "the OpenSVC copy was NOT updated, it still holds the old password (rotate again to retry): " + copyErr.Error()
-			repman.Logrus.Warnf("Password rotation of %s: %s", user, res.CopyError)
-		}
-	}
+	// the instance's list is a server secret: its new version goes to every server credential
+	// store (Vault, OpenSVC, Kubernetes) through the server chain's hook, a store behind says so
+	// (GWARN024); a cluster's own list goes to that cluster's stores
 	return res, nil
 }
 
@@ -281,45 +269,4 @@ func (repman *ReplicationManager) clustersWithInstanceUser(user string) []*clust
 		}
 	}
 	return out
-}
-
-// copyAPICredentialsToOpenSVC writes the instance's list, in clear, to the OpenSVC secret
-// system/sec/repman, key <api host>_api-credentials (where the infrastructure index points),
-// through the first cluster on OpenSVC. Off by default, on with secret-kv-copy-api-credentials.
-// It returns what happened, never the value, and an error when the copy failed.
-func (repman *ReplicationManager) copyAPICredentialsToOpenSVC() (string, error) {
-	if !repman.Conf.SecretKvCopyApiCredentials {
-		return "skipped: secret-kv-copy-api-credentials is off", nil
-	}
-	host := apiPublicHost(repman.Conf.APIPublicURL)
-	if host == "" {
-		return "skipped: api-public-url is not set", nil
-	}
-	key := host + "_api-credentials"
-	for _, c := range repman.clustersSnapshot() {
-		if c.GetOrchestrator() != config.ConstOrchestratorOpenSVC {
-			continue
-		}
-		if err := c.WriteOpenSVCSecretKey("system", "repman", key, repman.Conf.DecryptedAPIUserList()); err != nil {
-			return "failed through " + c.Name, err
-		}
-		return "written to system/sec/repman key " + key + " through " + c.Name, nil
-	}
-	return "skipped: no cluster on OpenSVC", nil
-}
-
-// apiPublicHost is the host of api-public-url, "" when unset or not a URL.
-func apiPublicHost(raw string) string {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return ""
-	}
-	if !strings.Contains(raw, "://") {
-		raw = "https://" + raw
-	}
-	u, err := url.Parse(raw)
-	if err != nil {
-		return ""
-	}
-	return u.Hostname()
 }

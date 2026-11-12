@@ -404,15 +404,12 @@ request, and every API token it owns is revoked (`revokeUserAPITokens`).
   ordered with the save's own write by a lock). A crash or a failover right after the answer keeps
   the ban. When the file cannot be written, the new password stays in force (undoing it would give
   the compromised one back) and the answer says so (`persistError`), as for the tokens.
-- **Copy:** off by default (`secret-kv-copy-api-credentials`, server scope, global settings). On,
-  the instance's list, in clear, goes to the OpenSVC secret `system/sec/repman`, key
-  `<host of api-public-url>_api-credentials`, through the first cluster on OpenSVC; the answer says
-  whether it was written or skipped, and a failed copy is said (`copyError`): the copy then still
-  holds the compromised password. The Vault copy is not written here yet.
-- **Trade-off of the copy:** it holds every user's password of the instance's list in clear, readable
-  by the infrastructure's administrators only (the OpenSVC system namespace); it lets them reach a
-  repman whose own login is lost. Turn it on only where that trade is wanted, until the OpenSVC
-  store replaces it.
+- **Stores:** the instance's list is a server secret: its new version goes to every server
+  credential store (Vault, OpenSVC, Kubernetes; "Server credential stores" below) through the
+  server chain's hook, and a store behind says so (`GWARN024`, `WARN0320`). A cluster's own list
+  goes to that cluster's stores. The earlier copy of the list to OpenSVC by a path of its own,
+  and its switch `secret-kv-copy-api-credentials`, are gone: the OpenSVC server store replaces
+  them, versioned, retried and in a state when behind.
 - **Tokens:** a revocation that fails (the token store not saved) is undone in memory and said in
   the answer (`tokensError`) and in the GUI: a ban with live tokens is not a ban.
 - **Limits:** rotations are serialized among themselves, not with the user add, update and drop
@@ -517,7 +514,8 @@ is treated the same; only the path a level maps to differs per store.
   server credential is a version (it wins at once), then a copy in every server store, then the
   file: at the next start the file and the newest version agree. Not started as root, or the
   file not writable: the version still wins, and a state says the file is behind.
-- **Replaces** the rotation's own OpenSVC copy and `secret-kv-copy-api-credentials`.
+- **Replaces** the rotation's own OpenSVC copy and `secret-kv-copy-api-credentials` (done: the
+  server level's OpenSVC store, below).
 
 ### Server credential stores (implemented)
 
@@ -566,9 +564,26 @@ sponsor or member never reaches them.
   `WARN0320` on every cluster's security state machine (`ServerGlobals.ServerStoresBehind`) with
   the entry's name only: a cluster's members and sponsor read that state, the address, folder and
   error are the owners'.
+- **OpenSVC and Kubernetes stores.** Two more plugins, server level only
+  (`SecretKvPluginManifest.ServerOnly`, `SecretKvPluginAllowedAt`): `secret_kv-opensvc` writes
+  the OpenSVC secret `system/sec/repman`, `secret_kv-kubernetes` the Secret `repman-system` of
+  its `namespace` (a DNS-1123 label). The server has no orchestrator connection of its own: each
+  entry names the `cluster` whose connection carries it (its OpenSVC agent and certificate, its
+  Kubernetes client), refused at add and edit when that cluster is not monitored here or not on
+  that orchestrator (`checkServerStoreCluster`), and behind with the reason at each pass when it
+  goes away later (`serverKvWriter`, `failingStoreWriter`). The object is flat, so the keys are
+  `<instance name, "_" for "/">_<key>` (`ServerOrchestratorKeyPrefix`, the item's `Path`), the
+  characters both orchestrators take. The writers are the cluster's own sinks given another
+  target (`openSVCStore`/`k8sStore` with a namespace, an object and the prefixed keys,
+  `Cluster.ServerOrchestratorStore`): the same budget per pass, the `<KEY>_OLD` history and the
+  unchanged-skip. They are driven by the server's queue, never the cluster's: a server secret
+  never enters the cluster's env secret, queue or states. A cluster's list does not take these
+  plugins (dropped when read from a file, refused through the API): at the cluster level the
+  orchestrator's env secret stays the reserved `orchestrator` entry. Who reads the object is the
+  orchestrator's business (the OpenSVC system namespace's administrators, whoever reads Secrets
+  in the namespace), said in the form. An entry's plugin never changes: remove it and add another.
 - **Not yet:** the Cloud18 vault offered at the server level by the registration (a sysops adds
-  it as an entry with `auth = jwt` meanwhile), the OpenSVC and Kubernetes stores, and the move on
-  a name change.
+  it as an entry with `auth = jwt` meanwhile), and the move on a name change.
 
 ### The Cloud18 vault entry
 

@@ -5,6 +5,7 @@
 package server
 
 import (
+	"context"
 	"fmt"
 	"sort"
 	"strings"
@@ -17,9 +18,10 @@ import (
 	"github.com/signal18/replication-manager/utils/state"
 )
 
-// The server level's credential stores (CREDENTIAL_STORES.md "Two levels"): the vault entries
-// of [[default.server-secret-kv]] get every version of every server secret, under
-// <path-prefix>/system/repman/<instance name>/<key>. Set by the instance's sysops and extsysops
+// The server level's credential stores (CREDENTIAL_STORES.md "Two levels"): the entries of
+// [[default.server-secret-kv]] get every version of every server secret: a Vault under
+// <path-prefix>/system/repman/<instance name>/<key>, the OpenSVC secret system/sec/repman or a
+// Kubernetes Secret repman-system under the keys <instance name, "_" for "/">_<key>. Set by the instance's sysops and extsysops
 // only, never copied to a cluster, so no cluster's sponsor or member reaches them. The same
 // queue and worker as a cluster's (credstore.StoreRunner).
 
@@ -57,13 +59,8 @@ func (repman *ReplicationManager) serverKvQueue() *credstore.StoreQueue {
 func (repman *ReplicationManager) serverKvRunner() *credstore.StoreRunner {
 	k := &repman.serverSecretKv
 	return &credstore.StoreRunner{
-		Queue: repman.serverKvQueue(),
-		Writer: func(name string) credstore.StoreWriter {
-			if e, ok := repman.Conf.SecretKvActiveEntryAt(config.SecretKvLevelServer, name); ok {
-				return credstore.NewVaultKV(credstore.VaultSettingsFromEntry(repman.Conf, e), nil)
-			}
-			return nil
-		},
+		Queue:  repman.serverKvQueue(),
+		Writer: repman.serverKvWriter,
 		Timeout: func() credstore.Timeout {
 			return credstore.Timeout(time.Duration(repman.Conf.SecretKvWriteTimeout) * time.Second)
 		},
@@ -79,6 +76,36 @@ func (repman *ReplicationManager) serverKvRunner() *credstore.StoreRunner {
 		Running: &k.running,
 		Due:     &k.passDue,
 	}
+}
+
+// serverKvWriter is a server entry's sink, nil when it is off or gone: a Vault, or the
+// orchestrator's secret object through the cluster the entry names. A cluster missing or not on
+// that orchestrator is a writer that fails with the reason, so the entry is behind and says why.
+func (repman *ReplicationManager) serverKvWriter(name string) credstore.StoreWriter {
+	e, ok := repman.Conf.SecretKvActiveEntryAt(config.SecretKvLevelServer, name)
+	if !ok {
+		return nil
+	}
+	if !config.IsOrchestratorSecretKvPlugin(e.Plugin) {
+		return credstore.NewVaultKV(credstore.VaultSettingsFromEntry(repman.Conf, e), nil)
+	}
+	clusterName := repman.Conf.SecretKvSetting(e, config.ConstSecretKvOrchestratorCluster)
+	cl := repman.getClusterByName(clusterName)
+	if cl == nil {
+		return failingStoreWriter{fmt.Errorf("cluster %q, which carries this store, is not monitored here", clusterName)}
+	}
+	w, err := cl.ServerOrchestratorStore(e.Plugin, repman.Conf.SecretKvSetting(e, config.ConstSecretKvKubernetesNamespace))
+	if err != nil {
+		return failingStoreWriter{fmt.Errorf("cluster %s: %w", clusterName, err)}
+	}
+	return w
+}
+
+// failingStoreWriter writes nothing and says why: every item is requeued, the entry is behind.
+type failingStoreWriter struct{ err error }
+
+func (w failingStoreWriter) WriteAll(_ context.Context, items []credstore.StoreItem, _ credstore.Timeout) ([]credstore.StoreItem, error) {
+	return items, w.err
 }
 
 // setServerKvBehind records why entry is behind, "" when it is not (never a value, F10).
@@ -250,7 +277,7 @@ func (repman *ReplicationManager) serverSecretKvList() ServerSecretKvListResult 
 	res := ServerSecretKvListResult{
 		Entries: repman.Conf.SecretKvListAt(config.SecretKvLevelServer),
 		States:  map[string]ServerSecretKvState{},
-		Plugins: config.SecretKvPlugins(),
+		Plugins: config.SecretKvPluginsAt(config.SecretKvLevelServer),
 		Pinned:  repman.serverSecretKvsPinned(),
 	}
 	if named {
@@ -267,7 +294,7 @@ func (repman *ReplicationManager) serverSecretKvList() ServerSecretKvListResult 
 	for _, e := range res.Entries {
 		st := ServerSecretKvState{LastWrite: k.lastWritten[e.Name], Behind: behind[e.Name]}
 		if named {
-			st.Path = repman.Conf.ServerSecretKvFolder(e, name)
+			st.Path = repman.Conf.ServerSecretKvLocation(e, name)
 		}
 		res.States[e.Name] = st
 	}

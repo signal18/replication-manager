@@ -29,8 +29,10 @@ import { NAME_PATTERN, SettingField } from './ArchiveListSettings'
 // enabled entry gets every version of every secret of the cluster at
 // <mount>/<path-prefix>/<cluster>/databases|proxies|apps|archives/<name>/<key>. The server's
 // (level 'server', in the global settings): the server secrets at
-// <mount>/<path-prefix>/system/repman/<instance name>/<key>, the instance's sysops and extsysops
-// only. Secrets go in through the form and never come back (secretsSet).
+// <mount>/<path-prefix>/system/repman/<instance name>/<key>, or in the OpenSVC secret
+// system/sec/repman or a Kubernetes Secret repman-system (keys <instance name>_<key>) through a
+// cluster's connection; the instance's sysops and extsysops only. Secrets go in through the
+// form and never come back (secretsSet).
 
 // the API of each level
 const API = {
@@ -55,7 +57,26 @@ const SETTING_LABELS = {
   mode: 'Mode',
   auth: 'Sign-in',
   'role-id': 'Role id',
-  'secret-id': 'Secret id'
+  'secret-id': 'Secret id',
+  cluster: 'Through the cluster',
+  namespace: 'Namespace'
+}
+
+// each plugin a level's list may hold: its add button and what it says
+const PLUGINS = {
+  'secret_kv-vault': {
+    add: 'Add a vault',
+    server: 'The server secrets (api-credentials, SMTP, GitLab...) are written under the mount, at path-prefix/system/repman/<instance name>. Only the sysops and extsysops of this instance see this list. repman never deletes what the vault holds.',
+    cluster: 'The secrets are written under the mount, at path-prefix/cluster. repman never deletes what the vault holds.'
+  },
+  'secret_kv-opensvc': {
+    add: 'Add OpenSVC',
+    server: 'The server secrets are written to the OpenSVC secret system/sec/repman, keys <instance name>_<key>, through the agent of the cluster named here (a cluster on OpenSVC). The OpenSVC cluster\'s administrators can read them. repman never deletes a key.'
+  },
+  'secret_kv-kubernetes': {
+    add: 'Add Kubernetes',
+    server: 'The server secrets are written to the Secret repman-system of the namespace, keys <instance name>_<key>, through the client of the cluster named here (a cluster on Kubernetes). Whoever reads Secrets in that namespace can read them. repman never deletes a key.'
+  }
 }
 
 // the state pill of an entry: off, behind (WARN0271) with its reason, or on
@@ -106,7 +127,7 @@ function SecretKvFormModal({ isOpen, closeModal, manifest, entry, onSave, level 
     <Modal isOpen={isOpen} onClose={closeModal} size='lg'>
       <ModalOverlay />
       <ModalContent className={theme === 'light' ? parentStyles.modalLightContent : parentStyles.modalDarkContent}>
-        <ModalHeader>{isEdit ? `Edit ${entry.name}` : 'Add a vault'}</ModalHeader>
+        <ModalHeader>{isEdit ? `Edit ${entry.name}` : (PLUGINS[manifest?.name]?.add || 'Add a store')}</ModalHeader>
         <ModalCloseButton />
         <ModalBody>
           <Stack spacing='3'>
@@ -124,9 +145,7 @@ function SecretKvFormModal({ isOpen, closeModal, manifest, entry, onSave, level 
               </FormControl>
             ))}
             <Text fontSize='sm' opacity='0.7'>
-              {level === 'server'
-                ? 'The server secrets (api-credentials, SMTP, GitLab...) are written under the mount, at path-prefix/system/repman/<instance name>. Only the sysops and extsysops of this instance see this list. repman never deletes what the vault holds.'
-                : 'The secrets are written under the mount, at path-prefix/cluster. repman never deletes what the vault holds.'}
+              {PLUGINS[manifest?.name]?.[level === 'server' ? 'server' : 'cluster']}
             </Text>
             {error && <Text color={theme === 'dark' ? 'red.300' : 'red.500'} fontSize='sm'>{error}</Text>}
           </Stack>
@@ -201,7 +220,9 @@ function SecretKvEntries({ clusterName, user, level = 'cluster' }) {
     }
   }
 
-  const manifest = list.plugins.find((p) => p.name === 'secret_kv-vault')
+  // the plugins this level's list takes, in the order of PLUGINS
+  const manifests = Object.keys(PLUGINS).map((n) => list.plugins.find((p) => p.name === n)).filter(Boolean)
+  const manifestOf = (plugin) => list.plugins.find((p) => p.name === (plugin || 'secret_kv-vault'))
   const save = async (spec, isEdit) => {
     const err = await call(() => api.put(spec, isEdit))
     if (!err) setEditing(null)
@@ -212,15 +233,20 @@ function SecretKvEntries({ clusterName, user, level = 'cluster' }) {
     return <Text as='span' color={mutedColor}>the sysops and extsysops of this instance only</Text>
   }
   // where an entry writes: the server's folder is the instance's name, unknown while not complete
+  const isVault = (e) => !e.plugin || e.plugin === 'secret_kv-vault'
   const folder = (e, state) => {
-    const base = (e.settings?.mount || 'kv') + '/'
+    const base = isVault(e) ? (e.settings?.mount || 'kv') + '/' : ''
     if (isServer) return state?.path ? base + state.path : base + '… (name this instance first)'
     return base + (e.settings?.['path-prefix'] ? e.settings['path-prefix'] + '/' : '') + clusterName
+  }
+  const target = (e) => {
+    if (isVault(e)) return e.settings?.address || 'no address'
+    return (e.plugin === 'secret_kv-opensvc' ? 'OpenSVC' : 'Kubernetes') + ' through ' + (e.settings?.cluster || '?')
   }
 
   return (
     <Stack spacing='2' width='100%'>
-      {list.entries.length === 0 && <Text as='span' color={mutedColor}>no vault: the versions live in the local file only</Text>}
+      {list.entries.length === 0 && <Text as='span' color={mutedColor}>no store: the versions live in the local file only</Text>}
       {list.entries.map((e) => {
         const state = list.states[e.name]
         // an entry from a Cloud18 marketplace offer: the back-office manages its settings, only
@@ -237,7 +263,7 @@ function SecretKvEntries({ clusterName, user, level = 'cluster' }) {
                 <Badge colorScheme='teal' variant={badgeVariant}>Cloud18{offer.title ? ` · ${offer.title}` : ''}{offer.partner ? ` · ${offer.partner}` : ''}</Badge>
               </Tooltip>
             )}
-            <Badge colorScheme='purple' variant={badgeVariant}>{e.settings?.address || 'no address'}</Badge>
+            <Badge colorScheme='purple' variant={badgeVariant}>{target(e)}</Badge>
             <Text as='span' fontSize='sm' color={mutedColor}>
               {folder(e, state)}
               {e.settings?.mode === 'database_engine' ? ' (database engine)' : ''}
@@ -256,17 +282,19 @@ function SecretKvEntries({ clusterName, user, level = 'cluster' }) {
         <Badge colorScheme='orange' variant={badgeVariant} alignSelf='flex-start'>{list.dropped} version(s) dropped: a full pass writes them again</Badge>
       )}
       <Flex gap='2' align='center'>
-        <RMButton size='sm' isDisabled={!canManage || list.pinned || !manifest} onClick={() => setEditing({})}>Add a vault</RMButton>
+        {manifests.map((m) => (
+          <RMButton key={m.name} size='sm' isDisabled={!canManage || list.pinned} onClick={() => setEditing({ plugin: m.name })}>{PLUGINS[m.name].add}</RMButton>
+        ))}
         {list.pinned && <Text as='span' fontSize='sm' color={mutedColor}>set by a config file ({isServer ? 'server-secret-kv' : 'secret-kv'}): change them there</Text>}
       </Flex>
       {error && <Text color={theme === 'dark' ? 'red.300' : 'red.500'} fontSize='sm'>{error}</Text>}
       {editing && (
-        <SecretKvFormModal isOpen={!!editing} closeModal={() => setEditing(null)} manifest={manifest}
+        <SecretKvFormModal isOpen={!!editing} closeModal={() => setEditing(null)} manifest={manifestOf(editing.plugin)}
           entry={editing.name ? editing : null} onSave={save} level={level} />
       )}
       {removeName && (
         <ConfirmModal isOpen={!!removeName} closeModal={() => setRemoveName('')}
-          title={`Remove ${removeName}? What the vault holds stays.`}
+          title={`Remove ${removeName}? What the store holds stays.`}
           onConfirmClick={() => { call(() => api.remove(removeName)); setRemoveName('') }} />
       )}
     </Stack>

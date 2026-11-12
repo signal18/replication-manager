@@ -2379,6 +2379,10 @@ definitions:
         type: string
       name:
         type: string
+      serverOnly:
+        description: 'ServerOnly: an entry of the server''s list only, never of a
+          cluster''s'
+        type: boolean
       settings:
         items:
           $ref: '#/definitions/config.PluginSetting'
@@ -4554,8 +4558,6 @@ definitions:
         type: string
       schedulerSlaRotateCron:
         type: string
-      secretKvCopyApiCredentials:
-        type: boolean
       secretKvQueueLimit:
         type: integer
       secretKvRetryInterval:
@@ -5713,10 +5715,6 @@ definitions:
         items:
           type: string
         type: array
-      copy:
-        type: string
-      copyError:
-        type: string
       password:
         type: string
       persistError:
@@ -22958,13 +22956,15 @@ paths:
       - ClusterActions
   /api/clusters/settings/actions/server-secret-kv:
     get:
-      description: 'The vault entries of the server level, which hold the server secrets
-        (api-credentials, SMTP, GitLab...) under <path-prefix>/system/repman/<instance
-        name>: secrets never returned, only the names of those set; each one''s state
-        (last write, behind: GWARN024, WARN0320 on every cluster) and folder, the
-        instance''s name (empty while not complete), the server secrets'' names, the
-        plugins'' manifests and whether a config file sets the list. The instance''s
-        sysops and extsysops only: the server credentials grant on every cluster.'
+      description: 'The entries of the server level, which hold the server secrets
+        (api-credentials, SMTP, GitLab...): a vault under <path-prefix>/system/repman/<instance
+        name>, the OpenSVC secret system/sec/repman or a Kubernetes Secret repman-system
+        under the keys <instance name>_<key>: secrets never returned, only the names
+        of those set; each one''s state (last write, behind: GWARN024, WARN0320 on
+        every cluster) and folder, the instance''s name (empty while not complete),
+        the server secrets'' names, the plugins'' manifests and whether a config file
+        sets the list. The instance''s sysops and extsysops only: the server credentials
+        grant on every cluster.'
       parameters:
       - default: Bearer <Add access token here>
         description: Insert your access token
@@ -22991,8 +22991,11 @@ paths:
     post:
       consumes:
       - application/json
-      description: 'Adds a vault entry of the server level (plugin secret_kv-vault:
-        address, mount, path-prefix, mode, auth, role-id, secret-id written only).
+      description: 'Adds an entry of the server level: plugin secret_kv-vault (address,
+        mount, path-prefix, mode, auth, role-id, secret-id written only), secret_kv-opensvc
+        (cluster: a cluster on OpenSVC whose agent writes system/sec/repman) or secret_kv-kubernetes
+        (cluster: a cluster on Kubernetes, namespace: where the Secret repman-system
+        is written). A cluster not monitored here or not on that orchestrator is refused.
         An enabled entry gets every version of every server secret, a full pass first,
         once the instance is named. Refused on a standby and when a config file sets
         the list.'
@@ -23078,8 +23081,8 @@ paths:
     post:
       consumes:
       - application/json
-      description: Changes a server vault entry's settings (an empty secret keeps
-        the secret, unset clears names).
+      description: Changes a server entry's settings (an empty secret keeps the secret,
+        unset clears names); its plugin does not change.
       parameters:
       - default: Bearer <Add access token here>
         description: Insert your access token

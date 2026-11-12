@@ -306,3 +306,86 @@ func TestServerKvReservedPrefixEveryPath(t *testing.T) {
 		}
 	}
 }
+
+// The OpenSVC and Kubernetes stores are the server level's only, with what each needs.
+func TestServerKvOrchestratorPluginsServerOnly(t *testing.T) {
+	conf := serverLevelConf(t.TempDir(), "")
+	osvc := config.SecretKvSpec{Name: "osvc", Plugin: config.ConstSecretKvPluginOpenSVC, Settings: map[string]interface{}{"cluster": "c1"}}
+	if _, err := conf.PutSecretKvAt(config.SecretKvLevelCluster, osvc, true); err == nil {
+		t.Fatal("an OpenSVC entry in a cluster's list")
+	}
+	if _, err := conf.PutSecretKvAt(config.SecretKvLevelServer, config.SecretKvSpec{Name: "nocl", Plugin: config.ConstSecretKvPluginOpenSVC}, true); err == nil {
+		t.Fatal("an OpenSVC entry without its cluster")
+	}
+	if _, err := conf.PutSecretKvAt(config.SecretKvLevelServer, osvc, true); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := conf.PutSecretKvAt(config.SecretKvLevelServer, config.SecretKvSpec{Name: "osvc", Plugin: config.ConstSecretKvPluginVault}, false); err == nil {
+		t.Fatal("an entry's plugin changed")
+	}
+	for ns, ok := range map[string]bool{"infra": true, "Infra": false, "-x": false, "a_b": false, "": false} {
+		_, err := conf.PutSecretKvAt(config.SecretKvLevelServer, config.SecretKvSpec{Name: "k8s-" + map[bool]string{true: "ok", false: "ko"}[ok],
+			Plugin: config.ConstSecretKvPluginKubernetes, Settings: map[string]interface{}{"cluster": "c2", "namespace": ns}}, true)
+		if (err == nil) != ok {
+			t.Fatalf("namespace %q: %v", ns, err)
+		}
+		if ok {
+			conf.DeleteSecretKvAt(config.SecretKvLevelServer, "k8s-ok")
+		}
+	}
+	// read from a file: dropped from a cluster's list, kept in the server's
+	conf.SecretKvs = []config.SecretKvConfig{{Name: "osvc", Plugin: config.ConstSecretKvPluginOpenSVC, Enabled: true, Settings: map[string]interface{}{"cluster": "c1"}}}
+	conf.MigrateSecretKvs()
+	if len(conf.SecretKvList()) != 0 {
+		t.Fatal("an OpenSVC entry kept in a cluster's list")
+	}
+	conf.ServerSecretKvs = []config.SecretKvConfig{{Name: "osvc", Plugin: config.ConstSecretKvPluginOpenSVC, Enabled: true, Settings: map[string]interface{}{"cluster": "c1"}}}
+	conf.LoadServerSecretKvs()
+	if got := conf.SecretKvActiveAt(config.SecretKvLevelServer); len(got) != 1 || got[0].Plugin != config.ConstSecretKvPluginOpenSVC {
+		t.Fatalf("server list: %v", got)
+	}
+	plugins := map[string]bool{}
+	for _, m := range config.SecretKvPlugins() {
+		plugins[m.Name] = true
+	}
+	if plugins[config.ConstSecretKvPluginOpenSVC] || plugins[config.ConstSecretKvPluginKubernetes] {
+		t.Fatal("a cluster's form offers a server-only plugin")
+	}
+	e := conf.SecretKvListAt(config.SecretKvLevelServer)[0]
+	if f := conf.ServerSecretKvFolder(e, "acme/repman1/paris"); f != "acme_repman1_paris" {
+		t.Fatalf("key prefix %q", f)
+	}
+}
+
+// An OpenSVC or Kubernetes entry is refused when its cluster is not monitored here or not on
+// that orchestrator, and one whose cluster went away is behind and says why.
+func TestServerKvOrchestratorCluster(t *testing.T) {
+	repman := serverKvTestManager(t, true)
+	spec := config.SecretKvSpec{Name: "osvc", Plugin: config.ConstSecretKvPluginOpenSVC, Settings: map[string]interface{}{"cluster": "nope"}}
+	if err := repman.checkServerStoreCluster(spec); err == nil || !strings.Contains(err.Error(), "not monitored") {
+		t.Fatalf("unknown cluster: %v", err)
+	}
+	spec.Settings["cluster"] = "c1"
+	repman.Clusters["c1"].Conf.ProvOrchestrator = config.ConstOrchestratorLocalhost
+	if err := repman.checkServerStoreCluster(spec); err == nil {
+		t.Fatal("a cluster not on OpenSVC")
+	}
+	repman.Clusters["c1"].Conf.ProvOrchestrator = config.ConstOrchestratorOpenSVC
+	if err := repman.checkServerStoreCluster(spec); err != nil {
+		t.Fatal(err)
+	}
+	if err := repman.checkServerStoreCluster(config.SecretKvSpec{Name: "v", Plugin: config.ConstSecretKvPluginVault}); err != nil {
+		t.Fatalf("a vault entry: %v", err)
+	}
+	// written to the server list, then its cluster goes: behind, with the reason
+	repman.Conf.ServerSecretKvs = []config.SecretKvConfig{{Name: "osvc", Plugin: config.ConstSecretKvPluginOpenSVC, Enabled: true, Settings: map[string]interface{}{"cluster": "gone"}}}
+	repman.serverKvFullPass()
+	items := repman.serverKvQueue().Take()
+	if len(items) == 0 || items[0].Path != "acme_repman1_paris" {
+		t.Fatalf("items: %v", len(items))
+	}
+	repman.serverKvQueue().Push(items...)
+	if !repman.serverKvRunner().WritePass() || !strings.Contains(repman.ServerKvBehind()["osvc"], "not monitored here") {
+		t.Fatalf("behind: %v", repman.ServerKvBehind())
+	}
+}

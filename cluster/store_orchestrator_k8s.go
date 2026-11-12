@@ -21,10 +21,16 @@ import (
 // <KEY>_OLD history. The Kubernetes client is context-native, so each call is bounded by the
 // store timeout through the context (F2).
 type k8sStore struct {
-	cluster *Cluster
+	cluster   *Cluster
+	namespace string
+	secret    string
+	// prefixed: the key written is <item.Path>_<item.Key> (a server entry), else item.Key
+	prefixed bool
 }
 
-func (cluster *Cluster) k8sStore() *k8sStore { return &k8sStore{cluster: cluster} }
+func (cluster *Cluster) k8sStore() *k8sStore {
+	return &k8sStore{cluster: cluster, namespace: cluster.Name, secret: k8sClusterSecretName(cluster.Name)}
+}
 
 // ReadCurrent reads the value the cluster Secret holds for key, for the drift reconciliation
 // only. The Secret's read side is Data (decoded bytes), StringData being write-only.
@@ -35,7 +41,7 @@ func (s *k8sStore) ReadCurrent(key string) (value string, ok bool, err error) {
 	}
 	ctx, cancel := orchestratorCallContext(context.Background(), s.cluster.storeTimeout())
 	defer cancel()
-	sec, err := client.CoreV1().Secrets(s.cluster.Name).Get(ctx, k8sClusterSecretName(s.cluster.Name), metav1.GetOptions{})
+	sec, err := client.CoreV1().Secrets(s.namespace).Get(ctx, s.secret, metav1.GetOptions{})
 	if err != nil {
 		return "", false, err
 	}
@@ -68,7 +74,7 @@ func (s *k8sStore) writeWith(ctx context.Context, client kubernetes.Interface, i
 	bctx, cancel := orchestratorCallContext(ctx, timeout)
 	defer cancel()
 	var cur map[string][]byte
-	if sec, gerr := client.CoreV1().Secrets(s.cluster.Name).Get(bctx, k8sClusterSecretName(s.cluster.Name), metav1.GetOptions{}); gerr == nil && sec != nil {
+	if sec, gerr := client.CoreV1().Secrets(s.namespace).Get(bctx, s.secret, metav1.GetOptions{}); gerr == nil && sec != nil {
 		cur = sec.Data
 	} else if gerr != nil && !apierrors.IsNotFound(gerr) {
 		// best effort: everything is written and no _OLD is kept, which loses the rollback copy:
@@ -78,7 +84,7 @@ func (s *k8sStore) writeWith(ctx context.Context, client kubernetes.Interface, i
 	}
 	values := make(map[string]string, len(items))
 	for _, it := range items {
-		key, val := it.Key, it.Version.Value
+		key, val := storeKey(s.prefixed, it), it.Version.Value
 		curVal, curKnown := "", false
 		if cur != nil {
 			if b, present := cur[key]; present {
@@ -97,7 +103,7 @@ func (s *k8sStore) writeWith(ctx context.Context, client kubernetes.Interface, i
 	if len(values) == 0 {
 		return nil, nil
 	}
-	if err := s.cluster.k8sPatchSecretValuesRaw(bctx, client, values); err != nil {
+	if err := s.cluster.k8sPatchNamedSecretRaw(bctx, client, s.namespace, s.secret, values); err != nil {
 		return items, err
 	}
 	return nil, nil

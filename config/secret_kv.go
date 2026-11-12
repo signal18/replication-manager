@@ -29,13 +29,34 @@ import (
 // fields go back to their defaults: a cluster no longer declares Vault by a bare path in a
 // credential (a path left in the config is read once as the seed, cluster_secret_kv.go).
 
-// The secret_kv plugins: two. secret_kv-config is built in and always there: the config
-// files and the versioned local file (secret_store.json) as one store, holding every secret
-// and its versions; it is the base store, never an entry of the list. secret_kv-vault has n
-// entries, the list holds only those.
+// The secret_kv plugins. secret_kv-config is built in and always there: the config files and
+// the versioned local file (secret_store.json) as one store, holding every secret and its
+// versions; it is the base store, never an entry of the list. secret_kv-vault has n entries at
+// both levels. secret_kv-opensvc and secret_kv-kubernetes are server entries only: the server
+// secrets in the orchestrator's secret object, through a cluster's connection (at the cluster
+// level the orchestrator's env secret is the reserved "orchestrator" entry, always on).
 const (
-	ConstSecretKvPluginConfig = "secret_kv-config" // built in: the config and the versioned local file
-	ConstSecretKvPluginVault  = "secret_kv-vault"  // a Vault KV, one per entry
+	ConstSecretKvPluginConfig     = "secret_kv-config"     // built in: the config and the versioned local file
+	ConstSecretKvPluginVault      = "secret_kv-vault"      // a Vault KV, one per entry
+	ConstSecretKvPluginOpenSVC    = "secret_kv-opensvc"    // the OpenSVC secret system/sec/repman (server level)
+	ConstSecretKvPluginKubernetes = "secret_kv-kubernetes" // a Kubernetes Secret repman-system (server level)
+)
+
+// The settings of a server secret_kv-opensvc or secret_kv-kubernetes entry.
+const (
+	// ConstSecretKvOrchestratorCluster: the cluster whose orchestrator connection (its agent,
+	// its certificate, its Kubernetes client) carries the server secrets
+	ConstSecretKvOrchestratorCluster = "cluster"
+	// ConstSecretKvKubernetesNamespace: the namespace of the repman-system Secret
+	ConstSecretKvKubernetesNamespace = "namespace"
+)
+
+// The objects the orchestrator server entries write, every instance its own keys in them:
+// <instance name, "/" as "_">_<key>.
+const (
+	ConstSecretKvOpenSVCServerNamespace = "system"
+	ConstSecretKvOpenSVCServerObject    = "repman"
+	ConstSecretKvKubernetesServerSecret = "repman-system"
 )
 
 // ConstSecretKvVaultDefault is the entry the vault-* keys are migrated into.
@@ -48,6 +69,8 @@ type SecretKvPluginManifest struct {
 	Description string         `json:"description"`
 	Tier        string         `json:"tier,omitempty"` // ConstArchiveTierEnterprise, "" for every plan
 	Settings    PluginSettings `json:"settings"`
+	// ServerOnly: an entry of the server's list only, never of a cluster's
+	ServerOnly bool `json:"serverOnly,omitempty"`
 }
 
 // The settings of a secret_kv-vault entry.
@@ -88,6 +111,37 @@ var secretKvManifests = map[string]SecretKvPluginManifest{
 			{Name: ConstSecretKvVaultSecretID, Type: ConstArchiveSettingTypeSecret},
 		},
 	},
+	ConstSecretKvPluginOpenSVC: {
+		Name:        ConstSecretKvPluginOpenSVC,
+		Description: "The OpenSVC secret system/sec/repman, through the agent of a cluster on OpenSVC: keys <instance name>_<key>, readable by the OpenSVC cluster's administrators",
+		ServerOnly:  true,
+		Settings: PluginSettings{
+			{Name: ConstSecretKvOrchestratorCluster, Type: ConstArchiveSettingTypeString},
+		},
+	},
+	ConstSecretKvPluginKubernetes: {
+		Name:        ConstSecretKvPluginKubernetes,
+		Description: "The Kubernetes Secret repman-system in a namespace, through the client of a cluster on Kubernetes: keys <instance name>_<key>",
+		ServerOnly:  true,
+		Settings: PluginSettings{
+			{Name: ConstSecretKvOrchestratorCluster, Type: ConstArchiveSettingTypeString},
+			{Name: ConstSecretKvKubernetesNamespace, Type: ConstArchiveSettingTypeString},
+		},
+	},
+}
+
+// SecretKvPluginAllowedAt: an entry of plugin may be in level's list (secret_kv-config never is).
+func SecretKvPluginAllowedAt(level SecretKvLevel, plugin string) bool {
+	m, ok := secretKvManifests[plugin]
+	if !ok || plugin == ConstSecretKvPluginConfig {
+		return false
+	}
+	return level == SecretKvLevelServer || !m.ServerOnly
+}
+
+// IsOrchestratorSecretKvPlugin: plugin writes through a cluster's orchestrator connection.
+func IsOrchestratorSecretKvPlugin(plugin string) bool {
+	return plugin == ConstSecretKvPluginOpenSVC || plugin == ConstSecretKvPluginKubernetes
 }
 
 // SecretKvPlugin is the manifest of a secret_kv plugin.
@@ -96,11 +150,17 @@ func SecretKvPlugin(name string) (SecretKvPluginManifest, bool) {
 	return m, ok
 }
 
-// SecretKvPlugins lists the secret_kv plugin manifests, by name.
-func SecretKvPlugins() []SecretKvPluginManifest {
+// SecretKvPlugins lists the cluster level's secret_kv plugin manifests, by name.
+func SecretKvPlugins() []SecretKvPluginManifest { return SecretKvPluginsAt(SecretKvLevelCluster) }
+
+// SecretKvPluginsAt lists the manifests of the plugins level's list may hold, and the built-in
+// one, by name.
+func SecretKvPluginsAt(level SecretKvLevel) []SecretKvPluginManifest {
 	out := make([]SecretKvPluginManifest, 0, len(secretKvManifests))
 	for _, m := range secretKvManifests {
-		out = append(out, m)
+		if m.Name == ConstSecretKvPluginConfig || SecretKvPluginAllowedAt(level, m.Name) {
+			out = append(out, m)
+		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out
@@ -261,15 +321,16 @@ func (conf *Config) secretKvByNameAt(level SecretKvLevel, name string) *SecretKv
 	return nil
 }
 
-// cleanSecretKvSettings drops from the entries read what their plugin does not declare. The
-// list holds secret_kv-vault entries only: secret_kv-config is built in, never an entry.
+// cleanSecretKvSettings drops from the entries read what their plugin does not declare, and the
+// entries of a plugin the level does not take (secret_kv-config is built in, never an entry;
+// the orchestrator plugins are the server's).
 func (conf *Config) cleanSecretKvSettings() { conf.cleanSecretKvSettingsAt(SecretKvLevelCluster) }
 
 func (conf *Config) cleanSecretKvSettingsAt(level SecretKvLevel) {
 	list := conf.secretKvsAt(level)
 	kept := (*list)[:0]
 	for _, e := range *list {
-		if e.Plugin == ConstSecretKvPluginVault {
+		if SecretKvPluginAllowedAt(level, e.Plugin) {
 			kept = append(kept, e)
 		}
 	}
@@ -473,7 +534,7 @@ func (conf *Config) SecretKvActiveAt(level SecretKvLevel) []SecretKvConfig {
 	defer secretKvMu.Unlock()
 	var out []SecretKvConfig
 	for _, e := range *conf.secretKvsAt(level) {
-		if e.Enabled && e.Plugin == ConstSecretKvPluginVault {
+		if e.Enabled && SecretKvPluginAllowedAt(level, e.Plugin) {
 			out = append(out, cloneSecretKvs([]SecretKvConfig{e})[0])
 		}
 	}
@@ -499,11 +560,35 @@ func (conf *Config) SecretKvActiveEntryAt(level SecretKvLevel, name string) (Sec
 // <path-prefix>/system/repman/<instance name>, or system/repman/<instance name> with no prefix.
 // The name is InstanceStoreName: never a URL.
 func (conf *Config) ServerSecretKvFolder(e SecretKvConfig, instance string) string {
+	if IsOrchestratorSecretKvPlugin(e.Plugin) {
+		// a flat secret object: the folder is the keys' prefix
+		return ServerOrchestratorKeyPrefix(instance)
+	}
 	folder := "system/repman/" + instance
 	if prefix := strings.Trim(conf.secretKvSetting(&e, ConstSecretKvVaultPathPrefix), "/"); prefix != "" {
 		return prefix + "/" + folder
 	}
 	return folder
+}
+
+// ServerOrchestratorKeyPrefix is the instance's keys' prefix in a flat orchestrator secret:
+// its name with "_" for "/". The name's parts hold letters, digits, '-', '_' and '.', which
+// the OpenSVC and Kubernetes keys both take.
+func ServerOrchestratorKeyPrefix(instance string) string {
+	return strings.ReplaceAll(instance, "/", "_")
+}
+
+// ServerSecretKvLocation says where a server entry puts the instance's secrets, for the API
+// and the GUI (no secret).
+func (conf *Config) ServerSecretKvLocation(e SecretKvConfig, instance string) string {
+	prefix := ServerOrchestratorKeyPrefix(instance)
+	switch e.Plugin {
+	case ConstSecretKvPluginOpenSVC:
+		return ConstSecretKvOpenSVCServerNamespace + "/sec/" + ConstSecretKvOpenSVCServerObject + ", keys " + prefix + "_<key>"
+	case ConstSecretKvPluginKubernetes:
+		return conf.secretKvSetting(&e, ConstSecretKvKubernetesNamespace) + "/secret/" + ConstSecretKvKubernetesServerSecret + ", keys " + prefix + "_<key>"
+	}
+	return conf.ServerSecretKvFolder(e, instance)
 }
 
 // SecretKvFolder is the cluster's folder in a vault entry, below its mount:
@@ -640,8 +725,14 @@ func (conf *Config) PutSecretKvAt(level SecretKvLevel, spec SecretKvSpec, create
 		}
 		e = SecretKvConfig{Name: spec.Name, Plugin: ConstSecretKvPluginVault, Settings: map[string]interface{}{}}
 	}
-	if spec.Plugin != "" && spec.Plugin != ConstSecretKvPluginVault {
-		return "", fmt.Errorf("plugin %q: the list holds %s entries only", spec.Plugin, ConstSecretKvPluginVault)
+	if spec.Plugin != "" {
+		if !SecretKvPluginAllowedAt(level, spec.Plugin) {
+			return "", fmt.Errorf("plugin %q: the %s list does not take it", spec.Plugin, level)
+		}
+		if cur != nil && spec.Plugin != e.Plugin {
+			return "", fmt.Errorf("credential store %s: its plugin is %s, remove it and add another", spec.Name, e.Plugin)
+		}
+		e.Plugin = spec.Plugin
 	}
 	m, _ := SecretKvPlugin(e.Plugin)
 	if err := conf.applyEntrySpec(e.Settings, m.Settings, e.Plugin, spec.Settings, spec.Unset); err != nil {
@@ -650,8 +741,8 @@ func (conf *Config) PutSecretKvAt(level SecretKvLevel, spec SecretKvSpec, create
 	if spec.Enabled != nil {
 		e.Enabled = *spec.Enabled
 	}
-	if strings.TrimSpace(conf.secretKvSetting(&e, ConstSecretKvVaultAddress)) == "" {
-		return "", fmt.Errorf("credential store %s: an address is required", e.Name)
+	if err := conf.requiredSecretKvSettings(&e); err != nil {
+		return "", err
 	}
 	if level == SecretKvLevelCluster && ReservedSecretKvPrefix(conf.secretKvSetting(&e, ConstSecretKvVaultPathPrefix)) {
 		return "", fmt.Errorf("credential store %s: %w", e.Name, ErrSecretKvReservedPrefix)
@@ -663,6 +754,41 @@ func (conf *Config) PutSecretKvAt(level SecretKvLevel, spec SecretKvSpec, create
 		*list = append(*list, e)
 	}
 	return e.Name, nil
+}
+
+// requiredSecretKvSettings: what an entry of its plugin cannot do without.
+func (conf *Config) requiredSecretKvSettings(e *SecretKvConfig) error {
+	var required []string
+	switch e.Plugin {
+	case ConstSecretKvPluginVault:
+		required = []string{ConstSecretKvVaultAddress}
+	case ConstSecretKvPluginOpenSVC:
+		required = []string{ConstSecretKvOrchestratorCluster}
+	case ConstSecretKvPluginKubernetes:
+		required = []string{ConstSecretKvOrchestratorCluster, ConstSecretKvKubernetesNamespace}
+	}
+	for _, name := range required {
+		if strings.TrimSpace(conf.secretKvSetting(e, name)) == "" {
+			return fmt.Errorf("credential store %s: %s is required", e.Name, name)
+		}
+	}
+	if e.Plugin == ConstSecretKvPluginKubernetes && !validKubernetesNamespace(conf.secretKvSetting(e, ConstSecretKvKubernetesNamespace)) {
+		return fmt.Errorf("credential store %s: a namespace is 1 to 63 lower-case letters, digits or '-', starting and ending with a letter or digit", e.Name)
+	}
+	return nil
+}
+
+// validKubernetesNamespace: a DNS-1123 label, what Kubernetes takes as a namespace.
+func validKubernetesNamespace(s string) bool {
+	if s == "" || len(s) > 63 || s[0] == '-' || s[len(s)-1] == '-' {
+		return false
+	}
+	for _, r := range s {
+		if !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '-') {
+			return false
+		}
+	}
+	return true
 }
 
 // SetSecretKvEnabled turns an entry on or off. Off stops its versions; what it holds stays.

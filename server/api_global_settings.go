@@ -907,9 +907,6 @@ func (repman *ReplicationManager) switchRepmanSetting(name string) error {
 	case "instance-name-declined":
 		// scope:"server": on, the GUI no longer asks a sysops or extsysops for the instance's name
 		repman.Conf.InstanceNameDeclined = !repman.Conf.InstanceNameDeclined
-	case "secret-kv-copy-api-credentials":
-		// scope:"server": the admin's, in the global settings
-		repman.Conf.SecretKvCopyApiCredentials = !repman.Conf.SecretKvCopyApiCredentials
 	case "cloud18-login-resume":
 		// scope:"server" — persisted to default.toml by SaveDynamic (value != default). Applied at
 		// once: off removes the kept logins, on keeps them from now on (#2341).
