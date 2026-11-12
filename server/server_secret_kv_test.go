@@ -421,7 +421,19 @@ func TestServerKvRotationSaysStoresBehind(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(res.StoresBehind) != 1 || res.StoresBehind[0] != "srv-a" {
-		t.Fatalf("stores behind: %v", res.StoresBehind)
+	if res.StoresBehindCount != 1 || len(res.StoresBehind) != 1 || res.StoresBehind[0] != "srv-a" {
+		t.Fatalf("stores behind: %d %v", res.StoresBehindCount, res.StoresBehind)
+	}
+	// without the server credentials grant on every cluster: counted, never named
+	for _, cl := range repman.Clusters {
+		cl.Conf.APIUsersACLAllow = "admin:cluster db proxy prov global grant show,ops:show"
+		cl.LoadAPIUsers()
+	}
+	res, err = repman.rotateAPIUserPassword(repman.Clusters["c1"], "ops", "ops")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.StoresBehindCount != 1 || len(res.StoresBehind) != 0 {
+		t.Fatalf("named to a non-owner: %d %v", res.StoresBehindCount, res.StoresBehind)
 	}
 }

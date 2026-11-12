@@ -34994,11 +34994,14 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "storesBehind": {
-                    "description": "StoresBehind: the server credential stores already behind when the instance's list was\nrotated (GWARN024): they may still hold the compromised password",
+                    "description": "StoresBehind: the server credential stores already known behind when the instance's list\nwas rotated (GWARN024): they may still hold the compromised password. Named for a holder\nof the server credentials grant on every cluster, counted for anyone else (the entries are\nthe owners'). Empty says no store was known behind, not that every store has the new list:\nthe new version is written by the next pass.",
                     "type": "array",
                     "items": {
                         "type": "string"
                     }
+                },
+                "storesBehindCount": {
+                    "type": "integer"
                 },
                 "tokensError": {
                     "type": "string"

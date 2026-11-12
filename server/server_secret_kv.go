@@ -43,7 +43,7 @@ type serverSecretKv struct {
 
 // errServerKvNotNamed: the instance's name is not complete, its folder in a shared store is
 // unknown, nothing is written.
-const errServerKvNotNamed = "the instance's name is not complete (company, hostname, location): nothing is written"
+const errServerKvNotNamed = "the instance's name is not complete (company, hostname, location) or a part of it is not valid (1 to 63 letters, digits, '-', '_' or '.', not starting or ending with '.' or '_'): nothing is written"
 
 func (repman *ReplicationManager) serverKvQueue() *credstore.StoreQueue {
 	k := &repman.serverSecretKv

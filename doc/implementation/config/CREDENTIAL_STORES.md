@@ -594,8 +594,15 @@ sponsor or member never reaches them.
     Secrets there then reads the server secrets.
   - **Drift read**: `ReadCurrent` (the WARN0275 reconciliation) is the cluster sinks' only; a
     server store's writer refuses it (`errPrefixedReadCurrent`).
-  - **The rotation's answer** names the server stores already behind (`storesBehind`), which may
-    still hold the compromised password; the GUI shows it with the new password.
+  - **The rotation's answer** counts the server stores already known behind
+    (`storesBehindCount`), which may still hold the compromised password, and names them
+    (`storesBehind`) only to a holder of the server credentials grant on every cluster (the
+    entries are the owners', as for `WARN0320`). It is read before the new version's pass: an
+    empty answer says no store was known behind, not that every store holds the new list; the
+    GUI says the stores get it at their next pass, and `GWARN024` follows it.
+  - **The name rule tightened**: a name part starting or ending with `_`, valid before, is now
+    "not named": nothing is written and every server store is behind with the reason (the name
+    is incomplete or a part is invalid). Change the part in the instance's name window.
   - **Upgrade**: the removed copy wrote `<api host>_api-credentials` in `system/sec/repman`; that
     key stops changing. An OpenSVC server store writes `<prefix>_api-credentials` instead:
     whatever read the old key reads the new one. A config file still holding

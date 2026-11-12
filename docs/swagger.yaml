@@ -5723,11 +5723,16 @@ definitions:
         type: string
       storesBehind:
         description: |-
-          StoresBehind: the server credential stores already behind when the instance's list was
-          rotated (GWARN024): they may still hold the compromised password
+          StoresBehind: the server credential stores already known behind when the instance's list
+          was rotated (GWARN024): they may still hold the compromised password. Named for a holder
+          of the server credentials grant on every cluster, counted for anyone else (the entries are
+          the owners'). Empty says no store was known behind, not that every store has the new list:
+          the new version is written by the next pass.
         items:
           type: string
         type: array
+      storesBehindCount:
+        type: integer
       tokensError:
         type: string
       tokensRevoked:

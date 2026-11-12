@@ -34,9 +34,13 @@ type UserRotateResult struct {
 	TokensRevoked int      `json:"tokensRevoked"`
 	TokensError   string   `json:"tokensError,omitempty"`
 	PersistError  string   `json:"persistError,omitempty"`
-	// StoresBehind: the server credential stores already behind when the instance's list was
-	// rotated (GWARN024): they may still hold the compromised password
-	StoresBehind []string `json:"storesBehind,omitempty"`
+	// StoresBehind: the server credential stores already known behind when the instance's list
+	// was rotated (GWARN024): they may still hold the compromised password. Named for a holder
+	// of the server credentials grant on every cluster, counted for anyone else (the entries are
+	// the owners'). Empty says no store was known behind, not that every store has the new list:
+	// the new version is written by the next pass.
+	StoresBehind      []string `json:"storesBehind,omitempty"`
+	StoresBehindCount int      `json:"storesBehindCount,omitempty"`
 }
 
 // rotatedPasswordLength: a rotation bans a user who may be compromised, so a long password.
@@ -98,8 +102,11 @@ func (repman *ReplicationManager) handlerMuxUserRotatePassword(w http.ResponseWr
 	if res.PersistError != "" {
 		tokens += ", " + res.PersistError
 	}
-	if len(res.StoresBehind) > 0 {
-		tokens += ", server credential stores behind: " + strings.Join(res.StoresBehind, ",")
+	if res.StoresBehindCount > 0 {
+		tokens += fmt.Sprintf(", %d server credential store(s) behind", res.StoresBehindCount)
+		if len(res.StoresBehind) > 0 {
+			tokens += ": " + strings.Join(res.StoresBehind, ",")
+		}
 	}
 	repman.logSecurityEvent("api_user_password_rotated", res.Username, r.RemoteAddr,
 		fmt.Sprintf("Password of %s rotated by %s on %s (%s list), %s",
@@ -219,10 +226,14 @@ func (repman *ReplicationManager) rotateAPIUserPassword(cl *cluster.Cluster, use
 	// store (Vault, OpenSVC, Kubernetes) through the server chain's hook, a store behind says so
 	// (GWARN024); a cluster's own list goes to that cluster's stores
 	if scope == cluster.APIUserScopeInstance {
-		for name := range repman.ServerKvBehind() {
-			res.StoresBehind = append(res.StoresBehind, name)
+		behind := repman.ServerKvBehind()
+		res.StoresBehindCount = len(behind)
+		if len(behind) > 0 && repman.holdsServerCredentials(by) == nil {
+			for name := range behind {
+				res.StoresBehind = append(res.StoresBehind, name)
+			}
+			sort.Strings(res.StoresBehind)
 		}
-		sort.Strings(res.StoresBehind)
 	}
 	return res, nil
 }
