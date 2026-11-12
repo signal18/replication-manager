@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/signal18/replication-manager/config"
@@ -25,13 +26,20 @@ import (
 // ConstServerKvMovedTo is the key left at the old place, its value the new name.
 const ConstServerKvMovedTo = "moved-to"
 
-// serverKvMove is an entry's move in progress: where to, and how many versions are written
-// (a retry goes on from there, not from the oldest).
+// serverKvMove is an entry's move in progress: where to, the versions already written there (a
+// retry skips them, whatever the list became meanwhile), and whether a newer name made it moot.
+// One goroutine at most per entry: a move is never replaced while it runs.
 type serverKvMove struct {
-	to      string
-	done    int
-	running bool
-	lastTry time.Time
+	to        string
+	written   map[string]bool
+	running   bool
+	cancelled bool
+	lastTry   time.Time
+}
+
+// serverKvVersionID names one version of one secret, for the move's progress.
+func serverKvVersionID(it credstore.StoreItem) string {
+	return it.Key + "\x00" + it.Version.At.UTC().Format(time.RFC3339Nano) + "\x00" + fmt.Sprint(it.Version.By)
 }
 
 // serverKvMoving: the entry holds the secrets under another name than the instance's now.
@@ -89,9 +97,18 @@ func (repman *ReplicationManager) checkServerKvMoves() {
 			k.moves = map[string]*serverKvMove{}
 		}
 		m := k.moves[e.Name]
-		if m == nil || m.to != name {
-			// a new move, or the name changed again meanwhile: from the oldest
-			m = &serverKvMove{to: name}
+		if m != nil && m.to != name {
+			if m.running {
+				// renamed again during the move: it stops at its next write and commits
+				// nothing; the next tick starts the move to the newest name
+				m.cancelled = true
+				k.mu.Unlock()
+				continue
+			}
+			m = nil
+		}
+		if m == nil {
+			m = &serverKvMove{to: name, written: map[string]bool{}}
 			k.moves[e.Name] = m
 		}
 		start := !m.running && time.Since(m.lastTry) >= retry
@@ -103,85 +120,128 @@ func (repman *ReplicationManager) checkServerKvMoves() {
 		if start {
 			if repman.ServerKvBehind()[e.Name] == "" {
 				// behind until moved: the new place does not hold the secrets yet
-				repman.setServerKvBehind(e.Name, fmt.Sprintf("moving from %s to %s", e.WrittenAs, name))
+				repman.setServerKvBehind(e.Name, fmt.Sprintf("%s %s to %s", serverKvMovingFrom, e.WrittenAs, name))
 			}
-			go repman.moveServerKv(e, name)
+			go repman.moveServerKv(e, m)
 		}
 	}
 }
 
-// moveServerKv moves entry e from its WrittenAs name to name. Each version is one write, in
-// order, the first failure ending the attempt (the next one goes on from it).
-func (repman *ReplicationManager) moveServerKv(e config.SecretKvConfig, name string) {
+// serverKvMovingFrom starts the behind reason of a move, the only one the move clears.
+const serverKvMovingFrom = "moving from"
+
+// moveServerKv moves entry e from its WrittenAs name to m.to. Each version is one write, in
+// order, the first failure ending the attempt (the next one skips what is written). It commits
+// (written-as takes the new name) only when the move was not cancelled by a newer name and the
+// entry still says it holds the secrets where the move started (an edit of its place forgets
+// that, PutSecretKvAt).
+func (repman *ReplicationManager) moveServerKv(e config.SecretKvConfig, m *serverKvMove) {
 	k := &repman.serverSecretKv
-	from := e.WrittenAs
-	err := repman.moveServerKvOnce(e, from, name)
+	from, name := e.WrittenAs, m.to
+	err := repman.moveServerKvOnce(e, m, from)
 	k.mu.Lock()
-	if m := k.moves[e.Name]; m != nil {
-		m.running = false
-		if err == nil && m.to == name {
+	m.running = false
+	cancelled := m.cancelled
+	if err == nil || cancelled {
+		if k.moves[e.Name] == m {
 			delete(k.moves, e.Name)
 		}
 	}
 	k.mu.Unlock()
+	if cancelled {
+		repman.Logrus.Infof("Server credential store %s: the move to %s stopped, the instance was renamed again", e.Name, name)
+		return
+	}
 	if err != nil {
-		repman.setServerKvBehind(e.Name, fmt.Sprintf("moving from %s to %s: %s", from, name, err))
+		repman.setServerKvBehind(e.Name, fmt.Sprintf("%s %s to %s: %s", serverKvMovingFrom, from, name, err))
+		return
+	}
+	cur, ok := repman.serverKvEntry(e.Name)
+	if !ok || cur.WrittenAs != from {
+		repman.Logrus.Infof("Server credential store %s: changed during the move to %s, not recorded as moved", e.Name, name)
+		repman.clearServerKvMoving(e.Name)
 		return
 	}
 	if repman.Conf.SetSecretKvWrittenAsAt(config.SecretKvLevelServer, e.Name, name) {
 		repman.Save()
+		if repman.serverSecretKvsPinned() {
+			repman.Logrus.Warnf("Server credential store %s: moved to %s, but the list is set by a config file (server-secret-kv): where it holds the secrets is not saved, a rename while repman is stopped will not be moved", e.Name, name)
+		}
 	}
-	repman.setServerKvBehind(e.Name, "")
+	repman.clearServerKvMoving(e.Name)
 	repman.Logrus.Infof("Server credential store %s: the server secrets moved from %s to %s", e.Name, from, name)
 	// what changed during the move, in its place
 	repman.startServerKvPass()
 }
 
-func (repman *ReplicationManager) moveServerKvOnce(e config.SecretKvConfig, from, name string) error {
+// clearServerKvMoving clears entry's behind state when it is the move's own.
+func (repman *ReplicationManager) clearServerKvMoving(entry string) {
+	if strings.HasPrefix(repman.ServerKvBehind()[entry], serverKvMovingFrom) {
+		repman.setServerKvBehind(entry, "")
+	}
+}
+
+// serverKvEntry is the server entry name, enabled or not.
+func (repman *ReplicationManager) serverKvEntry(name string) (config.SecretKvConfig, bool) {
+	for _, e := range repman.Conf.SecretKvListAt(config.SecretKvLevelServer) {
+		if e.Name == name {
+			return e, true
+		}
+	}
+	return config.SecretKvConfig{}, false
+}
+
+func (repman *ReplicationManager) moveServerKvOnce(e config.SecretKvConfig, m *serverKvMove, from string) error {
 	w := repman.serverKvWriter(e.Name)
 	if w == nil {
 		return fmt.Errorf("the store is off")
 	}
-	timeout := credstore.Timeout(time.Duration(repman.Conf.SecretKvWriteTimeout) * time.Second)
-	items := repman.serverKvMoveItems(e.Name, repman.Conf.ServerSecretKvFolder(e, name))
 	k := &repman.serverSecretKv
-	k.mu.Lock()
-	done := 0
-	if m := k.moves[e.Name]; m != nil && m.to == name {
-		done = m.done
-	}
-	k.mu.Unlock()
-	for i := done; i < len(items); i++ {
-		if repman.exit.Load() {
-			return fmt.Errorf("stopping")
+	timeout := credstore.Timeout(time.Duration(repman.Conf.SecretKvWriteTimeout) * time.Second)
+	for _, it := range repman.serverKvMoveItems(e.Name, repman.Conf.ServerSecretKvFolder(e, m.to)) {
+		id := serverKvVersionID(it)
+		k.mu.Lock()
+		done, cancelled := m.written[id], m.cancelled
+		k.mu.Unlock()
+		if cancelled || repman.exit.Load() {
+			return fmt.Errorf("stopped")
 		}
-		if _, err := w.WriteAll(context.Background(), items[i:i+1], timeout); err != nil {
+		if done {
+			continue
+		}
+		if _, err := w.WriteAll(context.Background(), []credstore.StoreItem{it}, timeout); err != nil {
 			return err
 		}
 		k.mu.Lock()
-		if m := k.moves[e.Name]; m != nil && m.to == name {
-			m.done = i + 1
-		}
+		m.written[id] = true
 		k.mu.Unlock()
 	}
 	marker := credstore.StoreItem{Entry: e.Name, Path: repman.Conf.ServerSecretKvFolder(e, from), Key: ConstServerKvMovedTo,
-		Version: credstore.Version{Value: name, At: time.Now().UTC(), By: repman.Conf.ArbitrationSasUniqueId}}
+		Version: credstore.Version{Value: m.to, At: time.Now().UTC(), By: repman.Conf.ArbitrationSasUniqueId}}
 	if _, err := w.WriteAll(context.Background(), []credstore.StoreItem{marker}, timeout); err != nil {
-		return fmt.Errorf("%s at the old place: %w", ConstServerKvMovedTo, err)
+		// the secrets are at the new place: the marker is information, a read-only old place
+		// must not hold the entry behind forever
+		repman.Logrus.Warnf("Server credential store %s: the secrets are at %s, but %s could not be written at the old place %s: %s", e.Name, m.to, ConstServerKvMovedTo, from, err)
 	}
 	return nil
 }
 
 // recordServerKvWrittenAs: an entry's first successful write records the name it holds the
-// secrets under.
-func (repman *ReplicationManager) recordServerKvWrittenAs(entry string) {
+// secrets under, from where the write went (the name may have changed since it was queued).
+func (repman *ReplicationManager) recordServerKvWrittenAs(entry string, items []credstore.StoreItem) {
+	e, ok := repman.Conf.SecretKvActiveEntryAt(config.SecretKvLevelServer, entry)
+	if !ok || e.WrittenAs != "" || len(items) == 0 {
+		return
+	}
 	name, named := repman.Conf.InstanceStoreName()
 	if !named {
 		return
 	}
-	e, ok := repman.Conf.SecretKvActiveEntryAt(config.SecretKvLevelServer, entry)
-	if !ok || e.WrittenAs != "" {
-		return
+	at := repman.Conf.ServerSecretKvFolder(e, name)
+	for _, it := range items {
+		if it.Path != at {
+			return // written under another name: the next write records it
+		}
 	}
 	if repman.Conf.SetSecretKvWrittenAsAt(config.SecretKvLevelServer, entry, name) {
 		repman.Save()

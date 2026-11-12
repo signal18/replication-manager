@@ -33,6 +33,8 @@ type StoreRunner struct {
 	// last successful write
 	Behind  func(entry, why string)
 	Written func(entry string)
+	// WrittenItems, when set, gets the items an entry's successful write held (where they went)
+	WrittenItems func(entry string, items []StoreItem)
 	// AfterWrite runs after a pass where nothing failed (the owner's drop bookkeeping)
 	AfterWrite func()
 	Running    *atomic.Bool
@@ -111,6 +113,9 @@ func (r *StoreRunner) WritePass() bool {
 			r.Behind(name, "")
 			if r.Written != nil {
 				r.Written(name)
+			}
+			if r.WrittenItems != nil {
+				r.WrittenItems(name, items)
 			}
 		}(name, w, byEntry[name])
 	}

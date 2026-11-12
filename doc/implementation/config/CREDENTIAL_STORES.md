@@ -616,18 +616,30 @@ sponsor or member never reaches them.
     store (the current value alone when it keeps none), never read from the old place, is
     written at the new place, one write per version, stopping at the first failure;
   - then `moved-to` = the new name at the old place (a Vault key `<old folder>/moved-to`, an
-    orchestrator key `<old prefix>_moved-to`); what the old place holds stays;
-  - then `written-as` takes the new name (saved), the entry is no longer behind, and a full pass
-    writes what changed meanwhile.
+    orchestrator key `<old prefix>_moved-to`); what the old place holds stays. The marker is
+    information: if it cannot be written (a read-only old place) a WARN says so, and the move
+    still ends, the secrets being at the new place;
+  - then `written-as` takes the new name (saved), the move's own behind reason is cleared (not
+    another one), and a full pass writes what changed meanwhile.
+  - One move at most per entry: a rename during a move cancels it (it stops at its next write
+    and commits nothing) and the next tick starts the move to the newest name. A move commits
+    only when the entry still says it holds the secrets where the move started: an edit of its
+    place meanwhile forgets `written-as`, and the move leaves it so.
+  - Progress is the set of versions written (secret, time, writer), so a retry skips them
+    whatever the list became meanwhile (a version added, a version pruned).
+  - The first write records `written-as` from where the write went (the items' folder,
+    `StoreRunner.WrittenItems`), never the name of the moment: a write queued under the old name
+    and done after the rename records nothing.
   Until then the entry is behind (`GWARN024`, `WARN0320`: "moving from X to Y", or the failure)
   and the ordinary writes skip it (`serverKvItems`), so the newest version is never written
-  before the older ones. A failed attempt starts again after `secret-kv-retry-interval`, from the
-  version it stopped at (kept in memory: after a restart it starts from the oldest, which adds
+  before the older ones. A failed attempt starts again after `secret-kv-retry-interval`, skipping the
+  versions written (kept in memory: after a restart it starts from the oldest, which adds
   versions again in a Vault's history, never loses one). A change of the entry's place (address,
   mount, prefix, cluster, namespace; not its login) forgets `written-as`: another place has
   nothing to move from.
   Limits: a list set by a config file (`server-secret-kv` pinned) is not saved, so its
-  `written-as` lives until the restart, and a rename while repman is down is then not moved; a
+  `written-as` lives until the restart (a WARN says so at the move), and a rename while repman
+  is down is then not moved; a
   cluster's own rename does not move its cluster secrets yet.
 - **Not yet:** the Cloud18 vault offered at the server level by the registration (a sysops adds
   it as an entry with `auth = jwt` meanwhile), the move of a renamed cluster's secrets.

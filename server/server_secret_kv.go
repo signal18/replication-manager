@@ -73,8 +73,8 @@ func (repman *ReplicationManager) serverKvRunner() *credstore.StoreRunner {
 			k.mu.Lock()
 			k.lastWritten[name] = time.Now()
 			k.mu.Unlock()
-			repman.recordServerKvWrittenAs(name)
 		},
+		WrittenItems: repman.recordServerKvWrittenAs,
 		Running: &k.running,
 		Due:     &k.passDue,
 	}

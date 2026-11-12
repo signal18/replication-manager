@@ -58,10 +58,11 @@ func TestServerKvMoveOnRename(t *testing.T) {
 	// the store fails: behind, the move goes on later from where it stopped
 	server.SetFail(true)
 	e, _ := repman.Conf.SecretKvActiveEntryAt(config.SecretKvLevelServer, "srv-a")
+	m := &serverKvMove{to: "acme/repman2/paris", written: map[string]bool{}, running: true}
 	repman.serverSecretKv.mu.Lock()
-	repman.serverSecretKv.moves = map[string]*serverKvMove{"srv-a": {to: "acme/repman2/paris", running: true}}
+	repman.serverSecretKv.moves = map[string]*serverKvMove{"srv-a": m}
 	repman.serverSecretKv.mu.Unlock()
-	repman.moveServerKv(e, "acme/repman2/paris")
+	repman.moveServerKv(e, m)
 	if why := repman.ServerKvBehind()["srv-a"]; !strings.Contains(why, "moving from acme/repman1/paris to acme/repman2/paris") {
 		t.Fatalf("behind %q", why)
 	}
@@ -71,9 +72,9 @@ func TestServerKvMoveOnRename(t *testing.T) {
 
 	server.SetFail(false)
 	repman.serverSecretKv.mu.Lock()
-	repman.serverSecretKv.moves["srv-a"].running = true
+	m.running = true
 	repman.serverSecretKv.mu.Unlock()
-	repman.moveServerKv(e, "acme/repman2/paris")
+	repman.moveServerKv(e, m)
 	if why := repman.ServerKvBehind()["srv-a"]; why != "" {
 		t.Fatalf("still behind: %q", why)
 	}
@@ -128,5 +129,91 @@ func TestServerKvWrittenAsSavedAndForgotten(t *testing.T) {
 	}
 	if conf.SecretKvListAt(config.SecretKvLevelServer)[0].WrittenAs != "" {
 		t.Fatal("a new prefix kept the old place")
+	}
+}
+
+// serverKvMovedSetup is a store written under acme/repman1/paris, the instance then renamed to
+// acme/repman2/paris.
+func serverKvMovedSetup(t *testing.T, server *vaultfake.Vault) (*ReplicationManager, config.SecretKvConfig) {
+	t.Helper()
+	repman := serverKvTestManager(t, true, server)
+	repman.serverKvQueue().Take()
+	repman.serverKvFullPass()
+	if repman.serverKvRunner().WritePass() {
+		t.Fatalf("first write: %v", repman.ServerKvBehind())
+	}
+	repman.Conf.InstanceSubDomain = "repman2"
+	e, _ := repman.Conf.SecretKvActiveEntryAt(config.SecretKvLevelServer, "srv-a")
+	return repman, e
+}
+
+// Renamed again during a move: the running move is never replaced nor doubled; it stops and
+// commits nothing, and the next one goes to the newest name.
+func TestServerKvMoveRenamedAgain(t *testing.T) {
+	server := vaultfake.New("kv", "role", "sid")
+	defer server.Close()
+	repman, e := serverKvMovedSetup(t, server)
+	repman.serverSecretKv.passDue.Store(false)
+	m := &serverKvMove{to: "acme/repman2/paris", written: map[string]bool{}, running: true}
+	repman.serverSecretKv.mu.Lock()
+	repman.serverSecretKv.moves = map[string]*serverKvMove{"srv-a": m}
+	repman.serverSecretKv.mu.Unlock()
+	repman.Conf.InstanceSubDomain = "repman3"
+	repman.checkServerKvMoves()
+	repman.serverSecretKv.mu.Lock()
+	same, cancelled := repman.serverSecretKv.moves["srv-a"] == m, m.cancelled
+	repman.serverSecretKv.mu.Unlock()
+	if !same || !cancelled {
+		t.Fatalf("the running move was replaced (%v) or not cancelled (%v)", !same, cancelled)
+	}
+	repman.moveServerKv(e, m)
+	if got := serverKvWrittenAs(repman, "srv-a"); got != "acme/repman1/paris" {
+		t.Fatalf("a cancelled move committed: %q", got)
+	}
+	if strings.Contains(strings.Join(server.Paths(), " "), "repman2") {
+		t.Fatalf("the cancelled move wrote: %v", server.Paths())
+	}
+	// the next move goes to the newest name
+	m2 := &serverKvMove{to: "acme/repman3/paris", written: map[string]bool{}, running: true}
+	repman.serverSecretKv.mu.Lock()
+	repman.serverSecretKv.moves = map[string]*serverKvMove{"srv-a": m2}
+	repman.serverSecretKv.mu.Unlock()
+	repman.moveServerKv(e, m2)
+	if got := serverKvWrittenAs(repman, "srv-a"); got != "acme/repman3/paris" {
+		t.Fatalf("written as %q", got)
+	}
+}
+
+// The entry's place edited during the move: the move does not say the new place holds the
+// secrets.
+func TestServerKvMoveEditedMeanwhile(t *testing.T) {
+	server := vaultfake.New("kv", "role", "sid")
+	defer server.Close()
+	repman, e := serverKvMovedSetup(t, server)
+	if _, err := repman.Conf.PutSecretKvAt(config.SecretKvLevelServer, config.SecretKvSpec{Name: "srv-a", Settings: map[string]interface{}{"path-prefix": "other"}}, false); err != nil {
+		t.Fatal(err)
+	}
+	m := &serverKvMove{to: "acme/repman2/paris", written: map[string]bool{}, running: true}
+	repman.moveServerKv(e, m)
+	if got := serverKvWrittenAs(repman, "srv-a"); got != "" {
+		t.Fatalf("recorded as moved after an edit: %q", got)
+	}
+}
+
+// A write queued under the old name and done after the rename records nothing.
+func TestServerKvWrittenAsFromWhereItWent(t *testing.T) {
+	server := vaultfake.New("kv", "role", "sid")
+	defer server.Close()
+	repman := serverKvTestManager(t, true, server)
+	e, _ := repman.Conf.SecretKvActiveEntryAt(config.SecretKvLevelServer, "srv-a")
+	old := repman.serverKvItems("srv-a", "mail-smtp-password", repman.serverSecretVersion("api-credentials"), false)
+	repman.Conf.InstanceSubDomain = "repman2"
+	repman.recordServerKvWrittenAs(e.Name, old)
+	if got := serverKvWrittenAs(repman, "srv-a"); got != "" {
+		t.Fatalf("recorded the new name for a write at the old place: %q", got)
+	}
+	repman.recordServerKvWrittenAs(e.Name, repman.serverKvItems("srv-a", "api-credentials", repman.serverSecretVersion("api-credentials"), false))
+	if got := serverKvWrittenAs(repman, "srv-a"); got != "acme/repman2/paris" {
+		t.Fatalf("written as %q", got)
 	}
 }
