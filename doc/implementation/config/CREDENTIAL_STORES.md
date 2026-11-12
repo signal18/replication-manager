@@ -536,9 +536,12 @@ sponsor or member never reaches them.
 - **Path:** `<mount>/<path-prefix>/system/repman/<instance name>/<key>`
   (`ServerSecretKvFolder`), the name being `InstanceStoreName`. While the name is not complete,
   or a part of it (a registered one included) is not a valid folder (`ValidInstanceNamePart`),
-  nothing is written and the entry is behind. The top-level folder `system` is the server
-  level's: a cluster entry whose `path-prefix` is `system` or under it is refused
-  (`ErrSecretKvReservedPrefix`), so the separation does not rest on the Vault policies alone. Two of a client's instances collide only if the
+  nothing is written and the entry is behind. `system` is the server level's: a cluster entry
+  whose `path-prefix` holds a segment `system` (any case), `.`, `..` or an empty one is refused
+  (`ReservedSecretKvPrefix`, `ErrSecretKvReservedPrefix`) through the API (`PutSecretKvAt`) and a
+  peer's event (`SetSecretKvSetting`), and switched off when read from a config file, so a cluster
+  folder never reaches `<prefix>/system/repman/...` whatever the server entry's own prefix, and
+  the separation does not rest on the Vault policies alone. Two of a client's instances collide only if the
   client gives them the same prefix and the same name; on the Cloud18 vault the registration
   keeps the names apart.
 - **Writes:** the server chain's `OnSet` hook queues every change of a server secret (a

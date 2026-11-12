@@ -279,6 +279,10 @@ func (conf *Config) cleanSecretKvSettingsAt(level SecretKvLevel) {
 		if e.Settings == nil {
 			e.Settings = map[string]interface{}{}
 		}
+		if level == SecretKvLevelCluster && ReservedSecretKvPrefix(conf.secretKvSetting(e, ConstSecretKvVaultPathPrefix)) {
+			// read from a config file: kept, switched off, never written under a server folder
+			e.Enabled = false
+		}
 		m, ok := SecretKvPlugin(e.Plugin)
 		if !ok {
 			continue
@@ -573,6 +577,8 @@ func (conf *Config) SetSecretKvSetting(entry, setting, value string, unset bool)
 			delete(e.Settings, setting)
 		case known && !declared:
 			return fmt.Errorf("plugin %s has no setting %s", e.Plugin, setting)
+		case setting == ConstSecretKvVaultPathPrefix && ReservedSecretKvPrefix(value):
+			return fmt.Errorf("credential store %s: %w", entry, ErrSecretKvReservedPrefix)
 		case known && st.Type == ConstArchiveSettingTypeSecret:
 			e.Settings[setting] = value
 		case known:
@@ -697,12 +703,22 @@ func (conf *Config) DeleteSecretKvAt(level SecretKvLevel, name string) error {
 
 // ErrSecretKvReservedPrefix refuses a cluster entry whose folder would be under the server's:
 // system/ is the server level's (system/repman/<instance name>), a cluster never writes there.
-var ErrSecretKvReservedPrefix = errors.New("the path-prefix system is the server level's (system/repman/<instance name>): a cluster's secrets never go there")
+var ErrSecretKvReservedPrefix = errors.New("a path-prefix holding a segment system, . or .. is refused at the cluster level: system/repman/<instance name> is the server level's, a cluster's secrets never go there")
 
-// ReservedSecretKvPrefix: a cluster entry's path-prefix that reaches the server's folder.
+// ReservedSecretKvPrefix: a cluster entry's path-prefix that could reach a server folder,
+// <prefix>/system/repman/<instance name> whatever the server entry's own prefix: any segment
+// system (in any case), or a segment . or .. or empty (a path that moves elsewhere than it says).
 func ReservedSecretKvPrefix(prefix string) bool {
 	prefix = strings.Trim(strings.TrimSpace(prefix), "/")
-	return prefix == "system" || strings.HasPrefix(prefix, "system/")
+	if prefix == "" {
+		return false
+	}
+	for _, seg := range strings.Split(prefix, "/") {
+		if seg == "" || seg == "." || seg == ".." || strings.EqualFold(seg, "system") {
+			return true
+		}
+	}
+	return false
 }
 
 // ErrSecretKvOfferManaged refuses a change of an entry a marketplace offer gives: the

@@ -173,7 +173,7 @@ func TestServerKvToml(t *testing.T) {
 // the cluster level, allowed at the server level.
 func TestServerKvFolderReservedForTheServer(t *testing.T) {
 	conf := serverLevelConf(t.TempDir(), "")
-	for _, prefix := range []string{"system", "system/repman", "/system/repman/acme/"} {
+	for _, prefix := range []string{"system", "system/repman", "/system/repman/acme/", "tenant/system/repman", "System", "./system", "a/../b", "a//system"} {
 		_, err := conf.PutSecretKvAt(config.SecretKvLevelCluster, config.SecretKvSpec{Name: "client", Settings: map[string]interface{}{"address": "https://vault.example", "path-prefix": prefix}}, true)
 		if !errors.Is(err, config.ErrSecretKvReservedPrefix) {
 			t.Fatalf("cluster prefix %q: %v", prefix, err)
@@ -263,5 +263,19 @@ func TestServerKvNeverInAClusterConfig(t *testing.T) {
 	got := repman.GetClusterConfig(v, map[string]interface{}{}, map[string]interface{}{}, "c9", base)
 	if got.ServerSecretKvs != nil {
 		t.Fatalf("a cluster holds server stores: %+v", got.ServerSecretKvs)
+	}
+}
+
+// The same rule on a peer's event and on an entry read from a config file.
+func TestServerKvReservedPrefixEveryPath(t *testing.T) {
+	conf := serverLevelConf(t.TempDir(), "")
+	if err := conf.SetSecretKvSetting("client", "path-prefix", "tenant/system/repman", false); !errors.Is(err, config.ErrSecretKvReservedPrefix) {
+		t.Fatalf("peer event: %v", err)
+	}
+	conf.SecretKvs = []config.SecretKvConfig{{Name: "fromfile", Plugin: config.ConstSecretKvPluginVault, Enabled: true,
+		Settings: map[string]interface{}{"address": "https://vault.example", "path-prefix": "p/system"}}}
+	conf.MigrateSecretKvs()
+	if len(conf.SecretKvActive()) != 0 {
+		t.Fatal("a file entry under a server folder is active")
 	}
 }
