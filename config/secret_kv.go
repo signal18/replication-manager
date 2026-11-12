@@ -209,6 +209,11 @@ type SecretKvConfig struct {
 	Offer string `mapstructure:"offer" toml:"offer" json:"-"`
 	// OfferInfo is the offer as the catalogue describes it, for the API (never saved)
 	OfferInfo *SecretKvOffer `mapstructure:"-" toml:"-" json:"offer"`
+	// WrittenAs is the instance's name a server entry holds the server secrets under, set at
+	// its first write: when the name changes (a licence loaded, a registration, the name
+	// window) the secrets are moved from there (CREDENTIAL_STORES.md "The move"). Saved, so a
+	// restart or the other monitor knows where they are.
+	WrittenAs string `mapstructure:"written-as" toml:"written-as" json:"-"`
 }
 
 // SecretKvOffer is the marketplace vault offer an entry comes from, as the API gives it.
@@ -498,6 +503,9 @@ func (conf *Config) SecretKvsTomlAt(level SecretKvLevel, section string) (string
 		if e.Offer != "" {
 			head["offer"] = e.Offer
 		}
+		if e.WrittenAs != "" {
+			head["written-as"] = e.WrittenAs
+		}
 		settings := make(map[string]interface{}, len(e.Settings))
 		for k, v := range e.Settings {
 			if e.isSecret(k) && !strings.HasPrefix(fmt.Sprintf("%v", v), "hash_") {
@@ -742,8 +750,14 @@ func (conf *Config) PutSecretKvAt(level SecretKvLevel, spec SecretKvSpec, create
 		e.Plugin = spec.Plugin
 	}
 	m, _ := SecretKvPlugin(e.Plugin)
+	placeBefore := conf.secretKvPlace(&e)
 	if err := conf.applyEntrySpec(e.Settings, m.Settings, e.Plugin, spec.Settings, spec.Unset); err != nil {
 		return "", err
+	}
+	if conf.secretKvPlace(&e) != placeBefore {
+		// another address, mount, prefix, cluster or namespace is another place: nothing to
+		// move from, the next write records the name again
+		e.WrittenAs = ""
 	}
 	if spec.Enabled != nil {
 		e.Enabled = *spec.Enabled
@@ -795,6 +809,29 @@ func validKubernetesNamespace(s string) bool {
 			return false
 		}
 	}
+	return true
+}
+
+// secretKvPlace is what says where an entry writes, its login aside.
+func (conf *Config) secretKvPlace(e *SecretKvConfig) string {
+	var b strings.Builder
+	for _, name := range []string{ConstSecretKvVaultAddress, ConstSecretKvVaultMount, ConstSecretKvVaultPathPrefix,
+		ConstSecretKvOrchestratorCluster, ConstSecretKvKubernetesNamespace} {
+		b.WriteString(conf.secretKvSetting(e, name) + "\x00")
+	}
+	return b.String()
+}
+
+// SetSecretKvWrittenAsAt records the instance's name level's entry holds its secrets under
+// ("" forgets it). False when the entry is gone or already says so.
+func (conf *Config) SetSecretKvWrittenAsAt(level SecretKvLevel, name, as string) bool {
+	secretKvMu.Lock()
+	defer secretKvMu.Unlock()
+	e := conf.secretKvByNameAt(level, name)
+	if e == nil || e.WrittenAs == as {
+		return false
+	}
+	e.WrittenAs = as
 	return true
 }
 

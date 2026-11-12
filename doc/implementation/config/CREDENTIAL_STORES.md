@@ -607,8 +607,30 @@ sponsor or member never reaches them.
     key stops changing. An OpenSVC server store writes `<prefix>_api-credentials` instead:
     whatever read the old key reads the new one. A config file still holding
     `secret-kv-copy-api-credentials` loads, the key ignored.
+- **The move (implemented, server level).** Each server entry records the instance's name it
+  holds the secrets under (`SecretKvConfig.WrittenAs`, `written-as` in its table), set at its
+  first successful write. At each tick on the active monitor, an entry whose name differs from
+  `InstanceStoreName` (a licence loaded, a registration, the name window) is moved
+  (`checkServerKvMoves`, `server_secret_kv_move.go`), in a goroutine of its own, one per entry:
+  - every kept version of every server secret, each secret's oldest first, from repman's version
+    store (the current value alone when it keeps none), never read from the old place, is
+    written at the new place, one write per version, stopping at the first failure;
+  - then `moved-to` = the new name at the old place (a Vault key `<old folder>/moved-to`, an
+    orchestrator key `<old prefix>_moved-to`); what the old place holds stays;
+  - then `written-as` takes the new name (saved), the entry is no longer behind, and a full pass
+    writes what changed meanwhile.
+  Until then the entry is behind (`GWARN024`, `WARN0320`: "moving from X to Y", or the failure)
+  and the ordinary writes skip it (`serverKvItems`), so the newest version is never written
+  before the older ones. A failed attempt starts again after `secret-kv-retry-interval`, from the
+  version it stopped at (kept in memory: after a restart it starts from the oldest, which adds
+  versions again in a Vault's history, never loses one). A change of the entry's place (address,
+  mount, prefix, cluster, namespace; not its login) forgets `written-as`: another place has
+  nothing to move from.
+  Limits: a list set by a config file (`server-secret-kv` pinned) is not saved, so its
+  `written-as` lives until the restart, and a rename while repman is down is then not moved; a
+  cluster's own rename does not move its cluster secrets yet.
 - **Not yet:** the Cloud18 vault offered at the server level by the registration (a sysops adds
-  it as an entry with `auth = jwt` meanwhile), and the move on a name change.
+  it as an entry with `auth = jwt` meanwhile), the move of a renamed cluster's secrets.
 
 ### The Cloud18 vault entry
 

@@ -39,6 +39,7 @@ type serverSecretKv struct {
 	mu          sync.Mutex
 	behind      map[string]string    // entry -> why it is behind (never a value)
 	lastWritten map[string]time.Time // entry -> its last successful write
+	moves       map[string]*serverKvMove
 }
 
 // errServerKvNotNamed: the instance's name is not complete, its folder in a shared store is
@@ -72,6 +73,7 @@ func (repman *ReplicationManager) serverKvRunner() *credstore.StoreRunner {
 			k.mu.Lock()
 			k.lastWritten[name] = time.Now()
 			k.mu.Unlock()
+			repman.recordServerKvWrittenAs(name)
 		},
 		Running: &k.running,
 		Due:     &k.passDue,
@@ -139,6 +141,10 @@ func (repman *ReplicationManager) serverKvItems(entry, key string, ver credstore
 		}
 		if !named {
 			repman.setServerKvBehind(e.Name, errServerKvNotNamed)
+			continue
+		}
+		if serverKvMoving(e, name) {
+			// the move writes every version in order, this one included (checkServerKvMoves)
 			continue
 		}
 		items = append(items, credstore.StoreItem{Entry: e.Name, Path: repman.Conf.ServerSecretKvFolder(e, name), Key: key, Version: ver, Compare: compare})
@@ -244,6 +250,7 @@ func (repman *ReplicationManager) checkServerSecretKvStores() {
 	if q := repman.serverKvQueue(); q.Len() > 0 || repman.serverSecretKv.passDue.Load() {
 		repman.serverKvRunner().Start()
 	}
+	repman.checkServerKvMoves()
 	for name, why := range repman.ServerKvBehind() {
 		repman.SetState("GWARN024@"+name, state.State{ErrType: "WARNING", ErrKey: "GWARN024", ErrFrom: "REPMAN",
 			ErrDesc: fmt.Sprintf(config.GlobalError["GWARN024"], name, why)})

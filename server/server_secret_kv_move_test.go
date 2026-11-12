@@ -1,0 +1,132 @@
+// replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
+// Copyright 2017-2026 SIGNAL18 CLOUD SAS
+// This source code is licensed under the GNU General Public License, version 3.
+
+package server
+
+import (
+	"strings"
+	"testing"
+
+	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/config/credstore/vaultfake"
+)
+
+const movedKvFolder = "system/repman/acme/repman2/paris"
+
+// serverKvWrittenAs is the name entry records.
+func serverKvWrittenAs(repman *ReplicationManager, entry string) string {
+	for _, e := range repman.Conf.SecretKvListAt(config.SecretKvLevelServer) {
+		if e.Name == entry {
+			return e.WrittenAs
+		}
+	}
+	return ""
+}
+
+// A renamed instance: every kept version goes to the new place, oldest first, the old place
+// keeps them and names the new one; until then the ordinary writes wait.
+func TestServerKvMoveOnRename(t *testing.T) {
+	server := vaultfake.New("kv", "role", "sid")
+	defer server.Close()
+	repman := serverKvTestManager(t, true, server)
+	for _, v := range []string{"smtp-1", "smtp-2"} {
+		if err := repman.CredentialChain().Set("mail-smtp-password", v); err != nil {
+			t.Fatal(err)
+		}
+	}
+	repman.serverKvQueue().Take()
+	repman.serverKvFullPass()
+	if repman.serverKvRunner().WritePass() {
+		t.Fatalf("first write: %v", repman.ServerKvBehind())
+	}
+	if got := serverKvWrittenAs(repman, "srv-a"); got != "acme/repman1/paris" {
+		t.Fatalf("written as %q", got)
+	}
+	kept := len(repman.serverVersionStore().Versions("mail-smtp-password"))
+
+	// renamed (the name window, a licence, a registration)
+	repman.Conf.InstanceSubDomain = "repman2"
+	if err := repman.CredentialChain().Set("mail-smtp-password", "smtp-3"); err != nil {
+		t.Fatal(err)
+	}
+	repman.serverKvRunner().WritePass()
+	if p := server.Paths(); strings.Contains(strings.Join(p, " "), "repman2") {
+		t.Fatalf("written at the new place before the move: %v", p)
+	}
+
+	// the store fails: behind, the move goes on later from where it stopped
+	server.SetFail(true)
+	e, _ := repman.Conf.SecretKvActiveEntryAt(config.SecretKvLevelServer, "srv-a")
+	repman.serverSecretKv.mu.Lock()
+	repman.serverSecretKv.moves = map[string]*serverKvMove{"srv-a": {to: "acme/repman2/paris", running: true}}
+	repman.serverSecretKv.mu.Unlock()
+	repman.moveServerKv(e, "acme/repman2/paris")
+	if why := repman.ServerKvBehind()["srv-a"]; !strings.Contains(why, "moving from acme/repman1/paris to acme/repman2/paris") {
+		t.Fatalf("behind %q", why)
+	}
+	if got := serverKvWrittenAs(repman, "srv-a"); got != "acme/repman1/paris" {
+		t.Fatalf("moved while failing: %q", got)
+	}
+
+	server.SetFail(false)
+	repman.serverSecretKv.mu.Lock()
+	repman.serverSecretKv.moves["srv-a"].running = true
+	repman.serverSecretKv.mu.Unlock()
+	repman.moveServerKv(e, "acme/repman2/paris")
+	if why := repman.ServerKvBehind()["srv-a"]; why != "" {
+		t.Fatalf("still behind: %q", why)
+	}
+	if got := serverKvWrittenAs(repman, "srv-a"); got != "acme/repman2/paris" {
+		t.Fatalf("written as %q after the move", got)
+	}
+	got := server.Get(movedKvFolder + "/mail-smtp-password")
+	if got == nil || got["mail-smtp-password"] != "smtp-3" {
+		t.Fatalf("the newest is not the current value at the new place: %v", server.Paths())
+	}
+	if n := server.Versions(movedKvFolder + "/mail-smtp-password"); n != kept+1 {
+		t.Fatalf("versions at the new place: %d, want %d", n, kept+1)
+	}
+	if got := server.Get(movedKvFolder + "/api-credentials"); got == nil {
+		t.Fatal("api-credentials not moved")
+	}
+	marker := server.Get(serverKvFolder + "/" + ConstServerKvMovedTo)
+	if marker == nil || marker[ConstServerKvMovedTo] != "acme/repman2/paris" {
+		t.Fatalf("no moved-to at the old place: %v", marker)
+	}
+	if server.Get(serverKvFolder+"/mail-smtp-password") == nil {
+		t.Fatal("the old place lost what it held")
+	}
+	// the ordinary writes go to the new place again
+	if err := repman.CredentialChain().Set("mail-smtp-password", "smtp-4"); err != nil {
+		t.Fatal(err)
+	}
+	repman.serverKvRunner().WritePass()
+	if got := server.Get(movedKvFolder + "/mail-smtp-password"); got["mail-smtp-password"] != "smtp-4" {
+		t.Fatal("no write after the move")
+	}
+}
+
+// The name an entry holds the secrets under is saved, and forgotten when its place changes
+// (not when only its login does).
+func TestServerKvWrittenAsSavedAndForgotten(t *testing.T) {
+	conf := serverLevelConf(t.TempDir(), "")
+	conf.ServerSecretKvs = []config.SecretKvConfig{{Name: "srv", Plugin: config.ConstSecretKvPluginVault, Enabled: true, WrittenAs: "acme/h/paris",
+		Settings: map[string]interface{}{"address": "https://vault.example", "path-prefix": "p"}}}
+	out, err := conf.SecretKvsTomlAt(config.SecretKvLevelServer, "saved-default")
+	if err != nil || !strings.Contains(out, `written-as = "acme/h/paris"`) {
+		t.Fatalf("not saved:\n%s", out)
+	}
+	if _, err := conf.PutSecretKvAt(config.SecretKvLevelServer, config.SecretKvSpec{Name: "srv", Settings: map[string]interface{}{"role-id": "r2"}}, false); err != nil {
+		t.Fatal(err)
+	}
+	if conf.SecretKvListAt(config.SecretKvLevelServer)[0].WrittenAs != "acme/h/paris" {
+		t.Fatal("a login change forgot the place")
+	}
+	if _, err := conf.PutSecretKvAt(config.SecretKvLevelServer, config.SecretKvSpec{Name: "srv", Settings: map[string]interface{}{"path-prefix": "q"}}, false); err != nil {
+		t.Fatal(err)
+	}
+	if conf.SecretKvListAt(config.SecretKvLevelServer)[0].WrittenAs != "" {
+		t.Fatal("a new prefix kept the old place")
+	}
+}
