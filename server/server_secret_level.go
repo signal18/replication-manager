@@ -143,6 +143,8 @@ func (repman *ReplicationManager) adoptServerVersions(file map[string][]credstor
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModVault, config.LvlInfo, "Server credentials: the versions of %s kept by a cluster are the server's now", key)
 		}
 		repman.CredentialChain().Refresh()
+		// the server credential stores get the versions taken over
+		repman.startServerKvPass()
 	}
 	return added, repman.writeServerSecretFile()
 }

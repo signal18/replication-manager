@@ -519,6 +519,42 @@ is treated the same; only the path a level maps to differs per store.
   file not writable: the version still wins, and a state says the file is behind.
 - **Replaces** the rotation's own OpenSVC copy and `secret-kv-copy-api-credentials`.
 
+### Server credential stores (implemented)
+
+The server level's vault entries, decided with the maintainer on 2026-11-12: the server secrets
+in any Vault, the Cloud18 one or the client's own, kept apart from every cluster so a cluster's
+sponsor or member never reaches them.
+
+- **Config:** `[[default.server-secret-kv]]` (`Config.ServerSecretKvs`, `toml:"-"`, `json:"-"`),
+  read from `[default]` and `[saved-default]` only (`LoadServerSecretKvs`), saved by the server's
+  save (`SaveDynamic`, `SecretKvsTomlAt(SecretKvLevelServer, "saved-default")`, secrets
+  encrypted, F9) unless a config file sets the key (then the API refuses, 409). A cluster's
+  config never holds it: `GetClusterConfig` clears it, whatever the cluster's section says. The
+  entry format, the plugin (`secret_kv-vault`) and the methods are the cluster's, given a level
+  (`config.SecretKvLevel`: `PutSecretKvAt`, `SetSecretKvEnabledAt`, `DeleteSecretKvAt`,
+  `SecretKvActiveAt`, `SecretKvListAt`).
+- **Path:** `<mount>/<path-prefix>/system/repman/<instance name>/<key>`
+  (`ServerSecretKvFolder`), the name being `InstanceStoreName`. While the name is not complete,
+  nothing is written and the entry is behind. Two of a client's instances collide only if the
+  client gives them the same prefix and the same name; on the Cloud18 vault the registration
+  keeps the names apart.
+- **Writes:** the server chain's `OnSet` hook queues every change of a server secret (a
+  rotation, a global setting); a full pass writes every server secret's current version (compare)
+  at start, when an entry is added, changed or turned on, and after versions are taken over from
+  a cluster's file. Active monitor only. The queue and the worker are the cluster's
+  (`credstore.StoreRunner`, shared): newest wins, bounded, retried every `secret-kv-retry-interval`.
+- **Who:** `/api/clusters/settings/actions/server-secret-kv` (list, `add`, `edit`, `enable`,
+  `disable`, `remove`): the server credentials grant on every cluster (`instanceNameACL`, ACL rule
+  `cluster-server-credentials`), the list included, so no other role sees an entry. Refused on a
+  standby (409). Each change is a security event. GUI: the global settings, "Server Credential
+  Stores" (`SecretKvEntries level='server'`).
+- **States:** a server entry behind is `GWARN024` on the server's state machine and `WARN0320`
+  on every cluster's security state machine (`ServerGlobals.ServerStoresBehind`): broken for the
+  server, broken for every cluster that reads the server secrets.
+- **Not yet:** the Cloud18 vault offered at the server level by the registration (a sysops adds
+  it as an entry with `auth = jwt` meanwhile), the OpenSVC and Kubernetes stores, and the move on
+  a name change.
+
 ### The Cloud18 vault entry
 
 On a Cloud18-registered instance the marketplace catalogue offers a `secret_kv-vault` entry

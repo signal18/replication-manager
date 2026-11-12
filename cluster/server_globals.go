@@ -35,6 +35,9 @@ type ServerGlobals struct {
 	// cluster's file (the server's file is their only place now); nil error once the server's
 	// file holds them, so the cluster may drop its copy
 	AdoptServerVersions func(file map[string][]credstore.FileVersion) error
+	// ServerStoresBehind is why each server credential store is behind: every cluster shows it
+	// (WARN0320), a broken server store is broken for every cluster reading the server secrets
+	ServerStoresBehind func() map[string]string
 }
 
 // AcquireBackupSlot blocks until a backup slot is available.

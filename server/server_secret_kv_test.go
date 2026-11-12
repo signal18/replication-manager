@@ -1,0 +1,167 @@
+// replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
+// Copyright 2017-2026 SIGNAL18 CLOUD SAS
+// This source code is licensed under the GNU General Public License, version 3.
+
+package server
+
+import (
+	"strings"
+	"testing"
+
+	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/config/credstore/vaultfake"
+	"github.com/signal18/replication-manager/utils/state"
+)
+
+const serverKvFolder = "system/repman/acme/repman1/paris"
+
+// serverKvTestManager is a named instance with its server credential stores on the fake
+// vaults; the tests run the passes themselves (no background worker).
+func serverKvTestManager(t *testing.T, named bool, vaults ...*vaultfake.Vault) *ReplicationManager {
+	t.Helper()
+	repman := newServerLevelTestManager(t, "admin:first,ops:second")
+	repman.Conf.SecretKvWriteTimeout = 1
+	repman.Conf.SecretKvQueueLimit = 100
+	if named {
+		repman.Conf.InstanceDomain, repman.Conf.InstanceSubDomain, repman.Conf.InstanceSubDomainZone = "acme", "repman1", "paris"
+	}
+	for i, v := range vaults {
+		repman.Conf.ServerSecretKvs = append(repman.Conf.ServerSecretKvs, config.SecretKvConfig{Name: []string{"srv-a", "srv-b"}[i], Plugin: config.ConstSecretKvPluginVault, Enabled: true,
+			Settings: map[string]interface{}{"address": v.URL, "mount": "kv", "role-id": "role", "secret-id": repman.Conf.GetEncryptedString("sid")}})
+	}
+	repman.InitAlertStateMachine()
+	repman.serverKvQueue()
+	repman.serverSecretKv.running.Store(true)
+	return repman
+}
+
+// A rotation of a user of the instance's list goes to every server credential store, under
+// the instance's folder: never to a cluster's store, whose sponsor may read it.
+func TestServerKvRotationWritesTheServerStoreOnly(t *testing.T) {
+	server := vaultfake.New("kv", "role", "sid")
+	defer server.Close()
+	clusterVault := vaultfake.New("kv", "role", "sid")
+	defer clusterVault.Close()
+	repman := serverKvTestManager(t, true, server)
+	c1 := repman.Clusters["c1"]
+	c1.Conf.SecretKvs = []config.SecretKvConfig{{Name: "client", Plugin: config.ConstSecretKvPluginVault, Enabled: true,
+		Settings: map[string]interface{}{"address": clusterVault.URL, "mount": "kv", "role-id": "role", "secret-id": c1.Conf.GetEncryptedString("sid")}}}
+
+	res, err := repman.rotateAPIUserPassword(c1, "ops", "admin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if repman.serverKvRunner().WritePass() {
+		t.Fatalf("the write failed: %v", repman.ServerKvBehind())
+	}
+	got := server.Get(serverKvFolder + "/api-credentials")
+	if got == nil || got["api-credentials"] != "admin:first,ops:"+res.Password {
+		t.Fatalf("the server store does not hold the new list: %v", server.Paths())
+	}
+	for _, p := range clusterVault.Paths() {
+		if strings.Contains(p, "api-credentials") {
+			t.Fatalf("a server secret reached a cluster's store: %s", p)
+		}
+	}
+}
+
+// Not named: the folder in a shared store is unknown, nothing is written and the store is
+// behind, on the server level and on every cluster.
+func TestServerKvNotNamedIsBehind(t *testing.T) {
+	server := vaultfake.New("kv", "role", "sid")
+	defer server.Close()
+	repman := serverKvTestManager(t, false, server)
+	if _, err := repman.rotateAPIUserPassword(repman.Clusters["c1"], "ops", "admin"); err != nil {
+		t.Fatal(err)
+	}
+	if len(server.Paths()) != 0 {
+		t.Fatalf("written without a name: %v", server.Paths())
+	}
+	if why := repman.ServerKvBehind()["srv-a"]; why != errServerKvNotNamed {
+		t.Fatalf("behind %q", why)
+	}
+	repman.checkServerSecretKvStores()
+	if !repman.StateMachine.CurState.Search("GWARN024@srv-a") {
+		t.Fatal("no server state")
+	}
+	cl := repman.Clusters["c1"]
+	cl.SecurityStateMachine = new(state.StateMachine)
+	cl.SecurityStateMachine.Init()
+	cl.ConfigStateMachine = new(state.StateMachine)
+	cl.ConfigStateMachine.Init()
+	cl.ServerGlobals.ServerStoresBehind = repman.ServerKvBehind
+	cl.Status = "A"
+	cl.CheckSecretKvStores()
+	if !cl.SecurityStateMachine.CurState.Search("WARN0320@srv-a") {
+		t.Fatal("no cluster state")
+	}
+}
+
+// The full pass (start, an entry turned on) writes every server secret's current value; a
+// store that fails is behind and keeps its versions queued.
+func TestServerKvFullPassAndFailure(t *testing.T) {
+	server := vaultfake.New("kv", "role", "sid")
+	defer server.Close()
+	repman := serverKvTestManager(t, true, server)
+	if err := repman.CredentialChain().Set("mail-smtp-password", "smtp-1"); err != nil {
+		t.Fatal(err)
+	}
+	repman.serverKvQueue().Take()
+	repman.serverKvFullPass()
+	if repman.serverKvRunner().WritePass() {
+		t.Fatalf("the full pass failed: %v", repman.ServerKvBehind())
+	}
+	for key, want := range map[string]string{"api-credentials": "admin:first,ops:second", "mail-smtp-password": "smtp-1"} {
+		if got := server.Get(serverKvFolder + "/" + key); got == nil || got[key] != want {
+			t.Fatalf("%s not written by the full pass", key)
+		}
+	}
+	server.SetFail(true)
+	if err := repman.CredentialChain().Set("mail-smtp-password", "smtp-2"); err != nil {
+		t.Fatal(err)
+	}
+	if !repman.serverKvRunner().WritePass() || repman.ServerKvBehind()["srv-a"] == "" || repman.serverKvQueue().Len() == 0 {
+		t.Fatal("a failing store is not behind with its version queued")
+	}
+	server.SetFail(false)
+	if repman.serverKvRunner().WritePass() || repman.ServerKvBehind()["srv-a"] != "" {
+		t.Fatal("the store does not catch up")
+	}
+	if got := server.Get(serverKvFolder + "/mail-smtp-password"); got["mail-smtp-password"] != "smtp-2" {
+		t.Fatal("the queued version was not written")
+	}
+}
+
+// The server credential stores are the instance's owners' only: the server credentials grant,
+// never a cluster's settings grant.
+func TestServerKvACL(t *testing.T) {
+	repman := newServerLevelTestManager(t, "admin:first,ops:second,dba:third")
+	cl := repman.Clusters["c1"]
+	cl.Conf.APIUsersACLAllow = serverLevelACL + ",dba:cluster-settings db-config-flag show"
+	cl.LoadAPIUsers()
+	for _, url := range []string{"/api/clusters/settings/actions/server-secret-kv", "/api/clusters/settings/actions/server-secret-kv/add", "/api/clusters/settings/actions/server-secret-kv/enable/x"} {
+		if !cl.IsURLPassACL("admin", url, false) {
+			t.Fatalf("an owner is refused %s", url)
+		}
+		if cl.IsURLPassACL("dba", url, false) {
+			t.Fatalf("the cluster settings grant reaches %s", url)
+		}
+	}
+}
+
+// The server list is saved in its own table, never the cluster's.
+func TestServerKvToml(t *testing.T) {
+	conf := serverLevelConf(t.TempDir(), "")
+	conf.ServerSecretKvs = []config.SecretKvConfig{{Name: "srv", Plugin: config.ConstSecretKvPluginVault, Enabled: true,
+		Settings: map[string]interface{}{"address": "https://vault.example", "secret-id": "clear"}}}
+	out, err := conf.SecretKvsTomlAt(config.SecretKvLevelServer, "saved-default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "[[saved-default.server-secret-kv]]") || strings.Contains(out, "clear") {
+		t.Fatalf("server table:\n%s", out)
+	}
+	if cl, _ := conf.SecretKvsTomlAt(config.SecretKvLevelCluster, "saved-default"); cl != "" {
+		t.Fatalf("the server list in the cluster table:\n%s", cl)
+	}
+}

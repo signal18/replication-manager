@@ -84,6 +84,7 @@ type ReplicationManager struct {
 	credChain                    *credstore.Chain // CredentialChain (#2075)
 	credChainMu                  sync.Mutex
 	serverSecrets                serverSecrets                      // the server level's versions and file (server_secret_level.go)
+	serverSecretKv               serverSecretKv                     // the server level's credential stores (server_secret_kv.go)
 	selfServiceMu                sync.Mutex                         // guards selfServiceSnap and selfServiceVerdicts
 	selfServiceVerdicts          map[string]selfServiceVerdict      // identity -> enabled-script verdict within the cache TTL
 	selfServiceFlight            singleflight.Group                 // one snapshot computation, one script run per identity, at a time
@@ -2198,6 +2199,8 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 	if k == nil {
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "No existing password encryption key in global section")
 	}
+	// the server's credential stores: read from [default] and [saved-default] only
+	conf.LoadServerSecretKvs()
 	*repman.Conf = conf
 
 	//	backupvipersave := viper.GetViper()
@@ -2395,6 +2398,8 @@ func (repman *ReplicationManager) GetClusterConfig(firstRead *viper.Viper, Immua
 		repman.VersionConfs[cluster] = confs
 		repman.Unlock()
 	}
+	// a cluster never holds the server's credential stores, whatever its section says
+	clusterconf.ServerSecretKvs = nil
 	return clusterconf
 }
 
@@ -2724,7 +2729,7 @@ func (repman *ReplicationManager) Run() error {
 		IssueAppAPIToken:   repman.issueAppAPIToken,
 		RevokeAppAPIToken:  repman.revokeAppAPIToken,
 		ServerSecrets:      repman.serverSecretLevel(),
-		CheckServerSecrets: repman.reloadServerVersionsFromPeer, AdoptServerVersions: repman.adoptServerVersionsFromCluster,
+		CheckServerSecrets: repman.reloadServerVersionsFromPeer, AdoptServerVersions: repman.adoptServerVersionsFromCluster, ServerStoresBehind: repman.ServerKvBehind,
 	}
 	if repman.Conf.BackupConcurrentSlots > 0 {
 		repman.serverGlobals.BackupSemaphore = make(chan struct{}, repman.Conf.BackupConcurrentSlots)
@@ -2764,6 +2769,8 @@ func (repman *ReplicationManager) Run() error {
 	}
 	repman.seedInstanceName()
 	repman.takeServerConfigFileCredentials()
+	// the server credential stores get every server secret's current version
+	repman.startServerKvPass()
 
 	if repman.Conf.LogSyslog {
 		hook, err := lSyslog.NewSyslogHook("udp", "localhost:514", syslog.LOG_INFO, "")
@@ -3424,6 +3431,7 @@ func (repman *ReplicationManager) Run() error {
 		if repman.peerHealthBusy.Load() {
 			repman.PreserveState("GWARN013@peerhealth")
 		}
+		repman.checkServerSecretKvStores()
 		repman.ProcessAlertStateLifecycle()
 
 		counter++
@@ -4930,6 +4938,15 @@ func (repman *ReplicationManager) SaveDynamic() (bool, error) {
 	}
 
 	s.WriteTo(&file)
+	// the server's credential stores, unless a config file sets them (then they are the file's)
+	if _, pinned := repman.Conf.GetImmuableFlag("server-secret-kv"); !pinned {
+		kvs, err := repman.Conf.SecretKvsTomlAt(config.SecretKvLevelServer, "saved-default")
+		if err != nil {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Error rendering the server credential stores: %s", err)
+			return false, err
+		}
+		file.WriteString(kvs)
+	}
 	if err := misc.WriteFileDurable(filePath, file.Bytes(), 0o640, ".default.toml-*.tmp"); err != nil {
 		if os.IsPermission(err) {
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "File permission denied: %s", filePath)
@@ -5027,6 +5044,8 @@ func (repman *ReplicationManager) CredentialChain() *credstore.Chain {
 	if repman.credChain == nil || repman.credChain.Conf() != repman.Conf {
 		// the server secrets' versions first, as a cluster's (CREDENTIAL_STORES.md "Two levels")
 		repman.credChain = credstore.NewVersionedChain(repman.Conf, repman.Save, repman.serverVersionStore())
+		// each change of a server secret goes to every server credential store
+		repman.credChain.OnSet(repman.onServerCredentialChange)
 	}
 	return repman.credChain
 }

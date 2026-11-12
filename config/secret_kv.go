@@ -205,9 +205,35 @@ func (conf *Config) SecretKvSetting(e SecretKvConfig, name string) string {
 	return v
 }
 
-// secretKvMu guards the list: the save, the peer replay and the store writer read and write
-// it.
+// secretKvMu guards the lists: the save, the peer replay and the store writer read and write
+// them.
 var secretKvMu sync.Mutex
+
+// SecretKvLevel is the level of a list of credential stores (CREDENTIAL_STORES.md "Two
+// levels"): a cluster's entries ([[<cluster>.secret-kv]]) hold its secrets, the server's
+// ([[default.server-secret-kv]]) the server secrets. The same code serves both.
+type SecretKvLevel string
+
+const (
+	SecretKvLevelCluster SecretKvLevel = "cluster"
+	SecretKvLevelServer  SecretKvLevel = "server"
+)
+
+// secretKvsAt is the list of level.
+func (conf *Config) secretKvsAt(level SecretKvLevel) *[]SecretKvConfig {
+	if level == SecretKvLevelServer {
+		return &conf.ServerSecretKvs
+	}
+	return &conf.SecretKvs
+}
+
+// secretKvTable is the TOML table of level's entries.
+func secretKvTable(level SecretKvLevel) string {
+	if level == SecretKvLevelServer {
+		return "server-secret-kv"
+	}
+	return "secret-kv"
+}
 
 func cloneSecretKvs(in []SecretKvConfig) []SecretKvConfig {
 	if in == nil {
@@ -222,9 +248,14 @@ func cloneSecretKvs(in []SecretKvConfig) []SecretKvConfig {
 }
 
 func (conf *Config) secretKvByName(name string) *SecretKvConfig {
-	for i := range conf.SecretKvs {
-		if conf.SecretKvs[i].Name == name {
-			return &conf.SecretKvs[i]
+	return conf.secretKvByNameAt(SecretKvLevelCluster, name)
+}
+
+func (conf *Config) secretKvByNameAt(level SecretKvLevel, name string) *SecretKvConfig {
+	list := conf.secretKvsAt(level)
+	for i := range *list {
+		if (*list)[i].Name == name {
+			return &(*list)[i]
 		}
 	}
 	return nil
@@ -232,16 +263,19 @@ func (conf *Config) secretKvByName(name string) *SecretKvConfig {
 
 // cleanSecretKvSettings drops from the entries read what their plugin does not declare. The
 // list holds secret_kv-vault entries only: secret_kv-config is built in, never an entry.
-func (conf *Config) cleanSecretKvSettings() {
-	kept := conf.SecretKvs[:0]
-	for _, e := range conf.SecretKvs {
+func (conf *Config) cleanSecretKvSettings() { conf.cleanSecretKvSettingsAt(SecretKvLevelCluster) }
+
+func (conf *Config) cleanSecretKvSettingsAt(level SecretKvLevel) {
+	list := conf.secretKvsAt(level)
+	kept := (*list)[:0]
+	for _, e := range *list {
 		if e.Plugin == ConstSecretKvPluginVault {
 			kept = append(kept, e)
 		}
 	}
-	conf.SecretKvs = kept
-	for i := range conf.SecretKvs {
-		e := &conf.SecretKvs[i]
+	*list = kept
+	for i := range *list {
+		e := &(*list)[i]
 		if e.Settings == nil {
 			e.Settings = map[string]interface{}{}
 		}
@@ -255,6 +289,16 @@ func (conf *Config) cleanSecretKvSettings() {
 			}
 		}
 	}
+}
+
+// LoadServerSecretKvs resolves the server list once read: its own copy, the vault entries
+// only, what their plugin does not declare dropped. No migration: the flat vault-* keys are a
+// cluster's (MigrateSecretKvs).
+func (conf *Config) LoadServerSecretKvs() {
+	secretKvMu.Lock()
+	defer secretKvMu.Unlock()
+	conf.ServerSecretKvs = cloneSecretKvs(conf.ServerSecretKvs)
+	conf.cleanSecretKvSettingsAt(SecretKvLevelServer)
 }
 
 // MigrateSecretKvs resolves the credential store list at cluster init: a cluster using Vault
@@ -372,14 +416,19 @@ func (conf *Config) SecretKvHoldsLegacyKey(key string) bool {
 	return false
 }
 
-// SecretKvsToml renders the list as [[<section>.secret-kv]] tables for the saved config. A
-// secret not encrypted (no encryption key) is left out: it never reaches the config
-// repository in clear (F9).
+// SecretKvsToml renders the cluster list as [[<section>.secret-kv]] tables for the saved config.
 func (conf *Config) SecretKvsToml(section string) (string, error) {
+	return conf.SecretKvsTomlAt(SecretKvLevelCluster, section)
+}
+
+// SecretKvsTomlAt renders level's list as [[<section>.secret-kv]] (cluster) or
+// [[<section>.server-secret-kv]] (server) tables. A secret not encrypted (no encryption key) is
+// left out: it never reaches the config repository in clear (F9).
+func (conf *Config) SecretKvsTomlAt(level SecretKvLevel, section string) (string, error) {
 	secretKvMu.Lock()
 	defer secretKvMu.Unlock()
 	var b strings.Builder
-	for _, e := range conf.SecretKvs {
+	for _, e := range *conf.secretKvsAt(level) {
 		head := map[string]interface{}{"name": e.Name, "plugin": e.Plugin, "enabled": e.Enabled}
 		if e.Offer != "" {
 			head["offer"] = e.Offer
@@ -391,27 +440,35 @@ func (conf *Config) SecretKvsToml(section string) (string, error) {
 			}
 			settings[k] = v
 		}
-		if err := writeEntryToml(&b, section, "secret-kv", head, settings); err != nil {
+		if err := writeEntryToml(&b, section, secretKvTable(level), head, settings); err != nil {
 			return "", err
 		}
 	}
 	return b.String(), nil
 }
 
-// SecretKvList is a copy of the list.
-func (conf *Config) SecretKvList() []SecretKvConfig {
+// SecretKvList is a copy of the cluster list.
+func (conf *Config) SecretKvList() []SecretKvConfig { return conf.SecretKvListAt(SecretKvLevelCluster) }
+
+// SecretKvListAt is a copy of level's list.
+func (conf *Config) SecretKvListAt(level SecretKvLevel) []SecretKvConfig {
 	secretKvMu.Lock()
 	defer secretKvMu.Unlock()
-	return cloneSecretKvs(conf.SecretKvs)
+	return cloneSecretKvs(*conf.secretKvsAt(level))
 }
 
-// SecretKvActive are the enabled entries, in the list's order: each gets every version of
-// every secret.
+// SecretKvActive are the cluster list's enabled entries, in the list's order: each gets every
+// version of every secret.
 func (conf *Config) SecretKvActive() []SecretKvConfig {
+	return conf.SecretKvActiveAt(SecretKvLevelCluster)
+}
+
+// SecretKvActiveAt are level's enabled entries, in the list's order.
+func (conf *Config) SecretKvActiveAt(level SecretKvLevel) []SecretKvConfig {
 	secretKvMu.Lock()
 	defer secretKvMu.Unlock()
 	var out []SecretKvConfig
-	for _, e := range conf.SecretKvs {
+	for _, e := range *conf.secretKvsAt(level) {
 		if e.Enabled && e.Plugin == ConstSecretKvPluginVault {
 			out = append(out, cloneSecretKvs([]SecretKvConfig{e})[0])
 		}
@@ -419,14 +476,30 @@ func (conf *Config) SecretKvActive() []SecretKvConfig {
 	return out
 }
 
-// SecretKvActiveEntry is the entry name when it is enabled.
+// SecretKvActiveEntry is the cluster list's entry name when it is enabled.
 func (conf *Config) SecretKvActiveEntry(name string) (SecretKvConfig, bool) {
-	for _, e := range conf.SecretKvActive() {
+	return conf.SecretKvActiveEntryAt(SecretKvLevelCluster, name)
+}
+
+// SecretKvActiveEntryAt is level's entry name when it is enabled.
+func (conf *Config) SecretKvActiveEntryAt(level SecretKvLevel, name string) (SecretKvConfig, bool) {
+	for _, e := range conf.SecretKvActiveAt(level) {
 		if e.Name == name {
 			return e, true
 		}
 	}
 	return SecretKvConfig{}, false
+}
+
+// ServerSecretKvFolder is the instance's folder in a server entry, below its mount:
+// <path-prefix>/system/repman/<instance name>, or system/repman/<instance name> with no prefix.
+// The name is InstanceStoreName: never a URL.
+func (conf *Config) ServerSecretKvFolder(e SecretKvConfig, instance string) string {
+	folder := "system/repman/" + instance
+	if prefix := strings.Trim(conf.secretKvSetting(&e, ConstSecretKvVaultPathPrefix), "/"); prefix != "" {
+		return prefix + "/" + folder
+	}
+	return folder
 }
 
 // SecretKvFolder is the cluster's folder in a vault entry, below its mount:
@@ -529,9 +602,14 @@ type SecretKvSpec struct {
 // PutSecretKv adds (create) or changes the entry spec gives, checked against its plugin's
 // manifest; the list holds secret_kv-vault entries only. It returns the entry's name.
 func (conf *Config) PutSecretKv(spec SecretKvSpec, create bool) (string, error) {
+	return conf.PutSecretKvAt(SecretKvLevelCluster, spec, create)
+}
+
+// PutSecretKvAt is PutSecretKv on level's list.
+func (conf *Config) PutSecretKvAt(level SecretKvLevel, spec SecretKvSpec, create bool) (string, error) {
 	secretKvMu.Lock()
 	defer secretKvMu.Unlock()
-	cur := conf.secretKvByName(spec.Name)
+	cur := conf.secretKvByNameAt(level, spec.Name)
 	switch {
 	case create && cur != nil:
 		return "", fmt.Errorf("credential store %s already exists", spec.Name)
@@ -569,16 +647,22 @@ func (conf *Config) PutSecretKv(spec SecretKvSpec, create bool) (string, error) 
 	if cur != nil {
 		*cur = e
 	} else {
-		conf.SecretKvs = append(conf.SecretKvs, e)
+		list := conf.secretKvsAt(level)
+		*list = append(*list, e)
 	}
 	return e.Name, nil
 }
 
 // SetSecretKvEnabled turns an entry on or off. Off stops its versions; what it holds stays.
 func (conf *Config) SetSecretKvEnabled(name string, enabled bool) error {
+	return conf.SetSecretKvEnabledAt(SecretKvLevelCluster, name, enabled)
+}
+
+// SetSecretKvEnabledAt is SetSecretKvEnabled on level's list.
+func (conf *Config) SetSecretKvEnabledAt(level SecretKvLevel, name string, enabled bool) error {
 	secretKvMu.Lock()
 	defer secretKvMu.Unlock()
-	e := conf.secretKvByName(name)
+	e := conf.secretKvByNameAt(level, name)
 	if e == nil {
 		return fmt.Errorf("unknown credential store %s", name)
 	}
@@ -588,14 +672,20 @@ func (conf *Config) SetSecretKvEnabled(name string, enabled bool) error {
 
 // DeleteSecretKv takes the entry out of the list; repman never deletes what it holds.
 func (conf *Config) DeleteSecretKv(name string) error {
+	return conf.DeleteSecretKvAt(SecretKvLevelCluster, name)
+}
+
+// DeleteSecretKvAt is DeleteSecretKv on level's list.
+func (conf *Config) DeleteSecretKvAt(level SecretKvLevel, name string) error {
 	secretKvMu.Lock()
 	defer secretKvMu.Unlock()
-	for i := range conf.SecretKvs {
-		if conf.SecretKvs[i].Name == name {
-			if conf.SecretKvs[i].Offer != "" {
+	list := conf.secretKvsAt(level)
+	for i := range *list {
+		if (*list)[i].Name == name {
+			if (*list)[i].Offer != "" {
 				return fmt.Errorf("credential store %s: %w", name, ErrSecretKvOfferManaged)
 			}
-			conf.SecretKvs = append(conf.SecretKvs[:i], conf.SecretKvs[i+1:]...)
+			*list = append((*list)[:i], (*list)[i+1:]...)
 			return nil
 		}
 	}

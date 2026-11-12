@@ -486,6 +486,23 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxCloud18Identity)),
 	)).Methods(http.MethodGet)
+	// the server credential stores: the server secrets' vault entries (CREDENTIAL_STORES.md "Two levels")
+	router.Handle("/api/clusters/settings/actions/server-secret-kv", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerSecretKvList)),
+	)).Methods(http.MethodGet)
+	for path, h := range map[string]http.HandlerFunc{
+		"add":                 repman.handlerMuxServerSecretKvAdd,
+		"edit/{entryName}":    repman.handlerMuxServerSecretKvEdit,
+		"enable/{entryName}":  repman.handlerMuxServerSecretKvEnable,
+		"disable/{entryName}": repman.handlerMuxServerSecretKvDisable,
+		"remove/{entryName}":  repman.handlerMuxServerSecretKvRemove,
+	} {
+		router.Handle("/api/clusters/settings/actions/server-secret-kv/"+path, negroni.New(
+			negroni.HandlerFunc(repman.validateTokenMiddleware),
+			negroni.Wrap(h),
+		)).Methods(http.MethodPost)
+	}
 	router.Handle("/api/clusters/settings/actions/instance-name", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxInstanceName)),

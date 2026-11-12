@@ -20,6 +20,7 @@ import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { HiQuestionMarkCircle } from 'react-icons/hi'
 import SectionFrame from '../../components/SectionFrame'
+import SecretKvEntries from '../Settings/SecretKvEntries'
 
 // cards (#2268): which of its cards to show, by title (Monitoring Units, HTTP & API, Alerts, Logs, AI
 // Assistant (MCP)); none = all. The Alerts card is shown in Cloud18 > Support.
@@ -146,6 +147,11 @@ function GlobalSettings({ config, cards }) {
           isChecked={config?.instanceNameDeclined}
         />
       )
+    },
+    {
+      key: 'Server Credential Stores',
+      help: h(`**Server Credential Stores**\n\nThe vaults that keep every version of this instance's server secrets (the API users' list api-credentials, the SMTP and GitLab passwords...), under path-prefix/system/repman/<instance name>. They are never copied to a cluster's vaults, which a cluster's sponsor may switch on. Only the sysops and extsysops of this instance see and change them (the server credentials grant on every cluster). Nothing is written until the instance is named. A vault behind shows a state here and on every cluster.`, 'Server Credential Stores'),
+      value: <SecretKvEntries level='server' />
     },
     {
       globalSetting: 'secret-kv-copy-api-credentials',

@@ -929,46 +929,50 @@ type Config struct {
 	Archives                                  []ArchiveConfig   `mapstructure:"archive" toml:"archive" json:"archives"`
 	S3Providers                               S3ProviderBlocks  `mapstructure:"s3-provider" toml:"-" json:"-"`
 	SecretKvs                                 []SecretKvConfig  `mapstructure:"secret-kv" toml:"secret-kv" json:"secretKvs"`
-	SecretKvQueueLimit                        int               `mapstructure:"secret-kv-queue-limit" toml:"secret-kv-queue-limit" json:"secretKvQueueLimit"`
-	SecretKvWriteTimeout                      int               `mapstructure:"secret-kv-write-timeout" toml:"secret-kv-write-timeout" json:"secretKvWriteTimeout"`
-	SecretKvRetryInterval                     int               `mapstructure:"secret-kv-retry-interval" toml:"secret-kv-retry-interval" json:"secretKvRetryInterval"`
-	SecretKvStartTimeout                      int               `mapstructure:"secret-kv-start-timeout" toml:"secret-kv-start-timeout" json:"secretKvStartTimeout"`
-	SecretKvCopyApiCredentials                bool              `scope:"server" mapstructure:"secret-kv-copy-api-credentials" toml:"secret-kv-copy-api-credentials" json:"secretKvCopyApiCredentials"`
-	BackupArchiveRemoveOriginal               bool              `mapstructure:"backup-archive-remove-original" toml:"backup-archive-remove-original" json:"backupArchiveRemoveOriginal"`
-	BackupDiscovery                           bool              `mapstructure:"backup-discovery" toml:"backup-discovery" json:"backupDiscovery"`
-	BackupDiscoveryCandidateMax               int               `mapstructure:"backup-discovery-candidate-max" toml:"backup-discovery-candidate-max" json:"backupDiscoveryCandidateMax"`
-	BackupVerification                        bool              `mapstructure:"backup-verification" toml:"backup-verification" json:"backupVerification"`
-	BackupVerificationLevel                   string            `mapstructure:"backup-verification-level" toml:"backup-verification-level" json:"backupVerificationLevel"`
-	BackupVerificationHost                    string            `mapstructure:"backup-verification-host" toml:"backup-verification-host" json:"backupVerificationHost"`
-	BackupVerificationCredential              string            `secret:"true" mapstructure:"backup-verification-credential" toml:"backup-verification-credential" json:"-"`
-	BackupVerificationTimeout                 int               `mapstructure:"backup-verification-timeout" toml:"backup-verification-timeout" json:"backupVerificationTimeout"`
-	BackupVerificationRunHistory              int               `mapstructure:"backup-verification-run-history" toml:"backup-verification-run-history" json:"backupVerificationRunHistory"`
-	BackupVerificationRegisteredProven        bool              `mapstructure:"backup-verification-registered-proven" toml:"backup-verification-registered-proven" json:"backupVerificationRegisteredProven"`
-	BackupRestic                              bool              `mapstructure:"backup-restic" toml:"backup-restic" json:"backupRestic"`
-	BackupResticBinaryPath                    string            `mapstructure:"backup-restic-binary-path" toml:"backup-restic-binary-path" json:"backupResticBinaryPath"`
-	BackupResticLocalRepository               string            `mapstructure:"backup-restic-local-repository" toml:"backup-restic-local-repository" json:"backupResticLocalRepository"`
-	BackupResticAwsAccessKeyId                string            `mapstructure:"backup-restic-aws-access-key-id" toml:"backup-restic-aws-access-key-id" json:"backupResticAwsAccessKeyId"`
-	BackupResticAwsAccessSecret               string            `secret:"true" mapstructure:"backup-restic-aws-access-secret"  toml:"backup-restic-aws-access-secret" json:"-"`
-	BackupResticAwsRegion                     string            `mapstructure:"backup-restic-aws-region" toml:"backup-restic-aws-region" json:"backupResticAwsRegion"`
-	BackupResticAwsEndpoint                   string            `mapstructure:"backup-restic-aws-endpoint" toml:"backup-restic-aws-endpoint" json:"backupResticAwsEndpoint"`
-	BackupResticAwsBucket                     string            `mapstructure:"backup-restic-aws-bucket" toml:"backup-restic-aws-bucket" json:"backupResticAwsBucket"`
-	BackupResticAwsPrefix                     string            `mapstructure:"backup-restic-aws-prefix" toml:"backup-restic-aws-prefix" json:"backupResticAwsPrefix"`
-	BackupResticRepoAppendCluster             bool              `mapstructure:"backup-restic-repo-append-cluster" toml:"backup-restic-repo-append-cluster" json:"backupResticRepoAppendCluster"`
-	BackupResticAdditionalEnv                 string            `mapstructure:"backup-restic-additional-env" toml:"backup-restic-additional-env" json:"backupResticAdditionalEnv"`
-	BackupResticRepository                    string            `mapstructure:"backup-restic-repository" toml:"backup-restic-repository" json:"backupResticRepository"`
-	BackupResticPassword                      string            `secret:"true" mapstructure:"backup-restic-password"  toml:"backup-restic-password" json:"-"`
-	BackupResticAws                           bool              `mapstructure:"backup-restic-aws"  toml:"backup-restic-aws" json:"backupResticAws"`
-	BackupWriteStallTimeout                   int               `mapstructure:"backup-write-stall-timeout" toml:"backup-write-stall-timeout" json:"backupWriteStallTimeout"`
-	BackupWriteStallLeakGrace                 int               `mapstructure:"backup-write-stall-leak-grace" toml:"backup-write-stall-leak-grace" json:"backupWriteStallLeakGrace"`
-	BackupResticTimeout                       int               `mapstructure:"backup-restic-timeout"  toml:"backup-restic-timeout" json:"backupResticTimeout"`
-	BackupResticDumpTimeout                   int               `mapstructure:"backup-restic-dump-timeout" toml:"backup-restic-dump-timeout" json:"backupResticDumpTimeout"`
-	BackupResticDirMode                       int               `mapstructure:"backup-restic-dir-mode" toml:"backup-restic-dir-mode" json:"backupResticDirMode"`
-	BackupResticFileMode                      int               `mapstructure:"backup-restic-file-mode" toml:"backup-restic-file-mode" json:"backupResticFileMode"`
-	BackupResticPurgeOldestOnDiskSpace        bool              `mapstructure:"backup-restic-purge-oldest-on-disk-space" toml:"backup-restic-purge-oldest-on-disk-space" json:"backupResticPurgeOldestOnDiskSpace"`
-	BackupResticPurgeOldestOnDiskThreshold    int               `mapstructure:"backup-restic-purge-oldest-on-disk-threshold" toml:"backup-restic-purge-oldest-on-disk-treshold" json:"backupResticPurgeOldestOnDiskTreshold"`
-	BackupResticReseedStrategy                string            `mapstructure:"backup-restic-reseed-strategy" toml:"backup-restic-reseed-strategy" json:"backupResticReseedStrategy"`
-	BackupResticReseedTempDir                 string            `mapstructure:"backup-restic-reseed-temp-dir" toml:"backup-restic-reseed-temp-dir" json:"backupResticReseedTempDir"`
-	BackupResticMetadataExtractorConcurrency  int               `mapstructure:"backup-restic-metadata-extractor-concurrency" toml:"backup-restic-metadata-extractor-concurrency" json:"backupResticMetadataExtractorConcurrency"`
+	// ServerSecretKvs are the server level's credential stores (CREDENTIAL_STORES.md "Two
+	// levels"): the server secrets only, never copied to a cluster, set by the instance's sysops
+	// and extsysops only; never in a cluster's config nor its JSON
+	ServerSecretKvs                          []SecretKvConfig `scope:"server" mapstructure:"server-secret-kv" toml:"-" json:"-"`
+	SecretKvQueueLimit                       int              `mapstructure:"secret-kv-queue-limit" toml:"secret-kv-queue-limit" json:"secretKvQueueLimit"`
+	SecretKvWriteTimeout                     int              `mapstructure:"secret-kv-write-timeout" toml:"secret-kv-write-timeout" json:"secretKvWriteTimeout"`
+	SecretKvRetryInterval                    int              `mapstructure:"secret-kv-retry-interval" toml:"secret-kv-retry-interval" json:"secretKvRetryInterval"`
+	SecretKvStartTimeout                     int              `mapstructure:"secret-kv-start-timeout" toml:"secret-kv-start-timeout" json:"secretKvStartTimeout"`
+	SecretKvCopyApiCredentials               bool             `scope:"server" mapstructure:"secret-kv-copy-api-credentials" toml:"secret-kv-copy-api-credentials" json:"secretKvCopyApiCredentials"`
+	BackupArchiveRemoveOriginal              bool             `mapstructure:"backup-archive-remove-original" toml:"backup-archive-remove-original" json:"backupArchiveRemoveOriginal"`
+	BackupDiscovery                          bool             `mapstructure:"backup-discovery" toml:"backup-discovery" json:"backupDiscovery"`
+	BackupDiscoveryCandidateMax              int              `mapstructure:"backup-discovery-candidate-max" toml:"backup-discovery-candidate-max" json:"backupDiscoveryCandidateMax"`
+	BackupVerification                       bool             `mapstructure:"backup-verification" toml:"backup-verification" json:"backupVerification"`
+	BackupVerificationLevel                  string           `mapstructure:"backup-verification-level" toml:"backup-verification-level" json:"backupVerificationLevel"`
+	BackupVerificationHost                   string           `mapstructure:"backup-verification-host" toml:"backup-verification-host" json:"backupVerificationHost"`
+	BackupVerificationCredential             string           `secret:"true" mapstructure:"backup-verification-credential" toml:"backup-verification-credential" json:"-"`
+	BackupVerificationTimeout                int              `mapstructure:"backup-verification-timeout" toml:"backup-verification-timeout" json:"backupVerificationTimeout"`
+	BackupVerificationRunHistory             int              `mapstructure:"backup-verification-run-history" toml:"backup-verification-run-history" json:"backupVerificationRunHistory"`
+	BackupVerificationRegisteredProven       bool             `mapstructure:"backup-verification-registered-proven" toml:"backup-verification-registered-proven" json:"backupVerificationRegisteredProven"`
+	BackupRestic                             bool             `mapstructure:"backup-restic" toml:"backup-restic" json:"backupRestic"`
+	BackupResticBinaryPath                   string           `mapstructure:"backup-restic-binary-path" toml:"backup-restic-binary-path" json:"backupResticBinaryPath"`
+	BackupResticLocalRepository              string           `mapstructure:"backup-restic-local-repository" toml:"backup-restic-local-repository" json:"backupResticLocalRepository"`
+	BackupResticAwsAccessKeyId               string           `mapstructure:"backup-restic-aws-access-key-id" toml:"backup-restic-aws-access-key-id" json:"backupResticAwsAccessKeyId"`
+	BackupResticAwsAccessSecret              string           `secret:"true" mapstructure:"backup-restic-aws-access-secret"  toml:"backup-restic-aws-access-secret" json:"-"`
+	BackupResticAwsRegion                    string           `mapstructure:"backup-restic-aws-region" toml:"backup-restic-aws-region" json:"backupResticAwsRegion"`
+	BackupResticAwsEndpoint                  string           `mapstructure:"backup-restic-aws-endpoint" toml:"backup-restic-aws-endpoint" json:"backupResticAwsEndpoint"`
+	BackupResticAwsBucket                    string           `mapstructure:"backup-restic-aws-bucket" toml:"backup-restic-aws-bucket" json:"backupResticAwsBucket"`
+	BackupResticAwsPrefix                    string           `mapstructure:"backup-restic-aws-prefix" toml:"backup-restic-aws-prefix" json:"backupResticAwsPrefix"`
+	BackupResticRepoAppendCluster            bool             `mapstructure:"backup-restic-repo-append-cluster" toml:"backup-restic-repo-append-cluster" json:"backupResticRepoAppendCluster"`
+	BackupResticAdditionalEnv                string           `mapstructure:"backup-restic-additional-env" toml:"backup-restic-additional-env" json:"backupResticAdditionalEnv"`
+	BackupResticRepository                   string           `mapstructure:"backup-restic-repository" toml:"backup-restic-repository" json:"backupResticRepository"`
+	BackupResticPassword                     string           `secret:"true" mapstructure:"backup-restic-password"  toml:"backup-restic-password" json:"-"`
+	BackupResticAws                          bool             `mapstructure:"backup-restic-aws"  toml:"backup-restic-aws" json:"backupResticAws"`
+	BackupWriteStallTimeout                  int              `mapstructure:"backup-write-stall-timeout" toml:"backup-write-stall-timeout" json:"backupWriteStallTimeout"`
+	BackupWriteStallLeakGrace                int              `mapstructure:"backup-write-stall-leak-grace" toml:"backup-write-stall-leak-grace" json:"backupWriteStallLeakGrace"`
+	BackupResticTimeout                      int              `mapstructure:"backup-restic-timeout"  toml:"backup-restic-timeout" json:"backupResticTimeout"`
+	BackupResticDumpTimeout                  int              `mapstructure:"backup-restic-dump-timeout" toml:"backup-restic-dump-timeout" json:"backupResticDumpTimeout"`
+	BackupResticDirMode                      int              `mapstructure:"backup-restic-dir-mode" toml:"backup-restic-dir-mode" json:"backupResticDirMode"`
+	BackupResticFileMode                     int              `mapstructure:"backup-restic-file-mode" toml:"backup-restic-file-mode" json:"backupResticFileMode"`
+	BackupResticPurgeOldestOnDiskSpace       bool             `mapstructure:"backup-restic-purge-oldest-on-disk-space" toml:"backup-restic-purge-oldest-on-disk-space" json:"backupResticPurgeOldestOnDiskSpace"`
+	BackupResticPurgeOldestOnDiskThreshold   int              `mapstructure:"backup-restic-purge-oldest-on-disk-threshold" toml:"backup-restic-purge-oldest-on-disk-treshold" json:"backupResticPurgeOldestOnDiskTreshold"`
+	BackupResticReseedStrategy               string           `mapstructure:"backup-restic-reseed-strategy" toml:"backup-restic-reseed-strategy" json:"backupResticReseedStrategy"`
+	BackupResticReseedTempDir                string           `mapstructure:"backup-restic-reseed-temp-dir" toml:"backup-restic-reseed-temp-dir" json:"backupResticReseedTempDir"`
+	BackupResticMetadataExtractorConcurrency int              `mapstructure:"backup-restic-metadata-extractor-concurrency" toml:"backup-restic-metadata-extractor-concurrency" json:"backupResticMetadataExtractorConcurrency"`
 	// Restic mount settings (used for manual mount operations).
 	BackupResticMountTargetDir            string `mapstructure:"backup-restic-mount-target-dir" toml:"backup-restic-mount-target-dir" json:"backupResticMountTargetDir"`
 	BackupResticMountHost                 string `mapstructure:"backup-restic-mount-host" toml:"backup-restic-mount-host" json:"backupResticMountHost"`
@@ -986,75 +990,75 @@ type Config struct {
 	BackupResticMountRecoveryEnabled bool `mapstructure:"backup-restic-mount-recovery-enabled" toml:"backup-restic-mount-recovery-enabled" json:"backupResticMountRecoveryEnabled"`
 	// BackupResticMountDir defines the base directory for restic FUSE mounts.
 	// Default base is <working-dir>/<cluster>/mount. Relative paths resolve under that base.
-	BackupResticMountDir             string  `scope:"server" mapstructure:"backup-restic-mount-dir" toml:"backup-restic-mount-dir" json:"backupResticMountDir"`
-	BackupResticReseedCleanup        bool    `mapstructure:"backup-restic-reseed-cleanup" toml:"backup-restic-reseed-cleanup" json:"backupResticReseedCleanup"`
-	BackupResticReseedTimeout        int     `mapstructure:"backup-restic-reseed-timeout" toml:"backup-restic-reseed-timeout" json:"backupResticReseedTimeout"`
-	BackupResticAllowUnsafeMount     bool    `mapstructure:"backup-restic-allow-unsafe-mount" toml:"backup-restic-allow-unsafe-mount" json:"backupResticAllowUnsafeMount"`
-	BackupResticAutoInit             bool    `mapstructure:"backup-restic-auto-init" toml:"backup-restic-auto-init" json:"backupResticAutoInit"`
-	BackupResticS3Mode               string  `mapstructure:"backup-restic-s3-mode" toml:"backup-restic-s3-mode" json:"backupResticS3Mode"`
-	BackupReconcileInterval          int     `mapstructure:"backup-reconcile-interval" toml:"backup-reconcile-interval" json:"backupReconcileInterval"`
-	BackupReconcileAutoCleanup       bool    `mapstructure:"backup-reconcile-auto-cleanup" toml:"backup-reconcile-auto-cleanup" json:"backupReconcileAutoCleanup"`
-	BackupStreaming                  bool    `mapstructure:"backup-streaming" toml:"backup-streaming" json:"backupStreaming"`
-	BackupStreamingDebug             bool    `mapstructure:"backup-streaming-debug" toml:"backup-streaming-debug" json:"backupStreamingDebug"`
-	BackupStreamingAwsAccessKeyId    string  `mapstructure:"backup-streaming-aws-access-key-id" toml:"backup-streaming-aws-access-key-id" json:"-"`
-	BackupStreamingAwsAccessSecret   string  `secret:"true" mapstructure:"backup-streaming-aws-access-secret"  toml:"backup-streaming-aws-access-secret" json:"-"`
-	BackupStreamingEndpoint          string  `mapstructure:"backup-streaming-endpoint" toml:"backup-streaming-endpoint" json:"backupStreamingEndpoint"`
-	BackupStreamingRegion            string  `mapstructure:"backup-streaming-region" toml:"backup-streaming-region" json:"backupStreamingRegion"`
-	BackupStreamingBucket            string  `mapstructure:"backup-streaming-bucket" toml:"backup-streaming-bucket" json:"backupStreamingBucket"`
-	BackupStreamingProvider          string  `mapstructure:"backup-streaming-provider" toml:"backup-streaming-provider" json:"backupStreamingProvider"`
-	BackupMysqldumpPath              string  `mapstructure:"backup-mysqldump-path" toml:"backup-mysqldump-path" json:"backupMysqldumpPath"`
-	BackupMysqldumpOptions           string  `mapstructure:"backup-mysqldump-options" toml:"backup-mysqldump-options" json:"backupMysqldumpOptions"`
-	BackupMyDumperPath               string  `mapstructure:"backup-mydumper-path" toml:"backup-mydumper-path" json:"backupMydumperPath"`
-	BackupMyLoaderPath               string  `mapstructure:"backup-myloader-path" toml:"backup-myloader-path" json:"backupMyloaderPath"`
-	BackupMyLoaderOptions            string  `mapstructure:"backup-myloader-options" toml:"backup-myloader-options" json:"backupMyLoaderOptions"`
-	BackupMyDumperOptions            string  `mapstructure:"backup-mydumper-options" toml:"backup-mydumper-options" json:"backupMyDumperOptions"`
-	BackupMyDumperRegex              string  `mapstructure:"backup-mydumper-regex" toml:"backup-mydumper-regex" json:"backupMyDumperRegex"`
-	BackupMyDumperStream             bool    `mapstructure:"backup-mydumper-stream" toml:"backup-mydumper-stream" json:"backupMyDumperStream"`
-	BackupMyDumperStreamFormat       string  `mapstructure:"backup-mydumper-stream-format" toml:"backup-mydumper-stream-format" json:"backupMyDumperStreamFormat"`
-	BackupMyDumperStreamFile         string  `mapstructure:"backup-mydumper-stream-file" toml:"backup-mydumper-stream-file" json:"backupMyDumperStreamFile"`
-	BackupMysqlbinlogPath            string  `mapstructure:"backup-mysqlbinlog-path" toml:"backup-mysqlbinlog-path" json:"backupMysqlbinlogPath"`
-	BackupMysqlclientPath            string  `mapstructure:"backup-mysqlclient-path" toml:"backup-mysqlclient-path" json:"backupMysqlclientPath"`
-	BackupMysqlclientOptions         string  `mapstructure:"backup-mysqlclient-options" toml:"backup-mysqlclient-options" json:"backupMysqlclientOptions"`
-	BackupMysqldumpSplitDump         bool    `mapstructure:"backup-mysqldump-splitdump" toml:"backup-mysqldump-splitdump" json:"backupMysqldumpSplitDump"`
-	BackupSplitdumpCreateDatabases   bool    `mapstructure:"backup-splitdump-create-databases" toml:"backup-splitdump-create-databases" json:"backupSplitdumpCreateDatabases"`
-	BackupMytopPath                  string  `mapstructure:"backup-mytop-path" toml:"backup-mytop-path" json:"backupMytopPath"`
-	BackupGottyClientPath            string  `mapstructure:"backup-gotty-client-path" toml:"backup-gotty-client-path" json:"backupGottyClientPath"`
-	TtyShareBinaryPath               string  `mapstructure:"tty-share-binary-path" toml:"tty-share-binary-path" json:"ttyShareBinaryPath"`
-	ReplicationManagerCliPath        string  `mapstructure:"replication-manager-cli-path" toml:"replication-manager-cli-path" json:"replicationManagerCliPath"`
-	BackupBinlogs                    bool    `mapstructure:"backup-binlogs" toml:"backup-binlogs" json:"backupBinlogs"`
-	BackupBinlogsKeep                int     `mapstructure:"backup-binlogs-keep" toml:"backup-binlogs-keep" json:"backupBinlogsKeep"`
-	BackupLockDDL                    bool    `mapstructure:"backup-lockddl" toml:"backup-lockddl" json:"backupLockDDL"`
-	BackupRestoreVersionStrict       bool    `mapstructure:"backup-restore-version-strict" toml:"backup-restore-version-strict" json:"backupRestoreVersionStrict"`
-	BackupRestoreDefinerStrict       bool    `mapstructure:"backup-restore-definer-strict" toml:"backup-restore-definer-strict" json:"backupRestoreDefinerStrict"`
-	BinlogCopyMode                   string  `mapstructure:"binlog-copy-mode" toml:"binlog-copy-mode" json:"binlogCopyMode"`
-	BinlogCopyScript                 string  `mapstructure:"binlog-copy-script" toml:"binlog-copy-script" json:"binlogCopyScript"`
-	BinlogRotationScript             string  `mapstructure:"binlog-rotation-script" toml:"binlog-rotation-script" json:"binlogRotationScript"`
-	BinlogParseMode                  string  `mapstructure:"binlog-parse-mode" toml:"binlog-parse-mode" json:"binlogParseMode"`
-	ClusterConfigPath                string  `mapstructure:"cluster-config-file" toml:"-" json:"-"`
-	VaultServerAddr                  string  `mapstructure:"vault-server-addr" toml:"vault-server-addr" json:"vaultServerAddr"`
-	VaultRoleId                      string  `mapstructure:"vault-role-id" toml:"vault-role-id" json:"vaultRoleId"`
-	VaultSecretId                    string  `secret:"true" mapstructure:"vault-secret-id" toml:"vault-secret-id" json:"vaultSecretId"`
-	VaultMode                        string  `mapstructure:"vault-mode" toml:"vault-mode" json:"vaultMode"`
-	VaultMount                       string  `mapstructure:"vault-mount" toml:"vault-mount" json:"vaultMount"`
-	VaultAuth                        string  `mapstructure:"vault-auth" toml:"vault-auth" json:"vaultAuth"`
-	VaultToken                       string  `secret:"true" mapstructure:"vault-token" toml:"vault-token" json:"vaultToken"`
-	LogVault                         bool    `mapstructure:"log-vault" toml:"log-vault" json:"logVault"`
-	LogVaultLevel                    int     `mapstructure:"log-level-vault" toml:"log-level-vault" json:"logVaultLevel"`
-	GitUrl                           string  `scope:"server" mapstructure:"git-url" toml:"git-url" json:"gitUrl"`
-	GitUrlPull                       string  `scope:"server" mapstructure:"git-url-pull" toml:"git-url-pull" json:"gitUrlPull"`
-	GitUsername                      string  `scope:"server" mapstructure:"git-username" toml:"git-username" json:"gitUsername"`
-	GitAccesToken                    string  `secret:"true" scope:"server" mapstructure:"git-acces-token" toml:"git-acces-token" json:"-"`
-	GitPullAccesToken                string  `secret:"true" scope:"server" mapstructure:"git-pull-access-token" toml:"git-pull-access-token" json:"-"`
-	Cloud18GitProjectID              int     `scope:"server" mapstructure:"cloud18-git-project-id" toml:"cloud18-git-project-id" json:"cloud18GitProjectId"`
-	Cloud18GitPullProjectID          int     `scope:"server" mapstructure:"cloud18-git-pull-project-id" toml:"cloud18-git-pull-project-id" json:"cloud18GitPullProjectId"`
-	Cloud18GitTokenExpires           string  `scope:"server" mapstructure:"cloud18-git-token-expires" toml:"cloud18-git-token-expires" json:"cloud18GitTokenExpires"`
-	Cloud18Unregister                bool    `scope:"server" mapstructure:"cloud18-unregister" toml:"cloud18-unregister" json:"cloud18Unregister"`
-	GitMonitoringTicker              int     `scope:"server" mapstructure:"git-monitoring-ticker" toml:"git-monitoring-ticker" json:"gitMonitoringTicker"`
-	GitConfigSyncStandby             bool    `mapstructure:"git-config-sync-standby" toml:"git-config-sync-standby" json:"gitConfigSyncStandby"`
-	Cloud18                          bool    `scope:"server" mapstructure:"cloud18"  toml:"cloud18" json:"cloud18"`
-	Cloud18Domain                    string  `scope:"server" mapstructure:"cloud18-domain" toml:"cloud18-domain" json:"cloud18Domain" groups:"apps"`
-	Cloud18SubDomain                 string  `scope:"server" mapstructure:"cloud18-sub-domain" toml:"cloud18-sub-domain" json:"cloud18SubDomain" groups:"apps"`
-	Cloud18SubDomainZone             string  `scope:"server" mapstructure:"cloud18-sub-domain-zone" toml:"cloud18-sub-domain-zone" json:"cloud18SubDomainZone" groups:"apps"`
+	BackupResticMountDir           string `scope:"server" mapstructure:"backup-restic-mount-dir" toml:"backup-restic-mount-dir" json:"backupResticMountDir"`
+	BackupResticReseedCleanup      bool   `mapstructure:"backup-restic-reseed-cleanup" toml:"backup-restic-reseed-cleanup" json:"backupResticReseedCleanup"`
+	BackupResticReseedTimeout      int    `mapstructure:"backup-restic-reseed-timeout" toml:"backup-restic-reseed-timeout" json:"backupResticReseedTimeout"`
+	BackupResticAllowUnsafeMount   bool   `mapstructure:"backup-restic-allow-unsafe-mount" toml:"backup-restic-allow-unsafe-mount" json:"backupResticAllowUnsafeMount"`
+	BackupResticAutoInit           bool   `mapstructure:"backup-restic-auto-init" toml:"backup-restic-auto-init" json:"backupResticAutoInit"`
+	BackupResticS3Mode             string `mapstructure:"backup-restic-s3-mode" toml:"backup-restic-s3-mode" json:"backupResticS3Mode"`
+	BackupReconcileInterval        int    `mapstructure:"backup-reconcile-interval" toml:"backup-reconcile-interval" json:"backupReconcileInterval"`
+	BackupReconcileAutoCleanup     bool   `mapstructure:"backup-reconcile-auto-cleanup" toml:"backup-reconcile-auto-cleanup" json:"backupReconcileAutoCleanup"`
+	BackupStreaming                bool   `mapstructure:"backup-streaming" toml:"backup-streaming" json:"backupStreaming"`
+	BackupStreamingDebug           bool   `mapstructure:"backup-streaming-debug" toml:"backup-streaming-debug" json:"backupStreamingDebug"`
+	BackupStreamingAwsAccessKeyId  string `mapstructure:"backup-streaming-aws-access-key-id" toml:"backup-streaming-aws-access-key-id" json:"-"`
+	BackupStreamingAwsAccessSecret string `secret:"true" mapstructure:"backup-streaming-aws-access-secret"  toml:"backup-streaming-aws-access-secret" json:"-"`
+	BackupStreamingEndpoint        string `mapstructure:"backup-streaming-endpoint" toml:"backup-streaming-endpoint" json:"backupStreamingEndpoint"`
+	BackupStreamingRegion          string `mapstructure:"backup-streaming-region" toml:"backup-streaming-region" json:"backupStreamingRegion"`
+	BackupStreamingBucket          string `mapstructure:"backup-streaming-bucket" toml:"backup-streaming-bucket" json:"backupStreamingBucket"`
+	BackupStreamingProvider        string `mapstructure:"backup-streaming-provider" toml:"backup-streaming-provider" json:"backupStreamingProvider"`
+	BackupMysqldumpPath            string `mapstructure:"backup-mysqldump-path" toml:"backup-mysqldump-path" json:"backupMysqldumpPath"`
+	BackupMysqldumpOptions         string `mapstructure:"backup-mysqldump-options" toml:"backup-mysqldump-options" json:"backupMysqldumpOptions"`
+	BackupMyDumperPath             string `mapstructure:"backup-mydumper-path" toml:"backup-mydumper-path" json:"backupMydumperPath"`
+	BackupMyLoaderPath             string `mapstructure:"backup-myloader-path" toml:"backup-myloader-path" json:"backupMyloaderPath"`
+	BackupMyLoaderOptions          string `mapstructure:"backup-myloader-options" toml:"backup-myloader-options" json:"backupMyLoaderOptions"`
+	BackupMyDumperOptions          string `mapstructure:"backup-mydumper-options" toml:"backup-mydumper-options" json:"backupMyDumperOptions"`
+	BackupMyDumperRegex            string `mapstructure:"backup-mydumper-regex" toml:"backup-mydumper-regex" json:"backupMyDumperRegex"`
+	BackupMyDumperStream           bool   `mapstructure:"backup-mydumper-stream" toml:"backup-mydumper-stream" json:"backupMyDumperStream"`
+	BackupMyDumperStreamFormat     string `mapstructure:"backup-mydumper-stream-format" toml:"backup-mydumper-stream-format" json:"backupMyDumperStreamFormat"`
+	BackupMyDumperStreamFile       string `mapstructure:"backup-mydumper-stream-file" toml:"backup-mydumper-stream-file" json:"backupMyDumperStreamFile"`
+	BackupMysqlbinlogPath          string `mapstructure:"backup-mysqlbinlog-path" toml:"backup-mysqlbinlog-path" json:"backupMysqlbinlogPath"`
+	BackupMysqlclientPath          string `mapstructure:"backup-mysqlclient-path" toml:"backup-mysqlclient-path" json:"backupMysqlclientPath"`
+	BackupMysqlclientOptions       string `mapstructure:"backup-mysqlclient-options" toml:"backup-mysqlclient-options" json:"backupMysqlclientOptions"`
+	BackupMysqldumpSplitDump       bool   `mapstructure:"backup-mysqldump-splitdump" toml:"backup-mysqldump-splitdump" json:"backupMysqldumpSplitDump"`
+	BackupSplitdumpCreateDatabases bool   `mapstructure:"backup-splitdump-create-databases" toml:"backup-splitdump-create-databases" json:"backupSplitdumpCreateDatabases"`
+	BackupMytopPath                string `mapstructure:"backup-mytop-path" toml:"backup-mytop-path" json:"backupMytopPath"`
+	BackupGottyClientPath          string `mapstructure:"backup-gotty-client-path" toml:"backup-gotty-client-path" json:"backupGottyClientPath"`
+	TtyShareBinaryPath             string `mapstructure:"tty-share-binary-path" toml:"tty-share-binary-path" json:"ttyShareBinaryPath"`
+	ReplicationManagerCliPath      string `mapstructure:"replication-manager-cli-path" toml:"replication-manager-cli-path" json:"replicationManagerCliPath"`
+	BackupBinlogs                  bool   `mapstructure:"backup-binlogs" toml:"backup-binlogs" json:"backupBinlogs"`
+	BackupBinlogsKeep              int    `mapstructure:"backup-binlogs-keep" toml:"backup-binlogs-keep" json:"backupBinlogsKeep"`
+	BackupLockDDL                  bool   `mapstructure:"backup-lockddl" toml:"backup-lockddl" json:"backupLockDDL"`
+	BackupRestoreVersionStrict     bool   `mapstructure:"backup-restore-version-strict" toml:"backup-restore-version-strict" json:"backupRestoreVersionStrict"`
+	BackupRestoreDefinerStrict     bool   `mapstructure:"backup-restore-definer-strict" toml:"backup-restore-definer-strict" json:"backupRestoreDefinerStrict"`
+	BinlogCopyMode                 string `mapstructure:"binlog-copy-mode" toml:"binlog-copy-mode" json:"binlogCopyMode"`
+	BinlogCopyScript               string `mapstructure:"binlog-copy-script" toml:"binlog-copy-script" json:"binlogCopyScript"`
+	BinlogRotationScript           string `mapstructure:"binlog-rotation-script" toml:"binlog-rotation-script" json:"binlogRotationScript"`
+	BinlogParseMode                string `mapstructure:"binlog-parse-mode" toml:"binlog-parse-mode" json:"binlogParseMode"`
+	ClusterConfigPath              string `mapstructure:"cluster-config-file" toml:"-" json:"-"`
+	VaultServerAddr                string `mapstructure:"vault-server-addr" toml:"vault-server-addr" json:"vaultServerAddr"`
+	VaultRoleId                    string `mapstructure:"vault-role-id" toml:"vault-role-id" json:"vaultRoleId"`
+	VaultSecretId                  string `secret:"true" mapstructure:"vault-secret-id" toml:"vault-secret-id" json:"vaultSecretId"`
+	VaultMode                      string `mapstructure:"vault-mode" toml:"vault-mode" json:"vaultMode"`
+	VaultMount                     string `mapstructure:"vault-mount" toml:"vault-mount" json:"vaultMount"`
+	VaultAuth                      string `mapstructure:"vault-auth" toml:"vault-auth" json:"vaultAuth"`
+	VaultToken                     string `secret:"true" mapstructure:"vault-token" toml:"vault-token" json:"vaultToken"`
+	LogVault                       bool   `mapstructure:"log-vault" toml:"log-vault" json:"logVault"`
+	LogVaultLevel                  int    `mapstructure:"log-level-vault" toml:"log-level-vault" json:"logVaultLevel"`
+	GitUrl                         string `scope:"server" mapstructure:"git-url" toml:"git-url" json:"gitUrl"`
+	GitUrlPull                     string `scope:"server" mapstructure:"git-url-pull" toml:"git-url-pull" json:"gitUrlPull"`
+	GitUsername                    string `scope:"server" mapstructure:"git-username" toml:"git-username" json:"gitUsername"`
+	GitAccesToken                  string `secret:"true" scope:"server" mapstructure:"git-acces-token" toml:"git-acces-token" json:"-"`
+	GitPullAccesToken              string `secret:"true" scope:"server" mapstructure:"git-pull-access-token" toml:"git-pull-access-token" json:"-"`
+	Cloud18GitProjectID            int    `scope:"server" mapstructure:"cloud18-git-project-id" toml:"cloud18-git-project-id" json:"cloud18GitProjectId"`
+	Cloud18GitPullProjectID        int    `scope:"server" mapstructure:"cloud18-git-pull-project-id" toml:"cloud18-git-pull-project-id" json:"cloud18GitPullProjectId"`
+	Cloud18GitTokenExpires         string `scope:"server" mapstructure:"cloud18-git-token-expires" toml:"cloud18-git-token-expires" json:"cloud18GitTokenExpires"`
+	Cloud18Unregister              bool   `scope:"server" mapstructure:"cloud18-unregister" toml:"cloud18-unregister" json:"cloud18Unregister"`
+	GitMonitoringTicker            int    `scope:"server" mapstructure:"git-monitoring-ticker" toml:"git-monitoring-ticker" json:"gitMonitoringTicker"`
+	GitConfigSyncStandby           bool   `mapstructure:"git-config-sync-standby" toml:"git-config-sync-standby" json:"gitConfigSyncStandby"`
+	Cloud18                        bool   `scope:"server" mapstructure:"cloud18"  toml:"cloud18" json:"cloud18"`
+	Cloud18Domain                  string `scope:"server" mapstructure:"cloud18-domain" toml:"cloud18-domain" json:"cloud18Domain" groups:"apps"`
+	Cloud18SubDomain               string `scope:"server" mapstructure:"cloud18-sub-domain" toml:"cloud18-sub-domain" json:"cloud18SubDomain" groups:"apps"`
+	Cloud18SubDomainZone           string `scope:"server" mapstructure:"cloud18-sub-domain-zone" toml:"cloud18-sub-domain-zone" json:"cloud18SubDomainZone" groups:"apps"`
 	// The instance's own name when it is not registered (CREDENTIAL_STORES.md "Two levels"): where
 	// its server secrets go in a shared store. Never copied into the cloud18-* keys above.
 	InstanceDomain                   string  `scope:"server" mapstructure:"instance-domain" toml:"instance-domain" json:"instanceDomain"`
@@ -1216,11 +1220,11 @@ type AppConfig struct {
 	ProvAppHATopology     string `mapstructure:"prov-app-ha-topology" toml:"prov-app-ha-topology" json:"provAppHaTopology"`
 	ProvAppAgentsFailover string `mapstructure:"prov-app-agents-failover" toml:"prov-app-agents-failover" json:"provAppAgentsFailover"`
 	ProvAppSizingMode     string `mapstructure:"prov-app-sizing-mode" toml:"prov-app-sizing-mode" json:"provAppSizingMode"`
-	ProvAppConfigurator   string `mapstructure:"prov-app-configurator" toml:"prov-app-configurator" json:"provAppConfigurator" groups:"apps"` // engine whose moduleset (share/opensvc/moduleset_<engine>.svc.mrm.db.json) is rendered from the app plan and handed to the container (postgres); empty = none
-	AppRandomPassword     string `secret:"true" mapstructure:"app-random-password" toml:"app-random-password" json:"appRandomPassword" groups:"apps"`       // generated when the template references {{app.randompassword}}, stored encrypted
-	AppAPIToken           string `secret:"true" mapstructure:"app-api-token" toml:"app-api-token" json:"appApiToken"`                                       // minted when the template references {{app.api.token}} (#2158), stored encrypted
-	AppAPITokenID         string `mapstructure:"app-api-token-id" toml:"app-api-token-id" json:"appApiTokenId"`                               // the token's id in the API token store, to renew and revoke it
-	AppAPITokenExpires    string `mapstructure:"app-api-token-expires" toml:"app-api-token-expires" json:"appApiTokenExpires"`                // RFC3339, empty = never
+	ProvAppConfigurator   string `mapstructure:"prov-app-configurator" toml:"prov-app-configurator" json:"provAppConfigurator" groups:"apps"`         // engine whose moduleset (share/opensvc/moduleset_<engine>.svc.mrm.db.json) is rendered from the app plan and handed to the container (postgres); empty = none
+	AppRandomPassword     string `secret:"true" mapstructure:"app-random-password" toml:"app-random-password" json:"appRandomPassword" groups:"apps"` // generated when the template references {{app.randompassword}}, stored encrypted
+	AppAPIToken           string `secret:"true" mapstructure:"app-api-token" toml:"app-api-token" json:"appApiToken"`                                 // minted when the template references {{app.api.token}} (#2158), stored encrypted
+	AppAPITokenID         string `mapstructure:"app-api-token-id" toml:"app-api-token-id" json:"appApiTokenId"`                                       // the token's id in the API token store, to renew and revoke it
+	AppAPITokenExpires    string `mapstructure:"app-api-token-expires" toml:"app-api-token-expires" json:"appApiTokenExpires"`                        // RFC3339, empty = never
 	AppHost               string `mapstructure:"app-host" toml:"app-host" json:"appHost"`
 	AppHostsIPV6          string `mapstructure:"app-hosts-ipv6" toml:"app-hosts-ipv6" json:"appHostsIpv6"`
 	AppPort               string `mapstructure:"app-port" toml:"app-port" json:"appPort"`

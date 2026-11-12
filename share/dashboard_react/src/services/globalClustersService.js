@@ -27,6 +27,10 @@ export const globalClustersService = {
   getCloud18Identity,
   getInstanceName,
   setInstanceName,
+  getServerSecretKvList,
+  putServerSecretKv,
+  switchServerSecretKv,
+  removeServerSecretKv,
   licensePull,
   refreshAppTemplateRepo,
   getAppTemplateStructureGuide,
@@ -149,6 +153,25 @@ function getInstanceName() {
 
 function setInstanceName(name) {
   return getApi().post(`clusters/settings/actions/instance-name`, name)
+}
+
+// the server credential stores, which hold the server secrets: sysops and extsysops only
+// (the server credentials grant on every cluster); secrets go in and never come back
+function getServerSecretKvList() {
+  return getApi().get(`clusters/settings/actions/server-secret-kv`)
+}
+
+function putServerSecretKv(spec, isEdit) {
+  const path = isEdit ? `edit/${encodeURIComponent(spec.name)}` : 'add'
+  return getApi().post(`clusters/settings/actions/server-secret-kv/${path}`, spec)
+}
+
+function switchServerSecretKv(entryName, enabled) {
+  return getApi().post(`clusters/settings/actions/server-secret-kv/${enabled ? 'enable' : 'disable'}/${encodeURIComponent(entryName)}`)
+}
+
+function removeServerSecretKv(entryName) {
+  return getApi().post(`clusters/settings/actions/server-secret-kv/remove/${encodeURIComponent(entryName)}`)
 }
 
 // license-pull (#2309): load from a package file in the datadir what a git pull of the -pull

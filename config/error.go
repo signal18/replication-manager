@@ -77,6 +77,7 @@ var ClusterError = map[string]string{
 	"ERR00055":  "Arbitrator unreachable (%s)",
 	"ERR00056":  "Master user %s is not defined on replication candidate %s",
 	"ERR00057":  "Database duplicate users not allowed in proxysql %s",
+	"WARN0320":  "Server credential store %s is behind (%s) -- the server secrets every cluster reads are not the current ones in it; a sysops or extsysops checks it in the global settings",
 	"WARN0319":  "ProxySQL %s: users not loaded, their caching_sha2_password hash cannot be checked by ProxySQL and repman does not know their password: %s",
 	"ERR00058":  "Sphinx connection error: %s",
 	"ERR00059":  "Ignored server %s not found in configured server list",
@@ -436,6 +437,7 @@ var GlobalError = map[string]string{
 	"GWARN019": "Arbitration peer %s answers on %s only: set arbitration-peer-hosts to %s",
 	"GWARN020": "The arbitration peer has the same arbitration-external-unique-id %d: when both instances are Standby neither claims Active, give each instance its own id",
 	"GWARN023": "license-pull refused: %s",
+	"GWARN024": "Server credential store %s is behind (%s) -- the server secrets (api-credentials, SMTP, GitLab...) it holds are not the current ones; written again every secret-kv-retry-interval, check the entry's address and sign-in, and that the instance is named",
 	"GWARN022": "Action required: register this replication-manager again through Cloud18 (Cloud18 settings, Register, same URI: it reconnects to its repositories): %s",
 	// GINF: informational operating modes (state-as-tag), never counted as alerts
 	"GINF001": "ReplicationManager has %d cluster(s) in standby pulling config from active peer: %s",

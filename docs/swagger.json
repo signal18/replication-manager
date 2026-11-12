@@ -1047,6 +1047,349 @@
                 }
             }
         },
+        "/api/clusters/settings/actions/server-secret-kv": {
+            "get": {
+                "description": "The vault entries of the server level, which hold the server secrets (api-credentials, SMTP, GitLab...) under \u003cpath-prefix\u003e/system/repman/\u003cinstance name\u003e: secrets never returned, only the names of those set; each one's state (last write, behind: GWARN024, WARN0320 on every cluster) and folder, the instance's name (empty while not complete), the server secrets' names, the plugins' manifests and whether a config file sets the list. The instance's sysops and extsysops only: the server credentials grant on every cluster.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "GlobalSetting"
+                ],
+                "summary": "List the server credential stores",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/server.ServerSecretKvListResult"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL: the server credentials grant is needed on every cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/settings/actions/server-secret-kv/add": {
+            "post": {
+                "description": "Adds a vault entry of the server level (plugin secret_kv-vault: address, mount, path-prefix, mode, auth, role-id, secret-id written only). An enabled entry gets every version of every server secret, a full pass first, once the instance is named. Refused on a standby and when a config file sets the list.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "GlobalSetting"
+                ],
+                "summary": "Add a server credential store",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "name, settings, enabled",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/config.SecretKvSpec"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "name",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid entry",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL: the server credentials grant is needed on every cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "409": {
+                        "description": "A standby, or the list is set by a config file",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/settings/actions/server-secret-kv/disable/{entryName}": {
+            "post": {
+                "description": "Its versions stop; what it holds stays.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "GlobalSetting"
+                ],
+                "summary": "Turn a server credential store off",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Entry Name",
+                        "name": "entryName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "name",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Unknown entry",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL: the server credentials grant is needed on every cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "409": {
+                        "description": "A standby, or the list is set by a config file",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/settings/actions/server-secret-kv/edit/{entryName}": {
+            "post": {
+                "description": "Changes a server vault entry's settings (an empty secret keeps the secret, unset clears names).",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "GlobalSetting"
+                ],
+                "summary": "Edit a server credential store",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Entry Name",
+                        "name": "entryName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "settings, unset, enabled",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/config.SecretKvSpec"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "name",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid entry",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL: the server credentials grant is needed on every cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "409": {
+                        "description": "A standby, or the list is set by a config file",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/settings/actions/server-secret-kv/enable/{entryName}": {
+            "post": {
+                "description": "The entry gets every version of every server secret, a full pass first.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "GlobalSetting"
+                ],
+                "summary": "Turn a server credential store on",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Entry Name",
+                        "name": "entryName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "name",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Unknown entry",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL: the server credentials grant is needed on every cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "409": {
+                        "description": "A standby, or the list is set by a config file",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/settings/actions/server-secret-kv/remove/{entryName}": {
+            "post": {
+                "description": "Takes the entry out of the list; repman never deletes what the store holds.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "GlobalSetting"
+                ],
+                "summary": "Remove a server credential store",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Entry Name",
+                        "name": "entryName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "name",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Unknown entry",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL: the server credentials grant is needed on every cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "409": {
+                        "description": "A standby, or the list is set by a config file",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/settings/actions/set/{settingName}/{settingValue}": {
             "post": {
                 "description": "This endpoint sets the global settings for the server.",
@@ -18555,7 +18898,7 @@
         },
         "/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/actions/receive-task/{taskname}": {
             "post": {
-                "description": "For mysqldump (scheduler-jobs-exec-remote lists it) the receiver opens only while a logical backup of the server waits for it, and the answer also carries the dump arguments: base64 of the arguments, one per line, without the connection arguments the DB host provides.",
+                "description": "For xtrabackup and mariabackup the answer is the receiver the running physical backup of the server opened (one receiver per backup). For mysqldump (scheduler-jobs-exec-remote lists it) the receiver opens only while a logical backup of the server waits for it, and the answer also carries the dump arguments: base64 of the arguments, one per line, without the connection arguments the DB host provides.",
                 "tags": [
                     "DatabaseTasks"
                 ],
@@ -18598,7 +18941,7 @@
                         }
                     },
                     "500": {
-                        "description": "No remote mysqldump backup waiting on \u003cserver\u003e",
+                        "description": "No remote mysqldump backup waiting on \u003cserver\u003e, or for xtrabackup/mariabackup, No physical backup \u003ctask\u003e waiting for its stream on \u003cserver\u003e",
                         "schema": {
                             "type": "string"
                         }
@@ -34556,6 +34899,58 @@
                     "type": "integer"
                 },
                 "zone": {
+                    "type": "string"
+                }
+            }
+        },
+        "server.ServerSecretKvListResult": {
+            "type": "object",
+            "properties": {
+                "entries": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/config.SecretKvConfig"
+                    }
+                },
+                "instanceName": {
+                    "description": "InstanceName is the folder's name, empty while not complete",
+                    "type": "string"
+                },
+                "keys": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "pinned": {
+                    "description": "Pinned: a config file sets the list, the API does not change it",
+                    "type": "boolean"
+                },
+                "plugins": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/config.SecretKvPluginManifest"
+                    }
+                },
+                "states": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "$ref": "#/definitions/server.ServerSecretKvState"
+                    }
+                }
+            }
+        },
+        "server.ServerSecretKvState": {
+            "type": "object",
+            "properties": {
+                "behind": {
+                    "type": "string"
+                },
+                "lastWrite": {
+                    "type": "string"
+                },
+                "path": {
+                    "description": "Path is the entry's folder for this instance, empty while the instance is not named",
                     "type": "string"
                 }
             }

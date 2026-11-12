@@ -21,12 +21,32 @@ import RMButton from '../../components/RMButton'
 import ConfirmModal from '../../components/Modals/ConfirmModal'
 import parentStyles from '../../components/Modals/styles.module.scss'
 import { clusterService } from '../../services/clusterService'
+import { globalClustersService } from '../../services/globalClustersService'
 import { useTheme } from '../../ThemeProvider'
 import { NAME_PATTERN, SettingField } from './ArchiveListSettings'
 
-// The cluster's vault entries (#2227): each enabled entry gets every version of every secret of
-// the cluster at <mount>/<path-prefix>/<cluster>/databases|proxies|apps|archives/<name>/<key>.
-// Secrets go in through the form and never come back (secretsSet).
+// The vault entries of a level (CREDENTIAL_STORES.md "Two levels"). A cluster's (#2227): each
+// enabled entry gets every version of every secret of the cluster at
+// <mount>/<path-prefix>/<cluster>/databases|proxies|apps|archives/<name>/<key>. The server's
+// (level 'server', in the global settings): the server secrets at
+// <mount>/<path-prefix>/system/repman/<instance name>/<key>, the instance's sysops and extsysops
+// only. Secrets go in through the form and never come back (secretsSet).
+
+// the API of each level
+const API = {
+  cluster: (clusterName) => ({
+    list: () => clusterService.getSecretKvList(clusterName),
+    put: (spec, isEdit) => clusterService.putSecretKv(clusterName, spec, isEdit),
+    switch: (name, enabled) => clusterService.switchSecretKv(clusterName, name, enabled),
+    remove: (name) => clusterService.removeSecretKv(clusterName, name)
+  }),
+  server: () => ({
+    list: () => globalClustersService.getServerSecretKvList(),
+    put: (spec, isEdit) => globalClustersService.putServerSecretKv(spec, isEdit),
+    switch: (name, enabled) => globalClustersService.switchServerSecretKv(name, enabled),
+    remove: (name) => globalClustersService.removeServerSecretKv(name)
+  })
+}
 
 const SETTING_LABELS = {
   address: 'Address',
@@ -51,7 +71,7 @@ function statePill(entry, state, variant) {
   return <Badge colorScheme='green' variant={variant}>On</Badge>
 }
 
-function SecretKvFormModal({ isOpen, closeModal, manifest, entry, onSave }) {
+function SecretKvFormModal({ isOpen, closeModal, manifest, entry, onSave, level }) {
   const { theme } = useTheme()
   const isEdit = !!entry
   const [name, setName] = useState(entry?.name || '')
@@ -104,7 +124,9 @@ function SecretKvFormModal({ isOpen, closeModal, manifest, entry, onSave }) {
               </FormControl>
             ))}
             <Text fontSize='sm' opacity='0.7'>
-              The secrets are written under the mount, at path-prefix/cluster. repman never deletes what the vault holds.
+              {level === 'server'
+                ? 'The server secrets (api-credentials, SMTP, GitLab...) are written under the mount, at path-prefix/system/repman/<instance name>. Only the sysops and extsysops of this instance see this list. repman never deletes what the vault holds.'
+                : 'The secrets are written under the mount, at path-prefix/cluster. repman never deletes what the vault holds.'}
             </Text>
             {error && <Text color={theme === 'dark' ? 'red.300' : 'red.500'} fontSize='sm'>{error}</Text>}
           </Stack>
@@ -118,31 +140,45 @@ function SecretKvFormModal({ isOpen, closeModal, manifest, entry, onSave }) {
   )
 }
 
-function SecretKvEntries({ clusterName, user }) {
+function SecretKvEntries({ clusterName, user, level = 'cluster' }) {
+  const isServer = level === 'server'
+  const api = isServer ? API.server() : API.cluster(clusterName)
   const { theme } = useTheme()
   const badgeVariant = theme === 'dark' ? 'solid' : 'subtle'
   const mutedColor = theme === 'dark' ? 'gray.400' : 'gray.500'
-  const [list, setList] = useState({ entries: [], states: {}, plugins: [], pinned: false, dropsPending: false, dropped: 0 })
+  const [list, setList] = useState({ entries: [], states: {}, plugins: [], pinned: false, dropsPending: false, dropped: 0, instanceName: '' })
+  // the server level answers 403 to anyone without the server credentials grant on every cluster
+  const [forbidden, setForbidden] = useState(false)
   const [error, setError] = useState('')
   const [editing, setEditing] = useState(null) // the entry edited, {} to add one
   const [removeName, setRemoveName] = useState('')
   const g = user?.grants || {}
-  const canManage = g['cluster-settings'] !== false
+  // the server level: the list loads for its owners only, who may do everything
+  const canManage = isServer || g['cluster-settings'] !== false
   const canSwitch = canManage || !!g['db-config-flag']
 
   const fetchList = useCallback(async () => {
-    if (!clusterName) return
+    if (!isServer && !clusterName) return
     try {
-      const { data, status } = await clusterService.getSecretKvList(clusterName)
+      const { data, status } = await api.list()
+      if (status === 403) {
+        setForbidden(true)
+        return
+      }
       if (status >= 200 && status < 300 && data) {
-        setList({ entries: data.entries || [], states: data.states || {}, plugins: data.plugins || [], pinned: !!data.pinned, dropsPending: !!data.dropsPending, dropped: data.dropped || 0 })
+        setList({ entries: data.entries || [], states: data.states || {}, plugins: data.plugins || [], pinned: !!data.pinned, dropsPending: !!data.dropsPending, dropped: data.dropped || 0, instanceName: data.instanceName || '' })
       } else {
         setError(typeof data === 'string' ? data : `Failed to list the vaults (status ${status})`)
       }
     } catch (e) {
+      if (e?.response?.status === 403) {
+        setForbidden(true)
+        return
+      }
       setError(e?.message || 'Failed to list the vaults')
     }
-  }, [clusterName])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clusterName, level])
 
   useEffect(() => { fetchList() }, [fetchList])
 
@@ -167,9 +203,19 @@ function SecretKvEntries({ clusterName, user }) {
 
   const manifest = list.plugins.find((p) => p.name === 'secret_kv-vault')
   const save = async (spec, isEdit) => {
-    const err = await call(() => clusterService.putSecretKv(clusterName, spec, isEdit))
+    const err = await call(() => api.put(spec, isEdit))
     if (!err) setEditing(null)
     return err
+  }
+
+  if (forbidden) {
+    return <Text as='span' color={mutedColor}>the sysops and extsysops of this instance only</Text>
+  }
+  // where an entry writes: the server's folder is the instance's name, unknown while not complete
+  const folder = (e, state) => {
+    const base = (e.settings?.mount || 'kv') + '/'
+    if (isServer) return state?.path ? base + state.path : base + '… (name this instance first)'
+    return base + (e.settings?.['path-prefix'] ? e.settings['path-prefix'] + '/' : '') + clusterName
   }
 
   return (
@@ -183,7 +229,7 @@ function SecretKvEntries({ clusterName, user }) {
         return (
           <Flex key={e.name} align='center' gap='3' wrap='wrap'>
             <Switch isChecked={!!e.enabled} isDisabled={!canSwitch || list.pinned}
-              onChange={() => call(() => clusterService.switchSecretKv(clusterName, e.name, !e.enabled))} />
+              onChange={() => call(() => api.switch(e.name, !e.enabled))} />
             <Text as='span' fontWeight='semibold'>{e.name}</Text>
             {statePill(e, state, badgeVariant)}
             {offer && (
@@ -193,7 +239,7 @@ function SecretKvEntries({ clusterName, user }) {
             )}
             <Badge colorScheme='purple' variant={badgeVariant}>{e.settings?.address || 'no address'}</Badge>
             <Text as='span' fontSize='sm' color={mutedColor}>
-              {(e.settings?.mount || 'kv') + '/' + (e.settings?.['path-prefix'] ? e.settings['path-prefix'] + '/' : '') + clusterName}
+              {folder(e, state)}
               {e.settings?.mode === 'database_engine' ? ' (database engine)' : ''}
               {state?.lastWrite && !state.lastWrite.startsWith('0001') ? ` · last write ${new Date(state.lastWrite).toLocaleString()}` : ''}
             </Text>
@@ -211,17 +257,17 @@ function SecretKvEntries({ clusterName, user }) {
       )}
       <Flex gap='2' align='center'>
         <RMButton size='sm' isDisabled={!canManage || list.pinned || !manifest} onClick={() => setEditing({})}>Add a vault</RMButton>
-        {list.pinned && <Text as='span' fontSize='sm' color={mutedColor}>set by a config file (secret-kv): change them there</Text>}
+        {list.pinned && <Text as='span' fontSize='sm' color={mutedColor}>set by a config file ({isServer ? 'server-secret-kv' : 'secret-kv'}): change them there</Text>}
       </Flex>
       {error && <Text color={theme === 'dark' ? 'red.300' : 'red.500'} fontSize='sm'>{error}</Text>}
       {editing && (
         <SecretKvFormModal isOpen={!!editing} closeModal={() => setEditing(null)} manifest={manifest}
-          entry={editing.name ? editing : null} onSave={save} />
+          entry={editing.name ? editing : null} onSave={save} level={level} />
       )}
       {removeName && (
         <ConfirmModal isOpen={!!removeName} closeModal={() => setRemoveName('')}
           title={`Remove ${removeName}? What the vault holds stays.`}
-          onConfirmClick={() => { call(() => clusterService.removeSecretKv(clusterName, removeName)); setRemoveName('') }} />
+          onConfirmClick={() => { call(() => api.remove(removeName)); setRemoveName('') }} />
       )}
     </Stack>
   )

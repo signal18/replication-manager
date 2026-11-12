@@ -210,9 +210,7 @@ func (cluster *Cluster) onCredentialChange(changes []credstore.Change) {
 }
 
 func (cluster *Cluster) startSecretStores() {
-	if cluster.secretKv.running.CompareAndSwap(false, true) {
-		go cluster.runSecretStores()
-	}
+	cluster.secretRunner().Start()
 }
 
 func (cluster *Cluster) storeTimeout() credstore.Timeout {
@@ -223,96 +221,52 @@ func (cluster *Cluster) vaultStore(e config.SecretKvConfig) *credstore.VaultKV {
 	return credstore.NewVaultKV(credstore.VaultSettingsFromEntry(cluster.Conf, e), nil)
 }
 
-// runSecretStores runs the full pass when one is due, then writes the queue, until both are
-// done. A store that failed keeps its versions queued (the latest of each wins) and is tried
-// again, with a full pass, after secret-kv-retry-interval.
-func (cluster *Cluster) runSecretStores() {
-	defer cluster.secretKv.running.Store(false)
-	for !cluster.exit.Load() {
-		if cluster.secretKv.passDue.Swap(false) {
-			cluster.secretFullPass()
-		}
-		if !cluster.secretWritePass() {
-			if cluster.secretKv.passDue.Load() {
-				continue
+// secretRunner is the cluster's store worker (credstore.StoreRunner, the same for the server):
+// the full pass when one is due, then the queue, a failed store tried again after
+// secret-kv-retry-interval.
+func (cluster *Cluster) secretRunner() *credstore.StoreRunner {
+	c := &cluster.secretKv
+	return &credstore.StoreRunner{
+		Queue:    cluster.storeQueue(),
+		Writer:   cluster.secretStoreWriter,
+		Timeout:  cluster.storeTimeout,
+		Retry:    func() time.Duration { return time.Duration(cluster.Conf.SecretKvRetryInterval) * time.Second },
+		Stopped:  cluster.exit.Load,
+		FullPass: cluster.secretFullPass,
+		Behind:   cluster.setStoreBehind,
+		Written:  cluster.setStoreWritten,
+		AfterWrite: func() {
+			c.mu.Lock()
+			if c.queue.Len() == 0 && c.dropsUnresolved {
+				// the queue drained after drops: a full pass writes the newest of every secret
+				c.dropsUnresolved = false
+				c.passDue.Store(true)
 			}
-			return
-		}
-		cluster.secretKv.passDue.Store(true)
-		retry := time.Duration(cluster.Conf.SecretKvRetryInterval) * time.Second
-		if retry <= 0 {
-			retry = time.Minute
-		}
-		for end := time.Now().Add(retry); time.Now().Before(end) && !cluster.exit.Load(); {
-			time.Sleep(time.Second)
-		}
+			c.mu.Unlock()
+		},
+		Running: &c.running,
+		Due:     &c.passDue,
 	}
+}
+
+// secretStoreWriter is entry's sink: the reserved orchestrator sink (OpenSVC sec / K8s
+// Secret) or an active vault entry; nil when it has none.
+func (cluster *Cluster) secretStoreWriter(name string) credstore.StoreWriter {
+	if name == orchestratorStoreEntry {
+		if ow := cluster.orchestratorStoreWriter(); ow != nil {
+			return ow
+		}
+		return nil
+	}
+	if e, ok := cluster.Conf.SecretKvActiveEntry(name); ok {
+		return cluster.vaultStore(e)
+	}
+	return nil
 }
 
 // secretWritePass writes the queue once; true when something failed and is queued again.
 func (cluster *Cluster) secretWritePass() bool {
-	c := &cluster.secretKv
-	q := cluster.storeQueue()
-	items := q.Take()
-	if len(items) == 0 {
-		return false
-	}
-	var order []string
-	byEntry := map[string][]credstore.StoreItem{}
-	for _, it := range items {
-		if _, ok := byEntry[it.Entry]; !ok {
-			order = append(order, it.Entry)
-		}
-		byEntry[it.Entry] = append(byEntry[it.Entry], it)
-	}
-	// Each entry's sink writes concurrently, so a slow or unreachable store (a Vault entry or
-	// the orchestrator agent) never blocks the others or holds up the secret worker and the
-	// monitoring loop behind it (F2). Each WriteAll bounds its own writes by storeTimeout
-	// internally. setStoreBehind/setStoreWritten take the state mutex and the queue has its own
-	// mutex, so the only shared scalar is retry, kept atomic.
-	var retry atomic.Bool
-	var wg sync.WaitGroup
-	for _, name := range order {
-		var w credstore.StoreWriter
-		if name == orchestratorStoreEntry {
-			// the reserved orchestrator sink (OpenSVC sec / K8s Secret), not a Vault entry
-			if ow := cluster.orchestratorStoreWriter(); ow != nil {
-				w = ow
-			}
-		} else if e, ok := cluster.Conf.SecretKvActiveEntry(name); ok {
-			w = cluster.vaultStore(e)
-		}
-		if w == nil {
-			// no sink: an entry turned off or removed, or an orchestrator-less cluster — its
-			// versions stop, what it holds stays
-			cluster.setStoreBehind(name, "")
-			continue
-		}
-		wg.Add(1)
-		go func(name string, w credstore.StoreWriter, items []credstore.StoreItem) {
-			defer wg.Done()
-			failed, err := w.WriteAll(context.Background(), items, cluster.storeTimeout())
-			if err != nil {
-				cluster.setStoreBehind(name, err.Error())
-				q.Requeue(failed)
-				retry.Store(true)
-				return
-			}
-			cluster.setStoreBehind(name, "")
-			cluster.setStoreWritten(name)
-		}(name, w, byEntry[name])
-	}
-	wg.Wait()
-	if !retry.Load() {
-		c.mu.Lock()
-		if q.Len() == 0 && c.dropsUnresolved {
-			// the queue drained after drops: a full pass writes the newest of every secret
-			c.dropsUnresolved = false
-			c.passDue.Store(true)
-		}
-		c.mu.Unlock()
-	}
-	return retry.Load()
+	return cluster.secretRunner().WritePass()
 }
 
 // setStoreBehind records why entry is behind, "" when it is not any more. The text names a
@@ -765,6 +719,12 @@ func (cluster *Cluster) CheckSecretKvStores() {
 	for name, why := range behind {
 		cluster.SecurityStateMachine.AddState("WARN0271", state.State{ErrType: "WARNING", ErrFrom: "SECURITY", ServerUrl: name,
 			ErrDesc: fmt.Sprintf(clusterError["WARN0271"], name, why)})
+	}
+	if g := cluster.ServerGlobals; g != nil && g.ServerStoresBehind != nil {
+		for name, why := range g.ServerStoresBehind() {
+			cluster.SecurityStateMachine.AddState("WARN0320", state.State{ErrType: "WARNING", ErrFrom: "SECURITY", ServerUrl: name,
+				ErrDesc: fmt.Sprintf(clusterError["WARN0320"], name, why)})
+		}
 	}
 	if dropsUnresolved {
 		limit := cluster.Conf.SecretKvQueueLimit
