@@ -225,6 +225,9 @@ func (repman *ReplicationManager) rotateAPIUserPassword(cl *cluster.Cluster, use
 	return res, nil
 }
 
+// errNoServerCredentials: the caller lacks the server credentials grant on a cluster.
+var errNoServerCredentials = errors.New("a server secret is changed by the instance's sysops and extsysops only")
+
 // holdsServerCredentials: user holds the server credentials grant on every cluster of the
 // instance. A server secret is the instance's (CREDENTIAL_STORES.md "Two levels"), so a grant
 // on one cluster of a shared instance is not enough; the same rule as the instance's name.
@@ -236,7 +239,7 @@ func (repman *ReplicationManager) holdsServerCredentials(user string) error {
 	for _, cl := range clusters {
 		u, ok := cl.GetACLUser(user)
 		if !ok || u.Granted(config.GrantClusterServerCredentials) != nil {
-			return fmt.Errorf("%s does not hold %s on %s: a server secret is changed by the instance's sysops and extsysops only", user, config.GrantClusterServerCredentials, cl.Name)
+			return fmt.Errorf("%w: %s does not hold %s on %s", errNoServerCredentials, user, config.GrantClusterServerCredentials, cl.Name)
 		}
 	}
 	return nil

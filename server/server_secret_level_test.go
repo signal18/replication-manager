@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -346,5 +347,47 @@ func TestServerLevelHandOverKeptWhenTheServerFileIsNotWritten(t *testing.T) {
 	}
 	if len(file[apiCredentialsKey]) != 1 {
 		t.Fatal("the cluster dropped the server secret's versions the server could not write")
+	}
+}
+
+// Rotations and a global setting of a server secret at once: each rotation's change of the list
+// is kept, none overwrites another (serverSecrets.setMu). Run with -race.
+func TestServerLevelConcurrentChangesKeepEveryRotation(t *testing.T) {
+	users := []string{"u1", "u2", "u3", "u4", "u5", "u6"}
+	list := "admin:first"
+	for _, u := range users {
+		list += "," + u + ":start"
+	}
+	repman := newServerLevelTestManager(t, list)
+	var wg sync.WaitGroup
+	got := make([]string, len(users))
+	for i, u := range users {
+		wg.Add(1)
+		go func(i int, u string) {
+			defer wg.Done()
+			res, err := repman.rotateAPIUserPassword(repman.Clusters["c1"], u, "admin")
+			if err != nil {
+				t.Errorf("%s: %v", u, err)
+				return
+			}
+			got[i] = res.Password
+		}(i, u)
+	}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := repman.setServerSetting("admin", "/api/clusters/settings/actions/set/mail-smtp-password", "mail-smtp-password", base64.StdEncoding.EncodeToString([]byte("smtp"))); err != nil {
+			t.Errorf("smtp: %v", err)
+		}
+	}()
+	wg.Wait()
+	final := repman.Conf.DecryptedAPIUserList()
+	for i, u := range users {
+		if got[i] == "" || !strings.Contains(final, u+":"+got[i]) {
+			t.Fatalf("the rotation of %s was lost", u)
+		}
+	}
+	if n := repman.serverVersionStore().Count(apiCredentialsKey); n != len(users) {
+		t.Fatalf("%d versions of the list, want %d", n, len(users))
 	}
 }

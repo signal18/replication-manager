@@ -202,7 +202,15 @@ func (repman *ReplicationManager) handlerMuxSetGlobalSettings(w http.ResponseWri
 				return
 			}
 			if err != nil {
-				http.Error(w, err.Error(), http.StatusNotImplemented)
+				code := http.StatusNotImplemented
+				switch {
+				case errors.Is(err, errNoServerCredentials):
+					code = http.StatusForbidden
+				case errors.Is(err, errServerSecretNotPersisted):
+					// the new value is in force, not on disk: the message says so
+					code = http.StatusInternalServerError
+				}
+				http.Error(w, err.Error(), code)
 				return
 			}
 			repman.writeStandbyPersistenceWarning(w)
