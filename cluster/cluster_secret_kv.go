@@ -679,6 +679,10 @@ func (cluster *Cluster) CheckSecretKvStores() {
 			cluster.ConfigStateMachine.AddState("WARN0273", state.State{ErrType: "WARNING", ErrFrom: "CONF", ServerUrl: key,
 				ErrDesc: fmt.Sprintf(clusterError["WARN0273"], key)})
 		}
+		for _, name := range cluster.Conf.ReservedPrefixSecretKvs() {
+			cluster.ConfigStateMachine.AddState("WARN0321", state.State{ErrType: "WARNING", ErrFrom: "CONF", ServerUrl: name,
+				ErrDesc: fmt.Sprintf(clusterError["WARN0321"], name)})
+		}
 	}
 	if !cluster.IsActive() || cluster.SecurityStateMachine == nil {
 		return
@@ -971,6 +975,14 @@ func (cluster *Cluster) takeConfigFileCredentials() {
 		if vs.TakeConfigFileValue(key, cluster.Conf.DecryptSecretValue(key, v)) {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, config.LvlInfo, "Credential stores: %s was edited in a config file, its value is the current version", key)
 		}
+	}
+}
+
+// warnReservedPrefixSecretKvs logs, at a load, the entries switched off because their
+// path-prefix could reach the server's folder; WARN0321 says it at every tick.
+func (cluster *Cluster) warnReservedPrefixSecretKvs() {
+	for _, name := range cluster.Conf.ReservedPrefixSecretKvs() {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Credential store %s switched off: its path-prefix could reach the server's folder (system/repman/<instance name>)", name)
 	}
 }
 

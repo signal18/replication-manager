@@ -539,9 +539,12 @@ sponsor or member never reaches them.
   nothing is written and the entry is behind. `system` is the server level's: a cluster entry
   whose `path-prefix` holds a segment `system` (any case), `.`, `..` or an empty one is refused
   (`ReservedSecretKvPrefix`, `ErrSecretKvReservedPrefix`) through the API (`PutSecretKvAt`) and a
-  peer's event (`SetSecretKvSetting`), and switched off when read from a config file, so a cluster
+  peer's event (`SetSecretKvSetting`, its prefix and its switch), and switched off when read from
+  a config file (a WARN at the load and `WARN0321` on the cluster's config state until the
+  file is changed; turning it on is refused), so a cluster
   folder never reaches `<prefix>/system/repman/...` whatever the server entry's own prefix, and
-  the separation does not rest on the Vault policies alone. Two of a client's instances collide only if the
+  the separation does not rest on the Vault policies alone. The prefix is compared as written,
+  `/`-separated: Vault paths take no `\` separator and the value is never URL-decoded. Two of a client's instances collide only if the
   client gives them the same prefix and the same name; on the Cloud18 vault the registration
   keeps the names apart.
 - **Writes:** the server chain's `OnSet` hook queues every change of a server secret (a

@@ -278,4 +278,13 @@ func TestServerKvReservedPrefixEveryPath(t *testing.T) {
 	if len(conf.SecretKvActive()) != 0 {
 		t.Fatal("a file entry under a server folder is active")
 	}
+	if got := conf.ReservedPrefixSecretKvs(); len(got) != 1 || got[0] != "fromfile" {
+		t.Fatalf("not listed for its state: %v", got)
+	}
+	if err := conf.SetSecretKvSetting("fromfile", "enabled", "true", false); !errors.Is(err, config.ErrSecretKvReservedPrefix) {
+		t.Fatalf("a peer event turns it on: %v", err)
+	}
+	if err := conf.SetSecretKvEnabled("fromfile", true); !errors.Is(err, config.ErrSecretKvReservedPrefix) {
+		t.Fatalf("the API turns it on: %v", err)
+	}
 }

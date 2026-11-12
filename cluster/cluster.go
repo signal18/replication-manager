@@ -747,6 +747,7 @@ func (cluster *Cluster) Init(confs *config.ConfVersion, cfgGroup string, tlog *s
 	cluster.Conf.MigrateArchives()
 	// the credential store entries, vault-* migrated into vault-default (#2227)
 	cluster.Conf.MigrateSecretKvs()
+	cluster.warnReservedPrefixSecretKvs()
 	// the cluster's own scheduler-jobs-exec-remote, not the map parsed for the defaults
 	cluster.Conf.ParseJobsExecOverrides()
 
@@ -2828,6 +2829,7 @@ func (cluster *Cluster) ReloadConfig(conf config.Config) {
 	cluster.Conf.MigrateSecretKvs()
 	cluster.Conf.ParseJobsExecOverrides()
 	cluster.Unlock()
+	cluster.warnReservedPrefixSecretKvs()
 	// the backups already read glued to the archive list as the config is (#2091)
 	go cluster.glueCatalogue()
 

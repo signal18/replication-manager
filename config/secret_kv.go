@@ -567,6 +567,9 @@ func (conf *Config) SetSecretKvSetting(entry, setting, value string, unset bool)
 			if err != nil {
 				return fmt.Errorf("enabled: %q is not a bool", value)
 			}
+			if b && ReservedSecretKvPrefix(conf.secretKvSetting(e, ConstSecretKvVaultPathPrefix)) {
+				return fmt.Errorf("credential store %s: %w", entry, ErrSecretKvReservedPrefix)
+			}
 			e.Enabled = b
 		}
 	default:
@@ -675,6 +678,9 @@ func (conf *Config) SetSecretKvEnabledAt(level SecretKvLevel, name string, enabl
 	if e == nil {
 		return fmt.Errorf("unknown credential store %s", name)
 	}
+	if enabled && level == SecretKvLevelCluster && ReservedSecretKvPrefix(conf.secretKvSetting(e, ConstSecretKvVaultPathPrefix)) {
+		return fmt.Errorf("credential store %s: %w", name, ErrSecretKvReservedPrefix)
+	}
 	e.Enabled = enabled
 	return nil
 }
@@ -719,6 +725,20 @@ func ReservedSecretKvPrefix(prefix string) bool {
 		}
 	}
 	return false
+}
+
+// ReservedPrefixSecretKvs are the cluster entries switched off because their path-prefix
+// reaches a server folder (ReservedSecretKvPrefix): read from a config file, never written.
+func (conf *Config) ReservedPrefixSecretKvs() []string {
+	secretKvMu.Lock()
+	defer secretKvMu.Unlock()
+	var out []string
+	for i := range conf.SecretKvs {
+		if ReservedSecretKvPrefix(conf.secretKvSetting(&conf.SecretKvs[i], ConstSecretKvVaultPathPrefix)) {
+			out = append(out, conf.SecretKvs[i].Name)
+		}
+	}
+	return out
 }
 
 // ErrSecretKvOfferManaged refuses a change of an entry a marketplace offer gives: the
