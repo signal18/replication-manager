@@ -23932,7 +23932,7 @@ const docTemplate = `{
                         }
                     },
                     "403": {
-                        "description": "No valid ACL",
+                        "description": "No valid ACL, or another user of the instance's list without cluster-server-credentials on every cluster",
                         "schema": {
                             "type": "string"
                         }

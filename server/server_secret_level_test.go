@@ -176,7 +176,7 @@ func TestServerLevelRotationNeedsServerCredentials(t *testing.T) {
 		cl.LoadAPIUsers()
 	}
 	c1 := repman.Clusters["c1"]
-	if _, err := repman.rotateAPIUserPassword(c1, "viewer", "lim"); !errors.Is(err, errRotateRefused) {
+	if _, err := repman.rotateAPIUserPassword(c1, "viewer", "lim"); !errors.Is(err, errRotateRefused) || !errors.Is(err, errNoServerCredentials) {
 		t.Fatalf("rotated by a user without the server credentials grant: %v", err)
 	}
 	if _, err := repman.rotateAPIUserPassword(c1, "lim", "lim"); err != nil {

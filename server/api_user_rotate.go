@@ -53,7 +53,7 @@ const rotatedPasswordLength = 24
 // @Param body body UserRotateForm true "User"
 // @Success 200 {object} UserRotateResult "The new password, shown once"
 // @Failure 400 {string} string "Invalid request or unknown user"
-// @Failure 403 {string} string "No valid ACL"
+// @Failure 403 {string} string "No valid ACL, or another user of the instance's list without cluster-server-credentials on every cluster"
 // @Failure 409 {string} string "This user's password cannot be rotated"
 // @Failure 500 {string} string "Rotation failed"
 // @Router /api/clusters/{clusterName}/users/rotate-password [post]
@@ -82,6 +82,8 @@ func (repman *ReplicationManager) handlerMuxUserRotatePassword(w http.ResponseWr
 		switch {
 		case errors.Is(err, cluster.ErrAPIUserUnknown):
 			http.Error(w, err.Error(), http.StatusBadRequest)
+		case errors.Is(err, errNoServerCredentials):
+			http.Error(w, err.Error(), http.StatusForbidden)
 		case errors.Is(err, errRotateRefused):
 			http.Error(w, err.Error(), http.StatusConflict)
 		default:
@@ -172,7 +174,7 @@ func (repman *ReplicationManager) rotateAPIUserPassword(cl *cluster.Cluster, use
 		// its owners only (sysops, extsysops); a user may always ban its own password
 		if by != user {
 			if err := repman.holdsServerCredentials(by); err != nil {
-				return nil, fmt.Errorf("%w: %s", errRotateRefused, err)
+				return nil, fmt.Errorf("%w: %w", errRotateRefused, err)
 			}
 		}
 		if err := repman.CredentialChain().CanSet(apiCredentialsKey); err != nil {
