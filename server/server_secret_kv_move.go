@@ -88,8 +88,12 @@ func (repman *ReplicationManager) checkServerKvMoves() {
 		retry = time.Minute
 	}
 	k := &repman.serverSecretKv
+	active := map[string]bool{}
 	for _, e := range repman.Conf.SecretKvActiveAt(config.SecretKvLevelServer) {
+		active[e.Name] = true
 		if !serverKvMoving(e, name) {
+			// renamed back, or its place edited: a move left over must not be reused
+			repman.dropServerKvMove(e.Name)
 			continue
 		}
 		k.mu.Lock()
@@ -125,6 +129,35 @@ func (repman *ReplicationManager) checkServerKvMoves() {
 			go repman.moveServerKv(e, m)
 		}
 	}
+	// an entry turned off or removed: its move goes too
+	k.mu.Lock()
+	var gone []string
+	for entry := range k.moves {
+		if !active[entry] {
+			gone = append(gone, entry)
+		}
+	}
+	k.mu.Unlock()
+	for _, entry := range gone {
+		repman.dropServerKvMove(entry)
+	}
+}
+
+// dropServerKvMove forgets entry's move: a running one is cancelled (it removes itself), any
+// other deleted with what it had written, which says nothing of another place.
+func (repman *ReplicationManager) dropServerKvMove(entry string) {
+	k := &repman.serverSecretKv
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	m := k.moves[entry]
+	if m == nil {
+		return
+	}
+	if m.running {
+		m.cancelled = true
+		return
+	}
+	delete(k.moves, entry)
 }
 
 // serverKvMovingFrom starts the behind reason of a move, the only one the move clears.
@@ -140,33 +173,40 @@ func (repman *ReplicationManager) moveServerKv(e config.SecretKvConfig, m *serve
 	from, name := e.WrittenAs, m.to
 	err := repman.moveServerKvOnce(e, m, from)
 	k.mu.Lock()
-	m.running = false
 	cancelled := m.cancelled
-	if err == nil || cancelled {
-		if k.moves[e.Name] == m {
+	k.mu.Unlock()
+	// the move stays in k.moves, running, until the commit is done: a tick in between sees it
+	// and starts no second one
+	finish := func(keep bool) {
+		k.mu.Lock()
+		m.running = false
+		if !keep && k.moves[e.Name] == m {
 			delete(k.moves, e.Name)
 		}
+		k.mu.Unlock()
 	}
-	k.mu.Unlock()
-	if cancelled {
-		repman.Logrus.Infof("Server credential store %s: the move to %s stopped, the instance was renamed again", e.Name, name)
+	switch {
+	case cancelled:
+		finish(false)
+		repman.clearServerKvMoving(e.Name)
+		repman.Logrus.Infof("Server credential store %s: the move to %s stopped, the instance was renamed or the store changed", e.Name, name)
 		return
-	}
-	if err != nil {
+	case err != nil:
+		finish(true) // a retry skips what it wrote
 		repman.setServerKvBehind(e.Name, fmt.Sprintf("%s %s to %s: %s", serverKvMovingFrom, from, name, err))
 		return
 	}
-	cur, ok := repman.serverKvEntry(e.Name)
-	if !ok || cur.WrittenAs != from {
+	// compare and set: an edit of the place meanwhile cleared written-as and wins
+	committed := repman.Conf.SetSecretKvWrittenAsIfAt(config.SecretKvLevelServer, e.Name, from, name)
+	finish(false)
+	if !committed {
 		repman.Logrus.Infof("Server credential store %s: changed during the move to %s, not recorded as moved", e.Name, name)
 		repman.clearServerKvMoving(e.Name)
 		return
 	}
-	if repman.Conf.SetSecretKvWrittenAsAt(config.SecretKvLevelServer, e.Name, name) {
-		repman.Save()
-		if repman.serverSecretKvsPinned() {
-			repman.Logrus.Warnf("Server credential store %s: moved to %s, but the list is set by a config file (server-secret-kv): where it holds the secrets is not saved, a rename while repman is stopped will not be moved", e.Name, name)
-		}
+	repman.Save()
+	if repman.serverSecretKvsPinned() {
+		repman.Logrus.Warnf("Server credential store %s: moved to %s, but the list is set by a config file (server-secret-kv): where it holds the secrets is not saved, a rename while repman is stopped will not be moved", e.Name, name)
 	}
 	repman.clearServerKvMoving(e.Name)
 	repman.Logrus.Infof("Server credential store %s: the server secrets moved from %s to %s", e.Name, from, name)
@@ -179,16 +219,6 @@ func (repman *ReplicationManager) clearServerKvMoving(entry string) {
 	if strings.HasPrefix(repman.ServerKvBehind()[entry], serverKvMovingFrom) {
 		repman.setServerKvBehind(entry, "")
 	}
-}
-
-// serverKvEntry is the server entry name, enabled or not.
-func (repman *ReplicationManager) serverKvEntry(name string) (config.SecretKvConfig, bool) {
-	for _, e := range repman.Conf.SecretKvListAt(config.SecretKvLevelServer) {
-		if e.Name == name {
-			return e, true
-		}
-	}
-	return config.SecretKvConfig{}, false
 }
 
 func (repman *ReplicationManager) moveServerKvOnce(e config.SecretKvConfig, m *serverKvMove, from string) error {
@@ -215,6 +245,12 @@ func (repman *ReplicationManager) moveServerKvOnce(e config.SecretKvConfig, m *s
 		k.mu.Lock()
 		m.written[id] = true
 		k.mu.Unlock()
+	}
+	k.mu.Lock()
+	cancelled := m.cancelled
+	k.mu.Unlock()
+	if cancelled {
+		return fmt.Errorf("stopped")
 	}
 	marker := credstore.StoreItem{Entry: e.Name, Path: repman.Conf.ServerSecretKvFolder(e, from), Key: ConstServerKvMovedTo,
 		Version: credstore.Version{Value: m.to, At: time.Now().UTC(), By: repman.Conf.ArbitrationSasUniqueId}}

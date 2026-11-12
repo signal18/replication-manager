@@ -217,3 +217,33 @@ func TestServerKvWrittenAsFromWhereItWent(t *testing.T) {
 		t.Fatalf("written as %q", got)
 	}
 }
+
+// A failed move left over is dropped once the entry no longer moves (its place edited, or the
+// instance renamed back): what it had written says nothing of another place.
+func TestServerKvStaleMoveDropped(t *testing.T) {
+	server := vaultfake.New("kv", "role", "sid")
+	defer server.Close()
+	repman, e := serverKvMovedSetup(t, server)
+	server.SetFail(true)
+	m := &serverKvMove{to: "acme/repman2/paris", written: map[string]bool{}, running: true}
+	repman.serverSecretKv.mu.Lock()
+	repman.serverSecretKv.moves = map[string]*serverKvMove{"srv-a": m}
+	repman.serverSecretKv.mu.Unlock()
+	repman.moveServerKv(e, m)
+	repman.serverSecretKv.mu.Lock()
+	kept := repman.serverSecretKv.moves["srv-a"] == m
+	repman.serverSecretKv.mu.Unlock()
+	if !kept {
+		t.Fatal("a failed move was not kept for its retry")
+	}
+	if _, err := repman.Conf.PutSecretKvAt(config.SecretKvLevelServer, config.SecretKvSpec{Name: "srv-a", Settings: map[string]interface{}{"path-prefix": "other"}}, false); err != nil {
+		t.Fatal(err)
+	}
+	repman.checkServerKvMoves()
+	repman.serverSecretKv.mu.Lock()
+	_, left := repman.serverSecretKv.moves["srv-a"]
+	repman.serverSecretKv.mu.Unlock()
+	if left {
+		t.Fatal("a stale move outlived the entry's place")
+	}
+}

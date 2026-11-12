@@ -621,10 +621,13 @@ sponsor or member never reaches them.
     still ends, the secrets being at the new place;
   - then `written-as` takes the new name (saved), the move's own behind reason is cleared (not
     another one), and a full pass writes what changed meanwhile.
-  - One move at most per entry: a rename during a move cancels it (it stops at its next write
-    and commits nothing) and the next tick starts the move to the newest name. A move commits
-    only when the entry still says it holds the secrets where the move started: an edit of its
-    place meanwhile forgets `written-as`, and the move leaves it so.
+  - One move at most per entry: a rename during a move, a rename back, or the entry's place
+    edited, turned off or removed cancels it (it stops at its next write, the marker included,
+    and commits nothing); the next tick starts the move to the newest name. A move stays listed,
+    running, until its commit is done, so no tick starts a second one in between. The commit is
+    a compare and set (`SetSecretKvWrittenAsIfAt`): it takes only while the entry still says it
+    holds the secrets where the move started, so an edit of its place meanwhile wins. A failed
+    move is kept for its retry, and dropped once the entry no longer moves.
   - Progress is the set of versions written (secret, time, writer), so a retry skips them
     whatever the list became meanwhile (a version added, a version pruned).
   - The first write records `written-as` from where the write went (the items' folder,

@@ -835,6 +835,20 @@ func (conf *Config) SetSecretKvWrittenAsAt(level SecretKvLevel, name, as string)
 	return true
 }
 
+// SetSecretKvWrittenAsIfAt sets the name level's entry holds its secrets under to as, only
+// when it still says from (a compare and set: an edit of the place meanwhile wins). True when
+// it changed it.
+func (conf *Config) SetSecretKvWrittenAsIfAt(level SecretKvLevel, name, from, as string) bool {
+	secretKvMu.Lock()
+	defer secretKvMu.Unlock()
+	e := conf.secretKvByNameAt(level, name)
+	if e == nil || e.WrittenAs != from || from == as {
+		return false
+	}
+	e.WrittenAs = as
+	return true
+}
+
 // SetSecretKvEnabled turns an entry on or off. Off stops its versions; what it holds stays.
 func (conf *Config) SetSecretKvEnabled(name string, enabled bool) error {
 	return conf.SetSecretKvEnabledAt(SecretKvLevelCluster, name, enabled)
