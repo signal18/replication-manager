@@ -816,6 +816,20 @@ func (repman *ReplicationManager) Cloud18InfrastructuresAccess(p *repmanmcp.Prin
 // the answer of all the others was lost (#2385).
 const accessAnswerTimeout = 5 * time.Second
 
+// peerHealthTrust is how old a failed health poll of a peer may be and still keep it from
+// being asked: the poll runs every few minutes for the peers it covers, so an older failure
+// may describe a peer it no longer polls.
+const peerHealthTrust = 10 * time.Minute
+
+// peerHealthError is why the health poll found the peer not answering, "" when it answers
+// or is not known to fail (PeerManager.HealthError).
+func (repman *ReplicationManager) peerHealthError(url string) string {
+	if repman.PeerManager == nil {
+		return ""
+	}
+	return repman.PeerManager.HealthError(url, peerHealthTrust)
+}
+
 // cloud18InfrastructuresAccessWithin asks every infrastructure (cloud18InfrastructureAccessOne),
 // accessParallel at a time, and returns once all answered or after within: an infrastructure
 // that has not answered by then is listed with that reason. Its call goes on in the background
@@ -829,6 +843,13 @@ func (repman *ReplicationManager) cloud18InfrastructuresAccessWithin(p *repmanmc
 	answers := make(chan answer, len(urls))
 	sem := make(chan struct{}, accessParallel)
 	for i, url := range urls {
+		// a peer the health poll found not answering is not asked again: its entry is that
+		// reason, at once (#2385)
+		if reason := repman.peerHealthError(url); reason != "" {
+			answers <- answer{i, repmanmcp.Cloud18InfrastructureAccess{ApiPublicUrl: url,
+				Error: "the infrastructure does not answer this instance's health check: " + reason}}
+			continue
+		}
 		go func(i int, url string) {
 			sem <- struct{}{}
 			defer func() { <-sem }()

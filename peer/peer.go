@@ -390,6 +390,37 @@ func (pm *PeerManager) GetSaleClustersJSON() ([]byte, error) {
 	return json.MarshalIndent(clusters, "", "\t")
 }
 
+// GetMarketplaceClusters returns a copy of every catalog cluster its owner put on the
+// marketplace (cloud18-shared), whatever its sale workflow: a cluster with a pending
+// request or a sponsor leaves PeerForSale, but its infrastructure stays a marketplace
+// infrastructure. Built from it, the list of infrastructures no longer loses a partner
+// whose only cluster for sale got a request (#2385).
+func (pm *PeerManager) GetMarketplaceClusters() []PeerCluster {
+	pm.mu.RLock()
+	defer pm.mu.RUnlock()
+	out := make([]PeerCluster, 0, len(pm.PeerClusters))
+	for _, pc := range pm.PeerClusters {
+		if pc != nil && pc.Cloud18Shared {
+			out = append(out, *pc)
+		}
+	}
+	return out
+}
+
+// HealthError is why the health poll of a peer failed ("" when it answers, or when its
+// last poll is older than within or never ran): a peer this instance already knows not to
+// answer is not asked again by a tool that asks every infrastructure (#2385). A failure
+// older than within is not trusted: the poll may no longer cover that peer.
+func (pm *PeerManager) HealthError(url string, within time.Duration) string {
+	pm.mu.RLock()
+	defer pm.mu.RUnlock()
+	ns, ok := pm.PeerURL[url]
+	if !ok || ns == nil || ns.Error == "" || ns.LastUpdate.IsZero() || time.Since(ns.LastUpdate) > within {
+		return ""
+	}
+	return ns.Error
+}
+
 // removeClusterFromUsers removes a cluster from user mapping.
 func (pm *PeerManager) removeClusterFromUsers(hashID string) {
 	for _, clusters := range pm.PeerUserClusters {

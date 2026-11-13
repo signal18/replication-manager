@@ -179,13 +179,21 @@ func (repman *ReplicationManager) Cloud18ClusterQuote(p *repmanmcp.Principal, sp
 	}
 	// Each choice carries its partner's infrastructure description, from the for-sale
 	// list every instance receives (peer.json): no login needed, so a partner that does
-	// not answer (or refuses the caller) is still a described choice.
+	// not answer (or refuses the caller) is still a described choice. An infrastructure with
+	// no cluster left for sale (each has a request or a sponsor) is described from those.
 	defs := map[string]map[string]any{}
 	if sale, err := repman.Cloud18ClustersForSale(); err == nil {
 		for _, pc := range sale {
 			if pc != nil && pc.ApiPublicUrl != "" && defs[pc.ApiPublicUrl] == nil {
 				defs[pc.ApiPublicUrl] = cloud18InfraDefinitionOf(pc)
 			}
+		}
+	}
+	shared := repman.PeerManager.GetMarketplaceClusters()
+	sort.Slice(shared, func(i, j int) bool { return shared[i].ClusterName < shared[j].ClusterName })
+	for i := range shared {
+		if pc := &shared[i]; pc.ApiPublicUrl != "" && defs[pc.ApiPublicUrl] == nil {
+			defs[pc.ApiPublicUrl] = cloud18InfraDefinitionOf(pc)
 		}
 	}
 	urls := make([]string, len(list))

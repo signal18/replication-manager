@@ -104,7 +104,7 @@ applied, a token needs the `*` scope; "" = any authenticated principal). Reads:
 `get-cloud18-status`, `get-cloud18-register-status`, `get-cloud18-subscription`,
 `list-cloud18-subscription-plans`, `list-cloud18-archive-offers` (the BO's S3 and archive
 catalogue, `MarketplaceCatalogue`, see peer/MARKETPLACE.md §3), `list-cloud18-clusters-for-sale`,
-`list-cloud18-infrastructures` (distinct `api-public-url` of the clusters for sale). Actions
+`list-cloud18-infrastructures` (distinct `api-public-url` of the clusters put on the marketplace, `cloud18-shared`, whatever their sale workflow: an infrastructure whose only cluster for sale got a pending request or a sponsor used to vanish from the marketplace, #2385; the names listed are those still for sale). Actions
 (`global-admin-show`): `cloud18-register`, `cloud18-register-confirm`, `cloud18-unregister`,
 `cloud18-change-subscription`. Prompt `cloud18-onboarding`.
 
@@ -177,7 +177,9 @@ Three MCP tools take the same request (`db_image`, `db_count`, `dbu` per databas
   (`selfServiceStatusOfTimeout`); `prices` and `poolBlocked` are on it. Each infrastructure is
   asked in parallel (`accessParallel`) with a 10 s deadline on the status read
   (`accessStatusTimeout`), and the quote waits 5 s at most for all of them
-  (`cloud18InfrastructuresAccessWithin`, `accessAnswerTimeout`): one that refuses the identity
+  (`cloud18InfrastructuresAccessWithin`, `accessAnswerTimeout`). An infrastructure whose health
+  poll failed in the last 10 minutes (`PeerManager.HealthError`, `peerHealthTrust`) is not asked:
+  its entry is that reason, at once. One that refuses the identity
   or does not answer in time stays a described choice with its reason and no price. Before
   (#2385), the login of an infrastructure that was gone waited 30 s (60 s with the password
   fallback) before the status read: one retired instance still listed for sale held every

@@ -243,6 +243,59 @@ func TestInfrastructuresAccessDoesNotWaitForADeadOne(t *testing.T) {
 	}
 }
 
+// A peer the health poll found not answering is not asked: its entry is that reason, at
+// once. A failure older than the trust window, or none, lets the peer be asked (#2385).
+func TestInfrastructuresAccessSkipsAPeerFailingItsHealthCheck(t *testing.T) {
+	f := newFakeInfra(t)
+	var calls atomic.Int32
+	down := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	t.Cleanup(down.Close)
+	repman := infraManager(t, f.srv.URL, down.URL)
+	repman.PeerManager.PeerURL[down.URL] = &peer.PeerNodeStatus{Error: "failed to get health status: i/o timeout", LastUpdate: time.Now()}
+	p := &repmanmcp.Principal{User: "u@x.io", AuthMethod: "oidc", Auth: "pw"}
+
+	out := repman.cloud18InfrastructuresAccessWithin(p, []string{down.URL, f.srv.URL}, time.Second)
+	if !strings.Contains(out[0].Error, "does not answer this instance's health check: failed to get health status: i/o timeout") || calls.Load() != 0 {
+		t.Fatalf("a peer failing its health check is not asked: %+v, %d calls", out[0], calls.Load())
+	}
+	if out[1].Error != "" || out[1].Identity != "u@x.io" {
+		t.Fatalf("a healthy peer is asked: %+v", out[1])
+	}
+	// an old failure is not trusted: the peer is asked again
+	repman.PeerManager.PeerURL[down.URL].LastUpdate = time.Now().Add(-peerHealthTrust - time.Minute)
+	out = repman.cloud18InfrastructuresAccessWithin(p, []string{down.URL}, time.Second)
+	if calls.Load() == 0 || strings.Contains(out[0].Error, "health check") {
+		t.Fatalf("a failure older than the trust window lets the peer be asked: %+v, %d calls", out[0], calls.Load())
+	}
+}
+
+// An infrastructure whose only cluster put on the marketplace has a pending request (it
+// left the for-sale list) stays a marketplace infrastructure, with no cluster for sale;
+// a cluster not put on the marketplace makes no infrastructure (#2385).
+func TestInfrastructuresKeepAPartnerWithNoClusterLeftForSale(t *testing.T) {
+	repman := infraManager(t)
+	pm := repman.PeerManager
+	sale := &peer.PeerCluster{ClusterName: "a", ApiPublicUrl: "https://one.example", Cloud18Shared: true, ProvOrchestrator: "opensvc"}
+	pending := &peer.PeerCluster{ClusterName: "b", ApiPublicUrl: "https://two.example", Cloud18Shared: true, ProvOrchestrator: "opensvc"}
+	private := &peer.PeerCluster{ClusterName: "c", ApiPublicUrl: "https://three.example"}
+	pm.PeerClusters["a"], pm.PeerClusters["b"], pm.PeerClusters["c"] = sale, pending, private
+	pm.PeerForSale["a"] = sale
+
+	list, err := repman.Cloud18Infrastructures()
+	if err != nil || len(list) != 2 {
+		t.Fatalf("two marketplace infrastructures: %+v %v", list, err)
+	}
+	if list[0].ApiPublicUrl != "https://one.example" || list[0].Clusters != 1 || len(list[0].ClusterNames) != 1 || list[0].ClusterNames[0] != "a" {
+		t.Fatalf("the infrastructure with a cluster for sale: %+v", list[0])
+	}
+	if list[1].ApiPublicUrl != "https://two.example" || list[1].Clusters != 0 || len(list[1].ClusterNames) != 0 || len(list[1].Orchestrators) != 1 {
+		t.Fatalf("the infrastructure with no cluster left for sale stays, with none named: %+v", list[1])
+	}
+}
+
 func TestCloud18SpecPostgres(t *testing.T) {
 	s, err := normalizeSpec(Cloud18ClusterSpec{ClusterName: "pg", DBImage: "postgres:17", DBCount: 3})
 	if err != nil || s.Topology != config.TopoMasterSlavePgStream || len(s.Apps) != 1 || s.Apps[0] != "adminer" {

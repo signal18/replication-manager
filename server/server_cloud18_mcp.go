@@ -183,22 +183,41 @@ func (repman *ReplicationManager) Cloud18ClustersForSale() ([]*peer.PeerCluster,
 	return list, nil
 }
 
-// Cloud18Infrastructures groups the clusters for sale by their api-public-url.
+// Cloud18Infrastructures lists the marketplace infrastructures: every api-public-url with a
+// cluster its owner put on the marketplace (cloud18-shared), whether that cluster is still
+// for sale or already has a pending request or a sponsor. A partner whose only cluster for
+// sale got a request used to vanish from the marketplace (#2385). The count and the names
+// are those of the clusters still for sale.
 func (repman *ReplicationManager) Cloud18Infrastructures() ([]repmanmcp.Cloud18Infrastructure, error) {
 	list, err := repman.Cloud18ClustersForSale()
 	if err != nil {
 		return nil, err
 	}
+	if repman.Conf.Cloud18DisableForSale && repman.Conf.Cloud18ForSaleOptOutAllowed() {
+		return []repmanmcp.Cloud18Infrastructure{}, nil
+	}
 	byURL := map[string]*repmanmcp.Cloud18Infrastructure{}
+	infraOf := func(url string) *repmanmcp.Cloud18Infrastructure {
+		infra, ok := byURL[url]
+		if !ok {
+			infra = &repmanmcp.Cloud18Infrastructure{ApiPublicUrl: url, ClusterNames: []string{}}
+			byURL[url] = infra
+		}
+		return infra
+	}
+	for _, c := range repman.PeerManager.GetMarketplaceClusters() {
+		if c.ApiPublicUrl == "" {
+			continue
+		}
+		infra := infraOf(c.ApiPublicUrl)
+		infra.Orchestrators = appendUnique(infra.Orchestrators, c.ProvOrchestrator)
+		infra.ServicePlans = appendUnique(infra.ServicePlans, c.ProvServicePlan)
+	}
 	for _, c := range list {
 		if c == nil || c.ApiPublicUrl == "" {
 			continue
 		}
-		infra, ok := byURL[c.ApiPublicUrl]
-		if !ok {
-			infra = &repmanmcp.Cloud18Infrastructure{ApiPublicUrl: c.ApiPublicUrl}
-			byURL[c.ApiPublicUrl] = infra
-		}
+		infra := infraOf(c.ApiPublicUrl)
 		infra.Clusters++
 		infra.ClusterNames = append(infra.ClusterNames, c.ClusterName)
 		infra.Orchestrators = appendUnique(infra.Orchestrators, c.ProvOrchestrator)
