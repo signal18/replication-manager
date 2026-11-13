@@ -604,14 +604,21 @@ is treated the same; only the path a level maps to differs per store.
   sysops'. A list pinned in a config file gets nothing. Each entry given is a security event.
   The tick never switches an existing entry on again, and the API never deletes it
   (`ErrSecretKvOfferManaged`): a partner who does not want it switches it off and it stays off.
-  When the offer moves the entry (address, mount, prefix), `written-as` is cleared as for an
-  edit. The prefix is the offer's, else `<cloud18-domain>/<cloud18-sub-domain>-<cloud18-sub-domain-zone>`
+  When the offer moves the entry (address, mount, prefix), it is a new place, as for an edit
+  (a WARN and a security event say so). The prefix is the offer's, else `<cloud18-domain>/<cloud18-sub-domain>-<cloud18-sub-domain-zone>`
   as for the clusters' entries (not the instance name's form), each folder of it a real one
   (no empty, `.` or `..`); the instance's folder `system/repman/<instance name>` is below it.
   **Isolation rests on the Cloud18 Vault policy:** both levels sign in with the same Cloud18
   identity (`jwt`, same role and address), so the role's policy must deny `*/system/repman/*`
   to any session that is not the instance's own server level (a cluster sponsor's or a member's
   session), as the members page already must not see a server path.
+- **A new place gets the history.** An edit of a server entry's address, mount, path-prefix,
+  cluster or namespace, or an offer that moves it, sets its `written-as` to `(new place)`
+  (`ConstSecretKvWrittenAsNewPlace`, never an instance name): the move then copies every kept
+  version there, oldest first, as for a rename, with no `moved-to` marker (the old place is not
+  known any more), and the ordinary writes wait until it ends. An entry never written (no
+  `written-as`) has nothing to copy. A move is tied to the entry's place as well as to the name
+  (`config.SecretKvPlace`): a failed move is never reused for another place.
 - **Not yet:** the move of a renamed cluster's secrets.
 
 ### The Cloud18 vault entry

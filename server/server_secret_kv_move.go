@@ -31,7 +31,10 @@ const ConstServerKvMovedTo = "moved-to"
 // retry skips them, whatever the list became meanwhile), and whether a newer name made it moot.
 // One goroutine at most per entry: a move is never replaced while it runs.
 type serverKvMove struct {
-	to        string
+	to string
+	// place is the entry's place the move writes to (config.SecretKvPlace): a move whose place
+	// is not the entry's any more writes nowhere it should, and what it wrote says nothing
+	place     string
 	written   map[string]bool
 	running   bool
 	cancelled bool
@@ -102,10 +105,12 @@ func (repman *ReplicationManager) checkServerKvMoves() {
 			k.moves = map[string]*serverKvMove{}
 		}
 		m := k.moves[e.Name]
-		if m != nil && m.to != name {
+		place := repman.Conf.SecretKvPlace(e)
+		if m != nil && (m.to != name || m.place != place) {
 			if m.running {
-				// renamed again during the move: it stops at its next write and commits
-				// nothing; the next tick starts the move to the newest name
+				// renamed again, or its place changed, during the move: it stops at its next
+				// write and commits nothing; the next tick starts the move to the newest name
+				// and place
 				m.cancelled = true
 				k.mu.Unlock()
 				continue
@@ -113,7 +118,7 @@ func (repman *ReplicationManager) checkServerKvMoves() {
 			m = nil
 		}
 		if m == nil {
-			m = &serverKvMove{to: name, written: map[string]bool{}}
+			m = &serverKvMove{to: name, place: place, written: map[string]bool{}}
 			k.moves[e.Name] = m
 		}
 		start := !m.running && time.Since(m.lastTry) >= retry
@@ -252,6 +257,9 @@ func (repman *ReplicationManager) moveServerKvOnce(e config.SecretKvConfig, m *s
 	k.mu.Unlock()
 	if cancelled {
 		return fmt.Errorf("stopped")
+	}
+	if from == config.ConstSecretKvWrittenAsNewPlace {
+		return nil // a new place: no old place to leave a marker at
 	}
 	marker := credstore.StoreItem{Entry: e.Name, Path: repman.Conf.ServerSecretKvFolder(e, from), Key: ConstServerKvMovedTo,
 		Version: credstore.Version{Value: m.to, At: time.Now().UTC(), By: repman.Conf.ArbitrationSasUniqueId}}

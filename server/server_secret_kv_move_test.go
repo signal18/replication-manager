@@ -127,7 +127,7 @@ func TestServerKvWrittenAsSavedAndForgotten(t *testing.T) {
 	if _, err := conf.PutSecretKvAt(config.SecretKvLevelServer, config.SecretKvSpec{Name: "srv", Settings: map[string]interface{}{"path-prefix": "q"}}, false); err != nil {
 		t.Fatal(err)
 	}
-	if conf.SecretKvListAt(config.SecretKvLevelServer)[0].WrittenAs != "" {
+	if conf.SecretKvListAt(config.SecretKvLevelServer)[0].WrittenAs != config.ConstSecretKvWrittenAsNewPlace {
 		t.Fatal("a new prefix kept the old place")
 	}
 }
@@ -195,7 +195,7 @@ func TestServerKvMoveEditedMeanwhile(t *testing.T) {
 	}
 	m := &serverKvMove{to: "acme/repman2/paris", written: map[string]bool{}, running: true}
 	repman.moveServerKv(e, m)
-	if got := serverKvWrittenAs(repman, "srv-a"); got != "" {
+	if got := serverKvWrittenAs(repman, "srv-a"); got != config.ConstSecretKvWrittenAsNewPlace {
 		t.Fatalf("recorded as moved after an edit: %q", got)
 	}
 }
@@ -218,8 +218,8 @@ func TestServerKvWrittenAsFromWhereItWent(t *testing.T) {
 	}
 }
 
-// A failed move left over is dropped once the entry no longer moves (its place edited, or the
-// instance renamed back): what it had written says nothing of another place.
+// A failed move left over is never reused once the entry's place changed: what it had written
+// says nothing of another place, a fresh move takes the history there.
 func TestServerKvStaleMoveDropped(t *testing.T) {
 	server := vaultfake.New("kv", "role", "sid")
 	defer server.Close()
@@ -239,11 +239,63 @@ func TestServerKvStaleMoveDropped(t *testing.T) {
 	if _, err := repman.Conf.PutSecretKvAt(config.SecretKvLevelServer, config.SecretKvSpec{Name: "srv-a", Settings: map[string]interface{}{"path-prefix": "other"}}, false); err != nil {
 		t.Fatal(err)
 	}
+	server.SetFail(false)
 	repman.checkServerKvMoves()
 	repman.serverSecretKv.mu.Lock()
-	_, left := repman.serverSecretKv.moves["srv-a"]
+	now := repman.serverSecretKv.moves["srv-a"]
 	repman.serverSecretKv.mu.Unlock()
-	if left {
+	// the place changed: the history goes to the new place, by a fresh move whose progress
+	// starts empty, never the stale one
+	if now == m {
 		t.Fatal("a stale move outlived the entry's place")
+	}
+	cur, _ := repman.Conf.SecretKvActiveEntryAt(config.SecretKvLevelServer, "srv-a")
+	if now != nil && now.place != repman.Conf.SecretKvPlace(cur) {
+		t.Fatalf("the new move writes to %q", now.place)
+	}
+}
+
+// A store whose place changed (an edit, an offer that moved it) gets every kept version there,
+// oldest first, with no moved-to marker: the history follows, as for a rename.
+func TestServerKvNewPlaceGetsTheHistory(t *testing.T) {
+	server := vaultfake.New("kv", "role", "sid")
+	defer server.Close()
+	repman := serverKvTestManager(t, true, server)
+	for _, v := range []string{"smtp-1", "smtp-2", "smtp-3"} {
+		if err := repman.CredentialChain().Set("mail-smtp-password", v); err != nil {
+			t.Fatal(err)
+		}
+	}
+	repman.serverKvQueue().Take()
+	repman.serverKvFullPass()
+	if repman.serverKvRunner().WritePass() {
+		t.Fatalf("first write: %v", repman.ServerKvBehind())
+	}
+	kept := len(repman.serverVersionStore().Versions("mail-smtp-password"))
+	// the entry's prefix edited: another place
+	if _, err := repman.Conf.PutSecretKvAt(config.SecretKvLevelServer, config.SecretKvSpec{Name: "srv-a", Settings: map[string]interface{}{"path-prefix": "newplace"}}, false); err != nil {
+		t.Fatal(err)
+	}
+	if got := serverKvWrittenAs(repman, "srv-a"); got != config.ConstSecretKvWrittenAsNewPlace {
+		t.Fatalf("written-as after the edit %q", got)
+	}
+	name, _ := repman.Conf.InstanceStoreName()
+	e, _ := repman.Conf.SecretKvActiveEntryAt(config.SecretKvLevelServer, "srv-a")
+	m := &serverKvMove{to: name, written: map[string]bool{}, running: true}
+	repman.moveServerKv(e, m)
+	if got := serverKvWrittenAs(repman, "srv-a"); got != name {
+		t.Fatalf("written-as %q, want %q", got, name)
+	}
+	folder := repman.Conf.ServerSecretKvFolder(e, name)
+	if n := server.Versions(folder + "/mail-smtp-password"); n != kept {
+		t.Fatalf("history at the new place: %d versions, %d kept", n, kept)
+	}
+	if got := server.Get(folder + "/mail-smtp-password"); got == nil || got["mail-smtp-password"] != "smtp-3" {
+		t.Fatalf("newest at the new place: %v", got)
+	}
+	for _, path := range server.Paths() {
+		if strings.HasSuffix(path, "/"+ConstServerKvMovedTo) {
+			t.Fatalf("a moved-to marker at %s for a new place", path)
+		}
 	}
 }

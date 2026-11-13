@@ -529,7 +529,7 @@ func TestServerKvMarketplaceVaultPartnerOnly(t *testing.T) {
 	moved.Address = "https://vault2.example"
 	repman.marketplaceCatalogue.Store(&config.MarketplaceCatalogue{Vaults: []config.MarketplaceVaultOffer{moved}})
 	repman.ensureServerMarketplaceVaults()
-	if e, _ := entry(repman); e.WrittenAs != "" || repman.Conf.SecretKvSetting(e, config.ConstSecretKvVaultAddress) != moved.Address {
+	if e, _ := entry(repman); e.WrittenAs != config.ConstSecretKvWrittenAsNewPlace || repman.Conf.SecretKvSetting(e, config.ConstSecretKvVaultAddress) != moved.Address {
 		t.Fatalf("after the offer moved: %+v", e)
 	}
 	// a catalogue prefix with a ".." folder is refused

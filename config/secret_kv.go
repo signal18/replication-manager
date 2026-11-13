@@ -756,10 +756,10 @@ func (conf *Config) PutSecretKvAt(level SecretKvLevel, spec SecretKvSpec, create
 	if err := conf.applyEntrySpec(e.Settings, m.Settings, e.Plugin, spec.Settings, spec.Unset); err != nil {
 		return "", err
 	}
-	if conf.secretKvPlace(&e) != placeBefore {
-		// another address, mount, prefix, cluster or namespace is another place: nothing to
-		// move from, the next write records the name again
-		e.WrittenAs = ""
+	if conf.secretKvPlace(&e) != placeBefore && e.WrittenAs != "" {
+		// another address, mount, prefix, cluster or namespace is another place: the secrets
+		// are copied there with their history, as for a rename (server_secret_kv_move.go)
+		e.WrittenAs = ConstSecretKvWrittenAsNewPlace
 	}
 	if spec.Enabled != nil {
 		e.Enabled = *spec.Enabled
@@ -815,6 +815,11 @@ func validKubernetesNamespace(s string) bool {
 }
 
 // secretKvPlace is what says where an entry writes, its login aside.
+// SecretKvPlace is where entry e writes: its address, mount, path-prefix, cluster and
+// namespace. Two entries, or one entry before and after an edit, with the same place write
+// the same folders.
+func (conf *Config) SecretKvPlace(e SecretKvConfig) string { return conf.secretKvPlace(&e) }
+
 func (conf *Config) secretKvPlace(e *SecretKvConfig) string {
 	var b strings.Builder
 	for _, name := range []string{ConstSecretKvVaultAddress, ConstSecretKvVaultMount, ConstSecretKvVaultPathPrefix,
@@ -931,6 +936,12 @@ func (conf *Config) ReservedPrefixSecretKvs() []string {
 // back-office manages its settings, only its switch is the cluster's.
 var ErrSecretKvOfferManaged = errors.New("it comes from a Cloud18 marketplace offer: the back-office manages its settings, only its switch can be changed")
 
+// ConstSecretKvWrittenAsNewPlace is the written-as of a server entry whose place changed (an
+// edit of its address, mount, prefix, cluster or namespace, or an offer that moved it): never
+// an instance name, so the move copies every kept version there, with no moved-to marker
+// (the old place is not known any more).
+const ConstSecretKvWrittenAsNewPlace = "(new place)"
+
 // ConstSecretKvMarketplacePrefix starts the name of the entry a marketplace vault offer gives
 // a cluster: cloud18-<offer name>.
 const ConstSecretKvMarketplacePrefix = "cloud18-"
@@ -1002,10 +1013,10 @@ func (conf *Config) EnsureMarketplaceVaultAt(level SecretKvLevel, offer Marketpl
 			changed = true
 		}
 	}
-	if conf.secretKvPlace(e) != placeBefore {
+	if conf.secretKvPlace(e) != placeBefore && e.WrittenAs != "" {
 		// the offer moved the entry to another place (address, mount, prefix), as an edit does
-		// (PutSecretKvAt): nothing to move from, the next write records the name again
-		e.WrittenAs = ""
+		// (PutSecretKvAt): the secrets are copied there with their history
+		e.WrittenAs = ConstSecretKvWrittenAsNewPlace
 	}
 	return changed, nil
 }

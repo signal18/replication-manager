@@ -277,20 +277,39 @@ func (repman *ReplicationManager) ensureServerMarketplaceVaults() {
 		if prefix == "" {
 			prefix = uri
 		}
+		name := config.ConstSecretKvMarketplacePrefix + o.Name
+		before, existed := writtenAsOf(c.SecretKvListAt(config.SecretKvLevelServer), name)
 		ok, err := c.EnsureMarketplaceVaultAt(config.SecretKvLevelServer, o, prefix, true)
 		if err != nil {
 			repman.LogModulePrintf(c.Verbose, config.ConstLogModVault, config.LvlWarn, "Marketplace vault offer not given to the server level: %s", err)
 			continue
 		}
-		if ok {
+		after, _ := writtenAsOf(c.SecretKvListAt(config.SecretKvLevelServer), name)
+		if ok && existed && after == config.ConstSecretKvWrittenAsNewPlace && before != after {
 			changed = true
-			repman.logSecurityEvent("server_secret_kv_offer", config.ConstSecretKvMarketplacePrefix+o.Name, "", "Server credential store "+config.ConstSecretKvMarketplacePrefix+o.Name+" given by the marketplace offer (marketplace partner)")
+			repman.logSecurityEvent("server_secret_kv_offer", name, "", "Server credential store "+name+" follows its marketplace offer to another place: the server secrets are copied there with their history")
+			repman.LogModulePrintf(c.Verbose, config.ConstLogModVault, config.LvlWarn, "Server credential store %s follows its marketplace offer to another place: the server secrets are copied there with their history", name)
+		} else if ok && !existed {
+			changed = true
+			repman.logSecurityEvent("server_secret_kv_offer", name, "", "Server credential store "+name+" given by the marketplace offer (marketplace partner)")
+		} else if ok {
+			changed = true
 		}
 	}
 	if changed {
 		repman.Save()
 		repman.startServerKvPass()
 	}
+}
+
+// writtenAsOf is the written-as of the entry named name in list, and whether it is there.
+func writtenAsOf(list []config.SecretKvConfig, name string) (string, bool) {
+	for _, e := range list {
+		if e.Name == name {
+			return e.WrittenAs, true
+		}
+	}
+	return "", false
 }
 
 // ServerSecretKvState is a server entry's state for the API and the GUI: never a value.
