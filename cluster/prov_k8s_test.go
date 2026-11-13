@@ -1354,6 +1354,7 @@ var k8sDiskSizeCases = []struct {
 	{"GB suffix", "100GB", 100 * k8sGiB},
 	{"T converts to G", "1T", 1024 * k8sGiB},
 	{"Kubernetes binary quantity is kept as written", "20Gi", 20 * k8sGiB},
+	{"surrounding whitespace is ignored", " 20Gi ", 20 * k8sGiB},
 	{"Kubernetes binary quantity below the G base is kept", "512Mi", 512 * 1024 * 1024},
 	{"Kubernetes decimal quantity below the G base keeps its meaning", "500M", 500 * 1000 * 1000},
 	{"Kubernetes decimal fraction keeps its meaning", "1.5G", 1500 * 1000 * 1000},

@@ -253,7 +253,7 @@ var k8sByteQuantity = regexp.MustCompile(`^[0-9]+(\.[0-9]+)?(Ki|Mi|Gi|Ti|Pi|Ei|k
 func k8sDiskQuantity(value string) (resource.Quantity, error) {
 	if gb, err := config.ParseUnitMeasurementToInt("G,bytes,required", value, true); err == nil {
 		if gb < 1 {
-			return resource.Quantity{}, fmt.Errorf("size %q is under 1G", value)
+			return resource.Quantity{}, fmt.Errorf("size %q resolves to zero gigabytes", value)
 		}
 		return resource.ParseQuantity(strconv.Itoa(gb) + "Gi")
 	}
