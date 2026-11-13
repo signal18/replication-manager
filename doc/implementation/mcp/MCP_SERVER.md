@@ -176,7 +176,7 @@ Three MCP tools take the same request (`db_image`, `db_count`, `dbu` per databas
   older infrastructure makes that price `unknown: ...`, never a guess (a served 0 is a setting). The status read keeps a fixed list of fields
   (`selfServiceStatusOfTimeout`); `prices` and `poolBlocked` are on it. Each infrastructure is
   asked in parallel (`accessParallel`) with a 10 s deadline on the status read
-  (`accessStatusTimeout`), and the quote waits 20 s at most for all of them
+  (`accessStatusTimeout`), and the quote waits 5 s at most for all of them
   (`cloud18InfrastructuresAccessWithin`, `accessAnswerTimeout`): one that refuses the identity
   or does not answer in time stays a described choice with its reason and no price. Before
   (#2385), the login of an infrastructure that was gone waited 30 s (60 s with the password

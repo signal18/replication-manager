@@ -814,7 +814,7 @@ func (repman *ReplicationManager) Cloud18InfrastructuresAccess(p *repmanmcp.Prin
 // 30 s, 60 s with the password fallback, then the status read 10 s: one infrastructure that
 // is gone held the tool past the 30 s after which a proxy closes an idle MCP stream, and
 // the answer of all the others was lost (#2385).
-const accessAnswerTimeout = 20 * time.Second
+const accessAnswerTimeout = 5 * time.Second
 
 // cloud18InfrastructuresAccessWithin asks every infrastructure (cloud18InfrastructureAccessOne),
 // accessParallel at a time, and returns once all answered or after within: an infrastructure
