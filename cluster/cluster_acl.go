@@ -9,6 +9,7 @@ package cluster
 import (
 	"crypto/subtle"
 	"fmt"
+	"maps"
 	"slices"
 	"sort"
 	"strings"
@@ -33,7 +34,8 @@ type APIUser struct {
 }
 
 func (cluster *Cluster) SetUserGrants(u *APIUser, grant string) {
-	if u.Grants == nil {
+	// a copy: u may be an entry read from GetAPIUsers, whose map readers check without a lock
+	if u.Grants = maps.Clone(u.Grants); u.Grants == nil {
 		u.Grants = map[string]bool{}
 	}
 
@@ -57,7 +59,8 @@ func (cluster *Cluster) SetUserGrants(u *APIUser, grant string) {
 // SetUserGrantsStrict applies grants and always overwrites any previously set value.
 // Used for the main config ACL which must take precedence over cluster-level overrides.
 func (cluster *Cluster) SetUserGrantsStrict(u *APIUser, grant string) {
-	if u.Grants == nil {
+	// a copy: u may be an entry read from GetAPIUsers, whose map readers check without a lock
+	if u.Grants = maps.Clone(u.Grants); u.Grants == nil {
 		u.Grants = map[string]bool{}
 	}
 
@@ -75,7 +78,8 @@ func (cluster *Cluster) SetUserGrantsStrict(u *APIUser, grant string) {
 }
 
 func (cluster *Cluster) SetUserRoles(u *APIUser, roles string) {
-	if u.Roles == nil {
+	// a copy: u may be an entry read from GetAPIUsers, whose map readers check without a lock
+	if u.Roles = maps.Clone(u.Roles); u.Roles == nil {
 		u.Roles = map[string]bool{}
 	}
 
@@ -517,7 +521,8 @@ func (cluster *Cluster) alertMailDiscard(user, grants string) string {
 // name is a prefix like in the allow lists, so token removes token-create and
 // token-manage, db every db-* grant (#2083).
 func (cluster *Cluster) DiscardUserGrants(u *APIUser, discard string) {
-	if u.Grants == nil {
+	// a copy: u may be an entry read from GetAPIUsers, whose map readers check without a lock
+	if u.Grants = maps.Clone(u.Grants); u.Grants == nil {
 		u.Grants = map[string]bool{}
 	}
 	for _, acl := range strings.Fields(discard) {
