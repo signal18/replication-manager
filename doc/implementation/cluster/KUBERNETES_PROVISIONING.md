@@ -28,7 +28,20 @@ interface in `cluster/orchestrator.go`.
    can be legitimate even when the namespace exists. A namespace that
    genuinely doesn't exist surfaces as a real error at the next step.
 3. Create PVC `<cluster>-<server>-claim` (`k8sDatabasePVC`), `ReadWriteOnce`,
-   sized from `prov-db-disk-size` (falls back to `20G` if unparseable).
+   sized from `prov-db-disk-size` (falls back to `20Gi` if unusable). Sizes (database and
+   proxy, `prov-proxy-disk-size`) go through `k8sDiskQuantity`:
+   - Portable repman values follow the shared gigabyte measurement (`G,bytes,required`):
+     gigabytes, 1024-based, so the bare `20` the DBU alignment writes, `20G`, `20g` and
+     `20GB` all mean 20 GiB, `1T` is 1024 GiB — the volume OpenSVC gets as `20g`.
+   - The PVC request is that number in binary units (`20Gi`): the configuration default
+     `20G` (both settings) requests `20Gi`.
+   - A Kubernetes quantity with an explicit byte unit that the measurement does not accept
+     (`20Gi`, `512Mi`, `500M`, `1.5G`) is kept as written for compatibility; it can reach the
+     builder when `measurement` is off or through the runtime API, and it is not portable to
+     OpenSVC.
+   - Empty, zero, negative, bare fractions, exponents and unknown units log a warning and
+     request `20Gi`.
+   Only a newly created PVC takes the size; an existing PVC is never resized.
    `AlreadyExists` is idempotent; anything else is fatal.
 4. No config priming here — the config tarball is generated on demand when
    the init container's `wget` hits it (see "Bootstrap").
@@ -514,7 +527,7 @@ PVC.
 ### Persistent storage & config bootstrap
 
 All three proxy types get a PVC (`k8sProxyPVC()`, `<cluster>-<proxy>-claim` via
-`k8sProxyPVCName()`, sized from `prov-proxy-disk-size`, same StorageClass
+`k8sProxyPVCName()`, sized from `prov-proxy-disk-size` (same rule as the database PVC, step 3), same StorageClass
 handling as the database PVC) and an init container
 (`k8sProxyFetchConfigCmds()`) that fetches and applies the config tarball
 on every start — same HTTPS/HTTP-fallback, bounded `wget -T 8` calls, and

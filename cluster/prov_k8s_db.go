@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -231,17 +232,58 @@ func k8sDatabaseRunVolumeName(serverName string) string {
 	return serverName + "-run"
 }
 
+// k8sDefaultDiskQuantity is the 20G default of prov-db-disk-size and prov-proxy-disk-size,
+// as the binary quantity those settings mean everywhere else (20 GiB).
+const k8sDefaultDiskQuantity = "20Gi"
+
+// k8sByteQuantity is a Kubernetes quantity with an explicit byte unit: the shapes
+// resource.ParseQuantity reads as a volume size ("512Mi", "500M", "1.5G"), never a bare number,
+// an exponent or milli-bytes.
+var k8sByteQuantity = regexp.MustCompile(`^[0-9]+(\.[0-9]+)?(Ki|Mi|Gi|Ti|Pi|Ei|k|M|G|T|P|E)$`)
+
+// k8sDiskQuantity reads a disk size setting (prov-db-disk-size, prov-proxy-disk-size) as the
+// volume size it declares. The setting is the repman measurement "G,bytes,required" -- the one
+// the DBU alignment writes as a bare number ("20"), the binlog budget and the resize code read,
+// and provDiskSizeForOpenSVC writes as "20g": gigabytes by default, 1024-based. Kubernetes
+// reads a bare quantity as bytes and "20G" as 10^9, so that number is converted and handed
+// over in Gi. A Kubernetes quantity with an explicit byte unit that the measurement does not
+// accept ("20Gi", "512Mi", "500M", "1.5G") is kept as written, as it was before: it can reach
+// here when the measurement is off or through the runtime API, and it is not portable to
+// OpenSVC. A size that is not strictly positive is an error, never a zero-byte request.
+func k8sDiskQuantity(value string) (resource.Quantity, error) {
+	if gb, err := config.ParseUnitMeasurementToInt("G,bytes,required", value, true); err == nil {
+		if gb < 1 {
+			return resource.Quantity{}, fmt.Errorf("size %q is under 1G", value)
+		}
+		return resource.ParseQuantity(strconv.Itoa(gb) + "Gi")
+	}
+	trimmed := strings.TrimSpace(value)
+	if k8sByteQuantity.MatchString(trimmed) {
+		if q, err := resource.ParseQuantity(trimmed); err == nil && q.Sign() > 0 {
+			return q, nil
+		}
+	}
+	return resource.Quantity{}, fmt.Errorf("size %q is neither a size in gigabytes or larger units (a bare number of gigabytes, or a number with G, T, P, E, Z or Y, optionally followed by B) nor a Kubernetes quantity with a byte unit (Ki, Mi, Gi, Ti, Pi, Ei, k, M, G, T, P, E)", value)
+}
+
+// k8sDiskQuantityOrDefault is k8sDiskQuantity for a PVC builder: an unusable size is logged
+// and the 20Gi default requested, so no PVC is ever created with an invalid size.
+func (cluster *Cluster) k8sDiskQuantityOrDefault(setting, value string) resource.Quantity {
+	size, err := k8sDiskQuantity(value)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn,
+			"Cannot use %s %q (%s), falling back to the default %s ", setting, value, err, k8sDefaultDiskQuantity)
+		return resource.MustParse(k8sDefaultDiskQuantity)
+	}
+	return size
+}
+
 // k8sDatabasePVC is a pure builder, directly testable. StorageClassName is
 // a *string specifically to distinguish "cluster default" (nil) from "no
 // StorageClass" (pointer to ""), so prov-kube-storage-class empty must stay
 // nil. Size comes from prov-db-disk-size, like every other orchestrator.
 func (cluster *Cluster) k8sDatabasePVC(s *ServerMonitor) *apiv1.PersistentVolumeClaim {
-	size, err := resource.ParseQuantity(cluster.Conf.ProvDisk)
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn,
-			"Cannot parse prov-db-disk-size %q, falling back to the default 20G: %s ", cluster.Conf.ProvDisk, err)
-		size = resource.MustParse("20G")
-	}
+	size := cluster.k8sDiskQuantityOrDefault("prov-db-disk-size", cluster.Conf.ProvDisk)
 	pvc := &apiv1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: k8sDatabasePVCName(cluster.Name, s.Name),
