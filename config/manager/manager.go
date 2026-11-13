@@ -328,11 +328,14 @@ var ClusterStagedJSONFiles = []string{"queryrules.json", "clusterstate.json", "s
 const gitAgentsSyncInterval = time.Hour
 
 // shouldStageAgents reports whether this cluster's agents.json is due to be
-// staged again (and records the decision). Throttled per cluster.
-func (cm *ConfigManager) shouldStageAgents(cluster string) bool {
+// staged again (and records the decision). Throttled per cluster, except in a
+// forced cycle: the index was rebuilt (metadata refresh, reset onto the remote
+// head) and holds no agents.json, so a throttled file would be committed as
+// deleted, and stay deleted while its content does not change.
+func (cm *ConfigManager) shouldStageAgents(cluster string, force bool) bool {
 	cm.agentsStagedMu.Lock()
 	defer cm.agentsStagedMu.Unlock()
-	if last, ok := cm.agentsStagedAt[cluster]; ok && time.Since(last) < gitAgentsSyncInterval {
+	if last, ok := cm.agentsStagedAt[cluster]; !force && ok && time.Since(last) < gitAgentsSyncInterval {
 		return false
 	}
 	cm.agentsStagedAt[cluster] = time.Now()
@@ -1600,8 +1603,9 @@ func (cm *ConfigManager) PushConfigToGit(conf *config.Config, clusterList []stri
 
 		// agents.json is re-serialized every monitoring cycle (agent load/status),
 		// so staging it on every git push dominated .git history (~288 commits/day).
-		// BO only needs periodic cores/mem — throttle to once per gitAgentsSyncInterval.
-		if cm.shouldStageAgents(name) {
+		// BO only needs periodic cores/mem — throttle to once per gitAgentsSyncInterval,
+		// except in a forced cycle (the rebuilt index must get it back).
+		if cm.shouldStageAgents(name, force) {
 			agentsPath := filepath.Join(name, "agents.json")
 			if _, err := os.Stat(filepath.Join(path, agentsPath)); !os.IsNotExist(err) {
 				stage(name, agentsPath)

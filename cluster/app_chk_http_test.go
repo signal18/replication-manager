@@ -179,6 +179,25 @@ func TestRefuseMonitorOnlyApp(t *testing.T) {
 	}
 }
 
+// The actions that write to the orchestrator outside provisioning refuse a monitor-only app
+// before connecting: its service was written elsewhere (by hand, another tool), so replacing
+// its definition with our template, creating config and secret objects in its namespace or
+// clearing its instance state would act on a service that is not ours.
+func TestMonitorOnlyAppOrchestratorWritesRefused(t *testing.T) {
+	cl := &Cluster{Conf: &config.Config{}}
+	mon := &App{Id: "ap1", Name: "web", ServiceName: "shop/svc/web", AppConfig: &config.AppConfig{AppMonitorOnly: true}}
+	for name, call := range map[string]func() error{
+		"update-opensvc-template": func() error { return cl.OpenSVCUpdateAppTemplate(mon) },
+		"update-opensvc-config":   func() error { return cl.OpenSVCUpdateAppConfig(mon) },
+		"push variable maps":      func() error { return cl.OpenSVCPushAppVariableMaps(mon) },
+		"clear instance state":    func() error { return cl.OpenSVCClearAppInstanceState(mon, "") },
+	} {
+		if err := call(); err == nil || !strings.Contains(err.Error(), "monitor-only") {
+			t.Fatalf("%s of a monitor-only app must be refused before the orchestrator: %v", name, err)
+		}
+	}
+}
+
 // A check reads at most appHTTPCheckMaxBody of the body: a service answering a huge page
 // costs no more memory per check (F4, #2209).
 func TestProbeNoRouteHTTPBodyBounded(t *testing.T) {

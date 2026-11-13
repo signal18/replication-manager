@@ -100,6 +100,14 @@ capacity — so it must keep flowing through the config repo. `PushConfigToGit` 
 excluded; `sla.json` is never staged. Anything not on the list can churn freely with zero git
 impact.
 
+The throttle does not apply in a **forced cycle** (`forceStageAll`: after a metadata refresh, or
+after the index was reset onto the remote head). The refresh clones with no checkout, so the
+index starts empty and the commit holds only what this cycle stages: a throttled `agents.json`
+was committed as deleted, and stayed deleted while its content did not change (an unchanged
+file is never re-staged). With the refresh every 10 commits, every cluster's `agents.json`
+vanished from the repo every few hours and the BO lost the cluster's nodes. Test:
+`TestPushAfterRefreshKeepsAgentsJSON`.
+
 ## Staging is O(files), not O(files x tree) — and only what changed (#1852, 2026-09-30)
 
 Observed on the preprod active: `GWARN013@gitsync` opened at every gate (~1550 times a day),
