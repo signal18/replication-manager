@@ -653,6 +653,37 @@ is treated the same; only the path a level maps to differs per store.
     credentials grant on every cluster). GUI: global settings, "Write Rotated Credentials To /etc".
   - A standby's own `/etc` file is not written: it takes the new version from the config push,
     and the version wins at its start.
+  - **The boundary.** The child is given, at its start and by the still-root parent, the files
+    and the user the parent drops to (`--uid`, `--gid`). It resolves each file's links once and
+    refuses one that this user could swap between its read and its write: not absolute, or the
+    file, a folder or a link on the way (as given or resolved) owned by that user, writable by its
+    group, or writable by anyone (a folder only when sticky, as `/tmp`) (`etcwriter.Resolve`). It
+    reads through a descriptor opened with `O_NOFOLLOW`, a file up to 1 MB, a request line up to
+    `MaxRequest`, a value up to 16 KB (T18), and removes a temporary file a killed write left. A
+    refused file is reported in each answer; the parent then writes it itself when the user it
+    runs as may (its own file). The child logs each rewrite (the key and the file, never the
+    value) on its stderr, the root side's own trail.
+  - **What remains trusted.** The value comes from the parent: a compromised unprivileged
+    replication-manager can make the child write a server credential's value of its choice (an
+    extra admin in `api-credentials`) in those files, which then survives a wipe of the working
+    directory. It already holds those credentials through the versioned store; the child adds the
+    file, nothing more (no other key, file or path).
+  - **Never a silent success.** When the key is set in a file but the writer found it in none it
+    may write (excluded, refused, not a one-line string in `[default]`), the answer and `GWARN025`
+    say so. The editor follows multi-line strings and arrays: a line inside one is never taken
+    for a header or a key.
+  - **A lost exchange** (a timeout of `etcWriteTimeout`, a broken pipe) kills the child: the
+    writer is gone until the next start, and each rotation says so (`GWARN025`). The child may
+    have written before it was killed: the file then holds the latest version, which the next
+    start sees as an operator's edit with the current value (one version more, the same value).
+  - **Form and metadata.** An encrypted value (`hash_…`) is written encrypted, a plain one plain:
+    the file keeps its form. The rewrite keeps mode, owner and group; not ACLs, extended
+    attributes or an SELinux label of the file itself (the rename in the same folder usually
+    keeps the folder's label).
+  - The child is started from a thread locked for its life (`selfexec.StartLocked`, shared with
+    the backups folder mount), so its parent-death signal follows replication-manager. If the
+    drop fails after the child started, it is stopped and replication-manager, still root,
+    writes itself.
 - **Not yet:** the move of a renamed cluster's secrets.
 
 ### The Cloud18 vault entry

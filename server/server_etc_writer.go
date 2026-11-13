@@ -53,9 +53,10 @@ func (repman *ReplicationManager) etcConfigFiles() []string {
 }
 
 // startEtcWriter is called while replication-manager is still root, before it drops root
-// (LimitPrivileges): dropping, a child that stays root writes the files; not dropping, this
-// process writes them itself. Off (monitoring-etc-credential-writer) or no file: no writer.
-func (repman *ReplicationManager) startEtcWriter(dropping bool) {
+// (LimitPrivileges) to uid and gid: dropping, a child that stays root writes the files that
+// user cannot swap; not dropping, this process writes them itself. Off
+// (monitoring-etc-credential-writer) or no file: no writer.
+func (repman *ReplicationManager) startEtcWriter(dropping bool, uid, gid int) {
 	if !repman.Conf.MonitoringEtcCredentialWriter {
 		return
 	}
@@ -70,13 +71,27 @@ func (repman *ReplicationManager) startEtcWriter(dropping bool) {
 		k.writer = etcwriter.Local(files, isServerSecretKey)
 		return
 	}
-	w, err := etcwriter.Start(files)
+	w, err := etcwriter.Start(files, uid, gid)
 	if err != nil {
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "The /etc credential writer did not start: %s", err)
 		return
 	}
 	k.writer = w
 	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "The /etc credential writer runs as root for %s", strings.Join(files, ", "))
+}
+
+// keepRootEtcWriter: the drop failed and this process stays root: the child is a second root
+// process for nothing, this process writes the files itself.
+func (repman *ReplicationManager) keepRootEtcWriter() {
+	k := &repman.etcCredentials
+	k.mu.Lock()
+	child := k.writer
+	k.writer = nil
+	k.mu.Unlock()
+	if child != nil {
+		child.Close()
+		repman.startEtcWriter(false, 0, 0)
+	}
 }
 
 // syncEtcCredential writes server credential key's current value to the configuration files
@@ -99,11 +114,36 @@ func (repman *ReplicationManager) syncEtcCredential(key string) ([]string, strin
 		why = "no /etc writer: replication-manager did not start as root, or the writer was off at the start"
 	default:
 		plain := repman.serverSecretVersion(key).Value
-		var err error
-		files, err = w.Replace(key, plain, repman.Conf.GetEncryptedString(plain), etcWriteTimeout)
-		if err != nil {
+		encrypted := repman.Conf.GetEncryptedString(plain)
+		res, err := w.Replace(key, plain, encrypted, etcWriteTimeout)
+		files = res.Written
+		set := len(res.Set)
+		// a file the root writer refuses (the user this process runs as could swap it) is
+		// written by this process itself when that user may: it is then its own file
+		var refused []string
+		for f, reason := range res.Refused {
+			found, changed, ferr := etcwriter.ReplaceInFile(f, key, plain, encrypted)
+			switch {
+			case ferr != nil:
+				refused = append(refused, f+" ("+reason+"; "+ferr.Error()+")")
+			case found:
+				set++
+				if changed {
+					files = append(files, f)
+				}
+			}
+		}
+		sort.Strings(refused)
+		switch {
+		case err != nil:
 			why = err.Error()
-		} else if len(files) > 0 {
+		case len(refused) > 0:
+			why = "not written in " + strings.Join(refused, ", ")
+		case set == 0:
+			// set in a file, found in none the writer may write: never a silent success
+			why = "not found as a one-line string in a [default] section of " + strings.Join(w.Files(), ", ")
+		}
+		if len(files) > 0 {
 			// the file now holds the current version: the next start must not take it as an
 			// operator's edit of the file
 			if repman.serverVersionStore().MarkConfigFileValue(key, plain) {

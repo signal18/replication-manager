@@ -2586,12 +2586,13 @@ func (repman *ReplicationManager) LimitPrivileges() {
 			}
 
 			// the /etc credential writer stays root: started before the drop
-			repman.startEtcWriter(true)
+			repman.startEtcWriter(true, uidInt, gidInt)
 
 			// Set GID (Group ID)
 			err = syscall.Setgid(gidInt)
 			if err != nil {
 				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error setting GID: %v", err)
+				repman.keepRootEtcWriter()
 				return
 			}
 
@@ -2599,6 +2600,7 @@ func (repman *ReplicationManager) LimitPrivileges() {
 			err = syscall.Setuid(uidInt)
 			if err != nil {
 				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error setting UID: %v", err)
+				repman.keepRootEtcWriter()
 				return
 			}
 
@@ -2635,7 +2637,7 @@ func (repman *ReplicationManager) LimitPrivileges() {
 		} else {
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Running as root as no user defined in --user flag")
 			// root all along: this process writes the rotated credentials in /etc itself
-			repman.startEtcWriter(false)
+			repman.startEtcWriter(false, 0, 0)
 		}
 	} else {
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Unable to change non-root user, current user: %s", repman.OsUser.Username)

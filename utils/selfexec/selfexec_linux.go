@@ -2,8 +2,6 @@
 // Copyright 2017-2026 SIGNAL18 CLOUD SAS
 // This source code is licensed under the GNU General Public License, version 3.
 
-// Package selfexec starts a child copy of replication-manager's own binary: the backups folder
-// mount server (s3fuse) and the /etc credential writer (etcwriter).
 package selfexec
 
 import "syscall"

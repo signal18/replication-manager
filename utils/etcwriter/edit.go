@@ -14,6 +14,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -78,38 +79,89 @@ func parseOneLineString(s string) (value, rest string, ok bool) {
 	return "", "", false
 }
 
-// sectionName is the table a header line opens, "" when the line is not a header. An array of
-// tables ([[...]]) is never the default section.
-func sectionName(line string) (string, bool) {
+// scanState follows what a line is part of: a multi-line string ("""…""" or ”'…”') or an array or
+// inline table spread over several lines. A line inside one is never a header nor a key.
+type scanState struct {
+	multi string // the open multi-line string's delimiter, "" when none
+	depth int    // open [ and { outside strings
+}
+
+// inside: the line starts inside a multi-line value.
+func (st *scanState) inside() bool { return st.multi != "" || st.depth > 0 }
+
+// feed moves the state over line (a comment ends the line, outside strings).
+func (st *scanState) feed(line string) {
+	for i := 0; i < len(line); i++ {
+		if st.multi != "" {
+			if strings.HasPrefix(line[i:], st.multi) {
+				i += len(st.multi) - 1
+				st.multi = ""
+			} else if st.multi == `"""` && line[i] == '\\' {
+				i++
+			}
+			continue
+		}
+		switch c := line[i]; {
+		case strings.HasPrefix(line[i:], `"""`) || strings.HasPrefix(line[i:], "'''"):
+			st.multi = line[i : i+3]
+			i += 2
+		case c == '"':
+			for i++; i < len(line) && line[i] != '"'; i++ {
+				if line[i] == '\\' {
+					i++
+				}
+			}
+		case c == '\'':
+			for i++; i < len(line) && line[i] != '\''; i++ {
+			}
+		case c == '#':
+			return
+		case c == '[' || c == '{':
+			st.depth++
+		case c == ']' || c == '}':
+			if st.depth > 0 {
+				st.depth--
+			}
+		}
+	}
+}
+
+// header is the table a header line opens ([name], not [[name]]), ok false for any other
+// line. Called only for a line outside any value (scanState).
+func header(line string) (string, bool) {
 	t := strings.TrimSpace(line)
-	if !strings.HasPrefix(t, "[") {
-		return "", false
+	if c := strings.IndexByte(t, '#'); c >= 0 && !strings.ContainsAny(t[:c], `"'`) {
+		t = strings.TrimSpace(t[:c])
 	}
 	if strings.HasPrefix(t, "[[") {
 		return "[[array]]", true
 	}
-	end := strings.IndexByte(t, ']')
-	if end < 0 {
+	if !strings.HasPrefix(t, "[") || !strings.HasSuffix(t, "]") || strings.ContainsAny(t[1:len(t)-1], "[]") {
 		return "", false
 	}
-	return strings.Trim(strings.TrimSpace(t[1:end]), `"'`), true
+	return strings.ToLower(strings.Trim(strings.TrimSpace(t[1:len(t)-1]), `"'`)), true
 }
 
 // Replace sets key to the new value in every [default] section of content where key is set
 // on one line as a string. The new value is encrypted (the "hash_..." form) where the old one
-// was, else plain: the file keeps its form. changed false when key is not there, or already
-// holds the value. A line holding key in another form (a multi-line string) is an error, never
-// a silent skip.
-func Replace(content []byte, key, plain, encrypted string) ([]byte, bool, error) {
+// was, else plain: the file keeps its form. found says key is set in a [default] section,
+// changed that a line was rewritten (false when it already holds the value). A line holding
+// key in another form (a multi-line string) is an error, never a silent skip.
+func Replace(content []byte, key, plain, encrypted string) (out []byte, found, changed bool, err error) {
 	lines := bytes.SplitAfter(content, []byte("\n"))
 	section := ""
-	changed := false
+	var st scanState
 	for i, raw := range lines {
 		line := string(raw)
-		if name, ok := sectionName(line); ok {
-			section = strings.ToLower(name)
+		if st.inside() {
+			st.feed(line)
 			continue
 		}
+		if name, ok := header(line); ok {
+			section = name
+			continue
+		}
+		st.feed(line)
 		if section != "default" {
 			continue
 		}
@@ -117,18 +169,19 @@ func Replace(content []byte, key, plain, encrypted string) ([]byte, bool, error)
 		eol := line[len(body):]
 		trimmed := strings.TrimLeft(body, " \t")
 		indent := body[:len(body)-len(trimmed)]
-		k, after, found := strings.Cut(trimmed, "=")
-		if !found || strings.Trim(strings.TrimSpace(k), `"'`) != key {
+		k, after, ok := strings.Cut(trimmed, "=")
+		if !ok || strings.Trim(strings.TrimSpace(k), `"'`) != key {
 			continue
 		}
+		found = true
 		old, rest, ok := parseOneLineString(strings.TrimLeft(after, " \t"))
 		if !ok {
-			return nil, false, fmt.Errorf("%s is not a one-line string in [default]: not rewritten", key)
+			return nil, true, false, fmt.Errorf("%s is not a one-line string in [default]: not rewritten", key)
 		}
 		next := plain
 		if strings.HasPrefix(old, "hash_") {
 			if !strings.HasPrefix(encrypted, "hash_") {
-				return nil, false, fmt.Errorf("%s is encrypted in the file and no encrypted value was given", key)
+				return nil, true, false, fmt.Errorf("%s is encrypted in the file and no encrypted value was given", key)
 			}
 			next = encrypted
 		}
@@ -139,57 +192,143 @@ func Replace(content []byte, key, plain, encrypted string) ([]byte, bool, error)
 		changed = true
 	}
 	if !changed {
-		return content, false, nil
+		return content, found, false, nil
 	}
-	return bytes.Join(lines, nil), true, nil
+	return bytes.Join(lines, nil), found, true, nil
 }
 
-// ReplaceInFile is Replace on path, written atomically (a temporary file in the same folder,
-// then a rename) with the file's mode, owner and group. changed false leaves the file as it is.
-func ReplaceInFile(path, key, plain, encrypted string) (bool, error) {
-	fi, err := os.Lstat(path)
+// MaxFileSize bounds a configuration file the writer reads (F3, T18).
+const MaxFileSize = 1 << 20
+
+// tempPattern is the temporary file of a write, next to the file.
+func tempPattern(path string) string { return "." + filepath.Base(path) + ".rotate-" }
+
+// ReplaceInFile is Replace on path, read through a descriptor opened without following a
+// symbolic link, then written atomically (a temporary file in the same folder, then a rename)
+// with the file's mode, owner and group. found and changed as Replace; changed false leaves the
+// file as it is.
+func ReplaceInFile(path, key, plain, encrypted string) (found, changed bool, err error) {
+	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW, 0)
 	if err != nil {
-		return false, err
+		return false, false, err
+	}
+	fi, err := f.Stat()
+	if err != nil {
+		f.Close()
+		return false, false, err
 	}
 	if !fi.Mode().IsRegular() {
-		return false, fmt.Errorf("%s is not a regular file", path)
+		f.Close()
+		return false, false, fmt.Errorf("%s is not a regular file", path)
 	}
-	content, err := os.ReadFile(path)
+	if fi.Size() > MaxFileSize {
+		f.Close()
+		return false, false, fmt.Errorf("%s is larger than %d bytes", path, MaxFileSize)
+	}
+	content, err := io.ReadAll(io.LimitReader(f, MaxFileSize+1))
+	f.Close()
 	if err != nil {
-		return false, err
+		return false, false, err
 	}
-	next, changed, err := Replace(content, key, plain, encrypted)
+	next, found, changed, err := Replace(content, key, plain, encrypted)
 	if err != nil || !changed {
-		return false, err
+		return found, false, err
 	}
-	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".rotate-*")
+	tmp, err := os.CreateTemp(filepath.Dir(path), tempPattern(path)+"*")
 	if err != nil {
-		return false, err
+		return true, false, err
 	}
 	defer os.Remove(tmp.Name())
 	if _, err := tmp.Write(next); err != nil {
 		tmp.Close()
-		return false, err
+		return true, false, err
 	}
 	if err := tmp.Chmod(fi.Mode().Perm()); err != nil {
 		tmp.Close()
-		return false, err
+		return true, false, err
 	}
 	if st, ok := fi.Sys().(*syscall.Stat_t); ok {
 		if err := tmp.Chown(int(st.Uid), int(st.Gid)); err != nil {
 			tmp.Close()
-			return false, err
+			return true, false, err
 		}
 	}
 	if err := tmp.Sync(); err != nil {
 		tmp.Close()
-		return false, err
+		return true, false, err
 	}
 	if err := tmp.Close(); err != nil {
-		return false, err
+		return true, false, err
 	}
 	if err := os.Rename(tmp.Name(), path); err != nil {
-		return false, err
+		return true, false, err
 	}
-	return true, nil
+	return true, true, nil
+}
+
+// RemoveStaleTemps removes what a write killed half-way left next to path (it holds the whole
+// file, secrets included).
+func RemoveStaleTemps(path string) {
+	olds, _ := filepath.Glob(filepath.Join(filepath.Dir(path), tempPattern(path)+"*"))
+	for _, o := range olds {
+		os.Remove(o)
+	}
+}
+
+// Unsafe says why uid and gid (the user replication-manager drops to) could swap path or one
+// of its folders between the root writer's read and its write: path not absolute, or the file,
+// a folder or a symbolic link on the way, as given or resolved, that this user owns, its group
+// writes, or anyone writes (a folder only when sticky, as /tmp). "" when it is safe.
+func Unsafe(path string, uid, gid int) string {
+	_, why := Resolve(path, uid, gid)
+	return why
+}
+
+// Resolve is path with its symbolic links resolved, and Unsafe's reason when it is not safe.
+// Both the path as given (a link's own folder is on it) and the resolved one are checked.
+func Resolve(path string, uid, gid int) (string, string) {
+	if !filepath.IsAbs(path) {
+		return "", "not an absolute path"
+	}
+	if why := unsafeChain(filepath.Clean(path), uid, gid); why != "" {
+		return "", why
+	}
+	real, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return "", err.Error()
+	}
+	if why := unsafeChain(real, uid, gid); why != "" {
+		return "", why
+	}
+	if fi, err := os.Lstat(real); err != nil || !fi.Mode().IsRegular() {
+		return "", real + " is not a regular file"
+	}
+	return real, ""
+}
+
+// unsafeChain checks p and each folder above it, each entry with Lstat (a link itself).
+func unsafeChain(p string, uid, gid int) string {
+	for ; ; p = filepath.Dir(p) {
+		fi, err := os.Lstat(p)
+		if err != nil {
+			return err.Error()
+		}
+		if st, ok := fi.Sys().(*syscall.Stat_t); ok {
+			m := fi.Mode().Perm()
+			link := fi.Mode()&os.ModeSymlink != 0
+			switch {
+			case int(st.Uid) == uid:
+				// an owner can always give itself the write permission
+				return p + " belongs to the user replication-manager runs as"
+			case !link && int(st.Gid) == gid && m&0o020 != 0:
+				return p + " is writable by the group replication-manager runs as"
+			case !link && m&0o002 != 0 && (!fi.IsDir() || fi.Mode()&os.ModeSticky == 0):
+				// a folder anyone writes is safe only sticky (/tmp): no one renames another's entry
+				return p + " is writable by anyone"
+			}
+		}
+		if p == filepath.Dir(p) {
+			return ""
+		}
+	}
 }

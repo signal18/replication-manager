@@ -26,7 +26,7 @@ func etcTestManager(t *testing.T, writerOn bool) (*ReplicationManager, string) {
 	delete(repman.Conf.DynamicFlagMap, "api-credentials")
 	repman.Conf.MonitoringEtcCredentialWriter = writerOn
 	repman.InitAlertStateMachine()
-	repman.startEtcWriter(false)
+	repman.startEtcWriter(false, 0, 0)
 	return repman, etc
 }
 
@@ -80,5 +80,21 @@ func TestEtcCredentialWriterOff(t *testing.T) {
 	c2.LoadAPIUsers()
 	if err := repman.switchServerSetting("half", "", "monitoring-etc-credential-writer", ""); err == nil {
 		t.Fatal("switched without the server credentials grant on every cluster")
+	}
+}
+
+// The key comes from a configuration file, but none the writer may write sets it as a one-line
+// string in [default] (here a cluster section only): never a silent success.
+func TestEtcCredentialNotFoundIsSaid(t *testing.T) {
+	repman, etc := etcTestManager(t, true)
+	if err := os.WriteFile(etc, []byte("[Default]\n  monitoring-datadir = \"/x\"\n[c1]\n  api-credentials = \"admin:first,ops:second\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	res, err := repman.rotateAPIUserPassword(repman.Clusters["c1"], "ops", "admin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(res.EtcFile, "NOT written") || !strings.Contains(res.EtcFile, "not found") {
+		t.Fatalf("etcFile %q", res.EtcFile)
 	}
 }
