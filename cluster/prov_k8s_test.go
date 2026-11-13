@@ -2009,65 +2009,45 @@ func TestK8SDatabaseDeployment_NoMemoryLimitsWhenRunArgsLimitDisabled(t *testing
 func TestK8SDatabaseDeployment_MemoryLimitsSetWhenRunArgsLimitEnabled(t *testing.T) {
 	cluster := newTestCluster("k8stest")
 	cluster.Conf.ProvDBDockerRunArgsLimit = true
-	cluster.Conf.ProvMem = "512M" // dbMB = 512 - k8sDBJobsMemoryCapMB(128) = 384
+	cluster.Conf.ProvMem = "512M" // no DBU tier wired: GetDBContainerMemoryCapMB() = prov-db-memory = 512
 	s := &ServerMonitor{Name: "db1", Port: "3306"}
 
 	dep := cluster.k8sDatabaseDeployment(s, 3306, "node-a")
 
 	db := dep.Spec.Template.Spec.Containers[0]
-	wantDB := resource.MustParse("384Mi")
+	wantDB := resource.MustParse("512Mi")
 	if got := db.Resources.Requests[apiv1.ResourceMemory]; got.Cmp(wantDB) != 0 {
 		t.Fatalf("DB container memory request = %s, want %s", got.String(), wantDB.String())
 	}
 	if got := db.Resources.Limits[apiv1.ResourceMemory]; got.Cmp(wantDB) != 0 {
-		t.Fatalf("DB container memory limit = %s, want %s", got.String(), wantDB.String())
-	}
-	dbRequest, dbLimit := db.Resources.Requests[apiv1.ResourceMemory], db.Resources.Limits[apiv1.ResourceMemory]
-	if dbRequest.Cmp(dbLimit) != 0 {
-		t.Fatal("DB container request must equal limit (Guaranteed QoS) for a stable native-resize target")
+		t.Fatalf("DB container memory limit = %s, want %s (nothing carved out for dbjobs)", got.String(), wantDB.String())
 	}
 
+	// OpenSVC's jobs container carries no memory limit and no reservation by default.
 	jobs := dep.Spec.Template.Spec.Containers[1]
-	wantJobs := resource.MustParse(strconv.Itoa(k8sDBJobsMemoryCapMB) + "Mi")
-	if got := jobs.Resources.Requests[apiv1.ResourceMemory]; got.Cmp(wantJobs) != 0 {
-		t.Fatalf("dbjobs container memory request = %s, want %s", got.String(), wantJobs.String())
-	}
-	if got := jobs.Resources.Limits[apiv1.ResourceMemory]; got.Cmp(wantJobs) != 0 {
-		t.Fatalf("dbjobs container memory limit = %s, want %s", got.String(), wantJobs.String())
-	}
-
-	total := db.Resources.Limits[apiv1.ResourceMemory]
-	total.Add(jobs.Resources.Limits[apiv1.ResourceMemory])
-	if want := resource.MustParse("512Mi"); total.Cmp(want) != 0 {
-		t.Fatalf("aggregate DB+dbjobs Pod cap = %s, want exactly prov-db-memory = %s (OpenSVC-cap parity: never add anything above T)", total.String(), want.String())
+	if len(jobs.Resources.Requests) != 0 || len(jobs.Resources.Limits) != 0 {
+		t.Fatalf("expected no dbjobs container resources (OpenSVC renders none), got %#v", jobs.Resources)
 	}
 }
 
-// TestK8SDatabaseDeployment_MemoryLimitTracksK8sDatabaseMemoryTargetsNotDBUTierCap
-// pins the OpenSVC-cap-parity contract: the deployment builder derives the DB
-// container's limit from k8sDatabaseMemoryTargets (the single authority, T
-// split with dbjobs), NOT from GetDBContainerMemoryCapMB (OpenSVC's own,
-// separate CONTAINER cap -- prov_opensvc_db.go, untouched by this split).
-// The two already diverge with no DBU tier wired at all: GetDBContainerMemoryCapMB
-// falls back to raw T (512), while k8sDatabaseMemoryTargets carves dbjobs OUT
-// of T (384) -- proving the K8s Deployment builder is NOT quietly still
-// calling the old, gated-off formula.
-func TestK8SDatabaseDeployment_MemoryLimitTracksK8sDatabaseMemoryTargetsNotDBUTierCap(t *testing.T) {
-	cluster := newTestCluster("k8stest")
-	cluster.Conf.ProvDBDockerRunArgsLimit = true
-	cluster.Conf.ProvMem = "512M"
+// TestK8SDatabaseDeployment_MemoryLimitFollowsDBUTierCapLikeOpenSVC pins the OpenSVC parity
+// contract: the DB container's limit is GetDBContainerMemoryCapMB, the DBU-tier cap OpenSVC
+// renders as --memory on container#db, and it is ABOVE prov-db-memory when the plan tier is
+// larger (2 DBU = 8192M here against a prov-db-memory of 512M).
+func TestK8SDatabaseDeployment_MemoryLimitFollowsDBUTierCapLikeOpenSVC(t *testing.T) {
 	s := &ServerMonitor{Name: "db1", Port: "3306"}
+	cluster := &Cluster{Name: "k8stest", Conf: &config.Config{ProvDbDbu: 2, ProvMem: "512M", ProvDBDockerRunArgsLimit: true},
+		resources: NewResourceManager(), Servers: []*ServerMonitor{s}}
 
 	dep := cluster.k8sDatabaseDeployment(s, 3306, "node-a")
 
-	dbMB, _ := cluster.k8sDatabaseMemoryTargets()
-	want := resource.MustParse(strconv.Itoa(dbMB) + "Mi")
+	want := resource.MustParse(strconv.Itoa(cluster.GetDBContainerMemoryCapMB()) + "Mi")
 	got := dep.Spec.Template.Spec.Containers[0].Resources.Limits[apiv1.ResourceMemory]
 	if got.Cmp(want) != 0 {
-		t.Fatalf("DB container memory limit = %s, want %s (k8sDatabaseMemoryTargets)", got.String(), want.String())
+		t.Fatalf("DB container memory limit = %s, want %s (GetDBContainerMemoryCapMB)", got.String(), want.String())
 	}
-	if capMB := cluster.GetDBContainerMemoryCapMB(); capMB == dbMB {
-		t.Fatalf("GetDBContainerMemoryCapMB() (%dMi) unexpectedly equals k8sDatabaseMemoryTargets' dbMB (%dMi) -- this test needs a config where they diverge to prove the builder isn't still using the old formula", capMB, dbMB)
+	if want.Cmp(resource.MustParse("8192Mi")) != 0 {
+		t.Fatalf("fixture: GetDBContainerMemoryCapMB() = %s, want 8192Mi for 2 DBU", want.String())
 	}
 }
 
@@ -2127,13 +2107,11 @@ func TestK8SRestartDatabaseService_NeverTouchesImagePullPolicy(t *testing.T) {
 	}
 }
 
-// TestK8SRestartDatabaseService_PatchesBothContainersMemoryWhenRunArgsLimitEnabled
-// is the Medium-finding regression: an existing Deployment (created before
-// prov-db-docker-run-args-limit was enabled, or before this feature existed)
-// with unbounded DB and dbjobs containers -- a normal restart must reconcile
-// BOTH to the current k8sDatabaseMemoryTargets split, not just the DB
-// container, or the dbjobs sidecar stays silently unbounded forever.
-func TestK8SRestartDatabaseService_PatchesBothContainersMemoryWhenRunArgsLimitEnabled(t *testing.T) {
+// TestK8SRestartDatabaseService_PatchesDBMemoryWhenRunArgsLimitEnabled: an existing Deployment
+// (created before prov-db-docker-run-args-limit was enabled) with unbounded containers -- a
+// normal restart reconciles the DB container to the limit the builder renders
+// (GetDBContainerMemoryCapMB) and leaves dbjobs without resources, as OpenSVC's jobs container.
+func TestK8SRestartDatabaseService_PatchesDBMemoryWhenRunArgsLimitEnabled(t *testing.T) {
 	client := fake.NewSimpleClientset(&appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{Name: "db1", Namespace: "k8stest"},
 		Spec: appsv1.DeploymentSpec{
@@ -2149,7 +2127,7 @@ func TestK8SRestartDatabaseService_PatchesBothContainersMemoryWhenRunArgsLimitEn
 	})
 	cluster := newTestCluster("k8stest")
 	cluster.Conf.ProvDBDockerRunArgsLimit = true
-	cluster.Conf.ProvMem = "512M" // dbMB = 512 - 128 = 384
+	cluster.Conf.ProvMem = "512M" // no DBU tier wired: cap = prov-db-memory = 512
 
 	if err := cluster.k8sRestartDatabaseServiceWithClient(client, "db1"); err != nil {
 		t.Fatalf("unexpected error: %s", err)
@@ -2159,15 +2137,63 @@ func TestK8SRestartDatabaseService_PatchesBothContainersMemoryWhenRunArgsLimitEn
 	if err != nil {
 		t.Fatalf("unexpected error: %s", err)
 	}
-	wantDB := resource.MustParse("384Mi")
+	wantDB := resource.MustParse("512Mi")
 	gotDB := dep.Spec.Template.Spec.Containers[0].Resources.Limits[apiv1.ResourceMemory]
 	if gotDB.Cmp(wantDB) != 0 {
 		t.Fatalf("DB container memory limit = %s, want %s", gotDB.String(), wantDB.String())
 	}
-	wantJobs := resource.MustParse(strconv.Itoa(k8sDBJobsMemoryCapMB) + "Mi")
-	gotJobs := dep.Spec.Template.Spec.Containers[1].Resources.Limits[apiv1.ResourceMemory]
-	if gotJobs.Cmp(wantJobs) != 0 {
-		t.Fatalf("dbjobs container memory limit = %s, want %s -- a normal restart left the existing dbjobs container unbounded", gotJobs.String(), wantJobs.String())
+	if res := dep.Spec.Template.Spec.Containers[1].Resources; len(res.Requests) != 0 || len(res.Limits) != 0 {
+		t.Fatalf("dbjobs container must carry no memory resources, got %#v", res)
+	}
+}
+
+// TestK8SRestartDatabaseService_MigratesDBJobsOffTheOldCarveOut: a Deployment built by
+// develop (dbjobs request AND limit 128Mi, DB limit prov-db-memory minus 128Mi) migrates on a
+// restart: dbjobs loses BOTH its request and its limit (a request left behind would still
+// reserve memory on the node), the DB container takes the cap, and the CPU pair is untouched.
+func TestK8SRestartDatabaseService_MigratesDBJobsOffTheOldCarveOut(t *testing.T) {
+	cpu := resource.MustParse("2")
+	client := fake.NewSimpleClientset(&appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Name: "db1", Namespace: "k8stest"},
+		Spec: appsv1.DeploymentSpec{
+			Template: apiv1.PodTemplateSpec{
+				Spec: apiv1.PodSpec{
+					Containers: []apiv1.Container{
+						{Name: "db1", Resources: apiv1.ResourceRequirements{
+							Requests: apiv1.ResourceList{apiv1.ResourceMemory: resource.MustParse("384Mi"), apiv1.ResourceCPU: cpu},
+							Limits:   apiv1.ResourceList{apiv1.ResourceMemory: resource.MustParse("384Mi"), apiv1.ResourceCPU: cpu},
+						}},
+						{Name: "db1-dbjobs", Resources: apiv1.ResourceRequirements{
+							Requests: apiv1.ResourceList{apiv1.ResourceMemory: resource.MustParse("128Mi")},
+							Limits:   apiv1.ResourceList{apiv1.ResourceMemory: resource.MustParse("128Mi")},
+						}},
+					},
+				},
+			},
+		},
+	})
+	cluster := newTestCluster("k8stest")
+	cluster.Conf.ProvDBDockerRunArgsLimit = true
+	cluster.Conf.ProvMem = "512M"
+
+	if err := cluster.k8sRestartDatabaseServiceWithClient(client, "db1"); err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	dep, err := client.AppsV1().Deployments("k8stest").Get(context.TODO(), "db1", metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	db, jobs := dep.Spec.Template.Spec.Containers[0], dep.Spec.Template.Spec.Containers[1]
+	for kind, got := range map[string]apiv1.ResourceList{"request": db.Resources.Requests, "limit": db.Resources.Limits} {
+		if mem := got[apiv1.ResourceMemory]; mem.Cmp(resource.MustParse("512Mi")) != 0 {
+			t.Fatalf("DB container memory %s = %s, want 512Mi (the cap)", kind, mem.String())
+		}
+		if c := got[apiv1.ResourceCPU]; c.Cmp(cpu) != 0 {
+			t.Fatalf("DB container cpu %s = %s, want it untouched (%s)", kind, c.String(), cpu.String())
+		}
+	}
+	if len(jobs.Resources.Requests) != 0 || len(jobs.Resources.Limits) != 0 {
+		t.Fatalf("dbjobs must lose its old request and limit, got %#v", jobs.Resources)
 	}
 }
 
@@ -2375,7 +2401,7 @@ func TestK8SForceRepullDatabaseService_PatchesMemoryResourcesWhenRunArgsLimitEna
 	})
 	cluster := newTestCluster("k8stest")
 	cluster.Conf.ProvDBDockerRunArgsLimit = true
-	cluster.Conf.ProvMem = "512M" // e.g. already confirmed by an earlier successful native resize -- dbMB = 512-128 = 384
+	cluster.Conf.ProvMem = "512M" // e.g. already confirmed by an earlier successful native resize -- cap = 512
 
 	if err := cluster.k8sForceRepullDatabaseServiceWithClient(client, "db1"); err != nil {
 		t.Fatalf("unexpected error: %s", err)
@@ -2385,15 +2411,13 @@ func TestK8SForceRepullDatabaseService_PatchesMemoryResourcesWhenRunArgsLimitEna
 	if err != nil {
 		t.Fatalf("unexpected error: %s", err)
 	}
-	wantDB := resource.MustParse("384Mi")
+	wantDB := resource.MustParse("512Mi")
 	gotDB := dep.Spec.Template.Spec.Containers[0].Resources.Limits[apiv1.ResourceMemory]
 	if gotDB.Cmp(wantDB) != 0 {
 		t.Fatalf("expected the replacement Pod's DB memory limit to reconcile to the current target %s, got %s -- a restart-fallback must not recreate the old template limit", wantDB.String(), gotDB.String())
 	}
-	wantJobs := resource.MustParse(strconv.Itoa(k8sDBJobsMemoryCapMB) + "Mi")
-	gotJobs := dep.Spec.Template.Spec.Containers[1].Resources.Limits[apiv1.ResourceMemory]
-	if gotJobs.Cmp(wantJobs) != 0 {
-		t.Fatalf("expected the replacement Pod's dbjobs memory limit to also reconcile to %s, got %s -- a restart-fallback must not leave the existing dbjobs container unbounded", wantJobs.String(), gotJobs.String())
+	if res := dep.Spec.Template.Spec.Containers[1].Resources; len(res.Requests) != 0 || len(res.Limits) != 0 {
+		t.Fatalf("expected the replacement Pod's dbjobs container to lose its old memory request and limit, got %#v", res)
 	}
 }
 

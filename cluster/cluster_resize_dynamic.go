@@ -141,9 +141,8 @@ func (cluster *Cluster) resourceResizer() ResourceResizer {
 		// Requests == Limits pair, i.e. prov-db-docker-run-args-limit is on
 		// (k8sDatabaseContainerResources) -- the same opt-in that puts --memory/--cpus
 		// on OpenSVC's container run_args; an uncapped Pod has nothing to resize and
-		// keeps the script/restart path. The cap contract is the one settled for every
-		// orchestrator: the container limit IS prov-db-* per node (memory minus the
-		// dbjobs carve-out, k8sDatabaseMemoryTargets), no OpenSVC-style padded tier.
+		// keeps the script/restart path. The memory limit is the one OpenSVC renders on
+		// container#db (GetDBContainerMemoryCapMB, k8sDatabaseMemoryMiB).
 		if cluster.Conf.ProvDBDockerRunArgsLimit {
 			return k8sResizer{cluster}
 		}

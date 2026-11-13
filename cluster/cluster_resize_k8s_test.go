@@ -7,7 +7,6 @@ import (
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/jmoiron/sqlx"
-	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/version"
 	appsv1 "k8s.io/api/apps/v1"
 	apiv1 "k8s.io/api/core/v1"
@@ -574,88 +573,70 @@ func TestRestorePendingK8sMemoryResize_SurvivesFullServerMonitorReplacementEndTo
 	cluster, s, cleanup := k8sResizeTestServer(t, "k8stest", "db1")
 	defer cleanup()
 	s.Id = "db-e2e"
-	s.SetPendingK8sMemoryResize(&K8sMemoryResizeState{TargetMB: 384, Grow: false, StartedAt: time.Now()})
+	s.SetPendingK8sMemoryResize(&K8sMemoryResizeState{TargetMB: 512, Grow: false, StartedAt: time.Now()})
 
 	replacement := &ServerMonitor{Name: "db1", Id: "db-e2e", ClusterGroup: cluster}
 	cluster.restorePendingK8sMemoryResize(replacement)
 
 	got := replacement.GetPendingK8sMemoryResize()
-	if got == nil || got.TargetMB != 384 || got.Grow {
+	if got == nil || got.TargetMB != 512 || got.Grow {
 		t.Fatalf("expected the replacement ServerMonitor to inherit the exact pending resize, got %#v", got)
 	}
 }
 
-// --- k8sDatabaseMemoryTargets: single authority shared by builder + resizer ---
+// --- k8sDatabaseMemoryMiB: single source shared by builder, restart patch and resizer ---
 
-// TestK8sDatabaseMemoryTargets_AggregateAlwaysEqualsProvMem is the exact
-// OpenSVC-parity contract: OpenSVC's own effective service cap (pg_mem_limit)
-// is raw prov-db-memory (T) -- so the Kubernetes DB+dbjobs aggregate Pod cap
-// must equal that SAME T, split between the two containers, never T plus an
-// additional amount on top.
-func TestK8sDatabaseMemoryTargets_AggregateAlwaysEqualsProvMem(t *testing.T) {
+// TestK8sDatabaseMemoryMiB_IsTheOpenSVCContainerCap: the limit Kubernetes renders is exactly what
+// OpenSVC renders as `--memory` on container#db -- GetDBContainerMemoryCapMB -- with nothing
+// carved out for dbjobs and no floor of its own. The full comparison against the OpenSVC
+// container section is in prov_k8s_opensvc_parity_test.go.
+func TestK8sDatabaseMemoryMiB_IsTheOpenSVCContainerCap(t *testing.T) {
 	cluster := newTestCluster("k8stest")
 	cluster.Conf.ProvMem = "512M"
 
-	dbMB, jobsMB := cluster.k8sDatabaseMemoryTargets()
-	wantTotal, err := config.ParseUnitMeasurementToInt("M,bytes,required", cluster.Conf.ProvMem, true)
-	if err != nil {
-		t.Fatalf("unexpected error parsing prov-db-memory: %s", err)
+	mb, ok := cluster.k8sDatabaseMemoryMiB()
+	if !ok || mb != cluster.GetDBContainerMemoryCapMB() {
+		t.Fatalf("k8sDatabaseMemoryMiB() = %d, %v; want GetDBContainerMemoryCapMB() = %d", mb, ok, cluster.GetDBContainerMemoryCapMB())
 	}
-	if dbMB+jobsMB != wantTotal {
-		t.Fatalf("dbMB(%d) + jobsMB(%d) = %d, want exactly prov-db-memory = %d", dbMB, jobsMB, dbMB+jobsMB, wantTotal)
-	}
-	if jobsMB != k8sDBJobsMemoryCapMB {
-		t.Fatalf("jobsMB = %d, want the technical minimum %d carved out of T", jobsMB, k8sDBJobsMemoryCapMB)
+	if mb != 512 {
+		t.Fatalf("with no DBU tier the cap is prov-db-memory: got %d, want 512 (no dbjobs carve-out)", mb)
 	}
 }
 
-// TestK8sDatabaseMemoryTargets_TinyProvMemShrinksJobsNotBelowFloor proves the
-// degrade-safely edge case: when T itself is smaller than dbjobs' own
-// technical minimum, dbjobs is the one that shrinks (never the DB container,
-// the actually load-bearing process) -- and the aggregate invariant still
-// holds exactly.
-func TestK8sDatabaseMemoryTargets_TinyProvMemShrinksJobsNotBelowFloor(t *testing.T) {
+// A tiny prov-db-memory is not floored or split: the cap is what OpenSVC would render.
+func TestK8sDatabaseMemoryMiB_TinyProvMemIsNotFlooredOrSplit(t *testing.T) {
 	cluster := newTestCluster("k8stest")
-	cluster.Conf.ProvMem = "64M" // smaller than k8sDBJobsMemoryCapMB (128)
+	cluster.Conf.ProvMem = "64M"
 
-	dbMB, jobsMB := cluster.k8sDatabaseMemoryTargets()
-	if dbMB+jobsMB != 64 {
-		t.Fatalf("dbMB(%d) + jobsMB(%d) = %d, want exactly 64", dbMB, jobsMB, dbMB+jobsMB)
-	}
-	if jobsMB >= k8sDBJobsMemoryCapMB {
-		t.Fatalf("expected jobsMB to shrink below its normal technical minimum when T is too small, got %d", jobsMB)
-	}
-	if dbMB <= 0 {
-		t.Fatalf("expected the DB container to keep the vast majority of a too-small T, got dbMB=%d", dbMB)
+	if mb, ok := cluster.k8sDatabaseMemoryMiB(); !ok || mb != 64 {
+		t.Fatalf("k8sDatabaseMemoryMiB() = %d, %v; want 64, true", mb, ok)
 	}
 }
 
-func TestK8sDatabaseMemoryTargets_InvalidProvMemFallsBackSafelyNeverZero(t *testing.T) {
+// An unparseable prov-db-memory with no DBU tier gives no limit (docker's `--memory=0m` is no
+// limit): never a 0Mi limit, never an invented fallback.
+func TestK8sDatabaseMemoryMiB_UnparseableProvMemGivesNoLimit(t *testing.T) {
 	cluster := newTestCluster("k8stest")
 	cluster.Conf.ProvMem = "not-a-valid-value"
 
-	dbMB, jobsMB := cluster.k8sDatabaseMemoryTargets()
-	if dbMB <= 0 || jobsMB <= 0 {
-		t.Fatalf("expected a safe non-zero fallback for unparseable prov-db-memory, got dbMB=%d jobsMB=%d", dbMB, jobsMB)
+	if mb, ok := cluster.k8sDatabaseMemoryMiB(); ok {
+		t.Fatalf("expected no limit for an unparseable prov-db-memory, got %d", mb)
 	}
 }
 
 // --- resourceResizer selection ---
 
-// TestResourceResizer_KubernetesNeverSelectsK8sResizerYet locks in the
-// deliberate gate in resourceResizer (cluster_resize_dynamic.go): k8sResizer
-// computes GetDBContainerMemoryCapMB()+dbjobs, not the exact OpenSVC
-// DEFAULT.pg_mem_limit service-cap target this feature is meant to match, so
-// it must not be reachable from production code -- even with
-// prov-db-docker-run-args-limit on -- until that contract is proven and this
-// gate is deliberately reopened.
+// TestResourceResizer_KubernetesSelectsK8sResizerWithRunArgsLimit: with
+// prov-db-docker-run-args-limit on (the same opt-in that puts --memory/--cpus on OpenSVC's
+// container run_args) the Pod carries a Requests == Limits pair, so the native in-place resize
+// is the backend.
 func TestResourceResizer_KubernetesSelectsK8sResizerWithRunArgsLimit(t *testing.T) {
 	cluster := newTestCluster("k8stest")
 	cluster.Conf.ProvOrchestrator = "kube"
 	cluster.Conf.ProvDBDockerRunArgsLimit = true
 
 	if _, ok := cluster.resourceResizer().(k8sResizer); !ok {
-		t.Fatalf("expected k8sResizer (native in-place Pod resize, cap contract = prov-db-* per node), got %T", cluster.resourceResizer())
+		t.Fatalf("expected k8sResizer (native in-place Pod resize), got %T", cluster.resourceResizer())
 	}
 }
 
@@ -714,7 +695,7 @@ func TestK8sResize_AmbiguousPodSchedulesRestartNotResize(t *testing.T) {
 func TestK8sResize_PatchesResizeSubresourceAndTracksPending(t *testing.T) {
 	cluster, s, cleanup := k8sResizeTestServer(t, "k8stest", "db1")
 	defer cleanup()
-	cluster.Conf.ProvMem = "512M" // dbMB = 512 - k8sDBJobsMemoryCapMB(128) = 384
+	cluster.Conf.ProvMem = "512M" // no DBU tier wired: GetDBContainerMemoryCapMB() = prov-db-memory = 512
 	dep, rs := k8sTestController("k8stest", "db1")
 	pod := k8sResizeTestPod("k8stest", "db1-abc", "db1", "128Mi", "", rs.UID)
 	client := fake.NewSimpleClientset(dep, rs, pod)
@@ -730,7 +711,7 @@ func TestK8sResize_PatchesResizeSubresourceAndTracksPending(t *testing.T) {
 		t.Fatal("a genuinely pending resize must not fall back to restart immediately")
 	}
 	pending := s.GetPendingK8sMemoryResize()
-	if pending == nil || pending.TargetMB != 384 || !pending.Grow {
+	if pending == nil || pending.TargetMB != 512 || !pending.Grow {
 		t.Fatalf("expected pending state to track the target and direction, got %#v", pending)
 	}
 
@@ -739,37 +720,43 @@ func TestK8sResize_PatchesResizeSubresourceAndTracksPending(t *testing.T) {
 		t.Fatalf("unexpected error: %s", err)
 	}
 	got := updated.Spec.Containers[0].Resources.Limits[apiv1.ResourceMemory]
-	if want := resource.MustParse("384Mi"); got.Cmp(want) != 0 {
+	if want := resource.MustParse("512Mi"); got.Cmp(want) != 0 {
 		t.Fatalf("expected the resize subresource patch to request %s, got %s", want.String(), got.String())
 	}
 }
 
-func TestK8sResize_AlreadyConfirmedAtTargetReturnsAppliedTrue(t *testing.T) {
+func TestK8sResize_ConfirmedAtTargetOfOurOwnResizeReturnsAppliedTrue(t *testing.T) {
 	cluster, s, cleanup := k8sResizeTestServer(t, "k8stest", "db1")
 	defer cleanup()
-	cluster.Conf.ProvMem = "512M" // dbMB = 512 - 128 = 384
+	cluster.Conf.ProvMem = "512M" // no DBU tier wired: GetDBContainerMemoryCapMB() = prov-db-memory = 512
 	dep, rs := k8sTestController("k8stest", "db1")
-	pod := k8sResizeTestPod("k8stest", "db1-abc", "db1", "384Mi", "", rs.UID)
+	pod := k8sResizeTestPod("k8stest", "db1-abc", "db1", "512Mi", "", rs.UID)
 	client := fake.NewSimpleClientset(dep, rs, pod)
+
+	// a resize of OURS (patched, seen in flight) that the kubelet has now applied
+	s.SetPendingK8sMemoryResize(&K8sMemoryResizeState{TargetMB: 512, Grow: true, MemChanged: true, StartedAt: time.Now(), Observed: true})
 
 	applied, err := cluster.k8sResizeWithClient(client, s, true)
 	if err != nil {
 		t.Fatalf("unexpected error: %s", err)
 	}
 	if !applied {
-		t.Fatal("expected applied=true when the live Pod is already confirmed at the target")
+		t.Fatal("expected applied=true when the live Pod is already confirmed at the target of a resize we issued")
+	}
+	if s.GetPendingK8sMemoryResize() != nil {
+		t.Fatal("the confirmed resize must clear its pending state")
 	}
 }
 
 func TestK8sResize_SpecMatchButStillInProgressDoesNotReportApplied(t *testing.T) {
 	cluster, s, cleanup := k8sResizeTestServer(t, "k8stest", "db1")
 	defer cleanup()
-	cluster.Conf.ProvMem = "512M" // dbMB = 512 - 128 = 384
+	cluster.Conf.ProvMem = "512M" // no DBU tier wired: GetDBContainerMemoryCapMB() = prov-db-memory = 512
 	// The spec already shows the target (an earlier patch), but kubelet is
 	// still applying it -- a duplicate Resize() call must NOT short-circuit to
 	// applied=true from the spec value alone.
 	dep, rs := k8sTestController("k8stest", "db1")
-	pod := k8sResizeTestPod("k8stest", "db1-abc", "db1", "384Mi", apiv1.PodResizeStatusInProgress, rs.UID)
+	pod := k8sResizeTestPod("k8stest", "db1-abc", "db1", "512Mi", apiv1.PodResizeStatusInProgress, rs.UID)
 	client := fake.NewSimpleClientset(dep, rs, pod)
 
 	applied, err := cluster.k8sResizeWithClient(client, s, true)
@@ -791,11 +778,11 @@ func TestK8sResize_SpecMatchButStillInProgressDoesNotReportApplied(t *testing.T)
 func TestK8sResize_TrackedButNeverObservedDoesNotFalseConfirm(t *testing.T) {
 	cluster, s, cleanup := k8sResizeTestServer(t, "k8stest", "db1")
 	defer cleanup()
-	cluster.Conf.ProvMem = "512M" // dbMB = 512 - 128 = 384
+	cluster.Conf.ProvMem = "512M" // no DBU tier wired: GetDBContainerMemoryCapMB() = prov-db-memory = 512
 	dep, rs := k8sTestController("k8stest", "db1")
-	pod := k8sResizeTestPod("k8stest", "db1-abc", "db1", "384Mi", "", rs.UID)
+	pod := k8sResizeTestPod("k8stest", "db1-abc", "db1", "512Mi", "", rs.UID)
 	client := fake.NewSimpleClientset(dep, rs, pod)
-	s.SetPendingK8sMemoryResize(&K8sMemoryResizeState{TargetMB: 384, Grow: true, StartedAt: time.Now()})
+	s.SetPendingK8sMemoryResize(&K8sMemoryResizeState{TargetMB: 512, Grow: true, StartedAt: time.Now()})
 
 	applied, err := cluster.k8sResizeWithClient(client, s, true)
 	if err != nil {
@@ -825,7 +812,7 @@ func TestK8sDatabaseContainerResources_CarriesCPUPairFromProvCores(t *testing.T)
 	if got := req.Requests[apiv1.ResourceCPU]; got.MilliValue() != 2000 {
 		t.Fatalf("expected Requests == Limits for cpu, got %s", got.String())
 	}
-	if got := req.Limits[apiv1.ResourceMemory]; got.Cmp(resource.MustParse("384Mi")) != 0 {
+	if got := req.Limits[apiv1.ResourceMemory]; got.Cmp(resource.MustParse("512Mi")) != 0 {
 		t.Fatalf("memory pair must be untouched by the cpu addition, got %s", got.String())
 	}
 
@@ -842,10 +829,10 @@ func TestK8sDatabaseContainerResources_CarriesCPUPairFromProvCores(t *testing.T)
 func TestK8sResize_PatchCarriesCPUAndTracksTarget(t *testing.T) {
 	cluster, s, cleanup := k8sResizeTestServer(t, "k8stest", "db1")
 	defer cleanup()
-	cluster.Conf.ProvMem = "512M" // dbMB = 384
+	cluster.Conf.ProvMem = "512M" // no DBU tier wired: cap = 512
 	cluster.Conf.ProvCores = "2"
 	dep, rs := k8sTestController("k8stest", "db1")
-	pod := k8sResizeTestPod("k8stest", "db1-abc", "db1", "384Mi", "", rs.UID) // memory already at target: cpu-only step
+	pod := k8sResizeTestPod("k8stest", "db1-abc", "db1", "512Mi", "", rs.UID) // memory already at target: cpu-only step
 	client := fake.NewSimpleClientset(dep, rs, pod)
 
 	applied, err := cluster.k8sResizeWithClient(client, s, true)
@@ -853,7 +840,7 @@ func TestK8sResize_PatchCarriesCPUAndTracksTarget(t *testing.T) {
 		t.Fatalf("expected a pending (not yet confirmed) resize, got applied=%v err=%v", applied, err)
 	}
 	pending := s.GetPendingK8sMemoryResize()
-	if pending == nil || pending.TargetCPUMilli != 2000 || pending.TargetMB != 384 {
+	if pending == nil || pending.TargetCPUMilli != 2000 || pending.TargetMB != 512 {
 		t.Fatalf("expected pending state to carry the cpu target, got %#v", pending)
 	}
 	if pending.MemChanged {
@@ -874,8 +861,8 @@ func TestK8sResize_PatchCarriesCPUAndTracksTarget(t *testing.T) {
 
 func TestK8sResizeConfirmed_RequiresCPUMatchWhenTargeted(t *testing.T) {
 	_, rs := k8sTestController("k8stest", "db1")
-	pod := k8sResizeTestPod("k8stest", "db1-abc", "db1", "384Mi", "", rs.UID)
-	target := resource.MustParse("384Mi")
+	pod := k8sResizeTestPod("k8stest", "db1-abc", "db1", "512Mi", "", rs.UID)
+	target := resource.MustParse("512Mi")
 
 	if !k8sResizeConfirmed(pod, "db1", target, 0) {
 		t.Fatal("memory-only target must confirm on the memory limit alone")

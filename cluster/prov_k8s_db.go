@@ -681,97 +681,44 @@ func (cluster *Cluster) k8sDBIdentity() (db *apiv1.SecurityContext, chown string
 	return db, chown, jobs
 }
 
-// k8sDBJobsMemoryCapMB is the dbjobs sidecar's own technical minimum (MiB) --
-// NOT an operator-tunable policy (no TOML/Viper key: OpenSVC has no
-// equivalent knob for it either, see k8sDatabaseMemoryTargets). Proven in
-// Kind (doc/implementation/cluster/KUBERNETES_OPENSVC_RESOURCE_PARITY_IMPLEMENTATION_PLAN.md,
-// Phase 1): kubelet sets a Pod-level cgroup memory.max equal to the SUM of
-// every container's own memory limit, but only when every container in the
-// Pod declares one -- so this is the Kubernetes equivalent of OpenSVC's
-// service-level PG cgroup, which wraps both the DB and dbjobs containers.
-// OpenSVC's own dbjobs container carries no explicit cap of its own
-// (OpenSVCGetJobsContainerSection): it is implicitly bounded only by that
-// service-level PG limit. Kubernetes has no such implicit parent enforcement
-// without an explicit limit on every container, so dbjobs needs SOME
-// concrete number -- this is carved OUT of the same service-level target
-// OpenSVC uses (k8sDatabaseMemoryTargets), never added on top of it.
-const k8sDBJobsMemoryCapMB = 128
-
-// k8sDatabaseMinMB is the floor the DB container's own share is never let
-// drop below, even when prov-db-memory itself is too small to spare
-// k8sDBJobsMemoryCapMB for dbjobs (an unrealistic config in practice --
-// prov-db-memory defaults to 4G -- but the split must degrade safely rather
-// than produce a zero/negative DB share) and the safe fallback when
-// prov-db-memory itself fails to parse.
-const k8sDatabaseMinMB = 256
-
-// k8sDatabaseMemoryTargets is the SINGLE authority for the Kubernetes
-// service-level memory split -- used identically by the provisioning-time
-// builder below, the restart/force-repull template reconciliation
-// (k8sContainerMemoryResourcesPatch), and the native resizer
-// (cluster_resize_k8s.go), so none of the three can ever drift onto
-// different numbers.
-//
-// dbMB + jobsMB == T (cluster.Conf.ProvMem, parsed the SAME way
-// openSVCResize parses it for OpenSVC's own DEFAULT.pg_mem_limit) ALWAYS --
-// OpenSVC's behavior is the authority for what the effective service cap
-// is, not a Kubernetes-specific reinterpretation of it: T IS the effective
-// OpenSVC service cap (pg_mem_limit), so the Kubernetes Pod-level cgroup cap
-// (dbMB+jobsMB, Phase 1: kubelet sets it to the SUM of every container's own
-// limit) must equal that SAME T, never silently add anything above it. This
-// does NOT use GetDBContainerMemoryCapMB() (OpenSVC's separate, larger,
-// DBU-tier-padded CONTAINER cap, used only for OpenSVC's own container
-// run_args -- prov_opensvc_db.go, untouched by this split): mirroring that
-// number here would reproduce OpenSVC's OWN two-layer headroom on
-// Kubernetes, which is a different, larger effective cap than pg_mem_limit,
-// not the one this contract targets. dbjobs is carved OUT of T (see
-// k8sDBJobsMemoryCapMB's own doc comment for why it needs an explicit
-// number at all), never added on top; if T itself is smaller than that
-// technical minimum, dbjobs is the one that shrinks (down to 1Mi) so the DB
-// container -- the actually load-bearing process -- keeps as much of T as
-// possible.
-func (cluster *Cluster) k8sDatabaseMemoryTargets() (dbMB, jobsMB int) {
-	totalMB, err := config.ParseUnitMeasurementToInt("M,bytes,required", cluster.Conf.ProvMem, true)
-	if err != nil || totalMB <= 0 {
-		// Never surface an invalid/unparseable target as a 0Mi cap: fall back
-		// to the same technical minimum the split is itself built around.
-		return k8sDatabaseMinMB, k8sDBJobsMemoryCapMB
-	}
-	jobsMB = k8sDBJobsMemoryCapMB
-	if jobsMB >= totalMB {
-		jobsMB = 1
-	}
-	dbMB = totalMB - jobsMB
-	return dbMB, jobsMB
+// k8sDatabaseMemoryMiB is the memory limit, in MiB, of the database container. It is the value
+// OpenSVC renders as `--memory=<n>m --memory-swap=<n>m` on container#db when
+// prov-db-docker-run-args-limit is on (OpenSVCGetDBContainerSection): GetDBContainerMemoryCapMB,
+// the DBU-tier cap that never goes below prov-db-memory. Kubernetes reads it from that same helper
+// everywhere it renders the limit -- the provisioning builder, the restart/repull template patch
+// and the native resizer -- and computes nothing of its own: no carve-out for dbjobs, no floor.
+// ok is false when the helper yields no value (an unparseable prov-db-memory with no DBU tier);
+// docker's `--memory=0m` then means no limit, and so no memory limit is set here either.
+func (cluster *Cluster) k8sDatabaseMemoryMiB() (mb int, ok bool) {
+	mb = cluster.GetDBContainerMemoryCapMB()
+	return mb, mb > 0
 }
 
-// k8sDatabaseContainerResources returns the DB container's memory
-// Requests/Limits (k8sDatabaseMemoryTargets) -- gated by the same
-// prov-db-docker-run-args-limit opt-in OpenSVC's own container run_args
-// --memory uses, so a cluster that has chosen not to cap container memory on
-// OpenSVC gets the identical choice honored on Kubernetes rather than an
-// unrequested new default. Requests == Limits so the resize target is
-// unambiguous (matches Docker's own --memory==--memory-swap hard cap) --
-// this does NOT by itself make the Pod Kubernetes "Guaranteed" QoS class
-// (that also requires a CPU request==limit pair on every container, which
-// prov-db-docker-run-args-limit does not set here: CPU/IO cgroup resizing is
-// explicitly out of scope for this feature). The native Pod resize
-// subresource does not require full-Pod Guaranteed QoS, only that the
-// resized resource itself has a request/limit pair on the target container
-// -- proven live in Kind with a memory-only, no-CPU-limit test container
-// (cluster/smoke_kind_pod_resize_test.go).
+// k8sDatabaseContainerResources returns the DB container's Requests/Limits -- gated by the same
+// prov-db-docker-run-args-limit opt-in OpenSVC's own container run_args --memory/--cpus use, so a
+// cluster that has chosen not to cap container resources on OpenSVC gets the identical choice
+// honored on Kubernetes.
+//
+// Memory: the limit is k8sDatabaseMemoryMiB. Request == limit is the existing Kubernetes mechanism
+// (the resize target is then unambiguous, as docker's --memory == --memory-swap); OpenSVC itself
+// reserves nothing at the orchestrator level, so the value of the request, which the scheduler
+// does honor, is tracked as an open parity point (see K8S_DBJOBS_MEMORY.md).
+//
+// CPU rides the same Requests == Limits pair, from prov-db-cpu-cores, unchanged: CPU/SMT parity
+// (GetDBContainerCPUCapCores) is a separate tracked gap.
 func (cluster *Cluster) k8sDatabaseContainerResources() apiv1.ResourceRequirements {
 	if !cluster.Conf.ProvDBDockerRunArgsLimit {
 		return apiv1.ResourceRequirements{}
 	}
-	dbMB, _ := cluster.k8sDatabaseMemoryTargets()
-	mem := resource.MustParse(strconv.Itoa(dbMB) + "Mi")
-	rl := apiv1.ResourceList{apiv1.ResourceMemory: mem}
-	// CPU rides the same Requests == Limits pair, from prov-db-cpu-cores -- the
-	// Kubernetes twin of OpenSVC's run_args --cpus, resized in place by k8sResizer
-	// together with memory (one Pod resize patch carries both axes).
+	rl := apiv1.ResourceList{}
+	if mb, ok := cluster.k8sDatabaseMemoryMiB(); ok {
+		rl[apiv1.ResourceMemory] = resource.MustParse(strconv.Itoa(mb) + "Mi")
+	}
 	if cpuMilli, ok := cluster.k8sDatabaseCPUTargetMilli(); ok {
 		rl[apiv1.ResourceCPU] = *resource.NewMilliQuantity(cpuMilli, resource.DecimalSI)
+	}
+	if len(rl) == 0 {
+		return apiv1.ResourceRequirements{}
 	}
 	return apiv1.ResourceRequirements{
 		Requests: rl.DeepCopy(),
@@ -790,18 +737,14 @@ func (cluster *Cluster) k8sDatabaseCPUTargetMilli() (int64, bool) {
 	return int64(cores*1000 + 0.5), true
 }
 
-// k8sDBJobsContainerResources mirrors k8sDatabaseContainerResources for the
-// dbjobs sidecar -- see k8sDatabaseMemoryTargets.
+// k8sDBJobsContainerResources is the dbjobs sidecar's resources: none. OpenSVC's jobs container
+// (OpenSVCGetJobsContainerSection) carries only prov-db-jobs-docker-run-args, whose default is
+// `--ulimit nofile=262144:262144`: no memory or CPU limit and no reservation. Kubernetes sets
+// none either. The dbjobs memory limit that used to be set here was OOMKilled during the
+// configuration print at 128Mi (#2369) and has no OpenSVC counterpart. Translating an operator's
+// own resource arguments in prov-db-jobs-docker-run-args to the sidecar is a separate tracked gap.
 func (cluster *Cluster) k8sDBJobsContainerResources() apiv1.ResourceRequirements {
-	if !cluster.Conf.ProvDBDockerRunArgsLimit {
-		return apiv1.ResourceRequirements{}
-	}
-	_, jobsMB := cluster.k8sDatabaseMemoryTargets()
-	mem := resource.MustParse(strconv.Itoa(jobsMB) + "Mi")
-	return apiv1.ResourceRequirements{
-		Requests: apiv1.ResourceList{apiv1.ResourceMemory: mem},
-		Limits:   apiv1.ResourceList{apiv1.ResourceMemory: mem},
-	}
+	return apiv1.ResourceRequirements{}
 }
 
 // k8sAPICallTimeout bounds every Kubernetes API call reachable from the
@@ -1322,19 +1265,68 @@ func k8sMemoryResourcesFragment(mb int) map[string]interface{} {
 	}
 }
 
+// k8sNoMemoryResourcesFragment is the strategic-merge "resources" sub-map that deletes a
+// container's memory request AND limit (a null removes the key): what makes an existing
+// Deployment, whose dbjobs template still carries the old request == limit, match the
+// no-resources dbjobs container of k8sDBJobsContainerResources.
+func k8sNoMemoryResourcesFragment() map[string]interface{} {
+	return map[string]interface{}{
+		"requests": map[string]interface{}{"memory": nil},
+		"limits":   map[string]interface{}{"memory": nil},
+	}
+}
+
 // k8sDBJobsContainerName is the dbjobs sidecar's container name convention
 // (k8sDatabaseDeployment).
 func k8sDBJobsContainerName(dbContainerName string) string {
 	return dbContainerName + "-dbjobs"
 }
 
-func k8sDeploymentHasContainer(dep *appsv1.Deployment, name string) bool {
+// k8sDBJobsHasLegacyMemory reports whether dep's dbjobs container still carries a memory request or
+// limit: what earlier versions gave it (a fixed 128Mi, #2369). OpenSVC's jobs container has none, in
+// either prov-db-docker-run-args-limit mode.
+func k8sDBJobsHasLegacyMemory(dep *appsv1.Deployment, name string) bool {
+	if dep == nil {
+		return false
+	}
 	for _, c := range dep.Spec.Template.Spec.Containers {
-		if c.Name == name {
-			return true
+		if c.Name != k8sDBJobsContainerName(name) {
+			continue
 		}
+		_, req := c.Resources.Requests[apiv1.ResourceMemory]
+		_, lim := c.Resources.Limits[apiv1.ResourceMemory]
+		return req || lim
 	}
 	return false
+}
+
+// k8sDeploymentReadTimeout bounds the read of the Deployment a Pod-replacing path inspects before it
+// patches. A variable only so a test can make the deadline short; it is k8sAPICallTimeout.
+var k8sDeploymentReadTimeout = k8sAPICallTimeout
+
+// k8sGetDeploymentForResources reads the Deployment a Pod-replacing path is about to patch, to know
+// whether its template still carries the old dbjobs resources (and, with the limit on, which
+// containers exist). The read has its OWN bounded context (k8sDeploymentReadTimeout): the caller
+// patches under a context of its own, created after this returns, so a read that ran into its
+// deadline cannot leave the patch with an expired one.
+//
+// With prov-db-docker-run-args-limit on the read is required, as it always was, and a failure is an
+// error (fail closed). With it off the patch does not depend on the read -- a clean Deployment is
+// patched exactly as before -- so a failed or timed-out read only skips the dbjobs clean-up of a
+// legacy Deployment (nil, nil) and the restart goes on.
+func (cluster *Cluster) k8sGetDeploymentForResources(client kubernetes.Interface, name, action string) (*appsv1.Deployment, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), k8sDeploymentReadTimeout)
+	defer cancel()
+	dep, err := client.AppsV1().Deployments(cluster.Name).Get(ctx, name, metav1.GetOptions{})
+	if err == nil {
+		return dep, nil
+	}
+	if cluster.Conf.ProvDBDockerRunArgsLimit {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot %s %s: %s ", action, name, err)
+		return nil, err
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "Cannot read %s to clean any legacy dbjobs resources, %s goes on without: %s ", name, action, err)
+	return nil, nil
 }
 
 // k8sContainerMemoryResourcesPatch is the SINGLE authoritative source for the
@@ -1343,29 +1335,33 @@ func k8sDeploymentHasContainer(dep *appsv1.Deployment, name string) bool {
 // patches onto the Deployment template, so none of them can ever drift onto
 // different numbers (the exact drift that let a fallback restart recreate
 // the OLD template limit even after Repman had already confirmed/applied a
-// new DB memory target). Reconciles BOTH the DB container AND -- if dep's
-// live template already has one -- its dbjobs sidecar to the current
-// k8sDatabaseMemoryTargets split, so their AGGREGATE always matches the same
-// service-level target OpenSVC's own DEFAULT.pg_mem_limit uses, never
-// leaving the dbjobs half silently unbounded on an existing Deployment even
-// after the DB container's own limit was patched. Only includes the dbjobs
-// entry when dep already carries that container: patching a name that
-// doesn't exist would create a NEW, incomplete container (missing image,
-// command, volume mounts) rather than erroring -- the same landmine
-// k8sUpdateDatabaseServiceConfigWithClient's own doc comment describes. nil
-// when prov-db-docker-run-args-limit is off (byte-identical patch to before
-// this feature in that case).
+// new DB memory target). Two independent parts:
+//   - with prov-db-docker-run-args-limit on, the DB container to the limit the
+//     provisioning builder renders (k8sDatabaseMemoryMiB) -- the Kubernetes
+//     counterpart of OpenSVC re-rendering the full deployment on a restart
+//     (UpgradeDatabaseDeploymentOnStart). With the flag off the database memory is
+//     left exactly as it was;
+//   - in either mode, when dep's template still carries a dbjobs memory request or
+//     limit from an earlier version, a null that removes both, so an existing
+//     Deployment migrates to the no-resources dbjobs container (OpenSVC's jobs
+//     container carries none either way). Only included when dep already has the
+//     container AND the resources: patching a name that doesn't exist would create
+//     a NEW, incomplete container (missing image, command, volume mounts), the same
+//     landmine k8sUpdateDatabaseServiceConfigWithClient's own doc comment describes.
+//
+// nil when there is nothing to patch: with the flag off, a clean Deployment (no legacy dbjobs
+// resources) gets no entry at all, so its patch body is as before this change. Callers only send
+// it when it is not empty (a null list would delete the containers). dep may be nil (unknown):
+// only the database part.
 func (cluster *Cluster) k8sContainerMemoryResourcesPatch(dep *appsv1.Deployment, name string) []map[string]interface{} {
-	if !cluster.Conf.ProvDBDockerRunArgsLimit {
-		return nil
+	var patch []map[string]interface{}
+	if cluster.Conf.ProvDBDockerRunArgsLimit {
+		if mb, ok := cluster.k8sDatabaseMemoryMiB(); ok {
+			patch = append(patch, map[string]interface{}{"name": name, "resources": k8sMemoryResourcesFragment(mb)})
+		}
 	}
-	dbMB, jobsMB := cluster.k8sDatabaseMemoryTargets()
-	patch := []map[string]interface{}{
-		{"name": name, "resources": k8sMemoryResourcesFragment(dbMB)},
-	}
-	jobsName := k8sDBJobsContainerName(name)
-	if k8sDeploymentHasContainer(dep, jobsName) {
-		patch = append(patch, map[string]interface{}{"name": jobsName, "resources": k8sMemoryResourcesFragment(jobsMB)})
+	if k8sDBJobsHasLegacyMemory(dep, name) {
+		patch = append(patch, map[string]interface{}{"name": k8sDBJobsContainerName(name), "resources": k8sNoMemoryResourcesFragment()})
 	}
 	return patch
 }
@@ -1376,42 +1372,44 @@ func (cluster *Cluster) k8sContainerMemoryResourcesPatch(dep *appsv1.Deployment,
 // a plain restart (used by RollingRestart, often on a schedule) must never
 // silently re-pull a different image.
 //
-// When prov-db-docker-run-args-limit is set, the SAME patch also carries the
-// CURRENT DB+dbjobs memory targets (k8sContainerMemoryResourcesPatch, sourced
-// from cluster.Conf.ProvMem -- already up to date after any confirmed
-// dynamic resize, see SetDBMemorySize) onto both containers' Requests/Limits:
-// an explicit restart already replaces the Pod by design, so this is the one
-// safe moment to reconcile the Deployment's own template (which the resize
-// subresource never touched) with the value already confirmed live, instead
-// of the replacement Pod reverting to whatever the template held at last
-// (re)provision. A cluster with the flag off gets a byte-identical patch to
-// before this feature. Needs a bounded Get first (to know whether dep
-// already carries a dbjobs container) -- still not Update(): the Get is
-// read-only and the Patch call below never uses its resourceVersion, so this
-// does not reintroduce the resourceVersion problem k8sEnsureDatabaseSecret
-// has with Update().
+// The SAME patch also carries what k8sContainerMemoryResourcesPatch computes: with
+// prov-db-docker-run-args-limit set, the CURRENT database memory limit (the helper
+// the provisioning builder uses, GetDBContainerMemoryCapMB); in either mode, the
+// removal of the memory resources an older dbjobs template still carries: an explicit
+// restart already replaces the Pod by design, so this is the one safe moment
+// to reconcile the Deployment's own template (which the resize subresource
+// never touched) with the contract, instead of the replacement Pod reverting
+// to whatever the template held at last (re)provision.
+//
+// With the flag off the database memory is never part of the patch. A clean Deployment (no old
+// dbjobs memory resources) gets the same patch body as before this change, only the restartedAt
+// annotation; the one difference is an extra read of the Deployment, whose failure or timeout is
+// tolerated. A legacy Deployment (an old dbjobs request or limit) additionally gets the dbjobs
+// clean-up entry -- the one flag-off change -- and, if that read failed, goes without it.
+//
+// Needs a bounded Get first (k8sGetDeploymentForResources, a context of its own; the patch
+// below has another) to know whether dep still carries the old dbjobs resources -- still not
+// Update(): the Get is read-only and the Patch call below never uses its resourceVersion, so
+// this does not reintroduce the resourceVersion problem k8sEnsureDatabaseSecret has with Update().
 func (cluster *Cluster) k8sRestartDatabaseServiceWithClient(client kubernetes.Interface, name string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), k8sAPICallTimeout)
-	defer cancel()
 	templatePatch := map[string]interface{}{
 		"metadata": map[string]interface{}{
 			"annotations": map[string]string{"kubectl.kubernetes.io/restartedAt": time.Now().Format(time.RFC3339)},
 		},
 	}
-	if cluster.Conf.ProvDBDockerRunArgsLimit {
-		dep, err := client.AppsV1().Deployments(cluster.Name).Get(ctx, name, metav1.GetOptions{})
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot restart %s: %s ", name, err)
-			return err
-		}
-		templatePatch["spec"] = map[string]interface{}{
-			"containers": cluster.k8sContainerMemoryResourcesPatch(dep, name),
-		}
+	dep, err := cluster.k8sGetDeploymentForResources(client, name, "restart")
+	if err != nil {
+		return err
+	}
+	if containers := cluster.k8sContainerMemoryResourcesPatch(dep, name); len(containers) > 0 {
+		templatePatch["spec"] = map[string]interface{}{"containers": containers}
 	}
 	patch, err := json.Marshal(map[string]interface{}{"spec": map[string]interface{}{"template": templatePatch}})
 	if err != nil {
 		return err
 	}
+	ctx, cancel := context.WithTimeout(context.Background(), k8sAPICallTimeout) // its own, after the read
+	defer cancel()
 	_, err = client.AppsV1().Deployments(cluster.Name).Patch(ctx, name, ktypes.StrategicMergePatchType, patch, metav1.PatchOptions{})
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot restart %s: %s ", name, err)
@@ -1493,35 +1491,36 @@ func (cluster *Cluster) K8SWaitRolloutComplete(s *ServerMonitor) error {
 // on timeout/Deferred/Infeasible (server.SetRestartCookie, cluster_resize_k8s.go)
 // AND the path CheckRestartContainerCookies (reachable every monitor tick,
 // see cluster.go) drives automatically for any RestartRidJobsContainer
-// cookie -- so it MUST carry the current DB+dbjobs memory targets too
-// (k8sContainerMemoryResourcesPatch, the same single source
+// cookie -- so it MUST carry the current database memory limit and the dbjobs
+// clean-up too (k8sContainerMemoryResourcesPatch, the same single source
 // k8sRestartDatabaseServiceWithClient uses): without it, a replacement Pod
 // created by this path would revert to whatever the Deployment template held
 // at last (re)provision even though Repman may have already applied a new
 // DB-side memory configuration expecting the larger cgroup. Bounded by
 // k8sAPICallTimeout, not context.TODO(): this call is reachable from the
 // perpetual monitor loop (F2), which must never be allowed to stall on a
-// hung API request. Needs a bounded Get first (to know whether dep already
-// carries a dbjobs container) -- still not Update(): the Get is read-only
+// hung API request. Needs a bounded Get first (k8sGetDeploymentForResources,
+// a context of its own; the patch has another) to know whether dep still
+// carries the old dbjobs resources -- still not Update(): the Get is read-only
 // and the Patch call below never uses its resourceVersion.
+//
+// With the flag off the database memory is never part of the patch; a clean
+// Deployment is patched as before (an extra, tolerated read aside) and only a
+// legacy Deployment gets the dbjobs clean-up entry (see
+// k8sRestartDatabaseServiceWithClient).
 func (cluster *Cluster) k8sForceRepullDatabaseServiceWithClient(client kubernetes.Interface, name string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), k8sAPICallTimeout)
-	defer cancel()
 	containers := []map[string]interface{}{
 		{"name": name, "imagePullPolicy": string(k8sImagePullPolicy(cluster))},
 	}
-	if cluster.Conf.ProvDBDockerRunArgsLimit {
-		dep, err := client.AppsV1().Deployments(cluster.Name).Get(ctx, name, metav1.GetOptions{})
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot force image re-pull for %s: %s ", name, err)
-			return err
-		}
-		for _, c := range cluster.k8sContainerMemoryResourcesPatch(dep, name) {
-			if c["name"] == name {
-				containers[0]["resources"] = c["resources"]
-			} else {
-				containers = append(containers, c)
-			}
+	dep, err := cluster.k8sGetDeploymentForResources(client, name, "force image re-pull")
+	if err != nil {
+		return err
+	}
+	for _, c := range cluster.k8sContainerMemoryResourcesPatch(dep, name) {
+		if c["name"] == name {
+			containers[0]["resources"] = c["resources"]
+		} else {
+			containers = append(containers, c)
 		}
 	}
 	patch, err := json.Marshal(map[string]interface{}{
@@ -1539,6 +1538,8 @@ func (cluster *Cluster) k8sForceRepullDatabaseServiceWithClient(client kubernete
 	if err != nil {
 		return err
 	}
+	ctx, cancel := context.WithTimeout(context.Background(), k8sAPICallTimeout) // its own, after the read
+	defer cancel()
 	_, err = client.AppsV1().Deployments(cluster.Name).Patch(ctx, name, ktypes.StrategicMergePatchType, patch, metav1.PatchOptions{})
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot force image re-pull for %s: %s ", name, err)
@@ -1657,6 +1658,21 @@ func (cluster *Cluster) k8sUpdateDatabaseServiceConfigWithClientImage(client kub
 	containers := []map[string]interface{}{container(name)}
 	if hasJobs {
 		containers = append(containers, container(jobsName))
+	}
+	// The rolling upgrade (scale 0, patch, scale 1) is a Pod-replacing path like a restart: the
+	// Deployment is reconciled with the resources contract here too, from the same helper the restart
+	// and the force re-pull use (k8sContainerMemoryResourcesPatch) -- the Kubernetes counterpart of
+	// OpenSVC re-rendering the full deployment before the start (UpgradeDatabaseDeploymentOnStart).
+	// With prov-db-docker-run-args-limit on the database container takes the memory limit and
+	// request of GetDBContainerMemoryCapMB; with it off the database memory is left as it is. In
+	// either mode an old dbjobs memory request and limit are removed. Image and pull policy are
+	// unchanged by it.
+	for _, c := range cluster.k8sContainerMemoryResourcesPatch(dep, name) {
+		for _, entry := range containers {
+			if entry["name"] == c["name"] {
+				entry["resources"] = c["resources"]
+			}
+		}
 	}
 
 	// Plain nested maps, not a named Go struct: StrategicMergePatchType's

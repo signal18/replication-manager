@@ -734,15 +734,26 @@ on every push. Still worth asking OpenSVC for an atomic set-and-apply action.
 
 #### Kubernetes — in-place Pod resize (`k8sResizer`, `cluster_resize_k8s.go`)
 
-The Deployment's DB container carries `resources.requests == limits` for memory (minus the
-dbjobs carve-out, `k8sDatabaseMemoryTargets`) **and cpu** (`k8sDatabaseCPUTargetMilli`),
-gated by the same `prov-db-docker-run-args-limit` opt-in. A resize is a strategic-merge
+The Deployment's DB container carries `resources.requests == limits` for memory (the limit
+OpenSVC renders as `--memory` on `container#db`, `GetDBContainerMemoryCapMB`, through
+`k8sDatabaseMemoryMiB`; the dbjobs container carries no resources, as OpenSVC's jobs container)
+**and cpu** (`k8sDatabaseCPUTargetMilli`, still `prov-db-cpu-cores`), gated by the same
+`prov-db-docker-run-args-limit` opt-in. OpenSVC's infrastructure step for a memory move is not the
+docker `--memory` (fixed at container creation) but a `pg_mem_limit` write on the service cgroup applied
+by a `pg update`; Kubernetes has no counterpart of that service-level step yet. So when the container
+already carries the target (an in-plan move: `prov-db-memory` stays under the cap) `ConfigResize` makes no
+Pod change and never reports an applied resize (`k8sUnchangedLimitResult`): a grow takes the shared
+outcome of a backend with no live infra step -- not applied, a restart scheduled, the database memory not
+raised on that tick (a conservative fallback that lacks OpenSVC's live service-level memory parity: the
+restart is not claimed equivalent to the `pg update`) -- and a shrink is not applied with nothing scheduled
+(the database memory was already lowered by the shared flow). Only a cap that moved is patched in place. A resize is a strategic-merge
 PATCH of the running Pod on the **`resize` subresource** (Kubernetes 1.33+ by default,
 1.27–1.32 behind `InPlacePodVerticalScaling`), both axes in one patch, tracked as
 `K8sMemoryResizeState{TargetMB, TargetCPUMilli, MemChanged, Grow, StartedAt, Observed}`
 on the server (mirrored on the cluster to survive monitor recreation), confirmed
 asynchronously on the tick by `completePendingK8sMemoryResize` when the Pod spec carries
-the target and `status.resize` is clear (`k8sResizeConfirmed`); `Infeasible`/`Deferred`/
+the target, `status.resize` is clear and, when the kubelet reports it, the applied container
+limit matches (`k8sResizeConfirmed`); `Infeasible`/`Deferred`/
 timeout → restart cookie. A cpu-only confirmation does not re-run the memory grow SQL.
 Memory **decrease** is refused by the kubelet with the default `NotRequired` resize policy
 (`status.resize = Infeasible`): lowering `memory.max` under a running container would make
