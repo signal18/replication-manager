@@ -8,6 +8,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
+	"net/url"
 	"reflect"
 	"sort"
 	"strconv"
@@ -934,10 +936,17 @@ var ErrSecretKvOfferManaged = errors.New("it comes from a Cloud18 marketplace of
 const ConstSecretKvMarketplacePrefix = "cloud18-"
 
 // EnsureMarketplaceVault gives the cluster the entry of a marketplace vault offer (#2227):
-// added off (the sponsor turns it on), signed in with the instance's Cloud18 identity (jwt),
-// at the offer's address, mount and path-prefix; an existing one follows the offer's address,
-// mount, role and path-prefix, its switch untouched. True when it changed.
+// added off (the sponsor turns it on). See EnsureMarketplaceVaultAt.
 func (conf *Config) EnsureMarketplaceVault(offer MarketplaceVaultOffer, pathPrefix string) (bool, error) {
+	return conf.EnsureMarketplaceVaultAt(SecretKvLevelCluster, offer, pathPrefix, false)
+}
+
+// EnsureMarketplaceVaultAt gives level's list the entry of a marketplace vault offer, signed in
+// with the instance's Cloud18 identity (jwt), at the offer's address, mount and path-prefix; an
+// existing one follows the offer's address, mount, role and path-prefix, its switch untouched.
+// A new entry is on when onIfAlone and no other entry of the list is on, else off. True when
+// it changed.
+func (conf *Config) EnsureMarketplaceVaultAt(level SecretKvLevel, offer MarketplaceVaultOffer, pathPrefix string, onIfAlone bool) (bool, error) {
 	name := ConstSecretKvMarketplacePrefix + offer.Name
 	if err := validateEntryName("credential store", name); err != nil {
 		return false, err
@@ -960,9 +969,16 @@ func (conf *Config) EnsureMarketplaceVault(offer MarketplaceVaultOffer, pathPref
 	}
 	secretKvMu.Lock()
 	defer secretKvMu.Unlock()
-	e := conf.secretKvByName(name)
+	e := conf.secretKvByNameAt(level, name)
 	if e == nil {
-		conf.SecretKvs = append(conf.SecretKvs, SecretKvConfig{Name: name, Plugin: ConstSecretKvPluginVault, Settings: want, Offer: offer.Name})
+		list := conf.secretKvsAt(level)
+		on := onIfAlone
+		for _, o := range *list {
+			if o.Enabled {
+				on = false
+			}
+		}
+		*list = append(*list, SecretKvConfig{Name: name, Plugin: ConstSecretKvPluginVault, Enabled: on, Settings: want, Offer: offer.Name})
 		return true, nil
 	}
 	if e.Plugin != ConstSecretKvPluginVault {
@@ -996,6 +1012,35 @@ func (conf *Config) InstanceStoreName() (string, bool) {
 		}
 	}
 	return strings.Join(parts, "/"), true
+}
+
+// Cloud18MarketplacePartnerPublic: this instance is a marketplace partner that takes clusters
+// from Cloud18 users: registered with Cloud18, on the "partner" subscription plan, and with a
+// public API address (api-public-url not empty, not the default, not a loopback, unspecified
+// or private address). Only then does the server level get the Cloud18 vault offer; an on-prem
+// instance never does.
+func (conf *Config) Cloud18MarketplacePartnerPublic() bool {
+	if !conf.Cloud18 || conf.Cloud18GitUser == "" || conf.Cloud18SubscriptionPlan != "partner" {
+		return false
+	}
+	return PublicAPIURL(conf.APIPublicURL)
+}
+
+// PublicAPIURL: raw is an http(s) address others can reach: a host name other than localhost,
+// or an IP that is not loopback, unspecified, link-local or private.
+func PublicAPIURL(raw string) bool {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || (u.Scheme != "https" && u.Scheme != "http") {
+		return false
+	}
+	host := strings.ToLower(u.Hostname())
+	if host == "" || host == "localhost" || strings.HasSuffix(host, ".localhost") {
+		return false
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		return !(ip.IsLoopback() || ip.IsUnspecified() || ip.IsPrivate() || ip.IsLinkLocalUnicast())
+	}
+	return true
 }
 
 // IsInstanceNameSetting: one of the three settings that make the instance's name

@@ -459,3 +459,65 @@ func TestServerKvRotationSaysStoresBehind(t *testing.T) {
 		t.Fatalf("named to a non-owner: %d %v", res.StoresBehindCount, res.StoresBehind)
 	}
 }
+
+// The Cloud18 vault is given to the server level of a marketplace partner that takes clusters
+// (registered, partner plan, a public API address), on when it is the only store; never to an
+// on-prem instance; off next to the partner's own vault; kept when the instance stops being a
+// partner.
+func TestServerKvMarketplaceVaultPartnerOnly(t *testing.T) {
+	offer := config.MarketplaceVaultOffer{Name: "vault", Partner: "signal18", Address: "https://vault.example"}
+	partner := func(repman *ReplicationManager) {
+		c := repman.Conf
+		c.Cloud18, c.Cloud18GitUser, c.Cloud18SubscriptionPlan = true, "ops@example.com", "partner"
+		c.APIPublicURL = "https://repman.example.com"
+	}
+	entry := func(repman *ReplicationManager) (config.SecretKvConfig, bool) {
+		for _, e := range repman.Conf.SecretKvListAt(config.SecretKvLevelServer) {
+			if e.Name == config.ConstSecretKvMarketplacePrefix+"vault" {
+				return e, true
+			}
+		}
+		return config.SecretKvConfig{}, false
+	}
+
+	// on-prem: registered, public, but not on the partner plan
+	repman := serverKvTestManager(t, true)
+	repman.marketplaceCatalogue.Store(&config.MarketplaceCatalogue{Vaults: []config.MarketplaceVaultOffer{offer}})
+	partner(repman)
+	repman.Conf.Cloud18SubscriptionPlan = "support"
+	repman.ensureServerMarketplaceVaults()
+	if _, ok := entry(repman); ok {
+		t.Fatal("an on-prem instance got the Cloud18 vault")
+	}
+	// a partner plan without a public address
+	repman.Conf.Cloud18SubscriptionPlan = "partner"
+	repman.Conf.APIPublicURL = "https://127.0.0.1:10005"
+	repman.ensureServerMarketplaceVaults()
+	if _, ok := entry(repman); ok {
+		t.Fatal("a partner with no public address got the Cloud18 vault")
+	}
+	// a public partner with no store of its own: on
+	partner(repman)
+	repman.ensureServerMarketplaceVaults()
+	e, ok := entry(repman)
+	if !ok || !e.Enabled || e.Offer != "vault" || repman.Conf.SecretKvSetting(e, config.ConstSecretKvVaultAuth) != config.ConstVaultAuthJWT {
+		t.Fatalf("partner entry %+v %v", e, ok)
+	}
+	// no longer a partner: the entry stays as it is
+	repman.Conf.Cloud18SubscriptionPlan = "free"
+	repman.ensureServerMarketplaceVaults()
+	if e, ok := entry(repman); !ok || !e.Enabled {
+		t.Fatal("the entry went when the plan changed")
+	}
+
+	// a public partner with its own vault: added off
+	own := vaultfake.New("kv", "role", "sid")
+	defer own.Close()
+	repman2 := serverKvTestManager(t, true, own)
+	repman2.marketplaceCatalogue.Store(&config.MarketplaceCatalogue{Vaults: []config.MarketplaceVaultOffer{offer}})
+	partner(repman2)
+	repman2.ensureServerMarketplaceVaults()
+	if e, ok := entry(repman2); !ok || e.Enabled {
+		t.Fatalf("next to the partner's own vault: %+v %v", e, ok)
+	}
+}

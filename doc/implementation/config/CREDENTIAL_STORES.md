@@ -51,8 +51,8 @@ type CredentialStore interface {
 | `PinnedConfig` (`config.toml`, `cluster.d`: today `ImmuableFlagMap`) | `secret_kv-config`, internal | the pinned value, or a Vault path | refused: repman never writes it | no | no |
 | `DynamicConfig` (`<cluster>.toml`, written by `SaveCallBack`: today `DynamicFlagMap`) | `secret_kv-config`, internal | the encrypted value, or a Vault path | yes, when `monitoring-save-config` is on | no | no |
 | `LocalSecretStore` (today `SecretVersionStore`) | `secret_kv-localstore`, external | encrypted versions | yes, with an encryption key and `monitoring-secret-versioning` on | **yes** | no |
-| `VaultKV` (`VaultConfigStoreV2`) | `secret_kv-vault`, external, **enterprise** | the value at a path | `Patch` at the path, as the rotation already does | **yes** (Vault versions) | no |
-| `VaultDbEngine` (`VaultDbEngine`) | `secret_kv-vault`, external, **enterprise** | nothing repman sets | refused | yes | **yes** (`rotate-role`) |
+| `VaultKV` (`VaultConfigStoreV2`) | `secret_kv-vault`, **free** | the value at a path | `Patch` at the path, as the rotation already does | **yes** (Vault versions) | no |
+| `VaultDbEngine` (`VaultDbEngine`) | `secret_kv-vault`, **free** | nothing repman sets | refused | yes | **yes** (`rotate-role`) |
 
 ## Versioned stores: every secret in every active store (#2227)
 
@@ -591,8 +591,18 @@ is treated the same; only the path a level maps to differs per store.
   `written-as` lives until the restart (a WARN says so at the move), and a rename while repman
   is down is then not moved; a
   cluster's own rename does not move its cluster secrets yet.
-- **Not yet:** the Cloud18 vault offered at the server level by the registration (a sysops adds
-  it as an entry with `auth = jwt` meanwhile), the move of a renamed cluster's secrets.
+- **The Cloud18 vault at the server level, marketplace partners only.** On an instance that is a
+  marketplace partner taking clusters from Cloud18 users (`Config.Cloud18MarketplacePartnerPublic`:
+  registered, `cloud18-subscription-plan = partner`, and an `api-public-url` others can reach,
+  not the default, loopback, unspecified, link-local or private), the tick of the active monitor
+  (`ensureServerMarketplaceVaults`) gives the server list the marketplace's vault offers, as the
+  clusters get them (`EnsureMarketplaceVaultAt`, one code for both levels): on when no other
+  server entry is on, off next to the partner's own vault. An on-prem instance (any other plan, or
+  no public address) never gets it: its sysops adds a vault of their own, or none. An entry given
+  once stays when the instance stops being a partner (nothing removed or moved silently); a sysops
+  switches it off. Its settings are the back-office's (`ErrSecretKvOfferManaged`), its switch the
+  sysops'. A list pinned in a config file gets nothing. Each entry given is a security event.
+- **Not yet:** the move of a renamed cluster's secrets.
 
 ### The Cloud18 vault entry
 
@@ -611,7 +621,7 @@ external plugins as signed executables.
 |---|---|---|---|
 | `secret_kv-config` | **internal**: compiled into every binary, always there | free | `PinnedConfig`, `DynamicConfig` |
 | `secret_kv-localstore` | **external**: executable in `<ShareDir>/plugins/` | free | `LocalSecretStore` |
-| `secret_kv-vault` | **external** | **enterprise** (license) | `VaultKV`, `VaultDbEngine` |
+| `secret_kv-vault` | built in today (planned external) | **free** | `VaultKV`, `VaultDbEngine` |
 
 - **The interface is the plugin contract.** The internal plugin implements
   `CredentialStore` in Go. An external plugin implements the same operations (`get`,
@@ -767,7 +777,7 @@ One epic issue for the interface, with these steps:
    pass), plus a set → tag → save → reload test and a `-race` test of concurrent setters;
 2. the external plugin wire and its loader (signature, timeouts, state when missing);
 3. the local versioned file inside `secret_kv-config` (no separate plugin), and the start order (#2041);
-4. `secret_kv-vault` (enterprise) from the Vault code, and the Vault setter (#2057);
+4. `secret_kv-vault` (free) from the Vault code, and the Vault setter (#2057);
 5. versioned stores: every secret in every active store, vault entries, the Cloud18 vault entry (#2227).
 
 ## Open questions
@@ -783,10 +793,9 @@ One epic issue for the interface, with these steps:
   Vault policy is read-only on secret/db1") and a state says so, before anyone clicks.
   The alternative is to find out only when a change is refused. Either way a rotation is
   safe: it writes Vault first and keeps the old password when Vault refuses.
-- **Vault moving to enterprise**: Vault support is in the community binary today. A site
-  using it without a license loses it at the upgrade: keep Vault *reads* in the free tier
-  (only change and rotation enterprise), a grace period, or enterprise from a given
-  release?
+- **Vault is free** (settled 2026-11-13): a sysops may add their own Vault on any instance,
+  registered or not, and the Cloud18 vault is the default store of a marketplace partner
+  (see "The Cloud18 vault at the server level").
 
 ## Cluster accounts and the version store (#2358, #2359)
 

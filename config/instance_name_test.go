@@ -47,3 +47,16 @@ func TestValidInstanceNamePart(t *testing.T) {
 		}
 	}
 }
+
+func TestPublicAPIURL(t *testing.T) {
+	for _, ok := range []string{"https://repman.example.com", "https://repman.example.com:10005/", "http://203.0.113.7:10001", "https://[2001:db8::1]"} {
+		if !PublicAPIURL(ok) {
+			t.Fatalf("%q not public", ok)
+		}
+	}
+	for _, ko := range []string{"", "https://127.0.0.1:10005", "https://localhost", "https://10.0.0.5", "https://192.168.1.2", "https://0.0.0.0", "https://[::1]", "ftp://repman.example.com", "repman.example.com"} {
+		if PublicAPIURL(ko) {
+			t.Fatalf("%q public", ko)
+		}
+	}
+}

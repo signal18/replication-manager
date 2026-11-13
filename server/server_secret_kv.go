@@ -250,10 +250,46 @@ func (repman *ReplicationManager) checkServerSecretKvStores() {
 	if q := repman.serverKvQueue(); q.Len() > 0 || repman.serverSecretKv.passDue.Load() {
 		repman.serverKvRunner().Start()
 	}
+	repman.ensureServerMarketplaceVaults()
 	repman.checkServerKvMoves()
 	for name, why := range repman.ServerKvBehind() {
 		repman.SetState("GWARN024@"+name, state.State{ErrType: "WARNING", ErrKey: "GWARN024", ErrFrom: "REPMAN",
 			ErrDesc: fmt.Sprintf(config.GlobalError["GWARN024"], name, why)})
+	}
+}
+
+// ensureServerMarketplaceVaults gives the server level the marketplace's vault offers (the
+// Cloud18 vault) on a marketplace partner that takes clusters from Cloud18 users
+// (Cloud18MarketplacePartnerPublic): on when it is the only store, off next to the partner's
+// own. An on-prem instance never gets it. An entry given once stays when the instance stops
+// being a partner: nothing is removed or moved silently, a sysops switches it off. The
+// path-prefix is the offer's, else the instance's URI, as for the clusters' entries.
+func (repman *ReplicationManager) ensureServerMarketplaceVaults() {
+	c := repman.Conf
+	offers := repman.MarketplaceCatalogue().Vaults
+	if len(offers) == 0 || !c.Cloud18MarketplacePartnerPublic() || repman.serverSecretKvsPinned() {
+		return
+	}
+	uri := c.Cloud18Domain + "/" + c.Cloud18SubDomain + "-" + c.Cloud18SubDomainZone
+	changed := false
+	for _, o := range offers {
+		prefix := o.PathPrefix
+		if prefix == "" {
+			prefix = uri
+		}
+		ok, err := c.EnsureMarketplaceVaultAt(config.SecretKvLevelServer, o, prefix, true)
+		if err != nil {
+			repman.LogModulePrintf(c.Verbose, config.ConstLogModVault, config.LvlWarn, "Marketplace vault offer not given to the server level: %s", err)
+			continue
+		}
+		if ok {
+			changed = true
+			repman.logSecurityEvent("server_secret_kv_offer", config.ConstSecretKvMarketplacePrefix+o.Name, "", "Server credential store "+config.ConstSecretKvMarketplacePrefix+o.Name+" given by the marketplace offer (marketplace partner)")
+		}
+	}
+	if changed {
+		repman.Save()
+		repman.startServerKvPass()
 	}
 }
 
