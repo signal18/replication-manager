@@ -998,6 +998,13 @@ func (conf *Config) InstanceStoreName() (string, bool) {
 	return strings.Join(parts, "/"), true
 }
 
+// IsInstanceNameSetting: one of the three settings that make the instance's name
+// (InstanceStoreName). A change moves every server secret, so it takes the server
+// credentials grant on every cluster.
+func IsInstanceNameSetting(key string) bool {
+	return key == "cloud18-domain" || key == "cloud18-sub-domain" || key == "cloud18-sub-domain-zone"
+}
+
 // ValidInstanceNamePart: a part of the instance's name is one folder of a store path and one
 // part of an OpenSVC key: 1 to 63 letters, digits, '-', '_' or '.', no '..'.
 func ValidInstanceNamePart(s string) error {

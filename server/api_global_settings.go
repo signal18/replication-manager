@@ -932,6 +932,13 @@ func (repman *ReplicationManager) setServerSetting(user string, URL string, name
 	if err := repman.immutableGlobalSetting(name); err != nil {
 		return err
 	}
+	if config.IsInstanceNameSetting(name) {
+		// the instance's name is where every server secret goes in a shared store: a change moves
+		// them all (server_secret_kv_move.go), so the server secrets' owners only
+		if err := repman.holdsServerCredentials(user); err != nil {
+			return err
+		}
+	}
 	if isServerSecretKey(name) {
 		// a server secret: its owners only, then every cluster reads it from the server
 		if err := repman.holdsServerCredentials(user); err != nil {

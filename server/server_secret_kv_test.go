@@ -241,6 +241,28 @@ func TestServerKvGrantOnEveryCluster(t *testing.T) {
 	}
 }
 
+// The instance's name moves every server secret: changing one of its three settings takes the
+// server credentials grant on every cluster, as a server secret does.
+func TestInstanceNameSettingNeedsServerGrant(t *testing.T) {
+	repman := newServerLevelTestManager(t, "admin:first,half:second")
+	c1, c2 := repman.Clusters["c1"], repman.Clusters["c2"]
+	c1.Conf.APIUsersACLAllow = serverLevelACL + ",half:cluster-server-credentials global show"
+	c1.LoadAPIUsers()
+	c2.Conf.APIUsersACLAllow = serverLevelACL + ",half:global show"
+	c2.LoadAPIUsers()
+	for _, key := range []string{"cloud18-domain", "cloud18-sub-domain", "cloud18-sub-domain-zone"} {
+		if err := repman.setServerSetting("half", "", key, "other"); err == nil {
+			t.Fatalf("%s changed without the grant on every cluster", key)
+		}
+		if err := repman.setServerSetting("admin", "", key, "acme"); err != nil {
+			t.Fatalf("%s refused to an owner: %v", key, err)
+		}
+	}
+	if n, ok := repman.Conf.InstanceStoreName(); !ok || n != "acme/acme/acme" {
+		t.Fatalf("name %q", n)
+	}
+}
+
 // A cluster's config never holds the server credential stores, whatever its section says.
 func TestServerKvNeverInAClusterConfig(t *testing.T) {
 	repman := newServerLevelTestManager(t, "admin:first")

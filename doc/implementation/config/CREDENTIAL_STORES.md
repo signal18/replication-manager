@@ -490,7 +490,12 @@ is treated the same; only the path a level maps to differs per store.
   unregistered instance. Register writes the name the person gives; unregister does not change
   it; Cloud18 turned off by a failed GitLab login does not change it; a licence is refused unless
   it matches it. The only rename is a change of one of the three settings (in the global settings,
-  allowed while Cloud18 is off, or a registration given other values). Name not complete (a part
+  allowed while Cloud18 is off, or a registration given other values). A change of one of the
+  three settings takes the server credentials grant on every cluster (`config.IsInstanceNameSetting`
+  in `setServerSetting`), as a server secret does: it moves every server secret. The parts mean
+  what each party gives them (an office or a country, a machine or a datacenter); they also make
+  the DNS names, the GitLab repository path and the licence identity, so a rename of a licensed
+  instance fails its next licence check until a licence for the new name is loaded. Name not complete (a part
   empty or not a valid folder): the server secrets stay in the local version store and every
   server store is behind with that reason.
   Active monitor only. A standby reads the list at its start, as every global setting: a list
