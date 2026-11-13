@@ -252,6 +252,7 @@ func (repman *ReplicationManager) checkServerSecretKvStores() {
 	}
 	repman.ensureServerMarketplaceVaults()
 	repman.checkServerKvMoves()
+	repman.checkEtcCredentials()
 	for name, why := range repman.ServerKvBehind() {
 		repman.SetState("GWARN024@"+name, state.State{ErrType: "WARNING", ErrKey: "GWARN024", ErrFrom: "REPMAN",
 			ErrDesc: fmt.Sprintf(config.GlobalError["GWARN024"], name, why)})

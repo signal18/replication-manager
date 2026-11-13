@@ -41,6 +41,9 @@ type UserRotateResult struct {
 	// the new version is written by the next pass.
 	StoresBehind      []string `json:"storesBehind,omitempty"`
 	StoresBehindCount int      `json:"storesBehindCount,omitempty"`
+	// EtcFile: the instance's list is set in a configuration file under /etc, and the new list
+	// was written there ("written") or not (why, GWARN025): the file keeps the old password
+	EtcFile string `json:"etcFile,omitempty"`
 }
 
 // rotatedPasswordLength: a rotation bans a user who may be compromised, so a long password.
@@ -101,6 +104,9 @@ func (repman *ReplicationManager) handlerMuxUserRotatePassword(w http.ResponseWr
 	}
 	if res.PersistError != "" {
 		tokens += ", " + res.PersistError
+	}
+	if res.EtcFile != "" {
+		tokens += ", /etc file " + res.EtcFile
 	}
 	if res.StoresBehindCount > 0 {
 		tokens += fmt.Sprintf(", %d server credential store(s) behind", res.StoresBehindCount)
@@ -228,6 +234,12 @@ func (repman *ReplicationManager) rotateAPIUserPassword(cl *cluster.Cluster, use
 	if scope == cluster.APIUserScopeInstance {
 		behind := repman.ServerKvBehind()
 		res.StoresBehindCount = len(behind)
+		if inFile, why := repman.etcCredentialStatus(apiCredentialsKey); inFile {
+			res.EtcFile = "written"
+			if why != "" {
+				res.EtcFile = "NOT written, the file under /etc keeps the old password: " + why
+			}
+		}
 		if len(behind) > 0 && repman.holdsServerCredentials(by) == nil {
 			for name := range behind {
 				res.StoresBehind = append(res.StoresBehind, name)

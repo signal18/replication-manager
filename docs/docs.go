@@ -31000,7 +31000,6 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "cloud18GitUser": {
-                    "description": "The instance's own name when it is not registered (CREDENTIAL_STORES.md \"Two levels\"): where\nits server secrets go in a shared store. Never copied into the cloud18-* keys above.",
                     "type": "string"
                 },
                 "cloud18HealthRefreshInterval": {
@@ -31982,6 +31981,9 @@ const docTemplate = `{
                 },
                 "monitoringErrorLogLength": {
                     "type": "integer"
+                },
+                "monitoringEtcCredentialWriter": {
+                    "type": "boolean"
                 },
                 "monitoringGlobalHeartbeatStallThreshold": {
                     "type": "integer"
@@ -34834,6 +34836,10 @@ const docTemplate = `{
                     "items": {
                         "type": "string"
                     }
+                },
+                "etcFile": {
+                    "description": "EtcFile: the instance's list is set in a configuration file under /etc, and the new list\nwas written there (\"written\") or not (why, GWARN025): the file keeps the old password",
+                    "type": "string"
                 },
                 "password": {
                     "type": "string"

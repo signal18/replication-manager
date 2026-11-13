@@ -162,6 +162,8 @@ type ReplicationManager struct {
 	//Adding default flags from AddFlags
 	CommandLineFlag []string `json:"-"`
 	ConfigPathList  []string `json:"-"`
+	// the /etc credential writer and its failures (server_etc_writer.go)
+	etcCredentials etcCredentials
 	// ReadOnlyCommand: the configuration load only reads (the decrypt command): InitConfig creates no
 	// key, no directory and removes no legacy file. The command itself then removes the old *.reveal
 	// output files (config.RemoveRevealFiles), on purpose.
@@ -455,6 +457,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.ConfRewrite, "monitoring-save-config", true, "Save configuration changes to <monitoring-datadir>/<cluster_name> ")
 	flags.BoolVar(&conf.ConfRestoreOnStart, "monitoring-restore-config-on-start", false, "Wipe working directory and restore config")
 	flags.BoolVar(&conf.MonitoringMergeConfigOnStart, "monitoring-merge-config-on-start", false, "Merge configuration changes to source config.toml file (/etc or other source location) ")
+	flags.BoolVar(&conf.MonitoringEtcCredentialWriter, "monitoring-etc-credential-writer", true, "After a rotation of a server credential set in a configuration file under /etc (api-credentials, SMTP, GitLab passwords...), write the new value there too, through a child process started as root before the privilege drop, so the file never keeps a banned password. Read at the start: off, no child is started")
 	flags.BoolVar(&conf.MonitoringSecretVersioning, "monitoring-secret-versioning", true, "Keep the versions of the cluster's secrets (database and proxy credentials, app secrets), encrypted, in the cluster's local file: a change or rotation becomes a version (needs the encryption key)")
 	flags.BoolVar(&conf.MonitoringSecretVersioningAutoPrune, "monitoring-secret-versioning-auto-prune", false, "Automatically prune tracked secret versions during reconciliation")
 	flags.IntVar(&conf.MonitoringSecretVersioningKeepLast, "monitoring-secret-versioning-keep-last", 0, "Keep only the last N versions per secret key when auto-prune is enabled (0 = unlimited)")
@@ -2582,6 +2585,9 @@ func (repman *ReplicationManager) LimitPrivileges() {
 				}
 			}
 
+			// the /etc credential writer stays root: started before the drop
+			repman.startEtcWriter(true)
+
 			// Set GID (Group ID)
 			err = syscall.Setgid(gidInt)
 			if err != nil {
@@ -2628,6 +2634,8 @@ func (repman *ReplicationManager) LimitPrivileges() {
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Running as user: %s", repman.OsUser.Username)
 		} else {
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Running as root as no user defined in --user flag")
+			// root all along: this process writes the rotated credentials in /etc itself
+			repman.startEtcWriter(false)
 		}
 	} else {
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Unable to change non-root user, current user: %s", repman.OsUser.Username)

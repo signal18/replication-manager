@@ -652,3 +652,27 @@ func TestVersionStoreVersionsKeepsTheChangedFlag(t *testing.T) {
 		t.Fatalf("versions of an unknown key")
 	}
 }
+
+// The /etc writer wrote the current version in the file: the next start sees no edit.
+func TestMarkConfigFileValue(t *testing.T) {
+	conf := testConf()
+	conf.ImmuableFlagMap["replication-credential"] = "repl:file1"
+	vs := NewVersionStore(func() *config.Config { return conf }, func(k string) bool { return k == "replication-credential" }, nil, nil)
+	vs.TakeConfigFileValue("replication-credential", "repl:file1")
+	if err := vs.Set("replication-credential", "repl:rotated"); err != nil {
+		t.Fatal(err)
+	}
+	if vs.MarkConfigFileValue("replication-credential", "repl:other") {
+		t.Fatal("marked a value that is not the current one")
+	}
+	if !vs.MarkConfigFileValue("replication-credential", "repl:rotated") {
+		t.Fatal("not marked")
+	}
+	n := vs.Count("replication-credential")
+	if vs.TakeConfigFileValue("replication-credential", "repl:rotated") || vs.Count("replication-credential") != n {
+		t.Fatal("the written file was taken as an operator's edit")
+	}
+	if !vs.TakeConfigFileValue("replication-credential", "repl:edited") {
+		t.Fatal("a real edit after it was missed")
+	}
+}

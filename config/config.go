@@ -75,6 +75,7 @@ type Config struct {
 	MonitoringKeyPath                        string                       `scope:"server" mapstructure:"monitoring-key-path" toml:"monitoring-key-path" json:"monitoringKeyPath"`
 	MonitoringKeyPathGitOverwrite            bool                         `scope:"server" mapstructure:"monitoring-key-path-git-overwrite" toml:"monitoring-key-path-git-overwrite" json:"monitoringKeyPathGitOverwrite"`
 	MonitoringSecretVersioning               bool                         `mapstructure:"monitoring-secret-versioning" toml:"monitoring-secret-versioning" json:"monitoringSecretVersioning"`
+	MonitoringEtcCredentialWriter            bool                         `scope:"server" mapstructure:"monitoring-etc-credential-writer" toml:"monitoring-etc-credential-writer" json:"monitoringEtcCredentialWriter"`
 	MonitoringSecretVersioningAutoPrune      bool                         `mapstructure:"monitoring-secret-versioning-auto-prune" toml:"monitoring-secret-versioning-auto-prune" json:"monitoringSecretVersioningAutoPrune"`
 	MonitoringSecretVersioningKeepLast       int                          `mapstructure:"monitoring-secret-versioning-keep-last" toml:"monitoring-secret-versioning-keep-last" json:"monitoringSecretVersioningKeepLast"`
 	MonitoringTicker                         int64                        `mapstructure:"monitoring-ticker" toml:"monitoring-ticker" json:"monitoringTicker"`

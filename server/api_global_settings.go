@@ -897,6 +897,10 @@ func (repman *ReplicationManager) switchRepmanSetting(name string) error {
 		if _, err := repman.Conf.LoadCloud18Logins(); err != nil {
 			repman.Logrus.Warnf("cloud18-login-resume: %s", err)
 		}
+	case "monitoring-etc-credential-writer":
+		// scope:"server": the child is started at the start only, so on takes effect at the
+		// next start when repman runs as root; off stops the writes at once
+		repman.Conf.MonitoringEtcCredentialWriter = !repman.Conf.MonitoringEtcCredentialWriter
 	case "cloud18-disable-peers":
 		// scope:"server" — persisted to default.toml by SaveDynamic (value != default),
 		// which is merged back at startup. NOT ImmuableFlagMap (immutable.toml is never read).
@@ -974,6 +978,12 @@ func (repman *ReplicationManager) setServerSetting(user string, URL string, name
 func (repman *ReplicationManager) switchServerSetting(user string, URL string, name string, value string) error {
 	if err := repman.immutableGlobalSetting(name); err != nil {
 		return err
+	}
+	if name == "monitoring-etc-credential-writer" {
+		// off, a ban leaves the old password in the file under /etc: the server secrets' owners only
+		if err := repman.holdsServerCredentials(user); err != nil {
+			return err
+		}
 	}
 	if value == "" {
 

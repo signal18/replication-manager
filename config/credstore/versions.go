@@ -324,6 +324,25 @@ func (s *VersionStore) Latest(key string) (Version, bool) {
 	return Version{Value: s.conf().DecryptSecretValue(key, last.HashValue), At: last.At(), By: last.WrittenBy}, true
 }
 
+// MarkConfigFileValue records that the config file now holds key's current version, plain its
+// value (the /etc writer wrote it there): that version becomes the value last seen in the file,
+// so the next start's TakeConfigFileValue sees no operator's edit and makes no version. Nothing
+// when the current version is not plain. True when it marked it.
+func (s *VersionStore) MarkConfigFileValue(key, plain string) bool {
+	conf := s.conf()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	vs := s.versions[key]
+	if len(vs) == 0 || conf.DecryptSecretValue(key, vs[len(vs)-1].HashValue) != plain {
+		return false
+	}
+	if !vs[len(vs)-1].FromConfigFile {
+		vs[len(vs)-1].FromConfigFile = true
+		s.dirty = true
+	}
+	return true
+}
+
 // Load replaces the versions with the file's.
 func (s *VersionStore) Load(file map[string][]FileVersion) {
 	s.mu.Lock()

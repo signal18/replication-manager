@@ -239,6 +239,8 @@ func (repman *ReplicationManager) setServerSecretLocked(key, value string) error
 	if err := repman.writeServerSecretFile(); err != nil {
 		return fmt.Errorf("%w (%s)", errServerSecretNotPersisted, err)
 	}
+	// on disk in the versions first: then the file under /etc that sets it, if one does
+	repman.syncEtcCredential(key)
 	return nil
 }
 
@@ -251,6 +253,7 @@ func (repman *ReplicationManager) applyServerSecret(key string) error {
 	if err := repman.writeServerSecretFile(); err != nil {
 		return fmt.Errorf("%s: %w (%s)", key, errServerSecretNotPersisted, err)
 	}
+	repman.syncEtcCredential(key)
 	return nil
 }
 

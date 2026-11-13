@@ -396,7 +396,6 @@ var globalSettingsACLRules = []ACLRule{
 	{"/api/clusters/settings/actions/license-pull", nil, []string{config.GrantGlobalSettings, config.GrantGlobalAdminConf}},
 	// the server credential stores, which hold the server secrets: sysops and extsysops only
 	{"/api/clusters/settings/actions/server-secret-kv", nil, []string{config.GrantClusterServerCredentials}},
-	// the instance's name in the shared stores: sysops and extsysops (CREDENTIAL_STORES.md "Two levels")
 }
 
 // terminalACLRules defines ACL rules for terminal access

@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws/credentials"
+	"github.com/signal18/replication-manager/utils/selfexec"
 )
 
 // The mount's server is a child process of this binary (#2246): ServerCommand, started from
@@ -122,7 +123,7 @@ func (s *server) send(r request) error {
 
 // startServer starts the mount's server and returns once it mounted, or why it did not.
 func startServer(ctx context.Context, o Options) (*server, error) {
-	cmd := exec.Command(selfExecutable(), ServerCommand)
+	cmd := exec.Command(selfexec.Path(), ServerCommand)
 	cmd.Args[0] = "replication-manager" // ps shows what it is, not /proc/self/exe
 	cmd.Env = []string{}
 	for _, k := range serverEnv {
@@ -148,7 +149,7 @@ func startServer(ctx context.Context, o Options) (*server, error) {
 	}
 	cmd.Stdout, cmd.Stderr = logW, logW
 	cmd.ExtraFiles = []*os.File{evW}
-	cmd.SysProcAttr = serverProcAttr()
+	cmd.SysProcAttr = selfexec.ChildAttr()
 
 	s := &server{stdin: stdin, unmounted: make(chan error, 1), exited: make(chan struct{})}
 	waited := make(chan error, 1)

@@ -625,6 +625,34 @@ is treated the same; only the path a level maps to differs per store.
   old place (the store was edited) to <name>". A list pinned in a config file never saves
   `(new place)`: after a restart the entry has no `written-as` and nothing is copied, the same
   limit as for a rename.
+- **The /etc writer** (`utils/etcwriter`, `server/server_etc_writer.go`). A server credential
+  set in a configuration file under `/etc` (`config.toml` or a `cluster.d/*.toml` include, in
+  its `[default]` section) is rotated as versions, and the versions win at the start (T16). The
+  file would still hold the banned value, and give it back if the versions were lost or
+  versioning turned off. After a server secret's new version is on disk (`setServerSecretLocked`,
+  `applyServerSecret`), `syncEtcCredential` writes it to every such file:
+  - replication-manager drops root after its start (`LimitPrivileges`): just before, it starts a
+    child of its own binary (`selfexec`, the same as the backups folder mount), the hidden
+    command `etc-credential-writer`, which stays root. It reads one JSON request per line on its
+    stdin and answers on file descriptor 3, and dies with its parent. A replication-manager that
+    keeps root writes itself (`etcwriter.Local`); one not started as root has no writer.
+  - The child decides on its own what it accepts: a server secret only (its own list,
+    `isServerSecretKey`), a one-line value, in the files it was given at its start (the
+    configuration files read outside the working directory, never `default.toml` or a saved
+    cluster file). It replaces a key already set as a one-line string in a `[default]` section,
+    in the file's form (encrypted `hash_...` or plain), keeps every other line, comment, owner and
+    mode, writes a temporary file then renames it, and never adds a key. Each write is bounded
+    (`etcWriteTimeout`); a lost exchange stops the child (the next write says so).
+  - Written, the current version is marked as the value last seen in the file
+    (`VersionStore.MarkConfigFileValue`): the next start sees no operator's edit. Each write is a
+    security event.
+  - Not written (off, no writer, an error): the rotation's answer says so (`etcFile`), and
+    `GWARN025` stays until a write succeeds.
+  - `monitoring-etc-credential-writer` (server scope, default on, T14): read at the start for the
+    child; off stops the writes at once. Switched by the server secrets' owners only (the server
+    credentials grant on every cluster). GUI: global settings, "Write Rotated Credentials To /etc".
+  - A standby's own `/etc` file is not written: it takes the new version from the config push,
+    and the version wins at its start.
 - **Not yet:** the move of a renamed cluster's secrets.
 
 ### The Cloud18 vault entry
