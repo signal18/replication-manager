@@ -24,7 +24,7 @@ monitored clusters. Library `github.com/mark3labs/mcp-go`. Package `mcp/`
   `mcp-keep-alive-interval` seconds (default 10, 0 = none; `MCPServer.sseOptions`). A tool sends
   nothing on the stream while it runs, and a reverse proxy closes a stream idle longer than its
   timeout (30 s on our gateways): before, a tool slower than that lost its answer, and the
-  client saw a connection error (#2385).
+  client saw a connection error (#2386).
 - Tools call repman **in process** through the `RepmanProvider` interface (implemented by
   `*server.ReplicationManager` in `server/server_get.go`), not through the REST API.
 - 66 tools: 26 cluster, 22 database, 12 backup, 6 proxy, all registered (added 2026-09-25:
@@ -104,7 +104,7 @@ applied, a token needs the `*` scope; "" = any authenticated principal). Reads:
 `get-cloud18-status`, `get-cloud18-register-status`, `get-cloud18-subscription`,
 `list-cloud18-subscription-plans`, `list-cloud18-archive-offers` (the BO's S3 and archive
 catalogue, `MarketplaceCatalogue`, see peer/MARKETPLACE.md §3), `list-cloud18-clusters-for-sale`,
-`list-cloud18-infrastructures` (distinct `api-public-url` of the clusters put on the marketplace, `cloud18-shared`, whatever their sale workflow: an infrastructure whose only cluster for sale got a pending request or a sponsor used to vanish from the marketplace, #2385; the names listed are those still for sale). Actions
+`list-cloud18-infrastructures` (distinct `api-public-url` of the clusters put on the marketplace, `cloud18-shared`, whatever their sale workflow: an infrastructure whose only cluster for sale got a pending request or a sponsor used to vanish from the marketplace, #2386; the names listed are those still for sale). Actions
 (`global-admin-show`): `cloud18-register`, `cloud18-register-confirm`, `cloud18-unregister`,
 `cloud18-change-subscription`. Prompt `cloud18-onboarding`.
 
@@ -181,7 +181,7 @@ Three MCP tools take the same request (`db_image`, `db_count`, `dbu` per databas
   poll failed in the last 10 minutes (`PeerManager.HealthError`, `peerHealthTrust`) is not asked:
   its entry is that reason, at once. One that refuses the identity
   or does not answer in time stays a described choice with its reason and no price. Before
-  (#2385), the login of an infrastructure that was gone waited 30 s (60 s with the password
+  (#2386), the login of an infrastructure that was gone waited 30 s (60 s with the password
   fallback) before the status read: one retired instance still listed for sale held every
   quote past the proxy's 30 s, and no quote at all reached the assistant. Sorted creatable
   first, cheapest first.

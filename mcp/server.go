@@ -177,7 +177,7 @@ func (s *MCPServer) Handler() http.Handler {
 // the caller's principal in the tool context, and a ping on the stream every
 // mcp-keep-alive-interval seconds (0 = none). A tool sends nothing on the stream while it
 // runs, and a reverse proxy closes a stream idle longer than its timeout (30 s on our
-// gateways): a slow tool's result was then never delivered (#2385).
+// gateways): a slow tool's result was then never delivered (#2386).
 func (s *MCPServer) sseOptions(transport ...mcpserver.SSEOption) []mcpserver.SSEOption {
 	opts := append(transport, mcpserver.WithSSEContextFunc(s.injectPrincipal))
 	if s.conf.MCPKeepAliveInterval > 0 {

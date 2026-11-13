@@ -220,7 +220,7 @@ func TestPeerSessionReuseCapAndRelogin(t *testing.T) {
 }
 
 // An infrastructure that never answers is listed as not answering once the wait is over;
-// the others are returned, and the call does not wait for the dead one (#2385).
+// the others are returned, and the call does not wait for the dead one (#2386).
 func TestInfrastructuresAccessDoesNotWaitForADeadOne(t *testing.T) {
 	f := newFakeInfra(t)
 	hang := make(chan struct{})
@@ -244,7 +244,7 @@ func TestInfrastructuresAccessDoesNotWaitForADeadOne(t *testing.T) {
 }
 
 // A peer the health poll found not answering is not asked: its entry is that reason, at
-// once. A failure older than the trust window, or none, lets the peer be asked (#2385).
+// once. A failure older than the trust window, or none, lets the peer be asked (#2386).
 func TestInfrastructuresAccessSkipsAPeerFailingItsHealthCheck(t *testing.T) {
 	f := newFakeInfra(t)
 	var calls atomic.Int32
@@ -274,7 +274,7 @@ func TestInfrastructuresAccessSkipsAPeerFailingItsHealthCheck(t *testing.T) {
 
 // An infrastructure whose only cluster put on the marketplace has a pending request (it
 // left the for-sale list) stays a marketplace infrastructure, with no cluster for sale;
-// a cluster not put on the marketplace makes no infrastructure (#2385).
+// a cluster not put on the marketplace makes no infrastructure (#2386).
 func TestInfrastructuresKeepAPartnerWithNoClusterLeftForSale(t *testing.T) {
 	repman := infraManager(t)
 	pm := repman.PeerManager

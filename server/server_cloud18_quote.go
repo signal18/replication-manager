@@ -201,7 +201,7 @@ func (repman *ReplicationManager) Cloud18ClusterQuote(p *repmanmcp.Principal, sp
 		urls[i] = infra.ApiPublicUrl
 	}
 	// an infrastructure that does not answer in time is a choice without a price, never
-	// the loss of the whole quote (#2385)
+	// the loss of the whole quote (#2386)
 	out := make([]map[string]any, len(urls))
 	for i, a := range repman.cloud18InfrastructuresAccessWithin(p, urls, accessAnswerTimeout) {
 		url, def := urls[i], defs[urls[i]]

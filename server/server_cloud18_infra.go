@@ -813,7 +813,7 @@ func (repman *ReplicationManager) Cloud18InfrastructuresAccess(p *repmanmcp.Prin
 // (Cloud18InfrastructuresAccess, Cloud18ClusterQuote). A login that gets no answer lasts
 // 30 s, 60 s with the password fallback, then the status read 10 s: one infrastructure that
 // is gone held the tool past the 30 s after which a proxy closes an idle MCP stream, and
-// the answer of all the others was lost (#2385).
+// the answer of all the others was lost (#2386).
 const accessAnswerTimeout = 5 * time.Second
 
 // peerHealthTrust is how old a failed health poll of a peer may be and still keep it from
@@ -844,7 +844,7 @@ func (repman *ReplicationManager) cloud18InfrastructuresAccessWithin(p *repmanmc
 	sem := make(chan struct{}, accessParallel)
 	for i, url := range urls {
 		// a peer the health poll found not answering is not asked again: its entry is that
-		// reason, at once (#2385)
+		// reason, at once (#2386)
 		if reason := repman.peerHealthError(url); reason != "" {
 			answers <- answer{i, repmanmcp.Cloud18InfrastructureAccess{ApiPublicUrl: url,
 				Error: "the infrastructure does not answer this instance's health check: " + reason}}

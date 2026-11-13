@@ -186,7 +186,7 @@ func (repman *ReplicationManager) Cloud18ClustersForSale() ([]*peer.PeerCluster,
 // Cloud18Infrastructures lists the marketplace infrastructures: every api-public-url with a
 // cluster its owner put on the marketplace (cloud18-shared), whether that cluster is still
 // for sale or already has a pending request or a sponsor. A partner whose only cluster for
-// sale got a request used to vanish from the marketplace (#2385). The count and the names
+// sale got a request used to vanish from the marketplace (#2386). The count and the names
 // are those of the clusters still for sale.
 func (repman *ReplicationManager) Cloud18Infrastructures() ([]repmanmcp.Cloud18Infrastructure, error) {
 	list, err := repman.Cloud18ClustersForSale()

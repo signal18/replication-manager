@@ -394,7 +394,7 @@ func (pm *PeerManager) GetSaleClustersJSON() ([]byte, error) {
 // marketplace (cloud18-shared), whatever its sale workflow: a cluster with a pending
 // request or a sponsor leaves PeerForSale, but its infrastructure stays a marketplace
 // infrastructure. Built from it, the list of infrastructures no longer loses a partner
-// whose only cluster for sale got a request (#2385).
+// whose only cluster for sale got a request (#2386).
 func (pm *PeerManager) GetMarketplaceClusters() []PeerCluster {
 	pm.mu.RLock()
 	defer pm.mu.RUnlock()
@@ -409,7 +409,7 @@ func (pm *PeerManager) GetMarketplaceClusters() []PeerCluster {
 
 // HealthError is why the health poll of a peer failed ("" when it answers, or when its
 // last poll is older than within or never ran): a peer this instance already knows not to
-// answer is not asked again by a tool that asks every infrastructure (#2385). A failure
+// answer is not asked again by a tool that asks every infrastructure (#2386). A failure
 // older than within is not trusted: the poll may no longer cover that peer.
 func (pm *PeerManager) HealthError(url string, within time.Duration) string {
 	pm.mu.RLock()
