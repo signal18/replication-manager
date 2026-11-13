@@ -58,8 +58,9 @@ talks to never spends its own identity any more:
   token are written on the infrastructures (a login opens a session there, like the
   dashboard's); an infrastructure that refuses the caller is listed with the reason.
   Infrastructures are asked four at a time with a 10 s status timeout
-  (`accessParallel`, `accessStatusTimeout`): a few dead peers never make the tool wait
-  minutes. A cached session an infrastructure answers 401 to (revoked, password changed) is
+  (`accessParallel`, `accessStatusTimeout`), and the tool returns after 20 s at most
+  (`cloud18InfrastructuresAccessWithin`, `accessAnswerTimeout`), listing the ones that have not
+  answered by then: a dead peer never makes the tool wait past it (#2385). A cached session an infrastructure answers 401 to (revoked, password changed) is
   dropped (`forgetPeerSession`) and the login done again, once. `Principal.Bearer` is never
   logged: no log line formats a principal whole.
 - The creation tools (`cloud18-create-cluster`, `cloud18-create-cluster-token`) no longer

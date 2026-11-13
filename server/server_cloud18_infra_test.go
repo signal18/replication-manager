@@ -219,6 +219,30 @@ func TestPeerSessionReuseCapAndRelogin(t *testing.T) {
 	}
 }
 
+// An infrastructure that never answers is listed as not answering once the wait is over;
+// the others are returned, and the call does not wait for the dead one (#2385).
+func TestInfrastructuresAccessDoesNotWaitForADeadOne(t *testing.T) {
+	f := newFakeInfra(t)
+	hang := make(chan struct{})
+	dead := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { <-hang }))
+	t.Cleanup(dead.Close)
+	t.Cleanup(func() { close(hang) }) // runs first: the hung handlers return, then the server closes
+	repman := infraManager(t, f.srv.URL, dead.URL)
+	p := &repmanmcp.Principal{User: "u@x.io", AuthMethod: "oidc", Auth: "pw"}
+
+	start := time.Now()
+	out := repman.cloud18InfrastructuresAccessWithin(p, []string{dead.URL, f.srv.URL}, 300*time.Millisecond)
+	if took := time.Since(start); took > 2*time.Second {
+		t.Fatalf("the call waited for the dead infrastructure: %s", took)
+	}
+	if out[0].ApiPublicUrl != dead.URL || !strings.Contains(out[0].Error, "did not answer within 300ms") {
+		t.Fatalf("the dead infrastructure is listed as not answering: %+v", out[0])
+	}
+	if out[1].ApiPublicUrl != f.srv.URL || out[1].Error != "" || out[1].Identity != "u@x.io" || out[1].SelfService["enabled"] != true {
+		t.Fatalf("the infrastructure that answers is returned: %+v", out[1])
+	}
+}
+
 func TestCloud18SpecPostgres(t *testing.T) {
 	s, err := normalizeSpec(Cloud18ClusterSpec{ClusterName: "pg", DBImage: "postgres:17", DBCount: 3})
 	if err != nil || s.Topology != config.TopoMasterSlavePgStream || len(s.Apps) != 1 || s.Apps[0] != "adminer" {

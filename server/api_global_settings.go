@@ -780,6 +780,13 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 	case "mcp-port":
 		repman.Conf.MCPPort = value
 		repman.restartMCPServer()
+	case "mcp-keep-alive-interval":
+		n, err := strconv.Atoi(strings.TrimSpace(value))
+		if err != nil || n < 0 {
+			return fmt.Errorf("mcp-keep-alive-interval must be a number of seconds, 0 for no ping, got %q", value)
+		}
+		repman.Conf.MCPKeepAliveInterval = n
+		repman.restartMCPServer()
 	case "mcp-bind-address":
 		repman.Conf.MCPBindAddr = value
 		repman.restartMCPServer()

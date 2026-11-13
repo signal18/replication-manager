@@ -10,7 +10,6 @@ import (
 	"math"
 	"sort"
 	"strings"
-	"sync"
 
 	repmanmcp "github.com/signal18/replication-manager/mcp"
 	"github.com/signal18/replication-manager/peer"
@@ -189,31 +188,27 @@ func (repman *ReplicationManager) Cloud18ClusterQuote(p *repmanmcp.Principal, sp
 			}
 		}
 	}
-	out := make([]map[string]any, len(list))
-	sem := make(chan struct{}, accessParallel)
-	var wg sync.WaitGroup
+	urls := make([]string, len(list))
 	for i, infra := range list {
-		wg.Add(1)
-		go func(i int, url string) {
-			defer wg.Done()
-			sem <- struct{}{}
-			defer func() { <-sem }()
-			def := defs[url]
-			a := repman.cloud18InfrastructureAccessOne(p, url)
-			if a.Error != "" {
-				out[i] = map[string]any{"infrastructure": url, "partner": def["partner"], "definition": def,
-					"canCreate": false, "reason": a.Error, "price": "unknown: the infrastructure did not answer for this identity"}
-				return
-			}
-			q := cloud18QuoteOf(spec, a.SelfService)
-			q["infrastructure"] = url
-			q["partner"] = def["partner"]
-			q["definition"] = def
-			q["orchestrator"] = a.SelfService["orchestrator"]
-			out[i] = q
-		}(i, infra.ApiPublicUrl)
+		urls[i] = infra.ApiPublicUrl
 	}
-	wg.Wait()
+	// an infrastructure that does not answer in time is a choice without a price, never
+	// the loss of the whole quote (#2385)
+	out := make([]map[string]any, len(urls))
+	for i, a := range repman.cloud18InfrastructuresAccessWithin(p, urls, accessAnswerTimeout) {
+		url, def := urls[i], defs[urls[i]]
+		if a.Error != "" {
+			out[i] = map[string]any{"infrastructure": url, "partner": def["partner"], "definition": def,
+				"canCreate": false, "reason": a.Error, "price": "unknown: the infrastructure did not answer for this identity"}
+			continue
+		}
+		q := cloud18QuoteOf(spec, a.SelfService)
+		q["infrastructure"] = url
+		q["partner"] = def["partner"]
+		q["definition"] = def
+		q["orchestrator"] = a.SelfService["orchestrator"]
+		out[i] = q
+	}
 	price := func(q map[string]any) float64 {
 		if v, ok := q["monthlyAtFullCapacity"].(float64); ok {
 			return v
