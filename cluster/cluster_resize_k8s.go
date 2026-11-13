@@ -32,10 +32,11 @@ import (
 // Kubernetes object of its own. cluster.Conf.ProvMem is already the
 // established durable/dynamic source (SetDBMemorySize, cluster/cluster_set.go,
 // updates it BEFORE a resize is even dispatched, the same way every other
-// dynamic prov-db-* setting works), and k8sDatabaseMemoryTargets
-// (prov_k8s_db.go) always derives fresh from it -- so a later reprovision or
-// restart already picks up the confirmed value with no second source of
-// truth to keep in sync or get out of sync.
+// dynamic prov-db-* setting works), and the memory limit
+// (k8sDatabaseMemoryMiB, GetDBContainerMemoryCapMB -- the helper OpenSVC renders
+// its own container limit from) always derives fresh from it and from the plan --
+// so a later reprovision or restart already picks up the confirmed value with
+// no second source of truth to keep in sync or get out of sync.
 
 // K8sMemoryResizeState is the bounded pending state for a native Kubernetes
 // Pod memory resize in flight, mirroring server.PendingCgroupShrink's role
@@ -181,7 +182,7 @@ func (r k8sResizer) CanConfigResize(server *ServerMonitor, grow bool) (ResizeFea
 }
 
 // ConfigResize patches the Pod resize subresource toward the current
-// k8sDatabaseMemoryTargets DB share and returns immediately -- it can never
+// database memory limit (k8sDatabaseMemoryMiB) and returns immediately -- it can never
 // report applied=true for a freshly-issued patch (mandatory safety rule: API
 // acceptance is not a confirmed cgroup update). A genuinely new pending
 // resize returns applied=false, nil WITHOUT a restart cookie (confirmation is
@@ -225,7 +226,36 @@ func (cluster *Cluster) k8sResizeWithClient(client kubernetes.Interface, server 
 		return false, nil
 	}
 
-	dbMB, _ := cluster.k8sDatabaseMemoryTargets()
+	// Same input validation as openSVCResize, which also checks it only once the backend can do a live
+	// step at all (a missing live path is answered with a restart first): prov-db-memory must parse, or the resize fails and the
+	// database memory is kept. A non-positive value is refused too (OpenSVC would write it as a limit).
+	// No restart is scheduled: the input is invalid, not the backend. The Pod patch below carries the
+	// memory pair for CPU steps as well, so this guards both.
+	if mb, err := config.ParseUnitMeasurementToInt("M,bytes,required", cluster.Conf.ProvMem, true); err != nil || mb <= 0 {
+		if err == nil {
+			err = fmt.Errorf("not a positive size")
+		}
+		err = fmt.Errorf("invalid prov-db-memory %q: %w", cluster.Conf.ProvMem, err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr,
+			"Kubernetes Pod resize refused on %s: %s", server.URL, err)
+		return false, err
+	}
+	// The limit the provisioning builder renders (GetDBContainerMemoryCapMB): OpenSVC's docker
+	// --memory is set at container creation and no resize step moves it, so while prov-db-memory
+	// stays under the cap the target equals the live limit: no Pod change is made, and that is
+	// reported as such (k8sUnchangedLimitResult), never as an applied resize. Only a cap that moved
+	// (a plan change, a prov-db-memory above the old cap) is patched in place. The dynamic resize on Kubernetes is otherwise unchanged by this
+	// derivation; the OpenSVC pg_mem_limit write has no container-level Kubernetes counterpart
+	// here and stays a tracked gap (see K8S_DBJOBS_MEMORY.md).
+	dbMB, ok := cluster.k8sDatabaseMemoryMiB()
+	if !ok {
+		// Fail safe: never report the infra step as applied when there is no limit to confirm,
+		// so the database memory is not raised on this tick.
+		err := fmt.Errorf("no memory limit can be derived from prov-db-memory %q", cluster.Conf.ProvMem)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr,
+			"Kubernetes Pod memory resize refused on %s: %s", server.URL, err)
+		return false, err
+	}
 	target := resource.MustParse(strconv.Itoa(dbMB) + "Mi")
 	cpuMilli, _ := cluster.k8sDatabaseCPUTargetMilli() // 0 when the container carries no CPU pair
 	existing := server.GetPendingK8sMemoryResize()
@@ -242,12 +272,17 @@ func (cluster *Cluster) k8sResizeWithClient(client kubernetes.Interface, server 
 		// but is still mid-kubelet-application (Status.Resize non-empty) does NOT
 		// take this path -- see k8sMemoryResizeConfirmed.
 		if existing != nil {
+			// a resize of OURS, now confirmed
 			server.clearPendingK8sMemoryResizeIfSame(existing)
+			return true, nil
 		}
-		return true, nil
+		return cluster.k8sUnchangedLimitResult(server, dbMB, grow)
 	}
 
-	currentMem, hasMem := k8sPodContainerMemory(pod, server.Name)
+	// MemChanged decides whether the confirmation raises the database memory (a CPU-only step must
+	// not). It is measured against what is CONFIRMED, not what the spec says: a spec already at the
+	// target while the kubelet still applies an older limit is a memory change not yet done.
+	currentMem, hasMem := k8sConfirmedContainerMemory(pod, server.Name)
 	memChanged := !hasMem || currentMem.Cmp(target) != 0
 	resources := map[string]string{"memory": target.String()}
 	if cpuMilli > 0 {
@@ -335,13 +370,79 @@ func k8sResizeConfirmed(pod *apiv1.Pod, containerName string, target resource.Qu
 	if !ok || current.Cmp(target) != 0 {
 		return false
 	}
+	// A spec at the target is what the API accepted, not what the kubelet applied. When the server
+	// reports the applied resources (status.containerStatuses[].resources) they must hold the target
+	// too: a reported structure WITHOUT the limit is an incomplete state, not a confirmation. Only a
+	// server that reports no applied resources at all keeps the spec check above as the only one.
+	if applied, reported, present := k8sAppliedContainerLimit(pod, containerName, apiv1.ResourceMemory); reported && (!present || applied.Cmp(target) != 0) {
+		return false
+	}
 	if cpuMilli > 0 {
 		cpu, ok := k8sPodContainerCPU(pod, containerName)
 		if !ok || cpu.MilliValue() != cpuMilli {
 			return false
 		}
+		if applied, reported, present := k8sAppliedContainerLimit(pod, containerName, apiv1.ResourceCPU); reported && (!present || applied.MilliValue() != cpuMilli) {
+			return false
+		}
 	}
 	return true
+}
+
+// k8sAppliedContainerLimit reads what the kubelet reports as applied for the container
+// (status.containerStatuses[].resources). reported is false when the server does not report applied
+// resources for it at all (no structure); present is false when it does report a structure that has no
+// limit for the resource. The two are different: unavailable status vs an incomplete one.
+func k8sAppliedContainerLimit(pod *apiv1.Pod, containerName string, name apiv1.ResourceName) (q resource.Quantity, reported, present bool) {
+	for _, cs := range pod.Status.ContainerStatuses {
+		if cs.Name != containerName || cs.Resources == nil {
+			continue
+		}
+		q, present = cs.Resources.Limits[name]
+		return q, true, present
+	}
+	return resource.Quantity{}, false, false
+}
+
+// k8sConfirmedContainerMemory is the container's memory limit as far as it is confirmed: the one the
+// kubelet reports applied (none when it reports a structure without a memory limit), else, for a server
+// that reports no applied resources, the spec's.
+func k8sConfirmedContainerMemory(pod *apiv1.Pod, containerName string) (resource.Quantity, bool) {
+	if q, reported, present := k8sAppliedContainerLimit(pod, containerName, apiv1.ResourceMemory); reported {
+		return q, present
+	}
+	return k8sPodContainerMemory(pod, containerName)
+}
+
+// k8sUnchangedLimitResult is the answer of ConfigResize when the container already carries the
+// target limit and nothing of ours is in flight.
+//
+// OpenSVC's infrastructure step for a memory move is NOT the docker --memory (set at container
+// creation, never moved by a resize): openSVCResize writes DEFAULT.pg_mem_limit = prov-db-memory on
+// the service cgroup and applies it live (PGUpdateInstanceV3); only after that does the shared flow
+// raise the database memory. Kubernetes has no counterpart of that service-level step in this change
+// (it would be a Pod-level limit, a separate tracked gap), and an unchanged container limit is not
+// proof that it happened. So nothing is reported as applied. The shared lifecycle already has one
+// outcome for a backend with no live infra step (OpenSVC v2 in openSVCResize, a resizer without a
+// script, restartResizer): not applied, with a restart scheduled so the new size applies on the next
+// boot, and the database memory is NOT raised on this tick. That is followed here for a grow.
+//
+// This is a conservative fallback, NOT parity: Kubernetes lacks OpenSVC's live service-level memory
+// step. A restart is not claimed equivalent to PGUpdateInstanceV3 -- how the OpenSVC step behaves at
+// runtime is unobserved -- it only keeps the database memory from being raised without a limit
+// confirmed by the step it stands for.
+// For a shrink the database memory has already been lowered by the shared flow and there is no
+// container limit to lower, so it is not applied and nothing is scheduled.
+func (cluster *Cluster) k8sUnchangedLimitResult(server *ServerMonitor, limitMB int, grow bool) (bool, error) {
+	if !grow {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
+			"Kubernetes container limit of %s stays at %dMi: no service-level step to apply on a shrink, not reported as applied", server.URL, limitMB)
+		return false, nil
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
+		"Kubernetes has no live service-level memory step (OpenSVC pg_mem_limit); the container limit of %s is already %dMi, not reported as applied, scheduling restart", server.URL, limitMB)
+	server.SetRestartCookie()
+	return false, nil
 }
 
 // completePendingK8sMemoryResize is the monitor-tick reconciliation for a
