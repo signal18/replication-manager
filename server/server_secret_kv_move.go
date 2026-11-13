@@ -130,7 +130,7 @@ func (repman *ReplicationManager) checkServerKvMoves() {
 		if start {
 			if repman.ServerKvBehind()[e.Name] == "" {
 				// behind until moved: the new place does not hold the secrets yet
-				repman.setServerKvBehind(e.Name, fmt.Sprintf("%s %s to %s", serverKvMovingFrom, e.WrittenAs, name))
+				repman.setServerKvBehind(e.Name, serverKvMovingReason(e.WrittenAs, name))
 			}
 			go repman.moveServerKv(e, m)
 		}
@@ -169,6 +169,15 @@ func (repman *ReplicationManager) dropServerKvMove(entry string) {
 // serverKvMovingFrom starts the behind reason of a move, the only one the move clears.
 const serverKvMovingFrom = "moving from"
 
+// serverKvMovingReason is the behind reason of a move: from a name, or from its old place
+// when the entry's place was edited (from is ConstSecretKvWrittenAsNewPlace, not a name).
+func serverKvMovingReason(from, to string) string {
+	if from == config.ConstSecretKvWrittenAsNewPlace {
+		return serverKvMovingFrom + " its old place (the store was edited) to " + to
+	}
+	return serverKvMovingFrom + " " + from + " to " + to
+}
+
 // moveServerKv moves entry e from its WrittenAs name to m.to. Each version is one write, in
 // order, the first failure ending the attempt (the next one skips what is written). It commits
 // (written-as takes the new name) only when the move was not cancelled by a newer name and the
@@ -199,11 +208,11 @@ func (repman *ReplicationManager) moveServerKv(e config.SecretKvConfig, m *serve
 		return
 	case err != nil:
 		finish(true) // a retry skips what it wrote
-		repman.setServerKvBehind(e.Name, fmt.Sprintf("%s %s to %s: %s", serverKvMovingFrom, from, name, err))
+		repman.setServerKvBehind(e.Name, serverKvMovingReason(from, name)+": "+err.Error())
 		return
 	}
 	// compare and set: an edit of the place meanwhile cleared written-as and wins
-	committed := repman.Conf.SetSecretKvWrittenAsIfAt(config.SecretKvLevelServer, e.Name, from, name)
+	committed := repman.Conf.SetSecretKvWrittenAsIfAt(config.SecretKvLevelServer, e.Name, from, name, m.place)
 	finish(false)
 	if !committed {
 		repman.Logrus.Infof("Server credential store %s: changed during the move to %s, not recorded as moved", e.Name, name)

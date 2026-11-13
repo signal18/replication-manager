@@ -843,13 +843,14 @@ func (conf *Config) SetSecretKvWrittenAsAt(level SecretKvLevel, name, as string)
 }
 
 // SetSecretKvWrittenAsIfAt sets the name level's entry holds its secrets under to as, only
-// when it still says from (a compare and set: an edit of the place meanwhile wins). True when
-// it changed it.
-func (conf *Config) SetSecretKvWrittenAsIfAt(level SecretKvLevel, name, from, as string) bool {
+// when it still says from and its place is still place (SecretKvPlace): a compare and set, an
+// edit of the place meanwhile wins, even one that leaves written-as as it was. True when it
+// changed it.
+func (conf *Config) SetSecretKvWrittenAsIfAt(level SecretKvLevel, name, from, as, place string) bool {
 	secretKvMu.Lock()
 	defer secretKvMu.Unlock()
 	e := conf.secretKvByNameAt(level, name)
-	if e == nil || e.WrittenAs != from || from == as {
+	if e == nil || e.WrittenAs != from || from == as || conf.secretKvPlace(e) != place {
 		return false
 	}
 	e.WrittenAs = as

@@ -58,7 +58,7 @@ func TestServerKvMoveOnRename(t *testing.T) {
 	// the store fails: behind, the move goes on later from where it stopped
 	server.SetFail(true)
 	e, _ := repman.Conf.SecretKvActiveEntryAt(config.SecretKvLevelServer, "srv-a")
-	m := &serverKvMove{to: "acme/repman2/paris", written: map[string]bool{}, running: true}
+	m := &serverKvMove{to: "acme/repman2/paris", place: repman.Conf.SecretKvPlace(e), written: map[string]bool{}, running: true}
 	repman.serverSecretKv.mu.Lock()
 	repman.serverSecretKv.moves = map[string]*serverKvMove{"srv-a": m}
 	repman.serverSecretKv.mu.Unlock()
@@ -154,7 +154,7 @@ func TestServerKvMoveRenamedAgain(t *testing.T) {
 	defer server.Close()
 	repman, e := serverKvMovedSetup(t, server)
 	repman.serverSecretKv.passDue.Store(false)
-	m := &serverKvMove{to: "acme/repman2/paris", written: map[string]bool{}, running: true}
+	m := &serverKvMove{to: "acme/repman2/paris", place: repman.Conf.SecretKvPlace(e), written: map[string]bool{}, running: true}
 	repman.serverSecretKv.mu.Lock()
 	repman.serverSecretKv.moves = map[string]*serverKvMove{"srv-a": m}
 	repman.serverSecretKv.mu.Unlock()
@@ -174,7 +174,7 @@ func TestServerKvMoveRenamedAgain(t *testing.T) {
 		t.Fatalf("the cancelled move wrote: %v", server.Paths())
 	}
 	// the next move goes to the newest name
-	m2 := &serverKvMove{to: "acme/repman3/paris", written: map[string]bool{}, running: true}
+	m2 := &serverKvMove{to: "acme/repman3/paris", place: repman.Conf.SecretKvPlace(e), written: map[string]bool{}, running: true}
 	repman.serverSecretKv.mu.Lock()
 	repman.serverSecretKv.moves = map[string]*serverKvMove{"srv-a": m2}
 	repman.serverSecretKv.mu.Unlock()
@@ -193,7 +193,7 @@ func TestServerKvMoveEditedMeanwhile(t *testing.T) {
 	if _, err := repman.Conf.PutSecretKvAt(config.SecretKvLevelServer, config.SecretKvSpec{Name: "srv-a", Settings: map[string]interface{}{"path-prefix": "other"}}, false); err != nil {
 		t.Fatal(err)
 	}
-	m := &serverKvMove{to: "acme/repman2/paris", written: map[string]bool{}, running: true}
+	m := &serverKvMove{to: "acme/repman2/paris", place: repman.Conf.SecretKvPlace(e), written: map[string]bool{}, running: true}
 	repman.moveServerKv(e, m)
 	if got := serverKvWrittenAs(repman, "srv-a"); got != config.ConstSecretKvWrittenAsNewPlace {
 		t.Fatalf("recorded as moved after an edit: %q", got)
@@ -225,7 +225,7 @@ func TestServerKvStaleMoveDropped(t *testing.T) {
 	defer server.Close()
 	repman, e := serverKvMovedSetup(t, server)
 	server.SetFail(true)
-	m := &serverKvMove{to: "acme/repman2/paris", written: map[string]bool{}, running: true}
+	m := &serverKvMove{to: "acme/repman2/paris", place: repman.Conf.SecretKvPlace(e), written: map[string]bool{}, running: true}
 	repman.serverSecretKv.mu.Lock()
 	repman.serverSecretKv.moves = map[string]*serverKvMove{"srv-a": m}
 	repman.serverSecretKv.mu.Unlock()
@@ -281,7 +281,7 @@ func TestServerKvNewPlaceGetsTheHistory(t *testing.T) {
 	}
 	name, _ := repman.Conf.InstanceStoreName()
 	e, _ := repman.Conf.SecretKvActiveEntryAt(config.SecretKvLevelServer, "srv-a")
-	m := &serverKvMove{to: name, written: map[string]bool{}, running: true}
+	m := &serverKvMove{to: name, place: repman.Conf.SecretKvPlace(e), written: map[string]bool{}, running: true}
 	repman.moveServerKv(e, m)
 	if got := serverKvWrittenAs(repman, "srv-a"); got != name {
 		t.Fatalf("written-as %q, want %q", got, name)
@@ -297,5 +297,32 @@ func TestServerKvNewPlaceGetsTheHistory(t *testing.T) {
 		if strings.HasSuffix(path, "/"+ConstServerKvMovedTo) {
 			t.Fatalf("a moved-to marker at %s for a new place", path)
 		}
+	}
+}
+
+// The commit compares the place: an entry already at "(new place)" edited to another place
+// after the move wrote its versions is never recorded as holding the secrets there.
+func TestServerKvCommitComparesThePlace(t *testing.T) {
+	conf := serverLevelConf(t.TempDir(), "")
+	conf.ServerSecretKvs = []config.SecretKvConfig{{Name: "srv", Plugin: config.ConstSecretKvPluginVault, Enabled: true, WrittenAs: "acme/h/paris",
+		Settings: map[string]interface{}{"address": "https://vault.example", "path-prefix": "a"}}}
+	if _, err := conf.PutSecretKvAt(config.SecretKvLevelServer, config.SecretKvSpec{Name: "srv", Settings: map[string]interface{}{"path-prefix": "b"}}, false); err != nil {
+		t.Fatal(err)
+	}
+	e, _ := conf.SecretKvActiveEntryAt(config.SecretKvLevelServer, "srv")
+	placeB := conf.SecretKvPlace(e)
+	// edited again while the move to B runs: written-as stays "(new place)"
+	if _, err := conf.PutSecretKvAt(config.SecretKvLevelServer, config.SecretKvSpec{Name: "srv", Settings: map[string]interface{}{"path-prefix": "c"}}, false); err != nil {
+		t.Fatal(err)
+	}
+	if conf.SecretKvListAt(config.SecretKvLevelServer)[0].WrittenAs != config.ConstSecretKvWrittenAsNewPlace {
+		t.Fatal("written-as changed")
+	}
+	if conf.SetSecretKvWrittenAsIfAt(config.SecretKvLevelServer, "srv", config.ConstSecretKvWrittenAsNewPlace, "acme/h/paris", placeB) {
+		t.Fatal("the move to B committed while the entry is at C")
+	}
+	e, _ = conf.SecretKvActiveEntryAt(config.SecretKvLevelServer, "srv")
+	if !conf.SetSecretKvWrittenAsIfAt(config.SecretKvLevelServer, "srv", config.ConstSecretKvWrittenAsNewPlace, "acme/h/paris", conf.SecretKvPlace(e)) {
+		t.Fatal("the move to the current place did not commit")
 	}
 }

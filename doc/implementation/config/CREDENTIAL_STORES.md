@@ -617,8 +617,14 @@ is treated the same; only the path a level maps to differs per store.
   (`ConstSecretKvWrittenAsNewPlace`, never an instance name): the move then copies every kept
   version there, oldest first, as for a rename, with no `moved-to` marker (the old place is not
   known any more), and the ordinary writes wait until it ends. An entry never written (no
-  `written-as`) has nothing to copy. A move is tied to the entry's place as well as to the name
-  (`config.SecretKvPlace`): a failed move is never reused for another place.
+  `written-as`) has nothing to copy, and an offer that moves it says nothing (no WARN, no
+  security event). A move is tied to the entry's place as well as to the name
+  (`config.SecretKvPlace`): a failed move is never reused for another place, and its commit
+  (`SetSecretKvWrittenAsIfAt`) compares both the name and the place under `secretKvMu`, so a
+  second edit of the place during the move always wins. The behind reason reads "moving from its
+  old place (the store was edited) to <name>". A list pinned in a config file never saves
+  `(new place)`: after a restart the entry has no `written-as` and nothing is copied, the same
+  limit as for a rename.
 - **Not yet:** the move of a renamed cluster's secrets.
 
 ### The Cloud18 vault entry
