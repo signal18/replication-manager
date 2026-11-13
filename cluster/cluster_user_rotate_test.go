@@ -106,3 +106,30 @@ func TestRotateClusterUserPassword(t *testing.T) {
 		t.Fatalf("list %q", got)
 	}
 }
+
+// A login check reads the user list while a reload swaps it in (each password rotation reloads
+// every cluster's list). Run with -race: before GetAPIUsers took the read lock, the reader raced
+// the swap.
+func TestAPIUsersReadDuringReload(t *testing.T) {
+	cl := rotateTestCluster(t, "admin:pw-admin,ops:pw-ops")
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i := 0; i < 200; i++ {
+			cl.LoadAPIUsers()
+		}
+	}()
+	for {
+		select {
+		case <-done:
+			if _, ok := cl.GetACLUser("ops"); !ok {
+				t.Fatal("ops is gone after the reloads")
+			}
+			return
+		default:
+			if _, ok := cl.GetACLUser("admin"); !ok {
+				t.Fatal("admin missing during a reload")
+			}
+		}
+	}
+}

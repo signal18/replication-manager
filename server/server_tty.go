@@ -138,7 +138,7 @@ func (repman *ReplicationManager) SetSessionValuesFromNode(session *tty.Session,
 	} else {
 		session.ServiceAgentName = node.Agent
 	}
-	apiUser, ok := mycluster.APIUsers[session.Owner]
+	apiUser, ok := mycluster.GetAPIUsers()[session.Owner]
 	if !ok {
 		return fmt.Errorf("user %s not found in cluster %s", session.Owner, mycluster.Name)
 	}
@@ -225,7 +225,7 @@ func (repman *ReplicationManager) SetSessionValuesFromProxy(session *tty.Session
 func (repman *ReplicationManager) SetSessionValuesFromApp(session *tty.Session, app *cluster.App) error {
 	session.Host = app.GetHost()
 	mycluster := app.GetCluster()
-	if _, ok := mycluster.APIUsers[session.Owner]; !ok {
+	if _, ok := mycluster.GetAPIUsers()[session.Owner]; !ok {
 		return fmt.Errorf("user %s not found in cluster %s", session.Owner, mycluster.Name)
 	}
 	session.Orchestrator = mycluster.GetOrchestrator()

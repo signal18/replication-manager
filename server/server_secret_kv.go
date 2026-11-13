@@ -75,8 +75,8 @@ func (repman *ReplicationManager) serverKvRunner() *credstore.StoreRunner {
 			k.mu.Unlock()
 		},
 		WrittenItems: repman.recordServerKvWrittenAs,
-		Running: &k.running,
-		Due:     &k.passDue,
+		Running:      &k.running,
+		Due:          &k.passDue,
 	}
 }
 

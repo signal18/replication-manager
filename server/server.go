@@ -4073,7 +4073,7 @@ func (repman *ReplicationManager) getClusterTestCredentials(clusterName string) 
 	// working (admin) and 401 (locked service account). Deterministic admin
 	// preference removes the flap.
 	var fbUser, fbPass string
-	for _, u := range cl.APIUsers {
+	for _, u := range cl.GetAPIUsers() {
 		if u.Grants == nil || !u.Grants[config.GrantClusterTest] || u.Password == "" {
 			continue
 		}
@@ -4752,7 +4752,7 @@ func (repman *ReplicationManager) GetEncryptedValueFromMemory(key string) string
 		for ind := range lst_Users {
 			user_pass := strings.Split(lst_Users[ind], ":")
 			for _, cluster := range repman.Clusters {
-				if u, ok := cluster.APIUsers[user_pass[0]]; ok {
+				if u, ok := cluster.GetAPIUsers()[user_pass[0]]; ok {
 					tab_ApiUser = append(tab_ApiUser, u.User+":"+u.Password)
 					break
 				}

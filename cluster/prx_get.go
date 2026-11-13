@@ -610,7 +610,7 @@ func (p *Proxy) GetSshEnv() string {
 	*/
 	adminuser := "admin"
 	adminpassword := "repman"
-	if user, ok := p.ClusterGroup.APIUsers[adminuser]; ok {
+	if user, ok := p.ClusterGroup.GetAPIUsers()[adminuser]; ok {
 		adminpassword = user.Password
 	}
 	return "export REPLICATION_MANAGER_HOST_USER=\"" + p.GetUser() + "\";export REPLICATION_MANAGER_HOST_PASSWORD=\"" + p.GetPass() + "\";export REPLICATION_MANAGER_URL=\"" + p.ClusterGroup.Conf.MonitorAPIURL() + "\";export REPLICATION_MANAGER_URL_DR=\"" + p.ClusterGroup.bootstrapDRURLs() + "\";export REPLICATION_MANAGER_USER=\"" + adminuser + "\";export REPLICATION_MANAGER_PASSWORD=\"" + adminpassword + "\";export REPLICATION_MANAGER_HOST_NAME=\"" + p.GetHost() + "\";export REPLICATION_MANAGER_HOST_PORT=\"" + p.GetPort() + "\";export REPLICATION_MANAGER_HOST_TYPE=\"" + p.Type + "\";export REPLICATION_MANAGER_CLUSTER_NAME=\"" + p.ClusterGroup.Name + "\"\n"

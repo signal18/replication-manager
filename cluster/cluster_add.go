@@ -451,7 +451,7 @@ func (cluster *Cluster) addUser(userform UserForm, delegator string, reloadACL b
 	}
 
 	if delegator != "admin" {
-		duser, dok := cluster.APIUsers[delegator]
+		duser, dok := cluster.GetAPIUsers()[delegator]
 		if !dok {
 			return fmt.Errorf("Delegator %s is not exist in cluster", delegator)
 		}
@@ -462,7 +462,7 @@ func (cluster *Cluster) addUser(userform UserForm, delegator string, reloadACL b
 		}
 	}
 
-	if _, ok := cluster.APIUsers[user]; ok {
+	if _, ok := cluster.GetAPIUsers()[user]; ok {
 		return fmt.Errorf("User %s already exist ", user)
 		// cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "User %s already exist ", user)
 	} else {
@@ -524,10 +524,10 @@ func (cluster *Cluster) UpdateUser(userform UserForm, delegator string, reloadAC
 	roles := userform.Roles
 	grants := userform.Grants
 
-	auser, ok := cluster.APIUsers[user]
+	auser, ok := cluster.GetAPIUsers()[user]
 
 	if delegator != "admin" {
-		duser, dok := cluster.APIUsers[delegator]
+		duser, dok := cluster.GetAPIUsers()[delegator]
 		if !dok {
 			return fmt.Errorf("Delegator %s is not exist in cluster", delegator)
 		}
@@ -611,7 +611,7 @@ func (cluster *Cluster) UpdateUser(userform UserForm, delegator string, reloadAC
 func (cluster *Cluster) DropUser(userform UserForm, reloadACL bool) error {
 	user := userform.Username
 
-	if _, ok := cluster.APIUsers[user]; !ok {
+	if _, ok := cluster.GetAPIUsers()[user]; !ok {
 		return fmt.Errorf("User %s is not exist in cluster", user)
 		// cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "User %s is not exist in cluster. Unable to update roles and grants", user)
 	} else {

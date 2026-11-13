@@ -326,7 +326,7 @@ func (repman *ReplicationManager) SendSponsorCredentialsMail(cl *cluster.Cluster
 	}
 
 	var user cluster.APIUser
-	for _, u := range cl.APIUsers {
+	for _, u := range cl.GetAPIUsers() {
 		if u.Roles[config.RoleSponsor] {
 			user = u
 			break
@@ -370,7 +370,7 @@ func (repman *ReplicationManager) SendDBACredentialsMail(cl *cluster.Cluster, de
 	}
 	to := make([]string, 0)
 	if dest == "dbops" {
-		for _, u := range cl.APIUsers {
+		for _, u := range cl.GetAPIUsers() {
 			if u.Roles[config.RoleDBOps] || u.Roles[config.RoleExtDBOps] {
 				if u.User == "admin" {
 					continue
@@ -423,7 +423,7 @@ func (repman *ReplicationManager) SendSysAdmCredentialsMail(cl *cluster.Cluster,
 	}
 	to := make([]string, 0)
 	if dest == "sysops" {
-		for _, u := range cl.APIUsers {
+		for _, u := range cl.GetAPIUsers() {
 			if u.Roles[config.RoleDBOps] || u.Roles[config.RoleExtDBOps] {
 				if u.User == "admin" {
 					continue

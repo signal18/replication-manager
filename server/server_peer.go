@@ -224,7 +224,7 @@ func (repman *ReplicationManager) dispatchPeerHealthPoll() bool {
 func (repman *ReplicationManager) getActiveSessionUsers() []string {
 	seen := make(map[string]bool)
 	for _, cl := range repman.Clusters {
-		for username, apiuser := range cl.APIUsers {
+		for username, apiuser := range cl.GetAPIUsers() {
 			if apiuser.GitToken != "" && !seen[username] {
 				seen[username] = true
 			}

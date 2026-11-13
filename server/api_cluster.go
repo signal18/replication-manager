@@ -1537,7 +1537,7 @@ func (repman *ReplicationManager) handlerMuxSlaveIndex(w http.ResponseWriter, r 
 	}
 
 	uname := repman.GetUserFromRequest(r)
-	if _, ok := mycluster.APIUsers[uname]; !ok {
+	if _, ok := mycluster.GetAPIUsers()[uname]; !ok {
 		http.Error(w, "Forbidden", http.StatusForbidden)
 		return
 	}
@@ -1597,7 +1597,7 @@ func (repman *ReplicationManager) handlerMuxSlaveAttributeByIndex(w http.Respons
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		uname := repman.GetUserFromRequest(r)
-		if _, ok := mycluster.APIUsers[uname]; !ok {
+		if _, ok := mycluster.GetAPIUsers()[uname]; !ok {
 			http.Error(w, "No Valid ACL", http.StatusInternalServerError)
 			return
 		}
@@ -5524,7 +5524,7 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "cloud18-cloud18-dbops":
 		if value != "" && value != mycluster.Conf.Cloud18GitUser {
 			dbops := repman.CreateDBOpsForm(value)
-			if dbuser, ok := mycluster.APIUsers[value]; !ok {
+			if dbuser, ok := mycluster.GetAPIUsers()[value]; !ok {
 				err = mycluster.AddUser(dbops, mycluster.Conf.Cloud18GitUser, true)
 			} else {
 				dbops.Grants = mycluster.AppendGrants(dbops.Grants, &dbuser)
@@ -7716,12 +7716,14 @@ func buildClusterAPIPayload(mycluster *cluster.Cluster) ([]byte, error) {
 	// bytes afterward alongside servers/proxies. Conf is substituted with a
 	// locked snapshot that has its own Apps cleared for the same reason
 	// (cluster.Conf.Apps[i] and the corresponding App's AppConfig are the
-	// same pointer -- see GetAppConfig).
+	// same pointer -- see GetAppConfig). APIUsers is shadowed the same way: a reload swaps
+	// the live field under its lock, so the walk reads the map taken by GetAPIUsers.
 	view := struct {
 		*cluster.Cluster
-		Apps struct{}       `json:"apps"`
-		Conf *config.Config `json:"config"`
-	}{Cluster: mycluster, Conf: mycluster.GetConfigSnapshotForWire()}
+		Apps     struct{}                   `json:"apps"`
+		Conf     *config.Config             `json:"config"`
+		APIUsers map[string]cluster.APIUser `json:"apiUsers"`
+	}{Cluster: mycluster, Conf: mycluster.GetConfigSnapshotForWire(), APIUsers: mycluster.GetAPIUsers()}
 
 	cl, err := json.Marshal(&view)
 	if err != nil {
@@ -9042,7 +9044,7 @@ func (repman *ReplicationManager) handlerMuxSendCredentials(w http.ResponseWrite
 		return
 	}
 
-	duser, ok := mycluster.APIUsers[delegator]
+	duser, ok := mycluster.GetAPIUsers()[delegator]
 	if !ok {
 		http.Error(w, "User does not exists", http.StatusBadRequest)
 		return
@@ -9057,7 +9059,7 @@ func (repman *ReplicationManager) handlerMuxSendCredentials(w http.ResponseWrite
 		return
 	}
 
-	u, ok := mycluster.APIUsers[credForm.Username]
+	u, ok := mycluster.GetAPIUsers()[credForm.Username]
 	if !ok {
 		http.Error(w, "User does not exists", http.StatusBadRequest)
 		return

@@ -99,6 +99,15 @@ func (u *APIUser) Granted(grant string) error {
 	return v3.NewErrorResource(codes.PermissionDenied, v3.ErrGrantNotFound, "grant not found", "").Err()
 }
 
+// GetAPIUsers returns the cluster's API user list. The map is never changed once published
+// (copy on write), so the caller may keep and range it without a lock, but must not write to it
+// or to the Grants and Roles maps of its entries: copy them first (maps.Clone).
+func (cluster *Cluster) GetAPIUsers() map[string]APIUser {
+	cluster.apiUsersMu.RLock()
+	defer cluster.apiUsersMu.RUnlock()
+	return cluster.APIUsers
+}
+
 // setAPIUser sets one API user, copy on write (apiUsersMu): a new map is built and swapped in.
 func (cluster *Cluster) setAPIUser(name string, u APIUser) {
 	cluster.apiUsersMu.Lock()
@@ -142,7 +151,7 @@ func (cluster *Cluster) deleteAPIUser(name string) {
 // carrying a GitLab password. Single source of truth for the auth-model
 // invariant, used by IsValidACL's OIDC branch.
 func (cluster *Cluster) IsLocalOnlyAccount(strUser string) bool {
-	user, ok := cluster.APIUsers[strUser]
+	user, ok := cluster.GetAPIUsers()[strUser]
 	if !ok {
 		return false
 	}
@@ -179,7 +188,7 @@ func (cluster *Cluster) isValidACL(strUser string, strPassword string, URL strin
 		}
 		return cluster.IsURLPassACL(strUser, URL, errorPrint)
 	}
-	user, ok := cluster.APIUsers[strUser]
+	user, ok := cluster.GetAPIUsers()[strUser]
 	if !ok {
 		return false
 	}
@@ -212,7 +221,7 @@ func (cluster *Cluster) isValidACL(strUser string, strPassword string, URL strin
 }
 
 func (cluster *Cluster) GetAPIUser(strUser string, strPassword string) (APIUser, error) {
-	if user, ok := cluster.APIUsers[strUser]; ok {
+	if user, ok := cluster.GetAPIUsers()[strUser]; ok {
 		// A passwordless (SSO-provisioned) account must never authenticate by a
 		// blank local password (blank-password bypass).
 		if user.Password == "" || strPassword == "" {
@@ -228,13 +237,13 @@ func (cluster *Cluster) GetAPIUser(strUser string, strPassword string) (APIUser,
 }
 
 func (cluster *Cluster) SaveUserAcls(user string) (string, string) {
-	granted, discarded := config.GetCompactGrants(cluster.APIUsers[user].Grants)
+	granted, discarded := config.GetCompactGrants(cluster.GetAPIUsers()[user].Grants)
 	return strings.Join(granted, " "), strings.Join(discarded, " ")
 }
 
 func (cluster *Cluster) SaveUserRoles(user string) string {
 	var aEnabledRoles []string
-	for role, value := range cluster.APIUsers[user].Roles {
+	for role, value := range cluster.GetAPIUsers()[user].Roles {
 		if value {
 			aEnabledRoles = append(aEnabledRoles, role)
 		}
@@ -253,7 +262,7 @@ func (cluster *Cluster) SaveAcls() {
 	aUserList := make([]string, 0)
 	for _, credential := range credentials {
 		user, _ := misc.SplitPair(credential)
-		if _, ok := cluster.APIUsers[user]; !ok || slices.Contains(aUserList, user) {
+		if _, ok := cluster.GetAPIUsers()[user]; !ok || slices.Contains(aUserList, user) {
 			continue
 		}
 		aUserList = append(aUserList, user)
@@ -442,7 +451,7 @@ func (cluster *Cluster) LoadAPIUsers() error {
 // string, an older secret-login ("db proxy", #1967) or the user-management GUI handed it; it
 // never mints or manages bearer credentials (issue #1835).
 func (cluster *Cluster) reconcileSystemServiceGrants() {
-	u, ok := cluster.APIUsers["system"]
+	u, ok := cluster.GetAPIUsers()["system"]
 	if !ok || cluster.hasSystemServiceGrants(u) {
 		return
 	}
@@ -750,7 +759,7 @@ func (cluster *Cluster) IsURLPassAppsACL(strUser string, URL string) bool {
 // (admin, system) are not listed.
 func (cluster *Cluster) RouteViewerEmails() []string {
 	emails := make([]string, 0)
-	for name, u := range cluster.APIUsers {
+	for name, u := range cluster.GetAPIUsers() {
 		if !u.Grants[config.GrantClusterShowRoutes] || !strings.Contains(name, "@") || IsTokenPrincipal(name) {
 			continue
 		}

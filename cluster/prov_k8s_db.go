@@ -204,7 +204,7 @@ func k8sAPIAuthHeaderValue(cluster *Cluster) string {
 		return ""
 	}
 	adminPass := "repman"
-	if u, ok := cluster.APIUsers["admin"]; ok {
+	if u, ok := cluster.GetAPIUsers()["admin"]; ok {
 		adminPass = u.Password
 	}
 	return base64.StdEncoding.EncodeToString([]byte("admin:" + adminPass))
@@ -1132,7 +1132,7 @@ func (cluster *Cluster) K8SProvisionDatabaseService(s *ServerMonitor) {
 		return
 	}
 	if cluster.Conf.APISecureConfig {
-		if u, ok := cluster.APIUsers["admin"]; !ok || u.Grants == nil || !u.Grants[config.GrantDBConfigFlag] {
+		if u, ok := cluster.GetAPIUsers()["admin"]; !ok || u.Grants == nil || !u.Grants[config.GrantDBConfigFlag] {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn,
 				"api-credentials-secure-config is enabled but the admin user lacks the db-config-flag grant: the Kubernetes DB init-container config fetch will get HTTP 403, so %s will not bootstrap", s.Name)
 		}

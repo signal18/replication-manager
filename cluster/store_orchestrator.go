@@ -239,7 +239,7 @@ func (cluster *Cluster) queueOrchestrator(key, value string) {
 // version (reportOrchestratorSecret). It returns the error of each key it could not write.
 func (cluster *Cluster) seedOrchestratorPasswords(svc opensvc.Collector) map[string]error {
 	values := []struct{ key, value string }{
-		{"REPLICATION_MANAGER_PASSWORD", cluster.APIUsers["admin"].Password},
+		{"REPLICATION_MANAGER_PASSWORD", cluster.GetAPIUsers()["admin"].Password},
 		{"MYSQL_ROOT_PASSWORD", cluster.GetDbPass()},
 		{"SHARDPROXY_ROOT_PASSWORD", cluster.GetShardPass()},
 	}

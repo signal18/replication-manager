@@ -107,7 +107,7 @@ func (repman *ReplicationManager) AddCloud18GitUser(cl *cluster.Cluster, reloadA
 	// Create user and grant for new cluster
 	userform := repman.CreateAdminUserForm(username)
 
-	if _, ok := cl.APIUsers[username]; ok {
+	if _, ok := cl.GetAPIUsers()[username]; ok {
 		return cl.UpdateUser(userform, "admin", reloadACL)
 	} else {
 		return cl.AddUser(userform, "admin", reloadACL)
@@ -119,7 +119,7 @@ func (repman *ReplicationManager) AddLocalAdminUserACL(cl *cluster.Cluster, relo
 	// Create user and grant for new cluster
 	userform := repman.CreateAdminUserForm(username)
 
-	if _, ok := cl.APIUsers[username]; ok {
+	if _, ok := cl.GetAPIUsers()[username]; ok {
 		return cl.UpdateUser(userform, "admin", reloadACL)
 	}
 

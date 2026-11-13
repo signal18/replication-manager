@@ -61,7 +61,7 @@ func (cluster *Cluster) CanRotateAPIUserPassword(user string) error {
 	if cluster.Conf.Cloud18GitUser != "" && user == cluster.Conf.Cloud18GitUser {
 		return errors.New("the registered Cloud18 user signs in with Cloud18: rotate its password at the identity provider")
 	}
-	if u, ok := cluster.APIUsers[user]; !ok || u.Password == "" {
+	if u, ok := cluster.GetAPIUsers()[user]; !ok || u.Password == "" {
 		return errors.New(user + " has no local password: it signs in with Cloud18")
 	}
 	if scope == APIUserScopeInstance {
@@ -81,11 +81,11 @@ func (cluster *Cluster) CanRotateFor(caller, target string) error {
 	if caller == target {
 		return nil
 	}
-	c, ok := cluster.APIUsers[caller]
+	c, ok := cluster.GetAPIUsers()[caller]
 	if !ok {
 		return errors.New(caller + " is not a user of cluster " + cluster.Name)
 	}
-	t, ok := cluster.APIUsers[target]
+	t, ok := cluster.GetAPIUsers()[target]
 	if !ok {
 		return ErrAPIUserUnknown
 	}

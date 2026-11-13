@@ -1074,7 +1074,7 @@ func (repman *ReplicationManager) handlerMuxMyUnits(w http.ResponseWriter, r *ht
 		}
 		access := false
 		if cl := repman.getClusterByName(name); cl != nil {
-			_, access = cl.APIUsers[user]
+			_, access = cl.GetAPIUsers()[user]
 		}
 		if !sponsor && !access {
 			continue

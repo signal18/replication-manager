@@ -336,7 +336,7 @@ func (repman *ReplicationManager) parseVerifiedAPIToken(r *http.Request) (*APITo
 // userHasGrantAnywhere reports whether the user holds a grant in at least one cluster.
 func (repman *ReplicationManager) userHasGrantAnywhere(username string, grant string) bool {
 	for _, cl := range repman.Clusters {
-		if u, ok := cl.APIUsers[username]; ok && u.Grants[grant] {
+		if u, ok := cl.GetAPIUsers()[username]; ok && u.Grants[grant] {
 			return true
 		}
 	}
@@ -345,7 +345,7 @@ func (repman *ReplicationManager) userHasGrantAnywhere(username string, grant st
 
 func (repman *ReplicationManager) userExists(username string) bool {
 	for _, cl := range repman.Clusters {
-		if _, ok := cl.APIUsers[username]; ok {
+		if _, ok := cl.GetAPIUsers()[username]; ok {
 			return true
 		}
 	}
@@ -606,7 +606,7 @@ func (repman *ReplicationManager) createAPITokenAs(owner, ownerAuthType string, 
 		if cl == nil {
 			return nil, fmt.Errorf("unknown cluster %s", c)
 		}
-		if _, ok := cl.APIUsers[owner]; !ok {
+		if _, ok := cl.GetAPIUsers()[owner]; !ok {
 			return nil, fmt.Errorf("you have no account on cluster %s", c)
 		}
 		scope = append(scope, c)
@@ -615,7 +615,7 @@ func (repman *ReplicationManager) createAPITokenAs(owner, ownerAuthType string, 
 	if global {
 		scope = []string{"*"}
 		for _, cl := range repman.Clusters {
-			if _, ok := cl.APIUsers[owner]; ok {
+			if _, ok := cl.GetAPIUsers()[owner]; ok {
 				targets = append(targets, cl)
 			}
 		}
@@ -635,7 +635,7 @@ func (repman *ReplicationManager) createAPITokenAs(owner, ownerAuthType string, 
 	if len(requested) == 0 {
 		set := map[string]bool{}
 		for _, cl := range targets {
-			allow, _ := config.GetCompactGrants(cl.APIUsers[owner].Grants)
+			allow, _ := config.GetCompactGrants(cl.GetAPIUsers()[owner].Grants)
 			for _, g := range allow {
 				set[g] = true
 			}
