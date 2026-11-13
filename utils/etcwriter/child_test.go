@@ -18,10 +18,14 @@ import (
 // serves as replication-manager's hidden command does.
 func TestMain(m *testing.M) {
 	if len(os.Args) > 5 && os.Args[1] == Command {
-		// Command --uid N --gid N files...
+		// Command --uid N --groups N,M files...
 		uid, _ := strconv.Atoi(os.Args[3])
-		gid, _ := strconv.Atoi(os.Args[5])
-		if err := Serve(os.Stdin, os.NewFile(3, "answers"), os.Args[6:], uid, gid, func(k string) bool { return k == "api-credentials" }); err != nil {
+		var groups []int
+		for _, g := range strings.Split(os.Args[5], ",") {
+			n, _ := strconv.Atoi(g)
+			groups = append(groups, n)
+		}
+		if err := Serve(os.Stdin, os.NewFile(3, "answers"), os.Args[6:], uid, groups, func(k string) bool { return k == "api-credentials" }); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
@@ -39,7 +43,7 @@ func TestChildProcess(t *testing.T) {
 	dir := t.TempDir()
 	f := filepath.Join(dir, "config.toml")
 	os.WriteFile(f, []byte(sample), 0o600)
-	w, err := Start([]string{f}, otherUID, otherGID)
+	w, err := Start([]string{f}, otherUID, []int{otherGID})
 	if err != nil {
 		t.Fatal(err)
 	}

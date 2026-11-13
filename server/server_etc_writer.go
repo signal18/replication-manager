@@ -42,7 +42,9 @@ func (repman *ReplicationManager) etcConfigFiles() []string {
 		if f == "" || seen[f] || strings.HasPrefix(f, work) {
 			continue
 		}
-		if fi, err := os.Lstat(f); err != nil || !fi.Mode().IsRegular() {
+		// a link to the file (configuration management) is listed: the child resolves it and
+		// checks both paths (etcwriter.Resolve)
+		if fi, err := os.Stat(f); err != nil || !fi.Mode().IsRegular() {
 			continue
 		}
 		seen[f] = true
@@ -57,6 +59,10 @@ func (repman *ReplicationManager) etcConfigFiles() []string {
 // user cannot swap; not dropping, this process writes them itself. Off
 // (monitoring-etc-credential-writer) or no file: no writer.
 func (repman *ReplicationManager) startEtcWriter(dropping bool, uid, gid int) {
+	// the drop changes the user and the group, not the supplementary groups: the process keeps
+	// root's (0 at least), every one of them counts in the child's check
+	groups, _ := os.Getgroups()
+	groups = append(groups, gid)
 	if !repman.Conf.MonitoringEtcCredentialWriter {
 		return
 	}
@@ -71,7 +77,7 @@ func (repman *ReplicationManager) startEtcWriter(dropping bool, uid, gid int) {
 		k.writer = etcwriter.Local(files, isServerSecretKey)
 		return
 	}
-	w, err := etcwriter.Start(files, uid, gid)
+	w, err := etcwriter.Start(files, uid, groups)
 	if err != nil {
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "The /etc credential writer did not start: %s", err)
 		return
@@ -120,12 +126,16 @@ func (repman *ReplicationManager) syncEtcCredential(key string) ([]string, strin
 		set := len(res.Set)
 		// a file the root writer refuses (the user this process runs as could swap it) is
 		// written by this process itself when that user may: it is then its own file
-		var refused []string
+		var refused, unchecked []string
 		for f, reason := range res.Refused {
 			found, changed, ferr := etcwriter.ReplaceInFile(f, key, plain, encrypted)
 			switch {
-			case ferr != nil:
+			case ferr != nil && found:
+				// it sets the key and this process cannot write it: the file keeps the old value
 				refused = append(refused, f+" ("+reason+"; "+ferr.Error()+")")
+			case ferr != nil:
+				// not even readable here: whether it sets the key is not known
+				unchecked = append(unchecked, f+" ("+reason+"; cannot be read to check: "+ferr.Error()+")")
 			case found:
 				set++
 				if changed {
@@ -142,6 +152,10 @@ func (repman *ReplicationManager) syncEtcCredential(key string) ([]string, strin
 		case set == 0:
 			// set in a file, found in none the writer may write: never a silent success
 			why = "not found as a one-line string in a [default] section of " + strings.Join(w.Files(), ", ")
+			if len(unchecked) > 0 {
+				sort.Strings(unchecked)
+				why += "; " + strings.Join(unchecked, ", ")
+			}
 		}
 		if len(files) > 0 {
 			// the file now holds the current version: the next start must not take it as an

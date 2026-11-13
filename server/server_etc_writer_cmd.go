@@ -15,13 +15,16 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// etcWriterUID and etcWriterGID are the user the parent drops to: the files it could swap are
-// not written (etcwriter.Unsafe).
-var etcWriterUID, etcWriterGID int
+// etcWriterUID and etcWriterGroups are the user the parent drops to and every group it keeps:
+// the files they could swap are not written (etcwriter.Unsafe).
+var (
+	etcWriterUID    int
+	etcWriterGroups []int
+)
 
 func init() {
 	etcCredentialWriterCmd.Flags().IntVar(&etcWriterUID, "uid", -1, "the user replication-manager drops to")
-	etcCredentialWriterCmd.Flags().IntVar(&etcWriterGID, "gid", -1, "the group replication-manager drops to")
+	etcCredentialWriterCmd.Flags().IntSliceVar(&etcWriterGroups, "groups", nil, "every group replication-manager keeps once dropped")
 	rootCmd.AddCommand(etcCredentialWriterCmd)
 }
 
@@ -40,11 +43,11 @@ var etcCredentialWriterCmd = &cobra.Command{
 			fmt.Fprintln(os.Stderr, "started without its answers descriptor: run by replication-manager only")
 			os.Exit(2)
 		}
-		if etcWriterUID < 0 || etcWriterGID < 0 {
-			fmt.Fprintln(os.Stderr, "started without --uid and --gid: run by replication-manager only")
+		if etcWriterUID < 0 || len(etcWriterGroups) == 0 {
+			fmt.Fprintln(os.Stderr, "started without --uid and --groups: run by replication-manager only")
 			os.Exit(2)
 		}
-		if err := etcwriter.Serve(os.Stdin, answers, args, etcWriterUID, etcWriterGID, isServerSecretKey); err != nil {
+		if err := etcwriter.Serve(os.Stdin, answers, args, etcWriterUID, etcWriterGroups, isServerSecretKey); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}

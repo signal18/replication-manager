@@ -17,6 +17,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"syscall"
 )
@@ -170,7 +171,7 @@ func Replace(content []byte, key, plain, encrypted string) (out []byte, found, c
 		trimmed := strings.TrimLeft(body, " \t")
 		indent := body[:len(body)-len(trimmed)]
 		k, after, ok := strings.Cut(trimmed, "=")
-		if !ok || strings.Trim(strings.TrimSpace(k), `"'`) != key {
+		if !ok || !strings.EqualFold(strings.Trim(strings.TrimSpace(k), `"'`), key) {
 			continue
 		}
 		found = true
@@ -275,29 +276,30 @@ func RemoveStaleTemps(path string) {
 	}
 }
 
-// Unsafe says why uid and gid (the user replication-manager drops to) could swap path or one
-// of its folders between the root writer's read and its write: path not absolute, or the file,
-// a folder or a symbolic link on the way, as given or resolved, that this user owns, its group
-// writes, or anyone writes (a folder only when sticky, as /tmp). "" when it is safe.
-func Unsafe(path string, uid, gid int) string {
-	_, why := Resolve(path, uid, gid)
+// Unsafe says why uid and groups (the user replication-manager drops to, with every group it
+// keeps: its group and the supplementary ones) could swap path or one of its folders between the
+// root writer's read and its write: path not absolute, or the file, a folder or a symbolic link
+// on the way, as given or resolved, that this user owns, one of its groups writes, or anyone
+// writes (a folder only when sticky, as /tmp). "" when it is safe.
+func Unsafe(path string, uid int, groups []int) string {
+	_, why := Resolve(path, uid, groups)
 	return why
 }
 
 // Resolve is path with its symbolic links resolved, and Unsafe's reason when it is not safe.
 // Both the path as given (a link's own folder is on it) and the resolved one are checked.
-func Resolve(path string, uid, gid int) (string, string) {
+func Resolve(path string, uid int, groups []int) (string, string) {
 	if !filepath.IsAbs(path) {
 		return "", "not an absolute path"
 	}
-	if why := unsafeChain(filepath.Clean(path), uid, gid); why != "" {
+	if why := unsafeChain(filepath.Clean(path), uid, groups); why != "" {
 		return "", why
 	}
 	real, err := filepath.EvalSymlinks(path)
 	if err != nil {
 		return "", err.Error()
 	}
-	if why := unsafeChain(real, uid, gid); why != "" {
+	if why := unsafeChain(real, uid, groups); why != "" {
 		return "", why
 	}
 	if fi, err := os.Lstat(real); err != nil || !fi.Mode().IsRegular() {
@@ -307,7 +309,7 @@ func Resolve(path string, uid, gid int) (string, string) {
 }
 
 // unsafeChain checks p and each folder above it, each entry with Lstat (a link itself).
-func unsafeChain(p string, uid, gid int) string {
+func unsafeChain(p string, uid int, groups []int) string {
 	for ; ; p = filepath.Dir(p) {
 		fi, err := os.Lstat(p)
 		if err != nil {
@@ -320,8 +322,8 @@ func unsafeChain(p string, uid, gid int) string {
 			case int(st.Uid) == uid:
 				// an owner can always give itself the write permission
 				return p + " belongs to the user replication-manager runs as"
-			case !link && int(st.Gid) == gid && m&0o020 != 0:
-				return p + " is writable by the group replication-manager runs as"
+			case !link && slices.Contains(groups, int(st.Gid)) && m&0o020 != 0:
+				return p + " is writable by a group replication-manager runs with"
 			case !link && m&0o002 != 0 && (!fi.IsDir() || fi.Mode()&os.ModeSticky == 0):
 				// a folder anyone writes is safe only sticky (/tmp): no one renames another's entry
 				return p + " is writable by anyone"

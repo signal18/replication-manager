@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -24,10 +25,11 @@ import (
 const Command = "etc-credential-writer"
 
 // MaxValue bounds a value in a request, MaxRequest a request line (T18): a parent cannot make
-// the root child allocate without limit.
+// the root child allocate without limit. A line carries two values, each up to 6 bytes per byte
+// once escaped in JSON.
 const (
 	MaxValue   = 16 << 10
-	MaxRequest = 3*MaxValue + 1024
+	MaxRequest = 2*6*MaxValue + 1024
 )
 
 // Request asks to replace Key's value: Plain, or Encrypted (the "hash_..." form) where the file
@@ -92,12 +94,12 @@ func handle(req Request, files []string, refused map[string]string, allowed func
 	return res
 }
 
-// Split keeps the files uid and gid cannot swap (Unsafe), resolved, and says why for the others.
-func Split(files []string, uid, gid int) ([]string, map[string]string) {
+// Split keeps the files uid and groups cannot swap (Unsafe), resolved, and says why for the others.
+func Split(files []string, uid int, groups []int) ([]string, map[string]string) {
 	var safe []string
 	refused := map[string]string{}
 	for _, f := range files {
-		real, why := Resolve(f, uid, gid)
+		real, why := Resolve(f, uid, groups)
 		if why != "" {
 			refused[f] = why
 			continue
@@ -109,11 +111,11 @@ func Split(files []string, uid, gid int) ([]string, map[string]string) {
 
 // Serve answers each request read on in, one JSON line each, on out. It runs as root in the
 // child and trusts nothing in a request beyond the key and the value: it writes only a key
-// allowed says is a server credential, in the files it was given that uid and gid (the user the
-// parent drops to) cannot swap, where the key is set. A request line longer than MaxRequest
-// stops it.
-func Serve(in io.Reader, out io.Writer, files []string, uid, gid int, allowed func(key string) bool) error {
-	safe, refused := Split(files, uid, gid)
+// allowed says is a server credential, in the files it was given that uid and groups (the user
+// the parent drops to, every group it keeps) cannot swap, where the key is set. A bad request
+// (too long, not JSON) gets an error answer; the child goes on.
+func Serve(in io.Reader, out io.Writer, files []string, uid int, groups []int, allowed func(key string) bool) error {
+	safe, refused := Split(files, uid, groups)
 	for f, why := range refused {
 		fmt.Fprintf(os.Stderr, "%s: %s is not written: %s\n", Command, f, why)
 	}
@@ -124,20 +126,34 @@ func Serve(in io.Reader, out io.Writer, files []string, uid, gid int, allowed fu
 	enc := json.NewEncoder(out)
 	for {
 		line, err := r.ReadSlice('\n')
-		if errors.Is(err, bufio.ErrBufferFull) {
-			return fmt.Errorf("a request longer than %d bytes", MaxRequest)
-		}
-		if len(line) == 0 && err != nil {
+		var res Response
+		switch {
+		case errors.Is(err, bufio.ErrBufferFull):
+			// skip the rest of the line, then answer: the exchange stays in step
+			for errors.Is(err, bufio.ErrBufferFull) {
+				_, err = r.ReadSlice('\n')
+			}
+			if err != nil && !errors.Is(err, bufio.ErrBufferFull) {
+				if errors.Is(err, io.EOF) {
+					return nil
+				}
+				return err
+			}
+			res.Err = fmt.Sprintf("a request longer than %d bytes", MaxRequest)
+		case len(line) == 0 && err != nil:
 			if errors.Is(err, io.EOF) {
 				return nil // the parent closed the pipe: it is gone or stopping
 			}
 			return err
+		default:
+			var req Request
+			if jerr := json.Unmarshal(line, &req); jerr != nil {
+				res.Err = "not a request: " + jerr.Error()
+			} else {
+				res = handle(req, safe, refused, allowed, os.Stderr)
+			}
 		}
-		var req Request
-		if jerr := json.Unmarshal(line, &req); jerr != nil {
-			return jerr
-		}
-		if err := enc.Encode(handle(req, safe, refused, allowed, os.Stderr)); err != nil {
+		if err := enc.Encode(res); err != nil {
 			return err
 		}
 	}
@@ -162,12 +178,16 @@ func Local(files []string, allowed func(key string) bool) *Writer {
 }
 
 // Start starts the child, replication-manager's own binary run with the Command, the user it is
-// about to drop to and the files as arguments, while the caller is still root. The child reads
+// about to drop to with every group it keeps, and the files as arguments, while the caller is still root. The child reads
 // the requests on its stdin and answers on its file descriptor 3 (its stdout and stderr go to
 // replication-manager's stderr, never mixed with the answers). It ends with the caller: started
 // from a locked thread (selfexec.StartLocked), with the parent-death signal.
-func Start(files []string, uid, gid int) (*Writer, error) {
-	args := append([]string{Command, "--uid", strconv.Itoa(uid), "--gid", strconv.Itoa(gid)}, files...)
+func Start(files []string, uid int, groups []int) (*Writer, error) {
+	gs := make([]string, len(groups))
+	for i, g := range groups {
+		gs[i] = strconv.Itoa(g)
+	}
+	args := append([]string{Command, "--uid", strconv.Itoa(uid), "--groups", strings.Join(gs, ",")}, files...)
 	cmd := exec.Command(selfexec.Path(), args...)
 	cmd.SysProcAttr = selfexec.ChildAttr()
 	cmd.Stdout, cmd.Stderr = os.Stderr, os.Stderr
@@ -208,6 +228,15 @@ func (w *Writer) Files() []string { return append([]string(nil), w.files...) }
 func (w *Writer) Replace(key, plain, encrypted string, timeout time.Duration) (Response, error) {
 	if w == nil {
 		return Response{}, errors.New("no writer")
+	}
+	// checked before the exchange: a value the child refuses never reaches it
+	if err := checkValue(plain); err != nil {
+		return Response{}, err
+	}
+	if encrypted != "" {
+		if err := checkValue(encrypted); err != nil {
+			return Response{}, fmt.Errorf("encrypted form: %w", err)
+		}
 	}
 	w.mu.Lock()
 	defer w.mu.Unlock()

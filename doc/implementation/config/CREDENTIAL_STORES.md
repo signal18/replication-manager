@@ -653,15 +653,23 @@ is treated the same; only the path a level maps to differs per store.
     credentials grant on every cluster). GUI: global settings, "Write Rotated Credentials To /etc".
   - A standby's own `/etc` file is not written: it takes the new version from the config push,
     and the version wins at its start.
-  - **The boundary.** The child is given, at its start and by the still-root parent, the files
-    and the user the parent drops to (`--uid`, `--gid`). It resolves each file's links once and
-    refuses one that this user could swap between its read and its write: not absolute, or the
-    file, a folder or a link on the way (as given or resolved) owned by that user, writable by its
-    group, or writable by anyone (a folder only when sticky, as `/tmp`) (`etcwriter.Resolve`). It
+  - **The boundary.** The child is given, at its start and by the still-root parent, the files,
+    the user the parent drops to and every group it keeps (`--uid`, `--groups`: its group and the
+    supplementary ones, which the drop does not change, root's `0` among them). It resolves each
+    file's links once and refuses one that this user could swap between its read and its write:
+    not absolute, or the file, a folder or a link on the way (as given or resolved) owned by that
+    user, writable by one of those groups, or writable by anyone (a folder only when sticky, as
+    `/tmp`) (`etcwriter.Resolve`). The check runs at the child's start: a later `chown` or
+    `chmod` of the chain is seen at the next start. A configuration file that is a link (as
+    configuration management makes) is listed and resolved. A process that keeps root writes
+    with `etcwriter.Local`, which has no user to check against. It
     reads through a descriptor opened with `O_NOFOLLOW`, a file up to 1 MB, a request line up to
     `MaxRequest`, a value up to 16 KB (T18), and removes a temporary file a killed write left. A
-    refused file is reported in each answer; the parent then writes it itself when the user it
-    runs as may (its own file). The child logs each rewrite (the key and the file, never the
+    bad request (too long, not JSON) gets an error answer and the child goes on; the parent checks
+    the value's size before it asks. A refused file is reported in each answer; the parent then
+    writes it itself when the user it runs as may (its own file). A refused file the parent cannot
+    even read is reported as not checked, a failure only when no file holds the key. The key is
+    matched without case (Viper reads keys so). The child logs each rewrite (the key and the file, never the
     value) on its stderr, the root side's own trail.
   - **What remains trusted.** The value comes from the parent: a compromised unprivileged
     replication-manager can make the child write a server credential's value of its choice (an

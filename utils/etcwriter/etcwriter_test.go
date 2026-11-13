@@ -126,23 +126,28 @@ func TestUnsafe(t *testing.T) {
 	dir := t.TempDir()
 	f := filepath.Join(dir, "config.toml")
 	os.WriteFile(f, []byte(sample), 0o600)
-	if why := Unsafe(f, os.Getuid(), os.Getgid()); !strings.Contains(why, "belongs to the user") {
+	if why := Unsafe(f, os.Getuid(), []int{os.Getgid()}); !strings.Contains(why, "belongs to the user") {
 		t.Fatalf("own file: %q", why)
 	}
-	if Unsafe("config.toml", otherUID, otherGID) == "" {
+	if Unsafe("config.toml", otherUID, []int{otherGID}) == "" {
 		t.Fatal("a relative path accepted")
 	}
-	safe, refused := Split([]string{f}, os.Getuid(), os.Getgid())
+	safe, refused := Split([]string{f}, os.Getuid(), []int{os.Getgid()})
 	if len(safe) != 0 || refused[f] == "" {
 		t.Fatal(safe, refused)
 	}
-	if real, why := Resolve(f, otherUID, otherGID); why != "" || real == "" {
+	if real, why := Resolve(f, otherUID, []int{otherGID}); why != "" || real == "" {
 		t.Fatalf("a file of another user, links resolved: %q %q", real, why)
+	}
+	// a supplementary group the dropped process keeps (root's 0 after a plain Setuid) counts
+	os.Chmod(f, 0o660)
+	if why := Unsafe(f, otherUID, []int{otherGID, os.Getgid()}); !strings.Contains(why, "writable by a group") {
+		t.Fatalf("group-writable by a kept group: %q", why)
 	}
 }
 
 // The child's loop: a key that is not a server credential is refused, a valid one is written,
-// an unsafe file is reported, an oversized request stops it.
+// an unsafe file is reported, a bad request gets an error answer and the child goes on.
 func TestServe(t *testing.T) {
 	dir := t.TempDir()
 	f := filepath.Join(dir, "config.toml")
@@ -151,7 +156,7 @@ func TestServe(t *testing.T) {
 	outR, outW := io.Pipe()
 	done := make(chan error, 1)
 	go func() {
-		done <- Serve(inR, outW, []string{f, "relative.toml"}, otherUID, otherGID, func(k string) bool { return k == "api-credentials" })
+		done <- Serve(inR, outW, []string{f, "relative.toml"}, otherUID, []int{otherGID}, func(k string) bool { return k == "api-credentials" })
 	}()
 	enc := json.NewEncoder(inW)
 	rd := bufio.NewReader(outR)
@@ -176,9 +181,22 @@ func TestServe(t *testing.T) {
 	if !strings.Contains(string(b), `api-credentials = "admin:new,ops:x"`) || !strings.Contains(string(b), `monitoring-datadir = "/var/lib/replication-manager"`) {
 		t.Fatalf("file:\n%s", b)
 	}
+	// a bad request gets an error answer, and the child goes on
 	go inW.Write([]byte(strings.Repeat("x", MaxRequest+10) + "\n"))
-	if err := <-done; err == nil || !strings.Contains(err.Error(), "longer than") {
-		t.Fatalf("an oversized request: %v", err)
+	line, _ := rd.ReadBytes('\n')
+	if !strings.Contains(string(line), "longer than") {
+		t.Fatalf("an oversized request: %s", line)
+	}
+	go inW.Write([]byte("not json\n"))
+	if line, _ := rd.ReadBytes('\n'); !strings.Contains(string(line), "not a request") {
+		t.Fatalf("a malformed request: %s", line)
+	}
+	if res := ask(Request{Key: "API-Credentials", Plain: "admin:case,ops:x"}); res.Err == "" && len(res.Written) != 0 {
+		t.Fatalf("an unknown key case was written: %+v", res)
+	}
+	inW.Close()
+	if err := <-done; err != nil {
+		t.Fatalf("the child ended: %v", err)
 	}
 }
 
