@@ -158,7 +158,7 @@ func (s *MCPServer) registerCloud18Tools() {
 
 	s.addTool(
 		mcp.NewTool("list-cloud18-infrastructures",
-			mcp.WithDescription("The infrastructures of the Cloud18 marketplace: one entry per distinct api-public-url among the clusters for sale, with the number and names of the clusters it offers, its orchestrators and service plans. Requires the instance to be registered."),
+			mcp.WithDescription("The infrastructures of the Cloud18 marketplace: one entry per distinct api-public-url among the clusters put on the marketplace (cloud18-shared), including an infrastructure whose clusters all have a pending request or a sponsor, with the number and names of the clusters still for sale, its orchestrators and service plans. Requires the instance to be registered."),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			out, err := s.repman.Cloud18Infrastructures()

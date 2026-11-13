@@ -11,13 +11,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/signal18/replication-manager/config"
 	"io"
 	"net/http"
 	"net/url"
 	"strings"
-	"sync"
 	"time"
+
+	"github.com/signal18/replication-manager/config"
 
 	repmanmcp "github.com/signal18/replication-manager/mcp"
 	"github.com/signal18/replication-manager/utils/releases"
@@ -802,20 +802,80 @@ func (repman *ReplicationManager) Cloud18InfrastructuresAccess(p *repmanmcp.Prin
 	if err != nil {
 		return nil, err
 	}
-	out := make([]repmanmcp.Cloud18InfrastructureAccess, len(list))
-	sem := make(chan struct{}, accessParallel)
-	var wg sync.WaitGroup
+	urls := make([]string, len(list))
 	for i, infra := range list {
-		wg.Add(1)
+		urls[i] = infra.ApiPublicUrl
+	}
+	return repman.cloud18InfrastructuresAccessWithin(p, urls, accessAnswerTimeout), nil
+}
+
+// accessAnswerTimeout bounds how long a tool asking every infrastructure waits for them
+// (Cloud18InfrastructuresAccess, Cloud18ClusterQuote). A login that gets no answer lasts
+// 30 s, 60 s with the password fallback, then the status read 10 s: one infrastructure that
+// is gone held the tool past the 30 s after which a proxy closes an idle MCP stream, and
+// the answer of all the others was lost (#2386).
+const accessAnswerTimeout = 5 * time.Second
+
+// peerHealthTrust is how old a failed health poll of a peer may be and still keep it from
+// being asked: the poll runs every few minutes for the peers it covers, so an older failure
+// may describe a peer it no longer polls.
+const peerHealthTrust = 10 * time.Minute
+
+// peerHealthError is why the health poll found the peer not answering, "" when it answers
+// or is not known to fail (PeerManager.HealthError).
+func (repman *ReplicationManager) peerHealthError(url string) string {
+	if repman.PeerManager == nil {
+		return ""
+	}
+	return repman.PeerManager.HealthError(url, peerHealthTrust)
+}
+
+// cloud18InfrastructuresAccessWithin asks every infrastructure (cloud18InfrastructureAccessOne),
+// accessParallel at a time, and returns once all answered or after within: an infrastructure
+// that has not answered by then is listed with that reason. Its call goes on in the background
+// under its own HTTP timeouts and ends there; a session it gets is cached for the next call.
+func (repman *ReplicationManager) cloud18InfrastructuresAccessWithin(p *repmanmcp.Principal, urls []string, within time.Duration) []repmanmcp.Cloud18InfrastructureAccess {
+	type answer struct {
+		i int
+		a repmanmcp.Cloud18InfrastructureAccess
+	}
+	// buffered for every infrastructure: a late answer never blocks its goroutine
+	answers := make(chan answer, len(urls))
+	sem := make(chan struct{}, accessParallel)
+	for i, url := range urls {
+		// a peer the health poll found not answering is not asked again: its entry is that
+		// reason, at once (#2386)
+		if reason := repman.peerHealthError(url); reason != "" {
+			answers <- answer{i, repmanmcp.Cloud18InfrastructureAccess{ApiPublicUrl: url,
+				Error: "the infrastructure does not answer this instance's health check: " + reason}}
+			continue
+		}
 		go func(i int, url string) {
-			defer wg.Done()
 			sem <- struct{}{}
 			defer func() { <-sem }()
-			out[i] = repman.cloud18InfrastructureAccessOne(p, url)
-		}(i, infra.ApiPublicUrl)
+			answers <- answer{i, repman.cloud18InfrastructureAccessOne(p, url)}
+		}(i, url)
 	}
-	wg.Wait()
-	return out, nil
+	out := make([]repmanmcp.Cloud18InfrastructureAccess, len(urls))
+	answered := make([]bool, len(urls))
+	deadline := time.NewTimer(within)
+	defer deadline.Stop()
+wait:
+	for n := 0; n < len(urls); n++ {
+		select {
+		case r := <-answers:
+			out[r.i], answered[r.i] = r.a, true
+		case <-deadline.C:
+			break wait
+		}
+	}
+	for i, url := range urls {
+		if !answered[i] {
+			out[i] = repmanmcp.Cloud18InfrastructureAccess{ApiPublicUrl: url,
+				Error: fmt.Sprintf("the infrastructure did not answer within %s", within)}
+		}
+	}
+	return out
 }
 
 // cloud18InfrastructureAccessOne is one infrastructure's entry of Cloud18InfrastructuresAccess.

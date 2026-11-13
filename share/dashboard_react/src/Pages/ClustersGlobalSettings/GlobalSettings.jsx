@@ -67,7 +67,8 @@ function GlobalSettings({ config, cards }) {
   const hMcpServer = `**MCP Server**\n\nExpose the clusters to AI assistants through the Model Context Protocol. With the default transport the endpoints live on this API at \`/api/mcp/sse\` and \`/api/mcp/message\`, HTTP and HTTPS alike. Every tool, reads and actions alike, runs under the caller's own ACL (login JWT or API token): read-only or read-write is a property of the account or token, not of the server. Applied live.\n\nConfig: \`mcp-server\``
   const hMcpAuth = `**MCP Authentication**\n\nRequire a bearer (login JWT or API token) on the MCP endpoints and run every tool under that user's cluster ACL. Off = every tool unrestricted, for the stdio transport only. Applied live.\n\nConfig: \`mcp-auth-enabled\``
   const hMcpTransport = `**MCP Transport**\n\n\`api\` (default): mounted on the HTTP and HTTPS API listeners. \`sse\`: own plain-HTTP listener on the MCP port. \`stdio\`, \`both\` (sse + stdio). Applied live.\n\nConfig: \`mcp-transport\``
-  const hMcpPort = `**MCP Port / Bind / Advertise**\n\nOnly for the \`sse\` transport: listen port, bind address, and the public base URL announced to clients when it differs.\n\nConfig: \`mcp-port\`, \`mcp-bind-address\`, \`mcp-advertise-address\``
+  const hMcpKeepAlive = `**MCP Keep-alive Interval**\n\nSeconds between two pings on an MCP stream. A tool sends nothing while it runs, and a reverse proxy closes a stream idle longer than its timeout: the ping keeps a slow tool's answer, such as a Cloud18 quote, from being lost. 0 = no ping. Applied live.\n\nConfig: \`mcp-keep-alive-interval\``
+  const hMcpPort =`**MCP Port / Bind / Advertise**\n\nOnly for the \`sse\` transport: listen port, bind address, and the public base URL announced to clients when it differs.\n\nConfig: \`mcp-port\`, \`mcp-bind-address\`, \`mcp-advertise-address\``
 
   useEffect(() => {
     // Re-render when the config prop changes
@@ -495,6 +496,18 @@ function GlobalSettings({ config, cards }) {
           value={config?.mcpTransport}
           confirmTitle={`Confirm change 'mcp-transport' to `}
           onSave={(value) => dispatch(setGlobalSetting({ setting: 'mcp-transport', value }))}
+        />
+      )
+    },
+    {
+      globalSetting: 'mcp-keep-alive-interval',
+      key: 'MCP Keep-alive Interval (seconds)',
+      help: h(hMcpKeepAlive, 'MCP Keep-alive Interval'),
+      value: (
+        <TextForm
+          value={config?.mcpKeepAliveInterval}
+          confirmTitle={`Confirm change 'mcp-keep-alive-interval' to `}
+          onSave={(value) => dispatch(setGlobalSetting({ setting: 'mcp-keep-alive-interval', value }))}
         />
       )
     },
