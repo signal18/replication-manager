@@ -156,6 +156,10 @@ func (repman *ReplicationManager) syncEtcCredential(key string) ([]string, strin
 				sort.Strings(unchecked)
 				why += "; " + strings.Join(unchecked, ", ")
 			}
+		case len(unchecked) > 0:
+			// written elsewhere, but a file not checked may set the key too: said, not a failure
+			sort.Strings(unchecked)
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Rotated %s written to the configuration files, but not checked in %s", key, strings.Join(unchecked, ", "))
 		}
 		if len(files) > 0 {
 			// the file now holds the current version: the next start must not take it as an
