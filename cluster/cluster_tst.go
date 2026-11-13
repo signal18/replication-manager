@@ -764,9 +764,15 @@ func (cluster *Cluster) StartDatabaseWaitRejoin(server *ServerMonitor) error {
 // cookie, wait for rejoin completion) but drives the restart via
 // K8SRestartDatabaseService -- lighter than the generic
 // StopDatabaseService -> WaitDatabaseFailed -> StartDatabaseService dance
-// (no explicit scale-to-0 step), though not actually zero-downtime: single
-// replica on a ReadWriteOnce PVC means the new pod can't come up until the
-// old one releases the volume either way. WaitRejoin's completion signal
+// (no explicit scale-to-0 step), though not zero-downtime: the database
+// Deployment uses the Recreate strategy, under which the controller waits until the
+// old pod has terminated (its container stopped) before it creates the new one;
+// the old pod's API object may still exist for a moment (issue #2389). ReadWriteOnce
+// is NOT what keeps the two apart: it limits
+// attachment per node, not per pod, and the pod is pinned to one node. The
+// strategy covers template rollouts; the repman-controlled scale-up waits for
+// every pod that references the data PVC to be gone (k8sWaitPVCConsumersGone).
+// WaitRejoin's completion signal
 // (rejoinCond) fires from repman's monitoring loop observing
 // PrevState==stateFailed (srv.go, srv_rejoin.go) -- orchestrator-agnostic,
 // so it fires correctly here too. WaitDatabaseStart alone (raw
