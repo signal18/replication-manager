@@ -397,7 +397,6 @@ var globalSettingsACLRules = []ACLRule{
 	// the server credential stores, which hold the server secrets: sysops and extsysops only
 	{"/api/clusters/settings/actions/server-secret-kv", nil, []string{config.GrantClusterServerCredentials}},
 	// the instance's name in the shared stores: sysops and extsysops (CREDENTIAL_STORES.md "Two levels")
-	{"/api/clusters/settings/actions/instance-name", nil, []string{config.GrantClusterServerCredentials}},
 }
 
 // terminalACLRules defines ACL rules for terminal access

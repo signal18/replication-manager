@@ -45,8 +45,8 @@ func TestServerKvMoveOnRename(t *testing.T) {
 	}
 	kept := len(repman.serverVersionStore().Versions("mail-smtp-password"))
 
-	// renamed (the name window, a licence, a registration)
-	repman.Conf.InstanceSubDomain = "repman2"
+	// renamed (a cloud18-* name setting changed)
+	repman.Conf.Cloud18SubDomain = "repman2"
 	if err := repman.CredentialChain().Set("mail-smtp-password", "smtp-3"); err != nil {
 		t.Fatal(err)
 	}
@@ -142,7 +142,7 @@ func serverKvMovedSetup(t *testing.T, server *vaultfake.Vault) (*ReplicationMana
 	if repman.serverKvRunner().WritePass() {
 		t.Fatalf("first write: %v", repman.ServerKvBehind())
 	}
-	repman.Conf.InstanceSubDomain = "repman2"
+	repman.Conf.Cloud18SubDomain = "repman2"
 	e, _ := repman.Conf.SecretKvActiveEntryAt(config.SecretKvLevelServer, "srv-a")
 	return repman, e
 }
@@ -158,7 +158,7 @@ func TestServerKvMoveRenamedAgain(t *testing.T) {
 	repman.serverSecretKv.mu.Lock()
 	repman.serverSecretKv.moves = map[string]*serverKvMove{"srv-a": m}
 	repman.serverSecretKv.mu.Unlock()
-	repman.Conf.InstanceSubDomain = "repman3"
+	repman.Conf.Cloud18SubDomain = "repman3"
 	repman.checkServerKvMoves()
 	repman.serverSecretKv.mu.Lock()
 	same, cancelled := repman.serverSecretKv.moves["srv-a"] == m, m.cancelled
@@ -207,7 +207,7 @@ func TestServerKvWrittenAsFromWhereItWent(t *testing.T) {
 	repman := serverKvTestManager(t, true, server)
 	e, _ := repman.Conf.SecretKvActiveEntryAt(config.SecretKvLevelServer, "srv-a")
 	old := repman.serverKvItems("srv-a", "mail-smtp-password", repman.serverSecretVersion("api-credentials"), false)
-	repman.Conf.InstanceSubDomain = "repman2"
+	repman.Conf.Cloud18SubDomain = "repman2"
 	repman.recordServerKvWrittenAs(e.Name, old)
 	if got := serverKvWrittenAs(repman, "srv-a"); got != "" {
 		t.Fatalf("recorded the new name for a write at the old place: %q", got)

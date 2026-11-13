@@ -15,9 +15,30 @@ import (
 
 // The server credential stores API (CREDENTIAL_STORES.md "Two levels"): the entries (Vault,
 // OpenSVC, Kubernetes) of the server level, which hold the server secrets. The instance's sysops and extsysops only:
-// the server credentials grant on every cluster (instanceNameACL), never a cluster's grant, so
+// the server credentials grant on every cluster (serverCredentialsACL), never a cluster's grant, so
 // a sponsor or a member never sees nor switches one. Secrets go in through add and edit and
 // never come back.
+
+// serverCredentialsACL: the caller holds the server credentials grant on every cluster of the
+// instance. The server stores are the instance's, so an extsysops of one cluster of a shared
+// instance does not see or change them.
+func (repman *ReplicationManager) serverCredentialsACL(w http.ResponseWriter, r *http.Request) (string, bool) {
+	clusters := repman.clustersSnapshot()
+	if len(clusters) == 0 {
+		http.Error(w, "No cluster", http.StatusInternalServerError)
+		return "", false
+	}
+	user := ""
+	for _, cl := range clusters {
+		valid, u := repman.IsValidClusterACL(r, cl)
+		if !valid {
+			http.Error(w, "No valid ACL: the server credentials grant is needed on every cluster", http.StatusForbidden)
+			return "", false
+		}
+		user = u
+	}
+	return user, true
+}
 
 // errServerSecretKvsPinned refuses a change of a list a config file sets.
 var errServerSecretKvsPinned = errors.New("the server credential stores are set in a config file (server-secret-kv): change them there")
@@ -28,7 +49,7 @@ var errServerSecretKvStandby = errors.New("this instance is a standby: change th
 // serverSecretKvChange runs change on the server list: the owners only, on the active
 // instance, the list not set by a config file; then the save, and a full pass.
 func (repman *ReplicationManager) serverSecretKvChange(w http.ResponseWriter, r *http.Request, action string, change func() (string, error)) {
-	user, ok := repman.instanceNameACL(w, r)
+	user, ok := repman.serverCredentialsACL(w, r)
 	if !ok {
 		return
 	}
@@ -94,7 +115,7 @@ func (repman *ReplicationManager) checkServerStoreCluster(spec config.SecretKvSp
 // @Failure 403 {string} string "No valid ACL: the server credentials grant is needed on every cluster"
 // @Router /api/clusters/settings/actions/server-secret-kv [get]
 func (repman *ReplicationManager) handlerMuxServerSecretKvList(w http.ResponseWriter, r *http.Request) {
-	if _, ok := repman.instanceNameACL(w, r); !ok {
+	if _, ok := repman.serverCredentialsACL(w, r); !ok {
 		return
 	}
 	writeArchiveJSON(w, repman.serverSecretKvList())

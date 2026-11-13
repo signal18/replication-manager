@@ -1060,10 +1060,6 @@ type Config struct {
 	Cloud18SubDomainZone           string `scope:"server" mapstructure:"cloud18-sub-domain-zone" toml:"cloud18-sub-domain-zone" json:"cloud18SubDomainZone" groups:"apps"`
 	// The instance's own name when it is not registered (CREDENTIAL_STORES.md "Two levels"): where
 	// its server secrets go in a shared store. Never copied into the cloud18-* keys above.
-	InstanceDomain                   string  `scope:"server" mapstructure:"instance-domain" toml:"instance-domain" json:"instanceDomain"`
-	InstanceSubDomain                string  `scope:"server" mapstructure:"instance-sub-domain" toml:"instance-sub-domain" json:"instanceSubDomain"`
-	InstanceSubDomainZone            string  `scope:"server" mapstructure:"instance-sub-domain-zone" toml:"instance-sub-domain-zone" json:"instanceSubDomainZone"`
-	InstanceNameDeclined             bool    `scope:"server" mapstructure:"instance-name-declined" toml:"instance-name-declined" json:"instanceNameDeclined"`
 	Cloud18GitUser                   string  `scope:"server" mapstructure:"cloud18-gitlab-user" toml:"cloud18-gitlab-user" json:"cloud18GitUser"`
 	Cloud18GitPassword               string  `secret:"true" scope:"server" mapstructure:"cloud18-gitlab-password" toml:"cloud18-gitlab-password" json:"-"`
 	Cloud18IdentityURL               string  `scope:"server" mapstructure:"cloud18-identity-url" toml:"cloud18-identity-url" json:"cloud18IdentityUrl"`

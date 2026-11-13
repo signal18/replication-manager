@@ -15,8 +15,9 @@ import (
 	"github.com/signal18/replication-manager/config/credstore"
 )
 
-// The move (CREDENTIAL_STORES.md "The move"): when the instance's name changes (a licence
-// loaded, a registration, the name window), each server entry gets every kept version of every
+// The move (CREDENTIAL_STORES.md "The move"): when the instance's name changes (one of the
+// settings cloud18-domain, cloud18-sub-domain, cloud18-sub-domain-zone; register and unregister
+// do not change it), each server entry gets every kept version of every
 // server secret at the new name, oldest first, from repman's own version store (never read
 // from the old place). The old place keeps what it holds (repman never deletes a secret) and
 // gets a moved-to key naming the new one. The entry records the name it holds the secrets

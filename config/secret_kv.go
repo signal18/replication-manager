@@ -210,8 +210,8 @@ type SecretKvConfig struct {
 	// OfferInfo is the offer as the catalogue describes it, for the API (never saved)
 	OfferInfo *SecretKvOffer `mapstructure:"-" toml:"-" json:"offer"`
 	// WrittenAs is the instance's name a server entry holds the server secrets under, set at
-	// its first write: when the name changes (a licence loaded, a registration, the name
-	// window) the secrets are moved from there (CREDENTIAL_STORES.md "The move"). Saved, so a
+	// its first write: when the name changes (one of the cloud18-* name settings) the
+	// secrets are moved from there (CREDENTIAL_STORES.md "The move"). Saved, so a
 	// restart or the other monitor knows where they are.
 	WrittenAs string `mapstructure:"written-as" toml:"written-as" json:"-"`
 }
@@ -982,35 +982,20 @@ func (conf *Config) EnsureMarketplaceVault(offer MarketplaceVaultOffer, pathPref
 }
 
 // InstanceStoreName is this instance's name in a shared credential store, the folder of its
-// server secrets: <domain>/<subdomain>/<zone>. A registered instance is named by its
-// registration, any other by its own name (instance-domain: the company, instance-sub-domain:
-// the hostname, instance-sub-domain-zone: the location, an office or a country).
-// ok false while the name is not complete (the company or the location not entered yet): the server secrets then
-// stay in the local version store.
+// server secrets: <cloud18-domain>/<cloud18-sub-domain>/<cloud18-sub-domain-zone>, the instance's
+// one name, registered with Cloud18 or not. Registering or unregistering does not change it, nor
+// does Cloud18 being turned off by a failed GitLab login: only a change of one of the three
+// settings does, and the server secrets then move (server_secret_kv_move.go).
+// ok false while a part is empty or not a valid folder: the server secrets then stay in the
+// local version store.
 func (conf *Config) InstanceStoreName() (string, bool) {
-	parts := []string{conf.InstanceDomain, conf.InstanceSubDomain, conf.InstanceSubDomainZone}
-	if conf.Cloud18 && conf.Cloud18Domain != "" && conf.Cloud18SubDomain != "" && conf.Cloud18SubDomainZone != "" {
-		parts = []string{conf.Cloud18Domain, conf.Cloud18SubDomain, conf.Cloud18SubDomainZone}
-	}
-	// a part that is not a valid folder (a registered one included) never reaches a store path
+	parts := []string{conf.Cloud18Domain, conf.Cloud18SubDomain, conf.Cloud18SubDomainZone}
 	for _, p := range parts {
 		if ValidInstanceNamePart(p) != nil {
 			return "", false
 		}
 	}
 	return strings.Join(parts, "/"), true
-}
-
-// SeedInstanceName fills the hostname part of the instance's own name at the first start, only
-// when empty, never changed afterwards (a container given a new hostname at each start keeps
-// its first). The company and the location (an office, a country) are entered by a person.
-// True when it set it: the caller saves.
-func (conf *Config) SeedInstanceName(hostname string) bool {
-	if conf.InstanceSubDomain == "" && hostname != "" {
-		conf.InstanceSubDomain = hostname
-		return true
-	}
-	return false
 }
 
 // ValidInstanceNamePart: a part of the instance's name is one folder of a store path and one

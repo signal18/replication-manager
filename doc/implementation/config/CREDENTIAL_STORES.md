@@ -484,79 +484,20 @@ is treated the same; only the path a level maps to differs per store.
   `<host>` stands for the instance's name below. The OpenSVC cluster `env` secret (the
   `MYSQL_ROOT_PASSWORD` the containers read) stays the provisioning's delivery, written as today.
 - **The instance's name** in a shared store is `<domain>/<subdomain>/<zone>`, never the URL (an
-  instance may be registered and not public, an on-prem URL may be a bare hostname). Registered:
-  the registration (`cloud18-domain`, `cloud18-sub-domain`, `cloud18-sub-domain-zone`). Not
-  registered: its own name, three server settings (`instance-domain`, `instance-sub-domain`,
-  `instance-sub-domain-zone`): the company, the hostname (read once at the first start and saved,
-  prefilled) and the location (an office, a country), asked in a window at the sign-in of a
-  sysops or extsysops (grant `cluster-server-credentials` on every cluster) through
-  `/api/clusters/settings/actions/instance-name`. The `cloud18-*` settings are never filled
-  with the local name: their readers take them as "registered". Name not complete: server
-  secrets stay in the local version store and the window asks again. "No thank you, don't ask again"
-  (for one who does not plan to version and rotate secrets, nor wants the security, workload and
-  schema monitoring plugins) sets `instance-name-declined`: the window no longer opens, for any
-  sysops or extsysops, until that global setting is switched off. The name stays local until
-  the instance is registered with a Cloud18 account (community plugins, config versioning in the
-  Cloud18 GitLab).
-- **The move.** When the name changes (a licence loaded, a registration, a renamed cluster for
-  its cluster secrets), every server store gets every kept version of every server secret at
-  the new name, oldest first, from repman's own version store (never read from the old path).
-  The old copy stays (repman never deletes a secret), with a `moved-to` key naming the new one.
-  A store not yet moved is behind (WARN0271) until a pass writes it.
-- **A store holds its own login.** The Vault entry's secret id or the OpenSVC certificate's
-  password are copied to that store too: the copy is information, the login is read through
-  the chain (config first), so there is no loop.
-- **The `/etc` writer closes the loop.** repman starts as root and drops to `--user` (server.go);
-  before the drop it starts a child of its own binary (as the backups mount does, #2246) that
-  stays root. Its one request: replace credential K in file F, refused unless F is under
-  `/etc/replication-manager`, K is a credential tagged server and F already holds K; the value is
-  written encrypted with the repman key (F9), in place, owner and mode kept. A change of a
-  server credential is a version (it wins at once), then a copy in every server store, then the
-  file: at the next start the file and the newest version agree. Not started as root, or the
-  file not writable: the version still wins, and a state says the file is behind.
-- **Replaces** the rotation's own OpenSVC copy and `secret-kv-copy-api-credentials` (done: the
-  server level's OpenSVC store, below).
-
-### Server credential stores (implemented)
-
-The server level's vault entries, decided with the maintainer on 2026-11-12: the server secrets
-in any Vault, the Cloud18 one or the client's own, kept apart from every cluster so a cluster's
-sponsor or member never reaches them.
-
-- **Config:** `[[default.server-secret-kv]]` (`Config.ServerSecretKvs`, `toml:"-"`, `json:"-"`),
-  read from `[default]` and `[saved-default]` only (`LoadServerSecretKvs`), saved by the server's
-  save (`SaveDynamic`, `SecretKvsTomlAt(SecretKvLevelServer, "saved-default")`, secrets
-  encrypted, F9) unless a config file sets the key (then the API refuses, 409). A cluster's
-  config never holds it: `GetClusterConfig` clears it, whatever the cluster's section says. The
-  entry format, the plugin (`secret_kv-vault`) and the methods are the cluster's, given a level
-  (`config.SecretKvLevel`: `PutSecretKvAt`, `SetSecretKvEnabledAt`, `DeleteSecretKvAt`,
-  `SecretKvActiveAt`, `SecretKvListAt`).
-- **Path:** `<mount>/<path-prefix>/system/repman/<instance name>/<key>`
-  (`ServerSecretKvFolder`), the name being `InstanceStoreName`. While the name is not complete,
-  or a part of it (a registered one included) is not a valid folder (`ValidInstanceNamePart`),
-  nothing is written and the entry is behind. `system` is the server level's: a cluster entry
-  whose `path-prefix` holds a segment `system` (any case), `.`, `..` or an empty one is refused
-  (`ReservedSecretKvPrefix`, `ErrSecretKvReservedPrefix`) through the API (`PutSecretKvAt`) and a
-  peer's event (`SetSecretKvSetting`, its prefix and its switch), and switched off when read from
-  a config file (a WARN at the load and `WARN0321` on the cluster's config state until the
-  prefix is changed, through the API or the file; turning it on is refused). `WARN0321` follows
-  the prefix alone, not the switch: an entry its owner turned off on purpose still warns while
-  it keeps that prefix. A peer that sends `enabled=true` before a reserved `path-prefix` gets the
-  switch, then the prefix refused, so the entry never runs with it. So a cluster
-  folder never reaches `<prefix>/system/repman/...` whatever the server entry's own prefix, and
-  the separation does not rest on the Vault policies alone. The prefix is compared as written,
-  `/`-separated: Vault paths take no `\` separator and the value is never URL-decoded. Two of a client's instances collide only if the
-  client gives them the same prefix and the same name; on the Cloud18 vault the registration
-  keeps the names apart.
-- **Writes:** the server chain's `OnSet` hook queues every change of a server secret (a
-  rotation, a global setting); a full pass writes every server secret's current version (compare)
-  at start, when an entry is added, changed or turned on, and after versions are taken over from
-  a cluster's file, and when a standby becomes active (a rotation made on the other monitor).
+  instance may be registered and not public, an on-prem URL may be a bare hostname): the three
+  existing settings `cloud18-domain`, `cloud18-sub-domain`, `cloud18-sub-domain-zone`, the
+  instance's one name, registered with Cloud18 or not. There is no second set of variables for an
+  unregistered instance. Register writes the name the person gives; unregister does not change
+  it; Cloud18 turned off by a failed GitLab login does not change it; a licence is refused unless
+  it matches it. The only rename is a change of one of the three settings (in the global settings,
+  allowed while Cloud18 is off, or a registration given other values). Name not complete (a part
+  empty or not a valid folder): the server secrets stay in the local version store and every
+  server store is behind with that reason.
   Active monitor only. A standby reads the list at its start, as every global setting: a list
   changed on the active monitor reaches the standby at its next start. The queue and the worker are the cluster's
   (`credstore.StoreRunner`, shared): newest wins, bounded, retried every `secret-kv-retry-interval`.
 - **Who:** `/api/clusters/settings/actions/server-secret-kv` (list, `add`, `edit`, `enable`,
-  `disable`, `remove`): the server credentials grant on every cluster (`instanceNameACL`, ACL rule
+  `disable`, `remove`): the server credentials grant on every cluster (`serverCredentialsACL`, ACL rule
   `cluster-server-credentials`), the list included, so no other role sees an entry. Refused on a
   standby (409). Each change is a security event. GUI: the global settings, "Server Credential
   Stores" (`SecretKvEntries level='server'`).
@@ -602,7 +543,8 @@ sponsor or member never reaches them.
     GUI says the stores get it at their next pass, and `GWARN024` follows it.
   - **The name rule tightened**: a name part starting or ending with `_`, valid before, is now
     "not named": nothing is written and every server store is behind with the reason (the name
-    is incomplete or a part is invalid). Change the part in the instance's name window.
+    is incomplete or a part is invalid). Change the part in the global settings (`cloud18-domain`, `cloud18-sub-domain`,
+    `cloud18-sub-domain-zone`, while Cloud18 is off).
   - **Upgrade**: the removed copy wrote `<api host>_api-credentials` in `system/sec/repman`; that
     key stops changing. An OpenSVC server store writes `<prefix>_api-credentials` instead:
     whatever read the old key reads the new one. A config file still holding
@@ -610,7 +552,7 @@ sponsor or member never reaches them.
 - **The move (implemented, server level).** Each server entry records the instance's name it
   holds the secrets under (`SecretKvConfig.WrittenAs`, `written-as` in its table), set at its
   first successful write. At each tick on the active monitor, an entry whose name differs from
-  `InstanceStoreName` (a licence loaded, a registration, the name window) is moved
+  `InstanceStoreName` (one of the three `cloud18-*` name settings changed) is moved
   (`checkServerKvMoves`, `server_secret_kv_move.go`), in a goroutine of its own, one per entry:
   - every kept version of every server secret, each secret's oldest first, from repman's version
     store (the current value alone when it keeps none), never read from the old place, is

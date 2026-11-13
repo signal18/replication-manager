@@ -6,29 +6,32 @@ package config
 
 import "testing"
 
+// One name, the Cloud18 domain, sub-domain and zone, registered or not: the Cloud18 switch
+// (unregister, a failed GitLab login) does not change it.
 func TestInstanceStoreName(t *testing.T) {
 	c := &Config{}
 	if _, ok := c.InstanceStoreName(); ok {
-		t.Fatal("a name with no company")
+		t.Fatal("a name with no part")
 	}
-	if !c.SeedInstanceName("repman1") {
-		t.Fatal("nothing seeded")
-	}
-	if c.SeedInstanceName("other") {
-		t.Fatal("seeded twice")
-	}
-	c.InstanceDomain = "acme"
+	c.Cloud18Domain, c.Cloud18SubDomain = "acme", "repman1"
 	if _, ok := c.InstanceStoreName(); ok {
-		t.Fatal("a name with no location")
+		t.Fatal("a name with no zone")
 	}
-	c.InstanceSubDomainZone = "paris"
+	c.Cloud18SubDomainZone = "paris"
 	if n, _ := c.InstanceStoreName(); n != "acme/repman1/paris" {
-		t.Fatalf("local name %q", n)
+		t.Fatalf("unregistered name %q", n)
 	}
-	// a registration wins; its keys are never filled with the local name
-	c.Cloud18, c.Cloud18Domain, c.Cloud18SubDomain, c.Cloud18SubDomainZone = true, "s18", "dev3", "ovh2"
-	if n, _ := c.InstanceStoreName(); n != "s18/dev3/ovh2" {
+	c.Cloud18 = true
+	if n, _ := c.InstanceStoreName(); n != "acme/repman1/paris" {
 		t.Fatalf("registered name %q", n)
+	}
+	c.Cloud18 = false
+	if n, _ := c.InstanceStoreName(); n != "acme/repman1/paris" {
+		t.Fatalf("unregistered again %q", n)
+	}
+	c.Cloud18SubDomain = "a/b"
+	if _, ok := c.InstanceStoreName(); ok {
+		t.Fatal("an invalid part named the instance")
 	}
 }
 

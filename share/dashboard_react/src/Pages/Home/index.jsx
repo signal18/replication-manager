@@ -54,7 +54,6 @@ import AccordionComponent from '../../components/AccordionComponent'
 import TagPill from '../../components/TagPill'
 import Billing from '../Billing'
 import NewClusterModal from '../../components/Modals/NewClusterModal'
-import InstanceNameModal from '../../components/Modals/InstanceNameModal'
 import { FaPlus } from 'react-icons/fa'
 import { setBaseURL } from '../../redux/authSlice'
 
@@ -495,7 +494,6 @@ function Home() {
           selectedClusterNameRef.current == '' && (
             <>
               {/* the instance's name, asked to a sysops or extsysops while it is not complete */}
-              <InstanceNameModal />
               {isNewClusterModalOpen && (
                 <NewClusterModal plans={monitor?.servicePlans} orchestrators={monitor?.serviceOrchestrators} defaultOrchestrator={monitor?.config.provOrchestrator} isOpen={isNewClusterModalOpen} closeModal={closeNewClusterModal} />
               )}

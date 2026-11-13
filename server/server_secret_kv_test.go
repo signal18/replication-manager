@@ -26,7 +26,7 @@ func serverKvTestManager(t *testing.T, named bool, vaults ...*vaultfake.Vault) *
 	repman.Conf.SecretKvWriteTimeout = 1
 	repman.Conf.SecretKvQueueLimit = 100
 	if named {
-		repman.Conf.InstanceDomain, repman.Conf.InstanceSubDomain, repman.Conf.InstanceSubDomainZone = "acme", "repman1", "paris"
+		repman.Conf.Cloud18Domain, repman.Conf.Cloud18SubDomain, repman.Conf.Cloud18SubDomainZone = "acme", "repman1", "paris"
 	}
 	for i, v := range vaults {
 		repman.Conf.ServerSecretKvs = append(repman.Conf.ServerSecretKvs, config.SecretKvConfig{Name: []string{"srv-a", "srv-b"}[i], Plugin: config.ConstSecretKvPluginVault, Enabled: true,
@@ -224,7 +224,7 @@ func TestServerKvInvalidNameIsNotNamed(t *testing.T) {
 }
 
 // The server credentials grant is checked on each cluster: held on one of two, refused on the
-// other, so instanceNameACL (every cluster) refuses the server stores.
+// other, so serverCredentialsACL (every cluster) refuses the server stores.
 func TestServerKvGrantOnEveryCluster(t *testing.T) {
 	repman := newServerLevelTestManager(t, "admin:first,half:second")
 	url := "/api/clusters/settings/actions/server-secret-kv"

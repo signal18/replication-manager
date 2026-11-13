@@ -137,18 +137,6 @@ function GlobalSettings({ config, cards }) {
       )
     },
     {
-      globalSetting: 'instance-name-declined',
-      key: 'Instance Name Declined',
-      help: h(`**Instance Name Declined**\n\nOn: a sysops or extsysops answered "No thank you, don't ask again" to the window asking for this replication-manager's name (company, hostname, location), its unique identifier in a shared credential store and a config backup. Off: the window asks again at the next sign-in while the name is not complete.`, 'Instance Name Declined'),
-      value: (
-        <RMSwitch
-          confirmTitle='Confirm switch global settings for instance-name-declined?'
-          onChange={(_v, setRefresh) => dispatch(switchGlobalSetting({ setting: 'instance-name-declined', setRefresh }))}
-          isChecked={config?.instanceNameDeclined}
-        />
-      )
-    },
-    {
       key: 'Server Credential Stores',
       help: h(`**Server Credential Stores**\n\nThe stores that keep every version of this instance's server secrets (the API users' list api-credentials, the SMTP and GitLab passwords...). A store is a vault (path-prefix/system/repman/<instance name>), the OpenSVC secret system/sec/repman or a Kubernetes Secret repman-system (keys <instance name>_<key>), the last two through the connection of a cluster on that orchestrator. They are never copied to a cluster's stores, which a cluster's sponsor may switch on. Only the sysops and extsysops of this instance see and change them (the server credentials grant on every cluster). Nothing is written until the instance is named. A store behind shows a state here and on every cluster.`, 'Server Credential Stores'),
       value: <SecretKvEntries level='server' />

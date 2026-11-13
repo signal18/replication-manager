@@ -3035,6 +3035,9 @@ definitions:
       cloud18GitTokenExpires:
         type: string
       cloud18GitUser:
+        description: |-
+          The instance's own name when it is not registered (CREDENTIAL_STORES.md "Two levels"): where
+          its server secrets go in a shared store. Never copied into the cloud18-* keys above.
         type: string
       cloud18HealthRefreshInterval:
         type: integer
@@ -3453,17 +3456,6 @@ definitions:
       httpSessionLifetime:
         type: integer
       injectTrafficMode:
-        type: string
-      instanceDomain:
-        description: |-
-          The instance's own name when it is not registered (CREDENTIAL_STORES.md "Two levels"): where
-          its server secrets go in a shared store. Never copied into the cloud18-* keys above.
-        type: string
-      instanceNameDeclined:
-        type: boolean
-      instanceSubDomain:
-        type: string
-      instanceSubDomainZone:
         type: string
       interactive:
         type: boolean
@@ -5422,37 +5414,6 @@ definitions:
         type: number
       usableDbu:
         type: number
-    type: object
-  server.InstanceName:
-    properties:
-      declined:
-        description: 'Declined: a sysops or extsysops answered "no thank you, don''t
-          ask again"'
-        type: boolean
-      domain:
-        type: string
-      name:
-        description: Name is the full name, empty while the company is not entered
-        type: string
-      registered:
-        type: boolean
-      subDomain:
-        type: string
-      zone:
-        type: string
-    type: object
-  server.InstanceNameForm:
-    properties:
-      declined:
-        description: 'Declined: "no thank you, don''t ask again", the name parts are
-          then ignored'
-        type: boolean
-      domain:
-        type: string
-      subDomain:
-        type: string
-      zone:
-        type: string
     type: object
   server.LicensePullResult:
     properties:
@@ -22800,78 +22761,6 @@ paths:
           schema:
             type: string
       summary: The Cloud18 login of this replication-manager
-      tags:
-      - GlobalSetting
-  /api/clusters/settings/actions/instance-name:
-    get:
-      description: '<domain>/<subDomain>/<zone>: the unique name of this replication-manager
-        in a shared credential store (Vault, OpenSVC) and a config backup (GitLab).
-        Registered with Cloud18, it is the registration. Otherwise the company, the
-        hostname (prefilled at the first start) and the location (an office, a country),
-        entered by a sysops or extsysops. name is empty while the name is not complete.'
-      parameters:
-      - default: Bearer <Add access token here>
-        description: Insert your access token
-        in: header
-        name: Authorization
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/server.InstanceName'
-        "403":
-          description: No valid ACL
-          schema:
-            type: string
-      summary: The name of this replication-manager in the shared stores
-      tags:
-      - GlobalSetting
-    post:
-      consumes:
-      - application/json
-      description: 'Sets the company, hostname and location (zone) of an unregistered
-        replication-manager (each 1 to 63 letters, digits, ''-'', ''_'' or ''.'').
-        With declined true, records the answer "no thank you, do not ask again" instead
-        (instance-name-declined). Refused on a registered one (409) and on a standby
-        (409: change it on the active instance, the standby takes it from the config
-        push).'
-      parameters:
-      - default: Bearer <Add access token here>
-        description: Insert your access token
-        in: header
-        name: Authorization
-        required: true
-        type: string
-      - description: The name
-        in: body
-        name: body
-        required: true
-        schema:
-          $ref: '#/definitions/server.InstanceNameForm'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/server.InstanceName'
-        "400":
-          description: Invalid name
-          schema:
-            type: string
-        "403":
-          description: No valid ACL
-          schema:
-            type: string
-        "409":
-          description: Registered, or a standby
-          schema:
-            type: string
-      summary: Set the name of this replication-manager in the shared stores
       tags:
       - GlobalSetting
   /api/clusters/settings/actions/license-pull:

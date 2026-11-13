@@ -310,20 +310,6 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 			return errors.New("Unable to change setting when cloud18 is ON")
 		}
 		repman.Conf.Cloud18SubDomainZone = value
-	case "instance-domain":
-		// the company, the first part of the instance's name in a shared credential store;
-		// its hostname and zone are drawn at the first start, never typed. Same rules as the
-		// instance-name endpoint: not on a registered instance, not on a standby
-		if repman.instanceName().Registered {
-			return errInstanceNameRegistered
-		}
-		if repman.Status != ConstMonitorActif {
-			return errors.New("this instance is a standby: set the name on the active instance, the standby takes it from the config push")
-		}
-		if err := config.ValidInstanceNamePart(value); err != nil {
-			return err
-		}
-		repman.Conf.InstanceDomain = value
 	case "cloud18-gitlab-user":
 		if repman.Conf.Cloud18 {
 			return errors.New("Unable to change setting when cloud18 is ON")
@@ -904,9 +890,6 @@ func (repman *ReplicationManager) switchRepmanSetting(name string) error {
 		// above when set in the configuration file (#2262). Cloud18SSO() reads it at each login, so
 		// the Sign in with Cloud18 button appears or goes at once (#2367).
 		repman.Conf.Cloud18SSOLogin = !repman.Conf.Cloud18SSOLogin
-	case "instance-name-declined":
-		// scope:"server": on, the GUI no longer asks a sysops or extsysops for the instance's name
-		repman.Conf.InstanceNameDeclined = !repman.Conf.InstanceNameDeclined
 	case "cloud18-login-resume":
 		// scope:"server" — persisted to default.toml by SaveDynamic (value != default). Applied at
 		// once: off removes the kept logins, on keeps them from now on (#2341).
