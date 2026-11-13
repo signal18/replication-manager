@@ -510,6 +510,39 @@ func TestServerKvMarketplaceVaultPartnerOnly(t *testing.T) {
 		t.Fatal("the entry went when the plan changed")
 	}
 
+	// switched off by a sysops: never switched on again by the tick
+	if err := repman.Conf.SetSecretKvEnabledAt(config.SecretKvLevelServer, config.ConstSecretKvMarketplacePrefix+"vault", false); err != nil {
+		t.Fatal(err)
+	}
+	partner(repman)
+	repman.ensureServerMarketplaceVaults()
+	if e, _ := entry(repman); e.Enabled {
+		t.Fatal("the tick switched the partner's choice back on")
+	}
+	// it cannot be removed through the API: the back-office manages it, the sysops switches it
+	if err := repman.Conf.DeleteSecretKvAt(config.SecretKvLevelServer, config.ConstSecretKvMarketplacePrefix+"vault"); !errors.Is(err, config.ErrSecretKvOfferManaged) {
+		t.Fatalf("delete: %v", err)
+	}
+	// the offer moves to another address: its place changed, nothing is recorded there yet
+	repman.Conf.SetSecretKvWrittenAsAt(config.SecretKvLevelServer, config.ConstSecretKvMarketplacePrefix+"vault", "acme/repman1/paris")
+	moved := offer
+	moved.Address = "https://vault2.example"
+	repman.marketplaceCatalogue.Store(&config.MarketplaceCatalogue{Vaults: []config.MarketplaceVaultOffer{moved}})
+	repman.ensureServerMarketplaceVaults()
+	if e, _ := entry(repman); e.WrittenAs != "" || repman.Conf.SecretKvSetting(e, config.ConstSecretKvVaultAddress) != moved.Address {
+		t.Fatalf("after the offer moved: %+v", e)
+	}
+	// a catalogue prefix with a ".." folder is refused
+	bad := offer
+	bad.Name, bad.PathPrefix = "bad", "s18/../x"
+	repman.marketplaceCatalogue.Store(&config.MarketplaceCatalogue{Vaults: []config.MarketplaceVaultOffer{bad}})
+	repman.ensureServerMarketplaceVaults()
+	for _, e := range repman.Conf.SecretKvListAt(config.SecretKvLevelServer) {
+		if e.Name == config.ConstSecretKvMarketplacePrefix+"bad" {
+			t.Fatal("a prefix with .. was taken")
+		}
+	}
+
 	// a public partner with its own vault: added off
 	own := vaultfake.New("kv", "role", "sid")
 	defer own.Close()

@@ -602,6 +602,16 @@ is treated the same; only the path a level maps to differs per store.
   once stays when the instance stops being a partner (nothing removed or moved silently); a sysops
   switches it off. Its settings are the back-office's (`ErrSecretKvOfferManaged`), its switch the
   sysops'. A list pinned in a config file gets nothing. Each entry given is a security event.
+  The tick never switches an existing entry on again, and the API never deletes it
+  (`ErrSecretKvOfferManaged`): a partner who does not want it switches it off and it stays off.
+  When the offer moves the entry (address, mount, prefix), `written-as` is cleared as for an
+  edit. The prefix is the offer's, else `<cloud18-domain>/<cloud18-sub-domain>-<cloud18-sub-domain-zone>`
+  as for the clusters' entries (not the instance name's form), each folder of it a real one
+  (no empty, `.` or `..`); the instance's folder `system/repman/<instance name>` is below it.
+  **Isolation rests on the Cloud18 Vault policy:** both levels sign in with the same Cloud18
+  identity (`jwt`, same role and address), so the role's policy must deny `*/system/repman/*`
+  to any session that is not the instance's own server level (a cluster sponsor's or a member's
+  session), as the members page already must not see a server path.
 - **Not yet:** the move of a renamed cluster's secrets.
 
 ### The Cloud18 vault entry

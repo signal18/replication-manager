@@ -954,6 +954,13 @@ func (conf *Config) EnsureMarketplaceVaultAt(level SecretKvLevel, offer Marketpl
 	if strings.TrimSpace(offer.Address) == "" {
 		return false, fmt.Errorf("vault offer %s: no address", offer.Name)
 	}
+	// the prefix comes from the remote catalogue or the instance's URI: each folder of it is a
+	// real one, never empty, "." or ".."
+	for _, seg := range strings.Split(strings.Trim(pathPrefix, "/"), "/") {
+		if seg == "" || seg == "." || seg == ".." {
+			return false, fmt.Errorf("vault offer %s: path-prefix %q holds an empty, \".\" or \"..\" folder", offer.Name, pathPrefix)
+		}
+	}
 	mount := offer.Mount
 	if mount == "" {
 		mount = "kv"
@@ -988,11 +995,17 @@ func (conf *Config) EnsureMarketplaceVaultAt(level SecretKvLevel, offer Marketpl
 	if e.Offer != offer.Name {
 		e.Offer, changed = offer.Name, true
 	}
+	placeBefore := conf.secretKvPlace(e)
 	for k, v := range want {
 		if fmt.Sprintf("%v", e.Settings[k]) != fmt.Sprintf("%v", v) {
 			e.Settings[k] = v
 			changed = true
 		}
+	}
+	if conf.secretKvPlace(e) != placeBefore {
+		// the offer moved the entry to another place (address, mount, prefix), as an edit does
+		// (PutSecretKvAt): nothing to move from, the next write records the name again
+		e.WrittenAs = ""
 	}
 	return changed, nil
 }
