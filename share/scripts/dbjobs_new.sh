@@ -1189,21 +1189,36 @@ EOF
     return 0
 }
 
+# db_server_binary prints the path of the database server binary, mariadbd before mysqld,
+# from the PATH then from /usr/sbin: a non-root user's PATH on a Debian or RHEL host does
+# not hold /usr/sbin, where the packages install the server. Prints nothing when none is
+# found.
+db_server_binary() {
+    local b
+    for b in mariadbd mysqld; do
+        if command -v "$b" 2>/dev/null; then
+            return 0
+        fi
+    done
+    for b in /usr/sbin/mariadbd /usr/sbin/mysqld; do
+        if [[ -x "$b" ]]; then
+            echo "$b"
+            return 0
+        fi
+    done
+    return 1
+}
+
 # Send MariaDB defaults over TCP
 send_mariadb_defaults() {
     local defaults_file="$1"
     local receiver_addr="$2"
     local log_file="$3"
 
-    # Check if mariadbd exists, otherwise use mysqld
-    local command="mariadbd"
-    if ! command -v "$command" >/dev/null 2>&1; then
-        send_lines_to_api "'mariadbd' not found, falling back to 'mysqld'" "print-defaults" "$LVL_INFO"
-        command="mysqld"
-    fi
-
-    if ! command -v "$command" >/dev/null 2>&1; then
-        send_lines_to_api "ERROR: Neither 'mariadbd' nor 'mysqld' found in PATH" "print-defaults" "$LVL_ERROR"
+    local command
+    command=$(db_server_binary)
+    if [[ -z "$command" ]]; then
+        send_lines_to_api "ERROR: Neither 'mariadbd' nor 'mysqld' found in PATH or /usr/sbin" "print-defaults" "$LVL_ERROR"
         return 1
     fi
 
@@ -1318,7 +1333,10 @@ print_defaults_for_fetch() {
     local default_config_path="$3"
     local log_file="$4"
 
-    local extract_dir="/bootstrap/dummy"
+    # Under the jobs directory, which exists and belongs to the jobs user on every
+    # orchestrator: /bootstrap is the OpenSVC container layout, absent on an on-premise host
+    # and not creatable there by a non-root jobs user.
+    local extract_dir="$TMP_DIR/dummy"
 
     # Fetch and extract configuration (use global TOKEN if available)
     if ! fetch_and_extract_config "$extract_dir" "$(job_token)"; then
@@ -2369,7 +2387,7 @@ pr_export_definitions() {
         return 1
     fi
     local ro="$DATADIR/.system/mrm_defs_ro" run="$DATADIR/.system/mrm_defs_run" sock="$DATADIR/.system/mrm_defs_run/mariadbd.sock" bin f n db t type engine
-    bin=$(command -v mariadbd || command -v mysqld || ls /usr/sbin/mariadbd /usr/sbin/mysqld 2>/dev/null | head -1)
+    bin=$(db_server_binary)
     if [[ ! -x "$bin" ]]; then
         pr_log "ERROR: no mariadbd/mysqld binary to read the backup definitions."
         return 1
@@ -3651,12 +3669,14 @@ for job in "${JOBS[@]}"; do
             fi
             ;;
         xtrabackup)
-            cd /docker-entrypoint-initdb.d
+            # The jobs directory: /docker-entrypoint-initdb.d exists in the containers only
+            cd "$TMP_DIR" || exit 1
             xtrabackup_undo_args
             $XTRABACKUP --defaults-file=$MYSQL_CONF/my.cnf --backup "${XB_UNDO_ARGS[@]}" -u$USER -H$MYSQL_SERVER -p$PASSWORD -P$MYSQL_PORT --stream=xbstream --target-dir=$LOG_DIR/ 2>"$LOG_DIR/backup.out" | job_stream_signed | socat -u stdio TCP:$ADDRESS &>"$LOG_DIR/$job.out"
             ;;
         mariabackup)
-            cd /docker-entrypoint-initdb.d
+            # The jobs directory: /docker-entrypoint-initdb.d exists in the containers only
+            cd "$TMP_DIR" || exit 1
             $MARIADB_BACKUP --defaults-file="$MYSQL_CONF/my.cnf" --backup --databases-exclude=.system --protocol=TCP --user="$USER" --host="$MYSQL_SERVER" --password="$PASSWORD" --port="$MYSQL_PORT" --stream=xbstream --target-dir="$LOG_DIR/" 2>"$LOG_DIR/backup.out" | job_stream_signed | socat -u stdio TCP:$ADDRESS &>"$LOG_DIR/$job.out"
             ;;
         mysqldump)
