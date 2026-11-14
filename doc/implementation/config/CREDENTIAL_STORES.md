@@ -1,6 +1,12 @@
-# Credential stores: one interface for config, local store and Vault (design)
+# Credential stores: one interface for config, local store and Vault
 
-Status: step 1 (`secret_kv-config`, the chain) implemented in `config/credstore`; versioned
+Status (2026-11-14): the user's password rotation (the ban of a compromised user) and the two
+levels of secrets are implemented in #2383 (PR #2376, not merged): see "A user's password
+rotation" and "Two levels, every store the same" below, which list where each piece lives.
+Not built yet: the move of a renamed cluster's secrets. User documentation: docs.signal18.io,
+Security, "Password rotation and credential stores".
+
+Earlier status: step 1 (`secret_kv-config`, the chain) implemented in `config/credstore`; versioned
 stores (#2227) designed and closed 2026-10-28: rules 1-12, 15, 16 implemented with the API,
 the GUI and the Cloud18 vault offer; rule 14 (the vault's policies) and the offer's catalogue
 file are the back-office's, to do; rule 13 is out of #2227 (branch
@@ -405,7 +411,7 @@ request, and every API token it owns is revoked (`revokeUserAPITokens`).
   the ban. When the file cannot be written, the new password stays in force (undoing it would give
   the compromised one back) and the answer says so (`persistError`), as for the tokens.
 - **Stores:** the instance's list is a server secret: its new version goes to every server
-  credential store (Vault, OpenSVC, Kubernetes; "Server credential stores" below) through the
+  credential store (Vault, OpenSVC, Kubernetes; "OpenSVC and Kubernetes stores" below) through the
   server chain's hook, and a store behind says so (`GWARN024`, `WARN0320`). A cluster's own list
   goes to that cluster's stores. The earlier copy of the list to OpenSVC by a path of its own,
   and its switch `secret-kv-copy-api-credentials`, are gone: the OpenSVC server store replaces
@@ -418,7 +424,7 @@ request, and every API token it owns is revoked (`revokeUserAPITokens`).
   token too; the answer carrying the new password is its last. Token revocation takes the clusters
   before the token store's lock, never the manager's lock under it.
 
-### Two levels, every store the same (design, 2026-11-11; reverses rules 6 and 7)
+### Two levels, every store the same (implemented in #2383; decided 2026-11-11, replaces rules 6 and 7)
 
 Decided with the maintainer on 2026-11-11, in the rotation PR. Before it, an instance secret was
 never copied (rule 6), OpenSVC was a consumer and not a store (rule 7), and the rotation copied the
@@ -432,7 +438,7 @@ is treated the same; only the path a level maps to differs per store.
   delivery to the container that reads it, not a level, and stay as they are.
 - **Entries have a level too.** The cluster entries (`[[<cluster>.secret-kv]]`) get the cluster
   secrets, as today; a sponsor may switch them on and read them (rule 14). Server secrets go only
-  to server entries (`[[secret-kv]]` in the server config): never to a cluster entry, so a
+  to server entries (`[[default.server-secret-kv]]` in the server config, `server-secret-kv`): never to a cluster entry, so a
   sponsor or a member never reads one.
 - **One chain per level.** A server secret has one credential chain and one version store for the
   instance (`<working-dir>/secret_store.json`, written by the server's save callback, T25, and at

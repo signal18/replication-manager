@@ -24130,7 +24130,7 @@ const docTemplate = `{
         },
         "/api/clusters/{clusterName}/users/rotate-password": {
             "post": {
-                "description": "Gives the user a new generated password, returned once. A user of the instance's list (api-credentials) gets it on every cluster; a user of the cluster's own list (api-credentials-external) on this cluster. The user's open sessions are refused from the next request and its API tokens are revoked: this is how a compromised user is banned. The instance's list is copied to the OpenSVC secret system/sec/repman when a cluster is on OpenSVC.",
+                "description": "Gives the user a new generated password, returned once. A user of the instance's list (api-credentials) gets it on every cluster; a user of the cluster's own list (api-credentials-external) on this cluster. The user's open sessions are refused from the next request and its API tokens are revoked: this is how a compromised user is banned. The new list is written to the versioned store at once, then to every server credential store (Vault, OpenSVC, Kubernetes) at its next pass, and to the configuration file under /etc that sets it, when there is one.",
                 "consumes": [
                     "application/json"
                 ],
