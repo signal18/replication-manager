@@ -12,7 +12,9 @@
 # It asserts that:
 #   1. print-defaults exits 0 and the server binary it ran is the one in /usr/sbin;
 #   2. what it sends holds the variable of the fetched configuration, as the server printed it;
-#   3. the dummy configuration is under the jobs directory, and nothing was created at /bootstrap;
+#   3. the dummy configuration (the fetched one, which may hold credentials) is removed from the jobs directory
+#      afterwards, and nothing was created at /bootstrap;
+#   3b. with no jobs directory, print-defaults fails with an error line and writes nothing at /dummy;
 #   4. the previous code (origin/develop before the fix, or OLD_REF) fails there, so the check can see the bug.
 # It also checks in the script itself that the two physical backup jobs work from the jobs directory, not from
 # /docker-entrypoint-initdb.d (the mariabackup_target_dir check runs that command for real).
@@ -57,7 +59,7 @@ chmod -R a+rX "$WORK" # read by the jobs user, mktemp makes it 0700
 
 run_as_jobs_user() { # <functions file>
   docker exec -u 4242:4242 -e PATH=/usr/local/bin:/usr/bin:/bin -e TMP_DIR=/var/lib/onp/.system/jobs "${P}_db" \
-    bash -c 'rm -rf "$TMP_DIR"/* 2>/dev/null; cd "$TMP_DIR" && bash /check/run.sh "$1" 2>&1; echo "received_var=$(grep -c -E -- "^--max[-_]connections=4242 *$" "$TMP_DIR/received" 2>/dev/null)"; echo "dummy_in_jobs=$(test -f "$TMP_DIR/dummy/dummy.cnf" && echo 1 || echo 0)"; echo "bootstrap=$(test -e /bootstrap && echo 1 || echo 0)"' _ "$1"
+    bash -c 'rm -rf "$TMP_DIR"/* 2>/dev/null; cd "$TMP_DIR" && bash /check/run.sh "$1" 2>&1; echo "received_var=$(grep -c -E -- "^--max[-_]connections=4242 *$" "$TMP_DIR/received" 2>/dev/null)"; echo "dummy_left=$(test -e "$TMP_DIR/dummy" && echo 1 || echo 0)"; echo "bootstrap=$(test -e /bootstrap && echo 1 || echo 0)"' _ "$1"
 }
 g() { echo "$out" | sed -n "s/^$1=//p" | tail -1; }
 
@@ -72,7 +74,11 @@ for img in "${IMAGES[@]}"; do
   case "$(g binary)" in /usr/sbin/mariadbd|/usr/sbin/mysqld) ok "the server binary is found in /usr/sbin out of the PATH: $(g binary)" ;; *) bad "server binary '$(g binary)'"; echo "$out" | sed 's/^/        /' ;; esac
   [ "$(g rc)" = 0 ] && ok "print-defaults exits 0 as a non-root user" || { bad "print-defaults exits '$(g rc)'"; echo "$out" | sed 's/^/        /'; }
   [ "$(g received_var)" = 1 ] && ok "what it sends holds the fetched configuration (--max_connections=4242)" || bad "the fetched variable is not in what it sends"
-  [ "$(g dummy_in_jobs)" = 1 ] && [ "$(g bootstrap)" = 0 ] && ok "the dummy configuration is under the jobs directory, nothing at /bootstrap" || bad "dummy in jobs '$(g dummy_in_jobs)', /bootstrap '$(g bootstrap)'"
+  [ "$(g dummy_left)" = 0 ] && [ "$(g bootstrap)" = 0 ] && ok "the fetched configuration is removed from the jobs directory, nothing at /bootstrap" || bad "dummy left '$(g dummy_left)', /bootstrap '$(g bootstrap)'"
+
+  out=$(docker exec -u 4242:4242 -e PATH=/usr/local/bin:/usr/bin:/bin -e TMP_DIR= "${P}_db" bash -c 'cd /tmp && bash /check/run.sh /check/new.sh 2>&1; echo "slash_dummy=$(test -e /dummy && echo 1 || echo 0)"')
+  [ "$(g rc)" = 1 ] && echo "$out" | grep -q "the jobs directory '' does not exist" && [ "$(g slash_dummy)" = 0 ] \
+    && ok "with no jobs directory print-defaults fails and says so, nothing at /dummy" || { bad "with no jobs directory: rc '$(g rc)', /dummy '$(g slash_dummy)'"; echo "$out" | sed 's/^/        /'; }
 
   if [ -s "$WORK/old.sh" ]; then
     out=$(run_as_jobs_user /check/old.sh)
@@ -87,7 +93,7 @@ done
 
 echo "=== the physical backup jobs"
 backup_cds=$(sed -n '/^        xtrabackup)$/,/^        mysqldump)$/p' "$SCRIPT" | grep -E '^\s+cd ')
-[ "$(echo "$backup_cds" | grep -c 'cd "\$TMP_DIR"')" = 2 ] && ! echo "$backup_cds" | grep -q docker-entrypoint-initdb.d \
+[ "$(echo "$backup_cds" | grep -c 'cd "\${TMP_DIR:?')" = 2 ] && ! echo "$backup_cds" | grep -q docker-entrypoint-initdb.d \
   && ok "the xtrabackup and mariabackup jobs work from the jobs directory" || bad "the backup jobs change to: $backup_cds"
 
 [ $ran -gt 0 ] || { echo "FAIL: no image ran"; exit 1; }

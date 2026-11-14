@@ -5,8 +5,8 @@
 # long options). --innobackupex is also deprecated (mariadb-backup 11.8 says so). The job now runs the native form,
 # --defaults-file first, then --backup ... --stream=xbstream --target-dir=<jobs dir>.
 # The check takes the command line from the script itself (the line that runs $MARIADB_BACKUP ... --backup ..., up to its pipe
-# to socat), runs it in the official mariadb image, with binary logging on, from the job's working directory (the jobs directory, as the job does since #2379) with the script's
-# variables set, and asserts that:
+# to socat), runs it in the official mariadb image, with binary logging on, from the job's working directory
+# (the jobs directory, as the job does since #2379) with the script's variables set, and asserts that:
 #   1. the command is the native form: --defaults-file comes first, --backup and --target-dir= are present, --innobackupex is not;
 #   2. it exits 0, streams data, prints "completed OK!" in the form doneJob greps for, and prints the binlog position line in
 #      the form the server parses (filename '..', position '..', GTID of the last change '..');

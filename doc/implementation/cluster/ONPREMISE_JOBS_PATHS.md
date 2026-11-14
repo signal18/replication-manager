@@ -20,8 +20,11 @@ Three places assumed the container:
 - The dummy configuration goes to `$TMP_DIR/dummy`. `TMP_DIR` is what replication-manager renders for
   `%%ENV:SVC_CONF_ENV_JOBS_DATADIR%%` (`ServerMonitor.GetJobDatadir`: `<datadir>/.system/jobs`, or
   `/var/lib/replication-manager-jobs` in the legacy split layout). It exists on every orchestrator and belongs to
-  the jobs user, so containers use it too: one path, no orchestrator branch. The directory is removed and
-  re-created at each print-defaults, as `/bootstrap/dummy` was.
+  the jobs user, so containers use it too: one path, no orchestrator branch. The directory is created at each
+  print-defaults and removed once its defaults are sent, whatever the outcome: the fetched configuration may hold
+  credentials and nothing reads it afterwards (`/bootstrap/dummy` was kept between runs). An unset or missing jobs
+  directory fails print-defaults with an error line instead of writing to `/dummy`, and the backup jobs'
+  `cd "${TMP_DIR:?...}"` stops the job instead of a silent `cd ""`.
 - The two physical backup jobs run from `$TMP_DIR`. Their working directory matters only for stray files a tool
   could leave there; `share/scripts/tests/mariabackup_target_dir/docker_check.sh` runs the job's command from that
   directory and checks that nothing but `backup.out` is left in it.
@@ -37,7 +40,8 @@ only, never over SSH on a host.
 - `share/scripts/tests/onpremise_jobs_paths/docker_check.sh`: on mariadb:10.11, mariadb:11.8 and mysql:8.4, the
   script's own print-defaults functions run as a non-root user without a passwd entry, with
   `PATH=/usr/local/bin:/usr/bin:/bin`, the API stubbed. It asserts exit 0, the binary found in `/usr/sbin`, the
-  fetched variable in what is sent, the dummy under the jobs directory and nothing at `/bootstrap`, and that the
+  fetched variable in what is sent, the fetched configuration removed afterwards and nothing at `/bootstrap`, a
+  loud failure with no jobs directory, and that the
   code before the fix fails there (`cannot create directory '/bootstrap'`). It also checks that both backup jobs
   change to `$TMP_DIR`.
 - `share/scripts/tests/mariabackup_target_dir/docker_check.sh`: now runs from the jobs directory. Its command

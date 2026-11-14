@@ -1335,29 +1335,28 @@ print_defaults_for_fetch() {
 
     # Under the jobs directory, which exists and belongs to the jobs user on every
     # orchestrator: /bootstrap is the OpenSVC container layout, absent on an on-premise host
-    # and not creatable there by a non-root jobs user.
-    local extract_dir="$TMP_DIR/dummy"
+    # and not creatable there by a non-root jobs user. Unset, the path would be /dummy.
+    if [[ -z "$TMP_DIR" || ! -d "$TMP_DIR" ]]; then
+        send_lines_to_api "ERROR: the jobs directory '$TMP_DIR' does not exist" "print-defaults" "$LVL_ERROR"
+        return 1
+    fi
+    local extract_dir="$TMP_DIR/dummy" rc=1
 
     # Fetch and extract configuration (use global TOKEN if available)
     if ! fetch_and_extract_config "$extract_dir" "$(job_token)"; then
         send_lines_to_api "ERROR: Failed to fetch and extract configuration" "print-defaults" "$LVL_ERROR"
-        return 1
-    fi
-
-    # Create dummy config file
-    if ! create_dummy_config_file "$extract_dir"; then
+    elif ! create_dummy_config_file "$extract_dir"; then
         send_lines_to_api "ERROR: Failed to create dummy.cnf file" "print-defaults" "$LVL_ERROR"
-        return 1
-    fi
-
-    # Run mariadbd with dummy configuration
-    if send_mariadb_defaults "$extract_dir/dummy.cnf" "$monitor_addr:$dummy_port" "$log_file"; then
+    elif send_mariadb_defaults "$extract_dir/dummy.cnf" "$monitor_addr:$dummy_port" "$log_file"; then
         send_lines_to_api "Dry run (dummy) completed successfully" "print-defaults" "$LVL_DEBUG"
-        return 0
+        rc=0
     else
         send_lines_to_api "ERROR: Dry run (dummy) failed" "print-defaults" "$LVL_ERROR"
-        return 1
     fi
+    # The fetched configuration is not kept between runs: it may hold credentials, and
+    # nothing reads it once its defaults are sent.
+    rm -rf "$extract_dir"
+    return $rc
 }
 
 # Parse JSON field (simple grep-based parser for portability)
@@ -3670,13 +3669,13 @@ for job in "${JOBS[@]}"; do
             ;;
         xtrabackup)
             # The jobs directory: /docker-entrypoint-initdb.d exists in the containers only
-            cd "$TMP_DIR" || exit 1
+            cd "${TMP_DIR:?the jobs directory is not set}" || exit 1
             xtrabackup_undo_args
             $XTRABACKUP --defaults-file=$MYSQL_CONF/my.cnf --backup "${XB_UNDO_ARGS[@]}" -u$USER -H$MYSQL_SERVER -p$PASSWORD -P$MYSQL_PORT --stream=xbstream --target-dir=$LOG_DIR/ 2>"$LOG_DIR/backup.out" | job_stream_signed | socat -u stdio TCP:$ADDRESS &>"$LOG_DIR/$job.out"
             ;;
         mariabackup)
             # The jobs directory: /docker-entrypoint-initdb.d exists in the containers only
-            cd "$TMP_DIR" || exit 1
+            cd "${TMP_DIR:?the jobs directory is not set}" || exit 1
             $MARIADB_BACKUP --defaults-file="$MYSQL_CONF/my.cnf" --backup --databases-exclude=.system --protocol=TCP --user="$USER" --host="$MYSQL_SERVER" --password="$PASSWORD" --port="$MYSQL_PORT" --stream=xbstream --target-dir="$LOG_DIR/" 2>"$LOG_DIR/backup.out" | job_stream_signed | socat -u stdio TCP:$ADDRESS &>"$LOG_DIR/$job.out"
             ;;
         mysqldump)
