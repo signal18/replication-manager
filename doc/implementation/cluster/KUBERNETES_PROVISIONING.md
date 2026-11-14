@@ -174,14 +174,31 @@ database PVC before replacing a database. When one of them is refused the
 operation fails at once with an error naming the missing permission, changes
 nothing and force-deletes nothing.
 
-The regression test `testK8SProvisionSchedulerVolumeBinding` (`regtest/`) needs one
-permission more than the table above: `get` on `apps/replicasets` in the database
-namespace, because it follows the owner chain Pod → ReplicaSet → Deployment to prove
-that the replacement Pod belongs to the new Deployment. This is a requirement of the
-test only: replication-manager itself needs only `list` on `replicasets` (native Pod
-resize), and the production RBAC above is unchanged. A test run whose identity lacks it
-(or `list` on `pods`) fails at once with the refused verb and resource, not after the
-120 s wait for the replacement Pod.
+The permissions above are the contract of replication-manager's own provisioning and
+lifecycle operations. The regression test `testK8SProvisionSchedulerVolumeBinding`
+(`regtest/`) is not part of that contract. It calls the real unprovision and
+provision (which need what the table lists) and, with the identity repman uses, also
+reads the cluster itself to verify the result by identity: the old Deployment is gone,
+the replacement is a new Deployment, its Pod is a new Pod owned through the new
+Deployment's ReplicaSet, the PVC is Bound, and both persist. Its own reads, in the
+database namespace:
+
+| Read by the test | In the contract above? |
+| --- | --- |
+| `get` on `apps/deployments` (identity and deletion timestamp of the old and the new Deployment) | yes (`deployments` `get`) |
+| `list` on `pods` (the old Pods, the replacement Pod) | yes (`pods` `list`) |
+| `get` on `persistentvolumeclaims` (the PVC is Bound) | yes (`persistentvolumeclaims` `get`, Manifest View) |
+| `get` on `pods` (the replacement Pod persists) | no: replication-manager only lists Pods |
+| `get` on `apps/replicasets` (the Pod → ReplicaSet → Deployment owner chain) | no: replication-manager needs only `list` on `replicasets`, for the native Pod resize |
+
+So a test run needs, in addition to the table, `get` on `pods` and `get` on
+`apps/replicasets`. These two are requirements of the test only; the production table
+above is unchanged. Of the test's reads, only the replacement-Pod lookup (`Pods.List` and
+`ReplicaSets.Get`) fails at once on `Forbidden` or `Unauthorized`, with the verb and the
+resource. A refusal of any other read of the test is not treated as an authorization
+failure: it surfaces through that step's own failure message, which does not necessarily
+name the permission (a refused `PersistentVolumeClaims.Get`, for instance, is reported as
+"PVC did not bind within 90s").
 
 The config archive itself is served by `handlerMuxServersPortConfig`
 (`server/api_database.go`) via `GenerateDatabaseConfig`; only
