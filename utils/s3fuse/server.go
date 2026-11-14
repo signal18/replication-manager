@@ -14,13 +14,13 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
-	"runtime"
 	"strings"
 	"sync"
 	"syscall"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws/credentials"
+	"github.com/signal18/replication-manager/utils/selfexec"
 )
 
 // The mount's server is a child process of this binary (#2246): ServerCommand, started from
@@ -122,7 +122,7 @@ func (s *server) send(r request) error {
 
 // startServer starts the mount's server and returns once it mounted, or why it did not.
 func startServer(ctx context.Context, o Options) (*server, error) {
-	cmd := exec.Command(selfExecutable(), ServerCommand)
+	cmd := exec.Command(selfexec.Path(), ServerCommand)
 	cmd.Args[0] = "replication-manager" // ps shows what it is, not /proc/self/exe
 	cmd.Env = []string{}
 	for _, k := range serverEnv {
@@ -148,11 +148,11 @@ func startServer(ctx context.Context, o Options) (*server, error) {
 	}
 	cmd.Stdout, cmd.Stderr = logW, logW
 	cmd.ExtraFiles = []*os.File{evW}
-	cmd.SysProcAttr = serverProcAttr()
+	cmd.SysProcAttr = selfexec.ChildAttr()
 
 	s := &server{stdin: stdin, unmounted: make(chan error, 1), exited: make(chan struct{})}
 	waited := make(chan error, 1)
-	if err := startLocked(cmd, waited); err != nil {
+	if err := selfexec.StartLocked(cmd, waited); err != nil {
 		stdin.Close()
 		evR.Close()
 		evW.Close()
@@ -303,23 +303,6 @@ func startServer(ctx context.Context, o Options) (*server, error) {
 // backupUnmountTimeout bounds the server's answer to a stop: GeeseFS's flush and its unmount,
 // retried 20 s when busy
 const backupUnmountTimeout = 50 * time.Second
-
-// startLocked starts cmd from a goroutine locked to its thread for the child's whole life: the
-// child's parent-death signal follows the thread that started it, not the process, and Go
-// would otherwise end or reuse that thread. waited gets cmd.Wait's result.
-func startLocked(cmd *exec.Cmd, waited chan<- error) error {
-	started := make(chan error, 1)
-	go func() {
-		runtime.LockOSThread() // never unlocked: the thread ends with this goroutine
-		if err := cmd.Start(); err != nil {
-			started <- err
-			return
-		}
-		started <- nil
-		waited <- cmd.Wait()
-	}()
-	return <-started
-}
 
 // credentialsInterval: the credentials are checked that often and sent again when renewed
 const credentialsInterval = 30 * time.Second

@@ -435,6 +435,9 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 		if test.Name == "testCredentialVersionsRotation" {
 			res = regtest.TestCredentialVersionsRotation(cl, test.ConfigFile, &test)
 		}
+		if test.Name == "testAPIUserRotatePassword" {
+			res = regtest.TestAPIUserRotatePassword(cl, test.ConfigFile, &test)
+		}
 		if test.Name == "testCredentialStoreSaveOnly" {
 			res = regtest.TestCredentialStoreSaveOnly(cl, test.ConfigFile, &test)
 		}

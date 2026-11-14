@@ -20,7 +20,7 @@ import (
 func (cluster *Cluster) OnPremiseProvisionBootsrapProxy(server DatabaseProxy, client *sshclient.Client) error {
 	adminuser := "admin"
 	adminpassword := "repman"
-	if user, ok := cluster.APIUsers[adminuser]; ok {
+	if user, ok := cluster.GetAPIUsers()[adminuser]; ok {
 		adminpassword = user.Password
 	}
 	envs := "export REPLICATION_MANAGER_URL=\"" + cluster.Conf.APIPublicURL + "\""

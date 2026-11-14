@@ -54,7 +54,7 @@ func (server *ServerMonitor) GetSshEnv() string {
 	*/
 	adminuser := "admin"
 	adminpassword := "repman"
-	if user, ok := server.ClusterGroup.APIUsers[adminuser]; ok {
+	if user, ok := server.ClusterGroup.GetAPIUsers()[adminuser]; ok {
 		adminpassword = user.Password
 	}
 

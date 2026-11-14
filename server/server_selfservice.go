@@ -63,7 +63,7 @@ func (repman *ReplicationManager) selfServiceCapable() (bool, string) {
 func (repman *ReplicationManager) countSponsoredClusters(identity string) (int, []string) {
 	names := []string{}
 	for _, cl := range repman.Clusters {
-		if u, ok := cl.APIUsers[identity]; ok && u.Roles[config.RoleSponsor] {
+		if u, ok := cl.GetAPIUsers()[identity]; ok && u.Roles[config.RoleSponsor] {
 			names = append(names, cl.Name)
 		}
 	}
@@ -483,7 +483,7 @@ func (repman *ReplicationManager) clusterAddAuthorize(r *http.Request) (identity
 // on a cluster it does not sponsor.
 func (repman *ReplicationManager) holdsProvClusterOutsideSponsorship(identity string) bool {
 	for _, cl := range repman.Clusters {
-		if u, ok := cl.APIUsers[identity]; ok && u.Grants[config.GrantProvCluster] && !u.Roles[config.RoleSponsor] {
+		if u, ok := cl.GetAPIUsers()[identity]; ok && u.Grants[config.GrantProvCluster] && !u.Roles[config.RoleSponsor] {
 			return true
 		}
 	}
@@ -509,7 +509,7 @@ func (repman *ReplicationManager) CreateSelfServiceSponsorForm(identity string) 
 // own Cloud18 user, sysops on every cluster) is left untouched.
 func (repman *ReplicationManager) attachSelfServiceSponsor(cl *cluster.Cluster, identity string) error {
 	form := repman.CreateSelfServiceSponsorForm(identity)
-	if u, ok := cl.APIUsers[identity]; ok {
+	if u, ok := cl.GetAPIUsers()[identity]; ok {
 		if u.Grants[config.GrantClusterSettings] {
 			return nil
 		}
@@ -530,7 +530,7 @@ func (repman *ReplicationManager) attachSelfServiceSponsor(cl *cluster.Cluster, 
 	cl.LoadAPIUsers()
 	cl.SaveAcls()
 	cl.Save()
-	if u, ok := cl.APIUsers[identity]; !ok || !u.Roles[config.RoleSponsor] {
+	if u, ok := cl.GetAPIUsers()[identity]; !ok || !u.Roles[config.RoleSponsor] {
 		return fmt.Errorf("sponsor role not applied to %s on %s", identity, cl.Name)
 	}
 	return nil

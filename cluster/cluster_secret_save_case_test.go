@@ -16,9 +16,7 @@ import (
 
 // secretKeysWithoutSaveCase are the config.SecretKeys GetEncryptedValueFromMemory has no case
 // for, each with why: any other key without a case is saved as "" and lost at the next restart.
-var secretKeysWithoutSaveCase = map[string]string{
-	"meet-token": "no config field: the meet token is fetched at each login and kept in memory",
-}
+var secretKeysWithoutSaveCase = map[string]string{}
 
 // Every secret key has a save case: with an encryption key, its value is saved encrypted.
 func TestSecretKeysHaveSaveCase(t *testing.T) {

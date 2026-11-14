@@ -427,7 +427,14 @@ func (cluster *Cluster) KeyRotation() {
 	}
 }
 
+// GeneratePassword is a random password of 8 characters.
 func (cluster *Cluster) GeneratePassword() (string, error) {
+	return cluster.GeneratePasswordLength(8)
+}
+
+// GeneratePasswordLength is a random password of length characters, from crypto/rand.
+// The set has no ',' nor ':', which separate the entries of a user:password list.
+func (cluster *Cluster) GeneratePasswordLength(length int) (string, error) {
 	const (
 		digits = "0123456789"
 		lowers = "abcdefghijklmnopqrstuvwxyz"
@@ -435,7 +442,6 @@ func (cluster *Cluster) GeneratePassword() (string, error) {
 		//symbols = "!\"#$%&'()*+,-./0123456789:;<=>?@[\\]^_`{|}~"
 		symbols = "!#$%&()*+-;<=>?[]^_{|}~"
 	)
-	var length = 8
 	var charset = [](byte)(lowers)
 	charset = append(charset, []byte(digits)...)
 	charset = append(charset, []byte(lowers)...)

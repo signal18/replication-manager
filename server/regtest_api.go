@@ -26,7 +26,7 @@ import (
 // first API user of the cluster (by name) holding every grant asked for.
 func (repman *ReplicationManager) regtestAPIToken(cl *cluster.Cluster, grants ...string) (string, error) {
 	var names []string
-	for name := range cl.APIUsers {
+	for name := range cl.GetAPIUsers() {
 		names = append(names, name)
 	}
 	sort.Strings(names)

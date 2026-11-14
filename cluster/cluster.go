@@ -519,10 +519,12 @@ type Cluster struct {
 	apiTokenPrincipals sync.Map `json:"-"`
 	// Whether a user holds token-create, set by LoadAPIUsers, read by the tick (WARN0251).
 	apiTokenIssuer atomic.Bool
-	// apiUsersMu serializes the writers of APIUsers (copy on write: setAPIUser, deleteAPIUser,
-	// LoadAPIUsers). Readers take no lock: each writer swaps in a new map whole, so a reader never
-	// sees a map being written (a concurrent map read and write stops the process, #2185 review).
-	apiUsersMu sync.Mutex
+	// apiUsersMu guards the APIUsers field. Writers (setAPIUser, deleteAPIUser, LoadAPIUsers)
+	// build a new map and swap it in under the write lock, so a map is never written once
+	// published (a concurrent map read and write stops the process, #2185 review). Readers take
+	// the map through GetAPIUsers, under the read lock: the swap itself is a write of the field,
+	// and a reader without the lock races it (each password rotation reloads every cluster's list).
+	apiUsersMu sync.RWMutex
 	// Per-cluster preserved variables (replaces ProvDBConfigPreserveVars mechanism)
 	preservedVars               map[string]string          `json:"-"`
 	preservedVarsExcludeServers map[string]map[string]bool `json:"-"` // varName -> {serverID -> true}
@@ -747,6 +749,7 @@ func (cluster *Cluster) Init(confs *config.ConfVersion, cfgGroup string, tlog *s
 	cluster.Conf.MigrateArchives()
 	// the credential store entries, vault-* migrated into vault-default (#2227)
 	cluster.Conf.MigrateSecretKvs()
+	cluster.warnReservedPrefixSecretKvs()
 	// the cluster's own scheduler-jobs-exec-remote, not the map parsed for the defaults
 	cluster.Conf.ParseJobsExecOverrides()
 
@@ -2152,6 +2155,10 @@ func (cluster *Cluster) CredentialChain() *credstore.Chain {
 	if cluster.credChain == nil || cluster.credChain.Conf() != cluster.Conf {
 		// the version store first: the config keeps the starting value (#2227 rule 1)
 		cluster.credChain = credstore.NewVersionedChain(cluster.Conf, cluster.Save, cluster.versionStore())
+		if cluster.ServerGlobals != nil && cluster.ServerGlobals.ServerSecrets != nil {
+			// the server secrets first: the server's, never a cluster's own copy
+			cluster.credChain = credstore.NewClusterChain(cluster.Conf, cluster.Save, cluster.ServerGlobals.ServerSecrets, cluster.versionStore())
+		}
 		// each change is a version in every active store, queued after the chain's lock (#2227)
 		cluster.credChain.OnSet(cluster.onCredentialChange)
 	}
@@ -2603,7 +2610,7 @@ func (cluster *Cluster) GetEncryptedValueFromMemory(key string) string {
 		lst_Users := strings.Split(cluster.Conf.Secrets.Get(key).Value, ",")
 		for ind := range lst_Users {
 			user_pass := strings.Split(lst_Users[ind], ":")
-			if APIuser, ok := cluster.APIUsers[user_pass[0]]; ok {
+			if APIuser, ok := cluster.GetAPIUsers()[user_pass[0]]; ok {
 				tab_ApiUser = append(tab_ApiUser, APIuser.User+":"+APIuser.Password)
 			}
 		}
@@ -2824,6 +2831,7 @@ func (cluster *Cluster) ReloadConfig(conf config.Config) {
 	cluster.Conf.MigrateSecretKvs()
 	cluster.Conf.ParseJobsExecOverrides()
 	cluster.Unlock()
+	cluster.warnReservedPrefixSecretKvs()
 	// the backups already read glued to the archive list as the config is (#2091)
 	go cluster.glueCatalogue()
 

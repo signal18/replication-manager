@@ -184,16 +184,36 @@ func (s *VersionStore) KeepConfigValues(key string) {
 	s.trim(key, configKeeps)
 }
 
+// add appends a version of key, the current one. Its time is never before the last version's:
+// a merge orders the versions by time, so a monitor whose clock is behind (a standby after a
+// failover) would otherwise write a rotation that sorts before the ban it replaces, and the
+// compromised value would be the current one again (CREDENTIAL_STORES.md "Clocks").
 func (s *VersionStore) add(key, stored string, at time.Time, by int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.addLocked(key, stored, at, by)
+}
+
+// addLocked is add, s.mu held.
+func (s *VersionStore) addLocked(key, stored string, at time.Time, by int) {
 	vs := s.versions[key]
 	n := 1
 	if len(vs) > 0 {
-		n = vs[len(vs)-1].Version + 1
+		last := vs[len(vs)-1]
+		n = last.Version + 1
+		at = AfterLast(at, last.At())
 	}
 	s.versions[key] = append(vs, FileVersion{Version: n, HashValue: stored, RotatedAt: at.UTC().Format(time.RFC3339Nano), WrittenBy: by})
 	s.dirty = true
+}
+
+// AfterLast is at, or just after last when at is not after it: a new version always sorts
+// after the one it replaces, whatever this monitor's clock says.
+func AfterLast(at, last time.Time) time.Time {
+	if !at.After(last) {
+		return last.Add(time.Nanosecond)
+	}
+	return at
 }
 
 // TakeConfigFileValue is the start's check of key set in a config file (immutable, rule 9),
@@ -232,10 +252,12 @@ func (s *VersionStore) TakeConfigFileValue(key, plain string) bool {
 		return false
 	}
 	v.Version = 1
+	at := time.Now().UTC()
 	if len(vs) > 0 {
 		v.Version = vs[len(vs)-1].Version + 1
+		at = AfterLast(at, vs[len(vs)-1].At())
 	}
-	v.RotatedAt = time.Now().UTC().Format(time.RFC3339Nano)
+	v.RotatedAt = at.Format(time.RFC3339Nano)
 	s.versions[key] = append(vs, v)
 	s.dirty = true
 	return true
@@ -279,14 +301,14 @@ func (s *VersionStore) Insert(key string, v Version) {
 // it differs from the last one (the file's history of the other secrets, as before #2227).
 func (s *VersionStore) Record(key, stored, plain string) bool {
 	conf := s.conf()
+	// the check and the append under one lock: two saves at once record one version
 	s.mu.Lock()
+	defer s.mu.Unlock()
 	vs := s.versions[key]
 	if len(vs) > 0 && conf.DecryptSecretValue(key, vs[len(vs)-1].HashValue) == plain {
-		s.mu.Unlock()
 		return false
 	}
-	s.mu.Unlock()
-	s.add(key, stored, time.Now().UTC(), conf.ArbitrationSasUniqueId)
+	s.addLocked(key, stored, time.Now().UTC(), conf.ArbitrationSasUniqueId)
 	return true
 }
 
@@ -300,6 +322,25 @@ func (s *VersionStore) Latest(key string) (Version, bool) {
 	}
 	last := vs[len(vs)-1]
 	return Version{Value: s.conf().DecryptSecretValue(key, last.HashValue), At: last.At(), By: last.WrittenBy}, true
+}
+
+// MarkConfigFileValue records that the config file now holds key's current version, plain its
+// value (the /etc writer wrote it there): that version becomes the value last seen in the file,
+// so the next start's TakeConfigFileValue sees no operator's edit and makes no version. Nothing
+// when the current version is not plain. True when it marked it.
+func (s *VersionStore) MarkConfigFileValue(key, plain string) bool {
+	conf := s.conf()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	vs := s.versions[key]
+	if len(vs) == 0 || conf.DecryptSecretValue(key, vs[len(vs)-1].HashValue) != plain {
+		return false
+	}
+	if !vs[len(vs)-1].FromConfigFile {
+		vs[len(vs)-1].FromConfigFile = true
+		s.dirty = true
+	}
+	return true
 }
 
 // Load replaces the versions with the file's.
@@ -372,6 +413,25 @@ func (s *VersionStore) Versions(key string) []FileVersion {
 	return append([]FileVersion(nil), s.versions[key]...)
 }
 
+// Take removes the versions of the keys held answers and returns them; the file is written
+// without them at the next save. A server secret's versions an older release kept in a
+// cluster's file are taken this way (CREDENTIAL_STORES.md "Two levels").
+func (s *VersionStore) Take(held func(string) bool) map[string][]FileVersion {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := map[string][]FileVersion{}
+	for k, vs := range s.versions {
+		if held(k) {
+			out[k] = vs
+			delete(s.versions, k)
+		}
+	}
+	if len(out) > 0 {
+		s.dirty = true
+	}
+	return out
+}
+
 // MarkDirty asks the next save to write the file.
 func (s *VersionStore) MarkDirty() {
 	s.mu.Lock()
@@ -426,6 +486,13 @@ func (s *VersionStore) restore(key string, raw interface{}, present bool) {
 func isHeldRefusal(err error) bool {
 	var h *heldRefusal
 	return errors.As(err, &h)
+}
+
+// Empty: no key has a version.
+func (s *VersionStore) Empty() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.versions) == 0
 }
 
 // Count is how many versions key has.

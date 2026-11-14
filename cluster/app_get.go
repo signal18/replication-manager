@@ -196,8 +196,7 @@ func (app *App) GetAppAPIView() *AppAPIView {
 	}
 	if app.AppConfig != nil {
 		cfg := cloneAppConfigForSubstitution(app.AppConfig)
-		cfg.AppDbPass = "*****"
-		MaskAppGeneratedSecrets(cfg)
+		MaskAppSecrets(cfg)
 		view.AppConfig = &appConfigAPIView{AppConfig: cfg}
 		if cfg.Deployment != nil {
 			view.Routes = cfg.Deployment.Routes
@@ -681,7 +680,7 @@ func (p *App) GetSshEnv() string {
 	*/
 	adminuser := "admin"
 	adminpassword := "repman"
-	if user, ok := p.ClusterGroup.APIUsers[adminuser]; ok {
+	if user, ok := p.ClusterGroup.GetAPIUsers()[adminuser]; ok {
 		adminpassword = user.Password
 	}
 	return "export REPLICATION_MANAGER_HOST_USER=\"" + p.GetUser() + "\";export REPLICATION_MANAGER_HOST_PASSWORD=\"" + p.GetPass() + "\";export REPLICATION_MANAGER_URL=\"" + p.ClusterGroup.Conf.MonitorAPIURL() + "\";export REPLICATION_MANAGER_URL_DR=\"" + p.ClusterGroup.bootstrapDRURLs() + "\";export REPLICATION_MANAGER_USER=\"" + adminuser + "\";export REPLICATION_MANAGER_PASSWORD=\"" + adminpassword + "\";export REPLICATION_MANAGER_HOST_NAME=\"" + p.GetHost() + "\";export REPLICATION_MANAGER_HOST_PORT=\"" + p.GetPort() + "\";export REPLICATION_MANAGER_HOST_TYPE=\"" + p.Type + "\";export REPLICATION_MANAGER_CLUSTER_NAME=\"" + p.ClusterGroup.Name + "\"\n"
@@ -893,17 +892,9 @@ func (app *App) GetStartTimeout() string {
 	return "2m"
 }
 
-// MaskAppGeneratedSecrets masks, on a copy for the wire, the secrets replication-manager
-// generates for an app ({{app.randompassword}}, {{app.api.token}} #2158): stored encrypted,
-// never sent.
-func MaskAppGeneratedSecrets(cfg *config.AppConfig) {
-	if cfg == nil {
-		return
-	}
-	if cfg.AppRandomPassword != "" {
-		cfg.AppRandomPassword = "*****"
-	}
-	if cfg.AppAPIToken != "" {
-		cfg.AppAPIToken = "*****"
-	}
+// MaskAppSecrets masks, on a copy for the wire, an app's secret settings (tagged
+// secret:"true": its database password, the password and the API token replication-manager
+// generates for it #2158): stored encrypted, never sent.
+func MaskAppSecrets(cfg *config.AppConfig) {
+	config.MaskSecretFields(cfg)
 }

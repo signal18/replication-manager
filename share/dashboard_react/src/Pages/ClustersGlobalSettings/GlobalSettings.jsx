@@ -20,6 +20,7 @@ import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { HiQuestionMarkCircle } from 'react-icons/hi'
 import SectionFrame from '../../components/SectionFrame'
+import SecretKvEntries from '../Settings/SecretKvEntries'
 
 // cards (#2268): which of its cards to show, by title (Monitoring Units, HTTP & API, Alerts, Logs, AI
 // Assistant (MCP)); none = all. The Alerts card is shown in Cloud18 > Support.
@@ -135,6 +136,23 @@ function GlobalSettings({ config, cards }) {
           }}
         />
       )
+    },
+    {
+      globalSetting: 'monitoring-etc-credential-writer',
+      key: 'Write Rotated Credentials To /etc',
+      help: h(`**Write Rotated Credentials To /etc**\n\nOn (the default): after a rotation (a ban) of a server credential set in a configuration file under /etc (api-credentials, the SMTP or GitLab password...), the new value is written there too, so the file never keeps a banned password. replication-manager drops root after its start: a small child process started before, which stays root, does the write. It only replaces a key already set in the [default] section, keeps the file's encrypted or plain form, comments, owner and mode, and never adds a key. The child is started at the start: switching this on takes effect at the next start. Off: the versioned store still wins at the start, but the file keeps the old value (GWARN025).\n\nConfig: \`monitoring-etc-credential-writer\``, 'Write Rotated Credentials To /etc'),
+      value: (
+        <RMSwitch
+          confirmTitle='Confirm switch global settings for monitoring-etc-credential-writer?'
+          onChange={(_v, setRefresh) => dispatch(switchGlobalSetting({ setting: 'monitoring-etc-credential-writer', setRefresh }))}
+          isChecked={config?.monitoringEtcCredentialWriter}
+        />
+      )
+    },
+    {
+      key: 'Server Credential Stores',
+      help: h(`**Server Credential Stores**\n\nThe stores that keep every version of this instance's server secrets (the API users' list api-credentials, the SMTP and GitLab passwords...). A store is a vault (path-prefix/system/repman/<instance name>), the OpenSVC secret system/sec/repman or a Kubernetes Secret repman-system (keys <instance name>_<key>), the last two through the connection of a cluster on that orchestrator. They are never copied to a cluster's stores, which a cluster's sponsor may switch on. Only the sysops and extsysops of this instance see and change them (the server credentials grant on every cluster). Nothing is written until the instance is named: its name is Cloud18 Domain / Cloud18 Sub Domain / Cloud18 Sub Domain Zone, registered or not, set by a sysops or extsysops; changing it moves every server secret to the new name. A store behind shows a state here and on every cluster.`, 'Server Credential Stores'),
+      value: <SecretKvEntries level='server' />
     },
     {
       globalSetting: 'api-token-timeout',

@@ -53,7 +53,7 @@ func (repman *ReplicationManager) AuthorizeMCPGlobal(p *repmanmcp.Principal, gra
 		}
 	default:
 		for _, cl := range repman.Clusters {
-			if u, found := cl.APIUsers[p.User]; found && u.Grants[grant] {
+			if u, found := cl.GetAPIUsers()[p.User]; found && u.Grants[grant] {
 				ok = true
 				break
 			}

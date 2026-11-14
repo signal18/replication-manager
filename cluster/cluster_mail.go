@@ -52,7 +52,7 @@ func (cluster *Cluster) GetAlertRecipients(recipient AlertRecipient) string {
 		add(email)
 	}
 
-	users := cluster.APIUsers
+	users := cluster.GetAPIUsers()
 	if recipient.All {
 		for name, u := range users {
 			if _, err := mail.ParseAddress(name); u.Grants[config.GrantAlertMailReceiver] && err == nil {

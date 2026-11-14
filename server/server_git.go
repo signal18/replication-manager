@@ -1839,6 +1839,16 @@ func (repman *ReplicationManager) PushConfigToGit() error {
 		}
 	}
 
+	// Add the server secrets' versioned file (encrypted, F9): the standby merges it (rule 11)
+	if _, err := os.Stat(filepath.Join(path, "secret_store.json")); err == nil {
+		if _, err := w.Add("secret_store.json"); err == nil {
+			changedFiles = append(changedFiles, "secret_store.json")
+		} else {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlErr,
+				"Git error: cannot add %s: %s", "secret_store.json", err)
+		}
+	}
+
 	// Add this instance's config event log: peers replicate config changes
 	// by replaying it (doc/implementation/config/CONFIG_EVENT_LOG.md) — an
 	// unstaged log means events never leave this node.

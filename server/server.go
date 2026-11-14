@@ -83,6 +83,8 @@ var RepMan *ReplicationManager
 type ReplicationManager struct {
 	credChain                    *credstore.Chain // CredentialChain (#2075)
 	credChainMu                  sync.Mutex
+	serverSecrets                serverSecrets                      // the server level's versions and file (server_secret_level.go)
+	serverSecretKv               serverSecretKv                     // the server level's credential stores (server_secret_kv.go)
 	selfServiceMu                sync.Mutex                         // guards selfServiceSnap and selfServiceVerdicts
 	selfServiceVerdicts          map[string]selfServiceVerdict      // identity -> enabled-script verdict within the cache TTL
 	selfServiceFlight            singleflight.Group                 // one snapshot computation, one script run per identity, at a time
@@ -160,6 +162,8 @@ type ReplicationManager struct {
 	//Adding default flags from AddFlags
 	CommandLineFlag []string `json:"-"`
 	ConfigPathList  []string `json:"-"`
+	// the /etc credential writer and its failures (server_etc_writer.go)
+	etcCredentials etcCredentials
 	// ReadOnlyCommand: the configuration load only reads (the decrypt command): InitConfig creates no
 	// key, no directory and removes no legacy file. The command itself then removes the old *.reveal
 	// output files (config.RemoveRevealFiles), on purpose.
@@ -453,6 +457,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.ConfRewrite, "monitoring-save-config", true, "Save configuration changes to <monitoring-datadir>/<cluster_name> ")
 	flags.BoolVar(&conf.ConfRestoreOnStart, "monitoring-restore-config-on-start", false, "Wipe working directory and restore config")
 	flags.BoolVar(&conf.MonitoringMergeConfigOnStart, "monitoring-merge-config-on-start", false, "Merge configuration changes to source config.toml file (/etc or other source location) ")
+	flags.BoolVar(&conf.MonitoringEtcCredentialWriter, "monitoring-etc-credential-writer", true, "After a rotation of a server credential set in a configuration file under /etc (api-credentials, SMTP, GitLab passwords...), write the new value there too, through a child process started as root before the privilege drop, so the file never keeps a banned password. Read at the start: off, no child is started")
 	flags.BoolVar(&conf.MonitoringSecretVersioning, "monitoring-secret-versioning", true, "Keep the versions of the cluster's secrets (database and proxy credentials, app secrets), encrypted, in the cluster's local file: a change or rotation becomes a version (needs the encryption key)")
 	flags.BoolVar(&conf.MonitoringSecretVersioningAutoPrune, "monitoring-secret-versioning-auto-prune", false, "Automatically prune tracked secret versions during reconciliation")
 	flags.IntVar(&conf.MonitoringSecretVersioningKeepLast, "monitoring-secret-versioning-keep-last", 0, "Keep only the last N versions per secret key when auto-prune is enabled (0 = unlimited)")
@@ -2193,6 +2198,8 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 	if k == nil {
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "No existing password encryption key in global section")
 	}
+	// the server's credential stores: read from [default] and [saved-default] only
+	conf.LoadServerSecretKvs()
 	*repman.Conf = conf
 
 	//	backupvipersave := viper.GetViper()
@@ -2390,6 +2397,8 @@ func (repman *ReplicationManager) GetClusterConfig(firstRead *viper.Viper, Immua
 		repman.VersionConfs[cluster] = confs
 		repman.Unlock()
 	}
+	// a cluster never holds the server's credential stores, whatever its section says
+	clusterconf.ServerSecretKvs = nil
 	return clusterconf
 }
 
@@ -2577,10 +2586,14 @@ func (repman *ReplicationManager) LimitPrivileges() {
 				}
 			}
 
+			// the /etc credential writer stays root: started before the drop
+			repman.startEtcWriter(true, uidInt, gidInt)
+
 			// Set GID (Group ID)
 			err = syscall.Setgid(gidInt)
 			if err != nil {
 				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error setting GID: %v", err)
+				repman.keepRootEtcWriter()
 				return
 			}
 
@@ -2588,6 +2601,7 @@ func (repman *ReplicationManager) LimitPrivileges() {
 			err = syscall.Setuid(uidInt)
 			if err != nil {
 				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error setting UID: %v", err)
+				repman.keepRootEtcWriter()
 				return
 			}
 
@@ -2623,6 +2637,8 @@ func (repman *ReplicationManager) LimitPrivileges() {
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Running as user: %s", repman.OsUser.Username)
 		} else {
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Running as root as no user defined in --user flag")
+			// root all along: this process writes the rotated credentials in /etc itself
+			repman.startEtcWriter(false, 0, 0)
 		}
 	} else {
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Unable to change non-root user, current user: %s", repman.OsUser.Username)
@@ -2716,8 +2732,10 @@ func (repman *ReplicationManager) Run() error {
 
 	// Initialize instance-wide shared resources for all clusters
 	repman.serverGlobals = &cluster.ServerGlobals{
-		IssueAppAPIToken:  repman.issueAppAPIToken,
-		RevokeAppAPIToken: repman.revokeAppAPIToken,
+		IssueAppAPIToken:   repman.issueAppAPIToken,
+		RevokeAppAPIToken:  repman.revokeAppAPIToken,
+		ServerSecrets:      repman.serverSecretLevel(),
+		CheckServerSecrets: repman.reloadServerVersionsFromPeer, AdoptServerVersions: repman.adoptServerVersionsFromCluster, ServerStoresBehind: repman.ServerKvBehind,
 	}
 	if repman.Conf.BackupConcurrentSlots > 0 {
 		repman.serverGlobals.BackupSemaphore = make(chan struct{}, repman.Conf.BackupConcurrentSlots)
@@ -2755,6 +2773,9 @@ func (repman *ReplicationManager) Run() error {
 	if err != nil {
 		repman.Logrus.Fatalln("ERROR: replication-manager could not get hostname from system")
 	}
+	repman.takeServerConfigFileCredentials()
+	// the server credential stores get every server secret's current version
+	repman.startServerKvPass()
 
 	if repman.Conf.LogSyslog {
 		hook, err := lSyslog.NewSyslogHook("udp", "localhost:514", syslog.LOG_INFO, "")
@@ -3415,6 +3436,7 @@ func (repman *ReplicationManager) Run() error {
 		if repman.peerHealthBusy.Load() {
 			repman.PreserveState("GWARN013@peerhealth")
 		}
+		repman.checkServerSecretKvStores()
 		repman.ProcessAlertStateLifecycle()
 
 		counter++
@@ -4057,7 +4079,7 @@ func (repman *ReplicationManager) getClusterTestCredentials(clusterName string) 
 	// working (admin) and 401 (locked service account). Deterministic admin
 	// preference removes the flap.
 	var fbUser, fbPass string
-	for _, u := range cl.APIUsers {
+	for _, u := range cl.GetAPIUsers() {
 		if u.Grants == nil || !u.Grants[config.GrantClusterTest] || u.Password == "" {
 			continue
 		}
@@ -4736,7 +4758,7 @@ func (repman *ReplicationManager) GetEncryptedValueFromMemory(key string) string
 		for ind := range lst_Users {
 			user_pass := strings.Split(lst_Users[ind], ":")
 			for _, cluster := range repman.Clusters {
-				if u, ok := cluster.APIUsers[user_pass[0]]; ok {
+				if u, ok := cluster.GetAPIUsers()[user_pass[0]]; ok {
 					tab_ApiUser = append(tab_ApiUser, u.User+":"+u.Password)
 					break
 				}
@@ -4921,6 +4943,15 @@ func (repman *ReplicationManager) SaveDynamic() (bool, error) {
 	}
 
 	s.WriteTo(&file)
+	// the server's credential stores, unless a config file sets them (then they are the file's)
+	if _, pinned := repman.Conf.GetImmuableFlag("server-secret-kv"); !pinned {
+		kvs, err := repman.Conf.SecretKvsTomlAt(config.SecretKvLevelServer, "saved-default")
+		if err != nil {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Error rendering the server credential stores: %s", err)
+			return false, err
+		}
+		file.WriteString(kvs)
+	}
 	if err := misc.WriteFileDurable(filePath, file.Bytes(), 0o640, ".default.toml-*.tmp"); err != nil {
 		if os.IsPermission(err) {
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "File permission denied: %s", filePath)
@@ -5016,7 +5047,10 @@ func (repman *ReplicationManager) CredentialChain() *credstore.Chain {
 	repman.credChainMu.Lock()
 	defer repman.credChainMu.Unlock()
 	if repman.credChain == nil || repman.credChain.Conf() != repman.Conf {
-		repman.credChain = credstore.NewConfigChain(repman.Conf, repman.Save)
+		// the server secrets' versions first, as a cluster's (CREDENTIAL_STORES.md "Two levels")
+		repman.credChain = credstore.NewVersionedChain(repman.Conf, repman.Save, repman.serverVersionStore())
+		// each change of a server secret goes to every server credential store
+		repman.credChain.OnSet(repman.onServerCredentialChange)
 	}
 	return repman.credChain
 }
@@ -5048,6 +5082,10 @@ func (repman *ReplicationManager) SaveGlobalConfigs() error {
 	if ok {
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlDbg, "Saved called from %s#%d\n", file, no)
 	}
+
+	// the server secrets' versioned file, pushed with default.toml (logged on a failure; the
+	// version store stays dirty for the next save)
+	repman.writeServerSecretFile()
 
 	has_changed := false
 

@@ -1,6 +1,12 @@
-# Credential stores: one interface for config, local store and Vault (design)
+# Credential stores: one interface for config, local store and Vault
 
-Status: step 1 (`secret_kv-config`, the chain) implemented in `config/credstore`; versioned
+Status (2026-11-14): the user's password rotation (the ban of a compromised user) and the two
+levels of secrets are implemented in #2383 (PR #2376, not merged): see "A user's password
+rotation" and "Two levels, every store the same" below, which list where each piece lives.
+Not built yet: the move of a renamed cluster's secrets. User documentation: docs.signal18.io,
+Security, "Password rotation and credential stores".
+
+Earlier status: step 1 (`secret_kv-config`, the chain) implemented in `config/credstore`; versioned
 stores (#2227) designed and closed 2026-10-28: rules 1-12, 15, 16 implemented with the API,
 the GUI and the Cloud18 vault offer; rule 14 (the vault's policies) and the offer's catalogue
 file are the back-office's, to do; rule 13 is out of #2227 (branch
@@ -51,8 +57,8 @@ type CredentialStore interface {
 | `PinnedConfig` (`config.toml`, `cluster.d`: today `ImmuableFlagMap`) | `secret_kv-config`, internal | the pinned value, or a Vault path | refused: repman never writes it | no | no |
 | `DynamicConfig` (`<cluster>.toml`, written by `SaveCallBack`: today `DynamicFlagMap`) | `secret_kv-config`, internal | the encrypted value, or a Vault path | yes, when `monitoring-save-config` is on | no | no |
 | `LocalSecretStore` (today `SecretVersionStore`) | `secret_kv-localstore`, external | encrypted versions | yes, with an encryption key and `monitoring-secret-versioning` on | **yes** | no |
-| `VaultKV` (`VaultConfigStoreV2`) | `secret_kv-vault`, external, **enterprise** | the value at a path | `Patch` at the path, as the rotation already does | **yes** (Vault versions) | no |
-| `VaultDbEngine` (`VaultDbEngine`) | `secret_kv-vault`, external, **enterprise** | nothing repman sets | refused | yes | **yes** (`rotate-role`) |
+| `VaultKV` (`VaultConfigStoreV2`) | `secret_kv-vault`, **free** | the value at a path | `Patch` at the path, as the rotation already does | **yes** (Vault versions) | no |
+| `VaultDbEngine` (`VaultDbEngine`) | `secret_kv-vault`, **free** | nothing repman sets | refused | yes | **yes** (`rotate-role`) |
 
 ## Versioned stores: every secret in every active store (#2227)
 
@@ -137,8 +143,10 @@ settings (secrets encrypted, F9), on/off, forms drawn from the manifest.
 6. **What is a secret of the cluster**: the chain's credentials, the proxy passwords, the
    app secrets (generated password, secret variables, database user), the archive secrets.
    Instance secrets (git token, OAuth secret, the vault logins) stay instance-local and are
-   never copied.
-7. **Orchestrator objects are consumers, not stores**: the OpenSVC `sec` object and the
+   never copied. *Replaced 2026-11-11: see "Two levels, every store the same".*
+7. *(The orchestrator becomes a store too, 2026-11-11: see "Two levels, every store the
+   same". The `env` delivery below is unchanged.)*
+   **Orchestrator objects are consumers, not stores**: the OpenSVC `sec` object and the
    Kubernetes Secret get the current version at provisioning and after each rotation, as
    today. Their writers report the values they set (`CopySecret`); nothing reads them back.
    The rotation writes `MYSQL_ROOT_PASSWORD` in the OpenSVC `env` secret through the v2 or
@@ -368,6 +376,330 @@ WARN0275 onto `ReadCurrent` land once the T13 regtest proves the queue path. K8s
 header (`REPMAN_AUTH_HEADER`), not `REPLICATION_MANAGER_PASSWORD`, so the admin copy is
 OpenSVC-only.
 
+### A user's password rotation (the ban of a compromised user)
+
+`POST /api/clusters/{cluster}/users/rotate-password` `{"username"}` gives one API user a new
+generated password (24 characters, `GeneratePasswordLength`), returned once, never logged. It is the
+way to ban a compromised user: its sessions carry its password, so they are refused from the next
+request, and every API token it owns is revoked (`revokeUserAPITokens`).
+
+- **Who:** the rotation grant (`cluster-rotate-passwords`), held by sysops and extsysops; dbops,
+  extdbops and sponsors do not hold it. Another user of the instance's list (a server secret) is
+  rotated only by a holder of `cluster-server-credentials` on every cluster of the instance
+  (`holdsServerCredentials`), the rule of the instance's name; a user may always rotate its own
+  password. No role reads a password: the new one is shown to the one who rotated it, once.
+- **No escalation:** the caller rotates its own password, or that of a user holding no grant the
+  caller lacks (`CanRotateFor`), on every cluster concerned: the new password is handed to the
+  caller, so rotating a user with more rights would hand those over.
+- **One at a time:** rotations are serialized (each reads a list, changes one entry, writes it).
+- **Half-way failure:** what was rotated stays rotated and the user's tokens are revoked; the
+  answer names the clusters done. Undoing it would give the compromised password back.
+- **Which list:** a user of the instance's list (`api-credentials`, read by every cluster) gets the
+  new password on every cluster holding it, all checked before any change; a user of a cluster's
+  own list (`api-credentials-external`) on that cluster. Every other user keeps its password.
+- **Repman is the reference:** `api-credentials` is versioned (`isVersionedKey`): the change is a
+  version in the local store, with no OpenSVC and no Vault needed. A value set in a configuration
+  file is rotated as versions (rule 9); refused only with no store keeping versions. A value edited
+  in the file is taken at the next start, and at the upgrade the file's value wins once over a
+  history recorded before the list was versioned (`AdoptConfigFileValue`).
+- **Refused:** `system` (its key is derived from the instance key), the registered Cloud18 user and
+  accounts without a local password (they sign in with Cloud18: rotate at the identity provider).
+- **On disk before the answer:** a change of a server secret writes the server's file at once
+  (`writeServerSecretFile`, the save callback's part for that file run synchronously, as
+  `SaveConfig(wait)` does for a shutdown or a registration; atomic, a temp file and a rename, and
+  ordered with the save's own write by a lock). A crash or a failover right after the answer keeps
+  the ban. When the file cannot be written, the new password stays in force (undoing it would give
+  the compromised one back) and the answer says so (`persistError`), as for the tokens.
+- **Stores:** the instance's list is a server secret: its new version goes to every server
+  credential store (Vault, OpenSVC, Kubernetes; "OpenSVC and Kubernetes stores" below) through the
+  server chain's hook, and a store behind says so (`GWARN024`, `WARN0320`). A cluster's own list
+  goes to that cluster's stores. The earlier copy of the list to OpenSVC by a path of its own,
+  and its switch `secret-kv-copy-api-credentials`, are gone: the OpenSVC server store replaces
+  them, versioned, retried and in a state when behind.
+- **Tokens:** a revocation that fails (the token store not saved) is undone in memory and said in
+  the answer (`tokensError`) and in the GUI: a ban with live tokens is not a ban.
+- **Limits:** rotations are serialized among themselves, not with the user add, update and drop
+  paths, which write the cluster's own list. A token caller is checked with its owner's grants:
+  the owner could do the same directly. Rotating one's own password through a token revokes that
+  token too; the answer carrying the new password is its last. Token revocation takes the clusters
+  before the token store's lock, never the manager's lock under it.
+
+### Two levels, every store the same (implemented in #2383; decided 2026-11-11, replaces rules 6 and 7)
+
+Decided with the maintainer on 2026-11-11, in the rotation PR. Before it, an instance secret was
+never copied (rule 6), OpenSVC was a consumer and not a store (rule 7), and the rotation copied the
+instance's list to OpenSVC by a path of its own while Vault kept the old value. Now every store
+is treated the same; only the path a level maps to differs per store.
+
+- **The level comes from the config.** A secret whose setting is tagged `scope:"server"` is a
+  server secret: one value per repman instance. Every other secret is a cluster secret: a key of
+  the cluster's config. `api-credentials` gets the tag. There is no third level: the copies of
+  a database or proxy credential under each server (`databases/<server>`, `proxies/<proxy>`) are
+  delivery to the container that reads it, not a level, and stay as they are.
+- **Entries have a level too.** The cluster entries (`[[<cluster>.secret-kv]]`) get the cluster
+  secrets, as today; a sponsor may switch them on and read them (rule 14). Server secrets go only
+  to server entries (`[[default.server-secret-kv]]` in the server config, `server-secret-kv`): never to a cluster entry, so a
+  sponsor or a member never reads one.
+- **One chain per level.** A server secret has one credential chain and one version store for the
+  instance (`<working-dir>/secret_store.json`, written by the server's save callback, T25, and at
+  once by a change of a server secret, and carried by its config push like the cluster files),
+  not a copy per cluster: the clusters read it from there. A rotation of `api-credentials` is one
+  version, not one per cluster.
+- **A server secret is set in the global settings only.** `setServerSetting` asks the server
+  credentials grant on every cluster, sets it through the server's chain, then every cluster reads
+  it from the server and uses it (`Cluster.ApplyServerSecret`), and the server's file is written.
+  Through one cluster's settings it is refused (`Cluster.SetCredential`, `ErrServerSecret`). A
+  peer's event log never applies one to a cluster: the server's file in the config pull brings it.
+- **The upgrade.** An older release kept versions of server secrets in each cluster's file. At
+  start, before the config files' values are checked, the server reads every cluster's file and
+  merges them, and writes its own file. A cluster hands them over again at each load of its file
+  (`FileBinding.Loaded`), and drops its copy only once the server's file holds them; when the
+  server cannot write, the cluster keeps them. A cluster's file that cannot be read is never
+  overwritten (`ErrFileUnread`, read again at each save, then merged), and while one is unread the
+  value in `/etc` is not taken over the versions at that start. With versioning off there is no
+  versioned file: an older release kept the list in the config, which the server still reads. A
+  cluster section that sets `api-credentials` is not read: the server level answers first, the
+  cluster's own list is `api-credentials-external`.
+- **Clocks.** Versions are ordered by time when two monitors' files merge. A new version is never
+  stamped before the last one (`credstore.AfterLast`): after a failover to a monitor whose clock is
+  behind, its rotation still sorts after the version it replaces, and the banned value never comes
+  back as the current one. The clocks are still expected to be close (NTP): two rotations made on
+  two monitors at once, each before seeing the other's, are ordered by their clocks.
+- **The standby is behind until its next pull.** The server's file is on the active monitor's disk
+  before the rotation is answered; it reaches the standby by the config push and pull only. A
+  standby promoted before that pull still holds the old list, so the banned password works there
+  until the pull (or until the operator rotates again on the new active monitor). The pair shares
+  the data directory where it can, which closes the window.
+- **One change of a server secret at a time.** `serverSecrets.setMu` is held by every change of a
+  server secret, across the read and the write of a rotation's read-modify-write of the list, and
+  by the global settings' setter: no change lands between a rotation's read and its write.
+- **Only sysops and extsysops reach the server level**: they alone set the server entries and
+  change a server-scope key, through one grant both hold (outside the `global` family, which
+  extsysops does not get). No other role reads or writes either.
+- **Plugins: config, vault, opensvc, kubernetes**, one interface. The core hands every active
+  entry the same thing: a version of a key at a level (server, or cluster and its name). Where
+  it lands is internal to the plugin: the core never builds a store path, and has no case per
+  store. The queue is shared (versions, newest wins, retry, bounds, WARN0271). What the
+  plugins do today, for reference only:
+
+  | Level | vault | opensvc |
+  |---|---|---|
+  | Server | `<mount>/system/repman/<host>/<key>` | `system/sec/repman`, key `<host>_<key>` |
+  | Cluster | `<mount>/<path-prefix>/<cluster>/<key>` | `<cluster>/sec/repman`, key `<key>` |
+
+  `<host>` stands for the instance's name below. The OpenSVC cluster `env` secret (the
+  `MYSQL_ROOT_PASSWORD` the containers read) stays the provisioning's delivery, written as today.
+- **The instance's name** in a shared store is `<domain>/<subdomain>/<zone>`, never the URL (an
+  instance may be registered and not public, an on-prem URL may be a bare hostname): the three
+  existing settings `cloud18-domain`, `cloud18-sub-domain`, `cloud18-sub-domain-zone`, the
+  instance's one name, registered with Cloud18 or not. There is no second set of variables for an
+  unregistered instance. Register writes the name the person gives; unregister does not change
+  it; Cloud18 turned off by a failed GitLab login does not change it; a licence is refused unless
+  it matches it. The only rename is a change of one of the three settings (in the global settings,
+  allowed while Cloud18 is off, or a registration given other values). A change of one of the
+  three settings takes the server credentials grant on every cluster (`config.IsInstanceNameSetting`
+  in `setServerSetting`), as a server secret does: it moves every server secret. The parts mean
+  what each party gives them (an office or a country, a machine or a datacenter); they also make
+  the DNS names, the GitLab repository path and the licence identity, so a rename of a licensed
+  instance fails its next licence check until a licence for the new name is loaded. Name not complete (a part
+  empty or not a valid folder): the server secrets stay in the local version store and every
+  server store is behind with that reason.
+  Active monitor only. A standby reads the list at its start, as every global setting: a list
+  changed on the active monitor reaches the standby at its next start. The queue and the worker are the cluster's
+  (`credstore.StoreRunner`, shared): newest wins, bounded, retried every `secret-kv-retry-interval`.
+- **Who:** `/api/clusters/settings/actions/server-secret-kv` (list, `add`, `edit`, `enable`,
+  `disable`, `remove`): the server credentials grant on every cluster (`serverCredentialsACL`, ACL rule
+  `cluster-server-credentials`), the list included, so no other role sees an entry. Refused on a
+  standby (409). Each change is a security event. GUI: the global settings, "Server Credential
+  Stores" (`SecretKvEntries level='server'`).
+- **States:** a server entry behind is `GWARN024` on the server's state machine, with why, and
+  `WARN0320` on every cluster's security state machine (`ServerGlobals.ServerStoresBehind`) with
+  the entry's name only: a cluster's members and sponsor read that state, the address, folder and
+  error are the owners'.
+- **OpenSVC and Kubernetes stores.** Two more plugins, server level only
+  (`SecretKvPluginManifest.ServerOnly`, `SecretKvPluginAllowedAt`): `secret_kv-opensvc` writes
+  the OpenSVC secret `system/sec/repman`, `secret_kv-kubernetes` the Secret `repman-system` of
+  its `namespace` (a DNS-1123 label). The server has no orchestrator connection of its own: each
+  entry names the `cluster` whose connection carries it (its OpenSVC agent and certificate, its
+  Kubernetes client), refused at add and edit when that cluster is not monitored here or not on
+  that orchestrator (`checkServerStoreCluster`), and behind with the reason at each pass when it
+  goes away later (`serverKvWriter`, `failingStoreWriter`). The object is flat, so the keys are
+  `<prefix>_<key>`, the prefix being the instance's name with each part's `_` doubled and the
+  parts joined by one `_` (`ServerOrchestratorKeyPrefix`, the item's `Path`): `a_b/c/d` is
+  `a__b_c_d`, `a/b_c/d` is `a_b__c_d`. A name part never starts or ends with `_`
+  (`ValidInstanceNamePart`), so two names never share a prefix, as two Vault folders never
+  coincide; a name part that did is "not named" (nothing written, behind) until it is changed. The writers are the cluster's own sinks given another
+  target (`openSVCStore`/`k8sStore` with a namespace, an object and the prefixed keys,
+  `Cluster.ServerOrchestratorStore`): the same budget per pass, the `<KEY>_OLD` history and the
+  unchanged-skip. They are driven by the server's queue, never the cluster's: a server secret
+  never enters the cluster's env secret, queue or states. A cluster's list does not take these
+  plugins (dropped when read from a file, refused through the API): at the cluster level the
+  orchestrator's env secret stays the reserved `orchestrator` entry. Who reads the object is the
+  orchestrator's business (the OpenSVC system namespace's administrators, whoever reads Secrets
+  in the namespace), said in the form. An entry's plugin never changes: remove it and add another.
+  - **`<key>_OLD`**: as for a cluster's env secret, each changed key keeps the value it replaced
+    under `<prefix>_<key>_OLD`, one deep. After a ban, `_OLD` holds the list with the
+    compromised password, in the store's own protection; that password no longer signs in.
+  - **Kubernetes namespace**: any namespace the cluster's client may write, `kube-system`
+    included: give that client the narrowest role (create, get and patch on the Secret
+    `repman-system` in that namespace). A cluster's own namespace works too; whoever reads
+    Secrets there then reads the server secrets.
+  - **Drift read**: `ReadCurrent` (the WARN0275 reconciliation) is the cluster sinks' only; a
+    server store's writer refuses it (`errPrefixedReadCurrent`).
+  - **The rotation's answer** counts the server stores already known behind
+    (`storesBehindCount`), which may still hold the compromised password, and names them
+    (`storesBehind`) only to a holder of the server credentials grant on every cluster (the
+    entries are the owners', as for `WARN0320`). It is read before the new version's pass: an
+    empty answer says no store was known behind, not that every store holds the new list; the
+    GUI says the stores get it at their next pass, and `GWARN024` follows it.
+  - **The name rule tightened**: a name part starting or ending with `_`, valid before, is now
+    "not named": nothing is written and every server store is behind with the reason (the name
+    is incomplete or a part is invalid). Change the part in the global settings (`cloud18-domain`, `cloud18-sub-domain`,
+    `cloud18-sub-domain-zone`, while Cloud18 is off).
+  - **Upgrade**: the removed copy wrote `<api host>_api-credentials` in `system/sec/repman`; that
+    key stops changing. An OpenSVC server store writes `<prefix>_api-credentials` instead:
+    whatever read the old key reads the new one. A config file still holding
+    `secret-kv-copy-api-credentials` loads, the key ignored.
+- **The move (implemented, server level).** Each server entry records the instance's name it
+  holds the secrets under (`SecretKvConfig.WrittenAs`, `written-as` in its table), set at its
+  first successful write. At each tick on the active monitor, an entry whose name differs from
+  `InstanceStoreName` (one of the three `cloud18-*` name settings changed) is moved
+  (`checkServerKvMoves`, `server_secret_kv_move.go`), in a goroutine of its own, one per entry:
+  - every kept version of every server secret, each secret's oldest first, from repman's version
+    store (the current value alone when it keeps none), never read from the old place, is
+    written at the new place, one write per version, stopping at the first failure;
+  - then `moved-to` = the new name at the old place (a Vault key `<old folder>/moved-to`, an
+    orchestrator key `<old prefix>_moved-to`); what the old place holds stays. The marker is
+    information: if it cannot be written (a read-only old place) a WARN says so, and the move
+    still ends, the secrets being at the new place;
+  - then `written-as` takes the new name (saved), the move's own behind reason is cleared (not
+    another one), and a full pass writes what changed meanwhile.
+  - One move at most per entry: a rename during a move, a rename back, or the entry's place
+    edited, turned off or removed cancels it (it stops at its next write, the marker included,
+    and commits nothing); the next tick starts the move to the newest name. A move stays listed,
+    running, until its commit is done, so no tick starts a second one in between. The commit is
+    a compare and set (`SetSecretKvWrittenAsIfAt`): it takes only while the entry still says it
+    holds the secrets where the move started, so an edit of its place meanwhile wins. A failed
+    move is kept for its retry, and dropped once the entry no longer moves.
+  - Progress is the set of versions written (secret, time, writer), so a retry skips them
+    whatever the list became meanwhile (a version added, a version pruned).
+  - The first write records `written-as` from where the write went (the items' folder,
+    `StoreRunner.WrittenItems`), never the name of the moment: a write queued under the old name
+    and done after the rename records nothing.
+  Until then the entry is behind (`GWARN024`, `WARN0320`: "moving from X to Y", or the failure)
+  and the ordinary writes skip it (`serverKvItems`), so the newest version is never written
+  before the older ones. A failed attempt starts again after `secret-kv-retry-interval`, skipping the
+  versions written (kept in memory: after a restart it starts from the oldest, which adds
+  versions again in a Vault's history, never loses one). A change of the entry's place (address,
+  mount, prefix, cluster, namespace; not its login) forgets `written-as`: another place has
+  nothing to move from.
+  Limits: a list set by a config file (`server-secret-kv` pinned) is not saved, so its
+  `written-as` lives until the restart (a WARN says so at the move), and a rename while repman
+  is down is then not moved; a
+  cluster's own rename does not move its cluster secrets yet.
+- **The Cloud18 vault at the server level, marketplace partners only.** On an instance that is a
+  marketplace partner taking clusters from Cloud18 users (`Config.Cloud18MarketplacePartnerPublic`:
+  registered, `cloud18-subscription-plan = partner`, and an `api-public-url` others can reach,
+  not the default, loopback, unspecified, link-local or private), the tick of the active monitor
+  (`ensureServerMarketplaceVaults`) gives the server list the marketplace's vault offers, as the
+  clusters get them (`EnsureMarketplaceVaultAt`, one code for both levels): on when no other
+  server entry is on, off next to the partner's own vault. An on-prem instance (any other plan, or
+  no public address) never gets it: its sysops adds a vault of their own, or none. An entry given
+  once stays when the instance stops being a partner (nothing removed or moved silently); a sysops
+  switches it off. Its settings are the back-office's (`ErrSecretKvOfferManaged`), its switch the
+  sysops'. A list pinned in a config file gets nothing. Each entry given is a security event.
+  The tick never switches an existing entry on again, and the API never deletes it
+  (`ErrSecretKvOfferManaged`): a partner who does not want it switches it off and it stays off.
+  When the offer moves the entry (address, mount, prefix), it is a new place, as for an edit
+  (a WARN and a security event say so). The prefix is the offer's, else `<cloud18-domain>/<cloud18-sub-domain>-<cloud18-sub-domain-zone>`
+  as for the clusters' entries (not the instance name's form), each folder of it a real one
+  (no empty, `.` or `..`); the instance's folder `system/repman/<instance name>` is below it.
+  **Isolation rests on the Cloud18 Vault policy:** both levels sign in with the same Cloud18
+  identity (`jwt`, same role and address), so the role's policy must deny `*/system/repman/*`
+  to any session that is not the instance's own server level (a cluster sponsor's or a member's
+  session), as the members page already must not see a server path.
+- **A new place gets the history.** An edit of a server entry's address, mount, path-prefix,
+  cluster or namespace, or an offer that moves it, sets its `written-as` to `(new place)`
+  (`ConstSecretKvWrittenAsNewPlace`, never an instance name): the move then copies every kept
+  version there, oldest first, as for a rename, with no `moved-to` marker (the old place is not
+  known any more), and the ordinary writes wait until it ends. An entry never written (no
+  `written-as`) has nothing to copy, and an offer that moves it says nothing (no WARN, no
+  security event). A move is tied to the entry's place as well as to the name
+  (`config.SecretKvPlace`): a failed move is never reused for another place, and its commit
+  (`SetSecretKvWrittenAsIfAt`) compares both the name and the place under `secretKvMu`, so a
+  second edit of the place during the move always wins. The behind reason reads "moving from its
+  old place (the store was edited) to <name>". A list pinned in a config file never saves
+  `(new place)`: after a restart the entry has no `written-as` and nothing is copied, the same
+  limit as for a rename.
+- **The /etc writer** (`utils/etcwriter`, `server/server_etc_writer.go`). A server credential
+  set in a configuration file under `/etc` (`config.toml` or a `cluster.d/*.toml` include, in
+  its `[default]` section) is rotated as versions, and the versions win at the start (T16). The
+  file would still hold the banned value, and give it back if the versions were lost or
+  versioning turned off. After a server secret's new version is on disk (`setServerSecretLocked`,
+  `applyServerSecret`), `syncEtcCredential` writes it to every such file:
+  - replication-manager drops root after its start (`LimitPrivileges`): just before, it starts a
+    child of its own binary (`selfexec`, the same as the backups folder mount), the hidden
+    command `etc-credential-writer`, which stays root. It reads one JSON request per line on its
+    stdin and answers on file descriptor 3, and dies with its parent. A replication-manager that
+    keeps root writes itself (`etcwriter.Local`); one not started as root has no writer.
+  - The child decides on its own what it accepts: a server secret only (its own list,
+    `isServerSecretKey`), a one-line value, in the files it was given at its start (the
+    configuration files read outside the working directory, never `default.toml` or a saved
+    cluster file). It replaces a key already set as a one-line string in a `[default]` section,
+    in the file's form (encrypted `hash_...` or plain), keeps every other line, comment, owner and
+    mode, writes a temporary file then renames it, and never adds a key. Each write is bounded
+    (`etcWriteTimeout`); a lost exchange stops the child (the next write says so).
+  - Written, the current version is marked as the value last seen in the file
+    (`VersionStore.MarkConfigFileValue`): the next start sees no operator's edit. Each write is a
+    security event.
+  - Not written (off, no writer, an error): the rotation's answer says so (`etcFile`), and
+    `GWARN025` stays until a write succeeds.
+  - `monitoring-etc-credential-writer` (server scope, default on, T14): read at the start for the
+    child; off stops the writes at once. Switched by the server secrets' owners only (the server
+    credentials grant on every cluster). GUI: global settings, "Write Rotated Credentials To /etc".
+  - A standby's own `/etc` file is not written: it takes the new version from the config push,
+    and the version wins at its start.
+  - **The boundary.** The child is given, at its start and by the still-root parent, the files,
+    the user the parent drops to and every group it keeps (`--uid`, `--groups`: its group and the
+    supplementary ones, which the drop does not change, root's `0` among them). It resolves each
+    file's links once and refuses one that this user could swap between its read and its write:
+    not absolute, or the file, a folder or a link on the way (as given or resolved) owned by that
+    user, writable by one of those groups, or writable by anyone (a folder only when sticky, as
+    `/tmp`) (`etcwriter.Resolve`). The check runs at the child's start: a later `chown` or
+    `chmod` of the chain is seen at the next start. A configuration file that is a link (as
+    configuration management makes) is listed and resolved. A process that keeps root writes
+    with `etcwriter.Local`, which has no user to check against. It
+    reads through a descriptor opened with `O_NOFOLLOW`, a file up to 1 MB, a request line up to
+    `MaxRequest`, a value up to 16 KB (T18), and removes a temporary file a killed write left. A
+    bad request (too long, not JSON) gets an error answer and the child goes on; the parent checks
+    the value's size before it asks. A refused file is reported in each answer; the parent then
+    writes it itself when the user it runs as may (its own file). A refused file the parent cannot
+    even read is reported as not checked, a failure only when no file holds the key. The key is
+    matched without case (Viper reads keys so). The child logs each rewrite (the key and the file, never the
+    value) on its stderr, the root side's own trail.
+  - **What remains trusted.** The value comes from the parent: a compromised unprivileged
+    replication-manager can make the child write a server credential's value of its choice (an
+    extra admin in `api-credentials`) in those files, which then survives a wipe of the working
+    directory. It already holds those credentials through the versioned store; the child adds the
+    file, nothing more (no other key, file or path).
+  - **Never a silent success.** When the key is set in a file but the writer found it in none it
+    may write (excluded, refused, not a one-line string in `[default]`), the answer and `GWARN025`
+    say so. The editor follows multi-line strings and arrays: a line inside one is never taken
+    for a header or a key.
+  - **A lost exchange** (a timeout of `etcWriteTimeout`, a broken pipe) kills the child: the
+    writer is gone until the next start, and each rotation says so (`GWARN025`). The child may
+    have written before it was killed: the file then holds the latest version, which the next
+    start sees as an operator's edit with the current value (one version more, the same value).
+  - **Form and metadata.** An encrypted value (`hash_…`) is written encrypted, a plain one plain:
+    the file keeps its form. The rewrite keeps mode, owner and group; not ACLs, extended
+    attributes or an SELinux label of the file itself (the rename in the same folder usually
+    keeps the folder's label).
+  - The child is started from a thread locked for its life (`selfexec.StartLocked`, shared with
+    the backups folder mount), so its parent-death signal follows replication-manager. If the
+    drop fails after the child started, it is stopped and replication-manager, still root,
+    writes itself.
+- **Not yet:** the move of a renamed cluster's secrets.
+
 ### The Cloud18 vault entry
 
 On a Cloud18-registered instance the marketplace catalogue offers a `secret_kv-vault` entry
@@ -385,7 +717,7 @@ external plugins as signed executables.
 |---|---|---|---|
 | `secret_kv-config` | **internal**: compiled into every binary, always there | free | `PinnedConfig`, `DynamicConfig` |
 | `secret_kv-localstore` | **external**: executable in `<ShareDir>/plugins/` | free | `LocalSecretStore` |
-| `secret_kv-vault` | **external** | **enterprise** (license) | `VaultKV`, `VaultDbEngine` |
+| `secret_kv-vault` | built in today (planned external) | **free** | `VaultKV`, `VaultDbEngine` |
 
 - **The interface is the plugin contract.** The internal plugin implements
   `CredentialStore` in Go. An external plugin implements the same operations (`get`,
@@ -541,7 +873,7 @@ One epic issue for the interface, with these steps:
    pass), plus a set → tag → save → reload test and a `-race` test of concurrent setters;
 2. the external plugin wire and its loader (signature, timeouts, state when missing);
 3. the local versioned file inside `secret_kv-config` (no separate plugin), and the start order (#2041);
-4. `secret_kv-vault` (enterprise) from the Vault code, and the Vault setter (#2057);
+4. `secret_kv-vault` (free) from the Vault code, and the Vault setter (#2057);
 5. versioned stores: every secret in every active store, vault entries, the Cloud18 vault entry (#2227).
 
 ## Open questions
@@ -557,10 +889,9 @@ One epic issue for the interface, with these steps:
   Vault policy is read-only on secret/db1") and a state says so, before anyone clicks.
   The alternative is to find out only when a change is refused. Either way a rotation is
   safe: it writes Vault first and keeps the old password when Vault refuses.
-- **Vault moving to enterprise**: Vault support is in the community binary today. A site
-  using it without a license loses it at the upgrade: keep Vault *reads* in the free tier
-  (only change and rotation enterprise), a grace period, or enterprise from a given
-  release?
+- **Vault is free** (settled 2026-11-13): a sysops may add their own Vault on any instance,
+  registered or not, and the Cloud18 vault is the default store of a marketplace partner
+  (see "The Cloud18 vault at the server level").
 
 ## Cluster accounts and the version store (#2358, #2359)
 

@@ -612,7 +612,7 @@ func (repman *ReplicationManager) handlerMuxApp(w http.ResponseWriter, r *http.R
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		uname := repman.GetUserFromRequest(r)
-		if _, ok := mycluster.APIUsers[uname]; !ok {
+		if _, ok := mycluster.GetAPIUsers()[uname]; !ok {
 			http.Error(w, "No Valid ACL", http.StatusInternalServerError)
 			return
 		}
@@ -627,7 +627,7 @@ func (repman *ReplicationManager) handlerMuxApp(w http.ResponseWriter, r *http.R
 				http.Error(w, "Encoding error", http.StatusInternalServerError)
 				return
 			}
-			cluster.MaskAppGeneratedSecrets(app.AppConfig) // the copy only (#2158)
+			cluster.MaskAppSecrets(app.AppConfig) // the copy only (#2158)
 			e := json.NewEncoder(w)
 			e.SetIndent("", "\t")
 			err = e.Encode(app)
@@ -1292,7 +1292,7 @@ func (repman *ReplicationManager) handlerMuxAppDeployments(w http.ResponseWriter
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		uname := repman.GetUserFromRequest(r)
-		if _, ok := mycluster.APIUsers[uname]; !ok {
+		if _, ok := mycluster.GetAPIUsers()[uname]; !ok {
 			http.Error(w, "No Valid ACL", http.StatusInternalServerError)
 			return
 		}

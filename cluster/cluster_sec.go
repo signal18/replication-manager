@@ -755,7 +755,7 @@ func (cluster *Cluster) EnsureSystemServiceUser() {
 	if apikey == "" {
 		return // no persistent key -> cannot derive; app/proxy sensor auth stays unavailable
 	}
-	if u, ok := cluster.APIUsers["system"]; ok {
+	if u, ok := cluster.GetAPIUsers()["system"]; ok {
 		// An existing `system` may hold more (secret-login created it with "db proxy", #1967;
 		// an ACL string or the GUI may have added some): its saved entry is set to its grants
 		// exactly. The saved entry, not the in-memory account, which every load already
@@ -811,7 +811,7 @@ func (cluster *Cluster) reconcileSystemServicePassword() {
 	if apikey == "" {
 		return
 	}
-	if u, ok := cluster.APIUsers["system"]; ok && u.Password != apikey {
+	if u, ok := cluster.GetAPIUsers()["system"]; ok && u.Password != apikey {
 		u.Password = apikey
 		cluster.setAPIUser("system", u)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Reconciled `system` service-account password to the current derived API key")

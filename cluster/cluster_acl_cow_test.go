@@ -13,9 +13,10 @@ import (
 	"github.com/signal18/replication-manager/config"
 )
 
-// #2185 review: APIUsers is read without a lock (public login routes, ACL checks) while users are
+// #2185 review: APIUsers is read (public login routes, ACL checks) while users are
 // added and dropped: every write swaps a new map in (copy on write), so a reader never meets a map
-// being written. Before, an in-place write during a read stopped the process ("concurrent map
+// being written; readers take the map through GetAPIUsers, under the read lock, since the swap is
+// a write of the field. Before, an in-place write during a read stopped the process ("concurrent map
 // read and map write", not a recoverable panic).
 func TestAPIUsersCopyOnWrite(t *testing.T) {
 	c := &Cluster{Conf: &config.Config{}, APIUsers: map[string]APIUser{"admin": {User: "admin", Password: "x", Grants: map[string]bool{"a": true}}}}
@@ -31,7 +32,7 @@ func TestAPIUsersCopyOnWrite(t *testing.T) {
 					return
 				default:
 				}
-				for name, u := range c.APIUsers {
+				for name, u := range c.GetAPIUsers() {
 					_ = c.IsLocalOnlyAccount(name)
 					_ = u.Grants["a"]
 				}
@@ -67,7 +68,7 @@ func TestAppendGrantsRolesCopy(t *testing.T) {
 				return
 			default:
 			}
-			u := c.APIUsers["u@x.io"]
+			u := c.GetAPIUsers()["u@x.io"]
 			for range u.Grants {
 			}
 			for range u.Roles {

@@ -77,6 +77,8 @@ var ClusterError = map[string]string{
 	"ERR00055":  "Arbitrator unreachable (%s)",
 	"ERR00056":  "Master user %s is not defined on replication candidate %s",
 	"ERR00057":  "Database duplicate users not allowed in proxysql %s",
+	"WARN0321":  "Credential store %s is switched off: its path-prefix holds a segment system, . or .. and could reach the server's folder (system/repman/<instance name>) -- change its path-prefix (in the GUI or the config file), then turn it on",
+	"WARN0320":  "Server credential store %s is behind -- the server secrets every cluster reads are not the current ones in it; the instance's sysops or extsysops see why in the global settings",
 	"WARN0319":  "ProxySQL %s: users not loaded, their caching_sha2_password hash cannot be checked by ProxySQL and repman does not know their password: %s",
 	"ERR00058":  "Sphinx connection error: %s",
 	"ERR00059":  "Ignored server %s not found in configured server list",
@@ -436,6 +438,8 @@ var GlobalError = map[string]string{
 	"GWARN019": "Arbitration peer %s answers on %s only: set arbitration-peer-hosts to %s",
 	"GWARN020": "The arbitration peer has the same arbitration-external-unique-id %d: when both instances are Standby neither claims Active, give each instance its own id",
 	"GWARN023": "license-pull refused: %s",
+	"GWARN025": "The configuration file under /etc still holds the old value of %s: %s -- a rotation wrote the new value to the versioned store, which wins at the start, but the file keeps the banned password; fix the cause and rotate again, or edit the file",
+	"GWARN024": "Server credential store %s is behind (%s) -- the server secrets (api-credentials, SMTP, GitLab...) it holds are not the current ones; written again every secret-kv-retry-interval, check the entry's address and sign-in, and that the instance is named",
 	"GWARN022": "Action required: register this replication-manager again through Cloud18 (Cloud18 settings, Register, same URI: it reconnects to its repositories): %s",
 	// GINF: informational operating modes (state-as-tag), never counted as alerts
 	"GINF001": "ReplicationManager has %d cluster(s) in standby pulling config from active peer: %s",

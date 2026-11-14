@@ -369,7 +369,7 @@ func (repman *ReplicationManager) resolveUserEmail(username string) string {
 		return username
 	}
 	for _, cl := range repman.Clusters {
-		if u, ok := cl.APIUsers[username]; ok && strings.Contains(u.GitUser, "@") {
+		if u, ok := cl.GetAPIUsers()[username]; ok && strings.Contains(u.GitUser, "@") {
 			return u.GitUser
 		}
 	}

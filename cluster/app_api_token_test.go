@@ -241,17 +241,17 @@ func TestRenewAppAPITokenSaveFails(t *testing.T) {
 	}
 }
 
-// Every wire copy of an app masks the generated secrets.
-func TestMaskAppGeneratedSecrets(t *testing.T) {
-	cfg := &config.AppConfig{AppRandomPassword: "hash_x", AppAPIToken: "hash_y", AppAPITokenID: "id1"}
-	MaskAppGeneratedSecrets(cfg)
-	if cfg.AppRandomPassword != "*****" || cfg.AppAPIToken != "*****" || cfg.AppAPITokenID != "id1" {
+// Every wire copy of an app masks its secret settings, the database password included.
+func TestMaskAppSecrets(t *testing.T) {
+	cfg := &config.AppConfig{AppRandomPassword: "hash_x", AppAPIToken: "hash_y", AppAPITokenID: "id1", AppDbPass: "hash_z", AppDbUser: "u"}
+	MaskAppSecrets(cfg)
+	if cfg.AppRandomPassword != "*****" || cfg.AppAPIToken != "*****" || cfg.AppDbPass != "*****" || cfg.AppAPITokenID != "id1" || cfg.AppDbUser != "u" {
 		t.Fatalf("%+v", cfg)
 	}
 	empty := &config.AppConfig{}
-	MaskAppGeneratedSecrets(empty)
+	MaskAppSecrets(empty)
 	if empty.AppRandomPassword != "" || empty.AppAPIToken != "" {
 		t.Fatal("an unset secret stays unset")
 	}
-	MaskAppGeneratedSecrets(nil)
+	MaskAppSecrets(nil)
 }
