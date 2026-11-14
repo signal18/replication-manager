@@ -607,23 +607,23 @@ func TestK8SProxyPVC_UsesProvProxyDiskSize(t *testing.T) {
 	pvc := cluster.k8sProxyPVC(prx)
 
 	got := pvc.Spec.Resources.Requests[apiv1.ResourceStorage]
-	want := resource.MustParse("10G")
+	want := resource.MustParse("10Gi")
 	if got.Cmp(want) != 0 {
 		t.Fatalf("expected storage request %s, got %s", want.String(), got.String())
 	}
 }
 
-func TestK8SProxyPVC_FallsBackToDefaultSizeWhenUnparseable(t *testing.T) {
-	cluster := newTestCluster("k8stest")
-	cluster.Conf.ProvProxDisk = "not-a-size"
-	prx := &fakeProxy{name: "proxysql1"}
-
-	pvc := cluster.k8sProxyPVC(prx)
-
-	got := pvc.Spec.Resources.Requests[apiv1.ResourceStorage]
-	want := resource.MustParse("20G")
-	if got.Cmp(want) != 0 {
-		t.Fatalf("expected the fallback to match prov-proxy-disk-size's own default (20G), got %s", got.String())
+func TestK8SProxyPVC_SizeFollowsProvDiskContract(t *testing.T) {
+	for _, tt := range k8sDiskSizeCases {
+		t.Run(tt.name, func(t *testing.T) {
+			cluster := newTestCluster("k8stest")
+			cluster.Conf.ProvProxDisk = tt.value
+			pvc := cluster.k8sProxyPVC(&fakeProxy{name: "proxysql1"})
+			got := pvc.Spec.Resources.Requests[apiv1.ResourceStorage]
+			if got.Value() != tt.want {
+				t.Fatalf("prov-proxy-disk-size %q: expected a %d bytes request, got %s (%d bytes)", tt.value, tt.want, got.String(), got.Value())
+			}
+		})
 	}
 }
 
@@ -1330,23 +1330,74 @@ func TestK8SDatabasePVC_UsesProvDiskSize(t *testing.T) {
 	pvc := cluster.k8sDatabasePVC(s)
 
 	got := pvc.Spec.Resources.Requests[apiv1.ResourceStorage]
-	want := resource.MustParse("20G")
+	want := resource.MustParse("20Gi")
 	if got.Cmp(want) != 0 {
 		t.Fatalf("expected storage request %s, got %s", want.String(), got.String())
 	}
 }
 
-func TestK8SDatabasePVC_FallsBackToDefaultSizeWhenUnparseable(t *testing.T) {
+// The fallback for an unusable size is the setting default, read from config: one place.
+func TestK8SDiskQuantityOrDefault_FallsBackToConfigDefault(t *testing.T) {
 	cluster := newTestCluster("k8stest")
-	cluster.Conf.ProvDisk = "not-a-size"
-	s := &ServerMonitor{Name: "db1"}
+	want, err := k8sDiskQuantity(config.DefaultProvDiskSize)
+	if err != nil {
+		t.Fatalf("the default %q must be a usable size: %v", config.DefaultProvDiskSize, err)
+	}
+	if want.Sign() <= 0 {
+		t.Fatalf("the default %q must be a strictly positive size, got %s", config.DefaultProvDiskSize, want.String())
+	}
+	for _, bad := range []string{"", "0", "-5", "abc"} {
+		got := cluster.k8sDiskQuantityOrDefault("prov-db-disk-size", bad)
+		if got.Cmp(want) != 0 {
+			t.Fatalf("size %q: expected the default %s, got %s", bad, want.String(), got.String())
+		}
+	}
+}
 
-	pvc := cluster.k8sDatabasePVC(s)
+// prov-db-disk-size and prov-proxy-disk-size carry OpenSVC's contract (config measurement
+// "G,bytes,required"): a bare number is gigabytes and G is 1024-based, the same 20 GiB
+// provDiskSizeForOpenSVC writes as "20g". The DBU alignment and the configuration load write
+// the bare form ("20"); Kubernetes reads a bare quantity as bytes, so the volume must be asked
+// for in explicit binary units. Shared by the database and the proxy PVC.
+const k8sGiB = int64(1024 * 1024 * 1024)
 
-	got := pvc.Spec.Resources.Requests[apiv1.ResourceStorage]
-	want := resource.MustParse("20G")
-	if got.Cmp(want) != 0 {
-		t.Fatalf("expected the fallback to match prov-db-disk-size's own default (20G), got %s", got.String())
+var k8sDiskSizeCases = []struct {
+	name  string
+	value string
+	want  int64 // bytes
+}{
+	{"bare number is gigabytes", "20", 20 * k8sGiB},
+	{"explicit G is binary like OpenSVC", "20G", 20 * k8sGiB},
+	{"lowercase g", "20g", 20 * k8sGiB},
+	{"GB suffix", "100GB", 100 * k8sGiB},
+	{"T converts to G", "1T", 1024 * k8sGiB},
+	{"Kubernetes binary quantity is kept as written", "20Gi", 20 * k8sGiB},
+	{"surrounding whitespace is ignored", " 20Gi ", 20 * k8sGiB},
+	{"Kubernetes binary quantity below the G base is kept", "512Mi", 512 * 1024 * 1024},
+	{"Kubernetes decimal quantity below the G base keeps its meaning", "500M", 500 * 1000 * 1000},
+	{"Kubernetes decimal fraction keeps its meaning", "1.5G", 1500 * 1000 * 1000},
+	{"unparseable falls back to the default", "not-a-size", 20 * k8sGiB},
+	{"empty falls back to the default", "", 20 * k8sGiB},
+	{"zero falls back to the default", "0", 20 * k8sGiB},
+	{"zero with a unit falls back to the default", "0Gi", 20 * k8sGiB},
+	{"negative falls back to the default", "-5", 20 * k8sGiB},
+	{"unknown unit falls back to the default", "20X", 20 * k8sGiB},
+	{"fractional bare number is not a byte count", "1.5", 20 * k8sGiB},
+	{"exponent is not a size", "1e3", 20 * k8sGiB},
+	{"milli-bytes are not a size", "500m", 20 * k8sGiB},
+}
+
+func TestK8SDatabasePVC_SizeFollowsProvDiskContract(t *testing.T) {
+	for _, tt := range k8sDiskSizeCases {
+		t.Run(tt.name, func(t *testing.T) {
+			cluster := newTestCluster("k8stest")
+			cluster.Conf.ProvDisk = tt.value
+			pvc := cluster.k8sDatabasePVC(&ServerMonitor{Name: "db1"})
+			got := pvc.Spec.Resources.Requests[apiv1.ResourceStorage]
+			if got.Value() != tt.want {
+				t.Fatalf("prov-db-disk-size %q: expected a %d bytes request, got %s (%d bytes)", tt.value, tt.want, got.String(), got.Value())
+			}
+		})
 	}
 }
 
