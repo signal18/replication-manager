@@ -503,8 +503,10 @@ Where the waits run, and who waits for them:
   request lasts as long as the wait (none, or about 21 to 22s when the old Pod was
   still terminating, was observed; 90s at most). `InitDatabaseService` and `UnprovisionDatabaseService` start the
   Kubernetes function in a goroutine but block on `cluster.errorChan` for its
-  result. Rolling operations run in a goroutine started by the API or by the cron
-  scheduler (`scheduler-rolling-restart`, `scheduler-rolling-reprov`); the MCP
+  result. The rolling endpoint of the API (`/actions/rolling/...`) and the cron
+  scheduler (`scheduler-rolling-restart`, `scheduler-rolling-reprov`) run the rolling
+  operations in a goroutine; the sharding-add handler (`handlerMuxClusterShardingAdd`)
+  is the exception, it calls `RollingRestart` synchronously in its HTTP request. The MCP
   start and stop tools call the lifecycle function in a goroutine. The
   single-master `RollingRestart` (stop, definition refresh, start) and
   `RollingReprov` therefore include the waits; the replica and post-switchover
