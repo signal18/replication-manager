@@ -306,7 +306,7 @@ func k8sProxyVolumeName(proxyName string) string {
 	return proxyName + "-data"
 }
 
-// Sized from prov-proxy-disk-size (k8sDiskQuantity), falling back to 20Gi if unusable.
+// Sized from prov-proxy-disk-size (k8sDiskQuantity), falling back to the setting default (config.DefaultProvDiskSize, 20G = 20Gi) if unusable.
 func (cluster *Cluster) k8sProxyPVC(prx DatabaseProxy) *apiv1.PersistentVolumeClaim {
 	size := cluster.k8sDiskQuantityOrDefault("prov-proxy-disk-size", cluster.Conf.ProvProxDisk)
 	pvc := &apiv1.PersistentVolumeClaim{

@@ -28,7 +28,7 @@ interface in `cluster/orchestrator.go`.
    can be legitimate even when the namespace exists. A namespace that
    genuinely doesn't exist surfaces as a real error at the next step.
 3. Create PVC `<cluster>-<server>-claim` (`k8sDatabasePVC`), `ReadWriteOnce`,
-   sized from `prov-db-disk-size` (falls back to `20Gi` if unusable). Sizes (database and
+   sized from `prov-db-disk-size` (falls back to the default of the setting, `config.DefaultProvDiskSize` (`20G`), if unusable). Sizes (database and
    proxy, `prov-proxy-disk-size`) go through `k8sDiskQuantity`:
    - Portable repman values follow the shared gigabyte measurement (`G,bytes,required`):
      gigabytes, 1024-based, so the bare `20` the DBU alignment writes, `20G`, `20g` and
@@ -40,7 +40,7 @@ interface in `cluster/orchestrator.go`.
      builder when `measurement` is off or through the runtime API, and it is not portable to
      OpenSVC.
    - Empty, zero, negative, bare fractions, exponents and unknown units log a warning and
-     request `20Gi`.
+     request the default (`20Gi`).
    Only a newly created PVC takes the size; an existing PVC is never resized.
    `AlreadyExists` is idempotent; anything else is fatal.
 4. No config priming here — the config tarball is generated on demand when

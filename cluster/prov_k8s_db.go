@@ -232,10 +232,6 @@ func k8sDatabaseRunVolumeName(serverName string) string {
 	return serverName + "-run"
 }
 
-// k8sDefaultDiskQuantity is the 20G default of prov-db-disk-size and prov-proxy-disk-size,
-// as the binary quantity those settings mean everywhere else (20 GiB).
-const k8sDefaultDiskQuantity = "20Gi"
-
 // k8sByteQuantity is a Kubernetes quantity with an explicit byte unit: the shapes
 // resource.ParseQuantity reads as a volume size ("512Mi", "500M", "1.5G"), never a bare number,
 // an exponent or milli-bytes.
@@ -267,13 +263,15 @@ func k8sDiskQuantity(value string) (resource.Quantity, error) {
 }
 
 // k8sDiskQuantityOrDefault is k8sDiskQuantity for a PVC builder: an unusable size is logged
-// and the 20Gi default requested, so no PVC is ever created with an invalid size.
+// and the default of the setting (config.DefaultProvDiskSize, read like any other value) requested,
+// so no PVC is ever created with an invalid size.
 func (cluster *Cluster) k8sDiskQuantityOrDefault(setting, value string) resource.Quantity {
 	size, err := k8sDiskQuantity(value)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn,
-			"Cannot use %s %q (%s), falling back to the default %s ", setting, value, err, k8sDefaultDiskQuantity)
-		return resource.MustParse(k8sDefaultDiskQuantity)
+			"Cannot use %s %q (%s), falling back to the default %s ", setting, value, err, config.DefaultProvDiskSize)
+		// The default is a constant of this module that k8sDiskQuantity accepts (tested).
+		size, _ = k8sDiskQuantity(config.DefaultProvDiskSize)
 	}
 	return size
 }

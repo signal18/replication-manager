@@ -1336,6 +1336,21 @@ func TestK8SDatabasePVC_UsesProvDiskSize(t *testing.T) {
 	}
 }
 
+// The fallback for an unusable size is the setting default, read from config: one place.
+func TestK8SDiskQuantityOrDefault_FallsBackToConfigDefault(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	want, err := k8sDiskQuantity(config.DefaultProvDiskSize)
+	if err != nil {
+		t.Fatalf("the default %q must be a usable size: %v", config.DefaultProvDiskSize, err)
+	}
+	for _, bad := range []string{"", "0", "-5", "abc"} {
+		got := cluster.k8sDiskQuantityOrDefault("prov-db-disk-size", bad)
+		if got.Cmp(want) != 0 {
+			t.Fatalf("size %q: expected the default %s, got %s", bad, want.String(), got.String())
+		}
+	}
+}
+
 // prov-db-disk-size and prov-proxy-disk-size carry OpenSVC's contract (config measurement
 // "G,bytes,required"): a bare number is gigabytes and G is 1024-based, the same 20 GiB
 // provDiskSizeForOpenSVC writes as "20g". The DBU alignment and the configuration load write

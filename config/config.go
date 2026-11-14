@@ -1450,6 +1450,10 @@ const (
 	ConstStreamingSubDir string = "backups"
 )
 
+// DefaultProvDiskSize is the default of prov-db-disk-size and prov-proxy-disk-size: the one
+// place it is written. The flag registration and every fallback for an unusable size use it.
+const DefaultProvDiskSize = "20G"
+
 // Backup archive mode picker: selects the Restic archive backend (or disables it).
 const (
 	ConstBackupArchiveModeNone        string = "none"
