@@ -1115,10 +1115,9 @@ func (cluster *Cluster) k8sResourceSensorRuntimeIssue(ctx context.Context, clien
 // Deployment does not exist yet, it waits (bounded) until no Pod references the PVC claims of its Pod
 // template: a foreground delete followed by NotFound is control-plane evidence that the Deployment and
 // its dependent API objects are gone, not a proof for a Pod an earlier, external or failed operation
-// left behind. An existing
-// Deployment (running, stopped or being deleted) is not created again, so nothing is waited for: the
-// Create then reports AlreadyExists and k8sExistingDeploymentUsable decides. A Deployment that cannot be
-// read is an error, never a go-ahead.
+// left behind. An existing Deployment (running, stopped or being deleted) is not created again, so
+// nothing is waited for: the Create then reports AlreadyExists and k8sExistingDeploymentUsable decides.
+// A Deployment that cannot be read is an error, never a go-ahead.
 func (cluster *Cluster) k8sWaitBeforeCreatingDeployment(client kubernetes.Interface, deployment *appsv1.Deployment, timeout, poll time.Duration) error {
 	ctx, cancel := context.WithTimeout(context.Background(), k8sAPICallTimeout)
 	_, err := client.AppsV1().Deployments(cluster.Name).Get(ctx, deployment.Name, metav1.GetOptions{})
@@ -1341,12 +1340,25 @@ func (cluster *Cluster) K8SStopDatabaseService(s *ServerMonitor) error {
 	return cluster.k8sStopDatabaseServiceWithClient(client, s.Name)
 }
 
-// k8sLifecycleWaitTimeout is the one deadline of every wait an explicit database lifecycle operation
-// makes on objects the previous generation still owns (the Pods that mount the data PVC before a
-// scale-up, the Deployment that is being deleted before a reprovision). It is a failure boundary, not
-// a permission: when it passes, the operation fails and neither scales up nor deletes anything.
-// Each API request inside a wait is bounded on its own (k8sAPICallTimeout). These waits belong to
-// operator-triggered lifecycle operations, never to the monitor tick (F2).
+// k8sLifecycleWaitTimeout is the one deadline of the waits an explicit database lifecycle operation
+// makes on objects the previous generation still owns. It is a failure boundary, not a permission, and
+// what a timeout leaves depends on the wait:
+//   - the PVC-consumer wait (a Start from zero replicas, the creation of a Deployment that does not
+//     exist yet): after a failed guard nothing is scaled up and no database Deployment is created; the
+//     wait only reads. A provisioning may already have created its namespace, credentials Secret, PVC
+//     and headless Service.
+//   - the Deployment-gone wait (unprovision): the foreground deletion of the Deployment and the
+//     deletion of its Service were requested before the wait began and may go on after the timeout;
+//     the wait itself force-deletes nothing and requests no further deletion.
+//
+// Each API request inside a wait is bounded on its own (k8sAPICallTimeout). The waits belong to
+// explicit lifecycle operations (API actions, rolling operations, bootstrap, deletion), which block
+// their caller until they finish. The monitoring and failover paths traced for MariaDB, MySQL and
+// Percona do not reach them. The generic PostgreSQL planned-switchover chain (postgresSwitchover ->
+// postgresStartServer -> StartDatabaseService) can structurally reach a Kubernetes Start, but
+// PostgreSQL provisioning on Kubernetes is not implemented or validated: that is an unconfirmed,
+// support-limited risk, with no monitoring degradation demonstrated (see "Single-writer safety" in
+// doc/implementation/cluster/KUBERNETES_PROVISIONING.md).
 const k8sLifecycleWaitTimeout = 90 * time.Second
 
 // k8sDeploymentPVCClaims lists the PersistentVolumeClaims the Deployment's Pod template mounts: the
@@ -1368,6 +1380,8 @@ func k8sDeploymentPVCClaims(dep *appsv1.Deployment, fallback string) []string {
 // k8sPVCConsumers lists the Pods of the cluster namespace whose volumes reference one of claims: every
 // such Pod, whatever its labels, owner (old ReplicaSets included), readiness, phase or deletion state.
 // A Terminating Pod still runs its containers until the kubelet has stopped them, so it counts.
+// The whole namespace is listed on purpose: a field selector cannot filter on volumes, and a label
+// selector would miss a Pod that does not carry ours; the cost is one list per poll.
 func (cluster *Cluster) k8sPVCConsumers(client kubernetes.Interface, claims []string) ([]string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), k8sAPICallTimeout)
 	defer cancel()
@@ -1398,17 +1412,42 @@ func (cluster *Cluster) k8sPVCConsumers(client kubernetes.Interface, claims []st
 // the Pods still holding the claim or the last API error. Nothing is deleted or scaled here, a stale
 // Pod object (for instance an evicted one) is for the operator to remove.
 func (cluster *Cluster) k8sWaitPVCConsumersGone(client kubernetes.Interface, claims []string, timeout, poll time.Duration) error {
+	_, err := cluster.k8sWaitPVCConsumersGoneUnless(client, claims, timeout, poll, nil)
+	return err
+}
+
+// k8sWaitPVCConsumersGoneUnless is k8sWaitPVCConsumersGone with one more way out, for a caller whose
+// goal another operation may reach while it waits: before every poll after the first, superseded (nil
+// for none) is asked whether that is so, and when it says true the wait ends at once, with true and no
+// error, whether or not the Pods are gone. The wait itself never scales or deletes anything, so ending
+// it early cannot start a process. A superseded that fails never counts as "no": that poll is not
+// completed (no Pod list, nothing proceeds), the error is retried until the deadline, and a permanent
+// refusal (Forbidden, Unauthorized) ends the wait at once.
+func (cluster *Cluster) k8sWaitPVCConsumersGoneUnless(client kubernetes.Interface, claims []string, timeout, poll time.Duration, superseded func() (bool, error)) (bool, error) {
 	deadline := time.Now().Add(timeout)
 	var lastErr error
 	var holders []string
-	for {
-		holders, lastErr = cluster.k8sPVCConsumers(client, claims)
-		if lastErr == nil && len(holders) == 0 {
-			return nil
+	for attempt := 0; ; attempt++ {
+		holders, lastErr = nil, nil
+		if superseded != nil && attempt > 0 {
+			done, err := superseded()
+			if err == nil && done {
+				return true, nil
+			}
+			if apierrors.IsForbidden(err) || apierrors.IsUnauthorized(err) {
+				return false, fmt.Errorf("not allowed to read Deployment in namespace %s (replication-manager's Kubernetes identity needs `get` on `deployments` there), not scaling up: %w", cluster.Name, err)
+			}
+			lastErr = err
+		}
+		if lastErr == nil {
+			holders, lastErr = cluster.k8sPVCConsumers(client, claims)
+			if lastErr == nil && len(holders) == 0 {
+				return false, nil
+			}
 		}
 		if apierrors.IsForbidden(lastErr) || apierrors.IsUnauthorized(lastErr) {
 			// permanent, not worth the deadline: the Pods cannot be checked, so nothing proceeds
-			return fmt.Errorf("not allowed to list Pods in namespace %s (replication-manager's Kubernetes identity needs `list` on `pods` there), not scaling up or creating the Deployment: %w", cluster.Name, lastErr)
+			return false, fmt.Errorf("not allowed to list Pods in namespace %s (replication-manager's Kubernetes identity needs `list` on `pods` there), not scaling up or creating the Deployment: %w", cluster.Name, lastErr)
 		}
 		remaining := time.Until(deadline)
 		if remaining <= 0 {
@@ -1417,9 +1456,9 @@ func (cluster *Cluster) k8sWaitPVCConsumersGone(client kubernetes.Interface, cla
 		time.Sleep(min(poll, remaining))
 	}
 	if lastErr != nil {
-		return fmt.Errorf("cannot confirm that no Pod uses PVC %s within %s, not scaling up or creating the Deployment: %w", strings.Join(claims, ","), timeout, lastErr)
+		return false, fmt.Errorf("cannot confirm that no Pod uses PVC %s within %s, not scaling up or creating the Deployment: %w", strings.Join(claims, ","), timeout, lastErr)
 	}
-	return fmt.Errorf("Pod(s) still use PVC %s after %s, not scaling up or creating the Deployment and nothing deleted: %s", strings.Join(claims, ","), timeout, strings.Join(holders, ", "))
+	return false, fmt.Errorf("Pod(s) still use PVC %s after %s, not scaling up or creating the Deployment and nothing deleted: %s", strings.Join(claims, ","), timeout, strings.Join(holders, ", "))
 }
 
 // k8sStartDatabaseServiceWithClient scales the Deployment to 1 replica -- idempotent (a Deployment
@@ -1427,9 +1466,12 @@ func (cluster *Cluster) k8sWaitPVCConsumersGone(client kubernetes.Interface, cla
 // regardless of whether Stop actually ran). Creates a brand new pod when scaling up from 0,
 // re-running the init container. A genuine 0 -> 1 first waits (k8sWaitPVCConsumersGone) until no
 // Pod, terminating ones included, still references the data PVC: the scale-down returns when the
-// patch is accepted, not when the old database process has exited, and the ReplicaSet controller is
+// patch is accepted, not when the old database process has exited, and the ReplicaSet controller does
 // not count a Terminating Pod when it creates the replacement (observed on Kubernetes v1.37 with a
 // sentinel workload: a raw scale-up right after the scale-down ran both containers together).
+// A genuine 0 -> 1 issues its scale-up PATCH only after that wait has succeeded; while it waits it only
+// reads. If the Deployment is seen to have left zero replicas meanwhile (another operation scaled it
+// up), the wait ends and, at one replica, this call issues no PATCH of its own.
 // On timeout or API error nothing is scaled.
 func (cluster *Cluster) k8sStartDatabaseServiceWithClient(client kubernetes.Interface, name string) error {
 	return cluster.k8sStartDatabaseServiceWithWait(client, name, k8sLifecycleWaitTimeout, k8sRolloutPollInterval)
@@ -1445,10 +1487,37 @@ func (cluster *Cluster) k8sStartDatabaseServiceWithWait(client kubernetes.Interf
 	}
 	if dep.Spec.Replicas != nil && *dep.Spec.Replicas == 0 {
 		claims := k8sDeploymentPVCClaims(dep, k8sDatabasePVCName(cluster.Name, name))
-		if err := cluster.k8sWaitPVCConsumersGone(client, claims, timeout, poll); err != nil {
+		// While this Start waits, another Start may scale the Deployment up and its Pod then holds the
+		// claim; waiting for that Pod to go would only time out. So the Deployment is read again before
+		// each later poll: no longer at zero replicas means this call has no scale-up of its own to issue,
+		// and it issues no scale-up PATCH. That is the decision a Start already makes on a Deployment that
+		// runs (no wait, no Pod list). It does not know who changed the replicas, nor whether that change
+		// was safe: the PVC-consumer guard is not a distributed lock and cannot protect against another
+		// Start that did not check, an operator or another controller.
+		var observed *int32
+		superseded := func() (bool, error) {
+			ctx, cancel := context.WithTimeout(context.Background(), k8sAPICallTimeout)
+			defer cancel()
+			current, err := client.AppsV1().Deployments(cluster.Name).Get(ctx, name, metav1.GetOptions{})
+			if err != nil {
+				return false, err
+			}
+			if current.Spec.Replicas != nil && *current.Spec.Replicas == 0 {
+				return false, nil
+			}
+			observed = current.Spec.Replicas
+			return true, nil
+		}
+		scaledUp, err := cluster.k8sWaitPVCConsumersGoneUnless(client, claims, timeout, poll, superseded)
+		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot start database %s: %s ", name, err)
 			return err
 		}
+		if scaledUp && (observed == nil || *observed == 1) {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Database %s was scaled up by another operation while this start waited: no second patch ", name)
+			return nil
+		}
+		// scaled to more than one by someone else: falls through to the patch, which only brings it back to one
 	}
 	patch := []byte(`{"spec":{"replicas":1}}`)
 	pctx, pcancel := context.WithTimeout(context.Background(), k8sAPICallTimeout)
@@ -2045,6 +2114,7 @@ func (cluster *Cluster) k8sUnprovisionDatabaseServiceWithWait(client kubernetes.
 	return firstErr
 }
 
+// Exactly one value is ever sent on cluster.errorChan.
 func (cluster *Cluster) K8SUnprovisionDatabaseService(s *ServerMonitor) {
 	client, err := cluster.K8SConnectAPI()
 	if err != nil {
