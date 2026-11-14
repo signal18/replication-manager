@@ -53,6 +53,8 @@ print_defaults_for_fetch 127.0.0.1 4444 /etc/mysql "$TMP_DIR/print-defaults.log"
 echo "rc=$?"
 EOF
 
+chmod -R a+rX "$WORK" # read by the jobs user, mktemp makes it 0700
+
 run_as_jobs_user() { # <functions file>
   docker exec -u 4242:4242 -e PATH=/usr/local/bin:/usr/bin:/bin -e TMP_DIR=/var/lib/onp/.system/jobs "${P}_db" \
     bash -c 'rm -rf "$TMP_DIR"/* 2>/dev/null; cd "$TMP_DIR" && bash /check/run.sh "$1" 2>&1; echo "received_var=$(grep -c -E -- "^--max[-_]connections=4242$" "$TMP_DIR/received" 2>/dev/null)"; echo "dummy_in_jobs=$(test -f "$TMP_DIR/dummy/dummy.cnf" && echo 1 || echo 0)"; echo "bootstrap=$(test -e /bootstrap && echo 1 || echo 0)"' _ "$1"
@@ -75,7 +77,7 @@ for img in "${IMAGES[@]}"; do
   if [ -s "$WORK/old.sh" ]; then
     out=$(run_as_jobs_user /check/old.sh)
     [ "$(g rc)" != 0 ] && echo "$out" | grep -q -E "cannot create directory '/bootstrap'|Permission denied|Neither 'mariadbd' nor 'mysqld' found" \
-      && ok "the previous code fails there: $(echo "$out" | grep -m1 -o -E "cannot create directory '/bootstrap'[^\n]*|Neither 'mariadbd' nor 'mysqld' found in PATH")" \
+      && ok "the previous code fails there: $(echo "$out" | grep -m1 -o -E "cannot create directory '/bootstrap'|Neither 'mariadbd' nor 'mysqld' found in PATH")" \
       || bad "the previous code does not fail there (rc '$(g rc)'): the check would not see the bug"
   else
     echo "  info: no previous code at '$OLD_REF', comparison skipped"
