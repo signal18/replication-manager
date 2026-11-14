@@ -5,8 +5,8 @@
 # long options). --innobackupex is also deprecated (mariadb-backup 11.8 says so). The job now runs the native form,
 # --defaults-file first, then --backup ... --stream=xbstream --target-dir=<jobs dir>.
 # The check takes the command line from the script itself (the line that runs $MARIADB_BACKUP ... --backup ..., up to its pipe
-# to socat), runs it in the official mariadb image, with binary logging on, from the job's working directory with the script's
-# variables set, and asserts that:
+# to socat), runs it in the official mariadb image, with binary logging on, from the job's working directory
+# (the jobs directory, as the job does since #2379) with the script's variables set, and asserts that:
 #   1. the command is the native form: --defaults-file comes first, --backup and --target-dir= are present, --innobackupex is not;
 #   2. it exits 0, streams data, prints "completed OK!" in the form doneJob greps for, and prints the binlog position line in
 #      the form the server parses (filename '..', position '..', GTID of the last change '..');
@@ -26,10 +26,12 @@ ok() { echo "  ok:   $*"; }
 bad() { echo "  FAIL: $*"; fail=1; }
 trap 'docker rm -f "${P}_db" "${P}_re" >/dev/null 2>&1; docker volume rm -f "${P}_v" >/dev/null 2>&1' EXIT
 
-# the real command: the line of the mariabackup job, without its pipe to socat
+# the real command: the line of the mariabackup job, without its pipe to the stream signature and to socat
+# (job_stream_signed is a function of the script, not defined in the container: cutting at socat only left it in
+# the command, which then exited 127 with 0 bytes)
 LINE=$(grep -E '^\s+\$MARIADB_BACKUP .*--stream=xbstream' "$SCRIPT" | head -1)
 [ -n "$LINE" ] || { echo "FAIL: the mariabackup command was not found in $SCRIPT"; exit 2; }
-CMD=${LINE%% | socat*}; CMD=${CMD#"${CMD%%[![:space:]]*}"}
+CMD=${LINE%% | job_stream_signed*}; CMD=${CMD%% | socat*}; CMD=${CMD#"${CMD%%[![:space:]]*}"}
 # the previous form: --innobackupex first, no target directory
 CMD_OLD=${CMD/--backup/}; CMD_OLD=${CMD_OLD/\$MARIADB_BACKUP /\$MARIADB_BACKUP --innobackupex }; CMD_OLD=${CMD_OLD// --target-dir=\"\$LOG_DIR\/\"/}
 
@@ -40,15 +42,15 @@ run_cmd() { # <command text>: runs it in the db container as the job does
   docker exec -e CMD="$1" "${P}_db" sh -c '
     BIN=$(command -v mariadb-backup || command -v mariabackup); MARIADB_BACKUP=$BIN
     MYSQL_CONF=/etc/mysql; USER=root; MYSQL_SERVER=127.0.0.1; PASSWORD='"$PW"'; MYSQL_PORT=3306
-    LOG_DIR=/tmp/jobs; rm -rf "$LOG_DIR" /docker-entrypoint-initdb.d/-h* /docker-entrypoint-initdb.d/mariadb_backup_files; mkdir -p "$LOG_DIR"
-    cd /docker-entrypoint-initdb.d
+    LOG_DIR=/tmp/jobs; TMP_DIR=$LOG_DIR; rm -rf "$LOG_DIR"; mkdir -p "$LOG_DIR"
+    cd "$TMP_DIR"
     eval "$CMD" >/tmp/o.xb
     echo "exit=$?"; echo "size=$(stat -c %s /tmp/o.xb)"
     echo "completed_ok=$(grep -c -E "([0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}|\[Xtrabackup\]) completed OK!" "$LOG_DIR/backup.out")"
     echo "binlog_line=$(grep -c -E "filename '"'"'[^'"'"']+'"'"', position '"'"'[^'"'"']+'"'"', GTID of the last change '"'"'[^'"'"']+'"'"'" "$LOG_DIR/backup.out")"
     echo "missing_arg=$(grep -c "Missing argument" "$LOG_DIR/backup.out")"
     echo "target_leftovers=$(ls -A "$LOG_DIR" | grep -v "^backup.out$" | tr "\n" " ")"
-    echo "cwd_stray=$(ls -A /docker-entrypoint-initdb.d | grep -E "^(-|mariadb_backup_files)" | tr "\n" " ")"' 2>&1
+    echo "cwd_stray=$(ls -A "$TMP_DIR" | grep -E "^(-|mariadb_backup_files)" | tr "\n" " ")"' 2>&1
 }
 g() { echo "$out" | sed -n "s/^$1=//p"; }
 
