@@ -174,6 +174,15 @@ database PVC before replacing a database. When one of them is refused the
 operation fails at once with an error naming the missing permission, changes
 nothing and force-deletes nothing.
 
+The regression test `testK8SProvisionSchedulerVolumeBinding` (`regtest/`) needs one
+permission more than the table above: `get` on `apps/replicasets` in the database
+namespace, because it follows the owner chain Pod → ReplicaSet → Deployment to prove
+that the replacement Pod belongs to the new Deployment. This is a requirement of the
+test only: replication-manager itself needs only `list` on `replicasets` (native Pod
+resize), and the production RBAC above is unchanged. A test run whose identity lacks it
+(or `list` on `pods`) fails at once with the refused verb and resource, not after the
+120 s wait for the replacement Pod.
+
 The config archive itself is served by `handlerMuxServersPortConfig`
 (`server/api_database.go`) via `GenerateDatabaseConfig`; only
 `etc/mysql/conf.d/*.cnf` is copied in (MariaDB's `!includedir` isn't

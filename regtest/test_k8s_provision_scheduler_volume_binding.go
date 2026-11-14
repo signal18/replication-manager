@@ -8,6 +8,7 @@ package regtest
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/signal18/replication-manager/cluster"
@@ -146,14 +147,26 @@ func (regtest *RegTest) TestK8SProvisionSchedulerVolumeBinding(cl *cluster.Clust
 
 	// ... with a new pod, owned by it, that runs and is ready.
 	var replacement *apiv1.Pod
+	var lastLookupErr error
 	for deadline := time.Now().Add(120 * time.Second); time.Now().Before(deadline); {
-		if pod := k8sReplacementPod(client, cl.Name, slave.Name, dep.UID, oldPods); pod != nil {
+		pod, lookupErr := k8sReplacementPod(client, cl.Name, slave.Name, dep.UID, oldPods)
+		if lookupErr != nil {
+			// A refusal by the API server does not go away by waiting: it is reported now,
+			// with the verb and the resource, not as a timeout 120 s later.
+			if k8sRefusedByAPI(lookupErr) {
+				return fail("the test identity is not allowed to look for the replacement pod: %s", lookupErr)
+			}
+			lastLookupErr = lookupErr
+		} else if pod != nil {
 			replacement = pod
 			break
 		}
 		time.Sleep(2 * time.Second)
 	}
 	if replacement == nil {
+		if lastLookupErr != nil {
+			return fail("no new, ready pod owned by Deployment %s (uid %s) reached Running within 120s; last API error: %s", slave.Name, dep.UID, lastLookupErr)
+		}
 		return fail("no new, ready pod owned by Deployment %s (uid %s) reached Running within 120s", slave.Name, dep.UID)
 	}
 	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST",
@@ -193,13 +206,23 @@ func (regtest *RegTest) TestK8SProvisionSchedulerVolumeBinding(cl *cluster.Clust
 	return true
 }
 
+// k8sRefusedByAPI tells whether the API server refused the request itself (Forbidden or
+// Unauthorized), as opposed to a condition that can pass.
+func k8sRefusedByAPI(err error) bool {
+	return apierrors.IsForbidden(err) || apierrors.IsUnauthorized(err)
+}
+
 // k8sReplacementPod returns a pod of the server that is running, not terminating, whose
 // container named after the server is ready, that is not one of the old pods and that is owned (through
-// its ReplicaSet) by the Deployment with the given UID; nil when there is none yet.
-func k8sReplacementPod(client kubernetes.Interface, namespace, server string, deploymentUID types.UID, oldPods map[types.UID]string) *apiv1.Pod {
+// its ReplicaSet) by the Deployment with the given UID. It returns (nil, nil) when there is none yet,
+// and a ReplicaSet that is not there (yet) is that same "not yet", never an error. A failed
+// API call is returned, naming the verb and the resource, so that the caller can tell a refusal
+// (k8sRefusedByAPI: the test needs "list" on pods and "get" on apps/replicasets in the
+// namespace) from a transient failure; the first failed call ends the lookup.
+func k8sReplacementPod(client kubernetes.Interface, namespace, server string, deploymentUID types.UID, oldPods map[types.UID]string) (*apiv1.Pod, error) {
 	pods, err := client.CoreV1().Pods(namespace).List(context.TODO(), metav1.ListOptions{LabelSelector: "tag=" + server})
 	if err != nil {
-		return nil
+		return nil, fmt.Errorf("list pods in namespace %s: %w", namespace, err)
 	}
 	for i := range pods.Items {
 		pod := &pods.Items[i]
@@ -220,15 +243,18 @@ func k8sReplacementPod(client kubernetes.Interface, namespace, server string, de
 				continue
 			}
 			rs, rsErr := client.AppsV1().ReplicaSets(namespace).Get(context.TODO(), ref.Name, metav1.GetOptions{})
-			if rsErr != nil {
+			if apierrors.IsNotFound(rsErr) {
 				continue
+			}
+			if rsErr != nil {
+				return nil, fmt.Errorf("get replicasets.apps %s in namespace %s: %w", ref.Name, namespace, rsErr)
 			}
 			for _, rsRef := range rs.OwnerReferences {
 				if rsRef.UID == deploymentUID {
-					return pod
+					return pod, nil
 				}
 			}
 		}
 	}
-	return nil
+	return nil, nil
 }
