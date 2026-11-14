@@ -559,6 +559,17 @@ func (cluster *Cluster) k8sDatabaseDeployment(s *ServerMonitor, port int, nodeHo
 		},
 		Spec: appsv1.DeploymentSpec{
 			Replicas: int32Ptr(1),
+			// Recreate, not the inherited RollingUpdate: with one replica the default creates the
+			// new Pod BEFORE the old one is stopped, so two database processes could share the
+			// datadir (ReadWriteOnce limits attachment per node, not per Pod, and the Pod is pinned
+			// to one node). Under Recreate the Deployment controller waits until the old Pods have
+			// TERMINATED (their containers stopped, the Pod in a terminal phase) before it creates the
+			// new one; the old Pod's API object may still exist for a moment when the new Pod is
+			// created, which is not a second running process. Observed with a non-database sentinel
+			// Deployment on Kubernetes v1.37 (issue #2389), not yet with a real database. Normal
+			// template rollouts only: see k8sWaitPVCConsumersGone for the repman-controlled scale-up
+			// and doc/implementation/cluster/KUBERNETES_PROVISIONING.md for the guarantee boundary.
+			Strategy: appsv1.DeploymentStrategy{Type: appsv1.RecreateDeploymentStrategyType},
 			Selector: &metav1.LabelSelector{
 				MatchLabels: map[string]string{
 					"app": "repication-manager",
@@ -1104,6 +1115,44 @@ func (cluster *Cluster) k8sResourceSensorRuntimeIssue(ctx context.Context, clien
 	return k8sSensorHealthy, ""
 }
 
+// k8sWaitBeforeCreatingDeployment is the scale-up guard for a Deployment that is about to be CREATED
+// (it starts at one replica, so it never goes through k8sStartDatabaseServiceWithWait). When the
+// Deployment does not exist yet, it waits (bounded) until no Pod references the PVC claims of its Pod
+// template: a foreground delete followed by NotFound is control-plane evidence that the Deployment and
+// its dependent API objects are gone, not a proof for a Pod an earlier, external or failed operation
+// left behind. An existing Deployment (running, stopped or being deleted) is not created again, so
+// nothing is waited for: the Create then reports AlreadyExists and k8sExistingDeploymentUsable decides.
+// A Deployment that cannot be read is an error, never a go-ahead.
+func (cluster *Cluster) k8sWaitBeforeCreatingDeployment(client kubernetes.Interface, deployment *appsv1.Deployment, timeout, poll time.Duration) error {
+	ctx, cancel := context.WithTimeout(context.Background(), k8sAPICallTimeout)
+	_, err := client.AppsV1().Deployments(cluster.Name).Get(ctx, deployment.Name, metav1.GetOptions{})
+	cancel()
+	if err == nil {
+		return nil
+	}
+	if !apierrors.IsNotFound(err) {
+		return fmt.Errorf("cannot read Deployment %s before creating it: %w", deployment.Name, err)
+	}
+	return cluster.k8sWaitPVCConsumersGone(client, k8sDeploymentPVCClaims(deployment, k8sDatabasePVCName(cluster.Name, deployment.Name)), timeout, poll)
+}
+
+// k8sExistingDeploymentUsable says whether the Deployment a Create reported as already existing can
+// stand for a successful provisioning: it must be readable and not being deleted. A Deployment with a
+// deletion timestamp (a foreground delete still waiting for its Pods) vanishes when that completes, so
+// accepting it would report success and leave no database.
+func (cluster *Cluster) k8sExistingDeploymentUsable(client kubernetes.Interface, name string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), k8sAPICallTimeout)
+	defer cancel()
+	dep, err := client.AppsV1().Deployments(cluster.Name).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return fmt.Errorf("Deployment %s already exists but cannot be read: %w", name, err)
+	}
+	if dep.DeletionTimestamp != nil {
+		return fmt.Errorf("Deployment %s is still being deleted (since %s): wait for its unprovision to complete, then provision again", name, dep.DeletionTimestamp.Format(time.RFC3339))
+	}
+	return nil
+}
+
 func (cluster *Cluster) K8SProvisionDatabaseService(s *ServerMonitor) {
 	cluster.ResolveDatabaseImage(false) // the deployment carries a release, not a pointer (#1862)
 	cluster.warnDBRunAsVolumeMismatch()
@@ -1202,6 +1251,15 @@ func (cluster *Cluster) K8SProvisionDatabaseService(s *ServerMonitor) {
 		deployment.Spec.Template.Spec.ShareProcessNamespace = &share
 	}
 
+	// A new Deployment starts at one replica: the scale-up rule applies, no Pod may still use the data
+	// PVC (retained across an unprovision). Nothing to wait for on a first provisioning, and an
+	// existing Deployment is not created again, so it is not checked.
+	if guardErr := cluster.k8sWaitBeforeCreatingDeployment(client, deployment, k8sLifecycleWaitTimeout, k8sRolloutPollInterval); guardErr != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot provision %s: %s ", deployment.Name, guardErr)
+		cluster.errorChan <- guardErr
+		return
+	}
+
 	// Create Deployment
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Creating Kubernetes deployment...")
 	result, err := deploymentsClient.Create(context.TODO(), deployment, metav1.CreateOptions{})
@@ -1216,6 +1274,15 @@ func (cluster *Cluster) K8SProvisionDatabaseService(s *ServerMonitor) {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot deploy Kubernetes deployment %s ", err)
 		cluster.errorChan <- err
 		return
+	}
+	if apierrors.IsAlreadyExists(err) {
+		// idempotent only for a Deployment that stays: one still being deleted is not a provisioned
+		// service, it disappears when its deletion completes
+		if existErr := cluster.k8sExistingDeploymentUsable(client, deployment.Name); existErr != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot provision %s: %s ", deployment.Name, existErr)
+			cluster.errorChan <- existErr
+			return
+		}
 	}
 	if err == nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Created Kubernetes deployment %q.\n", result.GetObjectMeta().GetName())
@@ -1278,13 +1345,189 @@ func (cluster *Cluster) K8SStopDatabaseService(s *ServerMonitor) error {
 	return cluster.k8sStopDatabaseServiceWithClient(client, s.Name)
 }
 
-// k8sStartDatabaseServiceWithClient scales the Deployment to 1 replica --
-// idempotent (a no-op if already at 1, since Start is called
-// unconditionally regardless of whether Stop actually ran). Creates a
-// brand new pod when scaling up from 0, re-running the init container.
+// k8sLifecycleWaitTimeout is the one deadline of the waits an explicit database lifecycle operation
+// makes on objects the previous generation still owns. It is a failure boundary, not a permission, and
+// what a timeout leaves depends on the wait:
+//   - the PVC-consumer wait (a Start from zero replicas, the creation of a Deployment that does not
+//     exist yet): after a failed guard nothing is scaled up and no database Deployment is created; the
+//     wait only reads. A provisioning may already have created its namespace, credentials Secret, PVC
+//     and headless Service.
+//   - the Deployment-gone wait (unprovision): the foreground deletion of the Deployment and the
+//     deletion of its Service were requested before the wait began and may go on after the timeout;
+//     the wait itself force-deletes nothing and requests no further deletion.
+//
+// Each API request inside a wait is bounded on its own (k8sAPICallTimeout). The waits belong to
+// explicit lifecycle operations (API actions, rolling operations, bootstrap, deletion), which block
+// their caller until they finish. The monitoring and failover paths traced for MariaDB, MySQL and
+// Percona do not reach them. The generic PostgreSQL planned-switchover chain (postgresSwitchover ->
+// postgresStartServer -> StartDatabaseService) can structurally reach a Kubernetes Start, but
+// PostgreSQL provisioning on Kubernetes is not implemented or validated: that is an unconfirmed,
+// support-limited risk, with no monitoring degradation demonstrated (see "Single-writer safety" in
+// doc/implementation/cluster/KUBERNETES_PROVISIONING.md).
+const k8sLifecycleWaitTimeout = 90 * time.Second
+
+// k8sDeploymentPVCClaims lists the PersistentVolumeClaims the Deployment's Pod template mounts: the
+// database's actual data claim, not a name rebuilt from a convention. fallback is used only when the
+// template names none.
+func k8sDeploymentPVCClaims(dep *appsv1.Deployment, fallback string) []string {
+	var claims []string
+	for _, v := range dep.Spec.Template.Spec.Volumes {
+		if v.PersistentVolumeClaim != nil && v.PersistentVolumeClaim.ClaimName != "" {
+			claims = append(claims, v.PersistentVolumeClaim.ClaimName)
+		}
+	}
+	if len(claims) == 0 && fallback != "" {
+		claims = append(claims, fallback)
+	}
+	return claims
+}
+
+// k8sPVCConsumers lists the Pods of the cluster namespace whose volumes reference one of claims: every
+// such Pod, whatever its labels, owner (old ReplicaSets included), readiness, phase or deletion state.
+// A Terminating Pod still runs its containers until the kubelet has stopped them, so it counts.
+// The whole namespace is listed on purpose: a field selector cannot filter on volumes, and a label
+// selector would miss a Pod that does not carry ours; the cost is one list per poll.
+func (cluster *Cluster) k8sPVCConsumers(client kubernetes.Interface, claims []string) ([]string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), k8sAPICallTimeout)
+	defer cancel()
+	pods, err := client.CoreV1().Pods(cluster.Name).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	var consumers []string
+	for i := range pods.Items {
+		pod := &pods.Items[i]
+		for _, v := range pod.Spec.Volumes {
+			if v.PersistentVolumeClaim == nil || !slices.Contains(claims, v.PersistentVolumeClaim.ClaimName) {
+				continue
+			}
+			state := string(pod.Status.Phase)
+			if pod.DeletionTimestamp != nil {
+				state += ", terminating"
+			}
+			consumers = append(consumers, fmt.Sprintf("%s (%s)", pod.Name, state))
+			break
+		}
+	}
+	return consumers, nil
+}
+
+// k8sWaitPVCConsumersGone returns nil only once no Pod references any of claims. A list that fails is
+// retried until the deadline (a scale-up never follows a failed read); at the deadline the error names
+// the Pods still holding the claim or the last API error. Nothing is deleted or scaled here, a stale
+// Pod object (for instance an evicted one) is for the operator to remove.
+func (cluster *Cluster) k8sWaitPVCConsumersGone(client kubernetes.Interface, claims []string, timeout, poll time.Duration) error {
+	_, err := cluster.k8sWaitPVCConsumersGoneUnless(client, claims, timeout, poll, nil)
+	return err
+}
+
+// k8sWaitPVCConsumersGoneUnless is k8sWaitPVCConsumersGone with one more way out, for a caller whose
+// goal another operation may reach while it waits: before every poll after the first, superseded (nil
+// for none) is asked whether that is so, and when it says true the wait ends at once, with true and no
+// error, whether or not the Pods are gone. The wait itself never scales or deletes anything, so ending
+// it early cannot start a process. A superseded that fails never counts as "no": that poll is not
+// completed (no Pod list, nothing proceeds), the error is retried until the deadline, and a permanent
+// refusal (Forbidden, Unauthorized) ends the wait at once.
+func (cluster *Cluster) k8sWaitPVCConsumersGoneUnless(client kubernetes.Interface, claims []string, timeout, poll time.Duration, superseded func() (bool, error)) (bool, error) {
+	deadline := time.Now().Add(timeout)
+	var lastErr error
+	var holders []string
+	for attempt := 0; ; attempt++ {
+		holders, lastErr = nil, nil
+		if superseded != nil && attempt > 0 {
+			done, err := superseded()
+			if err == nil && done {
+				return true, nil
+			}
+			if apierrors.IsForbidden(err) || apierrors.IsUnauthorized(err) {
+				return false, fmt.Errorf("not allowed to read Deployment in namespace %s (replication-manager's Kubernetes identity needs `get` on `deployments` there), not scaling up: %w", cluster.Name, err)
+			}
+			lastErr = err
+		}
+		if lastErr == nil {
+			holders, lastErr = cluster.k8sPVCConsumers(client, claims)
+			if lastErr == nil && len(holders) == 0 {
+				return false, nil
+			}
+		}
+		if apierrors.IsForbidden(lastErr) || apierrors.IsUnauthorized(lastErr) {
+			// permanent, not worth the deadline: the Pods cannot be checked, so nothing proceeds
+			return false, fmt.Errorf("not allowed to list Pods in namespace %s (replication-manager's Kubernetes identity needs `list` on `pods` there), not scaling up or creating the Deployment: %w", cluster.Name, lastErr)
+		}
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			break
+		}
+		time.Sleep(min(poll, remaining))
+	}
+	if lastErr != nil {
+		return false, fmt.Errorf("cannot confirm that no Pod uses PVC %s within %s, not scaling up or creating the Deployment: %w", strings.Join(claims, ","), timeout, lastErr)
+	}
+	return false, fmt.Errorf("Pod(s) still use PVC %s after %s, not scaling up or creating the Deployment and nothing deleted: %s", strings.Join(claims, ","), timeout, strings.Join(holders, ", "))
+}
+
+// k8sStartDatabaseServiceWithClient scales the Deployment to 1 replica -- idempotent (a Deployment
+// that already runs is patched to 1 as before, with no wait, since Start is called unconditionally
+// regardless of whether Stop actually ran). Creates a brand new pod when scaling up from 0,
+// re-running the init container. A genuine 0 -> 1 first waits (k8sWaitPVCConsumersGone) until no
+// Pod, terminating ones included, still references the data PVC: the scale-down returns when the
+// patch is accepted, not when the old database process has exited, and the ReplicaSet controller does
+// not count a Terminating Pod when it creates the replacement (observed on Kubernetes v1.37 with a
+// sentinel workload: a raw scale-up right after the scale-down ran both containers together).
+// A genuine 0 -> 1 issues its scale-up PATCH only after that wait has succeeded; while it waits it only
+// reads. If the Deployment is seen to have left zero replicas meanwhile (another operation scaled it
+// up), the wait ends and, at one replica, this call issues no PATCH of its own.
+// On timeout or API error nothing is scaled.
 func (cluster *Cluster) k8sStartDatabaseServiceWithClient(client kubernetes.Interface, name string) error {
+	return cluster.k8sStartDatabaseServiceWithWait(client, name, k8sLifecycleWaitTimeout, k8sRolloutPollInterval)
+}
+
+func (cluster *Cluster) k8sStartDatabaseServiceWithWait(client kubernetes.Interface, name string, timeout, poll time.Duration) error {
+	ctx, cancel := context.WithTimeout(context.Background(), k8sAPICallTimeout)
+	dep, err := client.AppsV1().Deployments(cluster.Name).Get(ctx, name, metav1.GetOptions{})
+	cancel()
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot start database %s: cannot read its Deployment: %s ", name, err)
+		return err
+	}
+	if dep.Spec.Replicas != nil && *dep.Spec.Replicas == 0 {
+		claims := k8sDeploymentPVCClaims(dep, k8sDatabasePVCName(cluster.Name, name))
+		// While this Start waits, another Start may scale the Deployment up and its Pod then holds the
+		// claim; waiting for that Pod to go would only time out. So the Deployment is read again before
+		// each later poll: no longer at zero replicas means this call has no scale-up of its own to issue,
+		// and it issues no scale-up PATCH. That is the decision a Start already makes on a Deployment that
+		// runs (no wait, no Pod list). It does not know who changed the replicas, nor whether that change
+		// was safe: the PVC-consumer guard is not a distributed lock and cannot protect against another
+		// Start that did not check, an operator or another controller.
+		var observed *int32
+		superseded := func() (bool, error) {
+			ctx, cancel := context.WithTimeout(context.Background(), k8sAPICallTimeout)
+			defer cancel()
+			current, err := client.AppsV1().Deployments(cluster.Name).Get(ctx, name, metav1.GetOptions{})
+			if err != nil {
+				return false, err
+			}
+			if current.Spec.Replicas != nil && *current.Spec.Replicas == 0 {
+				return false, nil
+			}
+			observed = current.Spec.Replicas
+			return true, nil
+		}
+		scaledUp, err := cluster.k8sWaitPVCConsumersGoneUnless(client, claims, timeout, poll, superseded)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot start database %s: %s ", name, err)
+			return err
+		}
+		if scaledUp && (observed == nil || *observed == 1) {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Database %s was scaled up by another operation while this start waited: no second patch ", name)
+			return nil
+		}
+		// scaled to more than one by someone else: falls through to the patch, which only brings it back to one
+	}
 	patch := []byte(`{"spec":{"replicas":1}}`)
-	_, err := client.AppsV1().Deployments(cluster.Name).Patch(context.TODO(), name, ktypes.StrategicMergePatchType, patch, metav1.PatchOptions{})
+	pctx, pcancel := context.WithTimeout(context.Background(), k8sAPICallTimeout)
+	defer pcancel()
+	_, err = client.AppsV1().Deployments(cluster.Name).Patch(pctx, name, ktypes.StrategicMergePatchType, patch, metav1.PatchOptions{})
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot start database %s: %s ", name, err)
 	}
@@ -1374,6 +1617,21 @@ func (cluster *Cluster) k8sGetDeploymentForResources(client kubernetes.Interface
 	return nil, nil
 }
 
+// k8sRecreateStrategyPatch is the strategic-merge "strategy" value that moves an existing database
+// Deployment to Recreate: the type, and a null that removes the old rollingUpdate block (the API
+// rejects Recreate with a rollingUpdate left in place). It is sent inside the Deployment patches the
+// restart, force re-pull and update-config operations already make, so a Deployment created before
+// the strategy was explicit migrates on its next lifecycle operation. A strategy change alone does not
+// touch the Pod template, so it never replaces a Pod by itself: no separate migration restarts a
+// healthy database. nil when dep is known and already Recreate; dep may be nil (unknown), the patch
+// is then sent (it changes nothing on a Deployment that already is Recreate).
+func k8sRecreateStrategyPatch(dep *appsv1.Deployment) map[string]interface{} {
+	if dep != nil && dep.Spec.Strategy.Type == appsv1.RecreateDeploymentStrategyType && dep.Spec.Strategy.RollingUpdate == nil {
+		return nil
+	}
+	return map[string]interface{}{"type": string(appsv1.RecreateDeploymentStrategyType), "rollingUpdate": nil}
+}
+
 // k8sContainerMemoryResourcesPatch is the SINGLE authoritative source for the
 // strategic-merge "containers" entries every Pod-replacing restart path
 // (k8sRestartDatabaseServiceWithClient, k8sForceRepullDatabaseServiceWithClient)
@@ -1449,7 +1707,11 @@ func (cluster *Cluster) k8sRestartDatabaseServiceWithClient(client kubernetes.In
 	if containers := cluster.k8sContainerMemoryResourcesPatch(dep, name); len(containers) > 0 {
 		templatePatch["spec"] = map[string]interface{}{"containers": containers}
 	}
-	patch, err := json.Marshal(map[string]interface{}{"spec": map[string]interface{}{"template": templatePatch}})
+	specPatch := map[string]interface{}{"template": templatePatch}
+	if strategy := k8sRecreateStrategyPatch(dep); strategy != nil {
+		specPatch["strategy"] = strategy
+	}
+	patch, err := json.Marshal(map[string]interface{}{"spec": specPatch})
 	if err != nil {
 		return err
 	}
@@ -1568,18 +1830,20 @@ func (cluster *Cluster) k8sForceRepullDatabaseServiceWithClient(client kubernete
 			containers = append(containers, c)
 		}
 	}
-	patch, err := json.Marshal(map[string]interface{}{
-		"spec": map[string]interface{}{
-			"template": map[string]interface{}{
-				"metadata": map[string]interface{}{
-					"annotations": map[string]string{"kubectl.kubernetes.io/restartedAt": time.Now().Format(time.RFC3339)},
-				},
-				"spec": map[string]interface{}{
-					"containers": containers,
-				},
+	specPatch := map[string]interface{}{
+		"template": map[string]interface{}{
+			"metadata": map[string]interface{}{
+				"annotations": map[string]string{"kubectl.kubernetes.io/restartedAt": time.Now().Format(time.RFC3339)},
+			},
+			"spec": map[string]interface{}{
+				"containers": containers,
 			},
 		},
-	})
+	}
+	if strategy := k8sRecreateStrategyPatch(dep); strategy != nil {
+		specPatch["strategy"] = strategy
+	}
+	patch, err := json.Marshal(map[string]interface{}{"spec": specPatch})
 	if err != nil {
 		return err
 	}
@@ -1728,15 +1992,17 @@ func (cluster *Cluster) k8sUpdateDatabaseServiceConfigWithClientImage(client kub
 	// the caller sending exactly the fields meant to change) or require
 	// pointer fields to make the omission explicit. Maps sidestep the
 	// question entirely.
-	patch, err := json.Marshal(map[string]interface{}{
-		"spec": map[string]interface{}{
-			"template": map[string]interface{}{
-				"spec": map[string]interface{}{
-					"containers": containers,
-				},
+	specPatch := map[string]interface{}{
+		"template": map[string]interface{}{
+			"spec": map[string]interface{}{
+				"containers": containers,
 			},
 		},
-	})
+	}
+	if strategy := k8sRecreateStrategyPatch(dep); strategy != nil {
+		specPatch["strategy"] = strategy
+	}
+	patch, err := json.Marshal(map[string]interface{}{"spec": specPatch})
 	if err != nil {
 		return err
 	}
@@ -1769,29 +2035,85 @@ func (cluster *Cluster) K8SUpdateDatabaseServiceConfig(s *ServerMonitor, forcePu
 // mounted from it, k8sConfPersistSubPath/k8sInitPersistSubPath, not just
 // the database's own data) and retention semantics are an open question.
 func (cluster *Cluster) k8sUnprovisionDatabaseServiceWithClient(client kubernetes.Interface, name string) error {
+	return cluster.k8sUnprovisionDatabaseServiceWithWait(client, name, k8sLifecycleWaitTimeout, k8sRolloutPollInterval)
+}
+
+// k8sWaitDeploymentGone returns nil only once the Deployment API reports NotFound. The delete is
+// foreground, so the Deployment stays (with a deletion timestamp) until the garbage collector has
+// removed its dependents, its ReplicaSets and their Pods. NotFound is therefore control-plane
+// evidence that the Deployment and the relevant dependent API objects have been removed. It is not
+// proof that a database process has exited (a Pod force-deleted while its kubelet is unreachable, or
+// a Deployment deleted without foreground propagation, can leave one running) nor of storage
+// fencing: k8sWaitPVCConsumersGone covers the Pods that still reference the claim. A Deployment that
+// is still there at the deadline is an error; it is never force-deleted.
+func (cluster *Cluster) k8sWaitDeploymentGone(client kubernetes.Interface, name string, timeout, poll time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	var lastErr error
+	for {
+		ctx, cancel := context.WithTimeout(context.Background(), k8sAPICallTimeout)
+		_, err := client.AppsV1().Deployments(cluster.Name).Get(ctx, name, metav1.GetOptions{})
+		cancel()
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		if apierrors.IsForbidden(err) || apierrors.IsUnauthorized(err) {
+			return fmt.Errorf("not allowed to read Deployment %s in namespace %s (replication-manager's Kubernetes identity needs `get` on `deployments` there), cannot confirm it is gone: %w", name, cluster.Name, err)
+		}
+		lastErr = err
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			break
+		}
+		time.Sleep(min(poll, remaining))
+	}
+	if lastErr != nil {
+		return fmt.Errorf("cannot confirm that Deployment %s is gone within %s: %w", name, timeout, lastErr)
+	}
+	return fmt.Errorf("Deployment %s still exists %s after its deletion was requested (foreground deletion waits for its Pods to stop); nothing was force-deleted, retry the operation once it is gone", name, timeout)
+}
+
+// k8sUnprovisionDatabaseServiceWithWait deletes the Deployment and the Service, then waits (bounded,
+// k8sLifecycleWaitTimeout) for the Deployment to be gone: the foreground delete returns as soon as the
+// API accepts it, and a reprovision that followed would find the old Deployment still there. The PVC
+// and the namespace are retained as before. Exactly one error is returned (the callers send one value
+// on errorChan).
+func (cluster *Cluster) k8sUnprovisionDatabaseServiceWithWait(client kubernetes.Interface, name string, timeout, poll time.Duration) error {
 	deletePolicy := metav1.DeletePropagationForeground
 	var firstErr error
 
 	deploymentsClient := client.AppsV1().Deployments(cluster.Name)
-	if err := deploymentsClient.Delete(context.TODO(), name, metav1.DeleteOptions{
-		PropagationPolicy: &deletePolicy,
-	}); err != nil && !apierrors.IsNotFound(err) {
+	deploymentDeleteFailed := false
+	delCtx, delCancel := context.WithTimeout(context.Background(), k8sAPICallTimeout) // every request of a wait-holding operation is bounded
+	delErr := deploymentsClient.Delete(delCtx, name, metav1.DeleteOptions{PropagationPolicy: &deletePolicy})
+	delCancel()
+	if err := delErr; err != nil && !apierrors.IsNotFound(err) {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot delete Kubernetes deployment %s %s ", name, err)
 		firstErr = err
+		deploymentDeleteFailed = true
 	} else {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Deleted Kubernetes deployment %s.", name)
 	}
 
 	servicesClient := client.CoreV1().Services(cluster.Name)
-	if err := servicesClient.Delete(context.TODO(), name, metav1.DeleteOptions{
-		PropagationPolicy: &deletePolicy,
-	}); err != nil && !apierrors.IsNotFound(err) {
+	svcCtx, svcCancel := context.WithTimeout(context.Background(), k8sAPICallTimeout)
+	svcErr := servicesClient.Delete(svcCtx, name, metav1.DeleteOptions{PropagationPolicy: &deletePolicy})
+	svcCancel()
+	if err := svcErr; err != nil && !apierrors.IsNotFound(err) {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot delete Kubernetes service %s %s ", name, err)
 		if firstErr == nil {
 			firstErr = err
 		}
 	} else {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Deleted Kubernetes service %s.", name)
+	}
+
+	if !deploymentDeleteFailed {
+		if err := cluster.k8sWaitDeploymentGone(client, name, timeout, poll); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Unprovision of %s: %s ", name, err)
+			if firstErr == nil {
+				firstErr = err
+			}
+		}
 	}
 
 	return firstErr

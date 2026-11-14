@@ -48,8 +48,14 @@ interface in `cluster/orchestrator.go`.
 5. Resolve the node via `cluster.GetDatabaseAgent(s)`. Failure is fatal.
 6. Create the Deployment: 1 replica, pinned to that node via a
    `NodeSelector` on `kubernetes.io/hostname`, an `alpine` init container,
-   the DB container, PVC-backed volume. `AlreadyExists` is idempotent;
-   anything else is fatal and skips the Service step.
+   the DB container, PVC-backed volume, `Recreate` strategy. When the
+   Deployment does not exist yet, first wait (`k8sWaitBeforeCreatingDeployment`,
+   see "Single-writer safety") until no Pod references its data PVC; if that
+   fails, no Deployment and no Service is created, but the earlier steps (the
+   namespace, the credentials Secret, the PVC if it was absent, the headless
+   Service with `prov-net-cni`) may already have been done: they are idempotent, a
+   retry repeats them harmlessly. `AlreadyExists` is idempotent; anything else
+   is fatal and skips the Service step.
 7. Create the Service (`ClusterIP`, same port). `AlreadyExists` is
    idempotent.
 8. Exactly one value is sent on `cluster.errorChan`.
@@ -140,8 +146,69 @@ the next reprovision — the same characteristic OpenSVC's own
   baked in verbatim.
 - With `api-server=true` (the default), the in-cluster Service must expose
   `api-port` (10005), not just `http-port`.
-- The ServiceAccount's `ClusterRole` needs `patch` on `apps/deployments`
-  and `get, list, create, patch` on `secrets`.
+- The ServiceAccount needs the permissions listed under "RBAC" below (the
+  list of what the code calls, per database namespace). The repository ships no
+  RBAC manifests: the cluster operator provides them, and what is actually
+  granted is the operator's, not what this document lists.
+
+#### RBAC
+
+What replication-manager calls, derived from the code, in each database namespace
+(the namespace is the cluster name; a `Role` and `RoleBinding` per namespace is
+enough, a `ClusterRole` is only needed to avoid repeating them). Model A (repman
+outside the cluster) uses the permissions of the kubeconfig it is given: that
+kubeconfig's user needs the same permissions in each target database namespace.
+
+| Resource | Verbs | Used by |
+| --- | --- | --- |
+| `apps/deployments` | `get`, `create`, `patch`, `delete` | provision (`create`; `get` before creating one and to refuse one that is being deleted), start, stop, restart, force re-pull and upgrade (`patch`; `get` for the current spec and, on start, the replica count), unprovision (`delete`, then `get` until `NotFound`) |
+| `pods` | `list` | the PVC-consumer guard before a scale-up or the creation of a Deployment (detects Pods that still use the database PVC), the Manifest View, the resource sensor and native resize Pod lookup |
+| `services` | `create`, `delete` (`get` for the Manifest View) | provision, unprovision |
+| `persistentvolumeclaims` | `create` (`get` for the Manifest View) | provision |
+| `secrets` | `create`, `patch` (`get`, `list` as documented before) | the server credentials Secret |
+
+Cluster scope: `list` on `nodes` (node placement) and on
+`storage.k8s.io/storageclasses` (the provisioning GUI); `create` on `namespaces`
+when the namespace does not exist yet (a refusal is logged and tolerated when it
+does). The native Pod resize additionally needs `patch` on `pods/resize` and `list`
+on `apps/replicasets`.
+
+`get` on `deployments` and `list` on `pods` were already used by rolling upgrade,
+the Manifest View and the resize Pod lookup; since issue #2389 the start and
+provision paths need them too, because they must see the Pods that still use the
+database PVC before replacing a database. A refusal never turns into a scale-up
+or a forced deletion. It fails at once with an error that names the missing
+permission in these places: the Pod list of the PVC-consumer wait, the Deployment
+re-read of a Start that is waiting, and the Deployment read of the Deployment-gone wait
+of an unprovision. The other Deployment reads (the one that opens a Start, or a
+provisioning's check of an existing Deployment) return the Kubernetes error as it came,
+without that added hint, and the operation fails.
+
+The permissions above are the contract of replication-manager's own provisioning and
+lifecycle operations. The regression test `testK8SProvisionSchedulerVolumeBinding`
+(`regtest/`) is not part of that contract. It calls the real unprovision and
+provision (which need what the table lists) and, with the identity repman uses, also
+reads the cluster itself to verify the result by identity: the old Deployment is gone,
+the replacement is a new Deployment, its Pod is a new Pod owned through the new
+Deployment's ReplicaSet, the PVC is Bound, and both persist. Its own reads, in the
+database namespace:
+
+| Read by the test | In the contract above? |
+| --- | --- |
+| `get` on `apps/deployments` (identity and deletion timestamp of the old and the new Deployment) | yes (`deployments` `get`) |
+| `list` on `pods` (the old Pods, the replacement Pod) | yes (`pods` `list`) |
+| `get` on `persistentvolumeclaims` (the PVC is Bound) | yes (`persistentvolumeclaims` `get`, Manifest View) |
+| `get` on `pods` (the replacement Pod persists) | no: replication-manager only lists Pods |
+| `get` on `apps/replicasets` (the Pod → ReplicaSet → Deployment owner chain) | no: replication-manager needs only `list` on `replicasets`, for the native Pod resize |
+
+So a test run needs, in addition to the table, `get` on `pods` and `get` on
+`apps/replicasets`. These two are requirements of the test only; the production table
+above is unchanged. Of the test's reads, only the replacement-Pod lookup (`Pods.List` and
+`ReplicaSets.Get`) fails at once on `Forbidden` or `Unauthorized`, with the verb and the
+resource. A refusal of any other read of the test is not treated as an authorization
+failure: it surfaces through that step's own failure message, which does not necessarily
+name the permission (a refused `PersistentVolumeClaims.Get`, for instance, is reported as
+"PVC did not bind within 90s").
 
 The config archive itself is served by `handlerMuxServersPortConfig`
 (`server/api_database.go`) via `GenerateDatabaseConfig`; only
@@ -276,8 +343,7 @@ pods (same `app=repication-manager,tag=<server>` label selector
 exist live. Each object is marshaled to YAML with `TypeMeta` filled in and
 `ManagedFields` stripped; a resource that doesn't exist yet renders as a
 `# <error>` YAML comment in its own section rather than failing the whole
-response. Model B's ClusterRole needs `get, list` on `pods` for that
-section.
+response. It needs `get`/`list` on `pods` for that section (see "RBAC").
 
 Response shape is Content-Type-discriminated: OpenSVC returns raw text
 (unchanged); Kubernetes returns `{deployment, service, pvc, pods}` as JSON,
@@ -286,8 +352,21 @@ the cluster's orchestrator has a view to offer (`opensvc` or `kube`).
 
 ### Unprovisioning
 
-`K8SUnprovisionDatabaseService()` deletes the Deployment and Service, both
-idempotent via `NotFound`. PVC and Namespace are retained — PVC deletion
+`K8SUnprovisionDatabaseService()` requests the deletion of the Deployment
+(foreground propagation) and of the Service, both idempotent via `NotFound`, then
+waits until the Deployment API reports `NotFound` (`k8sWaitDeploymentGone`, 90s,
+see "Single-writer safety" below): the foreground delete returns as soon as the
+API accepts it and the Deployment stays, with a deletion timestamp, until its
+ReplicaSets and Pods have been removed, so a reprovision that followed
+immediately would find the old object still there. `NotFound` is control-plane
+evidence that the old generation's objects are gone, not proof that a process has
+exited or that the storage is fenced. The wait is for a deletion that has already
+been requested: when it times out (or the Deployment cannot be read) the operation
+returns an error, but the foreground deletion and the Service deletion stay
+requested and go on by themselves, so the Deployment may still be terminating, or be
+gone a moment later. Nothing more is deleted and nothing is force-deleted; the
+operator retries once the Deployment is gone.
+PVC and Namespace are retained — PVC deletion
 would also destroy the persisted config (see "Bootstrap"), and Namespace
 retention-vs-deletion semantics are an open question. The shared headless
 Service, if created, is never deleted by a single server's unprovision,
@@ -302,8 +381,9 @@ when scaling up from 0, re-running the init container exactly like a
 restart does. So Stop-then-Start ends up equivalent to a restart, just via
 an explicit down step instead of a rolling replacement. Neither is
 zero-downtime: single-replica Deployment, `ReadWriteOnce` PVC, no
-availability guarantee either way — the new pod can't come up until the
-old one releases the volume regardless of which mechanism triggers it.
+availability guarantee either way. `ReadWriteOnce` is **not** what keeps the
+old and the new pod apart (see "Single-writer safety" below): Start waits, on
+its own, until no pod references the data PVC before it scales up.
 
 - **`/actions/restart`** → `K8SForceRepullDatabaseService` (re-asserts
   `prov-kube-image-force-pull`'s current policy on every call), not the
@@ -326,9 +406,211 @@ old one releases the volume regardless of which mechanism triggers it.
   security-fix rolling-restart path) and must never silently change what
   image gets pulled — only an explicit upgrade action should do that.
 - **`RollingUpgrade`/`/actions/upgrade`** → see "Rolling upgrade" below.
-- **`RollingReprov`** needs none of this: it unprovisions and reprovisions
-  each server rather than stopping/starting it, so it always picks up the
-  current image via the full Deployment rebuild.
+- **`RollingReprov`** unprovisions and reprovisions each server
+  (`UnprovisionDatabaseService`, `InitDatabaseService`) rather than
+  stopping/starting it, so it always picks up the current image via the full
+  Deployment rebuild, and it goes through the unprovision wait and the provision
+  guard like any other unprovision and provision. The `StartDatabaseWaitRejoin`
+  that follows acts on a Deployment that already runs: no wait.
+
+### Single-writer safety
+
+The aim: a supported, repman-initiated lifecycle operation must not start a
+second database process on a datadir while the previous one is still running
+(issue #2389).
+
+**`ReadWriteOnce` is not a single-Pod writer fence.** It limits how many nodes
+may attach the volume, not how many Pods on one node may mount it, and the
+database Pod is pinned to one node (`kubernetes.io/hostname`). Pod readiness and
+Deployment status do not prove that the old database process has exited either
+(the database container has no probe, and the ReplicaSet controller does not count a
+Terminating Pod when it creates a replacement: a raw scale-up right after a scale-down
+ran two sentinel containers together for about 8 seconds on Kubernetes v1.37).
+
+What repman does, per operation:
+
+- **Template rollouts** (restart, force re-pull, rolling restart, image change):
+  the Deployment uses the `Recreate` strategy (`k8sDatabaseDeployment`): the
+  Deployment controller waits until the old Pods have **terminated** (their
+  containers have stopped and the Pod is in a terminal phase) before it creates the
+  new one. It does not wait for the old Pod's API object to disappear, which can
+  still exist for a moment when the new Pod is created; that is not a second
+  running process. A Deployment created before the strategy was explicit is migrated by the
+  patches those operations already send (`k8sRecreateStrategyPatch`:
+  `type: Recreate`, `rollingUpdate: null`, in the same request, so the strategy
+  change alone never touches the Pod template and starts no rollout). Whether an
+  API server admits that patch on a given cluster is validated at runtime, not by
+  the unit tests.
+- **Scale-up and creation** (`K8SStartDatabaseService`, the stop/update/start
+  cycle of a rolling upgrade, and the provisioning of a Deployment that does not
+  exist yet, which starts at one replica): first wait until no Pod references
+  the PVC claims of the Deployment's Pod template
+  (`k8sWaitPVCConsumersGone`; the database Deployment mounts one claim, its data
+  claim `<cluster>-<server>-claim`, and a Pod counts when any of its volumes
+  references one of the template's claims). Every such Pod counts, whatever its
+  labels, ReplicaSet, readiness or phase, Terminating ones included. A
+  Deployment that already runs, or already exists, is not waited on: Start
+  patches it to 1 as before and provisioning keeps its idempotent
+  `AlreadyExists`. A genuine Start from zero replicas issues its scale-up patch only
+  after that wait has succeeded; while it waits it only reads (Deployment, Pods). If the
+  Deployment is seen to have left zero replicas meanwhile, because another operation scaled
+  it up, the Start stops waiting at its next poll (within about 2s) and, at one replica,
+  issues no patch of its own (see "The PVC check is not a distributed lock" below).
+- **Unprovision / reprovision**: see "Unprovisioning". Provisioning refuses an
+  existing Deployment that has a deletion timestamp instead of accepting it as
+  success.
+
+Each wait has one 90s deadline (`k8sLifecycleWaitTimeout`), each API request
+inside it its own 5s bound. A timeout **fails closed**, and what it leaves depends on the
+operation: for a Start (read-only while it waits) and for a Provision, no scale-up happens and
+no database Deployment is created, see the Scale-up bullet above and the provision flow
+(a provisioning may already have created its prerequisites); for an Unprovision, the deletions
+were requested before the wait and go on by themselves, see "Unprovisioning". In no case
+does repman force-delete anything. A stale Pod object (for instance an evicted Pod that keeps
+its Failed phase) that references the PVC is named in the error and has to be removed by the
+operator.
+
+Pod listing is what lets the guards see an existing consumer of the database PVC before a
+replacement. The whole namespace is listed, once per poll (2s), on purpose: a field selector
+cannot filter on volumes, and a label selector would miss a Pod that does not carry
+repman's labels. So `list` on `pods` and `get` on `deployments` are needed in the cluster
+namespace (see "RBAC"). In the PVC-consumer wait, a refused read, or any read that cannot be
+completed before the deadline, never counts as "no consumer": the Start or Provision fails
+without scaling up or creating the Deployment. A permanent refusal (`Forbidden`,
+`Unauthorized`) of the Pod list or of the waiting Start's Deployment re-read fails at once,
+with an error that names the missing permission, not after the 90s.
+
+**The 90s bound and the termination grace period.** The database Deployment sets no
+`terminationGracePeriodSeconds`, so its Pods use the Kubernetes default of 30s, and the
+kubelet kills a container that has not stopped by then: a Pod object normally disappears
+within about 30s of the stop request, whatever the database shutdown does. In the real
+MariaDB lifecycle validation of issue #2389 (see below), when the `dbjobs` sidecar was killed at
+the end of the grace period (exit code 137) the old Pod object disappeared about 31 to 32s after
+the stop request, and the Start, called about 10s after its stop, waited for the PVC consumer for
+about 21 to 22s (the single-master rolling restart, and the clean phase of the image upgrade); when
+the sidecar exited at once the Pod was gone within a couple of seconds and the Start did not wait
+(stop then start, and the pull phase of the upgrade). A grace period raised outside
+repman (for instance by editing the Deployment) can exceed the 90s bound: the operation
+then fails closed, without starting another database process, and the operator can retry
+once the previous Pod is gone. A longer timeout, or one derived from the Pod template's
+grace period, is a possible later improvement and is not part of this change.
+
+Where the waits run, and who waits for them:
+
+- **Synchronous in the caller.** The API handlers for start, stop, provision,
+  unprovision, cluster bootstrap and cluster unprovision call the lifecycle
+  function in the HTTP request itself and return when it has finished: the
+  request lasts as long as the wait (none, or about 21 to 22s when the old Pod was
+  still terminating, was observed; 90s at most). `InitDatabaseService` and `UnprovisionDatabaseService` start the
+  Kubernetes function in a goroutine but block on `cluster.errorChan` for its
+  result. The rolling endpoint of the API (`/actions/rolling/...`) and the cron
+  scheduler (`scheduler-rolling-restart`, `scheduler-rolling-reprov`) run the rolling
+  operations in a goroutine; the sharding-add handler (`handlerMuxClusterShardingAdd`)
+  is the exception, it calls `RollingRestart` synchronously in its HTTP request. The MCP
+  start and stop tools call the lifecycle function in a goroutine. The
+  single-master `RollingRestart` (stop, definition refresh, start) and
+  `RollingReprov` therefore include the waits; the replica and post-switchover
+  restarts of `RollingRestart` use `K8SRestartDatabaseServiceWaitRejoin`, which
+  has none.
+- **`provisioningMutex`** (one per cluster) is held by provision and unprovision
+  operations only (`ProvisionServices`/bootstrap, `InitDatabaseService`,
+  `UnprovisionDatabaseService`, the cluster-level `Unprovision`, `InitProxyService`,
+  `InitAppService` and `UnprovisionProxyService`), for their whole duration, the new
+  waits included. Start and Stop do not take it, and the monitoring loop never does.
+- **The cluster's failover state** is set, for their whole duration and as it always
+  was, by `InitDatabaseService`, `ProvisionServices` and the cluster-level
+  `Unprovision` (not by the single-server `UnprovisionDatabaseService`, nor by Start
+  and Stop). While it is set the monitor skips the topology refresh and detection of
+  that cluster ("In Failover skip topology detection"), `MasterFailover` declines
+  ("Cancel already in failover"), and the job schedulers hold back. The new waits
+  lengthen that window when they wait: the provision guard waits only for a Pod that
+  still references the data PVC (a stale or externally created Pod, or a deletion that
+  was not waited for), never for the Pods of a Deployment whose unprovision returned
+  (it did not wait in the validation runs), and then for at most 90s, after which the
+  provisioning fails and the state is cleared.
+- **The restart-cookie path** (`/actions/restart`, `CheckRestartContainerCookies`)
+  is the force re-pull: a patch, no wait.
+- **Monitor tick and failover.** The MariaDB, MySQL and Percona monitoring and failover
+  paths that were traced do not reach the new waits: `MasterFailover(true)` and
+  `MasterFailover(false)` change the topology with SQL and call no lifecycle function
+  (the trace is by reading the code and a name-based call graph, not a proof). One chain
+  can reach a Kubernetes Start, for PostgreSQL streaming replication: `tickBody` takes the
+  switchover signal and runs `MasterFailover(false)` synchronously, which reaches
+  `postgresSwitchover`: `StopDatabaseService` on the primary, the wait for the standby's
+  WAL receiver (up to 180s), the promotion, then `postgresStartServer` →
+  `StartDatabaseService` of the old primary (retried for up to 3 minutes on a busy
+  orchestrator), and `postgresSwitchoverRollback` → `postgresStartServer` when the promotion
+  fails. That chain was already synchronous in the tick and long-running before this change;
+  on Kubernetes the Start wait would add up to 90s to it, only while the previous Pod still
+  references the PVC. `postgresFailover(true)` (the automatic failover) calls no lifecycle
+  function, and `postgresRejoin` restarts through `RestartDatabaseService`, the force re-pull
+  without a wait.
+  **Status: an unconfirmed, support-limited risk.** The Kubernetes provisioner does not
+  implement PostgreSQL: it renders a MariaDB/MySQL-style database Deployment (datadir, init
+  container, jobs sidecar), and the PostgreSQL service definitions are OpenSVC's. Nothing
+  rejects a PostgreSQL cluster configured with `prov-orchestrator = kube`, and nothing about
+  that combination has been validated. No degradation of monitoring, and no effect on automatic
+  failover, was observed or demonstrated for it; this section does not claim one.
+
+Cost: `Recreate` means downtime for every template rollout (the old Pod's
+graceful stop, then the new Pod's start); it does not guarantee data durability
+or a successful recovery after a forced termination (the default grace period is
+30s, a longer shutdown ends in a SIGKILL and crash recovery).
+
+Outside this guarantee: a Pod deleted or a Deployment changed by someone else
+(a Deployment deleted without foreground propagation, a Pod force-deleted while its
+kubelet is unreachable: the object is gone, the process may still run), a
+ReplicaSet replacement outside the normal Deployment upgrade path, a node
+partition or an unreachable kubelet (a Pod stays Terminating and its process may
+still run), and storage fencing. The PVC check is not a distributed lock: it
+reads, then acts, and nothing serialises two Starts. Two overlapping Starts of a stopped
+database can both read replicas 0 and both pass the check when no Pod exists yet, which is
+harmless (the patch to one replica is idempotent and only one Pod is created). A Start that
+is still waiting when another Start scales the Deployment up would find that Start's own Pod
+holding the PVC and wait for it until its deadline, so before each poll after the first it
+reads the Deployment again (`k8sWaitPVCConsumersGoneUnless`): no longer at zero replicas
+means the scale-up is no longer its to make, and it returns without a second patch. It has
+written nothing, so it did not scale up past a Pod it could see holding the claim; a Deployment found at
+more than one replica is brought back to one, as on any Deployment that already runs. The
+same holds when someone other than a guarded Start scaled the Deployment up while an old Pod
+still held the claim: this Start writes nothing, and what that other actor did is outside
+the guarantee. A scale-up undone before the next poll (a Stop) does not release the wait.
+A re-read that fails never counts as a scale-up: it is retried until the deadline and
+nothing is scaled meanwhile; a permanent refusal fails at once, naming the missing `get` on
+`deployments`.
+
+The PVC-consumer guard is deliberately stricter than `Recreate`: it waits until the
+Pod objects that reference the claim are gone, not only terminated.
+
+These guarantees rest on Kubernetes behaviour that the unit tests do not exercise.
+For issue #2389 it was observed on Kubernetes v1.37 with a non-database sentinel
+Deployment: the API server admits the strategy migration patch (and refuses it
+without the explicit `rollingUpdate: null`); `RollingUpdate` ran the old and the new
+container together for several seconds while `Recreate` never did; the guarded
+Start scaled up only after the old Pod object was gone; a Pod held Terminating made
+a Start fail at the 90s bound with nothing scaled up, and an unprovision fail at the
+bound after its deletion requests had been issued, with nothing force-deleted and no
+further deletion requested; and an orphan Pod holding the claim made provisioning fail
+closed.
+
+It was then validated with a real MariaDB server through the replication-manager API
+(one server, a 2Gi PVC, `local-path` storage, MariaDB 11.8): provisioning, stop then start,
+the single-master rolling restart, a Deployment moved back to `RollingUpdate` and returned
+to `Recreate` by the force re-pull, the image upgrade 11.8.8 to 11.8.9, unprovision, and
+reprovisioning on the retained PVC. The data (row count and table checksum) was unchanged after
+every step and, from the kubelet timestamps, the new database container started 5 to 46s after the
+previous Pod's containers had finished. Not covered by that validation: replication and
+switchover, the multi-server rolling operations, the replica restart path
+(`K8SRestartDatabaseService`), other engines and Kubernetes versions, other storage
+classes, and a grace period above the default.
+
+Overlapping Starts were also exercised in a real cluster, with the old Pod made slow to stop by a
+`preStop` hook: two Starts issued one second apart while it was still terminating both wait for
+it, the first scales the Deployment up, and the second returns successfully at its next poll, with
+no second patch (the client log of that run shows a single scale-up request). The implementation
+without the guard returns at once and starts the new database container while the old one is still
+running; the new `mariadbd` then waits on the Aria control file lock held by the old one. The
+guard exists to prevent exactly that.
 
 ### Rolling upgrade (image update)
 

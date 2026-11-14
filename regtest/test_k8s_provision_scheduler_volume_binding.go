@@ -8,37 +8,52 @@ package regtest
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
 	apiv1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/kubernetes"
 )
 
 // TestK8SProvisionSchedulerVolumeBinding reprovisions a Kubernetes-orchestrated
-// slave and verifies its PVC actually binds and its pod actually reaches
+// slave and verifies its PVC actually binds and a REPLACEMENT pod actually reaches
 // Running, rather than just checking that the Create() calls succeeded.
 //
-// This regresses a real bug found via live-cluster testing (not caught by the
-// fake-client unit tests in cluster/prov_k8s_test.go, since the fake API
-// server doesn't simulate the scheduler or the volume-binding controller):
-// pinning the Deployment's pod via Spec.NodeName bypasses the scheduler
-// entirely, so a WaitForFirstConsumer StorageClass (the default for most
-// dynamic provisioners, including kind's local-path-provisioner and typical
-// cloud CSI drivers) never binds the PVC, since that only happens during
-// scheduling — the pod hangs in Init forever. See
-// doc/implementation/cluster/KUBERNETES_PROVISIONING.md ("Node discovery").
+// It regresses two real bugs found via live-cluster testing (neither caught by the
+// fake-client unit tests in cluster/prov_k8s_test.go, since the fake API server
+// simulates neither the scheduler nor the Deployment controller):
+//
+//   - pinning the Deployment's pod via Spec.NodeName bypasses the scheduler
+//     entirely, so a WaitForFirstConsumer StorageClass (the default for most
+//     dynamic provisioners, including kind's local-path-provisioner and typical
+//     cloud CSI drivers) never binds the PVC, since that only happens during
+//     scheduling -- the pod hangs in Init forever. See
+//     doc/implementation/cluster/KUBERNETES_PROVISIONING.md ("Node discovery").
+//   - a reprovision that returned before the foreground deletion of the old
+//     Deployment had completed: the provisioning Create returned AlreadyExists
+//     (accepted as success), the OLD pod, still Running while it stopped, satisfied a
+//     "some pod is Running" check, and the Deployment then disappeared. The test
+//     therefore follows identities, not names: the old Deployment and pods are
+//     recorded first; Unprovision returning success must mean the old Deployment is
+//     already gone (no sleep stands in for it); the replacement must be a different
+//     Deployment, with a different pod owned by it, ready, and must still be there
+//     after a stability window.
 //
 // This test requires:
 //   - Kubernetes orchestrator (prov-orchestrator = kube)
 //   - At least one slave
-//   - A real Kubernetes API connection (cl.K8SConnectAPI()) — this cannot run
+//   - A real Kubernetes API connection (cl.K8SConnectAPI()) -- this cannot run
 //     against a fake/mocked cluster, only a real one (kind, minikube, or a
 //     real cluster), which is exactly the T13 gap this test is meant to close
 //     once a Kubernetes-capable CI harness exists.
+//   - A DISPOSABLE cluster: it unprovisions and reprovisions a database server.
 func (regtest *RegTest) TestK8SProvisionSchedulerVolumeBinding(cl *cluster.Cluster, conf string, test *cluster.Test) bool {
-	// Prefer a slave, to avoid disrupting a live master — but the
+	// Prefer a slave, to avoid disrupting a live master -- but the
 	// scheduling/PVC-binding behavior under test is per-server and doesn't
 	// depend on replication role, so fall back to any server if no
 	// replication topology has been established yet (e.g. SQL connectivity
@@ -63,21 +78,45 @@ func (regtest *RegTest) TestK8SProvisionSchedulerVolumeBinding(cl *cluster.Clust
 			"FAIL: cannot connect to Kubernetes API: %s", err)
 		return false
 	}
+	fail := func(format string, args ...interface{}) bool {
+		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "FAIL: "+format, args...)
+		return false
+	}
+
+	// The generation being replaced: the Deployment and every pod of it, by UID.
+	oldDeploymentUID := types.UID("")
+	if dep, getErr := client.AppsV1().Deployments(cl.Name).Get(context.TODO(), slave.Name, metav1.GetOptions{}); getErr == nil {
+		oldDeploymentUID = dep.UID
+	} else if !apierrors.IsNotFound(getErr) {
+		return fail("cannot read the Deployment %s before reprovisioning: %s", slave.Name, getErr)
+	}
+	oldPods := map[types.UID]string{}
+	if pods, listErr := client.CoreV1().Pods(cl.Name).List(context.TODO(), metav1.ListOptions{LabelSelector: "tag=" + slave.Name}); listErr == nil {
+		for _, p := range pods.Items {
+			oldPods[p.UID] = p.Name
+		}
+	} else {
+		return fail("cannot list the pods of %s before reprovisioning: %s", slave.Name, listErr)
+	}
+	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST",
+		"Replacing Deployment %s (uid %q) and %d pod(s)", slave.Name, oldDeploymentUID, len(oldPods))
 
 	// Reprovision from scratch so this exercises the exact scheduling path a
 	// real provision goes through, not whatever state the slave was already
 	// left in (e.g. already Running from initial cluster bootstrap, in which
 	// case the scheduling/PVC-binding step being tested wouldn't happen at all).
 	if err := cl.UnprovisionDatabaseService(slave); err != nil {
-		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST",
-			"Unprovision before reprovision reported: %s (continuing)", err)
+		return fail("unprovision: %s", err)
 	}
-	time.Sleep(5 * time.Second)
+	// A successful unprovision means the old generation is gone: checked at once, not after a sleep.
+	if dep, getErr := client.AppsV1().Deployments(cl.Name).Get(context.TODO(), slave.Name, metav1.GetOptions{}); getErr == nil {
+		return fail("unprovision returned success while Deployment %s (uid %s, deletion timestamp %v) still exists", dep.Name, dep.UID, dep.DeletionTimestamp)
+	} else if !apierrors.IsNotFound(getErr) {
+		return fail("cannot read the Deployment %s after unprovisioning: %s", slave.Name, getErr)
+	}
 
 	if err := cl.InitDatabaseService(slave); err != nil {
-		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST",
-			"FAIL: provisioning failed: %s", err)
-		return false
+		return fail("provisioning failed: %s", err)
 	}
 
 	pvcName := cl.Name + "-" + slave.Name + "-claim"
@@ -91,36 +130,131 @@ func (regtest *RegTest) TestK8SProvisionSchedulerVolumeBinding(cl *cluster.Clust
 		time.Sleep(2 * time.Second)
 	}
 	if !pvcBound {
-		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST",
-			"FAIL: PVC %s did not bind within 90s — this is the WaitForFirstConsumer/scheduler-bypass regression", pvcName)
-		return false
+		return fail("PVC %s did not bind within 90s -- this is the WaitForFirstConsumer/scheduler-bypass regression", pvcName)
 	}
 
-	podRunning := false
+	// The replacement: a Deployment that is not the old one and is not being deleted ...
+	dep, getErr := client.AppsV1().Deployments(cl.Name).Get(context.TODO(), slave.Name, metav1.GetOptions{})
+	if getErr != nil {
+		return fail("no Deployment %s after provisioning: %s", slave.Name, getErr)
+	}
+	if dep.DeletionTimestamp != nil {
+		return fail("Deployment %s (uid %s) is being deleted: provisioning was accepted on a deleting object", dep.Name, dep.UID)
+	}
+	if oldDeploymentUID != "" && dep.UID == oldDeploymentUID {
+		return fail("Deployment %s still is the old one (uid %s): it was not replaced", dep.Name, dep.UID)
+	}
+
+	// ... with a new pod, owned by it, that runs and is ready.
+	var replacement *apiv1.Pod
+	var lastLookupErr error
 	for deadline := time.Now().Add(120 * time.Second); time.Now().Before(deadline); {
-		pods, listErr := client.CoreV1().Pods(cl.Name).List(context.TODO(), metav1.ListOptions{
-			LabelSelector: "tag=" + slave.Name,
-		})
-		if listErr == nil {
-			for _, p := range pods.Items {
-				if p.Status.Phase == apiv1.PodRunning {
-					podRunning = true
-					break
-				}
+		pod, lookupErr := k8sReplacementPod(client, cl.Name, slave.Name, dep.UID, oldPods)
+		if lookupErr != nil {
+			// A refusal by the API server does not go away by waiting: it is reported now,
+			// with the verb and the resource, not as a timeout 120 s later.
+			if k8sRefusedByAPI(lookupErr) {
+				return fail("the test identity is not allowed to look for the replacement pod: %s", lookupErr)
 			}
-		}
-		if podRunning {
+			lastLookupErr = lookupErr
+		} else if pod != nil {
+			replacement = pod
 			break
 		}
 		time.Sleep(2 * time.Second)
 	}
-	if !podRunning {
-		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST",
-			"FAIL: pod for %s did not reach Running within 120s", slave.Name)
-		return false
+	if replacement == nil {
+		if lastLookupErr != nil {
+			return fail("no new, ready pod owned by Deployment %s (uid %s) reached Running within 120s; last API error: %s", slave.Name, dep.UID, lastLookupErr)
+		}
+		return fail("no new, ready pod owned by Deployment %s (uid %s) reached Running within 120s", slave.Name, dep.UID)
+	}
+	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST",
+		"Replacement pod %s (uid %s) is running and ready", replacement.Name, replacement.UID)
+
+	// The old pods are gone: the replacement did not simply sit next to them.
+	for uid, name := range oldPods {
+		pods, listErr := client.CoreV1().Pods(cl.Name).List(context.TODO(), metav1.ListOptions{LabelSelector: "tag=" + slave.Name})
+		if listErr != nil {
+			return fail("cannot list the pods of %s: %s", slave.Name, listErr)
+		}
+		for _, p := range pods.Items {
+			if p.UID == uid {
+				return fail("old pod %s (uid %s) still exists next to the replacement", name, uid)
+			}
+		}
+	}
+
+	// The replacement persists: a late deletion of the old generation would take it away.
+	for deadline := time.Now().Add(20 * time.Second); time.Now().Before(deadline); {
+		time.Sleep(2 * time.Second)
+		cur, curErr := client.AppsV1().Deployments(cl.Name).Get(context.TODO(), slave.Name, metav1.GetOptions{})
+		if curErr != nil {
+			return fail("Deployment %s disappeared after provisioning: %s", slave.Name, curErr)
+		}
+		if cur.UID != dep.UID || cur.DeletionTimestamp != nil {
+			return fail("Deployment %s changed identity or is being deleted after provisioning (uid %s, was %s)", slave.Name, cur.UID, dep.UID)
+		}
+		pod, podErr := client.CoreV1().Pods(cl.Name).Get(context.TODO(), replacement.Name, metav1.GetOptions{})
+		if podErr != nil || pod.UID != replacement.UID || pod.DeletionTimestamp != nil {
+			return fail("replacement pod %s did not persist (%v)", replacement.Name, podErr)
+		}
 	}
 
 	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST",
-		"PASS: %s provisioned, PVC bound, pod Running", slave.Name)
+		"PASS: %s replaced (Deployment %s -> %s), PVC bound, new pod %s Running and persistent", slave.Name, oldDeploymentUID, dep.UID, replacement.Name)
 	return true
+}
+
+// k8sRefusedByAPI tells whether the API server refused the request itself (Forbidden or
+// Unauthorized), as opposed to a condition that can pass.
+func k8sRefusedByAPI(err error) bool {
+	return apierrors.IsForbidden(err) || apierrors.IsUnauthorized(err)
+}
+
+// k8sReplacementPod returns a pod of the server that is running, not terminating, whose
+// container named after the server is ready, that is not one of the old pods and that is owned (through
+// its ReplicaSet) by the Deployment with the given UID. It returns (nil, nil) when there is none yet,
+// and a ReplicaSet that is not there (yet) is that same "not yet", never an error. A failed
+// API call is returned, naming the verb and the resource, so that the caller can tell a refusal
+// (k8sRefusedByAPI: the test needs "list" on pods and "get" on apps/replicasets in the
+// namespace) from a transient failure; the first failed call ends the lookup.
+func k8sReplacementPod(client kubernetes.Interface, namespace, server string, deploymentUID types.UID, oldPods map[types.UID]string) (*apiv1.Pod, error) {
+	pods, err := client.CoreV1().Pods(namespace).List(context.TODO(), metav1.ListOptions{LabelSelector: "tag=" + server})
+	if err != nil {
+		return nil, fmt.Errorf("list pods in namespace %s: %w", namespace, err)
+	}
+	for i := range pods.Items {
+		pod := &pods.Items[i]
+		if _, old := oldPods[pod.UID]; old || pod.DeletionTimestamp != nil || pod.Status.Phase != apiv1.PodRunning {
+			continue
+		}
+		ready := false
+		for _, cs := range pod.Status.ContainerStatuses {
+			if cs.Name == server && cs.Ready {
+				ready = true
+			}
+		}
+		if !ready {
+			continue
+		}
+		for _, ref := range pod.OwnerReferences {
+			if ref.Kind != "ReplicaSet" {
+				continue
+			}
+			rs, rsErr := client.AppsV1().ReplicaSets(namespace).Get(context.TODO(), ref.Name, metav1.GetOptions{})
+			if apierrors.IsNotFound(rsErr) {
+				continue
+			}
+			if rsErr != nil {
+				return nil, fmt.Errorf("get replicasets.apps %s in namespace %s: %w", ref.Name, namespace, rsErr)
+			}
+			for _, rsRef := range rs.OwnerReferences {
+				if rsRef.UID == deploymentUID {
+					return pod, nil
+				}
+			}
+		}
+	}
+	return nil, nil
 }
