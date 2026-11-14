@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 FROM golang:1.26-bookworm AS builder
 
 RUN mkdir -p /go/src/github.com/signal18/replication-manager
@@ -7,9 +8,14 @@ RUN apt-get update && apt-get -y install curl ca-certificates && \
     apt-get install -y nodejs && \
     rm -rf /var/lib/apt/lists/*
 COPY . .
-ARG PLUGIN_SIGNER_USER=""
-ARG PLUGIN_SIGNER_TOKEN=""
-RUN make osc cli PLUGIN_SIGNER_USER="$PLUGIN_SIGNER_USER" PLUGIN_SIGNER_TOKEN="$PLUGIN_SIGNER_TOKEN"
+# The plugin signer login comes as build secrets, and the signer clone and signing key
+# stay on a tmpfs: none of them is kept in a layer or the build cache.
+RUN --mount=type=secret,id=plugin_signer_user \
+    --mount=type=secret,id=plugin_signer_token \
+    --mount=type=tmpfs,target=/root/.replication-manager \
+    make osc cli \
+      PLUGIN_SIGNER_USER="$(cat /run/secrets/plugin_signer_user 2>/dev/null)" \
+      PLUGIN_SIGNER_TOKEN="$(cat /run/secrets/plugin_signer_token 2>/dev/null)"
 RUN go install github.com/moul/gotty-client/cmd/gotty-client@v1.10.0
 
 # sysbench from upstream at a pinned commit: the Debian package cannot use TLS without a

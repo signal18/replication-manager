@@ -105,6 +105,7 @@ jobs:
             type=raw,value=latest
 
       - name: Build and push OSC
+        id: build
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -114,11 +115,16 @@ jobs:
             signal18/replication-manager:${{ steps.tag.outputs.tag }}
             signal18/replication-manager:latest
           labels: ${{ steps.meta.outputs.labels }}
-          build-args: |
-            PLUGIN_SIGNER_USER=${{ secrets.PLUGIN_SIGNER_USER }}
-            PLUGIN_SIGNER_TOKEN=${{ secrets.PLUGIN_SIGNER_TOKEN }}
+          secrets: |
+            plugin_signer_user=${{ secrets.PLUGIN_SIGNER_USER }}
+            plugin_signer_token=${{ secrets.PLUGIN_SIGNER_TOKEN }}
           cache-from: type=gha,scope=osc
           cache-to: type=gha,mode=max,scope=osc
+
+      - name: Check the published image record
+        uses: ./.github/actions/check-image-record
+        with:
+          image: signal18/replication-manager@${{ steps.build.outputs.digest }}
 
       - name: Notify failure (Mattermost)
         if: failure() && vars.MATTERMOST_WEBHOOK_URL != ''
@@ -181,6 +187,7 @@ jobs:
             type=raw,value=latest-rootless
 
       - name: Build and push OSC Rootless
+        id: build
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -192,6 +199,11 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=osc-rootless
           cache-to: type=gha,mode=max,scope=osc-rootless
+
+      - name: Check the published image record
+        uses: ./.github/actions/check-image-record
+        with:
+          image: signal18/replication-manager@${{ steps.build.outputs.digest }}
 
       - name: Notify failure (Mattermost)
         if: failure() && vars.MATTERMOST_WEBHOOK_URL != ''
@@ -253,6 +265,7 @@ jobs:
             type=semver,pattern={{version}}-pro
 
       - name: Build and push PRO
+        id: build
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -260,11 +273,16 @@ jobs:
           push: true
           tags: signal18/replication-manager:${{ steps.tag.outputs.tag }}-pro
           labels: ${{ steps.meta.outputs.labels }}
-          build-args: |
-            PLUGIN_SIGNER_USER=${{ secrets.PLUGIN_SIGNER_USER }}
-            PLUGIN_SIGNER_TOKEN=${{ secrets.PLUGIN_SIGNER_TOKEN }}
+          secrets: |
+            plugin_signer_user=${{ secrets.PLUGIN_SIGNER_USER }}
+            plugin_signer_token=${{ secrets.PLUGIN_SIGNER_TOKEN }}
           cache-from: type=gha,scope=pro
           cache-to: type=gha,mode=max,scope=pro
+
+      - name: Check the published image record
+        uses: ./.github/actions/check-image-record
+        with:
+          image: signal18/replication-manager@${{ steps.build.outputs.digest }}
 
       - name: Notify failure (Mattermost)
         if: failure() && vars.MATTERMOST_WEBHOOK_URL != ''
@@ -326,6 +344,7 @@ jobs:
             type=semver,pattern={{version}}-pro-rootless
 
       - name: Build and push PRO Rootless
+        id: build
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -335,6 +354,11 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=pro-rootless
           cache-to: type=gha,mode=max,scope=pro-rootless
+
+      - name: Check the published image record
+        uses: ./.github/actions/check-image-record
+        with:
+          image: signal18/replication-manager@${{ steps.build.outputs.digest }}
 
       - name: Notify failure (Mattermost)
         if: failure() && vars.MATTERMOST_WEBHOOK_URL != ''
@@ -393,6 +417,7 @@ jobs:
             type=raw,value=nightly
 
       - name: Build and push nightly
+        id: build
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -400,13 +425,19 @@ jobs:
           push: true
           tags: signal18/replication-manager:nightly
           labels: ${{ steps.meta.outputs.labels }}
+          secrets: |
+            plugin_signer_user=${{ secrets.PLUGIN_SIGNER_USER }}
+            plugin_signer_token=${{ secrets.PLUGIN_SIGNER_TOKEN }}
           build-args: |
-            PLUGIN_SIGNER_USER=${{ secrets.PLUGIN_SIGNER_USER }}
-            PLUGIN_SIGNER_TOKEN=${{ secrets.PLUGIN_SIGNER_TOKEN }}
             PLUGIN_PUSH=ON
             PLUGIN_CHANNEL=nightly
           cache-from: type=gha,scope=nightly
           cache-to: type=gha,mode=max,scope=nightly
+
+      - name: Check the published image record
+        uses: ./.github/actions/check-image-record
+        with:
+          image: signal18/replication-manager@${{ steps.build.outputs.digest }}
 
       - name: Notify failure (Mattermost)
         if: failure() && vars.MATTERMOST_WEBHOOK_URL != ''
@@ -458,6 +489,7 @@ jobs:
             type=raw,value=nightly-rootless
 
       - name: Build and push nightly rootless
+        id: build
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -467,6 +499,11 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=nightly-rootless
           cache-to: type=gha,mode=max,scope=nightly-rootless
+
+      - name: Check the published image record
+        uses: ./.github/actions/check-image-record
+        with:
+          image: signal18/replication-manager@${{ steps.build.outputs.digest }}
 
       - name: Notify failure (Mattermost)
         if: failure() && vars.MATTERMOST_WEBHOOK_URL != ''
@@ -520,6 +557,7 @@ jobs:
             type=raw,value=nightly-arb
 
       - name: Build and push nightly arbitrator
+        id: build
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -529,6 +567,11 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=nightly-arb
           cache-to: type=gha,mode=max,scope=nightly-arb
+
+      - name: Check the published image record
+        uses: ./.github/actions/check-image-record
+        with:
+          image: signal18/replication-manager@${{ steps.build.outputs.digest }}
 
       - name: Notify failure (Mattermost)
         if: failure() && vars.MATTERMOST_WEBHOOK_URL != ''
@@ -608,6 +651,7 @@ jobs:
           echo "tags=${TAGS}" >> $GITHUB_OUTPUT
 
       - name: Build and push DEV
+        id: build
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -615,11 +659,16 @@ jobs:
           push: true
           tags: ${{ steps.tags.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          build-args: |
-            PLUGIN_SIGNER_USER=${{ secrets.PLUGIN_SIGNER_USER }}
-            PLUGIN_SIGNER_TOKEN=${{ secrets.PLUGIN_SIGNER_TOKEN }}
+          secrets: |
+            plugin_signer_user=${{ secrets.PLUGIN_SIGNER_USER }}
+            plugin_signer_token=${{ secrets.PLUGIN_SIGNER_TOKEN }}
           cache-from: type=gha,scope=dev
           cache-to: type=gha,mode=max,scope=dev
+
+      - name: Check the published image record
+        uses: ./.github/actions/check-image-record
+        with:
+          image: signal18/replication-manager@${{ steps.build.outputs.digest }}
 
       - name: Notify failure (Mattermost)
         if: failure() && vars.MATTERMOST_WEBHOOK_URL != ''
@@ -699,6 +748,7 @@ jobs:
           echo "tags=${TAGS}" >> $GITHUB_OUTPUT
 
       - name: Build and push DEV Rootless
+        id: build
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -708,6 +758,11 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=dev-rootless
           cache-to: type=gha,mode=max,scope=dev-rootless
+
+      - name: Check the published image record
+        uses: ./.github/actions/check-image-record
+        with:
+          image: signal18/replication-manager@${{ steps.build.outputs.digest }}
 
       - name: Notify failure (Mattermost)
         if: failure() && vars.MATTERMOST_WEBHOOK_URL != ''
@@ -761,6 +816,7 @@ jobs:
           fi
 
       - name: Build and push ARB
+        id: build
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -771,6 +827,11 @@ jobs:
             signal18/replication-manager:arb
           cache-from: type=gha,scope=arb
           cache-to: type=gha,mode=max,scope=arb
+
+      - name: Check the published image record
+        uses: ./.github/actions/check-image-record
+        with:
+          image: signal18/replication-manager@${{ steps.build.outputs.digest }}
 
       - name: Notify failure (Mattermost)
         if: failure() && vars.MATTERMOST_WEBHOOK_URL != ''
@@ -824,6 +885,7 @@ jobs:
           fi
 
       - name: Build and push ARB Rootless
+        id: build
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -834,6 +896,11 @@ jobs:
             signal18/replication-manager:arb-rootless
           cache-from: type=gha,scope=arb-rootless
           cache-to: type=gha,mode=max,scope=arb-rootless
+
+      - name: Check the published image record
+        uses: ./.github/actions/check-image-record
+        with:
+          image: signal18/replication-manager@${{ steps.build.outputs.digest }}
 
       - name: Notify failure (Mattermost)
         if: failure() && vars.MATTERMOST_WEBHOOK_URL != ''
@@ -895,6 +962,7 @@ jobs:
             type=semver,pattern={{version}}-slim
 
       - name: Build and push SLIM
+        id: build
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -902,11 +970,16 @@ jobs:
           push: true
           tags: signal18/replication-manager:${{ steps.tag.outputs.tag }}-slim
           labels: ${{ steps.meta.outputs.labels }}
-          build-args: |
-            PLUGIN_SIGNER_USER=${{ secrets.PLUGIN_SIGNER_USER }}
-            PLUGIN_SIGNER_TOKEN=${{ secrets.PLUGIN_SIGNER_TOKEN }}
+          secrets: |
+            plugin_signer_user=${{ secrets.PLUGIN_SIGNER_USER }}
+            plugin_signer_token=${{ secrets.PLUGIN_SIGNER_TOKEN }}
           cache-from: type=gha,scope=slim
           cache-to: type=gha,mode=max,scope=slim
+
+      - name: Check the published image record
+        uses: ./.github/actions/check-image-record
+        with:
+          image: signal18/replication-manager@${{ steps.build.outputs.digest }}
 
       - name: Notify failure (Mattermost)
         if: failure() && vars.MATTERMOST_WEBHOOK_URL != ''
@@ -968,6 +1041,7 @@ jobs:
             type=semver,pattern={{version}}-slim-rootless
 
       - name: Build and push SLIM Rootless
+        id: build
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -977,6 +1051,11 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=slim-rootless
           cache-to: type=gha,mode=max,scope=slim-rootless
+
+      - name: Check the published image record
+        uses: ./.github/actions/check-image-record
+        with:
+          image: signal18/replication-manager@${{ steps.build.outputs.digest }}
 
       - name: Notify failure (Mattermost)
         if: failure() && vars.MATTERMOST_WEBHOOK_URL != ''

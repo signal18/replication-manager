@@ -1,0 +1,24 @@
+name: Check the published image record
+description: >
+  Fails when a pushed image's build record lists a build argument whose name looks
+  like a credential. Credentials go to a build as secrets, never as build arguments.
+inputs:
+  image:
+    description: The pushed image, as name@digest
+    required: true
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        IMAGE: ${{ inputs.image }}
+      run: |
+        set -euo pipefail
+        record=$(docker buildx imagetools inspect "$IMAGE" --format '{{json .Provenance}}')
+        # names only: the value is never printed
+        names=$(printf '%s' "$record" | grep -oiE '"(build-arg:)?[A-Za-z0-9_]*(TOKEN|PASSWORD|PASSWD|SECRET|PRIVATE_KEY|API_KEY|CREDENTIAL)[A-Za-z0-9_]*"[[:space:]]*:' | sort -u || true)
+        if [ -n "$names" ]; then
+          echo "::error::The record of $IMAGE holds credential-like build arguments: $(echo $names | sed -E 's/"[[:space:]]*:/ /g; s/"//g')"
+          exit 1
+        fi
+        echo "No credential-like build argument in the record of $IMAGE"
