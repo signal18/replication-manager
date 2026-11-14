@@ -26,10 +26,12 @@ ok() { echo "  ok:   $*"; }
 bad() { echo "  FAIL: $*"; fail=1; }
 trap 'docker rm -f "${P}_db" "${P}_re" >/dev/null 2>&1; docker volume rm -f "${P}_v" >/dev/null 2>&1' EXIT
 
-# the real command: the line of the mariabackup job, without its pipe to socat
+# the real command: the line of the mariabackup job, without its pipe to the stream signature and to socat
+# (job_stream_signed is a function of the script, not defined in the container: cutting at socat only left it in
+# the command, which then exited 127 with 0 bytes)
 LINE=$(grep -E '^\s+\$MARIADB_BACKUP .*--stream=xbstream' "$SCRIPT" | head -1)
 [ -n "$LINE" ] || { echo "FAIL: the mariabackup command was not found in $SCRIPT"; exit 2; }
-CMD=${LINE%% | socat*}; CMD=${CMD#"${CMD%%[![:space:]]*}"}
+CMD=${LINE%% | job_stream_signed*}; CMD=${CMD%% | socat*}; CMD=${CMD#"${CMD%%[![:space:]]*}"}
 # the previous form: --innobackupex first, no target directory
 CMD_OLD=${CMD/--backup/}; CMD_OLD=${CMD_OLD/\$MARIADB_BACKUP /\$MARIADB_BACKUP --innobackupex }; CMD_OLD=${CMD_OLD// --target-dir=\"\$LOG_DIR\/\"/}
 
