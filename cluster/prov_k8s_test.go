@@ -1343,6 +1343,9 @@ func TestK8SDiskQuantityOrDefault_FallsBackToConfigDefault(t *testing.T) {
 	if err != nil {
 		t.Fatalf("the default %q must be a usable size: %v", config.DefaultProvDiskSize, err)
 	}
+	if want.Sign() <= 0 {
+		t.Fatalf("the default %q must be a strictly positive size, got %s", config.DefaultProvDiskSize, want.String())
+	}
 	for _, bad := range []string{"", "0", "-5", "abc"} {
 		got := cluster.k8sDiskQuantityOrDefault("prov-db-disk-size", bad)
 		if got.Cmp(want) != 0 {
