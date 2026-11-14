@@ -243,6 +243,13 @@ func (repman *ReplicationManager) applyPeerConfigEvent(ev cluster.ConfigChangeEv
 		}
 	}
 
+	if isServerSecretKey(ev.Key) {
+		// a server secret is the instance's: a peer gets it from the server's versioned file in
+		// the config pull, never as a cluster's own value (CREDENTIAL_STORES.md "Two levels")
+		cl.RecordEventProvenance(ev.Key, ev.Value, ev.Ts, ev.Author)
+		return true
+	}
+
 	value := ev.Value
 	if ev.Action == "unset" {
 		def, ok := cl.Conf.DefaultFlagMap[ev.Key]

@@ -4,18 +4,19 @@ import { DataTable } from '../../components/DataTable'
 import AccordionComponent from '../../components/AccordionComponent'
 import styles from './styles.module.scss'
 import UserGrantModal from '../../components/Modals/UserGrantModal'
-import { acceptExternalRole, acceptSubscription, dropUser, endSubscription, refuseExternalRole, rejectSubscription, sendCredentials } from '../../redux/clusterSlice'
+import { acceptExternalRole, acceptSubscription, dropUser, endSubscription, refuseExternalRole, rejectSubscription, rotateUserPassword, sendCredentials } from '../../redux/clusterSlice'
 import RMButton from '../../components/RMButton'
 import RMIconButton from '../../components/RMIconButton'
 import { FaUserPlus } from 'react-icons/fa'
 import AddUserModal from '../../components/Modals/AddUserModal'
 import { HiUserGroup } from 'react-icons/hi'
-import { TbDatabaseStar, TbDatabaseX, TbDeviceDesktopCancel, TbDeviceDesktopStar, TbDeviceDesktopX, TbDevicesStar, TbMail, TbMailCog, TbMailDollar, TbMailStar, TbTrash, TbUserCancel, TbUserStar } from 'react-icons/tb'
+import { TbDatabaseStar, TbDatabaseX, TbDeviceDesktopCancel, TbDeviceDesktopStar, TbDeviceDesktopX, TbDevicesStar, TbKey, TbMail, TbMailCog, TbMailDollar, TbMailStar, TbTrash, TbUserCancel, TbUserStar } from 'react-icons/tb'
 import ConfirmModal from '../../components/Modals/ConfirmModal'
 import { useDispatch, useSelector } from 'react-redux'
 import { Flex, HStack } from '@chakra-ui/react'
 import TextInputModal from '../../components/Modals/TextInputModal'
 import ClusterApiTokens from './ClusterApiTokens'
+import CopyTextModal from '../../components/Modals/CopyTextModal'
 
 function Users({ selectedCluster, user }) {
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false)
@@ -25,6 +26,7 @@ function Users({ selectedCluster, user }) {
   const [isUserGrantModalOpen, setIsUserGrantModalOpen] = useState(null)
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(null)
   const [isTextModalOpen, setIsTextModalOpen] = useState(null)
+  const [rotated, setRotated] = useState(null)
   const columnHelper = createColumnHelper()
   const { type, title, payload } = action
   const dispatch = useDispatch()
@@ -58,6 +60,13 @@ function Users({ selectedCluster, user }) {
       return item.roles['visitor']
     }
     return false
+  }
+
+  // a user's password: the owners (sysops, extsysops), never for `system` or the registered
+  // Cloud18 user (it signs in with Cloud18)
+  const isShowRotatePassword = (user, item) => {
+    if (item.user === 'system' || monitor?.config?.cloud18GitUser === item.user) return false
+    return !!(user.grants?.['cluster-rotate-passwords'])
   }
 
   const isShowSendDB = (user, item) => {
@@ -114,6 +123,11 @@ function Users({ selectedCluster, user }) {
       dispatch(refuseExternalRole({ clusterName: selectedCluster.name, username: payload, roles: 'extsysops', reason: value }))
     } else if (type === 'end-sub') {
       dispatch(endSubscription({ clusterName: selectedCluster.name, username: payload }))
+    } else if (type === 'rotate-password') {
+      dispatch(rotateUserPassword({ clusterName: selectedCluster.name, username: payload })).then((res) => {
+        const d = res?.payload?.data
+        if (d?.password) setRotated(d)
+      })
     } else if (type === 'drop-user') {
       dispatch(dropUser({ clusterName: selectedCluster.name, username: payload }))
     } else if (type === 'send-cred-sponsor') {
@@ -175,6 +189,7 @@ function Users({ selectedCluster, user }) {
               { row?.roles?.["sponsor"] && <RMIconButton tooltip={"send sponsor credentials"} icon={TbMailStar} onClick={(e) => { e.stopPropagation(); setAction({ type: "send-cred-sponsor", title: "Are you sure to send sponsor credentials to "+row.user+"?", payload: row.user }); openConfirmModal() }} />}
               { isShowSendDB(user, row) && <RMIconButton tooltip={"send dba credentials"} icon={TbMail} onClick={(e) => { e.stopPropagation(); setAction({ type: "send-cred-db", title: "Are you sure to send dba credentials to "+row.user+"?", payload: row.user }); openConfirmModal() }} />}
               { isShowSendSys(user,row) && <RMIconButton tooltip={"send sysadmin credentials"} icon={TbMailCog} onClick={(e) => { e.stopPropagation(); setAction({ type: "send-cred-sys", title: "Are you sure to send sys admin credentials to "+row.user+"?", payload: row.user }); openConfirmModal() }} />}
+              { isShowRotatePassword(user, row) && <RMIconButton tooltip={"rotate password"} icon={TbKey} onClick={(e) => { e.stopPropagation(); setAction({ type: "rotate-password", title: "Rotate the password of "+row.user+"? Its sessions end and its API tokens are revoked.", payload: row.user }); openConfirmModal() }} />}
               { isShowDropUser(user,row) && <RMIconButton tooltip={"drop user"} icon={TbTrash} onClick={(e) => { e.stopPropagation(); setAction({ type: "drop-user", title: "Are you sure to drop user "+row.user+"?", payload: row.user }); openConfirmModal() }} /> }
             </>
           )}
@@ -229,6 +244,7 @@ function Users({ selectedCluster, user }) {
       )}
       {isUserGrantModalOpen && <UserGrantModal clusterName={selectedCluster.name} selectedUser={selectedUser} isOpen={isUserGrantModalOpen} closeModal={closeUserGrantModal} />}
       {isConfirmModalOpen && <ConfirmModal title={title} isOpen={isConfirmModalOpen} onConfirmClick={handleConfirm} closeModal={closeConfirmModal} />}
+      {rotated && <CopyTextModal isOpen={!!rotated} closeModal={() => setRotated(null)} title={'New password of ' + rotated.username + ' (shown once)' + (rotated.tokensError ? ' — ' + rotated.tokensError : '') + (rotated.persistError ? ' — ' + rotated.persistError : '') + (rotated.etcFile && rotated.etcFile !== 'written' ? ' — configuration file: ' + rotated.etcFile : '') + (rotated.storesBehindCount ? ' — ' + rotated.storesBehindCount + ' server credential store(s) already behind, they may still hold the old password' + (rotated.storesBehind?.length ? ': ' + rotated.storesBehind.join(', ') : '') : '') + (rotated.scope === 'instance' ? ' — the server credential stores get the new list at their next pass' : '')} text={rotated.password} />}
       {isTextModalOpen && <TextInputModal isOpen={isTextModalOpen} title={title} fieldname={'Reason'} onSave={handleConfirm} isRequired={true} closeModal={() => { setIsTextModalOpen(false);}} />}
     </>
   )

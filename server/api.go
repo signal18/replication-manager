@@ -167,7 +167,7 @@ func (repman *ReplicationManager) issueJWTFor(userInfo interface{}, gitlabToken 
 // authenticate via local credentials only (no SSO path).
 func (repman *ReplicationManager) isAdminUser(username string) bool {
 	for _, cl := range repman.Clusters {
-		if u, ok := cl.APIUsers[username]; ok {
+		if u, ok := cl.GetAPIUsers()[username]; ok {
 			if u.Grants[config.GrantGlobalAdminShow] {
 				return true
 			}
@@ -1087,7 +1087,7 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 // the already-decrypted cluster.APIUsers map. Returns "" if the user is not found.
 func (repman *ReplicationManager) resolveUserPassword(username string) string {
 	for _, cl := range repman.Clusters {
-		if user, ok := cl.APIUsers[username]; ok {
+		if user, ok := cl.GetAPIUsers()[username]; ok {
 			return user.Password
 		}
 	}
@@ -1393,7 +1393,7 @@ func (repman *ReplicationManager) resolveUserClusterGrantsAndRoles(username stri
 	grants := make(map[string]map[string]bool)
 	roles := make(map[string]map[string]bool)
 	for _, cl := range repman.Clusters {
-		if apiUser, ok := cl.APIUsers[username]; ok {
+		if apiUser, ok := cl.GetAPIUsers()[username]; ok {
 			grantsCopy := make(map[string]bool, len(apiUser.Grants))
 			for k, v := range apiUser.Grants {
 				grantsCopy[k] = v
@@ -1792,7 +1792,7 @@ func (repman *ReplicationManager) handlerMuxClusterSubscribe(w http.ResponseWrit
 		return
 	}
 
-	for _, auser := range mycluster.APIUsers {
+	for _, auser := range mycluster.GetAPIUsers() {
 		v, ok := auser.Grants["pending"]
 		v2, ok2 := auser.Grants["sponsor"]
 		if (ok && v) || (ok2 && v2) {
@@ -1807,7 +1807,7 @@ func (repman *ReplicationManager) handlerMuxClusterSubscribe(w http.ResponseWrit
 
 	roles := []string{"pending"}
 	grants := []string{}
-	auser, ok := mycluster.APIUsers[userform.Username]
+	auser, ok := mycluster.GetAPIUsers()[userform.Username]
 	if ok {
 		for role, v := range auser.Roles {
 			if v {

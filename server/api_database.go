@@ -612,7 +612,7 @@ func (repman *ReplicationManager) handlerMuxServer(w http.ResponseWriter, r *htt
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		uname := repman.GetUserFromRequest(r)
-		if _, ok := mycluster.APIUsers[uname]; !ok {
+		if _, ok := mycluster.GetAPIUsers()[uname]; !ok {
 			http.Error(w, "No Valid ACL", 500)
 			return
 		}
@@ -675,7 +675,7 @@ func (repman *ReplicationManager) handlerMuxServerAttribute(w http.ResponseWrite
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		uname := repman.GetUserFromRequest(r)
-		if _, ok := mycluster.APIUsers[uname]; !ok {
+		if _, ok := mycluster.GetAPIUsers()[uname]; !ok {
 			http.Error(w, "No Valid ACL", 500)
 			return
 		}
@@ -5092,7 +5092,7 @@ func (repman *ReplicationManager) secretLoginHandler(w http.ResponseWriter, r *h
 		return
 	}
 
-	user, ok := mycluster.APIUsers["system"]
+	user, ok := mycluster.GetAPIUsers()["system"]
 	if !ok {
 		newpasswd, err := mycluster.GeneratePassword()
 		if err != nil {
@@ -5110,7 +5110,7 @@ func (repman *ReplicationManager) secretLoginHandler(w http.ResponseWriter, r *h
 		}
 
 		mycluster.AddUser(uform, "admin", true)
-		user = mycluster.APIUsers["system"]
+		user = mycluster.GetAPIUsers()["system"]
 	}
 
 	// The token names the cluster's jobs principal, not `system`: the jobs grants only, on this

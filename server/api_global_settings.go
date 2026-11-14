@@ -202,7 +202,15 @@ func (repman *ReplicationManager) handlerMuxSetGlobalSettings(w http.ResponseWri
 				return
 			}
 			if err != nil {
-				http.Error(w, err.Error(), http.StatusNotImplemented)
+				code := http.StatusNotImplemented
+				switch {
+				case errors.Is(err, errNoServerCredentials):
+					code = http.StatusForbidden
+				case errors.Is(err, errServerSecretNotPersisted):
+					// the new value is in force, not on disk: the message says so
+					code = http.StatusInternalServerError
+				}
+				http.Error(w, err.Error(), code)
 				return
 			}
 			repman.writeStandbyPersistenceWarning(w)
@@ -629,7 +637,9 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 			return err
 		}
 		repman.Conf.MailSMTPPassword = string(val)
-		repman.Mailer.UpdateAuth(repman.Conf.MailSMTPUser, repman.Conf.MailSMTPPassword)
+		if repman.Mailer != nil {
+			repman.Mailer.UpdateAuth(repman.Conf.MailSMTPUser, repman.Conf.MailSMTPPassword)
+		}
 	case "mail-smtp-user":
 		repman.Conf.SetMailSmtpUser(value)
 		repman.Mailer.UpdateAuth(repman.Conf.MailSMTPUser, repman.Conf.GetDecryptedValue("mail-smtp-password"))
@@ -894,6 +904,10 @@ func (repman *ReplicationManager) switchRepmanSetting(name string) error {
 		if _, err := repman.Conf.LoadCloud18Logins(); err != nil {
 			repman.Logrus.Warnf("cloud18-login-resume: %s", err)
 		}
+	case "monitoring-etc-credential-writer":
+		// scope:"server": the child is started at the start only, so on takes effect at the
+		// next start when repman runs as root; off stops the writes at once
+		repman.Conf.MonitoringEtcCredentialWriter = !repman.Conf.MonitoringEtcCredentialWriter
 	case "cloud18-disable-peers":
 		// scope:"server" — persisted to default.toml by SaveDynamic (value != default),
 		// which is merged back at startup. NOT ImmuableFlagMap (immutable.toml is never read).
@@ -929,6 +943,25 @@ func (repman *ReplicationManager) setServerSetting(user string, URL string, name
 	if err := repman.immutableGlobalSetting(name); err != nil {
 		return err
 	}
+	if config.IsInstanceNameSetting(name) {
+		// the instance's name is where every server secret goes in a shared store: a change moves
+		// them all (server_secret_kv_move.go), so the server secrets' owners only
+		if err := repman.holdsServerCredentials(user); err != nil {
+			return err
+		}
+	}
+	if isServerSecretKey(name) {
+		// a server secret: its owners only, then every cluster reads it from the server
+		if err := repman.holdsServerCredentials(user); err != nil {
+			return err
+		}
+		repman.serverSecrets.setMu.Lock()
+		defer repman.serverSecrets.setMu.Unlock()
+		if err := repman.setRepmanSetting(name, value); err != nil {
+			return err
+		}
+		return repman.applyServerSecret(name)
+	}
 	err := repman.setRepmanSetting(name, value)
 	if err != nil {
 		return err
@@ -952,6 +985,12 @@ func (repman *ReplicationManager) setServerSetting(user string, URL string, name
 func (repman *ReplicationManager) switchServerSetting(user string, URL string, name string, value string) error {
 	if err := repman.immutableGlobalSetting(name); err != nil {
 		return err
+	}
+	if name == "monitoring-etc-credential-writer" {
+		// off, a ban leaves the old password in the file under /etc: the server secrets' owners only
+		if err := repman.holdsServerCredentials(user); err != nil {
+			return err
+		}
 	}
 	if value == "" {
 

@@ -790,7 +790,7 @@ func (cluster *Cluster) GetDbaPass() string {
 }
 
 func (cluster *Cluster) GetSponsorEmail() string {
-	for user, u := range cluster.APIUsers {
+	for user, u := range cluster.GetAPIUsers() {
 		if u.Roles[config.RoleSponsor] {
 			return user
 		}
@@ -1730,7 +1730,7 @@ func (cluster *Cluster) GetBackupDiskPaths() []string {
 func (cluster *Cluster) GetExecEnv() []string {
 	adminuser := "admin"
 	adminpassword := "repman"
-	if user, ok := cluster.APIUsers[adminuser]; ok {
+	if user, ok := cluster.GetAPIUsers()[adminuser]; ok {
 		adminpassword = user.Password
 	}
 	return append(

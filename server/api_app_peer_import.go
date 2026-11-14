@@ -105,7 +105,7 @@ func (repman *ReplicationManager) getPeerAppCredentials(clusterName string) (str
 	if cl == nil {
 		return "", "", false
 	}
-	for _, u := range cl.APIUsers {
+	for _, u := range cl.GetAPIUsers() {
 		if u.Password == "" || u.Grants == nil {
 			continue
 		}

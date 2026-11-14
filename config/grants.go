@@ -99,11 +99,15 @@ const (
 	GrantClusterShowAgents         string = "cluster-show-agents"
 	GrantClusterShowCertificates   string = "cluster-show-certificates"
 	GrantClusterRotatePasswords    string = "cluster-rotate-passwords"
-	GrantClusterResetSLA           string = "cluster-reset-sla"
-	GrantClusterDebug              string = "cluster-debug"
-	GrantClusterStaging            string = "cluster-staging"
-	GrantClusterAlert              string = "cluster-alert"
-	GrantClusterDocker             string = "cluster-docker"
+	// the instance's server-scope credentials and its name in the shared stores
+	// (CREDENTIAL_STORES.md "Two levels"): sysops and extsysops only, so in the cluster family
+	// (dbops and the sponsor do not get it) and outside global (extsysops does not get that)
+	GrantClusterServerCredentials string = "cluster-server-credentials"
+	GrantClusterResetSLA          string = "cluster-reset-sla"
+	GrantClusterDebug             string = "cluster-debug"
+	GrantClusterStaging           string = "cluster-staging"
+	GrantClusterAlert             string = "cluster-alert"
+	GrantClusterDocker            string = "cluster-docker"
 
 	GrantProxyConfigCreate           string = "proxy-config-create"
 	GrantProxyConfigGet              string = "proxy-config-get"
@@ -224,6 +228,7 @@ func GetGrantType() map[string]string {
 		GrantClusterShowCertificates:     GrantClusterShowCertificates,
 		GrantClusterResetSLA:             GrantClusterResetSLA,
 		GrantClusterRotatePasswords:      GrantClusterRotatePasswords,
+		GrantClusterServerCredentials:    GrantClusterServerCredentials,
 		GrantClusterStaging:              GrantClusterStaging,
 		GrantClusterAlert:                GrantClusterAlert,
 		GrantClusterDocker:               GrantClusterDocker,
@@ -345,6 +350,7 @@ func GetGrantCluster() []string {
 		GrantClusterShowCertificates,
 		GrantClusterResetSLA,
 		GrantClusterRotatePasswords,
+		GrantClusterServerCredentials,
 		GrantClusterStaging,
 		GrantClusterAlert,
 		GrantClusterDocker,

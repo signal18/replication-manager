@@ -210,7 +210,7 @@ func (cl *Cluster) arbitratorMinorityFailSafe(reason string) {
 // preference removes the flap.
 func (cl *Cluster) getClusterTestCredentials() (string, string, bool) {
 	var fbUser, fbPass string
-	for _, u := range cl.APIUsers {
+	for _, u := range cl.GetAPIUsers() {
 		if u.Grants == nil || !u.Grants[config.GrantClusterTest] || u.Password == "" {
 			continue
 		}

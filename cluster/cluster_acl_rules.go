@@ -361,6 +361,8 @@ var clusterACLRules = []ACLRule{
 	{"/users/add", nil, []string{config.GrantGrantAdd}},
 	{"/users/update", nil, []string{config.GrantGrantModify}},
 	{"/users/drop", nil, []string{config.GrantGrantDrop}},
+	// a user's password: the owners (sysops, extsysops) through the rotation grant
+	{"/users/rotate-password", nil, []string{config.GrantClusterRotatePasswords}},
 
 	// External Roles
 	{"/ext-role/subscribe", nil, []string{config.GrantExternalRole}},
@@ -392,6 +394,8 @@ var globalSettingsACLRules = []ACLRule{
 	{"/api/clusters/settings/actions/cloud18-identity", nil, []string{config.GrantGlobalSettings, config.GrantGlobalAdminConf}},
 	// load a -pull package from a file (#2309)
 	{"/api/clusters/settings/actions/license-pull", nil, []string{config.GrantGlobalSettings, config.GrantGlobalAdminConf}},
+	// the server credential stores, which hold the server secrets: sysops and extsysops only
+	{"/api/clusters/settings/actions/server-secret-kv", nil, []string{config.GrantClusterServerCredentials}},
 }
 
 // terminalACLRules defines ACL rules for terminal access

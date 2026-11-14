@@ -2,10 +2,8 @@ package cluster
 
 import (
 	"crypto/sha256"
-	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -22,7 +20,7 @@ const SecretVersionLatest = "latest"
 // secretVersion is one version in the file: the version store's (#2227), with its writer.
 type secretVersion = credstore.FileVersion
 
-type secretVersionStore map[string][]secretVersion
+type secretVersionStore = map[string][]secretVersion
 
 type trackedSecretValue struct {
 	StoredValue  string
@@ -95,6 +93,10 @@ func (cluster *Cluster) recordDirtySecretVersions() {
 		current := currentValues[key]
 		vs.Record(key, current.StoredValue, current.CompareValue)
 	}
+	// asked to save: a file removed since is written again, even with no new version
+	if _, err := os.Stat(cluster.secretKv.file.Path()); os.IsNotExist(err) && !vs.Empty() {
+		vs.MarkDirty()
+	}
 }
 
 // ReconcileSecretVersionStore is the save callback's part for the local versioned file
@@ -119,22 +121,6 @@ func (cluster *Cluster) ReconcileSecretVersionStore() error {
 		return err
 	}
 	return nil
-}
-
-func (cluster *Cluster) getSecretVersionStoreAutoPruneSettings() (bool, int) {
-	if cluster == nil || cluster.Conf == nil {
-		return false, 0
-	}
-
-	if !cluster.Conf.MonitoringSecretVersioningAutoPrune {
-		return false, 0
-	}
-
-	if cluster.Conf.MonitoringSecretVersioningKeepLast < 1 {
-		return false, 0
-	}
-
-	return true, cluster.Conf.MonitoringSecretVersioningKeepLast
 }
 
 // TrackedSecretCompareSnapshot returns the current tracked secret semantic
@@ -166,7 +152,8 @@ func (cluster *Cluster) getTrackedSecretStoreValuesWithWarnings(logWarnings bool
 	}
 
 	for key, secret := range cluster.Conf.Secrets.Snapshot() {
-		if secret.Value == "" {
+		// a server secret's versions are the server's only (CREDENTIAL_STORES.md "Two levels")
+		if secret.Value == "" || cluster.isServerSecret(key) {
 			continue
 		}
 
@@ -197,27 +184,9 @@ func (cluster *Cluster) getTrackedSecretStoreValuesWithWarnings(logWarnings bool
 	return values
 }
 
+// containsHashPrefixToken: the value holds a repman-encrypted token (credstore.LooksEncrypted).
 func containsHashPrefixToken(value string) bool {
-	if strings.TrimSpace(value) == "" {
-		return false
-	}
-
-	tokens := strings.FieldsFunc(value, func(r rune) bool {
-		switch r {
-		case ',', ':', ' ', '\t', '\n', '\r':
-			return true
-		default:
-			return false
-		}
-	})
-
-	for _, token := range tokens {
-		if strings.HasPrefix(token, secretHashPrefix) {
-			return true
-		}
-	}
-
-	return false
+	return credstore.LooksEncrypted(value)
 }
 
 // getStoredSecretCompareValue converts a stored encrypted/hash payload into the
@@ -230,47 +199,14 @@ func (cluster *Cluster) getStoredSecretCompareValue(key string, value string) st
 	return cluster.Conf.DecryptSecretValue(key, value)
 }
 
-// loadSecretVersionStore reads secret_store.json.
-// Missing/empty files return an initialized empty store.
+// loadSecretVersionStore reads a versioned file: the secret_kv-config plugin's reader.
 func loadSecretVersionStore(path string) (secretVersionStore, error) {
-	store := make(secretVersionStore)
-
-	data, err := os.ReadFile(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return store, nil
-		}
-		return nil, err
-	}
-
-	if len(data) == 0 {
-		return store, nil
-	}
-
-	if err := json.Unmarshal(data, &store); err != nil {
-		return nil, err
-	}
-
-	if store == nil {
-		store = make(secretVersionStore)
-	}
-
-	return store, nil
+	return credstore.LoadVersionFile(path)
 }
 
-// writeSecretVersionStoreAtomic writes the store through a temp file + rename
-// sequence so readers never observe a partially written JSON file.
+// writeSecretVersionStoreAtomic writes a versioned file: the secret_kv-config plugin's writer.
 func writeSecretVersionStoreAtomic(path string, store secretVersionStore) error {
-	if store == nil {
-		store = make(secretVersionStore)
-	}
-
-	payload, err := json.MarshalIndent(store, "", "  ")
-	if err != nil {
-		return err
-	}
-
-	return writeFileAtomic(path, payload, "secret_store-*.tmp")
+	return credstore.WriteVersionFile(path, store)
 }
 
 func sortedTrackedSecretKeys(values map[string]trackedSecretValue) []string {
@@ -282,12 +218,15 @@ func sortedTrackedSecretKeys(values map[string]trackedSecretValue) []string {
 	return keys
 }
 
+// SecretVersionStorePath is a cluster's versioned local file, as the secret_kv-config plugin
+// places it (credstore.LocalFile).
 func SecretVersionStorePath(workingDir string, clusterName string) string {
-	return filepath.Join(workingDir, clusterName, secretVersionStoreFilename)
+	return credstore.LocalFile{DataDir: workingDir}.Path(credstore.ClusterScope(clusterName))
 }
 
+// SecretVersionStoreExportPath is a cluster's exported copy, as the plugin places it.
 func SecretVersionStoreExportPath(confDir string, clusterName string) string {
-	return filepath.Join(confDir, "cluster.d", clusterName+"_secret_store.json")
+	return credstore.LocalFile{DataDir: confDir}.ExportPath(confDir, credstore.ClusterScope(clusterName))
 }
 
 func CopySecretVersionStoreFile(srcPath string, dstPath string, dryRun bool, overwrite bool) (SecretVersionStoreCopySummary, error) {
@@ -461,48 +400,9 @@ func PruneSecretVersionStoreFile(path string, keepLast int, dryRun bool) (Secret
 	return summary, nil
 }
 
+// pruneSecretVersionStore keeps the last keepLast versions of each key (credstore.PruneVersions).
 func pruneSecretVersionStore(store secretVersionStore, keepLast int) (secretVersionStore, int, int) {
-	if store == nil {
-		store = make(secretVersionStore)
-	}
-
-	pruned := make(secretVersionStore, len(store))
-	keysPruned := 0
-	versionsRemoved := 0
-
-	for key, versions := range store {
-		if len(versions) <= keepLast {
-			copied := append([]secretVersion(nil), versions...)
-			pruned[key] = copied
-			continue
-		}
-
-		start := len(versions) - keepLast
-		copied := append([]secretVersion(nil), versions[start:]...)
-		// the value a config file held when last seen stays, to tell an edit of the file
-		// (#2227 rule 9)
-		if seen := lastFromConfigFile(versions); seen >= 0 && seen < start {
-			copied = append([]secretVersion{versions[seen]}, copied...)
-			start--
-		}
-		pruned[key] = copied
-		if start > 0 {
-			keysPruned++
-		}
-		versionsRemoved += start
-	}
-
-	return pruned, keysPruned, versionsRemoved
-}
-
-// lastFromConfigFile is the index of the last version marked from_config_file, else -1.
-func lastFromConfigFile(versions []secretVersion) int {
-	for i := len(versions) - 1; i >= 0; i-- {
-		if versions[i].FromConfigFile {
-			return i
-		}
-	}
-	return -1
+	return credstore.PruneVersions(store, keepLast)
 }
 
 func resolveSecretStoreEntryByVersion(key string, versions []secretVersion, requestedVersion int) (SecretVersionStoreRestoreEntry, error) {

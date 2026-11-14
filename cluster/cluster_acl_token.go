@@ -112,14 +112,14 @@ func (cluster *Cluster) GetTokenPrincipal(id string) (TokenPrincipal, bool) {
 func (cluster *Cluster) GetACLUser(strUser string) (APIUser, bool) {
 	id, user, isToken := ParseTokenPrincipal(strUser)
 	if !isToken {
-		u, ok := cluster.APIUsers[strUser]
+		u, ok := cluster.GetAPIUsers()[strUser]
 		return u, ok
 	}
 	p, ok := cluster.GetTokenPrincipal(id)
 	if !ok || p.User != user {
 		return APIUser{}, false
 	}
-	owner, ok := cluster.APIUsers[user]
+	owner, ok := cluster.GetAPIUsers()[user]
 	if !ok {
 		return APIUser{}, false
 	}
@@ -145,7 +145,7 @@ func (cluster *Cluster) GetACLUser(strUser string) (APIUser, bool) {
 // owner's authority, never extend it.
 func (cluster *Cluster) TokenGrantsAllowedFor(owner string, requested string) (allowed map[string]bool, missing []string) {
 	allowed = map[string]bool{}
-	ownerUser, ok := cluster.APIUsers[owner]
+	ownerUser, ok := cluster.GetAPIUsers()[owner]
 	if !ok {
 		return allowed, strings.Fields(requested)
 	}

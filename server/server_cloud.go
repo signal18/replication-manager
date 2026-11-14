@@ -2,6 +2,7 @@ package server
 
 import (
 	"fmt"
+	"maps"
 	"os/exec"
 	"slices"
 	"strings"
@@ -22,7 +23,7 @@ type CloudUserForm struct {
 
 func (repman *ReplicationManager) AcceptSubscription(userform cluster.UserForm, cl *cluster.Cluster) error {
 	user := userform.Username
-	auser, ok := cl.APIUsers[user]
+	auser, ok := cl.GetAPIUsers()[user]
 	if !ok {
 		return fmt.Errorf("User %s does not exist ", user)
 	}
@@ -50,7 +51,7 @@ func (repman *ReplicationManager) AcceptSubscription(userform cluster.UserForm, 
 	// If external sysops different from cloud18 git user
 	if cl.Conf.Cloud18ExternalSysOps != "" && cl.Conf.Cloud18ExternalSysOps != cl.Conf.Cloud18GitUser {
 		esys := repman.CreateExtSysopsForm(cl.Conf.Cloud18ExternalSysOps)
-		if euser, ok := cl.APIUsers[cl.Conf.Cloud18ExternalSysOps]; !ok {
+		if euser, ok := cl.GetAPIUsers()[cl.Conf.Cloud18ExternalSysOps]; !ok {
 			cl.AddUser(esys, cl.Conf.Cloud18GitUser, false)
 		} else {
 			esys.Grants = cl.AppendGrants(esys.Grants, &euser)
@@ -62,7 +63,7 @@ func (repman *ReplicationManager) AcceptSubscription(userform cluster.UserForm, 
 	// If external dbops different from cloud18 dbops
 	if cl.Conf.Cloud18ExternalDbOps != "" && cl.Conf.Cloud18ExternalDbOps != cl.Conf.Cloud18DbOps {
 		edbops := repman.CreateExtDBOpsForm(cl.Conf.Cloud18ExternalDbOps)
-		if edbuser, ok := cl.APIUsers[cl.Conf.Cloud18ExternalDbOps]; !ok {
+		if edbuser, ok := cl.GetAPIUsers()[cl.Conf.Cloud18ExternalDbOps]; !ok {
 			cl.AddUser(edbops, cl.Conf.Cloud18GitUser, false)
 		} else {
 			edbops.Grants = cl.AppendGrants(edbops.Grants, &edbuser)
@@ -113,7 +114,7 @@ func (repman *ReplicationManager) AcceptSubscription(userform cluster.UserForm, 
 
 func (repman *ReplicationManager) CancelSubscription(userform cluster.UserForm, cl *cluster.Cluster) error {
 	user := userform.Username
-	auser, ok := cl.APIUsers[user]
+	auser, ok := cl.GetAPIUsers()[user]
 	if !ok {
 		return fmt.Errorf("User %s does not exist ", user)
 	}
@@ -145,7 +146,7 @@ func (repman *ReplicationManager) CancelSubscription(userform cluster.UserForm, 
 
 func (repman *ReplicationManager) EndSubscription(userform cluster.UserForm, cl *cluster.Cluster) error {
 	user := userform.Username
-	auser, ok := cl.APIUsers[user]
+	auser, ok := cl.GetAPIUsers()[user]
 
 	if !ok {
 		return fmt.Errorf("User %s does not exist ", user)
@@ -286,7 +287,7 @@ func (repman *ReplicationManager) BashScriptExternalOpsEndPartnership(mycluster 
 func (repman *ReplicationManager) QuoteExternalOps(userform CloudUserForm, cl *cluster.Cluster, delegator string) error {
 	var extops cluster.UserForm
 	extops.Username = userform.Username
-	auser, ok := cl.APIUsers[extops.Username]
+	auser, ok := cl.GetAPIUsers()[extops.Username]
 	if !ok {
 		return fmt.Errorf("User %s does not exist ", extops.Username)
 	}
@@ -307,6 +308,8 @@ func (repman *ReplicationManager) QuoteExternalOps(userform CloudUserForm, cl *c
 		cl.Conf.Cloud18ExternalDbOpsStatus = config.ExternalQuote
 		cl.Conf.Cloud18MonthlyExternalDbopsCost = userform.Cost
 
+		// the entry's map is the live list's: copied before the change
+		auser.Roles = maps.Clone(auser.Roles)
 		auser.Roles[config.RolePendingExtDBOps] = false
 	} else if userform.Roles == config.RoleExtSysOps {
 		if v, ok := auser.Roles[config.RolePendingExtSysOps]; !ok || !v {
@@ -317,6 +320,8 @@ func (repman *ReplicationManager) QuoteExternalOps(userform CloudUserForm, cl *c
 		cl.Conf.Cloud18ExternalSysOpsStatus = config.ExternalQuote
 		cl.Conf.Cloud18MonthlyExternalSysopsCost = userform.Cost
 
+		// the entry's map is the live list's: copied before the change
+		auser.Roles = maps.Clone(auser.Roles)
 		auser.Roles[config.RolePendingExtSysOps] = false
 	} else {
 		return fmt.Errorf("Invalid role %s", userform.Roles)
@@ -331,7 +336,7 @@ func (repman *ReplicationManager) QuoteExternalOps(userform CloudUserForm, cl *c
 func (repman *ReplicationManager) AcceptExternalOps(userform CloudUserForm, cl *cluster.Cluster, delegator string) error {
 	var extops cluster.UserForm
 	user := userform.Username
-	auser, ok := cl.APIUsers[user]
+	auser, ok := cl.GetAPIUsers()[user]
 	if !ok {
 		return fmt.Errorf("User %s does not exist ", user)
 	}
@@ -342,6 +347,8 @@ func (repman *ReplicationManager) AcceptExternalOps(userform CloudUserForm, cl *
 		}
 
 		extops = repman.CreateExtDBOpsForm(user)
+		// the entry's map is the live list's: copied before the change
+		auser.Roles = maps.Clone(auser.Roles)
 		auser.Roles[config.RoleQuoteExtDBOps] = false
 		cl.Conf.Cloud18ExternalDbOpsStatus = config.ExternalActive
 	} else if userform.Roles == config.RoleExtSysOps {
@@ -350,6 +357,8 @@ func (repman *ReplicationManager) AcceptExternalOps(userform CloudUserForm, cl *
 		}
 
 		extops = repman.CreateExtSysopsForm(user)
+		// the entry's map is the live list's: copied before the change
+		auser.Roles = maps.Clone(auser.Roles)
 		auser.Roles[config.RoleQuoteExtSysOps] = false
 		cl.Conf.Cloud18ExternalSysOpsStatus = config.ExternalActive
 	} else {
@@ -376,7 +385,7 @@ func (repman *ReplicationManager) CancelExternalOps(userform CloudUserForm, cl *
 		return fmt.Errorf("Invalid role %s", userform.Roles)
 	}
 
-	auser, ok := cl.APIUsers[extops.Username]
+	auser, ok := cl.GetAPIUsers()[extops.Username]
 	if !ok {
 		return fmt.Errorf("User %s does not exist ", extops.Username)
 	}
@@ -424,7 +433,7 @@ func (repman *ReplicationManager) EndExternalOps(userform CloudUserForm, cl *clu
 		Username: userform.Username,
 	}
 
-	auser, ok := cl.APIUsers[userform.Username]
+	auser, ok := cl.GetAPIUsers()[userform.Username]
 
 	if !ok {
 		return fmt.Errorf("User %s does not exist ", userform.Username)
@@ -483,7 +492,7 @@ func (repman *ReplicationManager) RegisterExternalOps(userform CloudUserForm, my
 		Username: userform.Username,
 	}
 
-	auser, exists := mycluster.APIUsers[userform.Username]
+	auser, exists := mycluster.GetAPIUsers()[userform.Username]
 
 	if userform.Roles == config.RoleExtDBOps {
 		if mycluster.Conf.Cloud18ExternalDbOps != "" {

@@ -84,7 +84,7 @@ func (cluster *Cluster) BillingIdentity() ClusterIdentity {
 	if c := cluster.Conf; c.Cloud18 && c.Cloud18Domain != "" {
 		id.Partner = c.Cloud18Domain + "/" + c.Cloud18SubDomain + "-" + c.Cloud18SubDomainZone
 	}
-	for name, u := range cluster.APIUsers {
+	for name, u := range cluster.GetAPIUsers() {
 		if u.Roles[config.RoleSponsor] {
 			id.Sponsors = append(id.Sponsors, name)
 		}

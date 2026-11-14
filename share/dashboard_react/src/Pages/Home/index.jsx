@@ -493,6 +493,7 @@ function Home() {
         {
           selectedClusterNameRef.current == '' && (
             <>
+              {/* the instance's name, asked to a sysops or extsysops while it is not complete */}
               {isNewClusterModalOpen && (
                 <NewClusterModal plans={monitor?.servicePlans} orchestrators={monitor?.serviceOrchestrators} defaultOrchestrator={monitor?.config.provOrchestrator} isOpen={isNewClusterModalOpen} closeModal={closeNewClusterModal} />
               )}

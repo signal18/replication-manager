@@ -1242,10 +1242,10 @@ func (cluster *Cluster) CheckInjectConfig() {
 
 func (cluster *Cluster) CheckDefaultUser(i bool) {
 	creds := make([]string, 0)
-	if cluster.APIUsers["admin"].Password == "repman" {
+	if cluster.GetAPIUsers()["admin"].Password == "repman" {
 		creds = append(creds, "admin")
 	}
-	if cluster.APIUsers["dba"].Password == "repman" {
+	if cluster.GetAPIUsers()["dba"].Password == "repman" {
 		creds = append(creds, "dba")
 	}
 	out := strings.Join(creds, ",")

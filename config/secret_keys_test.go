@@ -16,13 +16,15 @@ import (
 var secretLookingKey = regexp.MustCompile(`pass|secret|token|credential|webhook|slack-url|teams-url|teams-proxy-url`)
 
 // notFlatSecrets are string keys secretLookingKey matches that are not flat secrets: each
-// says why. A new key matching it goes in SecretKeys, or here with its reason.
+// says why. A new key matching it is tagged secret:"true", or goes here with its reason.
 var notFlatSecrets = map[string]string{
 	"api-credentials-acl-allow":            "ACL grants, no password",
 	"api-credentials-acl-allow-external":   "ACL grants, no password",
 	"api-credentials-acl-discard":          "ACL grants, no password",
 	"api-credentials-acl-discard-external": "ACL grants, no password",
 	"cloud18-git-token-expires":            "the git token's expiry date, not the token",
+	"app-api-token-id":                     "the app API token's id, to revoke it, not the token",
+	"app-api-token-expires":                "the app API token's expiry date, not the token",
 	"secret-kv":                            "structured secret-kv entries, their own secret model",
 	"scheduler-rotate-passwords-cron":      "the cron of the scheduled password rotation, no password",
 	"alert-slack-url":                      "an alert URL, plain: the back office reads it to find why an integration does not post",
@@ -38,18 +40,22 @@ func TestSecretLookingKeysAreSecrets(t *testing.T) {
 	for _, k := range SecretKeys {
 		secret[k] = true
 	}
-	typ := reflect.TypeOf(Config{})
-	for i := 0; i < typ.NumField(); i++ {
-		f := typ.Field(i)
-		key := f.Tag.Get("mapstructure")
-		if f.Type.Kind() != reflect.String || key == "" || !secretLookingKey.MatchString(key) {
-			continue
-		}
-		if secret[key] {
-			continue
-		}
-		if _, ok := notFlatSecrets[key]; !ok {
-			t.Errorf("%s (%s) is named like a credential: add it to SecretKeys with a save case, or to notFlatSecrets with the reason", key, f.Name)
+	for _, k := range AppSecretKeys {
+		secret[k] = true
+	}
+	for _, typ := range []reflect.Type{reflect.TypeOf(Config{}), reflect.TypeOf(AppConfig{})} {
+		for i := 0; i < typ.NumField(); i++ {
+			f := typ.Field(i)
+			key := f.Tag.Get("mapstructure")
+			if f.Type.Kind() != reflect.String || key == "" || !secretLookingKey.MatchString(key) {
+				continue
+			}
+			if secret[key] {
+				continue
+			}
+			if _, ok := notFlatSecrets[key]; !ok {
+				t.Errorf("%s (%s) is named like a credential: tag it secret:\"true\" with a save case, or add it to notFlatSecrets with the reason", key, f.Name)
+			}
 		}
 	}
 }
@@ -168,5 +174,18 @@ func TestDecryptLegacyEncryptedURLs(t *testing.T) {
 	odd := newConf(keyed.SecretKey, func(string) string { return "https:hash_00112233445566778899aabbccddeeff001122334" })
 	if done, unread := odd.DecryptLegacyEncryptedURLs(); len(done) != 0 || len(unread) != len(urls) {
 		t.Errorf("an unreadable token: decrypted %v, unread %v", done, unread)
+	}
+}
+
+// A field tagged secret:"true" is a string: the masking, the encryption on save and the copy to
+// the stores handle strings only, so a secret of another type would be shown and saved in clear.
+func TestSecretTaggedFieldsAreStrings(t *testing.T) {
+	for _, typ := range []reflect.Type{reflect.TypeOf(Config{}), reflect.TypeOf(AppConfig{})} {
+		for i := 0; i < typ.NumField(); i++ {
+			f := typ.Field(i)
+			if f.Tag.Get("secret") == "true" && f.Type.Kind() != reflect.String {
+				t.Errorf("%s.%s is tagged secret:\"true\" but is a %s", typ.Name(), f.Name, f.Type.Kind())
+			}
+		}
 	}
 }

@@ -25,6 +25,10 @@ export const globalClustersService = {
   calibrateSmtGain,
   calibrateIops,
   getCloud18Identity,
+  getServerSecretKvList,
+  putServerSecretKv,
+  switchServerSecretKv,
+  removeServerSecretKv,
   licensePull,
   refreshAppTemplateRepo,
   getAppTemplateStructureGuide,
@@ -137,6 +141,25 @@ function calibrateSmtGain(apply = true) {
 // The Cloud18 login of this replication-manager (#2159): device login, no token ever returned
 function getCloud18Identity() {
   return getApi().get(`clusters/settings/actions/cloud18-identity`)
+}
+
+// the server credential stores, which hold the server secrets: sysops and extsysops only
+// (the server credentials grant on every cluster); secrets go in and never come back
+function getServerSecretKvList() {
+  return getApi().get(`clusters/settings/actions/server-secret-kv`)
+}
+
+function putServerSecretKv(spec, isEdit) {
+  const path = isEdit ? `edit/${encodeURIComponent(spec.name)}` : 'add'
+  return getApi().post(`clusters/settings/actions/server-secret-kv/${path}`, spec)
+}
+
+function switchServerSecretKv(entryName, enabled) {
+  return getApi().post(`clusters/settings/actions/server-secret-kv/${enabled ? 'enable' : 'disable'}/${encodeURIComponent(entryName)}`)
+}
+
+function removeServerSecretKv(entryName) {
+  return getApi().post(`clusters/settings/actions/server-secret-kv/remove/${encodeURIComponent(entryName)}`)
 }
 
 // license-pull (#2309): load from a package file in the datadir what a git pull of the -pull

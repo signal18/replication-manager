@@ -65,12 +65,28 @@ func orchestratorCallContext(parent context.Context, timeout credstore.Timeout) 
 	return context.WithTimeout(parent, d)
 }
 
-// openSVCStore is the OpenSVC `sec` object as a write-only copy sink (credstore.StoreWriter).
+// openSVCStore is an OpenSVC `sec` object as a write-only copy sink (credstore.StoreWriter):
+// the cluster's env secret, or the server level's system/sec/repman reached through this
+// cluster's agent (keyPrefix then holds the instance's name, keyed by the item's Path).
 type openSVCStore struct {
-	cluster *Cluster
+	cluster   *Cluster
+	namespace string
+	object    string
+	// prefixed: the key written is <item.Path>_<item.Key> (a server entry), else item.Key
+	prefixed bool
 }
 
-func (cluster *Cluster) openSVCStore() *openSVCStore { return &openSVCStore{cluster: cluster} }
+func (cluster *Cluster) openSVCStore() *openSVCStore {
+	return &openSVCStore{cluster: cluster, namespace: cluster.Name, object: orchestratorEnvObject}
+}
+
+// storeKey is the key an item is written under in the object.
+func storeKey(prefixed bool, it credstore.StoreItem) string {
+	if prefixed && it.Path != "" {
+		return it.Path + "_" + it.Key
+	}
+	return it.Key
+}
 
 // certNotLoaded reports that the agent cannot be reached for want of a client certificate (the
 // collector-API mode uses none).
@@ -82,6 +98,9 @@ func (s *openSVCStore) certNotLoaded() bool {
 // only — never as a Chain source (rule 7). A v2 agent has no key read: it returns ok=false, so
 // a v2 drift is seen at the next rotation. The read is bounded by the store timeout (F2).
 func (s *openSVCStore) ReadCurrent(key string) (value string, ok bool, err error) {
+	if s.prefixed {
+		return "", false, errPrefixedReadCurrent
+	}
 	svc := s.cluster.OpenSVCConnect()
 	if s.certNotLoaded() {
 		return "", false, errOpenSVCCertNotLoaded
@@ -91,7 +110,7 @@ func (s *openSVCStore) ReadCurrent(key string) (value string, ok bool, err error
 	}
 	ctx, cancel := orchestratorCallContext(context.Background(), s.cluster.storeTimeout())
 	defer cancel()
-	b, err := svc.GetSecretKeyValueV3Ctx(ctx, s.cluster.Name, orchestratorEnvObject, key)
+	b, err := svc.GetSecretKeyValueV3Ctx(ctx, s.namespace, s.object, key)
 	if err != nil {
 		return "", false, err
 	}
@@ -131,14 +150,14 @@ func (s *openSVCStore) writeWith(ctx context.Context, svc opensvc.Collector, ite
 			}
 			return failed, firstErr
 		}
-		key, val := it.Key, it.Version.Value
+		key, val := storeKey(s.prefixed, it), it.Version.Value
 		if v3 && !strings.HasSuffix(key, oldKeySuffix) {
-			b, rerr := svc.GetSecretKeyValueV3Ctx(bctx, s.cluster.Name, orchestratorEnvObject, key)
+			b, rerr := svc.GetSecretKeyValueV3Ctx(bctx, s.namespace, s.object, key)
 			var se *opensvc.StatusError
 			if rerr != nil && !(errors.As(rerr, &se) && se.StatusCode == http.StatusNotFound) && bctx.Err() == nil {
 				// the key is written without its rollback copy: say so (#2357 review), the key
 				// only, never a value (F10); an absent key has nothing to keep
-				s.cluster.LogModulePrintf(s.cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "Orchestrator secret %s/sec/%s: %s read before write failed, writing without %s%s: %s", s.cluster.Name, orchestratorEnvObject, key, key, oldKeySuffix, rerr)
+				s.cluster.LogModulePrintf(s.cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "Orchestrator secret %s/sec/%s: %s read before write failed, writing without %s%s: %s", s.namespace, s.object, key, key, oldKeySuffix, rerr)
 			}
 			if rerr == nil {
 				old := string(b)
@@ -148,16 +167,16 @@ func (s *openSVCStore) writeWith(ctx context.Context, svc opensvc.Collector, ite
 				}
 				if writeOld {
 					// best effort: the _OLD slot must never block the current write
-					if oerr := svc.CreateSecretKeyValueCtx(bctx, s.cluster.Name, orchestratorEnvObject, key+oldKeySuffix, old); oerr != nil {
+					if oerr := svc.CreateSecretKeyValueCtx(bctx, s.namespace, s.object, key+oldKeySuffix, old); oerr != nil {
 						// the key is still written below; the rollback copy is what is lost: say so,
 						// the key only, never a value (F10)
-						s.cluster.LogModulePrintf(s.cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "Orchestrator secret %s/sec/%s: %s%s not written, the superseded value is not kept: %s", s.cluster.Name, orchestratorEnvObject, key, oldKeySuffix, oerr)
+						s.cluster.LogModulePrintf(s.cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "Orchestrator secret %s/sec/%s: %s%s not written, the superseded value is not kept: %s", s.namespace, s.object, key, oldKeySuffix, oerr)
 					}
 				}
 			}
 		}
 		// v3: the same call prov_opensvc.go uses (openSVCCreateMapsV3); v2: the v2 key API
-		werr := svc.CreateSecretKeyValueCtx(bctx, s.cluster.Name, orchestratorEnvObject, key, val)
+		werr := svc.CreateSecretKeyValueCtx(bctx, s.namespace, s.object, key, val)
 		if werr != nil {
 			failed = append(failed, it)
 			if firstErr == nil {
@@ -220,7 +239,7 @@ func (cluster *Cluster) queueOrchestrator(key, value string) {
 // version (reportOrchestratorSecret). It returns the error of each key it could not write.
 func (cluster *Cluster) seedOrchestratorPasswords(svc opensvc.Collector) map[string]error {
 	values := []struct{ key, value string }{
-		{"REPLICATION_MANAGER_PASSWORD", cluster.APIUsers["admin"].Password},
+		{"REPLICATION_MANAGER_PASSWORD", cluster.GetAPIUsers()["admin"].Password},
 		{"MYSQL_ROOT_PASSWORD", cluster.GetDbPass()},
 		{"SHARDPROXY_ROOT_PASSWORD", cluster.GetShardPass()},
 	}
@@ -247,4 +266,34 @@ func (cluster *Cluster) seedOrchestratorPasswords(svc opensvc.Collector) map[str
 		}
 	}
 	return errs
+}
+
+// errPrefixedReadCurrent: a server entry's writer keys each item by its Path; the drift read
+// takes a bare key, so it is the cluster sink's only.
+var errPrefixedReadCurrent = errors.New("the drift read is the cluster's env secret's only, not a server store's")
+
+// errServerStoreOrchestrator: the cluster a server entry names is not on that entry's
+// orchestrator.
+var errServerStoreOrchestrator = errors.New("the cluster named by the server credential store is not on its orchestrator")
+
+// ServerOrchestratorStore is a server credential store of plugin (secret_kv-opensvc or
+// secret_kv-kubernetes) reached through this cluster's connection: the OpenSVC secret
+// system/sec/repman, or the Kubernetes Secret repman-system in namespace. Each item is written
+// under <item.Path>_<item.Key>, the Path being the instance's name (config.
+// ServerOrchestratorKeyPrefix). The server secrets never enter the cluster's own env secret,
+// its queue or its states: the server level drives this writer.
+func (cluster *Cluster) ServerOrchestratorStore(plugin, namespace string) (credstore.StoreWriter, error) {
+	switch plugin {
+	case config.ConstSecretKvPluginOpenSVC:
+		if cluster.GetOrchestrator() != config.ConstOrchestratorOpenSVC {
+			return nil, errServerStoreOrchestrator
+		}
+		return &openSVCStore{cluster: cluster, namespace: config.ConstSecretKvOpenSVCServerNamespace, object: config.ConstSecretKvOpenSVCServerObject, prefixed: true}, nil
+	case config.ConstSecretKvPluginKubernetes:
+		if cluster.GetOrchestrator() != config.ConstOrchestratorKubernetes {
+			return nil, errServerStoreOrchestrator
+		}
+		return &k8sStore{cluster: cluster, namespace: namespace, secret: config.ConstSecretKvKubernetesServerSecret, prefixed: true}, nil
+	}
+	return nil, fmt.Errorf("plugin %s does not write through an orchestrator", plugin)
 }

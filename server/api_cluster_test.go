@@ -2306,3 +2306,26 @@ func TestSetClusterSetting_ExternalOps(t *testing.T) {
 		t.Fatalf("dbops: err=%v status=%q", err, cl.Conf.Cloud18ExternalDbOpsStatus)
 	}
 }
+
+// The cluster payload carries the user list from GetAPIUsers (the live field is swapped by a
+// reload under its lock): same key, same entries, never a password.
+func TestBuildClusterAPIPayload_APIUsersFromGetter(t *testing.T) {
+	cl := newTestClusterForAPI(t)
+	cl.APIUsers = map[string]cluster.APIUser{"ops": {User: "ops", Password: "pw-not-shown", Grants: map[string]bool{"cluster-show": true}}}
+	payload, err := buildClusterAPIPayload(cl)
+	if err != nil {
+		t.Fatalf("buildClusterAPIPayload: %v", err)
+	}
+	var got struct {
+		APIUsers map[string]cluster.APIUser `json:"apiUsers"`
+	}
+	if err := json.Unmarshal(payload, &got); err != nil {
+		t.Fatal(err)
+	}
+	if u, ok := got.APIUsers["ops"]; !ok || !u.Grants["cluster-show"] {
+		t.Fatalf("apiUsers: %+v", got.APIUsers)
+	}
+	if strings.Contains(string(payload), "pw-not-shown") {
+		t.Fatal("a password reached the payload")
+	}
+}

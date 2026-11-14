@@ -8,6 +8,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
+	"net/url"
 	"reflect"
 	"sort"
 	"strconv"
@@ -29,13 +31,34 @@ import (
 // fields go back to their defaults: a cluster no longer declares Vault by a bare path in a
 // credential (a path left in the config is read once as the seed, cluster_secret_kv.go).
 
-// The secret_kv plugins: two. secret_kv-config is built in and always there: the config
-// files and the versioned local file (secret_store.json) as one store, holding every secret
-// and its versions; it is the base store, never an entry of the list. secret_kv-vault has n
-// entries, the list holds only those.
+// The secret_kv plugins. secret_kv-config is built in and always there: the config files and
+// the versioned local file (secret_store.json) as one store, holding every secret and its
+// versions; it is the base store, never an entry of the list. secret_kv-vault has n entries at
+// both levels. secret_kv-opensvc and secret_kv-kubernetes are server entries only: the server
+// secrets in the orchestrator's secret object, through a cluster's connection (at the cluster
+// level the orchestrator's env secret is the reserved "orchestrator" entry, always on).
 const (
-	ConstSecretKvPluginConfig = "secret_kv-config" // built in: the config and the versioned local file
-	ConstSecretKvPluginVault  = "secret_kv-vault"  // a Vault KV, one per entry
+	ConstSecretKvPluginConfig     = "secret_kv-config"     // built in: the config and the versioned local file
+	ConstSecretKvPluginVault      = "secret_kv-vault"      // a Vault KV, one per entry
+	ConstSecretKvPluginOpenSVC    = "secret_kv-opensvc"    // the OpenSVC secret system/sec/repman (server level)
+	ConstSecretKvPluginKubernetes = "secret_kv-kubernetes" // a Kubernetes Secret repman-system (server level)
+)
+
+// The settings of a server secret_kv-opensvc or secret_kv-kubernetes entry.
+const (
+	// ConstSecretKvOrchestratorCluster: the cluster whose orchestrator connection (its agent,
+	// its certificate, its Kubernetes client) carries the server secrets
+	ConstSecretKvOrchestratorCluster = "cluster"
+	// ConstSecretKvKubernetesNamespace: the namespace of the repman-system Secret
+	ConstSecretKvKubernetesNamespace = "namespace"
+)
+
+// The objects the orchestrator server entries write, every instance its own keys in them:
+// <instance name, "/" as "_">_<key>.
+const (
+	ConstSecretKvOpenSVCServerNamespace = "system"
+	ConstSecretKvOpenSVCServerObject    = "repman"
+	ConstSecretKvKubernetesServerSecret = "repman-system"
 )
 
 // ConstSecretKvVaultDefault is the entry the vault-* keys are migrated into.
@@ -48,6 +71,8 @@ type SecretKvPluginManifest struct {
 	Description string         `json:"description"`
 	Tier        string         `json:"tier,omitempty"` // ConstArchiveTierEnterprise, "" for every plan
 	Settings    PluginSettings `json:"settings"`
+	// ServerOnly: an entry of the server's list only, never of a cluster's
+	ServerOnly bool `json:"serverOnly,omitempty"`
 }
 
 // The settings of a secret_kv-vault entry.
@@ -88,6 +113,37 @@ var secretKvManifests = map[string]SecretKvPluginManifest{
 			{Name: ConstSecretKvVaultSecretID, Type: ConstArchiveSettingTypeSecret},
 		},
 	},
+	ConstSecretKvPluginOpenSVC: {
+		Name:        ConstSecretKvPluginOpenSVC,
+		Description: "The OpenSVC secret system/sec/repman, through the agent of a cluster on OpenSVC: keys <instance name>_<key>, readable by the OpenSVC cluster's administrators",
+		ServerOnly:  true,
+		Settings: PluginSettings{
+			{Name: ConstSecretKvOrchestratorCluster, Type: ConstArchiveSettingTypeString},
+		},
+	},
+	ConstSecretKvPluginKubernetes: {
+		Name:        ConstSecretKvPluginKubernetes,
+		Description: "The Kubernetes Secret repman-system in a namespace, through the client of a cluster on Kubernetes: keys <instance name>_<key>",
+		ServerOnly:  true,
+		Settings: PluginSettings{
+			{Name: ConstSecretKvOrchestratorCluster, Type: ConstArchiveSettingTypeString},
+			{Name: ConstSecretKvKubernetesNamespace, Type: ConstArchiveSettingTypeString},
+		},
+	},
+}
+
+// SecretKvPluginAllowedAt: an entry of plugin may be in level's list (secret_kv-config never is).
+func SecretKvPluginAllowedAt(level SecretKvLevel, plugin string) bool {
+	m, ok := secretKvManifests[plugin]
+	if !ok || plugin == ConstSecretKvPluginConfig {
+		return false
+	}
+	return level == SecretKvLevelServer || !m.ServerOnly
+}
+
+// IsOrchestratorSecretKvPlugin: plugin writes through a cluster's orchestrator connection.
+func IsOrchestratorSecretKvPlugin(plugin string) bool {
+	return plugin == ConstSecretKvPluginOpenSVC || plugin == ConstSecretKvPluginKubernetes
 }
 
 // SecretKvPlugin is the manifest of a secret_kv plugin.
@@ -96,11 +152,17 @@ func SecretKvPlugin(name string) (SecretKvPluginManifest, bool) {
 	return m, ok
 }
 
-// SecretKvPlugins lists the secret_kv plugin manifests, by name.
-func SecretKvPlugins() []SecretKvPluginManifest {
+// SecretKvPlugins lists the cluster level's secret_kv plugin manifests, by name.
+func SecretKvPlugins() []SecretKvPluginManifest { return SecretKvPluginsAt(SecretKvLevelCluster) }
+
+// SecretKvPluginsAt lists the manifests of the plugins level's list may hold, and the built-in
+// one, by name.
+func SecretKvPluginsAt(level SecretKvLevel) []SecretKvPluginManifest {
 	out := make([]SecretKvPluginManifest, 0, len(secretKvManifests))
 	for _, m := range secretKvManifests {
-		out = append(out, m)
+		if m.Name == ConstSecretKvPluginConfig || SecretKvPluginAllowedAt(level, m.Name) {
+			out = append(out, m)
+		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out
@@ -149,6 +211,11 @@ type SecretKvConfig struct {
 	Offer string `mapstructure:"offer" toml:"offer" json:"-"`
 	// OfferInfo is the offer as the catalogue describes it, for the API (never saved)
 	OfferInfo *SecretKvOffer `mapstructure:"-" toml:"-" json:"offer"`
+	// WrittenAs is the instance's name a server entry holds the server secrets under, set at
+	// its first write: when the name changes (one of the cloud18-* name settings) the
+	// secrets are moved from there (CREDENTIAL_STORES.md "The move"). Saved, so a
+	// restart or the other monitor knows where they are.
+	WrittenAs string `mapstructure:"written-as" toml:"written-as" json:"-"`
 }
 
 // SecretKvOffer is the marketplace vault offer an entry comes from, as the API gives it.
@@ -205,9 +272,35 @@ func (conf *Config) SecretKvSetting(e SecretKvConfig, name string) string {
 	return v
 }
 
-// secretKvMu guards the list: the save, the peer replay and the store writer read and write
-// it.
+// secretKvMu guards the lists: the save, the peer replay and the store writer read and write
+// them.
 var secretKvMu sync.Mutex
+
+// SecretKvLevel is the level of a list of credential stores (CREDENTIAL_STORES.md "Two
+// levels"): a cluster's entries ([[<cluster>.secret-kv]]) hold its secrets, the server's
+// ([[default.server-secret-kv]]) the server secrets. The same code serves both.
+type SecretKvLevel string
+
+const (
+	SecretKvLevelCluster SecretKvLevel = "cluster"
+	SecretKvLevelServer  SecretKvLevel = "server"
+)
+
+// secretKvsAt is the list of level.
+func (conf *Config) secretKvsAt(level SecretKvLevel) *[]SecretKvConfig {
+	if level == SecretKvLevelServer {
+		return &conf.ServerSecretKvs
+	}
+	return &conf.SecretKvs
+}
+
+// secretKvTable is the TOML table of level's entries.
+func secretKvTable(level SecretKvLevel) string {
+	if level == SecretKvLevelServer {
+		return "server-secret-kv"
+	}
+	return "secret-kv"
+}
 
 func cloneSecretKvs(in []SecretKvConfig) []SecretKvConfig {
 	if in == nil {
@@ -222,28 +315,41 @@ func cloneSecretKvs(in []SecretKvConfig) []SecretKvConfig {
 }
 
 func (conf *Config) secretKvByName(name string) *SecretKvConfig {
-	for i := range conf.SecretKvs {
-		if conf.SecretKvs[i].Name == name {
-			return &conf.SecretKvs[i]
+	return conf.secretKvByNameAt(SecretKvLevelCluster, name)
+}
+
+func (conf *Config) secretKvByNameAt(level SecretKvLevel, name string) *SecretKvConfig {
+	list := conf.secretKvsAt(level)
+	for i := range *list {
+		if (*list)[i].Name == name {
+			return &(*list)[i]
 		}
 	}
 	return nil
 }
 
-// cleanSecretKvSettings drops from the entries read what their plugin does not declare. The
-// list holds secret_kv-vault entries only: secret_kv-config is built in, never an entry.
-func (conf *Config) cleanSecretKvSettings() {
-	kept := conf.SecretKvs[:0]
-	for _, e := range conf.SecretKvs {
-		if e.Plugin == ConstSecretKvPluginVault {
+// cleanSecretKvSettings drops from the entries read what their plugin does not declare, and the
+// entries of a plugin the level does not take (secret_kv-config is built in, never an entry;
+// the orchestrator plugins are the server's).
+func (conf *Config) cleanSecretKvSettings() { conf.cleanSecretKvSettingsAt(SecretKvLevelCluster) }
+
+func (conf *Config) cleanSecretKvSettingsAt(level SecretKvLevel) {
+	list := conf.secretKvsAt(level)
+	kept := (*list)[:0]
+	for _, e := range *list {
+		if SecretKvPluginAllowedAt(level, e.Plugin) {
 			kept = append(kept, e)
 		}
 	}
-	conf.SecretKvs = kept
-	for i := range conf.SecretKvs {
-		e := &conf.SecretKvs[i]
+	*list = kept
+	for i := range *list {
+		e := &(*list)[i]
 		if e.Settings == nil {
 			e.Settings = map[string]interface{}{}
+		}
+		if level == SecretKvLevelCluster && ReservedSecretKvPrefix(conf.secretKvSetting(e, ConstSecretKvVaultPathPrefix)) {
+			// read from a config file: kept, switched off, never written under a server folder
+			e.Enabled = false
 		}
 		m, ok := SecretKvPlugin(e.Plugin)
 		if !ok {
@@ -255,6 +361,16 @@ func (conf *Config) cleanSecretKvSettings() {
 			}
 		}
 	}
+}
+
+// LoadServerSecretKvs resolves the server list once read: its own copy, the vault entries
+// only, what their plugin does not declare dropped. No migration: the flat vault-* keys are a
+// cluster's (MigrateSecretKvs).
+func (conf *Config) LoadServerSecretKvs() {
+	secretKvMu.Lock()
+	defer secretKvMu.Unlock()
+	conf.ServerSecretKvs = cloneSecretKvs(conf.ServerSecretKvs)
+	conf.cleanSecretKvSettingsAt(SecretKvLevelServer)
 }
 
 // MigrateSecretKvs resolves the credential store list at cluster init: a cluster using Vault
@@ -372,17 +488,25 @@ func (conf *Config) SecretKvHoldsLegacyKey(key string) bool {
 	return false
 }
 
-// SecretKvsToml renders the list as [[<section>.secret-kv]] tables for the saved config. A
-// secret not encrypted (no encryption key) is left out: it never reaches the config
-// repository in clear (F9).
+// SecretKvsToml renders the cluster list as [[<section>.secret-kv]] tables for the saved config.
 func (conf *Config) SecretKvsToml(section string) (string, error) {
+	return conf.SecretKvsTomlAt(SecretKvLevelCluster, section)
+}
+
+// SecretKvsTomlAt renders level's list as [[<section>.secret-kv]] (cluster) or
+// [[<section>.server-secret-kv]] (server) tables. A secret not encrypted (no encryption key) is
+// left out: it never reaches the config repository in clear (F9).
+func (conf *Config) SecretKvsTomlAt(level SecretKvLevel, section string) (string, error) {
 	secretKvMu.Lock()
 	defer secretKvMu.Unlock()
 	var b strings.Builder
-	for _, e := range conf.SecretKvs {
+	for _, e := range *conf.secretKvsAt(level) {
 		head := map[string]interface{}{"name": e.Name, "plugin": e.Plugin, "enabled": e.Enabled}
 		if e.Offer != "" {
 			head["offer"] = e.Offer
+		}
+		if e.WrittenAs != "" {
+			head["written-as"] = e.WrittenAs
 		}
 		settings := make(map[string]interface{}, len(e.Settings))
 		for k, v := range e.Settings {
@@ -391,42 +515,97 @@ func (conf *Config) SecretKvsToml(section string) (string, error) {
 			}
 			settings[k] = v
 		}
-		if err := writeEntryToml(&b, section, "secret-kv", head, settings); err != nil {
+		if err := writeEntryToml(&b, section, secretKvTable(level), head, settings); err != nil {
 			return "", err
 		}
 	}
 	return b.String(), nil
 }
 
-// SecretKvList is a copy of the list.
-func (conf *Config) SecretKvList() []SecretKvConfig {
+// SecretKvList is a copy of the cluster list.
+func (conf *Config) SecretKvList() []SecretKvConfig { return conf.SecretKvListAt(SecretKvLevelCluster) }
+
+// SecretKvListAt is a copy of level's list.
+func (conf *Config) SecretKvListAt(level SecretKvLevel) []SecretKvConfig {
 	secretKvMu.Lock()
 	defer secretKvMu.Unlock()
-	return cloneSecretKvs(conf.SecretKvs)
+	return cloneSecretKvs(*conf.secretKvsAt(level))
 }
 
-// SecretKvActive are the enabled entries, in the list's order: each gets every version of
-// every secret.
+// SecretKvActive are the cluster list's enabled entries, in the list's order: each gets every
+// version of every secret.
 func (conf *Config) SecretKvActive() []SecretKvConfig {
+	return conf.SecretKvActiveAt(SecretKvLevelCluster)
+}
+
+// SecretKvActiveAt are level's enabled entries, in the list's order.
+func (conf *Config) SecretKvActiveAt(level SecretKvLevel) []SecretKvConfig {
 	secretKvMu.Lock()
 	defer secretKvMu.Unlock()
 	var out []SecretKvConfig
-	for _, e := range conf.SecretKvs {
-		if e.Enabled && e.Plugin == ConstSecretKvPluginVault {
+	for _, e := range *conf.secretKvsAt(level) {
+		if e.Enabled && SecretKvPluginAllowedAt(level, e.Plugin) {
 			out = append(out, cloneSecretKvs([]SecretKvConfig{e})[0])
 		}
 	}
 	return out
 }
 
-// SecretKvActiveEntry is the entry name when it is enabled.
+// SecretKvActiveEntry is the cluster list's entry name when it is enabled.
 func (conf *Config) SecretKvActiveEntry(name string) (SecretKvConfig, bool) {
-	for _, e := range conf.SecretKvActive() {
+	return conf.SecretKvActiveEntryAt(SecretKvLevelCluster, name)
+}
+
+// SecretKvActiveEntryAt is level's entry name when it is enabled.
+func (conf *Config) SecretKvActiveEntryAt(level SecretKvLevel, name string) (SecretKvConfig, bool) {
+	for _, e := range conf.SecretKvActiveAt(level) {
 		if e.Name == name {
 			return e, true
 		}
 	}
 	return SecretKvConfig{}, false
+}
+
+// ServerSecretKvFolder is the instance's folder in a server entry, below its mount:
+// <path-prefix>/system/repman/<instance name>, or system/repman/<instance name> with no prefix.
+// The name is InstanceStoreName: never a URL.
+func (conf *Config) ServerSecretKvFolder(e SecretKvConfig, instance string) string {
+	if IsOrchestratorSecretKvPlugin(e.Plugin) {
+		// a flat secret object: the folder is the keys' prefix
+		return ServerOrchestratorKeyPrefix(instance)
+	}
+	folder := "system/repman/" + instance
+	if prefix := strings.Trim(conf.secretKvSetting(&e, ConstSecretKvVaultPathPrefix), "/"); prefix != "" {
+		return prefix + "/" + folder
+	}
+	return folder
+}
+
+// ServerOrchestratorKeyPrefix is the instance's keys' prefix in a flat orchestrator secret:
+// each part's "_" doubled, the parts joined by a single "_". The name's parts hold letters,
+// digits, '-', '_' and '.', which the OpenSVC and Kubernetes keys both take, and never start
+// or end with '_' (ValidInstanceNamePart): a part's underscores then always come in even runs
+// and a separator is a lone one, so two names never give the same prefix (a_b/c is a__b_c,
+// a/b_c is a_b__c), as two Vault folders never coincide.
+func ServerOrchestratorKeyPrefix(instance string) string {
+	parts := strings.Split(instance, "/")
+	for i, p := range parts {
+		parts[i] = strings.ReplaceAll(p, "_", "__")
+	}
+	return strings.Join(parts, "_")
+}
+
+// ServerSecretKvLocation says where a server entry puts the instance's secrets, for the API
+// and the GUI (no secret).
+func (conf *Config) ServerSecretKvLocation(e SecretKvConfig, instance string) string {
+	prefix := ServerOrchestratorKeyPrefix(instance)
+	switch e.Plugin {
+	case ConstSecretKvPluginOpenSVC:
+		return ConstSecretKvOpenSVCServerNamespace + "/sec/" + ConstSecretKvOpenSVCServerObject + ", keys " + prefix + "_<key>"
+	case ConstSecretKvPluginKubernetes:
+		return conf.secretKvSetting(&e, ConstSecretKvKubernetesNamespace) + "/secret/" + ConstSecretKvKubernetesServerSecret + ", keys " + prefix + "_<key>"
+	}
+	return conf.ServerSecretKvFolder(e, instance)
 }
 
 // SecretKvFolder is the cluster's folder in a vault entry, below its mount:
@@ -490,6 +669,9 @@ func (conf *Config) SetSecretKvSetting(entry, setting, value string, unset bool)
 			if err != nil {
 				return fmt.Errorf("enabled: %q is not a bool", value)
 			}
+			if b && ReservedSecretKvPrefix(conf.secretKvSetting(e, ConstSecretKvVaultPathPrefix)) {
+				return fmt.Errorf("credential store %s: %w", entry, ErrSecretKvReservedPrefix)
+			}
 			e.Enabled = b
 		}
 	default:
@@ -500,6 +682,8 @@ func (conf *Config) SetSecretKvSetting(entry, setting, value string, unset bool)
 			delete(e.Settings, setting)
 		case known && !declared:
 			return fmt.Errorf("plugin %s has no setting %s", e.Plugin, setting)
+		case setting == ConstSecretKvVaultPathPrefix && ReservedSecretKvPrefix(value):
+			return fmt.Errorf("credential store %s: %w", entry, ErrSecretKvReservedPrefix)
 		case known && st.Type == ConstArchiveSettingTypeSecret:
 			e.Settings[setting] = value
 		case known:
@@ -529,9 +713,14 @@ type SecretKvSpec struct {
 // PutSecretKv adds (create) or changes the entry spec gives, checked against its plugin's
 // manifest; the list holds secret_kv-vault entries only. It returns the entry's name.
 func (conf *Config) PutSecretKv(spec SecretKvSpec, create bool) (string, error) {
+	return conf.PutSecretKvAt(SecretKvLevelCluster, spec, create)
+}
+
+// PutSecretKvAt is PutSecretKv on level's list.
+func (conf *Config) PutSecretKvAt(level SecretKvLevel, spec SecretKvSpec, create bool) (string, error) {
 	secretKvMu.Lock()
 	defer secretKvMu.Unlock()
-	cur := conf.secretKvByName(spec.Name)
+	cur := conf.secretKvByNameAt(level, spec.Name)
 	switch {
 	case create && cur != nil:
 		return "", fmt.Errorf("credential store %s already exists", spec.Name)
@@ -553,34 +742,136 @@ func (conf *Config) PutSecretKv(spec SecretKvSpec, create bool) (string, error) 
 		}
 		e = SecretKvConfig{Name: spec.Name, Plugin: ConstSecretKvPluginVault, Settings: map[string]interface{}{}}
 	}
-	if spec.Plugin != "" && spec.Plugin != ConstSecretKvPluginVault {
-		return "", fmt.Errorf("plugin %q: the list holds %s entries only", spec.Plugin, ConstSecretKvPluginVault)
+	if spec.Plugin != "" {
+		if !SecretKvPluginAllowedAt(level, spec.Plugin) {
+			return "", fmt.Errorf("plugin %q: the %s list does not take it", spec.Plugin, level)
+		}
+		if cur != nil && spec.Plugin != e.Plugin {
+			return "", fmt.Errorf("credential store %s: its plugin is %s, remove it and add another", spec.Name, e.Plugin)
+		}
+		e.Plugin = spec.Plugin
 	}
 	m, _ := SecretKvPlugin(e.Plugin)
+	placeBefore := conf.secretKvPlace(&e)
 	if err := conf.applyEntrySpec(e.Settings, m.Settings, e.Plugin, spec.Settings, spec.Unset); err != nil {
 		return "", err
+	}
+	if conf.secretKvPlace(&e) != placeBefore && e.WrittenAs != "" {
+		// another address, mount, prefix, cluster or namespace is another place: the secrets
+		// are copied there with their history, as for a rename (server_secret_kv_move.go)
+		e.WrittenAs = ConstSecretKvWrittenAsNewPlace
 	}
 	if spec.Enabled != nil {
 		e.Enabled = *spec.Enabled
 	}
-	if strings.TrimSpace(conf.secretKvSetting(&e, ConstSecretKvVaultAddress)) == "" {
-		return "", fmt.Errorf("credential store %s: an address is required", e.Name)
+	if err := conf.requiredSecretKvSettings(&e); err != nil {
+		return "", err
+	}
+	if level == SecretKvLevelCluster && ReservedSecretKvPrefix(conf.secretKvSetting(&e, ConstSecretKvVaultPathPrefix)) {
+		return "", fmt.Errorf("credential store %s: %w", e.Name, ErrSecretKvReservedPrefix)
 	}
 	if cur != nil {
 		*cur = e
 	} else {
-		conf.SecretKvs = append(conf.SecretKvs, e)
+		list := conf.secretKvsAt(level)
+		*list = append(*list, e)
 	}
 	return e.Name, nil
 }
 
-// SetSecretKvEnabled turns an entry on or off. Off stops its versions; what it holds stays.
-func (conf *Config) SetSecretKvEnabled(name string, enabled bool) error {
+// requiredSecretKvSettings: what an entry of its plugin cannot do without.
+func (conf *Config) requiredSecretKvSettings(e *SecretKvConfig) error {
+	var required []string
+	switch e.Plugin {
+	case ConstSecretKvPluginVault:
+		required = []string{ConstSecretKvVaultAddress}
+	case ConstSecretKvPluginOpenSVC:
+		required = []string{ConstSecretKvOrchestratorCluster}
+	case ConstSecretKvPluginKubernetes:
+		required = []string{ConstSecretKvOrchestratorCluster, ConstSecretKvKubernetesNamespace}
+	}
+	for _, name := range required {
+		if strings.TrimSpace(conf.secretKvSetting(e, name)) == "" {
+			return fmt.Errorf("credential store %s: %s is required", e.Name, name)
+		}
+	}
+	if e.Plugin == ConstSecretKvPluginKubernetes && !validKubernetesNamespace(conf.secretKvSetting(e, ConstSecretKvKubernetesNamespace)) {
+		return fmt.Errorf("credential store %s: a namespace is 1 to 63 lower-case letters, digits or '-', starting and ending with a letter or digit", e.Name)
+	}
+	return nil
+}
+
+// validKubernetesNamespace: a DNS-1123 label, what Kubernetes takes as a namespace.
+func validKubernetesNamespace(s string) bool {
+	if s == "" || len(s) > 63 || s[0] == '-' || s[len(s)-1] == '-' {
+		return false
+	}
+	for _, r := range s {
+		if !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '-') {
+			return false
+		}
+	}
+	return true
+}
+
+// secretKvPlace is what says where an entry writes, its login aside.
+// SecretKvPlace is where entry e writes: its address, mount, path-prefix, cluster and
+// namespace. Two entries, or one entry before and after an edit, with the same place write
+// the same folders.
+func (conf *Config) SecretKvPlace(e SecretKvConfig) string { return conf.secretKvPlace(&e) }
+
+func (conf *Config) secretKvPlace(e *SecretKvConfig) string {
+	var b strings.Builder
+	for _, name := range []string{ConstSecretKvVaultAddress, ConstSecretKvVaultMount, ConstSecretKvVaultPathPrefix,
+		ConstSecretKvOrchestratorCluster, ConstSecretKvKubernetesNamespace} {
+		b.WriteString(conf.secretKvSetting(e, name) + "\x00")
+	}
+	return b.String()
+}
+
+// SetSecretKvWrittenAsAt records the instance's name level's entry holds its secrets under
+// ("" forgets it). False when the entry is gone or already says so.
+func (conf *Config) SetSecretKvWrittenAsAt(level SecretKvLevel, name, as string) bool {
 	secretKvMu.Lock()
 	defer secretKvMu.Unlock()
-	e := conf.secretKvByName(name)
+	e := conf.secretKvByNameAt(level, name)
+	if e == nil || e.WrittenAs == as {
+		return false
+	}
+	e.WrittenAs = as
+	return true
+}
+
+// SetSecretKvWrittenAsIfAt sets the name level's entry holds its secrets under to as, only
+// when it still says from and its place is still place (SecretKvPlace): a compare and set, an
+// edit of the place meanwhile wins, even one that leaves written-as as it was. True when it
+// changed it.
+func (conf *Config) SetSecretKvWrittenAsIfAt(level SecretKvLevel, name, from, as, place string) bool {
+	secretKvMu.Lock()
+	defer secretKvMu.Unlock()
+	e := conf.secretKvByNameAt(level, name)
+	if e == nil || e.WrittenAs != from || from == as || conf.secretKvPlace(e) != place {
+		return false
+	}
+	e.WrittenAs = as
+	return true
+}
+
+// SetSecretKvEnabled turns an entry on or off. Off stops its versions; what it holds stays.
+func (conf *Config) SetSecretKvEnabled(name string, enabled bool) error {
+	return conf.SetSecretKvEnabledAt(SecretKvLevelCluster, name, enabled)
+}
+
+// SetSecretKvEnabledAt is SetSecretKvEnabled on level's list.
+func (conf *Config) SetSecretKvEnabledAt(level SecretKvLevel, name string, enabled bool) error {
+	secretKvMu.Lock()
+	defer secretKvMu.Unlock()
+	e := conf.secretKvByNameAt(level, name)
 	if e == nil {
 		return fmt.Errorf("unknown credential store %s", name)
+	}
+	if enabled && level == SecretKvLevelCluster && ReservedSecretKvPrefix(conf.secretKvSetting(e, ConstSecretKvVaultPathPrefix)) {
+		return fmt.Errorf("credential store %s: %w", name, ErrSecretKvReservedPrefix)
 	}
 	e.Enabled = enabled
 	return nil
@@ -588,39 +879,99 @@ func (conf *Config) SetSecretKvEnabled(name string, enabled bool) error {
 
 // DeleteSecretKv takes the entry out of the list; repman never deletes what it holds.
 func (conf *Config) DeleteSecretKv(name string) error {
+	return conf.DeleteSecretKvAt(SecretKvLevelCluster, name)
+}
+
+// DeleteSecretKvAt is DeleteSecretKv on level's list.
+func (conf *Config) DeleteSecretKvAt(level SecretKvLevel, name string) error {
 	secretKvMu.Lock()
 	defer secretKvMu.Unlock()
-	for i := range conf.SecretKvs {
-		if conf.SecretKvs[i].Name == name {
-			if conf.SecretKvs[i].Offer != "" {
+	list := conf.secretKvsAt(level)
+	for i := range *list {
+		if (*list)[i].Name == name {
+			if (*list)[i].Offer != "" {
 				return fmt.Errorf("credential store %s: %w", name, ErrSecretKvOfferManaged)
 			}
-			conf.SecretKvs = append(conf.SecretKvs[:i], conf.SecretKvs[i+1:]...)
+			*list = append((*list)[:i], (*list)[i+1:]...)
 			return nil
 		}
 	}
 	return fmt.Errorf("unknown credential store %s", name)
 }
 
+// ErrSecretKvReservedPrefix refuses a cluster entry whose folder would be under the server's:
+// system/ is the server level's (system/repman/<instance name>), a cluster never writes there.
+var ErrSecretKvReservedPrefix = errors.New("a path-prefix holding a segment system, . or .. is refused at the cluster level: system/repman/<instance name> is the server level's, a cluster's secrets never go there")
+
+// ReservedSecretKvPrefix: a cluster entry's path-prefix that could reach a server folder,
+// <prefix>/system/repman/<instance name> whatever the server entry's own prefix: any segment
+// system (in any case), or a segment . or .. or empty (a path that moves elsewhere than it says).
+func ReservedSecretKvPrefix(prefix string) bool {
+	prefix = strings.Trim(strings.TrimSpace(prefix), "/")
+	if prefix == "" {
+		return false
+	}
+	for _, seg := range strings.Split(prefix, "/") {
+		if seg == "" || seg == "." || seg == ".." || strings.EqualFold(seg, "system") {
+			return true
+		}
+	}
+	return false
+}
+
+// ReservedPrefixSecretKvs are the cluster entries switched off because their path-prefix
+// reaches a server folder (ReservedSecretKvPrefix): read from a config file, never written.
+func (conf *Config) ReservedPrefixSecretKvs() []string {
+	secretKvMu.Lock()
+	defer secretKvMu.Unlock()
+	var out []string
+	for i := range conf.SecretKvs {
+		if ReservedSecretKvPrefix(conf.secretKvSetting(&conf.SecretKvs[i], ConstSecretKvVaultPathPrefix)) {
+			out = append(out, conf.SecretKvs[i].Name)
+		}
+	}
+	return out
+}
+
 // ErrSecretKvOfferManaged refuses a change of an entry a marketplace offer gives: the
 // back-office manages its settings, only its switch is the cluster's.
 var ErrSecretKvOfferManaged = errors.New("it comes from a Cloud18 marketplace offer: the back-office manages its settings, only its switch can be changed")
+
+// ConstSecretKvWrittenAsNewPlace is the written-as of a server entry whose place changed (an
+// edit of its address, mount, prefix, cluster or namespace, or an offer that moved it): never
+// an instance name, so the move copies every kept version there, with no moved-to marker
+// (the old place is not known any more).
+const ConstSecretKvWrittenAsNewPlace = "(new place)"
 
 // ConstSecretKvMarketplacePrefix starts the name of the entry a marketplace vault offer gives
 // a cluster: cloud18-<offer name>.
 const ConstSecretKvMarketplacePrefix = "cloud18-"
 
 // EnsureMarketplaceVault gives the cluster the entry of a marketplace vault offer (#2227):
-// added off (the sponsor turns it on), signed in with the instance's Cloud18 identity (jwt),
-// at the offer's address, mount and path-prefix; an existing one follows the offer's address,
-// mount, role and path-prefix, its switch untouched. True when it changed.
+// added off (the sponsor turns it on). See EnsureMarketplaceVaultAt.
 func (conf *Config) EnsureMarketplaceVault(offer MarketplaceVaultOffer, pathPrefix string) (bool, error) {
+	return conf.EnsureMarketplaceVaultAt(SecretKvLevelCluster, offer, pathPrefix, false)
+}
+
+// EnsureMarketplaceVaultAt gives level's list the entry of a marketplace vault offer, signed in
+// with the instance's Cloud18 identity (jwt), at the offer's address, mount and path-prefix; an
+// existing one follows the offer's address, mount, role and path-prefix, its switch untouched.
+// A new entry is on when onIfAlone and no other entry of the list is on, else off. True when
+// it changed.
+func (conf *Config) EnsureMarketplaceVaultAt(level SecretKvLevel, offer MarketplaceVaultOffer, pathPrefix string, onIfAlone bool) (bool, error) {
 	name := ConstSecretKvMarketplacePrefix + offer.Name
 	if err := validateEntryName("credential store", name); err != nil {
 		return false, err
 	}
 	if strings.TrimSpace(offer.Address) == "" {
 		return false, fmt.Errorf("vault offer %s: no address", offer.Name)
+	}
+	// the prefix comes from the remote catalogue or the instance's URI: each folder of it is a
+	// real one, never empty, "." or ".."
+	for _, seg := range strings.Split(strings.Trim(pathPrefix, "/"), "/") {
+		if seg == "" || seg == "." || seg == ".." {
+			return false, fmt.Errorf("vault offer %s: path-prefix %q holds an empty, \".\" or \"..\" folder", offer.Name, pathPrefix)
+		}
 	}
 	mount := offer.Mount
 	if mount == "" {
@@ -637,9 +988,16 @@ func (conf *Config) EnsureMarketplaceVault(offer MarketplaceVaultOffer, pathPref
 	}
 	secretKvMu.Lock()
 	defer secretKvMu.Unlock()
-	e := conf.secretKvByName(name)
+	e := conf.secretKvByNameAt(level, name)
 	if e == nil {
-		conf.SecretKvs = append(conf.SecretKvs, SecretKvConfig{Name: name, Plugin: ConstSecretKvPluginVault, Settings: want, Offer: offer.Name})
+		list := conf.secretKvsAt(level)
+		on := onIfAlone
+		for _, o := range *list {
+			if o.Enabled {
+				on = false
+			}
+		}
+		*list = append(*list, SecretKvConfig{Name: name, Plugin: ConstSecretKvPluginVault, Enabled: on, Settings: want, Offer: offer.Name})
 		return true, nil
 	}
 	if e.Plugin != ConstSecretKvPluginVault {
@@ -649,11 +1007,123 @@ func (conf *Config) EnsureMarketplaceVault(offer MarketplaceVaultOffer, pathPref
 	if e.Offer != offer.Name {
 		e.Offer, changed = offer.Name, true
 	}
+	placeBefore := conf.secretKvPlace(e)
 	for k, v := range want {
 		if fmt.Sprintf("%v", e.Settings[k]) != fmt.Sprintf("%v", v) {
 			e.Settings[k] = v
 			changed = true
 		}
 	}
+	if conf.secretKvPlace(e) != placeBefore && e.WrittenAs != "" {
+		// the offer moved the entry to another place (address, mount, prefix), as an edit does
+		// (PutSecretKvAt): the secrets are copied there with their history
+		e.WrittenAs = ConstSecretKvWrittenAsNewPlace
+	}
 	return changed, nil
+}
+
+// InstanceStoreName is this instance's name in a shared credential store, the folder of its
+// server secrets: <cloud18-domain>/<cloud18-sub-domain>/<cloud18-sub-domain-zone>, the instance's
+// one name, registered with Cloud18 or not. Registering or unregistering does not change it, nor
+// does Cloud18 being turned off by a failed GitLab login: only a change of one of the three
+// settings does, and the server secrets then move (server_secret_kv_move.go).
+// ok false while a part is empty or not a valid folder: the server secrets then stay in the
+// local version store.
+func (conf *Config) InstanceStoreName() (string, bool) {
+	parts := []string{conf.Cloud18Domain, conf.Cloud18SubDomain, conf.Cloud18SubDomainZone}
+	for _, p := range parts {
+		if ValidInstanceNamePart(p) != nil {
+			return "", false
+		}
+	}
+	return strings.Join(parts, "/"), true
+}
+
+// Cloud18MarketplacePartnerPublic: this instance is a marketplace partner that takes clusters
+// from Cloud18 users: registered with Cloud18, on the "partner" subscription plan, and with a
+// public API address (api-public-url not empty, not the default, not a loopback, unspecified
+// or private address). Only then does the server level get the Cloud18 vault offer; an on-prem
+// instance never does.
+func (conf *Config) Cloud18MarketplacePartnerPublic() bool {
+	if !conf.Cloud18 || conf.Cloud18GitUser == "" || conf.Cloud18SubscriptionPlan != "partner" {
+		return false
+	}
+	return PublicAPIURL(conf.APIPublicURL)
+}
+
+// PublicAPIURL: raw is an http(s) address others can reach: a host name other than localhost,
+// or an IP that is not loopback, unspecified, link-local or private.
+func PublicAPIURL(raw string) bool {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || (u.Scheme != "https" && u.Scheme != "http") {
+		return false
+	}
+	host := strings.ToLower(u.Hostname())
+	if host == "" || host == "localhost" || strings.HasSuffix(host, ".localhost") {
+		return false
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		return !(ip.IsLoopback() || ip.IsUnspecified() || ip.IsPrivate() || ip.IsLinkLocalUnicast())
+	}
+	return true
+}
+
+// IsInstanceNameSetting: one of the three settings that make the instance's name
+// (InstanceStoreName). A change moves every server secret, so it takes the server
+// credentials grant on every cluster.
+func IsInstanceNameSetting(key string) bool {
+	return key == "cloud18-domain" || key == "cloud18-sub-domain" || key == "cloud18-sub-domain-zone"
+}
+
+// ValidInstanceNamePart: a part of the instance's name is one folder of a store path and one
+// part of an OpenSVC key: 1 to 63 letters, digits, '-', '_' or '.', no '..'.
+func ValidInstanceNamePart(s string) error {
+	if s == "" || len(s) > 63 || strings.Contains(s, "..") || strings.HasPrefix(s, ".") || strings.HasSuffix(s, ".") ||
+		strings.HasPrefix(s, "_") || strings.HasSuffix(s, "_") {
+		return fmt.Errorf("an instance name part is 1 to 63 characters, no '..', not starting or ending with '.' or '_': %q", s)
+	}
+	for _, r := range s {
+		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-' || r == '_' || r == '.') {
+			return fmt.Errorf("an instance name part holds letters, digits, '-', '_' or '.' only: %q", s)
+		}
+	}
+	return nil
+}
+
+// APIUserListWithPassword returns list (user:password,...) with user's password set to pass,
+// every other entry as it is; false when user is not in it.
+func APIUserListWithPassword(list, user, pass string) (string, bool) {
+	entries := strings.Split(list, ",")
+	found := false
+	for i, e := range entries {
+		u, _, _ := strings.Cut(strings.TrimSpace(e), ":")
+		if u == user {
+			entries[i] = user + ":" + pass
+			found = true
+		}
+	}
+	return strings.Join(entries, ","), found
+}
+
+// APIUserListHas: list (user:password,...) has an entry for user.
+func APIUserListHas(list, user string) bool {
+	for _, e := range strings.Split(list, ",") {
+		if u, _, _ := strings.Cut(strings.TrimSpace(e), ":"); u == user {
+			return true
+		}
+	}
+	return false
+}
+
+// DecryptedAPIUserList is the instance's list (api-credentials) with every password in clear.
+// Never logged (F10).
+func (conf *Config) DecryptedAPIUserList() string {
+	entries := strings.Split(conf.GetDecryptedValue("api-credentials"), ",")
+	for i, e := range entries {
+		u, p, ok := strings.Cut(strings.TrimSpace(e), ":")
+		if ok {
+			entries[i] = u + ":" + conf.GetDecryptedPassword("api-credentials", p)
+		}
+	}
+	return strings.Join(entries, ",")
 }
