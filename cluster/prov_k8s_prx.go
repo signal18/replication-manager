@@ -11,7 +11,6 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	apiv1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ktypes "k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/validation"
@@ -307,14 +306,9 @@ func k8sProxyVolumeName(proxyName string) string {
 	return proxyName + "-data"
 }
 
-// Sized from prov-proxy-disk-size, falling back to 20G if unparseable.
+// Sized from prov-proxy-disk-size (k8sDiskQuantity), falling back to the setting default (config.DefaultProvDiskSize, 20G = 20Gi) if unusable.
 func (cluster *Cluster) k8sProxyPVC(prx DatabaseProxy) *apiv1.PersistentVolumeClaim {
-	size, err := resource.ParseQuantity(cluster.Conf.ProvProxDisk)
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn,
-			"Cannot parse prov-proxy-disk-size %q, falling back to the default 20G: %s ", cluster.Conf.ProvProxDisk, err)
-		size = resource.MustParse("20G")
-	}
+	size := cluster.k8sDiskQuantityOrDefault("prov-proxy-disk-size", cluster.Conf.ProvProxDisk)
 	pvc := &apiv1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   k8sProxyPVCName(cluster.Name, prx.GetName()),
