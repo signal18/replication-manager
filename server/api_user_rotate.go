@@ -49,9 +49,9 @@ type UserRotateResult struct {
 	// an email): Password is then empty, nobody but the user sees it. RevealExpires: when the
 	// link stops working. RevealError: why no link was mailed, the password is then in Password,
 	// shown this once to who rotated it.
-	RevealMailedTo string    `json:"revealMailedTo,omitempty"`
-	RevealExpires  time.Time `json:"revealExpires,omitempty"`
-	RevealError    string    `json:"revealError,omitempty"`
+	RevealMailedTo string     `json:"revealMailedTo,omitempty"`
+	RevealExpires  *time.Time `json:"revealExpires,omitempty"`
+	RevealError    string     `json:"revealError,omitempty"`
 }
 
 // rotatedPasswordLength: a rotation bans a user who may be compromised, so a long password.
@@ -286,7 +286,7 @@ func (repman *ReplicationManager) mailRotatedPassword(res *UserRotateResult, clu
 	}
 	res.Password = ""
 	res.RevealMailedTo = res.Username
-	res.RevealExpires = expires
+	res.RevealExpires = &expires
 }
 
 // errNoServerCredentials: the caller lacks the server credentials grant on a cluster.

@@ -189,7 +189,7 @@ func TestRotatedPasswordMailed(t *testing.T) {
 	sent := captureRevealMail(t)
 	res := &UserRotateResult{Username: "ann@example.com", Password: "New-Pass-24", Scope: "cluster", Clusters: []string{"c1"}}
 	repman.mailRotatedPassword(res, "c1")
-	if res.Password != "" || res.RevealMailedTo != "ann@example.com" || res.RevealExpires.IsZero() || len(*sent) != 1 || strings.Contains((*sent)[0], "New-Pass-24") {
+	if res.Password != "" || res.RevealMailedTo != "ann@example.com" || res.RevealExpires == nil || len(*sent) != 1 || strings.Contains((*sent)[0], "New-Pass-24") {
 		t.Fatalf("mailed rotation: %+v, mails %d", res, len(*sent))
 	}
 	admin := &UserRotateResult{Username: "admin", Password: "Admin-Pass", Scope: "instance"}
@@ -202,5 +202,65 @@ func TestRotatedPasswordMailed(t *testing.T) {
 	repman.mailRotatedPassword(nomail, "c1")
 	if nomail.Password != "Bob-Pass" || nomail.RevealError == "" {
 		t.Fatalf("no mail server: %+v", nomail)
+	}
+}
+
+// Two opens of one link at the same time: exactly one gets the secret.
+func TestSecretRevealConcurrentOpen(t *testing.T) {
+	repman := revealTestManager(t)
+	link, _, _ := repman.newSecretReveal("a@example.com", "c1", "t", []SecretRevealItem{{Label: "P", Value: "v"}})
+	results := make(chan error, 8)
+	for i := 0; i < 8; i++ {
+		go func() {
+			_, err := repman.openSecretReveal(codeOf(link))
+			results <- err
+		}()
+	}
+	ok := 0
+	for i := 0; i < 8; i++ {
+		if err := <-results; err == nil {
+			ok++
+		} else if !errors.Is(err, errSecretRevealGone) {
+			t.Fatal(err)
+		}
+	}
+	if ok != 1 {
+		t.Fatalf("%d opens got the secret, want 1", ok)
+	}
+}
+
+// An api-public-url the recipient cannot open gives no link (the secret is not stored), so the
+// rotation shows the password once instead; a mail that fails leaves no reveal behind.
+func TestSecretRevealNeedsAPublicAddress(t *testing.T) {
+	for _, u := range []string{"", "repman.example", "ftp://repman.example", "https://"} {
+		repman := revealTestManager(t)
+		repman.Conf.APIPublicURL = u
+		if _, _, err := repman.newSecretReveal("a@example.com", "c1", "t", nil); err == nil {
+			t.Fatalf("api-public-url %q gave a link", u)
+		}
+		res := &UserRotateResult{Username: "ann@example.com", Password: "pw", Scope: "cluster"}
+		repman.mailRotatedPassword(res, "c1")
+		if res.Password != "pw" || res.RevealError == "" || res.RevealExpires != nil {
+			t.Fatalf("api-public-url %q: %+v", u, res)
+		}
+	}
+	repman := revealTestManager(t)
+	old := sendSecretRevealMail
+	sendSecretRevealMail = func(*ReplicationManager, string, string, string) error { return errors.New("smtp down") }
+	defer func() { sendSecretRevealMail = old }()
+	if _, err := repman.mailSecretReveal("a@example.com", "c1", "t", "x", []SecretRevealItem{{Label: "P", Value: "v"}}); err == nil {
+		t.Fatal("a failed mail reported sent")
+	}
+	secretReveals.Lock()
+	left, _ := repman.loadSecretRevealsLocked()
+	secretReveals.Unlock()
+	if len(left) != 0 {
+		t.Fatalf("%d reveal(s) left after a failed mail", len(left))
+	}
+}
+
+func TestExternalUserWholeMatch(t *testing.T) {
+	if externalUser("bba@x.io:pw,c@x.io:pw2", "a@x.io") || !externalUser("bba@x.io:pw,c@x.io:pw2", "c@x.io") {
+		t.Fatal("external users are matched by substring")
 	}
 }

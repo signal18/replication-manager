@@ -37,8 +37,14 @@ forwarded, indexed and kept in mailboxes for years; a link that works once and e
   secrets once and deletes the reveal before answering; a second open, an expired or an unknown
   code get the same 404. `Cache-Control: no-store`. Each open and each refusal is a security event
   (who the reveal was for, never a value).
-- Bounded (F3, F4): expired reveals are dropped at every change, and at most 256 are kept, the
-  oldest dropped first.
+- Bounded (F3, F4): expired reveals are dropped at every write of the store, and at most 256 are
+  kept, the oldest dropped first. An expired reveal stays on disk, encrypted, until the next write;
+  it cannot be opened.
+- The open route is public: an index of the stored hashes and their expiry is kept in memory, so an
+  unknown or expired code is refused without the disk or the store's lock (a flood of junk codes
+  costs a map lookup), and the refusals make one security event a minute at most, with their count.
+- No link without a usable address: `api-public-url` must be an http(s) address with a host, else no
+  reveal is stored and the rotation shows the password once. A link whose mail fails is deleted.
 
 ## Settings (server scope, global settings)
 

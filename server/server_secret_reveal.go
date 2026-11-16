@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -78,6 +79,63 @@ type secretRevealFile struct {
 // secretReveals serializes the store's reads and writes.
 var secretReveals sync.Mutex
 
+// secretRevealIndex is the hashes in the store and their expiry, kept in memory so that an unknown
+// or expired code is refused without touching the disk or the store's lock: the open route is
+// public, a flood of junk codes costs a map lookup. Rebuilt at every write of the store, read from
+// it the first time.
+var secretRevealIndex struct {
+	sync.RWMutex
+	path    string // the store this index is of: another store is not loaded
+	expires map[string]time.Time
+}
+
+func setSecretRevealIndex(path string, reveals []secretReveal) {
+	m := make(map[string]time.Time, len(reveals))
+	for _, r := range reveals {
+		m[r.CodeHash] = r.Expires
+	}
+	secretRevealIndex.Lock()
+	secretRevealIndex.expires, secretRevealIndex.path = m, path
+	secretRevealIndex.Unlock()
+}
+
+// secretRevealKnown: hash is in the store at path and not expired; ok false while the index is not
+// loaded for that store.
+func secretRevealKnown(path, hash string) (known, ok bool) {
+	secretRevealIndex.RLock()
+	defer secretRevealIndex.RUnlock()
+	if secretRevealIndex.path != path {
+		return false, false
+	}
+	exp, found := secretRevealIndex.expires[hash]
+	return found && time.Now().Before(exp), true
+}
+
+// secretRevealRefusals aggregates the refused opens into one security event a minute at most: a
+// flood of junk codes never writes one line each (F3, F4).
+var secretRevealRefusals struct {
+	sync.Mutex
+	count int
+	since time.Time
+}
+
+func (repman *ReplicationManager) noteSecretRevealRefused(remoteAddr string) {
+	secretRevealRefusals.Lock()
+	defer secretRevealRefusals.Unlock()
+	now := time.Now()
+	if secretRevealRefusals.since.IsZero() {
+		secretRevealRefusals.since = now
+	}
+	secretRevealRefusals.count++
+	if now.Sub(secretRevealRefusals.since) < time.Minute && secretRevealRefusals.count > 1 {
+		return
+	}
+	repman.logSecurityEvent("secret_reveal_refused", "", remoteAddr,
+		fmt.Sprintf("%d one-time secret link open(s) refused since %s (already opened, expired or unknown; last from %s)",
+			secretRevealRefusals.count, secretRevealRefusals.since.UTC().Format(time.RFC3339), remoteAddr))
+	secretRevealRefusals.count, secretRevealRefusals.since = 0, now
+}
+
 func (repman *ReplicationManager) secretRevealStorePath() string {
 	return filepath.Join(repman.Conf.WorkingDir, secretRevealStore)
 }
@@ -98,9 +156,15 @@ func (repman *ReplicationManager) secretRevealExpiry() time.Duration {
 	return 24 * time.Hour
 }
 
-// secretRevealLink is the page's address for code: on api-public-url, the code in the fragment.
-func (repman *ReplicationManager) secretRevealLink(code string) string {
-	return strings.TrimRight(strings.TrimSpace(repman.Conf.APIPublicURL), "/") + "/reveal#" + code
+// secretRevealBase is api-public-url, the base of the links: an http(s) address with a host, else
+// an error (a relative or empty link would store a secret nobody can open).
+func (repman *ReplicationManager) secretRevealBase() (string, error) {
+	raw := strings.TrimRight(strings.TrimSpace(repman.Conf.APIPublicURL), "/")
+	u, err := url.Parse(raw)
+	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
+		return "", fmt.Errorf("api-public-url %q is not an http(s) address the recipient can open", raw)
+	}
+	return raw, nil
 }
 
 func secretRevealHash(code string) string {
@@ -156,13 +220,21 @@ func (repman *ReplicationManager) saveSecretRevealsLocked(reveals []secretReveal
 	if err := os.WriteFile(tmp, []byte(p.CipherText+"\n"), 0600); err != nil {
 		return err
 	}
-	return os.Rename(tmp, path)
+	if err := os.Rename(tmp, path); err != nil {
+		return err
+	}
+	setSecretRevealIndex(path, kept)
+	return nil
 }
 
 // newSecretReveal keeps items for the person forWho and returns the one-time link and its expiry.
 func (repman *ReplicationManager) newSecretReveal(forWho, clusterName, title string, items []SecretRevealItem) (string, time.Time, error) {
 	if !repman.secretRevealEnabled() {
 		return "", time.Time{}, errSecretRevealOff
+	}
+	base, err := repman.secretRevealBase()
+	if err != nil {
+		return "", time.Time{}, err
 	}
 	b := make([]byte, secretRevealCodeSize)
 	if _, err := rand.Read(b); err != nil {
@@ -181,7 +253,25 @@ func (repman *ReplicationManager) newSecretReveal(forWho, clusterName, title str
 	if err := repman.saveSecretRevealsLocked(append(reveals, r)); err != nil {
 		return "", time.Time{}, err
 	}
-	return repman.secretRevealLink(code), r.Expires, nil
+	return base + "/reveal#" + code, r.Expires, nil
+}
+
+// dropSecretReveal deletes the reveal of code: its mail was not sent, nobody has the link.
+func (repman *ReplicationManager) dropSecretReveal(code string) error {
+	h := secretRevealHash(code)
+	secretReveals.Lock()
+	defer secretReveals.Unlock()
+	reveals, err := repman.loadSecretRevealsLocked()
+	if err != nil {
+		return err
+	}
+	rest := reveals[:0:0]
+	for _, r := range reveals {
+		if r.CodeHash != h {
+			rest = append(rest, r)
+		}
+	}
+	return repman.saveSecretRevealsLocked(rest)
 }
 
 // openSecretReveal returns the reveal of code and deletes it: a second open finds nothing.
@@ -190,13 +280,20 @@ func (repman *ReplicationManager) openSecretReveal(code string) (*secretReveal, 
 		return nil, errSecretRevealOff
 	}
 	h := secretRevealHash(code)
+	if known, ok := secretRevealKnown(repman.secretRevealStorePath(), h); ok && !known {
+		return nil, errSecretRevealGone // no disk, no store lock
+	}
 	secretReveals.Lock()
 	defer secretReveals.Unlock()
 	reveals, err := repman.loadSecretRevealsLocked()
 	if err != nil {
 		return nil, err
 	}
-	for i, r := range reveals {
+	if _, ok := secretRevealKnown(repman.secretRevealStorePath(), h); !ok {
+		setSecretRevealIndex(repman.secretRevealStorePath(), reveals) // first open since the start: the index from the file
+	}
+	for i := range reveals {
+		r := reveals[i]
 		if r.CodeHash != h {
 			continue
 		}
@@ -207,7 +304,8 @@ func (repman *ReplicationManager) openSecretReveal(code string) (*secretReveal, 
 		if !time.Now().Before(r.Expires) {
 			return nil, errSecretRevealGone
 		}
-		return &r, nil
+		found := r
+		return &found, nil
 	}
 	return nil, errSecretRevealGone
 }
@@ -245,6 +343,10 @@ Best regards,
 %s
 `, intro, link, expires.UTC().Format("2006-01-02 15:04 UTC"), partner)
 	if err := repman.sendSecretRevealMail(msg, title, forWho); err != nil {
+		// nobody has the link: the secret does not wait in the store for nothing
+		if derr := repman.dropSecretReveal(link[strings.LastIndex(link, "#")+1:]); derr != nil {
+			repman.Logrus.Warnf("One-time secret link of %s not mailed and not deleted (it expires on %s): %s", forWho, expires.UTC().Format(time.RFC3339), derr)
+		}
 		return time.Time{}, fmt.Errorf("mail not sent: %w", err)
 	}
 	return expires, nil
@@ -304,7 +406,7 @@ func (repman *ReplicationManager) handlerSecretReveal(w http.ResponseWriter, r *
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
 		return
 	case errors.Is(err, errSecretRevealGone):
-		repman.logSecurityEvent("secret_reveal_refused", "", r.RemoteAddr, "One-time secret link refused: already opened, expired or unknown")
+		repman.noteSecretRevealRefused(r.RemoteAddr)
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	case err != nil:
@@ -329,7 +431,7 @@ func (repman *ReplicationManager) mailVaultTokenReveal(cl *cluster.Cluster) {
 	sent := 0
 	for _, to := range strings.Split(cl.Conf.MailTo, ",") {
 		to = strings.TrimSpace(to)
-		if to == "" || strings.Contains(cl.Conf.APIUsersExternal, to) {
+		if to == "" || externalUser(cl.Conf.APIUsersExternal, to) {
 			continue
 		}
 		if _, err := repman.mailSecretReveal(to, cl.Name, "Replication-Manager Vault Token",
@@ -343,4 +445,14 @@ func (repman *ReplicationManager) mailVaultTokenReveal(cl *cluster.Cluster) {
 	if sent == 0 {
 		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModVault, config.LvlErr, "Vault token mailed to no one: no valid address in mail-to")
 	}
+}
+
+// externalUser: login is a user of the list users ("user:password,..."), compared whole.
+func externalUser(users, login string) bool {
+	for _, e := range strings.Split(users, ",") {
+		if u, _, _ := strings.Cut(strings.TrimSpace(e), ":"); u != "" && strings.EqualFold(u, login) {
+			return true
+		}
+	}
+	return false
 }
