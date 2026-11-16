@@ -8,13 +8,14 @@ forwarded, indexed and kept in mailboxes for years; a link that works once and e
 ## Who uses it
 
 - **Password rotation** (`POST /api/clusters/{cluster}/users/rotate-password`). The new password is
-  mailed as a link to the **connected user who rotated it**, at its login's email, when its role
+  mailed as a link to the **connected user who rotated it**, at its email (its login; for the
+  local `admin`, the account the instance is registered with, as the credentials mails do), when its role
   covers the level of the secret: a user of the instance's list is a server secret, mailed to a
   **sysops or extsysops** only; a user of a cluster's own list is a cluster secret, mailed to a
   sysops, extsysops, **dbops, extdbops or sponsor** of that cluster. **Never to the rotated
   account**: if it is compromised, its mailbox may be too. The answer then has no password
-  (`password` empty, `revealMailedTo`, `revealExpires`). A connected user without an email (`admin`)
-  or without such a role, no mail server, or the links off: the answer carries the password, shown
+  (`password` empty, `revealMailedTo`, `revealExpires`). A connected user without an email (`admin` of an
+  unregistered instance) or without such a role, no mail server, or the links off: the answer carries the password, shown
   once, as before, with `revealError` saying why (`rotatedPasswordRecipient`). The mail is sent
   after the rotation, outside its lock: a slow mail server holds no other rotation.
 - **Credentials mails** (`users/send-credentials`, and the sponsor's credentials mail). The

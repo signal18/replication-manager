@@ -204,7 +204,7 @@ func TestRotatedPasswordRecipient(t *testing.T) {
 		{"cluster", "viewer@example.com", map[string]bool{}, ""},
 	}
 	for _, c := range cases {
-		if got, why := rotatedPasswordRecipient(c.scope, c.delegator, c.roles); got != c.want || (got == "" && why == "") {
+		if got, why := rotatedPasswordRecipient(c.scope, c.delegator, c.delegator, c.roles); got != c.want || (got == "" && why == "") {
 			t.Errorf("%s by %s %v: %q (%s), want %q", c.scope, c.delegator, c.roles, got, why, c.want)
 		}
 	}
@@ -221,10 +221,19 @@ func TestRotatedPasswordMailed(t *testing.T) {
 		strings.Contains((*sent)[0], "New-Pass-24") || !strings.HasPrefix((*sent)[0], "ops@example.com\n") {
 		t.Fatalf("mailed rotation: %+v, mails %q", res, *sent)
 	}
-	admin := &UserRotateResult{Username: "bob", Password: "Bob-Pass", Scope: "instance"}
+	// the local admin: its email is the registered account's, as the GUI shows it
+	repman.Conf.Cloud18GitUser = "owner@example.com"
+	admin := &UserRotateResult{Username: "admin", Password: "Admin-Pass", Scope: "instance"}
 	repman.mailRotatedPasswordTo(admin, "c1", "admin", map[string]bool{config.RoleSysOps: true})
-	if admin.Password != "Bob-Pass" || admin.RevealMailedTo != "" || admin.RevealError == "" || len(*sent) != 1 {
+	if admin.Password != "" || admin.RevealMailedTo != "owner@example.com" || len(*sent) != 2 {
 		t.Fatalf("rotated by admin: %+v", admin)
+	}
+	// not registered: admin has no email, the password is shown once
+	repman.Conf.Cloud18GitUser = ""
+	unreg := &UserRotateResult{Username: "admin", Password: "Admin-Pass", Scope: "instance"}
+	repman.mailRotatedPasswordTo(unreg, "c1", "admin", map[string]bool{config.RoleSysOps: true})
+	if unreg.Password != "Admin-Pass" || unreg.RevealError == "" || len(*sent) != 2 {
+		t.Fatalf("rotated by an unregistered admin: %+v", unreg)
 	}
 	repman.Conf.MailSMTPAddr = ""
 	nomail := &UserRotateResult{Username: "bob@example.com", Password: "Bob-Pass", Scope: "cluster"}

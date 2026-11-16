@@ -9057,10 +9057,7 @@ func (repman *ReplicationManager) handlerMuxSendCredentials(w http.ResponseWrite
 		return
 	}
 
-	to := u.User
-	if to == "admin" {
-		to = repman.Conf.Cloud18GitUser
-	}
+	to := repman.userEmail(u.User)
 
 	switch credForm.CredentialType {
 	case "db":

@@ -266,14 +266,15 @@ func (repman *ReplicationManager) rotateAPIUserPassword(cl *cluster.Cluster, use
 }
 
 // rotatedPasswordRecipient is who gets a rotated password by mail: the connected user who rotated
-// it, at its login's email, when its role covers the secret's level; never the rotated account
+// it, at its email (userEmail: the login, or for the local admin the registered account), when its
+// role covers the secret's level; never the rotated account
 // itself (if it is compromised, its mailbox may be too).
 //   - a user of the instance's list is a server secret: sysops or extsysops only;
 //   - a user of a cluster's own list is a cluster secret: sysops, extsysops, dbops, extdbops or
 //     sponsor of that cluster.
 //
 // "" with why when the connected user cannot receive it: the password is then shown once to them.
-func rotatedPasswordRecipient(scope, delegator string, delegatorRoles map[string]bool) (string, string) {
+func rotatedPasswordRecipient(scope, delegator, delegatorEmail string, delegatorRoles map[string]bool) (string, string) {
 	levelRoles := []string{config.RoleSysOps, config.RoleExtSysOps}
 	level := "a server secret (a user of the instance's list) is mailed to a sysops or extsysops only"
 	if scope != cluster.APIUserScopeInstance {
@@ -287,10 +288,20 @@ func rotatedPasswordRecipient(scope, delegator string, delegatorRoles map[string
 	if !held {
 		return "", level
 	}
-	if !strings.Contains(delegator, "@") {
+	if !strings.Contains(delegatorEmail, "@") {
 		return "", delegator + " has no email address"
 	}
-	return delegator, ""
+	return delegatorEmail, ""
+}
+
+// userEmail is the email of a login: the login itself when it is one; for the local admin, the
+// account the instance is registered with (its owner, the email the GUI shows for admin), as the
+// credentials mails do.
+func (repman *ReplicationManager) userEmail(login string) string {
+	if login == "admin" {
+		return repman.Conf.Cloud18GitUser
+	}
+	return login
 }
 
 // mailRotatedPassword mails the new password as a one-time link to the connected user
@@ -305,7 +316,7 @@ func (repman *ReplicationManager) mailRotatedPassword(res *UserRotateResult, cl 
 }
 
 func (repman *ReplicationManager) mailRotatedPasswordTo(res *UserRotateResult, clusterName, delegator string, delegatorRoles map[string]bool) {
-	to, why := rotatedPasswordRecipient(res.Scope, delegator, delegatorRoles)
+	to, why := rotatedPasswordRecipient(res.Scope, delegator, repman.userEmail(delegator), delegatorRoles)
 	if to == "" {
 		res.RevealError = "not mailed, shown here once: " + why
 		return
