@@ -11,7 +11,7 @@ import { TbKey, TbShieldLock } from 'react-icons/tb'
 import RMButton from '../../RMButton'
 import { useTheme } from '../../../ThemeProvider'
 import parentStyles from '../styles.module.scss'
-import { holdsServerCredentials } from '../../../Pages/ServerCredentials'
+import { holdsServerCredentials } from '../../../utility/serverCredentials'
 
 // Static checkmark character for grant/role indicators
 const CHECK_MARK = '\u2713'

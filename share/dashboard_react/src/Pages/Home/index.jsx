@@ -48,7 +48,6 @@ import Top from '../Top'
 import Shards from '../Shards'
 import PeerClusterList from '../PeerClusterList'
 import ClustersGlobalSettings from '../ClustersGlobalSettings'
-import ServerCredentials, { holdsServerCredentials } from '../ServerCredentials'
 import GlobalItems, { GlobalLogs } from '../GlobalItems'
 import ResourceManager from '../ResourceManager'
 import AccordionComponent from '../../components/AccordionComponent'
@@ -125,16 +124,11 @@ function Home() {
     }
     globalTabsRef.current.push('Dashboard')
     globalTabsRef.current.push('Resources')
-    // the instance's server credential stores: its sysops and extsysops, whatever their sign-in
-    // (the local admin sees them in Setup, where they also are)
-    if (loggedUser?.User != "admin" && holdsServerCredentials(loggedUser)) {
-      globalTabsRef.current.push('Server Credentials')
-    }
     // the instance's settings, named Setup like a cluster's and last (#2268)
     if (loggedUser?.User == "admin") {
       globalTabsRef.current.push('Setup')
     }
-  }, [monitor?.config?.cloud18, monitor?.config?.cloud18DisablePeers, monitor?.config?.cloud18DisableForSale, monitor?.config?.cloud18SubscriptionPlan, loggedUser?.User, loggedUser?.grants, isSSOUser])
+  }, [monitor?.config?.cloud18, monitor?.config?.cloud18DisablePeers, monitor?.config?.cloud18DisableForSale, monitor?.config?.cloud18SubscriptionPlan, loggedUser?.User, isSSOUser])
 
   // For SSO users: if local clusters are empty after loading, advance to Peer,
   // then to For Sale if Peer is also empty.
@@ -490,9 +484,6 @@ function Home() {
                     : []),
                   <GlobalItems />,
                   <ResourceManager />,
-                  ...(globalTabsRef.current.includes('Server Credentials')
-                    ? [<ServerCredentials />]
-                    : []),
                   ...(globalTabsRef.current.includes('Setup')
                     ? [<ClustersGlobalSettings user={loggedUser} />]
                     : [])
