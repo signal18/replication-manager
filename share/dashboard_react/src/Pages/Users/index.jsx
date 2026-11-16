@@ -17,6 +17,7 @@ import { Flex, HStack } from '@chakra-ui/react'
 import TextInputModal from '../../components/Modals/TextInputModal'
 import ClusterApiTokens from './ClusterApiTokens'
 import CopyTextModal from '../../components/Modals/CopyTextModal'
+import { rotationText, rotationTitle } from '../../utility/passwordRotation'
 
 function Users({ selectedCluster, user }) {
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false)
@@ -244,7 +245,7 @@ function Users({ selectedCluster, user }) {
       )}
       {isUserGrantModalOpen && <UserGrantModal clusterName={selectedCluster.name} selectedUser={selectedUser} isOpen={isUserGrantModalOpen} closeModal={closeUserGrantModal} />}
       {isConfirmModalOpen && <ConfirmModal title={title} isOpen={isConfirmModalOpen} onConfirmClick={handleConfirm} closeModal={closeConfirmModal} />}
-      {rotated && <CopyTextModal isOpen={!!rotated} closeModal={() => setRotated(null)} title={(rotated.revealMailedTo ? 'Password of ' + rotated.username + ' rotated: the new one was mailed to ' + rotated.revealMailedTo + ' as a one-time link (until ' + new Date(rotated.revealExpires).toLocaleString() + '), it is not shown here' : 'New password of ' + rotated.username + ' (shown once)' + (rotated.revealError ? ' — ' + rotated.revealError : '')) + (rotated.tokensError ? ' — ' + rotated.tokensError : '') + (rotated.persistError ? ' — ' + rotated.persistError : '') + (rotated.etcFile && rotated.etcFile !== 'written' ? ' — configuration file: ' + rotated.etcFile : '') + (rotated.storesBehindCount ? ' — ' + rotated.storesBehindCount + ' server credential store(s) already behind, they may still hold the old password' + (rotated.storesBehind?.length ? ': ' + rotated.storesBehind.join(', ') : '') : '') + (rotated.scope === 'instance' ? ' — the server credential stores get the new list at their next pass' : '')} text={rotated.revealMailedTo ? 'Mailed to ' + rotated.revealMailedTo : rotated.password} />}
+      {rotated && <CopyTextModal isOpen={!!rotated} closeModal={() => setRotated(null)} title={rotationTitle(rotated)} text={rotationText(rotated)} />}
       {isTextModalOpen && <TextInputModal isOpen={isTextModalOpen} title={title} fieldname={'Reason'} onSave={handleConfirm} isRequired={true} closeModal={() => { setIsTextModalOpen(false);}} />}
     </>
   )

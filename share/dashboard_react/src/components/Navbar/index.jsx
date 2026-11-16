@@ -5,7 +5,10 @@ import { logout } from '../../redux/authSlice'
 import RefreshCounter from '../RefreshCounter'
 import { isAuthorized } from '../../utility/common'
 import { Link } from 'react-router-dom'
-import { clearCluster } from '../../redux/clusterSlice'
+import { clearCluster, rotateUserPassword } from '../../redux/clusterSlice'
+import ConfirmModal from '../Modals/ConfirmModal'
+import CopyTextModal from '../Modals/CopyTextModal'
+import { rotationText, rotationTitle } from '../../utility/passwordRotation'
 import AlertBadge, { HealthAlertBadge, NetworkBadge } from '../AlertBadge'
 import AlertModal from '../Modals/AlertModal'
 import SecurityScoreModal from '../Modals/SecurityScoreModal'
@@ -56,6 +59,9 @@ function Navbar({ username, user }) {
   const [isInterventionPanelOpen, setIsInterventionPanelOpen] = useState(false)
   const [isUserInfoPanelOpen, setIsUserInfoPanelOpen] = useState(false)
   const [isApiTokensOpen, setIsApiTokensOpen] = useState(false)
+  // Rotate my password (user pill): the cluster to call it on, then the answer; the own sessions end
+  const [rotateMineOn, setRotateMineOn] = useState(null)
+  const [rotatedMine, setRotatedMine] = useState(null)
   const [unreadMessagesCount, setUnreadMessagesCount] = useState(0)
   const [isChatOpen, setIsChatOpen] = useState(() => { return localStorage.getItem('chatOpen') === 'true'; });
   const [showImageLogo, setShowImageLogo] = useState(true)
@@ -671,6 +677,33 @@ function Navbar({ username, user }) {
             setIsUserInfoPanelOpen(false)
             setIsApiTokensOpen(true)
           }}
+          onRotateMyPassword={(clusterName) => {
+            setIsUserInfoPanelOpen(false)
+            setRotateMineOn(clusterName)
+          }}
+        />
+      )}
+      {rotateMineOn && (
+        <ConfirmModal
+          isOpen={!!rotateMineOn}
+          title={'Rotate your own password (' + (user?.User || username) + ')? Your sessions end and your API tokens are revoked: you sign in again with the new password. If it is shown instead of mailed, copy it at once.'}
+          closeModal={() => setRotateMineOn(null)}
+          onConfirmClick={() => {
+            const clusterName = rotateMineOn
+            setRotateMineOn(null)
+            dispatch(rotateUserPassword({ clusterName, username: user?.User || username })).then((res) => {
+              const d = res?.payload?.data
+              if (d?.password || d?.revealMailedTo) setRotatedMine(d)
+            })
+          }}
+        />
+      )}
+      {rotatedMine && (
+        <CopyTextModal
+          isOpen={!!rotatedMine}
+          closeModal={() => { setRotatedMine(null); handleLogout() }}
+          title={rotationTitle(rotatedMine) + ' — your session has ended: close this window to sign in again'}
+          text={rotationText(rotatedMine)}
         />
       )}
       {isApiTokensOpen && (

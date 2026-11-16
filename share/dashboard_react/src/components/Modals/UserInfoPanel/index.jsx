@@ -68,7 +68,7 @@ function ConsumedUnits({ theme }) {
   )
 }
 
-function UserInfoPanel({ isOpen, closeModal, user, onLogout, canAddUser = false, onAddUser, onApiTokens }) {
+function UserInfoPanel({ isOpen, closeModal, user, onLogout, canAddUser = false, onAddUser, onApiTokens, onRotateMyPassword }) {
   const { theme, toggleTheme } = useTheme()
   const badgeVariant = theme === 'dark' ? 'solid' : 'subtle'
 
@@ -92,6 +92,9 @@ function UserInfoPanel({ isOpen, closeModal, user, onLogout, canAddUser = false,
   const roleList = [...allRoles].sort()
   // API tokens need the token-create grant on at least one cluster (#1835).
   const canIssueTokens = clusterNames.some((name) => grants[name]?.['token-create'])
+  // Rotate my password: a local account (a Cloud18 sign-in's password is changed at Cloud18) holding
+  // the rotation grant on a cluster; for the instance's list (admin) it applies on every cluster.
+  const rotateCluster = user?.AuthType === 'SSO' ? null : clusterNames.find((name) => grants[name]?.['cluster-rotate-passwords'])
 
   const stickyBg = theme === 'light' ? 'white' : 'gray.800'
 
@@ -141,6 +144,14 @@ function UserInfoPanel({ isOpen, closeModal, user, onLogout, canAddUser = false,
                     <HStack spacing={1}>
                       <TbKey />
                       <Text fontSize='sm'>API tokens</Text>
+                    </HStack>
+                  </RMButton>
+                )}
+                {onRotateMyPassword && rotateCluster && (
+                  <RMButton variant='outline' onClick={() => onRotateMyPassword(rotateCluster)}>
+                    <HStack spacing={1}>
+                      <TbKey />
+                      <Text fontSize='sm'>Rotate my password</Text>
                     </HStack>
                   </RMButton>
                 )}
