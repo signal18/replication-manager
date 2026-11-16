@@ -30,10 +30,15 @@ const (
 	hlpDepUID    = types.UID("dep-new")
 )
 
+func hlpController(kind, name string, uid types.UID) []metav1.OwnerReference {
+	yes := true
+	return []metav1.OwnerReference{{Kind: kind, Name: name, UID: uid, Controller: &yes}}
+}
+
 func hlpReplicaSet(depUID types.UID) *appsv1.ReplicaSet {
 	return &appsv1.ReplicaSet{ObjectMeta: metav1.ObjectMeta{
-		Name: "rs-new", Namespace: hlpNamespace,
-		OwnerReferences: []metav1.OwnerReference{{Kind: "Deployment", Name: hlpServer, UID: depUID}},
+		Name: "rs-new", Namespace: hlpNamespace, UID: "rs-new-uid",
+		OwnerReferences: hlpController("Deployment", hlpServer, depUID),
 	}}
 }
 
@@ -41,7 +46,7 @@ func hlpPod(uid types.UID, name string, ready bool, deleting bool) *apiv1.Pod {
 	p := &apiv1.Pod{ObjectMeta: metav1.ObjectMeta{
 		Name: name, Namespace: hlpNamespace, UID: uid,
 		Labels:          map[string]string{"tag": hlpServer},
-		OwnerReferences: []metav1.OwnerReference{{Kind: "ReplicaSet", Name: "rs-new"}},
+		OwnerReferences: hlpController("ReplicaSet", "rs-new", "rs-new-uid"),
 	}, Status: apiv1.PodStatus{
 		Phase:             apiv1.PodRunning,
 		ContainerStatuses: []apiv1.ContainerStatus{{Name: hlpServer, Ready: ready}},
@@ -79,6 +84,47 @@ func TestK8SReplacementPodKeepsOwnershipAndOldPodChecks(t *testing.T) {
 		hlpPod("old", "db1-old", true, false), hlpPod("term", "db1-term", true, true), hlpPod("nr", "db1-nr", false, false))
 	if pod, err := k8sReplacementPod(client, hlpNamespace, hlpServer, hlpDepUID, map[types.UID]string{"old": "db1-old"}); pod != nil || err != nil {
 		t.Fatalf("old, terminating and not ready pods must not match: pod=%v err=%v", pod, err)
+	}
+}
+
+// The replacement is owned by the Deployment only if every link of the chain matches by controller kind,
+// name and UID: Pod -> ReplicaSet (the fetched ReplicaSet has the name and UID the Pod names) and
+// ReplicaSet -> Deployment.
+func TestK8SReplacementPodChecksEveryOwnerLink(t *testing.T) {
+	notController := []metav1.OwnerReference{{Kind: "ReplicaSet", Name: "rs-new", UID: "rs-new-uid"}}
+	for name, c := range map[string]struct {
+		pod func(p *apiv1.Pod)
+		rs  func(r *appsv1.ReplicaSet)
+	}{
+		"Pod owner UID differs from the ReplicaSet":   {pod: func(p *apiv1.Pod) { p.OwnerReferences = hlpController("ReplicaSet", "rs-new", "stale-uid") }},
+		"Pod owner kind is not ReplicaSet":            {pod: func(p *apiv1.Pod) { p.OwnerReferences = hlpController("StatefulSet", "rs-new", "rs-new-uid") }},
+		"Pod owner name is not the ReplicaSet":        {pod: func(p *apiv1.Pod) { p.OwnerReferences = hlpController("ReplicaSet", "rs-other", "rs-new-uid") }},
+		"Pod owner is not a controller reference":     {pod: func(p *apiv1.Pod) { p.OwnerReferences = notController }},
+		"Pod has no owner":                            {pod: func(p *apiv1.Pod) { p.OwnerReferences = nil }},
+		"ReplicaSet has no UID":                       {rs: func(r *appsv1.ReplicaSet) { r.UID = "" }, pod: func(p *apiv1.Pod) { p.OwnerReferences = hlpController("ReplicaSet", "rs-new", "") }},
+		"ReplicaSet owner kind is not Deployment":     {rs: func(r *appsv1.ReplicaSet) { r.OwnerReferences = hlpController("Job", hlpServer, hlpDepUID) }},
+		"ReplicaSet owner name is another Deployment": {rs: func(r *appsv1.ReplicaSet) { r.OwnerReferences = hlpController("Deployment", "db2", hlpDepUID) }},
+		"ReplicaSet owner UID is another Deployment":  {rs: func(r *appsv1.ReplicaSet) { r.OwnerReferences = hlpController("Deployment", hlpServer, "dep-other") }},
+		"ReplicaSet owner is not a controller reference": {rs: func(r *appsv1.ReplicaSet) {
+			r.OwnerReferences = []metav1.OwnerReference{{Kind: "Deployment", Name: hlpServer, UID: hlpDepUID}}
+		}},
+	} {
+		rs, pod := hlpReplicaSet(hlpDepUID), hlpPod("new", "db1-new", true, false)
+		if c.rs != nil {
+			c.rs(rs)
+		}
+		if c.pod != nil {
+			c.pod(pod)
+		}
+		client := fake.NewSimpleClientset(rs, pod)
+		if got, err := k8sReplacementPod(client, hlpNamespace, hlpServer, hlpDepUID, map[types.UID]string{}); got != nil || err != nil {
+			t.Errorf("%s: accepted (pod=%v err=%v)", name, got, err)
+		}
+	}
+	// the good chain is accepted
+	client := fake.NewSimpleClientset(hlpReplicaSet(hlpDepUID), hlpPod("new", "db1-new", true, false))
+	if got, err := k8sReplacementPod(client, hlpNamespace, hlpServer, hlpDepUID, map[types.UID]string{}); got == nil || err != nil {
+		t.Fatalf("the good chain: pod=%v err=%v", got, err)
 	}
 }
 

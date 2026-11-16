@@ -13,6 +13,7 @@ import (
 
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
+	appsv1 "k8s.io/api/apps/v1"
 	apiv1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -66,7 +67,9 @@ func (regtest *RegTest) TestK8SProvisionSchedulerVolumeBinding(cl *cluster.Clust
 	} else if servers := cl.GetServers(); len(servers) > 0 {
 		slave = servers[0]
 	} else {
-		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Skipping: no servers available")
+		// nothing was tested: the runner records SKIP with this reason, never a PASS
+		test.SkipReason = "no server available to reprovision"
+		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Skipping: %s", test.SkipReason)
 		return true
 	}
 	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST",
@@ -85,8 +88,10 @@ func (regtest *RegTest) TestK8SProvisionSchedulerVolumeBinding(cl *cluster.Clust
 
 	// The generation being replaced: the Deployment and every pod of it, by UID.
 	oldDeploymentUID := types.UID("")
+	var oldDeployment *appsv1.Deployment
 	if dep, getErr := client.AppsV1().Deployments(cl.Name).Get(context.TODO(), slave.Name, metav1.GetOptions{}); getErr == nil {
 		oldDeploymentUID = dep.UID
+		oldDeployment = dep
 	} else if !apierrors.IsNotFound(getErr) {
 		return fail("cannot read the Deployment %s before reprovisioning: %s", slave.Name, getErr)
 	}
@@ -97,6 +102,32 @@ func (regtest *RegTest) TestK8SProvisionSchedulerVolumeBinding(cl *cluster.Clust
 		}
 	} else {
 		return fail("cannot list the pods of %s before reprovisioning: %s", slave.Name, listErr)
+	}
+	// The data volume claim must be retained by an unprovision: its identity is recorded now and
+	// compared after the reprovision (a deleted and recreated claim would be a new, empty volume). The
+	// claim is the one the existing Deployment mounts at /var/lib/mysql. A Deployment that exists must reference a claim
+	// that exists: otherwise the test cannot show retention and says so. Only a first provisioning,
+	// with no Deployment, has nothing to retain, and that is logged, never counted as a retention.
+	pvcName := cl.Name + "-" + slave.Name + "-claim"
+	var claimNames []string
+	if oldDeployment != nil {
+		if claim, problem := k8sSWDataClaim(oldDeployment, slave.Name); problem == "" {
+			claimNames = []string{claim}
+			pvcName = claim
+		}
+	}
+	var oldPVC *apiv1.PersistentVolumeClaim
+	var pvcGetErr error
+	if oldDeployment != nil && len(claimNames) > 0 {
+		oldPVC, pvcGetErr = client.CoreV1().PersistentVolumeClaims(cl.Name).Get(context.TODO(), pvcName, metav1.GetOptions{})
+	}
+	oldPVCUID, retentionApplicable, retentionProblem := k8sPVCRetentionBefore(oldDeployment != nil, claimNames, oldPVC, pvcGetErr)
+	if retentionProblem != "" {
+		return fail("%s", retentionProblem)
+	}
+	if !retentionApplicable {
+		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST",
+			"Retention of the data volume claim is not applicable: Deployment %s did not exist (first provisioning)", slave.Name)
 	}
 	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST",
 		"Replacing Deployment %s (uid %q) and %d pod(s)", slave.Name, oldDeploymentUID, len(oldPods))
@@ -119,18 +150,24 @@ func (regtest *RegTest) TestK8SProvisionSchedulerVolumeBinding(cl *cluster.Clust
 		return fail("provisioning failed: %s", err)
 	}
 
-	pvcName := cl.Name + "-" + slave.Name + "-claim"
 	pvcBound := false
+	var boundPVC *apiv1.PersistentVolumeClaim
 	for deadline := time.Now().Add(90 * time.Second); time.Now().Before(deadline); {
 		pvc, getErr := client.CoreV1().PersistentVolumeClaims(cl.Name).Get(context.TODO(), pvcName, metav1.GetOptions{})
 		if getErr == nil && pvc.Status.Phase == apiv1.ClaimBound {
 			pvcBound = true
+			boundPVC = pvc
 			break
 		}
 		time.Sleep(2 * time.Second)
 	}
 	if !pvcBound {
 		return fail("PVC %s did not bind within 90s -- this is the WaitForFirstConsumer/scheduler-bypass regression", pvcName)
+	}
+	// The claim is the one the previous generation used: an unprovision keeps it, so the
+	// database data survives the reprovision.
+	if problem := k8sPVCRetentionAfter(retentionApplicable, oldPVCUID, boundPVC.UID, pvcName); problem != "" {
+		return fail("%s", problem)
 	}
 
 	// The replacement: a Deployment that is not the old one and is not being deleted ...
@@ -143,6 +180,10 @@ func (regtest *RegTest) TestK8SProvisionSchedulerVolumeBinding(cl *cluster.Clust
 	}
 	if oldDeploymentUID != "" && dep.UID == oldDeploymentUID {
 		return fail("Deployment %s still is the old one (uid %s): it was not replaced", dep.Name, dep.UID)
+	}
+	// A Deployment created by this build stops the old Pod before it creates the new one.
+	if dep.Spec.Strategy.Type != appsv1.RecreateDeploymentStrategyType || dep.Spec.Strategy.RollingUpdate != nil {
+		return fail("the replacement Deployment %s uses strategy %q (rollingUpdate set: %t), want Recreate", dep.Name, dep.Spec.Strategy.Type, dep.Spec.Strategy.RollingUpdate != nil)
 	}
 
 	// ... with a new pod, owned by it, that runs and is ready.
@@ -171,6 +212,11 @@ func (regtest *RegTest) TestK8SProvisionSchedulerVolumeBinding(cl *cluster.Clust
 	}
 	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST",
 		"Replacement pod %s (uid %s) is running and ready", replacement.Name, replacement.UID)
+	// With a retained claim, the replacement must mount that same claim at /var/lib/mysql: a bound,
+	// unchanged PVC that the new Pod does not use would retain nothing.
+	if problem := k8sPVCAttachment(retentionApplicable, pvcName, replacement, slave.Name); problem != "" {
+		return fail("%s", problem)
+	}
 
 	// The old pods are gone: the replacement did not simply sit next to them.
 	for uid, name := range oldPods {
@@ -206,6 +252,55 @@ func (regtest *RegTest) TestK8SProvisionSchedulerVolumeBinding(cl *cluster.Clust
 	return true
 }
 
+// k8sPVCRetentionBefore decides, from what was read before the unprovision, whether the retention of the
+// data claim can be asserted. It returns the UID to compare with, whether retention applies, and a
+// precondition problem (empty when none). A Deployment that exists but mounts no claim, or whose claim
+// cannot be found or read, is a problem: nothing is silently skipped. No Deployment means a first
+// provisioning: not applicable.
+func k8sPVCRetentionBefore(deploymentExists bool, claimNames []string, pvc *apiv1.PersistentVolumeClaim, getErr error) (types.UID, bool, string) {
+	if !deploymentExists {
+		return "", false, ""
+	}
+	if len(claimNames) == 0 {
+		return "", false, "precondition: the data claim of the existing Deployment cannot be identified, so the retention of its data volume cannot be shown"
+	}
+	switch {
+	case apierrors.IsNotFound(getErr):
+		return "", false, fmt.Sprintf("precondition: the existing Deployment references the PVC %s, which does not exist: the retention of its data volume cannot be shown", claimNames[0])
+	case getErr != nil:
+		return "", false, fmt.Sprintf("cannot read the PVC %s before reprovisioning: %s", claimNames[0], getErr)
+	case pvc == nil || pvc.UID == "":
+		return "", false, fmt.Sprintf("precondition: the PVC %s has no UID: its identity cannot be followed", claimNames[0])
+	}
+	return pvc.UID, true, ""
+}
+
+// k8sPVCRetentionAfter says why the claim found after the reprovision is not the retained one, empty when
+// it is (or when retention does not apply: first provisioning).
+func k8sPVCRetentionAfter(applicable bool, oldUID, newUID types.UID, name string) string {
+	if applicable && newUID != oldUID {
+		return fmt.Sprintf("PVC %s was replaced (uid %s, was %s): the unprovision did not retain the data volume claim", name, newUID, oldUID)
+	}
+	return ""
+}
+
+// k8sPVCAttachment says why the replacement Pod does not mount the recorded data claim, empty when it does
+// or when retention does not apply (first provisioning). The claim of the Pod is resolved from the mount of
+// /var/lib/mysql of its database container (k8sSWPodDataClaim): an unidentifiable mount is a problem too.
+func k8sPVCAttachment(retentionApplicable bool, recorded string, pod *apiv1.Pod, server string) string {
+	if !retentionApplicable {
+		return ""
+	}
+	mounted, problem := k8sSWPodDataClaim(pod, server)
+	switch {
+	case problem != "":
+		return fmt.Sprintf("the replacement pod %s: %s", pod.Name, problem)
+	case mounted != recorded:
+		return fmt.Sprintf("the replacement pod %s mounts the claim %s at /var/lib/mysql, not the retained claim %s", pod.Name, mounted, recorded)
+	}
+	return ""
+}
+
 // k8sRefusedByAPI tells whether the API server refused the request itself (Forbidden or
 // Unauthorized), as opposed to a condition that can pass.
 func k8sRefusedByAPI(err error) bool {
@@ -238,22 +333,22 @@ func k8sReplacementPod(client kubernetes.Interface, namespace, server string, de
 		if !ready {
 			continue
 		}
-		for _, ref := range pod.OwnerReferences {
-			if ref.Kind != "ReplicaSet" {
-				continue
-			}
-			rs, rsErr := client.AppsV1().ReplicaSets(namespace).Get(context.TODO(), ref.Name, metav1.GetOptions{})
-			if apierrors.IsNotFound(rsErr) {
-				continue
-			}
+		// owned by the Deployment through its ReplicaSet: controller kind, name and UID on both links
+		problem, ownErr := k8sSWOwnership(pod, server, deploymentUID, func(name string) (*appsv1.ReplicaSet, error) {
+			rs, rsErr := client.AppsV1().ReplicaSets(namespace).Get(context.TODO(), name, metav1.GetOptions{})
 			if rsErr != nil {
-				return nil, fmt.Errorf("get replicasets.apps %s in namespace %s: %w", ref.Name, namespace, rsErr)
+				return nil, fmt.Errorf("get replicasets.apps %s in namespace %s: %w", name, namespace, rsErr)
 			}
-			for _, rsRef := range rs.OwnerReferences {
-				if rsRef.UID == deploymentUID {
-					return pod, nil
-				}
-			}
+			return rs, nil
+		})
+		if apierrors.IsNotFound(ownErr) {
+			continue // the ReplicaSet is not there (yet)
+		}
+		if ownErr != nil {
+			return nil, ownErr
+		}
+		if problem == "" {
+			return pod, nil
 		}
 	}
 	return nil, nil

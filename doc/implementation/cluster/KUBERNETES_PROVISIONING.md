@@ -1230,11 +1230,149 @@ the PVC, reprovision reusing the persisted config). No bugs found. Not yet
 covered live: the first-fetch-ever-fails fallback path and a corrupt
 tarball (both unit-tested only, same as ProxySQL/HAProxy above).
 
-No Kubernetes-capable regtest/CI harness exists in this repository, so none
-of the above is repeatable/automated — it does not substitute for real CI
-integration coverage. Closing that gap requires provisioning a
-kind/minikube-style cluster in CI and extending `regtest/` with
-Kubernetes-orchestrated scenarios.
+The live verification above was manual. The repository has regtests that run
+against a real Kubernetes cluster, started by hand (see "Kubernetes regtests"
+below); no CI job provisions a Kubernetes cluster, so none of them runs
+automatically, and they do not replace the Docker multi-product matrix.
+
+### Kubernetes regtests
+
+| Test | In ALL | What it covers |
+|---|---|---|
+| `testK8SProvisionSchedulerVolumeBinding` | yes | unprovision/reprovision of a database on a real scheduler; the replacement Deployment uses `Recreate`, the data claim keeps its UID |
+| `testK8SStopStartDatabaseService` | yes | Stop/Start of the database Deployment. It stops and restarts the database, is part of ALL, and does not detect two database processes overlapping |
+| `testK8SSingleWriterLifecycle` | no, by name only | the single-writer guarantees of #2389/#2390 for stop, start, restart, force re-pull and the migration patch (below). It does not reprovision |
+
+The two regtests are independent coverage and are run separately. The reprovision (unprovision, provision, the
+`Recreate` strategy and the retention of the data claim by its UID) is proven only by
+`testK8SProvisionSchedulerVolumeBinding`; `testK8SSingleWriterLifecycle` does not reprovision and does not prove
+the retention. `testK8SProvisionSchedulerVolumeBinding` is part of ALL and, unlike the lifecycle test, does not
+check that the namespace is marked disposable (`regtest.replication-manager/disposable=true`) before it
+unprovisions the database: the label is enforced only by `testK8SSingleWriterLifecycle`. The same holds for
+`testK8SStopStartDatabaseService`: both are destructive and part of ALL, so **ALL must not be run on a
+Kubernetes cluster that is not disposable**. Whether ALL should gate them is a separate regtest-safety policy
+decision. When `testK8SProvisionSchedulerVolumeBinding` finds no server it records SKIP with a reason, not PASS. With a
+retained claim it also requires the replacement Pod to mount that same claim at `/var/lib/mysql`.
+
+`testK8SSingleWriterLifecycle` stops, restarts and patches its database, so it is
+never part of ALL and has no declared targets. It is run by name:
+
+```
+POST /api/clusters/<cluster>/tests/actions/run/testK8SSingleWriterLifecycle
+```
+
+It is SKIP, before anything is changed, unless the cluster uses `prov-orchestrator = kube`,
+has exactly one database server, and its namespace carries the label
+`regtest.replication-manager/disposable=true` (set by the operator:
+`kubectl label namespace <cluster> regtest.replication-manager/disposable=true`).
+An absent label is never a PASS. A missing permission (checked with SelfSubjectAccessReview: `get` on the namespace;
+`get`/`list`/`watch`/`create`/`delete` on pods; `get`/`list` on replicasets; `get`/`patch` on
+deployments; `get` on persistentvolumeclaims) or a failed Kubernetes call is a FAIL, not a SKIP.
+
+The two files of the test are `regtest/test_k8s_single_writer_lifecycle.go` (the steps) and
+`regtest/test_k8s_single_writer_evidence.go` (the decisions that need no cluster, unit-tested with a fake
+clientset in `regtest/test_k8s_single_writer_lifecycle_helper_test.go`).
+
+Steps:
+
+- **S0/S1**: eligibility and permissions. The data claim is resolved from the database container's mount of
+  `/var/lib/mysql` and the Pod volume it names (not the first PVC of the template; none or several is a
+  precondition failure). Exactly one database Pod (label `tag=<server>`, any state) must exist, running and
+  ready, and owned by the Deployment through its ReplicaSet (kind, name and UID of the Pod's controller
+  reference, the fetched ReplicaSet's own UID, and the ReplicaSet's controller being the Deployment by name and
+  UID; a reference that is not a controller reference does not count). The same check
+  (`k8sReplacementPod`, shared with the reprovision test) decides which Pod is a replacement;
+  an ambiguous start is rejected. That Pod must also mount, in its database container, the same data claim
+  the Deployment template names; every replacement Pod accepted later must mount that same recorded claim
+  (a mismatch or an unidentifiable mount is a FAIL, never a PASS). Any other Pod that references the data claim, whatever its labels or
+  owner, makes the run a SKIP. The original strategy and container lifecycle are recorded; a unique SQL
+  fixture is created (row count and checksum); the Deployment and data-claim identities are recorded (an
+  initial PVC UID is required, and every later step checks the claim is still that one and Bound). The Pod
+  watch starts.
+- **S2 (safety gate)**: a test-owned non-database Pod holds the data claim read-only (verified Running, on the
+  database's node, mounted). One successful observation of the starting state is required before Start is
+  called (retried within a bound; without it Start is not called). Start must then fail closed after its
+  bounded wait with zero replicas. Polls made during the wait must see the holder present, and no stretch
+  without a successful poll may exceed 10 s (failed polls are recorded and reported); the watch must show no
+  database Pod. The polls are periodic samples, not a continuous observation. A build without the guard
+  scales up: the test ends there (it stops what Start scaled up, normally) and no later scenario runs.
+- **S2c (safety gate)**: the database Pod is completely gone; a holder with a bounded `preStop` delay is
+  deleted and positively observed Terminating; after the same initial observation, `Start` is called while it
+  is Terminating. The observer reads the Deployment and the database Pods first and the holder last, so a
+  scale-up or a database Pod seen while the holder still exists is a violation without comparing any clock.
+  `Start` must then succeed once the holder is gone. A Terminating window that no poll saw, or insufficient
+  poll coverage, is INCONCLUSIVE.
+- **S3 (migration patch at zero replicas)**: the database is stopped normally and its Pod is gone. The
+  Deployment is re-read before the legacy strategy (`RollingUpdate`) is injected and again immediately before
+  the production force re-pull: `spec.replicas` must be explicitly 0, no database Pod (terminating ones included)
+  may remain, and the strategy must be the expected one, or the step stops before that mutation. These are
+  point-in-time reads: they do not stop another actor from changing the cluster afterwards, the disposable
+  namespace and its exclusive use by the test are operational preconditions. The legacy strategy is injected by
+  a strategy-only patch; the Deployment controller must have
+  observed its generation, the ReplicaSets must be unchanged and no Pod may appear. The production force
+  re-pull patch must then move the Deployment to `Recreate` with the replicas still 0 and no Pod appearing,
+  and `Start` through the guarded lifecycle must create one new Pod owned by the Deployment. This checks the
+  migration patch and a controlled startup. **It does not check the overlap safety of a live migration**: no
+  database runs while the legacy strategy is in place. The live migration is validated separately.
+- **S5/S6/S7** (only after S2 and S2c passed): a temporary `preStop` delay is added to the database container
+  by a JSON Patch (one rollout), then Stop and an immediate Start while the old Pod is Terminating (S5), two
+  concurrent Starts (S6), and the exact original lifecycle is restored (S7, one rollout). Every
+  template-changing patch is preceded by a fresh read: the strategy must be `Recreate`, because under
+  `RollingUpdate` a template change surges a second database Pod.
+- **S8**: force re-pull and restart through the lifecycle functions.
+
+For each operation the number of replacement Pods is stated: one for a Pod-replacing operation, zero for a
+strategy-only patch. The ordering evidence is a Pod watch opened before the operation, the identities and
+container states of the old Pods read from the API before it, the replacement found through its
+ReplicaSet-to-Deployment ownership chain, and the kubelet's container start and finish timestamps. The watch
+is synchronised with a List taken after the operation (every listed Pod is, in the last watch event for it, in
+the state the List shows: node, terminating, database container running or terminated and its timestamps; every
+Pod the watch holds alive is in the List): there is no fixed delay and the opaque resourceVersions are not
+compared. A required observation that is missing (no replacement seen, the end of an old running database
+container, a start or finish timestamp) is INCONCLUSIVE; timestamps of Pods on different nodes are never
+compared. This evidence is the state the kubelet reported to the API server. **Event order does not prove
+that two database processes never ran together**: it shows that no overlap was reported. A finish timestamp
+missing from the old Pod is a likely false negative to watch for at runtime; it is not weakened.
+
+The runner records PASS, FAIL or SKIP. Every incomplete proof is a FAIL, and the log carries the failure
+class on each `CHECK` line: `HARNESS` (the test could not act), `RESOURCE` (the cluster could not run the
+workload), `PRODUCT` (a guarantee was seen not to hold), `INCONCLUSIVE` (not exercised or no evidence). A guard refusal while an earlier Pod still holds the
+claim is not a product failure unless the test established a violation (a scale-up despite the refusal). SQL
+errors are classified by their MySQL error number or kind: a missing table or schema after the fixture was
+verified, and a digest mismatch, are PRODUCT; a refused permission is HARNESS; a connection or deadline error
+is INCONCLUSIVE.
+
+Cleanup is best effort. It inspects the real Deployment (the test only records that it attempted a change,
+before sending the patch: an API server may apply a patch it answers with an error), restores the strategy to
+`Recreate` first and sends no template patch if that fails, restores the lifecycle exactly (a JSON Patch, not
+`lifecycle: null`) only when it differs from the original, waits for a rollout only when one is produced and
+the database Pod state is certain, never starts a database, and logs `CLEANUP LEFT` for anything it could not
+restore. A cleanup that leaves a holder Pod or an un-restored temporary change of the Deployment turns a
+scenario that passed into a FAIL (HARNESS, step `CLEANUP`); the same holds for the SQL fixture the test created
+and could not drop (a database that is not reachable is not started to drop it). The schema is dropped only if
+this run confirmed its `CREATE DATABASE` (no `IF NOT EXISTS`, issued alone before the rest of the fixture): a
+refusal by the server means nothing was created and nothing is dropped, an outcome that is unknown (connection,
+deadline) is reported as possible residue and never dropped automatically. A scenario that failed keeps its
+own class, and the cleanup problem is reported apart. After a failure the database may be left stopped, and the
+log says so. The test deletes only its own holder Pods, by ordinary deletion with the recorded UID as a
+precondition, through one call site: after a refusal the name is read once, an absent holder is told from a
+different Pod now using its name, and nothing is deleted again by name. The holder is created once, never retried: its
+intended name and run ID are recorded before `Create`; if `Create` returns an error that may hide an applied
+creation, one bounded read of the name accepts the Pod only if its name, run ID, ownership labels, read-only
+attachment of the data claim and UID match, and records that UID for the same UID-preconditioned deletion.
+Otherwise nothing is deleted by name, the unresolved name is reported (the cleanup looks once more), and the
+test cannot pass. The probe row the integrity check writes is removed with a parameterized statement whose
+failure is classified like any other database error.
+
+The probe write, read-back and removal are direct, parameterized SQL in `regtest/`: no `dbhelper` function
+writes and reads back a row by value. Whether T1 ("never hand-roll SQL in `cluster/` or `server/`") reaches
+`regtest/`, where other regtests also issue direct SQL, is left open for review; the fixture drop and the
+configuration log line already use `dbhelper` and the monitor's variables.
+
+The effective database configuration is logged but not asserted: Percona configuration loading is a
+separate issue. This regtest is a single-server Kubernetes check; it is not the Docker multi-product
+matrix required by T13. On MySQL and Percona the global GTID-tag gate of the runner applies before the test:
+the preflight must use a cluster that legitimately declares the `mysqlgtid` tag, and a SKIP is never a PASS.
 
 ## Known limitations
 

@@ -113,6 +113,11 @@ var tests = []string{
 	// testProxySQLPostgresRouting is not in this list either: it needs a
 	// PostgreSQL cluster behind a ProxySQL and switches the master over twice.
 	// Run it by name: /api/clusters/<cluster>/tests/actions/run/testProxySQLPostgresRouting
+	// testK8SSingleWriterLifecycle is not in this list either: it stops, restarts and
+	// patches the database of a Kubernetes cluster with ONE server. It needs the namespace to carry
+	// the label regtest.replication-manager/disposable=true; without it, with another orchestrator or
+	// with more than one server it is SKIP, before anything is changed. Run it by name:
+	// /api/clusters/<cluster>/tests/actions/run/testK8SSingleWriterLifecycle
 	"testRunSysbenchTPCPerMinuteIncreaseThreads",
 	"testConfigPersistBackupOption",
 	"testCredentialPersistTagReload",
