@@ -677,23 +677,25 @@ function Navbar({ username, user }) {
             setIsUserInfoPanelOpen(false)
             setIsApiTokensOpen(true)
           }}
-          onRotateMyPassword={(clusterName) => {
+          onRotateMyPassword={(clusterName, target) => {
             setIsUserInfoPanelOpen(false)
-            setRotateMineOn(clusterName)
+            setRotateMineOn({ clusterName, target })
           }}
         />
       )}
       {rotateMineOn && (
         <ConfirmModal
           isOpen={!!rotateMineOn}
-          title={'Rotate your own password (' + (user?.User || username) + ')? Your sessions end and your API tokens are revoked: you sign in again with the new password. If it is shown instead of mailed, copy it at once.'}
+          title={rotateMineOn.target === (user?.User || username)
+            ? 'Rotate your own password (' + rotateMineOn.target + ')? Your sessions end and your API tokens are revoked: you sign in again with the new password. It is mailed to you as a one-time link; if it is shown instead, copy it at once.'
+            : 'Rotate the password of ' + rotateMineOn.target + ' on every cluster? Its sessions end and its API tokens are revoked. The new password is mailed to you as a one-time link.'}
           closeModal={() => setRotateMineOn(null)}
           onConfirmClick={() => {
-            const clusterName = rotateMineOn
+            const { clusterName, target } = rotateMineOn
             setRotateMineOn(null)
-            dispatch(rotateUserPassword({ clusterName, username: user?.User || username })).then((res) => {
+            dispatch(rotateUserPassword({ clusterName, username: target })).then((res) => {
               const d = res?.payload?.data
-              if (d?.password || d?.revealMailedTo) setRotatedMine(d)
+              if (d?.password || d?.revealMailedTo) setRotatedMine({ ...d, own: target === (user?.User || username) })
             })
           }}
         />
@@ -701,8 +703,8 @@ function Navbar({ username, user }) {
       {rotatedMine && (
         <CopyTextModal
           isOpen={!!rotatedMine}
-          closeModal={() => { setRotatedMine(null); handleLogout() }}
-          title={rotationTitle(rotatedMine) + ' — your session has ended: close this window to sign in again'}
+          closeModal={() => { const own = rotatedMine.own; setRotatedMine(null); if (own) handleLogout() }}
+          title={rotationTitle(rotatedMine) + (rotatedMine.own ? ' — your session has ended: close this window to sign in again' : '')}
           text={rotationText(rotatedMine)}
         />
       )}
