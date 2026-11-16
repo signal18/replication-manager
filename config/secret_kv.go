@@ -558,6 +558,16 @@ func (conf *Config) SecretKvActiveEntry(name string) (SecretKvConfig, bool) {
 }
 
 // SecretKvActiveEntryAt is level's entry name when it is enabled.
+// SecretKvEntryAt is the entry name of level's list, on or off.
+func (conf *Config) SecretKvEntryAt(level SecretKvLevel, name string) (SecretKvConfig, bool) {
+	for _, e := range conf.SecretKvListAt(level) {
+		if e.Name == name {
+			return e, true
+		}
+	}
+	return SecretKvConfig{}, false
+}
+
 func (conf *Config) SecretKvActiveEntryAt(level SecretKvLevel, name string) (SecretKvConfig, bool) {
 	for _, e := range conf.SecretKvActiveAt(level) {
 		if e.Name == name {
@@ -947,6 +957,60 @@ const ConstSecretKvWrittenAsNewPlace = "(new place)"
 // ConstSecretKvMarketplacePrefix starts the name of the entry a marketplace vault offer gives
 // a cluster: cloud18-<offer name>.
 const ConstSecretKvMarketplacePrefix = "cloud18-"
+
+// ConstSecretKvOrchestratorOffer is the Offer of a marketplace partner's mandatory orchestrator
+// store at the server level (cloud18-opensvc, cloud18-kubernetes): repman manages it, always on.
+const ConstSecretKvOrchestratorOffer = "orchestrator"
+
+// EnsureOrchestratorSecretKvAt gives level's list the managed entry name writing through
+// plugin's orchestrator (secret_kv-opensvc, secret_kv-kubernetes) by clusterName's connection, in
+// namespace for Kubernetes; on, whatever its switch was: a marketplace partner's copy to its
+// orchestrator is not a choice. An existing entry follows the cluster and namespace (a new place:
+// the secrets are copied there with their history). True when it changed.
+func (conf *Config) EnsureOrchestratorSecretKvAt(level SecretKvLevel, name, plugin, clusterName, namespace string) (bool, error) {
+	if err := validateEntryName("credential store", name); err != nil {
+		return false, err
+	}
+	if !IsOrchestratorSecretKvPlugin(plugin) {
+		return false, fmt.Errorf("credential store %s: %s does not write through an orchestrator", name, plugin)
+	}
+	want := map[string]interface{}{ConstSecretKvOrchestratorCluster: clusterName}
+	if plugin == ConstSecretKvPluginKubernetes {
+		want[ConstSecretKvKubernetesNamespace] = namespace
+	}
+	secretKvMu.Lock()
+	defer secretKvMu.Unlock()
+	e := conf.secretKvByNameAt(level, name)
+	if e == nil {
+		list := conf.secretKvsAt(level)
+		*list = append(*list, SecretKvConfig{Name: name, Plugin: plugin, Enabled: true, Settings: want, Offer: ConstSecretKvOrchestratorOffer})
+		return true, nil
+	}
+	if e.Plugin != plugin {
+		return false, fmt.Errorf("credential store %s is not a %s entry", name, plugin)
+	}
+	changed := false
+	if e.Offer != ConstSecretKvOrchestratorOffer {
+		e.Offer, changed = ConstSecretKvOrchestratorOffer, true
+	}
+	if !e.Enabled {
+		e.Enabled, changed = true, true
+	}
+	if e.Settings == nil {
+		e.Settings = map[string]interface{}{}
+	}
+	placeBefore := conf.secretKvPlace(e)
+	for k, v := range want {
+		if fmt.Sprintf("%v", e.Settings[k]) != fmt.Sprintf("%v", v) {
+			e.Settings[k] = v
+			changed = true
+		}
+	}
+	if conf.secretKvPlace(e) != placeBefore && e.WrittenAs != "" {
+		e.WrittenAs = ConstSecretKvWrittenAsNewPlace
+	}
+	return changed, nil
+}
 
 // EnsureMarketplaceVault gives the cluster the entry of a marketplace vault offer (#2227):
 // added off (the sponsor turns it on). See EnsureMarketplaceVaultAt.
