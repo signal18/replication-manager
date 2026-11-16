@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"unicode/utf8"
 )
 
 // A cluster's credential stores (#2227, doc/implementation/config/CREDENTIAL_STORES.md "Store
@@ -1020,6 +1021,27 @@ func (conf *Config) EnsureMarketplaceVaultAt(level SecretKvLevel, offer Marketpl
 		e.WrittenAs = ConstSecretKvWrittenAsNewPlace
 	}
 	return changed, nil
+}
+
+// secretKvBehindReasonMax bounds a store's behind reason: it is kept per entry and shown in the
+// states and the GUI.
+const secretKvBehindReasonMax = 512
+
+// SecretKvBehindReason is why a store is behind, on one line and whole: a store's error over
+// several lines keeps every line (Vault's "Error making API request." is followed by the URL,
+// the HTTP code and Vault's own errors, the only part that says why), joined by spaces and
+// bounded to secretKvBehindReasonMax bytes. The reasons are the stores' errors, which name a
+// path, never a value (F10).
+func SecretKvBehindReason(why string) string {
+	why = strings.Join(strings.Fields(why), " ")
+	if len(why) <= secretKvBehindReasonMax {
+		return why
+	}
+	cut := secretKvBehindReasonMax
+	for cut > 0 && !utf8.RuneStart(why[cut]) {
+		cut--
+	}
+	return why[:cut] + "…"
 }
 
 // InstanceStoreName is this instance's name in a shared credential store, the folder of its

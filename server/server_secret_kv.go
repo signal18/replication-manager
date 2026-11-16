@@ -8,7 +8,6 @@ import (
 	"context"
 	"fmt"
 	"sort"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -120,10 +119,7 @@ func (repman *ReplicationManager) setServerKvBehind(entry, why string) {
 		delete(k.behind, entry)
 		return
 	}
-	if i := strings.IndexByte(why, '\n'); i >= 0 {
-		why = why[:i]
-	}
-	k.behind[entry] = why
+	k.behind[entry] = config.SecretKvBehindReason(why)
 }
 
 // serverKvItems are the items writing ver of key to every active server entry ("" every one,
@@ -264,19 +260,24 @@ func (repman *ReplicationManager) checkServerSecretKvStores() {
 // (Cloud18MarketplacePartnerPublic): on when it is the only store, off next to the partner's
 // own. An on-prem instance never gets it. An entry given once stays when the instance stops
 // being a partner: nothing is removed or moved silently, a sysops switches it off. The
-// path-prefix is the offer's, else the instance's URI, as for the clusters' entries.
+// path-prefix is the offer's, else the instance's name (InstanceStoreName, three folders), as for
+// the clusters' entries; with neither, the offer is not given.
 func (repman *ReplicationManager) ensureServerMarketplaceVaults() {
 	c := repman.Conf
 	offers := repman.MarketplaceCatalogue().Vaults
 	if len(offers) == 0 || !c.Cloud18MarketplacePartnerPublic() || repman.serverSecretKvsPinned() {
 		return
 	}
-	uri := c.Cloud18Domain + "/" + c.Cloud18SubDomain + "-" + c.Cloud18SubDomainZone
+	instance, named := c.InstanceStoreName()
 	changed := false
 	for _, o := range offers {
 		prefix := o.PathPrefix
 		if prefix == "" {
-			prefix = uri
+			if !named {
+				repman.LogModulePrintf(c.Verbose, config.ConstLogModVault, config.LvlWarn, "Marketplace vault offer %s not given to the server level: the instance has no valid name (cloud18-domain, cloud18-sub-domain, cloud18-sub-domain-zone)", o.Name)
+				continue
+			}
+			prefix = instance
 		}
 		name := config.ConstSecretKvMarketplacePrefix + o.Name
 		before, existed := writtenAsOf(c.SecretKvListAt(config.SecretKvLevelServer), name)

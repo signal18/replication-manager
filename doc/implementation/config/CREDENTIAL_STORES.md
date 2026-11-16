@@ -314,7 +314,9 @@ test counts from what the file holds when it starts.
     "pathPrefix": "", "dc": "", "dcLocation": ""}]
   ```
   `mount` defaults to `kv`, `role` to the realm's client id, `pathPrefix` to the instance's
-  URI `<domain>/<sub-domain>-<zone>` (as the buckets). Each Cloud18-registered cluster gets
+  name, three folders `<domain>/<sub-domain>/<zone>` (`InstanceStoreName`; `<sub-domain>-<zone>`
+  is not unique: `a-b`+`c` and `a`+`b-c` are one folder). With no valid name and no
+  `pathPrefix`, the offer is not given (a WARN says so). Each Cloud18-registered cluster gets
   `cloud18-<name>`, sign-in `jwt`, **off**: the sponsor turns it on; a new catalogue updates
   its address, mount, role and prefix, never its switch. The entry records its origin
   (`offer = "<name>"` in the saved config); the list API gives `offer` (name, title, partner
@@ -611,13 +613,20 @@ is treated the same; only the path a level maps to differs per store.
   The tick never switches an existing entry on again, and the API never deletes it
   (`ErrSecretKvOfferManaged`): a partner who does not want it switches it off and it stays off.
   When the offer moves the entry (address, mount, prefix), it is a new place, as for an edit
-  (a WARN and a security event say so). The prefix is the offer's, else `<cloud18-domain>/<cloud18-sub-domain>-<cloud18-sub-domain-zone>`
-  as for the clusters' entries (not the instance name's form), each folder of it a real one
-  (no empty, `.` or `..`); the instance's folder `system/repman/<instance name>` is below it.
+  (a WARN and a security event say so). The prefix is the offer's, else the instance's name
+  `<cloud18-domain>/<cloud18-sub-domain>/<cloud18-sub-domain-zone>` as for the clusters' entries,
+  each folder of it a real one (no empty, `.` or `..`); the instance's folder
+  `system/repman/<instance name>` is below it.
   **Isolation rests on the Cloud18 Vault policy:** both levels sign in with the same Cloud18
-  identity (`jwt`, same role and address), so the role's policy must deny `*/system/repman/*`
-  to any session that is not the instance's own server level (a cluster sponsor's or a member's
-  session), as the members page already must not see a server path.
+  identity (`jwt`, the role `replication-manager`, bound to the shared client and the account's
+  `sub`), so replication-manager's sign-in is a Vault identity of its own per account, separate
+  from the person's browser login: only it reaches `<prefix>/system/*`, while the cluster folders
+  are shared with the cluster's sponsors (set up on the Cloud18 side); a cluster sponsor's or a
+  member's session never sees a server path.
+- **The behind reason is whole.** A store's error over several lines (Vault's
+  `Error making API request.` then the URL, the HTTP code and Vault's own errors) is kept on one
+  line with every part, bounded to 512 bytes (`config.SecretKvBehindReason`), at both levels: the
+  first line alone said nothing of why.
 - **A new place gets the history.** An edit of a server entry's address, mount, path-prefix,
   cluster or namespace, or an offer that moves it, sets its `written-as` to `(new place)`
   (`ConstSecretKvWrittenAsNewPlace`, never an instance name): the move then copies every kept

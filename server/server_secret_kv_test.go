@@ -503,6 +503,10 @@ func TestServerKvMarketplaceVaultPartnerOnly(t *testing.T) {
 	if !ok || !e.Enabled || e.Offer != "vault" || repman.Conf.SecretKvSetting(e, config.ConstSecretKvVaultAuth) != config.ConstVaultAuthJWT {
 		t.Fatalf("partner entry %+v %v", e, ok)
 	}
+	// its folder is the instance's name, three folders
+	if name, _ := repman.Conf.InstanceStoreName(); repman.Conf.SecretKvSetting(e, config.ConstSecretKvVaultPathPrefix) != name || strings.Count(name, "/") != 2 {
+		t.Fatalf("path-prefix %q, instance %q", repman.Conf.SecretKvSetting(e, config.ConstSecretKvVaultPathPrefix), name)
+	}
 	// no longer a partner: the entry stays as it is
 	repman.Conf.Cloud18SubscriptionPlan = "free"
 	repman.ensureServerMarketplaceVaults()
