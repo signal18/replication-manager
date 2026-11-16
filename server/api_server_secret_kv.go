@@ -41,7 +41,7 @@ func (repman *ReplicationManager) serverCredentialsACL(w http.ResponseWriter, r 
 }
 
 // errServerStoreMandatory refuses to switch off a marketplace partner's mandatory store.
-var errServerStoreMandatory = errors.New("on a marketplace partner the copy to the Cloud18 vault and to the orchestrator is mandatory: it cannot be switched off")
+var errServerStoreMandatory = errors.New("mandatory: the copy to the orchestrator the clusters run on, and on a marketplace partner to the Cloud18 vault, cannot be switched off")
 
 // errServerSecretKvsPinned refuses a change of a list a config file sets.
 var errServerSecretKvsPinned = errors.New("the server credential stores are set in a config file (server-secret-kv): change them there")
@@ -207,7 +207,7 @@ func (repman *ReplicationManager) handlerMuxServerSecretKvEnable(w http.Response
 // @Success 200 {object} map[string]string "name"
 // @Failure 400 {string} string "Unknown entry"
 // @Failure 403 {string} string "No valid ACL: the server credentials grant is needed on every cluster"
-// @Failure 409 {string} string "A marketplace partner's mandatory store (the Cloud18 vault, the orchestrator): it cannot be switched off"
+// @Failure 409 {string} string "A mandatory store (the orchestrator the clusters run on; the Cloud18 vault on a marketplace partner): it cannot be switched off"
 // @Failure 409 {string} string "A standby, or the list is set by a config file"
 // @Router /api/clusters/settings/actions/server-secret-kv/disable/{entryName} [post]
 func (repman *ReplicationManager) handlerMuxServerSecretKvDisable(w http.ResponseWriter, r *http.Request) {

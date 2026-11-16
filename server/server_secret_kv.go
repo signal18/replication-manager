@@ -257,7 +257,7 @@ func (repman *ReplicationManager) checkServerSecretKvStores() {
 		repman.serverKvRunner().Start()
 	}
 	repman.ensureServerMarketplaceVaults()
-	repman.ensureServerMarketplaceOrchestrators()
+	repman.ensureServerOrchestratorStores()
 	repman.checkServerKvMoves()
 	repman.checkEtcCredentials()
 	for name, why := range repman.ServerKvBehind() {
@@ -323,22 +323,23 @@ func (repman *ReplicationManager) ensureServerMarketplaceVaults() {
 	}
 }
 
-// serverOrchestratorStores are the mandatory orchestrator stores of a marketplace partner: the
-// entry name, its plugin and the orchestrator it writes to.
+// serverOrchestratorStores are the mandatory orchestrator stores: the entry name, its plugin and
+// the orchestrator it writes to.
 var serverOrchestratorStores = []struct{ name, plugin, orchestrator string }{
 	{config.ConstSecretKvMarketplacePrefix + "opensvc", config.ConstSecretKvPluginOpenSVC, config.ConstOrchestratorOpenSVC},
 	{config.ConstSecretKvMarketplacePrefix + "kubernetes", config.ConstSecretKvPluginKubernetes, config.ConstOrchestratorKubernetes},
 }
 
-// ensureServerMarketplaceOrchestrators gives a marketplace partner (Cloud18MarketplacePartnerPublic)
-// its mandatory server stores on the orchestrators its clusters run on: the OpenSVC secret
-// system/sec/repman, the Kubernetes Secret repman-system (in the carrying cluster's namespace, as
-// the cluster level), each written through a monitored cluster on that orchestrator, the one it
-// already uses while it still runs there, else the first by name. Always on, never removed: on the
-// marketplace the copy to the orchestrator is not a choice. An on-prem instance adds its own.
-func (repman *ReplicationManager) ensureServerMarketplaceOrchestrators() {
+// ensureServerOrchestratorStores gives an instance whose clusters run on OpenSVC or Kubernetes its
+// mandatory server stores there: the OpenSVC secret system/sec/repman, the Kubernetes Secret
+// repman-system (in the carrying cluster's namespace, as the cluster level), each written through
+// a monitored cluster on that orchestrator, the one it already uses while it still runs there,
+// else the first by name. Always on, never removed: when replication-manager runs on an
+// orchestrator, the copy of its server secrets to it is not a choice, on-prem or on the
+// marketplace. An instance with no cluster on an orchestrator gets none.
+func (repman *ReplicationManager) ensureServerOrchestratorStores() {
 	c := repman.Conf
-	if !c.Cloud18MarketplacePartnerPublic() || repman.serverSecretKvsPinned() {
+	if repman.serverSecretKvsPinned() {
 		return
 	}
 	clusters := repman.clustersSnapshot() // name order
@@ -370,7 +371,7 @@ func (repman *ReplicationManager) ensureServerMarketplaceOrchestrators() {
 		}
 		if ok {
 			changed = true
-			repman.logSecurityEvent("server_secret_kv_offer", s.name, "", fmt.Sprintf("Server credential store %s %s through cluster %s: on a marketplace partner the copy to the orchestrator is mandatory", s.name, map[bool]string{true: "set", false: "added"}[existed], carrier.Name))
+			repman.logSecurityEvent("server_secret_kv_offer", s.name, "", fmt.Sprintf("Server credential store %s %s through cluster %s: the copy of the server secrets to the orchestrator the clusters run on is mandatory", s.name, map[bool]string{true: "set", false: "added"}[existed], carrier.Name))
 		}
 	}
 	if changed {
@@ -379,11 +380,14 @@ func (repman *ReplicationManager) ensureServerMarketplaceOrchestrators() {
 	}
 }
 
-// serverStoreMandatory: on a marketplace partner, an entry from a marketplace offer or a mandatory
-// orchestrator store cannot be switched off.
+// serverStoreMandatory: an entry that cannot be switched off: a mandatory orchestrator store
+// (always), a marketplace offer's vault on a marketplace partner.
 func (repman *ReplicationManager) serverStoreMandatory(name string) bool {
 	e, ok := repman.Conf.SecretKvEntryAt(config.SecretKvLevelServer, name)
-	return ok && e.Offer != "" && repman.Conf.Cloud18MarketplacePartnerPublic()
+	if !ok || e.Offer == "" {
+		return false
+	}
+	return e.Offer == config.ConstSecretKvOrchestratorOffer || repman.Conf.Cloud18MarketplacePartnerPublic()
 }
 
 // apiPublicHost is the host of api-public-url, "" when it has none.

@@ -958,14 +958,15 @@ const ConstSecretKvWrittenAsNewPlace = "(new place)"
 // a cluster: cloud18-<offer name>.
 const ConstSecretKvMarketplacePrefix = "cloud18-"
 
-// ConstSecretKvOrchestratorOffer is the Offer of a marketplace partner's mandatory orchestrator
-// store at the server level (cloud18-opensvc, cloud18-kubernetes): repman manages it, always on.
+// ConstSecretKvOrchestratorOffer is the Offer of a mandatory orchestrator store at the server level
+// (cloud18-opensvc, cloud18-kubernetes), for an instance whose clusters run on that orchestrator:
+// repman manages it, always on.
 const ConstSecretKvOrchestratorOffer = "orchestrator"
 
 // EnsureOrchestratorSecretKvAt gives level's list the managed entry name writing through
 // plugin's orchestrator (secret_kv-opensvc, secret_kv-kubernetes) by clusterName's connection, in
-// namespace for Kubernetes; on, whatever its switch was: a marketplace partner's copy to its
-// orchestrator is not a choice. An existing entry follows the cluster and namespace (a new place:
+// namespace for Kubernetes; on, whatever its switch was: the copy of the server secrets to the
+// orchestrator the clusters run on is not a choice. An existing entry follows the cluster and namespace (a new place:
 // the secrets are copied there with their history). True when it changed.
 func (conf *Config) EnsureOrchestratorSecretKvAt(level SecretKvLevel, name, plugin, clusterName, namespace string) (bool, error) {
 	if err := validateEntryName("credential store", name); err != nil {

@@ -623,18 +623,18 @@ is treated the same; only the path a level maps to differs per store.
   from the person's browser login: only it reaches `<prefix>/system/*`, while the cluster folders
   are shared with the cluster's sponsors (set up on the Cloud18 side); a cluster sponsor's or a
   member's session never sees a server path.
-- **Mandatory on the marketplace.** On a marketplace partner (`Cloud18MarketplacePartnerPublic`),
-  copying the server secrets is not a choice: the Cloud18 vault offer's server entry is always on
-  (switched back on at each tick, next to the partner's own vault too), and each orchestrator its
-  clusters run on gets a server entry of its own, `cloud18-opensvc` (`system/sec/repman`) or
+- **Mandatory copies.** When the instance's clusters run on OpenSVC or Kubernetes, copying the
+  server secrets to that orchestrator is not a choice, on-prem as on the marketplace: each
+  orchestrator gets a server entry of its own, `cloud18-opensvc` (`system/sec/repman`) or
   `cloud18-kubernetes` (`repman-system`, in the carrying cluster's namespace), offer
   `orchestrator`, always on, written through the monitored cluster it already uses while it still
-  runs there, else the first by name (`ensureServerMarketplaceOrchestrators`). Their disable is
-  refused (409), their settings are repman's (edit and remove refused as for an offer). The
-  orchestrator entry also writes the instance's user list under the key the infrastructure
-  documents for it, `<api host>_api-credentials` (the host of `api-public-url`), as an alias item
-  (`StoreItem.Alias`) that is never taken as the entry's place. An on-prem instance adds its own,
-  or none.
+  runs there, else the first by name (`ensureServerOrchestratorStores`). On a marketplace partner
+  (`Cloud18MarketplacePartnerPublic`) the Cloud18 vault offer's server entry is always on too
+  (switched back on at each tick, next to the partner's own vault too). Their disable is refused
+  (409), their settings are repman's (edit and remove refused as for an offer). The orchestrator
+  entry also writes the instance's user list under the key the infrastructure documents for it,
+  `<api host>_api-credentials` (the host of `api-public-url`), as an alias item
+  (`StoreItem.Alias`) that is never taken as the entry's place.
 - **The behind reason is whole.** A store's error over several lines (Vault's
   `Error making API request.` then the URL, the HTTP code and Vault's own errors) is kept on one
   line with every part, bounded to 512 bytes (`config.SecretKvBehindReason`), at both levels: the

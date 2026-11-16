@@ -571,37 +571,34 @@ func TestServerKvMarketplaceVaultPartnerOnly(t *testing.T) {
 	}
 }
 
-// A marketplace partner gets its mandatory orchestrator store, always on, through a monitored
-// cluster on that orchestrator; it writes the instance's user list also under the key the
-// infrastructure documents (<api host>_api-credentials), which is never taken as the entry's place.
-// An on-prem instance gets none.
-func TestServerKvMarketplaceOrchestratorMandatory(t *testing.T) {
+// An instance whose clusters run on OpenSVC gets its mandatory orchestrator store, always on,
+// on-prem as on the marketplace, through a monitored cluster there; none with no cluster on an
+// orchestrator. It writes the user list also under the key the infrastructure documents
+// (<api host>_api-credentials), never taken as the entry's place.
+func TestServerKvOrchestratorMandatory(t *testing.T) {
 	repman := serverKvTestManager(t, true)
-	c1 := repman.Clusters["c1"]
-	c1.Conf.ProvOrchestrator = config.ConstOrchestratorOpenSVC
 	c := repman.Conf
-	c.Cloud18, c.Cloud18GitUser, c.Cloud18SubscriptionPlan = true, "ops@example.com", "support"
 	c.APIPublicURL = "https://repman.example.com"
 	name := config.ConstSecretKvMarketplacePrefix + "opensvc"
 
-	repman.ensureServerMarketplaceOrchestrators()
+	repman.ensureServerOrchestratorStores()
 	if _, ok := c.SecretKvEntryAt(config.SecretKvLevelServer, name); ok {
-		t.Fatal("an on-prem instance got a mandatory orchestrator store")
+		t.Fatal("a store with no cluster on OpenSVC")
 	}
-	c.Cloud18SubscriptionPlan = "partner"
-	repman.ensureServerMarketplaceOrchestrators()
+	repman.Clusters["c1"].Conf.ProvOrchestrator = config.ConstOrchestratorOpenSVC
+	repman.ensureServerOrchestratorStores() // on-prem: not registered, not a partner
 	e, ok := c.SecretKvEntryAt(config.SecretKvLevelServer, name)
 	if !ok || !e.Enabled || e.Plugin != config.ConstSecretKvPluginOpenSVC || c.SecretKvSetting(e, config.ConstSecretKvOrchestratorCluster) != "c1" {
-		t.Fatalf("partner's OpenSVC store %+v %v", e, ok)
+		t.Fatalf("on-prem OpenSVC store %+v %v", e, ok)
 	}
 	if _, ok := c.SecretKvEntryAt(config.SecretKvLevelServer, config.ConstSecretKvMarketplacePrefix+"kubernetes"); ok {
 		t.Fatal("a Kubernetes store with no cluster on Kubernetes")
 	}
 	// switched off by hand (an old config): the tick switches it back on; the API refuses
 	_ = c.SetSecretKvEnabledAt(config.SecretKvLevelServer, name, false)
-	repman.ensureServerMarketplaceOrchestrators()
+	repman.ensureServerOrchestratorStores()
 	if e, _ := c.SecretKvEntryAt(config.SecretKvLevelServer, name); !e.Enabled || !repman.serverStoreMandatory(name) {
-		t.Fatal("the partner's orchestrator store can stay off")
+		t.Fatal("the orchestrator store can stay off")
 	}
 	// the user list: the instance's key and the documented one
 	items := repman.serverKvItems(name, apiCredentialsKey, credstore.Version{Value: "admin:x"}, false)
