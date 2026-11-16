@@ -126,7 +126,8 @@ function Home() {
     globalTabsRef.current.push('Dashboard')
     globalTabsRef.current.push('Resources')
     // the instance's server credential stores: its sysops and extsysops, whatever their sign-in
-    if (holdsServerCredentials(loggedUser)) {
+    // (the local admin sees them in Setup, where they also are)
+    if (loggedUser?.User != "admin" && holdsServerCredentials(loggedUser)) {
       globalTabsRef.current.push('Server Credentials')
     }
     // the instance's settings, named Setup like a cluster's and last (#2268)
