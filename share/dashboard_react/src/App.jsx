@@ -9,6 +9,7 @@ import SSOUpgradePoller from './components/SSOUpgradePoller'
 import AdminModeModal from './components/Modals/AdminModeModal'
 import Login from './Pages/Login'
 import Signup from './Pages/Signup'
+import Reveal from './Pages/Reveal'
 // const Login = lazy(() => import('./Pages/Login'))
 // const Home = lazy(() => import('./Pages/Home'))
 import Home from './Pages/Home'
@@ -146,6 +147,7 @@ function App() {
         />
         <Route path='/login' element={<Login />} />
         <Route path='/signup' element={<Signup />} />
+        <Route path='/reveal' element={<Reveal />} />
         <Route path='/dashboard' element={<Login dashboard />} />
         <Route
           path='/slideshow'

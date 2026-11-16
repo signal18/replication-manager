@@ -268,6 +268,9 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 	case "api-token-timeout":
 		val, _ := strconv.Atoi(value)
 		repman.Conf.SetApiTokenTimeout(val)
+	case "api-secret-reveal-expire-hours":
+		val, _ := strconv.Atoi(value)
+		repman.Conf.APISecretRevealExpireHours = val
 	case "cloud18":
 		if value == "true" {
 			// Set Cloud18=true optimistically so the UI sees the state change immediately.
@@ -658,6 +661,8 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 		repman.Conf.ApiServ = isactive
 	case "api-swagger-enabled":
 		repman.Conf.ApiSwaggerEnabled = isactive
+	case "api-secret-reveal":
+		repman.Conf.APISecretReveal = isactive
 	case "mcp-server":
 		repman.Conf.MCPServ = isactive
 		repman.restartMCPServer()
@@ -845,6 +850,8 @@ func (repman *ReplicationManager) switchRepmanSetting(name string) error {
 		repman.Conf.ApiServ = !repman.Conf.ApiServ
 	case "api-swagger-enabled":
 		repman.Conf.ApiSwaggerEnabled = !repman.Conf.ApiSwaggerEnabled
+	case "api-secret-reveal":
+		repman.Conf.APISecretReveal = !repman.Conf.APISecretReveal
 	case "mcp-server":
 		repman.Conf.MCPServ = !repman.Conf.MCPServ
 		repman.restartMCPServer()

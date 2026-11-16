@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 	"unicode"
 
 	"github.com/gorilla/mux"
@@ -44,6 +45,13 @@ type UserRotateResult struct {
 	// EtcFile: the instance's list is set in a configuration file under /etc, and the new list
 	// was written there ("written") or not (why, GWARN025): the file keeps the old password
 	EtcFile string `json:"etcFile,omitempty"`
+	// RevealMailedTo: the new password was mailed to the user as a one-time link (its login is
+	// an email): Password is then empty, nobody but the user sees it. RevealExpires: when the
+	// link stops working. RevealError: why no link was mailed, the password is then in Password,
+	// shown this once to who rotated it.
+	RevealMailedTo string    `json:"revealMailedTo,omitempty"`
+	RevealExpires  time.Time `json:"revealExpires,omitempty"`
+	RevealError    string    `json:"revealError,omitempty"`
 }
 
 // rotatedPasswordLength: a rotation bans a user who may be compromised, so a long password.
@@ -51,14 +59,14 @@ const rotatedPasswordLength = 24
 
 // handlerMuxUserRotatePassword rotates one user's password.
 // @Summary Rotate a user's password
-// @Description Gives the user a new generated password, returned once. A user of the instance's list (api-credentials) gets it on every cluster; a user of the cluster's own list (api-credentials-external) on this cluster. The user's open sessions are refused from the next request and its API tokens are revoked: this is how a compromised user is banned. The new list is written to the versioned store at once, then to every server credential store (Vault, OpenSVC, Kubernetes) at its next pass, and to the configuration file under /etc that sets it, when there is one.
+// @Description Gives the user a new generated password, returned once. A user of the instance's list (api-credentials) gets it on every cluster; a user of the cluster's own list (api-credentials-external) on this cluster. The user's open sessions are refused from the next request and its API tokens are revoked: this is how a compromised user is banned. The new list is written to the versioned store at once, then to every server credential store (Vault, OpenSVC, Kubernetes) at its next pass, and to the configuration file under /etc that sets it, when there is one. A user whose login is an email gets the new password by mail as a one-time link (api-secret-reveal), and the answer does not carry it: who rotated it does not see it.
 // @Tags User
 // @Accept json
 // @Produce json
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Param clusterName path string true "Cluster Name"
 // @Param body body UserRotateForm true "User"
-// @Success 200 {object} UserRotateResult "The new password, shown once"
+// @Success 200 {object} UserRotateResult "The new password, shown once; empty when it was mailed to the user as a one-time link (revealMailedTo)"
 // @Failure 400 {string} string "Invalid request or unknown user"
 // @Failure 403 {string} string "No valid ACL, or another user of the instance's list without cluster-server-credentials on every cluster"
 // @Failure 409 {string} string "This user's password cannot be rotated"
@@ -98,6 +106,8 @@ func (repman *ReplicationManager) handlerMuxUserRotatePassword(w http.ResponseWr
 		}
 		return
 	}
+	// out of rotateMu: a slow mail server holds no other rotation
+	repman.mailRotatedPassword(res, mycluster.Name)
 	tokens := fmt.Sprintf("%d API token(s) revoked", res.TokensRevoked)
 	if res.TokensError != "" {
 		tokens = res.TokensError
@@ -107,6 +117,11 @@ func (repman *ReplicationManager) handlerMuxUserRotatePassword(w http.ResponseWr
 	}
 	if res.EtcFile != "" {
 		tokens += ", /etc file " + res.EtcFile
+	}
+	if res.RevealMailedTo != "" {
+		tokens += ", new password mailed to the user as a one-time link"
+	} else if res.RevealError != "" {
+		tokens += ", new password shown to " + delegator + " (" + res.RevealError + ")"
 	}
 	if res.StoresBehindCount > 0 {
 		tokens += fmt.Sprintf(", %d server credential store(s) behind", res.StoresBehindCount)
@@ -248,6 +263,30 @@ func (repman *ReplicationManager) rotateAPIUserPassword(cl *cluster.Cluster, use
 		}
 	}
 	return res, nil
+}
+
+// mailRotatedPassword mails the new password to the user as a one-time link when its login is an
+// email and links can be mailed: then the answer no longer carries it, so who rotated it does not
+// see it (a ban by a sysops leaves the sysops without the new password). Otherwise the answer
+// carries it, shown once, with why it was not mailed.
+func (repman *ReplicationManager) mailRotatedPassword(res *UserRotateResult, clusterName string) {
+	if !strings.Contains(res.Username, "@") {
+		return // a login like admin: no address, the password is shown once as before
+	}
+	where := "on cluster " + clusterName
+	if res.Scope == cluster.APIUserScopeInstance {
+		where = "on every cluster of this replication-manager (" + strings.Join(res.Clusters, ", ") + ")"
+	}
+	expires, err := repman.mailSecretReveal(res.Username, clusterName, "Your new replication-manager password",
+		fmt.Sprintf("Your replication-manager password was changed %s: your sessions were ended and your API tokens revoked. Your login is %s.", where, res.Username),
+		[]SecretRevealItem{{Label: "Login", Value: res.Username}, {Label: "Password", Value: res.Password}})
+	if err != nil {
+		res.RevealError = "not mailed, shown here once: " + err.Error()
+		return
+	}
+	res.Password = ""
+	res.RevealMailedTo = res.Username
+	res.RevealExpires = expires
 }
 
 // errNoServerCredentials: the caller lacks the server credentials grant on a cluster.

@@ -2572,6 +2572,10 @@ definitions:
         type: integer
       apiSecretLoginWindow:
         type: integer
+      apiSecretReveal:
+        type: boolean
+      apiSecretRevealExpireHours:
+        type: integer
       apiServer:
         type: boolean
       apiSwaggerEnabled:
@@ -3638,6 +3642,8 @@ definitions:
         type: boolean
       mcpBindAddress:
         type: string
+      mcpKeepAliveInterval:
+        type: integer
       mcpPort:
         type: string
       mcpServer:
@@ -5531,6 +5537,31 @@ definitions:
       threads:
         type: integer
     type: object
+  server.SecretRevealForm:
+    properties:
+      code:
+        type: string
+    type: object
+  server.SecretRevealItem:
+    properties:
+      label:
+        type: string
+      value:
+        type: string
+    type: object
+  server.SecretRevealResult:
+    properties:
+      cluster:
+        type: string
+      for:
+        type: string
+      items:
+        items:
+          $ref: '#/definitions/server.SecretRevealItem'
+        type: array
+      title:
+        type: string
+    type: object
   server.SelfServicePrices:
     properties:
       apu:
@@ -5683,6 +5714,17 @@ definitions:
       password:
         type: string
       persistError:
+        type: string
+      revealError:
+        type: string
+      revealExpires:
+        type: string
+      revealMailedTo:
+        description: |-
+          RevealMailedTo: the new password was mailed to the user as a one-time link (its login is
+          an email): Password is then empty, nobody but the user sees it. RevealExpires: when the
+          link stops working. RevealError: why no link was mailed, the password is then in Password,
+          shown this once to who rotated it.
         type: string
       scope:
         type: string
@@ -22325,7 +22367,9 @@ paths:
         are revoked: this is how a compromised user is banned. The new list is written
         to the versioned store at once, then to every server credential store (Vault,
         OpenSVC, Kubernetes) at its next pass, and to the configuration file under
-        /etc that sets it, when there is one.'
+        /etc that sets it, when there is one. A user whose login is an email gets
+        the new password by mail as a one-time link (api-secret-reveal), and the answer
+        does not carry it: who rotated it does not see it.'
       parameters:
       - default: Bearer <Add access token here>
         description: Insert your access token
@@ -22348,7 +22392,8 @@ paths:
       - application/json
       responses:
         "200":
-          description: The new password, shown once
+          description: The new password, shown once; empty when it was mailed to the
+            user as a one-time link (revealMailedTo)
           schema:
             $ref: '#/definitions/server.UserRotateResult'
         "400":
@@ -23718,6 +23763,43 @@ paths:
       summary: Retrieve current repository component
       tags:
       - Public
+  /api/secret-reveal:
+    post:
+      consumes:
+      - application/json
+      description: 'Shows the secrets of a one-time link mailed by replication-manager
+        (a rotated password, credentials), once: the link is deleted at the first
+        open. No login: the code from the link is the credential. 404 for a link already
+        opened, expired or unknown, the same answer for the three.'
+      parameters:
+      - description: 'The code from the link (after #)'
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/server.SecretRevealForm'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: The secrets, shown once
+          schema:
+            $ref: '#/definitions/server.SecretRevealResult'
+        "400":
+          description: No code
+          schema:
+            type: string
+        "404":
+          description: Already opened, expired or unknown
+          schema:
+            type: string
+        "503":
+          description: One-time links are off on this instance
+          schema:
+            type: string
+      summary: Open a one-time secret link
+      tags:
+      - User
   /api/status:
     get:
       description: Returns the status of the replication manager indicating whether

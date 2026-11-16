@@ -1,6 +1,7 @@
 package server
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -321,10 +322,6 @@ Best regards,
 }
 
 func (repman *ReplicationManager) SendSponsorCredentialsMail(cl *cluster.Cluster) error {
-	if repman.Partner.Name == "" {
-		repman.Partner.Name = "Signal 18"
-	}
-
 	var user cluster.APIUser
 	for _, u := range cl.GetAPIUsers() {
 		if u.Roles[config.RoleSponsor] {
@@ -336,38 +333,13 @@ func (repman *ReplicationManager) SendSponsorCredentialsMail(cl *cluster.Cluster
 	if user.User == "" {
 		return fmt.Errorf("No sponsor found for cluster %s", cl.Name)
 	}
-
-	to := user.User
-
-	subj := fmt.Sprintf("DB Credentials for Cluster %s: %s", cl.Name, user.User)
-	msg := fmt.Sprintf(`Dear Sponsor,
-
-We are pleased to provide you with the necessary credentials to access your database. Please find the connection details below:
-
-- Cloud18 DB Read-Write Split Server: %s
-- Cloud18 DB Read-Write Server: %s
-- Cloud18 DB Read-Only Server: %s
-- Username: %s
-- Password: %s
-
-If you require assistance with connecting to the database, please do not hesitate to contact our support team.
-
-This email contains confidential information. Please do not share it with unauthorized individuals. If you are not the intended recipient, kindly delete this email immediately and notify us.
-
-Thank you for choosing Cloud18. We are committed to supporting your success.
-
-Best regards,
-
-%s
-`, cl.Conf.Cloud18DatabaseReadWriteSplitSrvRecord, cl.Conf.Cloud18DatabaseReadWriteSrvRecord, cl.Conf.Cloud18DatabaseReadSrvRecord, cl.GetSponsorUser(), cl.GetSponsorPass(), repman.Partner.Name)
-
-	return repman.SendEmailMessage(msg, subj, to, false, nil)
+	return repman.mailCredentialsReveal(cl, []string{user.User},
+		fmt.Sprintf("DB Credentials for Cluster %s: %s", cl.Name, user.User),
+		"Here are the connection details of your database "+cl.Name+".",
+		cl.GetSponsorUser(), cl.GetSponsorPass())
 }
 
 func (repman *ReplicationManager) SendDBACredentialsMail(cl *cluster.Cluster, dest, delegator string) error {
-	if repman.Partner.Name == "" {
-		repman.Partner.Name = "Signal 18"
-	}
 	to := make([]string, 0)
 	if dest == "dbops" {
 		for _, u := range cl.GetAPIUsers() {
@@ -392,35 +364,12 @@ func (repman *ReplicationManager) SendDBACredentialsMail(cl *cluster.Cluster, de
 			return fmt.Errorf("No valid email destination for cluster %s", cl.Name)
 		}
 	}
-	subj := fmt.Sprintf("DB Credentials for Cluster %s", cl.Name)
-	msg := fmt.Sprintf(`Dear DBA,
-
-User %s has delegated you to access the database.
-
-Please find below the credentials required to connect to the database:
-
-- Cloud18 DB Read-Write Split Server: %s
-- Cloud18 DB Read-Write Server: %s
-- Cloud18 DB Read-Only Server: %s
-- Username: %s
-- Password: %s
-
-Please treat this information as confidential and do not share it with unauthorized individuals. If you are not the intended recipient, please delete this email immediately and notify us.
-
-Thank you for your attention to this matter.
-
-Best regards,
-
-%s
-`, delegator, cl.Conf.Cloud18DatabaseReadWriteSplitSrvRecord, cl.Conf.Cloud18DatabaseReadWriteSrvRecord, cl.Conf.Cloud18DatabaseReadSrvRecord, cl.GetDbaUser(), cl.GetDbaPass(), repman.Partner.Name)
-
-	return repman.SendEmailMessage(msg, subj, strings.Join(to, ","), false, nil)
+	return repman.mailCredentialsReveal(cl, to, fmt.Sprintf("DB Credentials for Cluster %s", cl.Name),
+		fmt.Sprintf("User %s has delegated you to access the database of cluster %s.", delegator, cl.Name),
+		cl.GetDbaUser(), cl.GetDbaPass())
 }
 
 func (repman *ReplicationManager) SendSysAdmCredentialsMail(cl *cluster.Cluster, dest, delegator string) error {
-	if repman.Partner.Name == "" {
-		repman.Partner.Name = "Signal 18"
-	}
 	to := make([]string, 0)
 	if dest == "sysops" {
 		for _, u := range cl.GetAPIUsers() {
@@ -446,29 +395,9 @@ func (repman *ReplicationManager) SendSysAdmCredentialsMail(cl *cluster.Cluster,
 		}
 	}
 
-	subj := fmt.Sprintf("DB Credentials for Cluster %s", cl.Name)
-	msg := fmt.Sprintf(`Dear System Admin,
-
-User %s has delegated you to access the database server.
-
-Please find below the credentials required to connect to the server:
-
-- Cloud18 DB Read-Write Split Server: %s
-- Cloud18 DB Read-Write Server: %s
-- Cloud18 DB Read-Only Server: %s
-- Username: %s
-- Password: %s
-
-Please treat this information as confidential and do not share it with unauthorized individuals. If you are not the intended recipient, please delete this email immediately and notify us.
-
-Thank you for your attention to this matter.
-
-Best regards,
-
-%s
-`, delegator, cl.Conf.Cloud18DatabaseReadWriteSplitSrvRecord, cl.Conf.Cloud18DatabaseReadWriteSrvRecord, cl.Conf.Cloud18DatabaseReadSrvRecord, cl.GetDbaUser(), cl.GetDbaPass(), repman.Partner.Name)
-
-	return repman.SendEmailMessage(msg, subj, strings.Join(to, ","), false, nil)
+	return repman.mailCredentialsReveal(cl, to, fmt.Sprintf("DB Credentials for Cluster %s", cl.Name),
+		fmt.Sprintf("User %s has delegated you to access the database server of cluster %s.", delegator, cl.Name),
+		cl.GetDbaUser(), cl.GetDbaPass())
 }
 
 func (repman *ReplicationManager) SendSponsorUnsubscribeMail(cl *cluster.Cluster, userform cluster.UserForm) error {
@@ -700,4 +629,32 @@ Best regards,
 `, cl.Name, userform.Reason, repman.Partner.Name)
 
 	return repman.SendEmailMessage(msg, subj, to, false, nil)
+}
+
+// mailCredentialsReveal mails each of to the connection details of cl, the password as a one-time
+// link of its own (a link opened by one recipient shows nothing to another), never in the mail. With
+// the links off or impossible, nothing is sent: a password is never mailed in clear.
+func (repman *ReplicationManager) mailCredentialsReveal(cl *cluster.Cluster, to []string, subj, intro, user, pass string) error {
+	if !repman.secretRevealEnabled() {
+		return fmt.Errorf("credentials not mailed: %w", errSecretRevealOff)
+	}
+	servers := fmt.Sprintf(`%s
+
+- Cloud18 DB Read-Write Split Server: %s
+- Cloud18 DB Read-Write Server: %s
+- Cloud18 DB Read-Only Server: %s
+- Username: %s
+- Password: behind the link below.`, intro, cl.Conf.Cloud18DatabaseReadWriteSplitSrvRecord, cl.Conf.Cloud18DatabaseReadWriteSrvRecord, cl.Conf.Cloud18DatabaseReadSrvRecord, user)
+	var errs []error
+	for _, dest := range to {
+		dest = strings.TrimSpace(dest)
+		if dest == "" {
+			continue
+		}
+		if _, err := repman.mailSecretReveal(dest, cl.Name, subj, servers,
+			[]SecretRevealItem{{Label: "Username", Value: user}, {Label: "Password", Value: pass}}); err != nil {
+			errs = append(errs, fmt.Errorf("%s: %w", dest, err))
+		}
+	}
+	return errors.Join(errs...)
 }

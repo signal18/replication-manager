@@ -24119,7 +24119,7 @@
         },
         "/api/clusters/{clusterName}/users/rotate-password": {
             "post": {
-                "description": "Gives the user a new generated password, returned once. A user of the instance's list (api-credentials) gets it on every cluster; a user of the cluster's own list (api-credentials-external) on this cluster. The user's open sessions are refused from the next request and its API tokens are revoked: this is how a compromised user is banned. The new list is written to the versioned store at once, then to every server credential store (Vault, OpenSVC, Kubernetes) at its next pass, and to the configuration file under /etc that sets it, when there is one.",
+                "description": "Gives the user a new generated password, returned once. A user of the instance's list (api-credentials) gets it on every cluster; a user of the cluster's own list (api-credentials-external) on this cluster. The user's open sessions are refused from the next request and its API tokens are revoked: this is how a compromised user is banned. The new list is written to the versioned store at once, then to every server credential store (Vault, OpenSVC, Kubernetes) at its next pass, and to the configuration file under /etc that sets it, when there is one. A user whose login is an email gets the new password by mail as a one-time link (api-secret-reveal), and the answer does not carry it: who rotated it does not see it.",
                 "consumes": [
                     "application/json"
                 ],
@@ -24158,7 +24158,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "The new password, shown once",
+                        "description": "The new password, shown once; empty when it was mailed to the user as a one-time link (revealMailedTo)",
                         "schema": {
                             "$ref": "#/definitions/server.UserRotateResult"
                         }
@@ -25000,6 +25000,58 @@
                     },
                     "404": {
                         "description": "404 Something went wrong - Not Found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/secret-reveal": {
+            "post": {
+                "description": "Shows the secrets of a one-time link mailed by replication-manager (a rotated password, credentials), once: the link is deleted at the first open. No login: the code from the link is the credential. 404 for a link already opened, expired or unknown, the same answer for the three.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "User"
+                ],
+                "summary": "Open a one-time secret link",
+                "parameters": [
+                    {
+                        "description": "The code from the link (after #)",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/server.SecretRevealForm"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The secrets, shown once",
+                        "schema": {
+                            "$ref": "#/definitions/server.SecretRevealResult"
+                        }
+                    },
+                    "400": {
+                        "description": "No code",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "Already opened, expired or unknown",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "503": {
+                        "description": "One-time links are off on this instance",
                         "schema": {
                             "type": "string"
                         }
@@ -30311,6 +30363,12 @@
                 "apiSecretLoginWindow": {
                     "type": "integer"
                 },
+                "apiSecretReveal": {
+                    "type": "boolean"
+                },
+                "apiSecretRevealExpireHours": {
+                    "type": "integer"
+                },
                 "apiServer": {
                     "type": "boolean"
                 },
@@ -31883,6 +31941,9 @@
                 },
                 "mcpBindAddress": {
                     "type": "string"
+                },
+                "mcpKeepAliveInterval": {
+                    "type": "integer"
                 },
                 "mcpPort": {
                     "type": "string"
@@ -34630,6 +34691,45 @@
                 }
             }
         },
+        "server.SecretRevealForm": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "string"
+                }
+            }
+        },
+        "server.SecretRevealItem": {
+            "type": "object",
+            "properties": {
+                "label": {
+                    "type": "string"
+                },
+                "value": {
+                    "type": "string"
+                }
+            }
+        },
+        "server.SecretRevealResult": {
+            "type": "object",
+            "properties": {
+                "cluster": {
+                    "type": "string"
+                },
+                "for": {
+                    "type": "string"
+                },
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/server.SecretRevealItem"
+                    }
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
         "server.SelfServicePrices": {
             "type": "object",
             "properties": {
@@ -34834,6 +34934,16 @@
                     "type": "string"
                 },
                 "persistError": {
+                    "type": "string"
+                },
+                "revealError": {
+                    "type": "string"
+                },
+                "revealExpires": {
+                    "type": "string"
+                },
+                "revealMailedTo": {
+                    "description": "RevealMailedTo: the new password was mailed to the user as a one-time link (its login is\nan email): Password is then empty, nobody but the user sees it. RevealExpires: when the\nlink stops working. RevealError: why no link was mailed, the password is then in Password,\nshown this once to who rotated it.",
                     "type": "string"
                 },
                 "scope": {
