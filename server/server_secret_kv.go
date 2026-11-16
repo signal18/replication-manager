@@ -415,6 +415,8 @@ type ServerSecretKvState struct {
 	Behind    string    `json:"behind,omitempty"`
 	// Path is the entry's folder for this instance, empty while the instance is not named
 	Path string `json:"path,omitempty"`
+	// Mandatory: the entry cannot be switched off (serverStoreMandatory); the GUI shows it locked
+	Mandatory bool `json:"mandatory,omitempty"`
 }
 
 // ServerSecretKvListResult is the server entries for the API: never a secret.
@@ -447,11 +449,15 @@ func (repman *ReplicationManager) serverSecretKvList() ServerSecretKvListResult 
 	}
 	sort.Strings(res.Keys)
 	behind := repman.ServerKvBehind()
+	mandatory := map[string]bool{}
+	for _, e := range res.Entries {
+		mandatory[e.Name] = repman.serverStoreMandatory(e.Name)
+	}
 	k := &repman.serverSecretKv
 	k.mu.Lock()
 	defer k.mu.Unlock()
 	for _, e := range res.Entries {
-		st := ServerSecretKvState{LastWrite: k.lastWritten[e.Name], Behind: behind[e.Name]}
+		st := ServerSecretKvState{LastWrite: k.lastWritten[e.Name], Behind: behind[e.Name], Mandatory: mandatory[e.Name]}
 		if named {
 			st.Path = repman.Conf.ServerSecretKvLocation(e, name)
 		}

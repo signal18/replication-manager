@@ -600,6 +600,10 @@ func TestServerKvOrchestratorMandatory(t *testing.T) {
 	if e, _ := c.SecretKvEntryAt(config.SecretKvLevelServer, name); !e.Enabled || !repman.serverStoreMandatory(name) {
 		t.Fatal("the orchestrator store can stay off")
 	}
+	// the GUI shows it locked: the list says so
+	if !repman.serverSecretKvList().States[name].Mandatory {
+		t.Fatal("the list does not mark the orchestrator store mandatory")
+	}
 	// the user list: the instance's key and the documented one
 	items := repman.serverKvItems(name, apiCredentialsKey, credstore.Version{Value: "admin:x"}, false)
 	var place, alias bool
@@ -614,4 +618,3 @@ func TestServerKvOrchestratorMandatory(t *testing.T) {
 		t.Fatalf("another secret written under the documented key too: %+v", other)
 	}
 }
-

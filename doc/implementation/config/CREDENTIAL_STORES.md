@@ -635,6 +635,11 @@ is treated the same; only the path a level maps to differs per store.
   entry also writes the instance's user list under the key the infrastructure documents for it,
   `<api host>_api-credentials` (the host of `api-public-url`), as an alias item
   (`StoreItem.Alias`) that is never taken as the entry's place.
+  These rules are repman's, not the operator's: the server list's state carries `mandatory`
+  (`serverStoreMandatory`), and the GUI shows such an entry locked (its switch fixed, a
+  "Mandatory" badge saying why). At the server level the GUI has no "Add OpenSVC" or
+  "Add Kubernetes" button, since those copies are automatic; "Add a vault" stays, for a vault of
+  the client's own.
 - **The behind reason is whole.** A store's error over several lines (Vault's
   `Error making API request.` then the URL, the HTTP code and Vault's own errors) is kept on one
   line with every part, bounded to 512 bytes (`config.SecretKvBehindReason`), at both levels: the

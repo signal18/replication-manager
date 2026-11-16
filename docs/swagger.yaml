@@ -5690,6 +5690,10 @@ definitions:
         type: string
       lastWrite:
         type: string
+      mandatory:
+        description: 'Mandatory: the entry cannot be switched off (serverStoreMandatory);
+          the GUI shows it locked'
+        type: boolean
       path:
         description: Path is the entry's folder for this instance, empty while the
           instance is not named
