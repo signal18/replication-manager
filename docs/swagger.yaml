@@ -5721,8 +5721,8 @@ definitions:
         type: string
       revealMailedTo:
         description: |-
-          RevealMailedTo: the new password was mailed to the user as a one-time link (its login is
-          an email): Password is then empty, nobody but the user sees it. RevealExpires: when the
+          RevealMailedTo: the new password was mailed as a one-time link to this address, the
+          connected user who rotated it (never the rotated account): Password is then empty. RevealExpires: when the
           link stops working. RevealError: why no link was mailed, the password is then in Password,
           shown this once to who rotated it.
         type: string
@@ -14582,8 +14582,9 @@ paths:
     post:
       consumes:
       - application/json
-      description: This endpoint sends the Vault token to the specified cluster via
-        email.
+      description: This endpoint mails the cluster's Vault token to its mail-to addresses
+        (the cluster's external users left out), each as a one-time link (api-secret-reveal),
+        never in the mail.
       parameters:
       - default: Bearer <Add access token here>
         description: Insert your access token
@@ -22367,9 +22368,12 @@ paths:
         are revoked: this is how a compromised user is banned. The new list is written
         to the versioned store at once, then to every server credential store (Vault,
         OpenSVC, Kubernetes) at its next pass, and to the configuration file under
-        /etc that sets it, when there is one. A user whose login is an email gets
-        the new password by mail as a one-time link (api-secret-reveal), and the answer
-        does not carry it: who rotated it does not see it.'
+        /etc that sets it, when there is one. The new password is mailed as a one-time
+        link (api-secret-reveal), never to the rotated account: to the connected user
+        who rotated it, at its login''s email, when its role covers the level (the
+        instance''s list: sysops, extsysops; a cluster''s list: also dbops, extdbops,
+        sponsor). The answer then does not carry it (revealMailedTo); otherwise it
+        does, shown once (revealError says why).'
       parameters:
       - default: Bearer <Add access token here>
         description: Insert your access token

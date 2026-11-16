@@ -45,8 +45,8 @@ type UserRotateResult struct {
 	// EtcFile: the instance's list is set in a configuration file under /etc, and the new list
 	// was written there ("written") or not (why, GWARN025): the file keeps the old password
 	EtcFile string `json:"etcFile,omitempty"`
-	// RevealMailedTo: the new password was mailed to the user as a one-time link (its login is
-	// an email): Password is then empty, nobody but the user sees it. RevealExpires: when the
+	// RevealMailedTo: the new password was mailed as a one-time link to this address, the
+	// connected user who rotated it (never the rotated account): Password is then empty. RevealExpires: when the
 	// link stops working. RevealError: why no link was mailed, the password is then in Password,
 	// shown this once to who rotated it.
 	RevealMailedTo string     `json:"revealMailedTo,omitempty"`
@@ -59,7 +59,7 @@ const rotatedPasswordLength = 24
 
 // handlerMuxUserRotatePassword rotates one user's password.
 // @Summary Rotate a user's password
-// @Description Gives the user a new generated password, returned once. A user of the instance's list (api-credentials) gets it on every cluster; a user of the cluster's own list (api-credentials-external) on this cluster. The user's open sessions are refused from the next request and its API tokens are revoked: this is how a compromised user is banned. The new list is written to the versioned store at once, then to every server credential store (Vault, OpenSVC, Kubernetes) at its next pass, and to the configuration file under /etc that sets it, when there is one. A user whose login is an email gets the new password by mail as a one-time link (api-secret-reveal), and the answer does not carry it: who rotated it does not see it.
+// @Description Gives the user a new generated password, returned once. A user of the instance's list (api-credentials) gets it on every cluster; a user of the cluster's own list (api-credentials-external) on this cluster. The user's open sessions are refused from the next request and its API tokens are revoked: this is how a compromised user is banned. The new list is written to the versioned store at once, then to every server credential store (Vault, OpenSVC, Kubernetes) at its next pass, and to the configuration file under /etc that sets it, when there is one. The new password is mailed as a one-time link (api-secret-reveal), never to the rotated account: to the connected user who rotated it, at its login's email, when its role covers the level (the instance's list: sysops, extsysops; a cluster's list: also dbops, extdbops, sponsor). The answer then does not carry it (revealMailedTo); otherwise it does, shown once (revealError says why).
 // @Tags User
 // @Accept json
 // @Produce json
@@ -107,7 +107,7 @@ func (repman *ReplicationManager) handlerMuxUserRotatePassword(w http.ResponseWr
 		return
 	}
 	// out of rotateMu: a slow mail server holds no other rotation
-	repman.mailRotatedPassword(res, mycluster.Name)
+	repman.mailRotatedPassword(res, mycluster, delegator)
 	tokens := fmt.Sprintf("%d API token(s) revoked", res.TokensRevoked)
 	if res.TokensError != "" {
 		tokens = res.TokensError
@@ -265,27 +265,64 @@ func (repman *ReplicationManager) rotateAPIUserPassword(cl *cluster.Cluster, use
 	return res, nil
 }
 
-// mailRotatedPassword mails the new password to the user as a one-time link when its login is an
-// email and links can be mailed: then the answer no longer carries it, so who rotated it does not
-// see it (a ban by a sysops leaves the sysops without the new password). Otherwise the answer
-// carries it, shown once, with why it was not mailed.
-func (repman *ReplicationManager) mailRotatedPassword(res *UserRotateResult, clusterName string) {
-	if !strings.Contains(res.Username, "@") {
-		return // a login like admin: no address, the password is shown once as before
+// rotatedPasswordRecipient is who gets a rotated password by mail: the connected user who rotated
+// it, at its login's email, when its role covers the secret's level; never the rotated account
+// itself (if it is compromised, its mailbox may be too).
+//   - a user of the instance's list is a server secret: sysops or extsysops only;
+//   - a user of a cluster's own list is a cluster secret: sysops, extsysops, dbops, extdbops or
+//     sponsor of that cluster.
+//
+// "" with why when the connected user cannot receive it: the password is then shown once to them.
+func rotatedPasswordRecipient(scope, delegator string, delegatorRoles map[string]bool) (string, string) {
+	levelRoles := []string{config.RoleSysOps, config.RoleExtSysOps}
+	level := "a server secret (a user of the instance's list) is mailed to a sysops or extsysops only"
+	if scope != cluster.APIUserScopeInstance {
+		levelRoles = append(levelRoles, config.RoleDBOps, config.RoleExtDBOps, config.RoleSponsor)
+		level = "a cluster secret is mailed to a sysops, extsysops, dbops, extdbops or sponsor of the cluster only"
+	}
+	held := false
+	for _, r := range levelRoles {
+		held = held || delegatorRoles[r]
+	}
+	if !held {
+		return "", level
+	}
+	if !strings.Contains(delegator, "@") {
+		return "", delegator + " has no email address"
+	}
+	return delegator, ""
+}
+
+// mailRotatedPassword mails the new password as a one-time link to the connected user
+// (rotatedPasswordRecipient) when links can be mailed: the answer then no longer carries it.
+// Otherwise the answer carries it, shown once, with why it was not mailed.
+func (repman *ReplicationManager) mailRotatedPassword(res *UserRotateResult, cl *cluster.Cluster, delegator string) {
+	var roles map[string]bool
+	if u, ok := cl.GetAPIUsers()[delegator]; ok {
+		roles = u.Roles
+	}
+	repman.mailRotatedPasswordTo(res, cl.Name, delegator, roles)
+}
+
+func (repman *ReplicationManager) mailRotatedPasswordTo(res *UserRotateResult, clusterName, delegator string, delegatorRoles map[string]bool) {
+	to, why := rotatedPasswordRecipient(res.Scope, delegator, delegatorRoles)
+	if to == "" {
+		res.RevealError = "not mailed, shown here once: " + why
+		return
 	}
 	where := "on cluster " + clusterName
 	if res.Scope == cluster.APIUserScopeInstance {
 		where = "on every cluster of this replication-manager (" + strings.Join(res.Clusters, ", ") + ")"
 	}
-	expires, err := repman.mailSecretReveal(res.Username, clusterName, "Your new replication-manager password",
-		fmt.Sprintf("Your replication-manager password was changed %s: your sessions were ended and your API tokens revoked. Your login is %s.", where, res.Username),
+	expires, err := repman.mailSecretReveal(to, clusterName, "New replication-manager password of "+res.Username,
+		fmt.Sprintf("You rotated the replication-manager password of %s %s: its sessions were ended and its API tokens revoked. Hand the new password to its owner by a safe channel.", res.Username, where),
 		[]SecretRevealItem{{Label: "Login", Value: res.Username}, {Label: "Password", Value: res.Password}})
 	if err != nil {
 		res.RevealError = "not mailed, shown here once: " + err.Error()
 		return
 	}
 	res.Password = ""
-	res.RevealMailedTo = res.Username
+	res.RevealMailedTo = to
 	res.RevealExpires = &expires
 }
 

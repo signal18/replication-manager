@@ -182,24 +182,53 @@ func TestMailSecretRevealCarriesNoSecret(t *testing.T) {
 	}
 }
 
-// A rotation of a user whose login is an email: the answer no longer carries the password, the
-// user gets it by mail; a login without an address keeps today's answer.
+// The rotated password goes to the connected user who rotated it, at its email, when its role covers
+// the level: the instance's list (a server secret) to a sysops or extsysops only, a cluster's list
+// also to a dbops, extdbops or sponsor; never to the rotated account. Otherwise shown once.
+func TestRotatedPasswordRecipient(t *testing.T) {
+	sysops := map[string]bool{config.RoleSysOps: true}
+	cases := []struct {
+		scope, delegator string
+		roles            map[string]bool
+		want             string
+	}{
+		{"instance", "ops@example.com", sysops, "ops@example.com"},
+		{"instance", "ext@example.com", map[string]bool{config.RoleExtSysOps: true}, "ext@example.com"},
+		{"instance", "dba@example.com", map[string]bool{config.RoleDBOps: true}, ""},
+		{"instance", "sp@example.com", map[string]bool{config.RoleSponsor: true}, ""},
+		{"instance", "admin", sysops, ""},
+		{"cluster", "dba@example.com", map[string]bool{config.RoleDBOps: true}, "dba@example.com"},
+		{"cluster", "xdba@example.com", map[string]bool{config.RoleExtDBOps: true}, "xdba@example.com"},
+		{"cluster", "sp@example.com", map[string]bool{config.RoleSponsor: true}, "sp@example.com"},
+		{"cluster", "ops@example.com", sysops, "ops@example.com"},
+		{"cluster", "viewer@example.com", map[string]bool{}, ""},
+	}
+	for _, c := range cases {
+		if got, why := rotatedPasswordRecipient(c.scope, c.delegator, c.roles); got != c.want || (got == "" && why == "") {
+			t.Errorf("%s by %s %v: %q (%s), want %q", c.scope, c.delegator, c.roles, got, why, c.want)
+		}
+	}
+}
+
+// Mailed: the answer has no password and names the connected user; the mail has no password.
+// Not mailable: the password stays in the answer with why.
 func TestRotatedPasswordMailed(t *testing.T) {
 	repman := revealTestManager(t)
 	sent := captureRevealMail(t)
-	res := &UserRotateResult{Username: "ann@example.com", Password: "New-Pass-24", Scope: "cluster", Clusters: []string{"c1"}}
-	repman.mailRotatedPassword(res, "c1")
-	if res.Password != "" || res.RevealMailedTo != "ann@example.com" || res.RevealExpires == nil || len(*sent) != 1 || strings.Contains((*sent)[0], "New-Pass-24") {
-		t.Fatalf("mailed rotation: %+v, mails %d", res, len(*sent))
+	res := &UserRotateResult{Username: "ann@example.com", Password: "New-Pass-24", Scope: "instance", Clusters: []string{"c1"}}
+	repman.mailRotatedPasswordTo(res, "c1", "ops@example.com", map[string]bool{config.RoleSysOps: true})
+	if res.Password != "" || res.RevealMailedTo != "ops@example.com" || res.RevealExpires == nil || len(*sent) != 1 ||
+		strings.Contains((*sent)[0], "New-Pass-24") || !strings.HasPrefix((*sent)[0], "ops@example.com\n") {
+		t.Fatalf("mailed rotation: %+v, mails %q", res, *sent)
 	}
-	admin := &UserRotateResult{Username: "admin", Password: "Admin-Pass", Scope: "instance"}
-	repman.mailRotatedPassword(admin, "c1")
-	if admin.Password != "Admin-Pass" || admin.RevealMailedTo != "" || len(*sent) != 1 {
-		t.Fatalf("admin rotation: %+v", admin)
+	admin := &UserRotateResult{Username: "bob", Password: "Bob-Pass", Scope: "instance"}
+	repman.mailRotatedPasswordTo(admin, "c1", "admin", map[string]bool{config.RoleSysOps: true})
+	if admin.Password != "Bob-Pass" || admin.RevealMailedTo != "" || admin.RevealError == "" || len(*sent) != 1 {
+		t.Fatalf("rotated by admin: %+v", admin)
 	}
 	repman.Conf.MailSMTPAddr = ""
 	nomail := &UserRotateResult{Username: "bob@example.com", Password: "Bob-Pass", Scope: "cluster"}
-	repman.mailRotatedPassword(nomail, "c1")
+	repman.mailRotatedPasswordTo(nomail, "c1", "sp@example.com", map[string]bool{config.RoleSponsor: true})
 	if nomail.Password != "Bob-Pass" || nomail.RevealError == "" {
 		t.Fatalf("no mail server: %+v", nomail)
 	}
@@ -239,7 +268,7 @@ func TestSecretRevealNeedsAPublicAddress(t *testing.T) {
 			t.Fatalf("api-public-url %q gave a link", u)
 		}
 		res := &UserRotateResult{Username: "ann@example.com", Password: "pw", Scope: "cluster"}
-		repman.mailRotatedPassword(res, "c1")
+		repman.mailRotatedPasswordTo(res, "c1", "sp@example.com", map[string]bool{config.RoleSponsor: true})
 		if res.Password != "pw" || res.RevealError == "" || res.RevealExpires != nil {
 			t.Fatalf("api-public-url %q: %+v", u, res)
 		}
