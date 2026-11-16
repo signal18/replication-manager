@@ -3,7 +3,9 @@
 *How we build repman, and what it must never do. Two layers: **functional** laws
 (what repman must / must not do — these come first) and **technical** laws (how
 we build it). When two pull against each other, the functional law wins, and the
-**perpetual-monitoring invariant** (F2 + F3 + F4) wins over everything.*
+**perpetual-monitoring invariant** (F2 + F3 + F4) wins over everything. The
+**security laws** (F9, F10, T15, T26, T31) weigh more than every other technical law:
+testing or documenting a feature never justifies a secret on disk, in a log or in public.*
 
 ---
 
@@ -507,3 +509,12 @@ demo.
 *Precedence: functional laws outrank technical laws; the perpetual-monitoring
 invariant (F2 + F3 + F4) outranks everything. When two laws pull against each
 other, the one that keeps us monitoring — perpetually, safely — wins.*
+
+*Security laws carry extra weight: F9 (no clear secret in git), F10 (no secret in a
+log), T15 (no client or infrastructure name in public), T26 (a security fix stays
+private until its release) and T31 (no secret in a checkout) outrank every other
+technical law. Testing a feature (T13), documenting it (T8), tracking it (T9, T11)
+or shipping it on time weigh less: a test that needs a token takes the slower safe
+path (`/tmp`, a pipe, the store), and a feature ships later rather than with a
+leak. Example (2026-11-16): a Vault token left for two weeks in a dev checkout,
+for the sake of a test (T31).*
