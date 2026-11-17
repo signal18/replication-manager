@@ -22,7 +22,7 @@ import (
 // The other tests of the arbitration (test_split_brain.go) all cut a link. This one covers
 // the plain master loss of a healthy pair, where the standby won the arbitration only
 // because it asked first and the active never reports to the arbitrator in normal operation.
-// It is RED until #2040 is fixed.
+// It was red before the #2040 fix (a standby with a live active asked the arbitrator first).
 func (regtest *RegTest) TestStandbyNeverFailsOverWithLiveActive(cl *cluster.Cluster, conf string, test *cluster.Test) bool {
 	return standbyNeverFailsOverWithLiveActive(cl, "testStandbyNeverFailsOverWithLiveActive")
 }
@@ -78,7 +78,9 @@ func standbyNeverFailsOverWithLiveActive(cl *cluster.Cluster, label string) bool
 					logf("peer failover mode put back to %s", peerMode)
 					return
 				}
-				time.Sleep(2 * time.Second)
+				if attempt < 3 {
+					time.Sleep(2 * time.Second)
+				}
 			}
 			cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
 				"%s: the peer may be left in automatic failover: put it back to %s by hand (%v)", label, peerMode, err)
