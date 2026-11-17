@@ -8,7 +8,7 @@ import { Link } from 'react-router-dom'
 import { clearCluster, rotateUserPassword } from '../../redux/clusterSlice'
 import ConfirmModal from '../Modals/ConfirmModal'
 import CopyTextModal from '../Modals/CopyTextModal'
-import { rotationText, rotationTitle } from '../../utility/passwordRotation'
+import { rotationCopyable, rotationText, rotationTitle } from '../../utility/passwordRotation'
 import AlertBadge, { HealthAlertBadge, NetworkBadge } from '../AlertBadge'
 import AlertModal from '../Modals/AlertModal'
 import SecurityScoreModal from '../Modals/SecurityScoreModal'
@@ -706,6 +706,7 @@ function Navbar({ username, user }) {
           closeModal={() => { const own = rotatedMine.own; setRotatedMine(null); if (own) handleLogout() }}
           title={rotationTitle(rotatedMine) + (rotatedMine.own ? ' — your session has ended: close this window to sign in again' : '')}
           text={rotationText(rotatedMine)}
+          copyable={rotationCopyable(rotatedMine)}
         />
       )}
       {isApiTokensOpen && (
