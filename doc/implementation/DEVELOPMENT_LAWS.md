@@ -469,6 +469,24 @@ it is in the public repo), and nobody knows it is there. So:
 Example (2026-11-16): a `.vault-token` from a Vault test of 30 October was found untracked in a dev
 instance's checkout, two weeks later; it was deleted.
 
+**T32. Coordinate through the team's coordination channel: report before touching a shared
+instance, report the result after, and let the business objective order the work.** One
+coordinator (a person, or the session they name) holds the map of the shared instances (the
+preprod pair, the dev instances, the fleet, a client's cluster) and the order of the objectives.
+Before deploying, restarting or testing on a shared instance, a session posts in the coordination
+channel: the instance, the head it deploys, what the test restarts, how long it needs; and waits
+for the go or the wait. After, it posts what ran and what did not. The order of the objectives is
+fixed: the paying clients first, then Cloud18 growth, then anything technical. A finding is a gate
+only if it crosses the trust boundary (another tenant, the public, git, logs, public images, an
+identity we cannot ban) or stops silent credential rotation; everything else is noted and left for
+later, never put on the critical path. A session never drags the maintainer into an unrelated fix
+in the middle of an objective: it notes it and keeps going. A post in that channel is reporting, not
+speaking for the maintainer: it needs no approval.
+Example (2026-11-17): three sessions worked the same night on a credential fix, a split-brain fix
+and a fleet deploy; the ones that reported before acting and after could be sequenced on the one
+preprod pair, released and announced to the clients within the evening; a resize that touched a
+second cluster's server was caught because the result was reported, not assumed.
+
 ## Debugging discipline — investigate FULLY before you unblock
 
 **Never unblock a stuck issue before you have investigated it fully.** A restart, a
