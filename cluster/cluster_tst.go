@@ -759,6 +759,9 @@ func (cluster *Cluster) StartDatabaseWaitRejoin(server *ServerMonitor) error {
 	return err
 }
 
+// RollingRestart no longer calls K8SRestartDatabaseServiceWaitRejoin: on Kubernetes it runs the
+// stop, wait Failed, refresh, StartDatabaseWaitRejoin sequence it runs on OpenSVC (cluster_roll.go).
+//
 // K8SRestartDatabaseServiceWaitRejoin mirrors StartDatabaseWaitRejoin's
 // synchronization contract (spawn WaitRejoin, prime the need-config-fetch
 // cookie, wait for rejoin completion) but drives the restart via

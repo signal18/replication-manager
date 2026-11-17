@@ -231,64 +231,51 @@ func (cluster *Cluster) RollingRestart() error {
 				time.Sleep(time.Second)
 			}
 
-			// K8SRestartDatabaseServiceWaitRejoin (cluster_tst.go) is
-			// lighter than the generic stop->wait failed->start dance
-			// below. Not RestartDatabaseService/K8SForceRepullDatabaseService
-			// either: this is a scheduled/bulk restart
-			// (scheduler-rolling-restart), and silently re-asserting the
-			// image-pull-policy setting on every scheduled restart would
-			// be a surprising side effect.
-			if cluster.GetOrchestrator() == config.ConstOrchestratorKubernetes {
-				err := cluster.K8SRestartDatabaseServiceWaitRejoin(slave)
-				if err != nil {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling restart slave does not restart %s %s", slave.URL, err)
-					if maintenanceEnabled {
-						slave.SwitchMaintenance()
-					}
-					return err
+			// The same sequence OpenSVC runs, on every orchestrator: stop, wait until the monitor
+			// has seen the database Failed, refresh the definition, start and wait for the rejoin of
+			// the returning database. On Kubernetes each step dispatches to its own implementation:
+			// Stop scales the Deployment to zero, the refresh patches the pod template while there
+			// are no replicas, and Start keeps the PVC-consumer guard before it scales up.
+			if ferr := cluster.FreezeDatabaseService(slave); ferr != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Rolling restart: freeze failed on %s: %s (going on unfrozen)", slave.URL, ferr)
+			}
+			err := cluster.StopDatabaseService(slave)
+			if err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling restart stop failed on slave %s %s", slave.URL, err)
+				if maintenanceEnabled {
+					slave.SwitchMaintenance()
 				}
-			} else {
-				if ferr := cluster.FreezeDatabaseService(slave); ferr != nil {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Rolling restart: freeze failed on %s: %s (going on unfrozen)", slave.URL, ferr)
-				}
-				err := cluster.StopDatabaseService(slave)
-				if err != nil {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling restart stop failed on slave %s %s", slave.URL, err)
-					if maintenanceEnabled {
-						slave.SwitchMaintenance()
-					}
-					_ = cluster.UnfreezeDatabaseService(slave)
-					return err
-				}
+				_ = cluster.UnfreezeDatabaseService(slave)
+				return err
+			}
 
-				err = cluster.WaitDatabaseFailed(slave)
-				if err != nil {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling stop slave does not transit Failed %s %s", slave.URL, err)
-					if maintenanceEnabled {
-						slave.SwitchMaintenance()
-					}
-					_ = cluster.UnfreezeDatabaseService(slave)
-					return err
+			err = cluster.WaitDatabaseFailed(slave)
+			if err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling stop slave does not transit Failed %s %s", slave.URL, err)
+				if maintenanceEnabled {
+					slave.SwitchMaintenance()
 				}
+				_ = cluster.UnfreezeDatabaseService(slave)
+				return err
+			}
 
-				// Reapply the deployment (the plan-driven container cap, image, run_args,
-				// env) so the slave comes up on the CURRENT OpenSVC service config, not the
-				// one written at the last provision. prov-orchestrator-deployment-upgrade-on-start
-				// (default on); non-fatal -- a push failure just leaves the previous cap.
-				if uerr := cluster.UpgradeDatabaseDeploymentOnStart(slave, true); uerr != nil {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Rolling restart: deployment upgrade on start failed on slave %s (continuing): %s", slave.URL, uerr)
+			// Reapply the deployment (the plan-driven container cap, image, run_args,
+			// env) so the slave comes up on the CURRENT OpenSVC service config, not the
+			// one written at the last provision. prov-orchestrator-deployment-upgrade-on-start
+			// (default on); non-fatal -- a push failure just leaves the previous cap.
+			if uerr := cluster.UpgradeDatabaseDeploymentOnStart(slave, true); uerr != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Rolling restart: deployment upgrade on start failed on slave %s (continuing): %s", slave.URL, uerr)
+			}
+			err = cluster.StartDatabaseWaitRejoin(slave)
+			if uerr := cluster.UnfreezeDatabaseService(slave); uerr != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Rolling restart: unfreeze failed on %s: %s", slave.URL, uerr)
+			}
+			if err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling restart slave does not restart %s %s", slave.URL, err)
+				if maintenanceEnabled {
+					slave.SwitchMaintenance()
 				}
-				err = cluster.StartDatabaseWaitRejoin(slave)
-				if uerr := cluster.UnfreezeDatabaseService(slave); uerr != nil {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Rolling restart: unfreeze failed on %s: %s", slave.URL, uerr)
-				}
-				if err != nil {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling restart slave does not restart %s %s", slave.URL, err)
-					if maintenanceEnabled {
-						slave.SwitchMaintenance()
-					}
-					return err
-				}
+				return err
 			}
 		}
 		currentMaster := cluster.GetMaster()
@@ -333,57 +320,45 @@ func (cluster *Cluster) RollingRestart() error {
 		}
 		time.Sleep(time.Second)
 	}
-	// See the matching Kubernetes branch in the slave loop above for why
-	// this uses the lighter K8SRestartDatabaseServiceWaitRejoin instead of
-	// the generic stop->wait failed->start dance (or RestartDatabaseService).
-	if cluster.GetOrchestrator() == config.ConstOrchestratorKubernetes {
-		err := cluster.K8SRestartDatabaseServiceWaitRejoin(master)
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling restart old master does not restart %s %s", master.URL, err)
-			if maintenanceEnabled {
-				master.SwitchMaintenance()
-			}
-			return err
+	// The same sequence as the replicas above (and as OpenSVC): stop, wait Failed, refresh, start
+	// and wait for the rejoin.
+	if ferr := cluster.FreezeDatabaseService(master); ferr != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Rolling restart: freeze failed on %s: %s (going on unfrozen)", master.URL, ferr)
+	}
+	err := cluster.StopDatabaseService(master)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling restart old master stop failed %s %s", master.URL, err)
+		if maintenanceEnabled {
+			master.SwitchMaintenance()
 		}
-	} else {
-		if ferr := cluster.FreezeDatabaseService(master); ferr != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Rolling restart: freeze failed on %s: %s (going on unfrozen)", master.URL, ferr)
+		_ = cluster.UnfreezeDatabaseService(master)
+		return err
+	}
+	err = cluster.WaitDatabaseFailed(master)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling restart old master does not transit suspect %s %s", master.URL, err)
+		if maintenanceEnabled {
+			master.SwitchMaintenance()
 		}
-		err := cluster.StopDatabaseService(master)
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling restart old master stop failed %s %s", master.URL, err)
-			if maintenanceEnabled {
-				master.SwitchMaintenance()
-			}
-			_ = cluster.UnfreezeDatabaseService(master)
-			return err
+		_ = cluster.UnfreezeDatabaseService(master)
+		return err
+	}
+	// Reapply the deployment (the plan-driven container cap, image, run_args, env)
+	// so the old master comes up on the CURRENT OpenSVC service config.
+	// prov-orchestrator-deployment-upgrade-on-start (default on); non-fatal.
+	if uerr := cluster.UpgradeDatabaseDeploymentOnStart(master, true); uerr != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Rolling restart: deployment upgrade on start failed on old master %s (continuing): %s", master.URL, uerr)
+	}
+	err = cluster.StartDatabaseWaitRejoin(master)
+	if uerr := cluster.UnfreezeDatabaseService(master); uerr != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Rolling restart: unfreeze failed on %s: %s", master.URL, uerr)
+	}
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling restart old master does not restart %s %s", master.URL, err)
+		if maintenanceEnabled {
+			master.SwitchMaintenance()
 		}
-		err = cluster.WaitDatabaseFailed(master)
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling restart old master does not transit suspect %s %s", master.URL, err)
-			if maintenanceEnabled {
-				master.SwitchMaintenance()
-			}
-			_ = cluster.UnfreezeDatabaseService(master)
-			return err
-		}
-		// Reapply the deployment (the plan-driven container cap, image, run_args, env)
-		// so the old master comes up on the CURRENT OpenSVC service config.
-		// prov-orchestrator-deployment-upgrade-on-start (default on); non-fatal.
-		if uerr := cluster.UpgradeDatabaseDeploymentOnStart(master, true); uerr != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Rolling restart: deployment upgrade on start failed on old master %s (continuing): %s", master.URL, uerr)
-		}
-		err = cluster.StartDatabaseWaitRejoin(master)
-		if uerr := cluster.UnfreezeDatabaseService(master); uerr != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Rolling restart: unfreeze failed on %s: %s", master.URL, uerr)
-		}
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling restart old master does not restart %s %s", master.URL, err)
-			if maintenanceEnabled {
-				master.SwitchMaintenance()
-			}
-			return err
-		}
+		return err
 	}
 	master.WaitSyncToMaster(cluster.master)
 	if maintenanceEnabled {

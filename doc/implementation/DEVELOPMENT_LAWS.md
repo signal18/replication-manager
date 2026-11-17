@@ -3,7 +3,9 @@
 *How we build repman, and what it must never do. Two layers: **functional** laws
 (what repman must / must not do — these come first) and **technical** laws (how
 we build it). When two pull against each other, the functional law wins, and the
-**perpetual-monitoring invariant** (F2 + F3 + F4) wins over everything.*
+**perpetual-monitoring invariant** (F2 + F3 + F4) wins over everything. The
+**security laws** (F9, F10, T15, T26, T31) weigh more than every other technical law:
+testing or documenting a feature never justifies a secret on disk, in a log or in public.*
 
 ---
 
@@ -454,6 +456,19 @@ Example (2026-11-10): an AI session opened a repman issue on where Cloud18 keeps
 instance's login list; it was deleted. About 30% of the issues opened since August were Cloud18
 subjects; the operational ones were moved to the back office and the orchestrator ones labelled.
 
+**T31. Never leave a token or a secret in a source checkout: a secret a test needs on disk goes
+to `/tmp`, and is deleted when the test ends.** A working copy, on a laptop or on a dev or test
+instance, holds code only: no token file, password, key or `.env` with a value, tracked or not.
+A file left there outlives the test, stays next to code that gets committed (one `git add -A` and
+it is in the public repo), and nobody knows it is there. So:
+- a test that needs a credential on disk writes it under `/tmp`, readable by its owner only, and
+  removes it at the end, also when the test fails;
+- a credential read from a store is passed by pipe or environment, never written into the tree;
+- an untracked secret-looking file found in a checkout (`.vault-token`, `*.pem`, `*token*`, `.env`)
+  is reported and deleted, never committed and never left.
+Example (2026-11-16): a `.vault-token` from a Vault test of 30 October was found untracked in a dev
+instance's checkout, two weeks later; it was deleted.
+
 ## Debugging discipline — investigate FULLY before you unblock
 
 **Never unblock a stuck issue before you have investigated it fully.** A restart, a
@@ -494,3 +509,12 @@ demo.
 *Precedence: functional laws outrank technical laws; the perpetual-monitoring
 invariant (F2 + F3 + F4) outranks everything. When two laws pull against each
 other, the one that keeps us monitoring — perpetually, safely — wins.*
+
+*Security laws carry extra weight: F9 (no clear secret in git), F10 (no secret in a
+log), T15 (no client or infrastructure name in public), T26 (a security fix stays
+private until its release) and T31 (no secret in a checkout) outrank every other
+technical law. Testing a feature (T13), documenting it (T8), tracking it (T9, T11)
+or shipping it on time weigh less: a test that needs a token takes the slower safe
+path (`/tmp`, a pipe, the store), and a feature ships later rather than with a
+leak. Example (2026-11-16): a Vault token left for two weeks in a dev checkout,
+for the sake of a test (T31).*
