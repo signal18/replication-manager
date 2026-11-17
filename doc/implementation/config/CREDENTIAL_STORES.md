@@ -628,8 +628,15 @@ is treated the same; only the path a level maps to differs per store.
   (`ApplyServerSecret("api-credentials")`) and admin's password changed, `followAdminPassword`
   queues the new value to that key through the cluster's orchestrator writer (`queueOrchestrator`:
   the bounded queue, its own goroutine and timeout, `<KEY>_OLD` kept, an unchanged value skipped).
-  A namespace already stale before this change is not repaired by it: the next admin rotation, or
-  a hand copy, brings it current.
+  **Repair at activation** (`checkInitCredentials`, from `CheckSecretKvStores`): once each time
+  the monitor becomes active (a start, a standby taking over), each login of the orchestrator
+  secret is read (`ReadCurrent`, bounded, in a goroutine) and queued again when it differs: the
+  init login (`REPLICATION_MANAGER_PASSWORD` / `REPMAN_AUTH_HEADER`, repaired only where the
+  provisioning put it, never added) and the cluster's jobs key `JOBS_API_KEY` (`GetJobsKey`,
+  published when missing: a definition maps it only once the secret holds it). An unanswered read
+  is tried again every `secret-kv-retry-interval`. So a release deployed on a fleet whose
+  namespaces kept an old admin password repairs them by itself, and every namespace gets its jobs
+  key. Nothing is logged but the key's name.
 - **A new place gets the history.** An edit of a server entry's address, mount, path-prefix,
   cluster or namespace, or an offer that moves it, sets its `written-as` to `(new place)`
   (`ConstSecretKvWrittenAsNewPlace`, never an instance name): the move then copies every kept
