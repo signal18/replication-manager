@@ -61,6 +61,8 @@ func (cluster *Cluster) CheckFailed() {
 	// arbitrator — the peer probing seconds later read them and flapped
 	// active/passive (ERR00022 on every cluster). Old arbitrators keep that
 	// behavior forever, so an upgraded client must not probe them idly.
+	// failoverArbitrationCheck also opens ERR00022 when it refuses (a standby leaving the
+	// failover to its live active, or an arbitrator that did not name this node winner).
 	cluster.SetFalsePositiveCheck("ActiveArbitration", cluster.failoverArbitrationCheck())
 	cluster.SetFalsePositiveCheck("MaxClusterFailoverCountNotReached", cluster.isMaxClusterFailoverCountNotReached())
 	cluster.SetFalsePositiveCheck("AutomaticFailover", cluster.isAutomaticFailover())

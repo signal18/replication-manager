@@ -98,15 +98,28 @@ func standbyNeverFailsOverWithLiveActive(cl *cluster.Cluster, label string) bool
 	// The whole failover window: the peer must never become active, and the failover must be
 	// this node's own (its FailoverCtr moves and it elects a new master).
 	deadline := time.Now().Add(time.Duration(cl.Conf.MaxFail+cl.Conf.MaxFail/2+10)*time.Duration(cl.Conf.MonitoringTicker)*time.Second + 60*time.Second)
+	// A peer that cannot be read proves nothing: the window must hold successful reads.
+	peerReads, peerErrors := 0, 0
 	for time.Now().Before(deadline) {
 		time.Sleep(2 * time.Second)
-		if peerActive, err := GetPeerIsActive(cl.Name); err == nil && peerActive {
-			logf("the STANDBY became active and took the failover while this active node was alive (#2040)")
-			return false
+		peerActive, err := GetPeerIsActive(cl.Name)
+		if err != nil {
+			peerErrors++
+		} else {
+			peerReads++
+			if peerActive {
+				logf("the STANDBY became active and took the failover while this active node was alive (#2040)")
+				return false
+			}
 		}
 		if cl.FailoverCtr != failoverCtr {
 			break
 		}
+	}
+	logf("peer status read %d times in the failover window (%d errors)", peerReads, peerErrors)
+	if peerReads == 0 {
+		logf("the peer's status was never read during the failover window: nothing proves it stayed standby")
+		return false
 	}
 	if cl.FailoverCtr == failoverCtr {
 		logf("this active node never failed over (status %s)", cl.Status)
