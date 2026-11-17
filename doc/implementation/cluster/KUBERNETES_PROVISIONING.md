@@ -58,7 +58,12 @@ interface in `cluster/orchestrator.go`.
    is fatal and skips the Service step.
 7. Create the Service (`ClusterIP`, same port). `AlreadyExists` is
    idempotent.
-8. Exactly one value is sent on `cluster.errorChan`.
+8. `WaitDatabaseStart(s)`, the wait `OpenSVCProvisionDatabaseService` ends with, bounded by
+   `monitoring-wait-retry` x `monitoring-ticker`; as on OpenSVC its result is ignored, and
+   `ProvisionServices` gates on `WaitDatabaseCanConn`. No timeout is set on the Pod that OpenSVC
+   leaves unset (no `terminationGracePeriodSeconds`; `prov-db-start-timeout` and `prov-timeout` are not
+   consumed, they have no per-container Kubernetes equivalent).
+9. Exactly one value is sent on `cluster.errorChan`.
 
 ### Bootstrap
 
@@ -388,23 +393,22 @@ its own, until no pod references the data PVC before it scales up.
 - **`/actions/restart`** → `K8SForceRepullDatabaseService` (re-asserts
   `prov-kube-image-force-pull`'s current policy on every call), not the
   generic stop/wait/start.
-- **`RollingRestart`** → `K8SRestartDatabaseServiceWaitRejoin`: a rolling
-  pod replacement (patches only the `restartedAt` annotation, never the
-  image), paired with `K8SWaitRolloutComplete` polling the Deployment's own
-  rollout status (`ObservedGeneration`/`UpdatedReplicas`/`ReadyReplicas`/
-  `Replicas` all caught up, 90s timeout) immediately after triggering the
-  restart. This exists because a clean, fast pod replacement can go
-  straight from Suspect back to healthy without ever registering as
-  `Failed` — the transition `WaitRejoin`'s own signal depends on — so
-  relying on `WaitRejoin` alone can't distinguish "restarted, nothing to
-  rejoin" from "the rollout silently never happened at all" (image pull
-  failure, scheduling problem, PVC attach issue). `K8SWaitRolloutComplete`
-  gives that a real, independent, faster error path.
-- Deliberately **not** `K8SForceRepullDatabaseService` for
-  `RollingRestart`: it's triggered on a schedule
-  (`scheduler-rolling-restart`) or in bulk (also backs the
-  security-fix rolling-restart path) and must never silently change what
-  image gets pulled — only an explicit upgrade action should do that.
+- **`RollingRestart`** runs the same sequence as on OpenSVC, for every replica and for the
+  original primary: maintenance on, `StopDatabaseService` (scales the Deployment to zero),
+  `WaitDatabaseFailed` (the monitor has seen the database down), `UpgradeDatabaseDeploymentOnStart`
+  (the definition refresh, which here patches the pod template, refuses a Deployment that is not
+  at zero replicas, and keeps the running image), `StartDatabaseWaitRejoin` (Start keeps the
+  PVC-consumer guard, then waits for the rejoin of the returning database), then the replication
+  synchronization and maintenance off. It does not use a rolling pod replacement:
+  `K8SRestartDatabaseServiceWaitRejoin` and `K8SWaitRolloutComplete` are not called by it. A pod
+  replaced without the monitor having seen the database Failed gives `WaitRejoin` nothing to wait for
+  (it fires on the rejoin of a server that came back from Failed), and the Deployment's own readiness
+  is the container started, not SQL available. With the Failed barrier the rejoin signal is the one of
+  the restarted database, as on OpenSVC. The refresh re-asserts the steady-state pull policy and keeps
+  the image.
+- `RollingRestart` is deliberately **not** `K8SForceRepullDatabaseService`: it is triggered on a
+  schedule (`scheduler-rolling-restart`) or in bulk (also backs the security-fix rolling-restart path)
+  and must never change what image gets pulled.
 - **`RollingUpgrade`/`/actions/upgrade`** → see "Rolling upgrade" below.
 - **`RollingReprov`** unprovisions and reprovisions each server
   (`UnprovisionDatabaseService`, `InitDatabaseService`) rather than
@@ -509,9 +513,8 @@ Where the waits run, and who waits for them:
   is the exception, it calls `RollingRestart` synchronously in its HTTP request. The MCP
   start and stop tools call the lifecycle function in a goroutine. The
   single-master `RollingRestart` (stop, definition refresh, start) and
-  `RollingReprov` therefore include the waits; the replica and post-switchover
-  restarts of `RollingRestart` use `K8SRestartDatabaseServiceWaitRejoin`, which
-  has none.
+  `RollingReprov` therefore include the waits, and so do the replica and
+  post-switchover restarts of `RollingRestart`, which use the same Stop and Start.
 - **`provisioningMutex`** (one per cluster) is held by provision and unprovision
   operations only (`ProvisionServices`/bootstrap, `InitDatabaseService`,
   `UnprovisionDatabaseService`, the cluster-level `Unprovision`, `InitProxyService`,

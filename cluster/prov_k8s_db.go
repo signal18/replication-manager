@@ -1321,6 +1321,11 @@ func (cluster *Cluster) K8SProvisionDatabaseService(s *ServerMonitor) {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
 			"Server %s reachable via CoreDNS at %s (in-cluster clients, or an external repman with its resolver pointed at CoreDNS)", s.Name, s.Name+cluster.GetDomain())
 	}
+	// The same wait OpenSVCProvisionDatabaseService ends with, and handled the same way: it is bounded by
+	// monitoring-wait-retry x monitoring-ticker, its result is not the provisioning's, and
+	// ProvisionServices gates on WaitDatabaseCanConn.
+	cluster.WaitDatabaseStart(s)
+
 	cluster.errorChan <- nil
 }
 
