@@ -655,6 +655,18 @@ is treated the same; only the path a level maps to differs per store.
   "Mandatory" badge saying why). At the server level the GUI has no "Add OpenSVC" or
   "Add Kubernetes" button, since those copies are automatic; "Add a vault" stays, for a vault of
   the client's own.
+- **The init containers' login follows the admin password.** The provisioning writes the admin
+  API password where the database and proxy init containers read it to fetch their config: on
+  OpenSVC `REPLICATION_MANAGER_PASSWORD` in the cluster's env secret (`seedOrchestratorPasswords`),
+  on Kubernetes `REPMAN_AUTH_HEADER` (Basic `admin:<password>`) in the Secret `<cluster>-secret`
+  (`k8sAPIAuthHeaderValue`, with `api-credentials-secure-config`). Nothing wrote them again: after
+  an admin password change every init failed its login, fetched no config and the database started
+  on its old files. Now, when a cluster applies a changed instance user list
+  (`ApplyServerSecret("api-credentials")`) and admin's password changed, `followAdminPassword`
+  queues the new value to that key through the cluster's orchestrator writer (`queueOrchestrator`:
+  the bounded queue, its own goroutine and timeout, `<KEY>_OLD` kept, an unchanged value skipped).
+  A namespace already stale before this change is not repaired by it: the next admin rotation, or
+  a hand copy, brings it current.
 - **The behind reason is whole.** A store's error over several lines (Vault's
   `Error making API request.` then the URL, the HTTP code and Vault's own errors) is kept on one
   line with every part, bounded to 512 bytes (`config.SecretKvBehindReason`), at both levels: the

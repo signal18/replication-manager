@@ -159,6 +159,34 @@ func (cluster *Cluster) ApplyServerSecret(key string) {
 	case "cloud18-domain-secret":
 		cluster.Conf.Cloud18DomainSecret = v
 	case "api-credentials":
+		before := cluster.GetAPIUsers()["admin"].Password
 		cluster.LoadAPIUsers()
+		cluster.followAdminPassword(before)
+	}
+}
+
+// followAdminPassword keeps the init containers' login current. The provisioning writes the admin
+// API password where the database and proxy init containers read it to fetch their config:
+//   - OpenSVC: REPLICATION_MANAGER_PASSWORD in the cluster's env secret (seedOrchestratorPasswords);
+//   - Kubernetes: REPMAN_AUTH_HEADER (Basic admin:<password>) in the Secret <cluster>-secret
+//     (k8sAPIAuthHeaderValue), when api-secure-config is on.
+//
+// Until now nothing wrote them again: after an admin password change every init failed its login,
+// fetched no config and the database started on its old files. When the admin password changes (a
+// rotation, a change in the global settings), the new value is queued to that key through the
+// cluster's orchestrator writer (queueOrchestrator: bounded queue, own goroutine and timeout, the
+// old value kept in <KEY>_OLD, an unchanged value skipped).
+func (cluster *Cluster) followAdminPassword(before string) {
+	after := cluster.GetAPIUsers()["admin"].Password
+	if after == "" || after == before {
+		return
+	}
+	switch cluster.GetOrchestrator() {
+	case config.ConstOrchestratorOpenSVC:
+		cluster.queueOrchestrator("REPLICATION_MANAGER_PASSWORD", after)
+	case config.ConstOrchestratorKubernetes:
+		if header := k8sAPIAuthHeaderValue(cluster); header != "" {
+			cluster.queueOrchestrator(k8sSecretKeyAPIAuthHeader, header)
+		}
 	}
 }
