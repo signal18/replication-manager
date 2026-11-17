@@ -1,42 +1,87 @@
 #!/bin/sh
 help() {
 	echo "Required Environment:" >&2
-	echo "  REPLICATION_MANAGER_USER" >&2
-	echo "  REPLICATION_MANAGER_PASSWORD" >&2
 	echo "  REPLICATION_MANAGER_URL" >&2
 	echo "  REPLICATION_MANAGER_URL_DR (optional, active/standby: the URLs of the pair, tried after REPLICATION_MANAGER_URL)" >&2
 	echo "  REPLICATION_MANAGER_CLUSTER_NAME" >&2
 	echo "  REPLICATION_MANAGER_HOST_NAME" >&2
 	echo "  REPLICATION_MANAGER_HOST_PORT" >&2
+	echo "Login, one of:" >&2
+	echo "  /credentials/JOBS_API_KEY (or JOBS_API_KEY): the cluster's jobs key, a database service" >&2
+	echo "  REPLICATION_MANAGER_USER and REPLICATION_MANAGER_PASSWORD: the admin login (proxies, older definitions)" >&2
 }
-[ -z "$REPLICATION_MANAGER_USER" ] && help && exit 1
-[ -z "$REPLICATION_MANAGER_PASSWORD" ] && help && exit 1
 [ -z "$REPLICATION_MANAGER_URL" ] && help && exit 1
 [ -z "$REPLICATION_MANAGER_CLUSTER_NAME" ] && help && exit 1
 [ -z "$REPLICATION_MANAGER_HOST_NAME" ] && help && exit 1
 [ -z "$REPLICATION_MANAGER_HOST_PORT" ] && help && exit 1
 
 GET="wget -q -T 10 --no-check-certificate -O- --header Content-Type:application/json"
-AUTH_DATA="{\"username\": \"$REPLICATION_MANAGER_USER\", \"password\": \"$REPLICATION_MANAGER_PASSWORD\"}"
-# Log in on the main replication-manager, else on the DR one (active/standby), and
-# keep the one that answered for every call below.
-TOKEN=""
+CLI=/bootstrap/replication-manager-cli
+STATUS=/bootstrap/init-status
+
+# What this start did with the config, for the database's jobs to report: one line, "<unix time>
+# <result> <detail>", result fetched, not-needed or failed. The database still starts on its
+# files whatever happens (replication-manager may be down), so a failure must leave a trace.
+trace() {
+	echo "$(date +%s) $*" > $STATUS
+	echo "bootstrap: $*" >&2
+}
+
+mkdir -p /bootstrap
+
+# The replication-manager that answers: the main one, else the DR one (active/standby). The
+# version is public: no login is needed to pick it or to get the CLI.
+MONITOR_VERSION=""
 tried=""
 for u in $REPLICATION_MANAGER_URL $REPLICATION_MANAGER_URL_DR; do
 	case " $tried " in *" $u "*) continue ;; esac
 	tried="$tried $u"
-	TOKEN=$($GET --post-data "$AUTH_DATA" --header Accept:text/html $u/api/login)
-	if [ -n "$TOKEN" ]; then
+	MONITOR_VERSION=$($GET --header Accept:application/json $u/api/version)
+	if [ -n "$MONITOR_VERSION" ]; then
 		REPLICATION_MANAGER_URL=$u
 		break
 	fi
-	echo "bootstrap: no login on $u" >&2
+	echo "bootstrap: $u did not answer" >&2
 done
+export REPLICATION_MANAGER_URL
+
+# The CLI of that version (public, /static): it logs in with the jobs key
+CURRENT_VERSION="0.0.0"
+if [ -f "/bootstrap/version" ]; then
+	CURRENT_VERSION=$(cat /bootstrap/version)
+fi
+if [ -n "$MONITOR_VERSION" ] && { [ "$MONITOR_VERSION" != "$CURRENT_VERSION" ] || [ ! -x $CLI ]; }; then
+	# the version is recorded only once the downloaded CLI runs: a truncated download is fetched
+	# again at the next start instead of being kept as current
+	if $GET $REPLICATION_MANAGER_URL/static/configurator/bin/replication-manager-cli > $CLI.new && chmod +x $CLI.new && $CLI.new version > /dev/null 2>&1; then
+		mv $CLI.new $CLI
+		echo "$MONITOR_VERSION" > /bootstrap/version
+	else
+		rm -f $CLI.new
+		echo "bootstrap: the replication-manager-cli download from $REPLICATION_MANAGER_URL does not run" >&2
+	fi
+fi
+
+jobs_key() {
+	if [ -n "$JOBS_API_KEY" ]; then
+		echo "$JOBS_API_KEY"
+	elif [ -s /credentials/JOBS_API_KEY ]; then
+		cat /credentials/JOBS_API_KEY
+	fi
+}
+
+# The admin login, for a service whose definition still maps the admin password (a proxy, a
+# database service not refreshed yet)
+TOKEN=""
+if [ -z "$(jobs_key)" ] && [ -n "$REPLICATION_MANAGER_USER" ] && [ -n "$REPLICATION_MANAGER_PASSWORD" ] && [ -n "$MONITOR_VERSION" ]; then
+	AUTH_DATA="{\"username\": \"$REPLICATION_MANAGER_USER\", \"password\": \"$REPLICATION_MANAGER_PASSWORD\"}"
+	TOKEN=$($GET --post-data "$AUTH_DATA" --header Accept:text/html $REPLICATION_MANAGER_URL/api/login)
+	[ -z "$TOKEN" ] && echo "bootstrap: no admin login on $REPLICATION_MANAGER_URL" >&2
+fi
 get() {
 	$GET --header Accept:application/json --header "Authorization: Bearer $TOKEN" "$@"
 }
 
-mkdir -p /bootstrap
 
 # A Galera state transfer that aborted leaves its lock files behind: every later start of the node
 # waits for a transfer that no longer exists, gives up and stops, so the node can never rejoin.
@@ -58,47 +103,60 @@ fi
 : "${REPLICATION_MANAGER_DB_VOLUME_UID:=999}"
 : "${REPLICATION_MANAGER_DB_VOLUME_GID:=999}"
 
-get $REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/servers/$REPLICATION_MANAGER_HOST_NAME/$REPLICATION_MANAGER_HOST_PORT/need-config-fetch > need-config-fetch
-if [ $? -eq 0 ]; then
-	get $REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/servers/$REPLICATION_MANAGER_HOST_NAME/$REPLICATION_MANAGER_HOST_PORT/config > config.tar.gz
-	if [ $? -eq 0 ]; then
-		# Clear only replication-manager/conf files; preserve /bootstrap/etc and custom.d. to avoid breaking custom configuration
-		if [ -d /bootstrap/etc/mysql/replication-manager.d ]; then
-			rm -f /bootstrap/etc/mysql/replication-manager.d/*
-		fi
-		if [ -d /bootstrap/etc/mysql/conf.d ]; then
-			rm -f /bootstrap/etc/mysql/conf.d/*
-		fi
-		rm -rf /bootstrap/init/*
-		cat config.tar.gz  | tar xzvf - -C /bootstrap
-		rm -f config.tar.gz
+SRV=$REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/servers/$REPLICATION_MANAGER_HOST_NAME/$REPLICATION_MANAGER_HOST_PORT
+FETCHED=1 # 0 fetched, 1 not wanted, 2 failed
+rm -f config.tar.gz
+if [ -z "$MONITOR_VERSION" ]; then
+	FETCHED=2; trace failed "no replication-manager answered"
+elif [ -n "$(jobs_key)" ]; then
+	if [ ! -x $CLI ]; then
+		FETCHED=2; trace failed "no replication-manager-cli to log in with the jobs key"
+	else
+		JOBS_API_KEY=$(jobs_key) $CLI job config config.tar.gz
+		FETCHED=$?
+		case $FETCHED in
+		0) trace fetched "jobs login" ;;
+		1) trace not-needed "" ;;
+		126|127)
+			# the CLI does not run (damaged, wrong architecture): downloaded again at the next start
+			rm -f $CLI /bootstrap/version
+			FETCHED=2; trace failed "replication-manager-cli does not run" ;;
+		*) FETCHED=2; trace failed "jobs login or download refused, see the line above" ;;
+		esac
 	fi
-	chown -R "$REPLICATION_MANAGER_DB_VOLUME_UID:$REPLICATION_MANAGER_DB_VOLUME_GID" /bootstrap/data
-	chmod -R 0755 /bootstrap/init
-
-fi
-
-CURRENT_VERSION="0.0.0"
-if [ -f "/bootstrap/version" ]; then 
-	CURRENT_VERSION=$(cat /bootstrap/version)
-fi
-
-get $REPLICATION_MANAGER_URL/api/version > version
-MONITOR_VERSION=$(cat version)
-
-# If the version is not the same or the file not exists, download the new version
-if [ "$MONITOR_VERSION" != "$CURRENT_VERSION" ] || [ ! -f /bootstrap/replication-manager-cli ]; then
-	echo "$MONITOR_VERSION" > /bootstrap/version
-	
-	get $REPLICATION_MANAGER_URL/static/configurator/bin/replication-manager-cli > /bootstrap/replication-manager-cli
-	if [ $? -eq 0 ]; then
-		cp /bootstrap/replication-manager-cli /bootstrap/init/replication-manager-cli
-		chmod +x /bootstrap/init/replication-manager-cli
+elif [ -n "$TOKEN" ]; then
+	if get $SRV/need-config-fetch > need-config-fetch; then
+		if get $SRV/config > config.tar.gz; then
+			FETCHED=0; trace fetched "admin login"
+		else
+			FETCHED=2; trace failed "config download refused"
+		fi
+	else
+		trace not-needed ""
 	fi
 else
-	# If the file exists, copy it to the init directory
-	if [ -f /bootstrap/replication-manager-cli ] && [ ! -f /bootstrap/init/replication-manager-cli ]; then
-		cp /bootstrap/replication-manager-cli /bootstrap/init/replication-manager-cli
-		chmod +x /bootstrap/init/replication-manager-cli
+	FETCHED=2; trace failed "no login: no jobs key, and the admin login failed or is not given"
+fi
+if [ $FETCHED -eq 0 ]; then
+	# Clear only replication-manager/conf files; preserve /bootstrap/etc and custom.d. to avoid breaking custom configuration
+	if [ -d /bootstrap/etc/mysql/replication-manager.d ]; then
+		rm -f /bootstrap/etc/mysql/replication-manager.d/*
 	fi
+	if [ -d /bootstrap/etc/mysql/conf.d ]; then
+		rm -f /bootstrap/etc/mysql/conf.d/*
+	fi
+	rm -rf /bootstrap/init/*
+	cat config.tar.gz | tar xzvf - -C /bootstrap
+	rm -f config.tar.gz
+fi
+if [ $FETCHED -eq 0 ]; then
+	# a fetched config owns the data volume; a failed start leaves the volume as it is
+	chown -R "$REPLICATION_MANAGER_DB_VOLUME_UID:$REPLICATION_MANAGER_DB_VOLUME_GID" /bootstrap/data
+	chmod -R 0755 /bootstrap/init
+fi
+
+# the CLI for the database container's jobs
+if [ -x $CLI ] && [ -d /bootstrap/init ]; then
+	cp $CLI /bootstrap/init/replication-manager-cli
+	chmod +x /bootstrap/init/replication-manager-cli
 fi

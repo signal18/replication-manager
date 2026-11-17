@@ -9,19 +9,16 @@ package cluster
 import (
 	"crypto/hmac"
 	"crypto/sha256"
-	"crypto/tls"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
 	"net"
-	"net/smtp"
 	"runtime/debug"
 	"slices"
 	"strings"
 	"time"
 
-	"github.com/jordan-wright/email"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/config/credstore"
 	"github.com/signal18/replication-manager/utils/dbhelper"
@@ -406,48 +403,6 @@ func (cluster *Cluster) RotatePasswords() (err error) {
 	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Password rotation is done.")
 	return nil
-}
-
-func (cluster *Cluster) SendVaultTokenByMail(Conf *config.Config) error {
-	subj := "Replication-Manager Vault Token"
-	msg := "Here's your vault token: " + Conf.Secrets.Get("vault-token").Value + ". This token allows you to view your passwords at the following address in complete security.\n" + Conf.VaultServerAddr
-
-	e := email.NewEmail()
-	e.From = Conf.MailFrom
-	e.To = strings.Split(Conf.MailTo, ",")
-	e.Subject = subj
-	e.Text = []byte(msg)
-
-	for ind, mail := range e.To {
-		if strings.Contains(Conf.APIUsersExternal, mail) {
-			e.To = append(e.To[:ind], e.To[(ind+1):]...)
-		}
-	}
-
-	if len(e.To) == 0 {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, "ERROR", "Could not send mail alert because there is no valid email")
-		return nil
-	}
-
-	var err error
-	if Conf.MailSMTPUser == "" {
-		if Conf.MailSMTPTLSSkipVerify {
-			err = e.SendWithTLS(Conf.MailSMTPAddr, nil, &tls.Config{InsecureSkipVerify: true})
-		} else {
-			err = e.Send(Conf.MailSMTPAddr, nil)
-		}
-	} else {
-		if Conf.MailSMTPTLSSkipVerify {
-			err = e.SendWithTLS(Conf.MailSMTPAddr, smtp.PlainAuth("", Conf.MailSMTPUser, Conf.Secrets.Get("mail-smtp-password").Value, strings.Split(Conf.MailSMTPAddr, ":")[0]), &tls.Config{InsecureSkipVerify: true})
-		} else {
-			err = e.Send(Conf.MailSMTPAddr, smtp.PlainAuth("", Conf.MailSMTPUser, Conf.Secrets.Get("mail-smtp-password").Value, strings.Split(Conf.MailSMTPAddr, ":")[0]))
-		}
-	}
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, "ERROR", "Could not send mail for vault token alert: %s ", err)
-	}
-	return err
-
 }
 
 func (cluster *Cluster) AddDockerPrivateRegistryCredentials(registry, user, password string, update bool) error {

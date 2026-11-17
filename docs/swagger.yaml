@@ -2572,6 +2572,10 @@ definitions:
         type: integer
       apiSecretLoginWindow:
         type: integer
+      apiSecretReveal:
+        type: boolean
+      apiSecretRevealExpireHours:
+        type: integer
       apiServer:
         type: boolean
       apiSwaggerEnabled:
@@ -3638,6 +3642,8 @@ definitions:
         type: boolean
       mcpBindAddress:
         type: string
+      mcpKeepAliveInterval:
+        type: integer
       mcpPort:
         type: string
       mcpServer:
@@ -5531,6 +5537,31 @@ definitions:
       threads:
         type: integer
     type: object
+  server.SecretRevealForm:
+    properties:
+      code:
+        type: string
+    type: object
+  server.SecretRevealItem:
+    properties:
+      label:
+        type: string
+      value:
+        type: string
+    type: object
+  server.SecretRevealResult:
+    properties:
+      cluster:
+        type: string
+      for:
+        type: string
+      items:
+        items:
+          $ref: '#/definitions/server.SecretRevealItem'
+        type: array
+      title:
+        type: string
+    type: object
   server.SelfServicePrices:
     properties:
       apu:
@@ -5659,6 +5690,10 @@ definitions:
         type: string
       lastWrite:
         type: string
+      mandatory:
+        description: 'Mandatory: the entry cannot be switched off (serverStoreMandatory);
+          the GUI shows it locked'
+        type: boolean
       path:
         description: Path is the entry's folder for this instance, empty while the
           instance is not named
@@ -5683,6 +5718,17 @@ definitions:
       password:
         type: string
       persistError:
+        type: string
+      revealError:
+        type: string
+      revealExpires:
+        type: string
+      revealMailedTo:
+        description: |-
+          RevealMailedTo: the new password was mailed as a one-time link to this address, the
+          connected user who rotated it (never the rotated account): Password is then empty. RevealExpires: when the
+          link stops working. RevealError: why no link was mailed, the password is then in Password,
+          shown this once to who rotated it.
         type: string
       scope:
         type: string
@@ -14540,8 +14586,9 @@ paths:
     post:
       consumes:
       - application/json
-      description: This endpoint sends the Vault token to the specified cluster via
-        email.
+      description: This endpoint mails the cluster's Vault token to its mail-to addresses
+        (the cluster's external users left out), each as a one-time link (api-secret-reveal),
+        never in the mail.
       parameters:
       - default: Bearer <Add access token here>
         description: Insert your access token
@@ -22325,7 +22372,12 @@ paths:
         are revoked: this is how a compromised user is banned. The new list is written
         to the versioned store at once, then to every server credential store (Vault,
         OpenSVC, Kubernetes) at its next pass, and to the configuration file under
-        /etc that sets it, when there is one.'
+        /etc that sets it, when there is one. The new password is mailed as a one-time
+        link (api-secret-reveal), never to the rotated account: to the connected user
+        who rotated it, at its login''s email, when its role covers the level (the
+        instance''s list: sysops, extsysops; a cluster''s list: also dbops, extdbops,
+        sponsor). The answer then does not carry it (revealMailedTo); otherwise it
+        does, shown once (revealError says why).'
       parameters:
       - default: Bearer <Add access token here>
         description: Insert your access token
@@ -22348,7 +22400,8 @@ paths:
       - application/json
       responses:
         "200":
-          description: The new password, shown once
+          description: The new password, shown once; empty when it was mailed to the
+            user as a one-time link (revealMailedTo)
           schema:
             $ref: '#/definitions/server.UserRotateResult'
         "400":
@@ -23027,7 +23080,9 @@ paths:
           schema:
             type: string
         "409":
-          description: A standby, or the list is set by a config file
+          description: 'A mandatory store (the orchestrator the clusters run on; the
+            Cloud18 vault on a marketplace partner): repman sets it, it cannot be
+            changed or removed'
           schema:
             type: string
       summary: Edit a server credential store
@@ -23109,7 +23164,9 @@ paths:
           schema:
             type: string
         "409":
-          description: A standby, or the list is set by a config file
+          description: 'A mandatory store (the orchestrator the clusters run on; the
+            Cloud18 vault on a marketplace partner): repman sets it, it cannot be
+            changed or removed'
           schema:
             type: string
       summary: Remove a server credential store
@@ -23718,6 +23775,43 @@ paths:
       summary: Retrieve current repository component
       tags:
       - Public
+  /api/secret-reveal:
+    post:
+      consumes:
+      - application/json
+      description: 'Shows the secrets of a one-time link mailed by replication-manager
+        (a rotated password, credentials), once: the link is deleted at the first
+        open. No login: the code from the link is the credential. 404 for a link already
+        opened, expired or unknown, the same answer for the three.'
+      parameters:
+      - description: 'The code from the link (after #)'
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/server.SecretRevealForm'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: The secrets, shown once
+          schema:
+            $ref: '#/definitions/server.SecretRevealResult'
+        "400":
+          description: No code
+          schema:
+            type: string
+        "404":
+          description: Already opened, expired or unknown
+          schema:
+            type: string
+        "503":
+          description: One-time links are off on this instance
+          schema:
+            type: string
+      summary: Open a one-time secret link
+      tags:
+      - User
   /api/status:
     get:
       description: Returns the status of the replication manager indicating whether

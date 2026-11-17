@@ -1183,7 +1183,7 @@ const docTemplate = `{
                         }
                     },
                     "409": {
-                        "description": "A standby, or the list is set by a config file",
+                        "description": "A mandatory store (the orchestrator the clusters run on; the Cloud18 vault on a marketplace partner): repman sets it, it cannot be changed or removed",
                         "schema": {
                             "type": "string"
                         }
@@ -1299,7 +1299,7 @@ const docTemplate = `{
                         }
                     },
                     "409": {
-                        "description": "A standby, or the list is set by a config file",
+                        "description": "A mandatory store (the orchestrator the clusters run on; the Cloud18 vault on a marketplace partner): repman sets it, it cannot be changed or removed",
                         "schema": {
                             "type": "string"
                         }
@@ -12958,7 +12958,7 @@ const docTemplate = `{
         },
         "/api/clusters/{clusterName}/send-vault-token": {
             "post": {
-                "description": "This endpoint sends the Vault token to the specified cluster via email.",
+                "description": "This endpoint mails the cluster's Vault token to its mail-to addresses (the cluster's external users left out), each as a one-time link (api-secret-reveal), never in the mail.",
                 "consumes": [
                     "application/json"
                 ],
@@ -24130,7 +24130,7 @@ const docTemplate = `{
         },
         "/api/clusters/{clusterName}/users/rotate-password": {
             "post": {
-                "description": "Gives the user a new generated password, returned once. A user of the instance's list (api-credentials) gets it on every cluster; a user of the cluster's own list (api-credentials-external) on this cluster. The user's open sessions are refused from the next request and its API tokens are revoked: this is how a compromised user is banned. The new list is written to the versioned store at once, then to every server credential store (Vault, OpenSVC, Kubernetes) at its next pass, and to the configuration file under /etc that sets it, when there is one.",
+                "description": "Gives the user a new generated password, returned once. A user of the instance's list (api-credentials) gets it on every cluster; a user of the cluster's own list (api-credentials-external) on this cluster. The user's open sessions are refused from the next request and its API tokens are revoked: this is how a compromised user is banned. The new list is written to the versioned store at once, then to every server credential store (Vault, OpenSVC, Kubernetes) at its next pass, and to the configuration file under /etc that sets it, when there is one. The new password is mailed as a one-time link (api-secret-reveal), never to the rotated account: to the connected user who rotated it, at its login's email, when its role covers the level (the instance's list: sysops, extsysops; a cluster's list: also dbops, extdbops, sponsor). The answer then does not carry it (revealMailedTo); otherwise it does, shown once (revealError says why).",
                 "consumes": [
                     "application/json"
                 ],
@@ -24169,7 +24169,7 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "The new password, shown once",
+                        "description": "The new password, shown once; empty when it was mailed to the user as a one-time link (revealMailedTo)",
                         "schema": {
                             "$ref": "#/definitions/server.UserRotateResult"
                         }
@@ -25011,6 +25011,58 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "404 Something went wrong - Not Found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/secret-reveal": {
+            "post": {
+                "description": "Shows the secrets of a one-time link mailed by replication-manager (a rotated password, credentials), once: the link is deleted at the first open. No login: the code from the link is the credential. 404 for a link already opened, expired or unknown, the same answer for the three.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "User"
+                ],
+                "summary": "Open a one-time secret link",
+                "parameters": [
+                    {
+                        "description": "The code from the link (after #)",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/server.SecretRevealForm"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The secrets, shown once",
+                        "schema": {
+                            "$ref": "#/definitions/server.SecretRevealResult"
+                        }
+                    },
+                    "400": {
+                        "description": "No code",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "Already opened, expired or unknown",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "503": {
+                        "description": "One-time links are off on this instance",
                         "schema": {
                             "type": "string"
                         }
@@ -30322,6 +30374,12 @@ const docTemplate = `{
                 "apiSecretLoginWindow": {
                     "type": "integer"
                 },
+                "apiSecretReveal": {
+                    "type": "boolean"
+                },
+                "apiSecretRevealExpireHours": {
+                    "type": "integer"
+                },
                 "apiServer": {
                     "type": "boolean"
                 },
@@ -31894,6 +31952,9 @@ const docTemplate = `{
                 },
                 "mcpBindAddress": {
                     "type": "string"
+                },
+                "mcpKeepAliveInterval": {
+                    "type": "integer"
                 },
                 "mcpPort": {
                     "type": "string"
@@ -34641,6 +34702,45 @@ const docTemplate = `{
                 }
             }
         },
+        "server.SecretRevealForm": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "string"
+                }
+            }
+        },
+        "server.SecretRevealItem": {
+            "type": "object",
+            "properties": {
+                "label": {
+                    "type": "string"
+                },
+                "value": {
+                    "type": "string"
+                }
+            }
+        },
+        "server.SecretRevealResult": {
+            "type": "object",
+            "properties": {
+                "cluster": {
+                    "type": "string"
+                },
+                "for": {
+                    "type": "string"
+                },
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/server.SecretRevealItem"
+                    }
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
         "server.SelfServicePrices": {
             "type": "object",
             "properties": {
@@ -34814,6 +34914,10 @@ const docTemplate = `{
                 "lastWrite": {
                     "type": "string"
                 },
+                "mandatory": {
+                    "description": "Mandatory: the entry cannot be switched off (serverStoreMandatory); the GUI shows it locked",
+                    "type": "boolean"
+                },
                 "path": {
                     "description": "Path is the entry's folder for this instance, empty while the instance is not named",
                     "type": "string"
@@ -34845,6 +34949,16 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "persistError": {
+                    "type": "string"
+                },
+                "revealError": {
+                    "type": "string"
+                },
+                "revealExpires": {
+                    "type": "string"
+                },
+                "revealMailedTo": {
+                    "description": "RevealMailedTo: the new password was mailed as a one-time link to this address, the\nconnected user who rotated it (never the rotated account): Password is then empty. RevealExpires: when the\nlink stops working. RevealError: why no link was mailed, the password is then in Password,\nshown this once to who rotated it.",
                     "type": "string"
                 },
                 "scope": {

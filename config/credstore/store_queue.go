@@ -49,6 +49,9 @@ type StoreItem struct {
 	Key     string
 	Version Version
 	Compare bool
+	// Alias: a second copy of the secret under another name, for an outside reader (the key the
+	// infrastructure documents); written like the others, never taken as the entry's place.
+	Alias bool
 }
 
 // SecretPath is the folder of an object's secrets: <space>/<cluster>/<kind>/<object name>

@@ -406,6 +406,8 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.IntVar(&conf.TokenTimeout, "api-token-timeout", 48, "Timespan of API Token before expired in hour")
 	flags.IntVar(&conf.APISecretLoginTokenTimeout, "api-secret-login-token-timeout", 15, "Lifetime in minutes of the token a one-time job login (secret-login) returns; the jobs script logs in again before it expires")
 	flags.IntVar(&conf.APISecretLoginWindow, "api-secret-login-window", 300, "Seconds a one-time job body is accepted around its timestamp (clock skew between a database server and replication-manager); its nonce is refused if seen within twice that")
+	flags.BoolVar(&conf.APISecretReveal, "api-secret-reveal", true, "Mail a password as a one-time link (<api-public-url>/reveal), never in the mail: the new password of a rotated user whose login is an email, and the credentials mails. Off: a rotated password is shown once to who rotated it, and the credentials mails are not sent")
+	flags.IntVar(&conf.APISecretRevealExpireHours, "api-secret-reveal-expire-hours", 24, "Hours a one-time password link stays valid when not opened")
 	flags.BoolVar(&conf.APIUserTokens, "api-user-tokens", true, "Let users issue API tokens for themselves (bearer tokens narrowed to a subset of their grants and a cluster scope, stored encrypted in monitoring-datadir/api-tokens.json)")
 	flags.IntVar(&conf.APIUserTokensDefaultExpireDays, "api-user-tokens-default-expire-days", 120, "Default lifetime in days of a user-issued API token (0 = never expires)")
 	// 0 = never expires; issueAppAPIToken passes it to the token form as -1 (the form reads 0 as the user default)

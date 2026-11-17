@@ -184,6 +184,34 @@ script):
   `scheduler-receiver-use-ssl`). Repeated connections from an attacker can still delay a
   transfer until the receiver's deadline.
 
+## The init container: the config fetch with the jobs key
+
+A database service's init container (OpenSVC `container#02`) fetches the server's generated
+config before the database starts. It used to log in as `admin` with
+`REPLICATION_MANAGER_PASSWORD` from the namespace's `env` secret: after an admin password change
+that login failed, nothing was fetched, the bootstrap exited 0 and the database started on its
+old files.
+
+With the cluster's jobs key, the init container logs in like the jobs:
+- **Definition** (`OpenSVCGetDBInitContainerSection`): the key alone is mounted read-only from
+  the jobs secret volume (`{name}-sec/JOBS_API_KEY` at `/credentials/JOBS_API_KEY`); no
+  `REPLICATION_MANAGER_USER`, no `REPLICATION_MANAGER_PASSWORD`. Without a persistent key the
+  definition is unchanged (admin login). The proxies keep the admin login.
+- **Bootstrap** (`share/dashboard/static/configurator/opensvc/bootstrap`, downloaded at each
+  start, so older definitions get it too): picks the replication-manager that answers its public
+  `/api/version` (main, then DR), downloads `replication-manager-cli` from `/static` (public,
+  cached per version), and with a jobs key runs `replication-manager-cli job config
+  config.tar.gz`. Without one it falls back to the admin login, as before.
+- **CLI** (`job config`, `jobapi.Client.Config`): asks `need-config-fetch`, logs in with the
+  one-time body (`secret-login`), downloads `<server>/<port>/config` with the jobs token, at most
+  64 MB. Exit 0 written, 1 not wanted, 2 error.
+- **Server** (`handlerMuxServersPortConfig`, `jobsTokenForServer`): the config download accepts a
+  jobs token minted for the very server the URL names, GET only. No ACL rule is added: the
+  matcher falls back to shorter patterns, so `db-jobs` on `/config` would also open `config-gen`
+  and `config-path-preserve` to the token.
+- **Trace**: the bootstrap writes `/bootstrap/init-status`, one line `<unix time> <fetched |
+  not-needed | failed> <detail>`, for the database's jobs to report as a state.
+
 ## Not covered here
 
 - **Certificate check.** The script talks TLS to `api-port` with `verify=0`: without

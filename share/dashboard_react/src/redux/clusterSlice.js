@@ -972,7 +972,7 @@ export const rotateUserPassword = createGuardedAsyncThunk(
     try {
       const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
       const { data, status } = await clusterService.rotateUserPassword(clusterName, username, baseURL)
-      showSuccessBanner('Password rotated: copy it now, it is shown once', status, thunkAPI)
+      showSuccessBanner(data?.revealMailedTo ? 'Password rotated: mailed to ' + data.revealMailedTo + ' as a one-time link' : 'Password rotated: copy it now, it is shown once', status, thunkAPI)
       return { data, status }
     } catch (error) {
       showErrorBanner('Password rotation failed!', error, thunkAPI)

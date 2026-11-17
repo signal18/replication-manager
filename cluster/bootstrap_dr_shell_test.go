@@ -28,6 +28,7 @@ case "$url" in *//main*) exit 4;; esac
 case "$url" in
  */bootstrap) printf 'echo "ran with $REPLICATION_MANAGER_URL"\n' > "$out";;
  */api/login) echo TOKEN;;
+ */api/version) echo v0.0.0-test;;
  *) [ -n "$out" ] && [ "$out" != "-" ] && : > "$out";;
 esac
 exit 0
@@ -100,20 +101,30 @@ func TestBootstrapCommandsFallBackToDRWithFakeWget(t *testing.T) {
 	}
 }
 
-// The OpenSVC bootstrap script's login loop keeps the URL that answered.
-func TestOpenSVCBootstrapScriptLoginFallsBackWithFakeWget(t *testing.T) {
+// The OpenSVC bootstrap script keeps the replication-manager that answers its public version
+// call, the main one else the DR one, for the CLI download and the login.
+func TestOpenSVCBootstrapScriptPicksAnsweringURLWithFakeWget(t *testing.T) {
 	b, err := os.ReadFile("../share/dashboard/static/configurator/opensvc/bootstrap")
 	if err != nil {
 		t.Fatal(err)
 	}
-	m := regexp.MustCompile(`(?s)\nGET=.*?\ndone\n`).Find(b)
-	if m == nil {
-		t.Fatal("login loop not found in the bootstrap script")
+	get := regexp.MustCompile(`\nGET=[^\n]*\n`).Find(b)
+	loop := regexp.MustCompile(`(?s)\nMONITOR_VERSION=""\n.*?\ndone\n`).Find(b)
+	if get == nil || loop == nil {
+		t.Fatal("URL loop not found in the bootstrap script")
 	}
-	out, urls := runWithFakeWget(t, string(m)+`echo "token=$TOKEN url=$REPLICATION_MANAGER_URL"`,
+	out, urls := runWithFakeWget(t, string(get)+string(loop)+`echo "version=$MONITOR_VERSION url=$REPLICATION_MANAGER_URL"`,
 		"REPLICATION_MANAGER_URL=https://main:10005", "REPLICATION_MANAGER_URL_DR=https://main:10005 https://dr:10005")
-	if !strings.Contains(out, "token=TOKEN url=https://dr:10005") {
-		t.Fatalf("login did not fall back to DR: %q (urls %v)", out, urls)
+	if !strings.Contains(out, "version=v0.0.0-test url=https://dr:10005") {
+		t.Fatalf("did not fall back to DR: %q (urls %v)", out, urls)
+	}
+	if countPrefix(urls, "https://main:10005") != 1 {
+		t.Errorf("dead main URL tried %d times, want once: %v", countPrefix(urls, "https://main:10005"), urls)
+	}
+	for _, u := range urls {
+		if strings.HasSuffix(u, "/api/login") {
+			t.Errorf("picking the URL logged in: %v", urls)
+		}
 	}
 }
 

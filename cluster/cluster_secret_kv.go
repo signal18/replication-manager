@@ -88,6 +88,12 @@ type secretKvStores struct {
 	orchestratorWrites  uint64
 	orchestratorChecked bool
 	orchestratorWriting atomic.Bool
+	// initChecked: the init and jobs logins of the orchestrator secret were read once since this
+	// monitor became active (checkInitCredentials); initChecking: a read runs; initTried: the
+	// unix time of the last read that did not get an answer
+	initChecked  atomic.Bool
+	initChecking atomic.Bool
+	initTried    atomic.Int64
 }
 
 func (cluster *Cluster) storeQueue() *credstore.StoreQueue {
@@ -280,10 +286,7 @@ func (cluster *Cluster) setStoreBehind(entry, why string) {
 		delete(c.behind, entry)
 		return
 	}
-	if i := strings.IndexByte(why, '\n'); i >= 0 {
-		why = why[:i]
-	}
-	c.behind[entry] = why
+	c.behind[entry] = config.SecretKvBehindReason(why)
 }
 
 // localVersion is this instance's current version of key: the version store's, else the
@@ -684,10 +687,14 @@ func (cluster *Cluster) CheckSecretKvStores() {
 				ErrDesc: fmt.Sprintf(clusterError["WARN0321"], name)})
 		}
 	}
+	if !cluster.IsActive() {
+		c.initChecked.Store(false) // read again when this monitor becomes active
+	}
 	if !cluster.IsActive() || cluster.SecurityStateMachine == nil {
 		return
 	}
 	cluster.checkOpenSVCRootPassword()
+	cluster.checkInitCredentials()
 	active := map[string]bool{}
 	c.mu.Lock()
 	for _, e := range cluster.Conf.SecretKvActive() {
@@ -1435,7 +1442,8 @@ func (cluster *Cluster) initialSource(key string) string {
 
 // EnsureMarketplaceVaults gives a Cloud18-registered cluster the entries of the marketplace's
 // vault offers, off until its sponsor turns them on (#2227): the Cloud18 vault, as the Cloud18
-// storages for the archives. The path-prefix is the offer's, else the instance's URI.
+// storages for the archives. The path-prefix is the offer's, else the instance's name
+// (InstanceStoreName: <domain>/<sub-domain>/<zone>, three folders, so two instances never share one).
 func (cluster *Cluster) EnsureMarketplaceVaults(offers []config.MarketplaceVaultOffer) {
 	if !cluster.cloud18Registered() || len(offers) == 0 || cluster.SecretKvsPinned() {
 		return
@@ -1447,12 +1455,16 @@ func (cluster *Cluster) EnsureMarketplaceVaults(offers []config.MarketplaceVault
 	}
 	cluster.secretKv.mu.Unlock()
 	c := cluster.Conf
-	uri := c.Cloud18Domain + "/" + c.Cloud18SubDomain + "-" + c.Cloud18SubDomainZone
+	instance, named := c.InstanceStoreName()
 	changed := false
 	for _, o := range offers {
 		prefix := o.PathPrefix
 		if prefix == "" {
-			prefix = uri
+			if !named {
+				cluster.LogModulePrintf(c.Verbose, config.ConstLogModVault, config.LvlWarn, "Marketplace vault offer %s not given to the cluster: the instance has no valid name (cloud18-domain, cloud18-sub-domain, cloud18-sub-domain-zone)", o.Name)
+				continue
+			}
+			prefix = instance
 		}
 		ok, err := c.EnsureMarketplaceVault(o, prefix)
 		if err != nil {

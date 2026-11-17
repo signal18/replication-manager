@@ -293,6 +293,9 @@ func (repman *ReplicationManager) recordServerKvWrittenAs(entry string, items []
 	}
 	at := repman.Conf.ServerSecretKvFolder(e, name)
 	for _, it := range items {
+		if it.Alias {
+			continue // a second copy for an outside reader, not the entry's place
+		}
 		if it.Path != at {
 			return // written under another name: the next write records it
 		}

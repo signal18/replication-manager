@@ -29,10 +29,11 @@ const rootPasswordFileSuffix = "/init/MYSQL_ROOT_PASSWORD"
 //
 // It returns the content and the keys it changed. The init secret file is left as is.
 //
-// socketSST: the SST authenticates the unix_socket account (MariaDB). Without it
-// (MySQL/Percona, xtrabackup SST not validated with auth_socket) the wsrep_sst_auth line
-// is left as it is.
-func FilterRootPassword(fpath string, content string, password string, socketSST bool) (string, []string) {
+// sstAuth says what becomes of a wsrep_sst_auth line carrying the password (SSTAuthFor):
+// SSTAuthSocket rewrites it to the unix_socket account, SSTAuthKeep leaves it (an SST that
+// cannot authenticate otherwise), SSTAuthDrop comments it out like any other line (not a
+// Galera cluster: no SST ever reads it).
+func FilterRootPassword(fpath string, content string, password string, sstAuth SSTAuth) (string, []string) {
 	if password == "" || strings.HasSuffix(fpath, rootPasswordFileSuffix) || !strings.Contains(content, password) {
 		return content, nil
 	}
@@ -43,10 +44,10 @@ func FilterRootPassword(fpath string, content string, password string, socketSST
 			continue
 		}
 		key := iniLineKey(line)
-		if key == "wsrep_sst_auth" && !socketSST {
+		if key == "wsrep_sst_auth" && sstAuth == SSTAuthKeep {
 			continue
 		}
-		if key == "wsrep_sst_auth" {
+		if key == "wsrep_sst_auth" && sstAuth == SSTAuthSocket {
 			lines[i] = "wsrep_sst_auth=" + config.ConstGaleraSSTSocketUser + ":"
 		} else {
 			if key == "" {
@@ -110,15 +111,68 @@ const passwordTokenSeparators = ":,; \t\"'="
 // image's /docker-entrypoint-initdb.d, which runs *.sql once, at datadir creation).
 const galeraSSTAccountInitFile = "galera_sst_account.sql"
 
+// SSTAuth is what the root password filter does with a wsrep_sst_auth line.
+type SSTAuth int
+
+const (
+	// SSTAuthDrop: not a Galera cluster, the line is commented out (no SST reads it)
+	SSTAuthDrop SSTAuth = iota
+	// SSTAuthSocket: the SST authenticates the unix_socket account, the line names it
+	SSTAuthSocket
+	// SSTAuthKeep: the SST cannot authenticate otherwise, the root password stays (a state
+	// says why: SSTAuthKeepReason)
+	SSTAuthKeep
+)
+
+// SSTAuthKeepReason is why a Galera cluster's SST needs the root password in its
+// configuration, "" when it does not (OpenSVC and Kubernetes, where replication-manager keeps
+// the unix_socket account, CheckGaleraSSTAccount):
+//   - the mysqldump method: the donor logs in to the joiner over the network, a socket
+//     account cannot;
+//   - MySQL and Percona: their xtrabackup SST over auth_socket is not validated.
+//
+// MariaDB 10.3 and older are not a reason: unsupported on Galera (ERR00115).
+func SSTAuthKeepReason(galera bool, method string, mariadb bool) string {
+	switch {
+	case !galera:
+		return ""
+	case strings.EqualFold(strings.TrimSpace(method), "mysqldump"):
+		return "the SST method mysqldump logs in to the joiner over the network"
+	case !mariadb:
+		return "the SST of MySQL and Percona over auth_socket is not validated"
+	}
+	return ""
+}
+
+// SSTAuthFor is the filter's handling of wsrep_sst_auth for this configuration.
+func (configurator *Configurator) SSTAuthFor(method string) SSTAuth {
+	galera := configurator.IsFilterInDBTags("wsrep")
+	switch {
+	case !galera:
+		return SSTAuthDrop
+	case SSTAuthKeepReason(galera, method, configurator.mariaDBImage()) != "":
+		return SSTAuthKeep
+	}
+	return SSTAuthSocket
+}
+
+// mariaDBImage: the database image is MariaDB (no image: the MariaDB default).
+func (configurator *Configurator) mariaDBImage() bool {
+	img := configurator.ClusterConfig.ProvDbImg
+	return img == "" || releases.FlavorOfImage(img) == "mariadb"
+}
+
 // galeraSocketSST: a Galera cluster on MariaDB authenticates its SST with the unix_socket
 // account. MySQL and Percona keep their wsrep_sst_auth until xtrabackup SST over
 // auth_socket is validated.
 func (configurator *Configurator) galeraSocketSST() bool {
-	if !configurator.IsFilterInDBTags("wsrep") {
-		return false
-	}
-	img := configurator.ClusterConfig.ProvDbImg
-	return img == "" || releases.FlavorOfImage(img) == "mariadb"
+	return configurator.IsFilterInDBTags("wsrep") && configurator.mariaDBImage()
+}
+
+// SSTAuthKeepReasonFor is SSTAuthKeepReason for this configuration: why the rendered
+// wsrep_sst_auth keeps the root password, "" when it does not.
+func (configurator *Configurator) SSTAuthKeepReasonFor(method string) string {
+	return SSTAuthKeepReason(configurator.IsFilterInDBTags("wsrep"), method, configurator.mariaDBImage())
 }
 
 // shortRootPasswordLen: below it, a root password can equal an unrelated value by chance

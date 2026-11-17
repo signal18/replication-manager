@@ -11,6 +11,7 @@ import { TbKey, TbShieldLock } from 'react-icons/tb'
 import RMButton from '../../RMButton'
 import { useTheme } from '../../../ThemeProvider'
 import parentStyles from '../styles.module.scss'
+import { holdsServerCredentials } from '../../../utility/serverCredentials'
 
 // Static checkmark character for grant/role indicators
 const CHECK_MARK = '\u2713'
@@ -68,7 +69,7 @@ function ConsumedUnits({ theme }) {
   )
 }
 
-function UserInfoPanel({ isOpen, closeModal, user, onLogout, canAddUser = false, onAddUser, onApiTokens }) {
+function UserInfoPanel({ isOpen, closeModal, user, onLogout, canAddUser = false, onAddUser, onApiTokens, onRotateMyPassword }) {
   const { theme, toggleTheme } = useTheme()
   const badgeVariant = theme === 'dark' ? 'solid' : 'subtle'
 
@@ -92,6 +93,14 @@ function UserInfoPanel({ isOpen, closeModal, user, onLogout, canAddUser = false,
   const roleList = [...allRoles].sort()
   // API tokens need the token-create grant on at least one cluster (#1835).
   const canIssueTokens = clusterNames.some((name) => grants[name]?.['token-create'])
+  // Password rotation from the pill, the new password mailed as a one-time link (revealed once):
+  // - the admin password (a server secret, every cluster at once): the instance's sysops and
+  //   extsysops (the server credentials grant on every cluster), Cloud18 sign-in or local, and admin;
+  // - otherwise a local account's own password (a Cloud18 sign-in's is changed at Cloud18).
+  const rotateCluster = clusterNames.find((name) => grants[name]?.['cluster-rotate-passwords'])
+  const rotateTarget = !rotateCluster ? null
+    : holdsServerCredentials(user) ? 'admin'
+    : user?.AuthType === 'SSO' ? null : user?.User
 
   const stickyBg = theme === 'light' ? 'white' : 'gray.800'
 
@@ -141,6 +150,14 @@ function UserInfoPanel({ isOpen, closeModal, user, onLogout, canAddUser = false,
                     <HStack spacing={1}>
                       <TbKey />
                       <Text fontSize='sm'>API tokens</Text>
+                    </HStack>
+                  </RMButton>
+                )}
+                {onRotateMyPassword && rotateTarget && (
+                  <RMButton variant='outline' onClick={() => onRotateMyPassword(rotateCluster, rotateTarget)}>
+                    <HStack spacing={1}>
+                      <TbKey />
+                      <Text fontSize='sm'>{rotateTarget === 'admin' && user?.User !== 'admin' ? 'Rotate admin password' : 'Rotate my password'}</Text>
                     </HStack>
                   </RMButton>
                 )}
