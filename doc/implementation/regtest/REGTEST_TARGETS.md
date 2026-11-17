@@ -190,10 +190,10 @@ a PASS. It needs create on `pods/exec` in the cluster namespace (test only, not 
 `doc/implementation/cluster/KUBERNETES_PROVISIONING.md`, "`testK8SDatabaseConfigParity` (#2395)".
 
 `regtest/test_k8s_database_config_parity_helper_test.go` covers it without a cluster: the layout verdict (an
-unannotated claim is a SKIP, an unknown value a FAIL), the mount contract of the three containers (legacy mounts,
+unannotated claim is a SKIP; an empty or unknown value is a FAIL, like the product's own refusal), the mount contract of the three containers (legacy mounts,
 missing dbjobs `/etc/mysql`, wrong subPath or claim), the archive reader (links, bounds), the option-file parser
 and the groups each engine reads, the comparison of the generated configuration with the server (value, origin,
 runtime change, required option missing, GTID only with the tag, MariaDB without the MySQL GTID options), the
 GTID continuity checks, the observation script run for real on a fixture tree and its parser (an output without
-END is not complete), the claim-directory and tree checks, the gating of PASS on the required checks, registration
+END is not complete), the mount and tree checks with their coverage (hash-compared, presence-only, a file over the hash limit or out of the observed depth is INCONCLUSIVE, never PASS and never PRODUCT), the gating of PASS on the required checks, registration
 (not in ALL, no targets, dispatched) and the absence of any delete, patch or update in the test's own code.

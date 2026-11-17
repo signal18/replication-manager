@@ -51,8 +51,25 @@ import (
 //     command line or a default), the GTID and binary-log state, the identity of the server, a data digest
 //     (C3, C4, C7);
 //   - pods/exec (utils/k8sexec), only for what is not visible any other way: what the RUNNING database and
-//     dbjobs containers see at /etc/mysql: the mount points, and the hash of every generated file (C5, C6). The content of a file is never read or logged, only its name,
-//     size and hash.
+//     dbjobs containers see at /etc/mysql: the mount points, and the hash of the generated files the
+//     observation can hash (C5, C6). The content of a file is never read or logged, only its name, size and
+//     hash.
+//
+// What the test does and does not verify:
+//   - A curated set of effective settings (k8sCPSpecs) is compared with the server. The other generated
+//     settings are verified to be installed (their file hash), not to be loaded with the right value.
+//   - A generated file is hash-compared when the observation can produce its hash: it lists two levels below
+//     /etc/mysql and /docker-entrypoint-initdb.d and hashes files up to 1 MiB. A generated file larger than
+//     that, or deeper or outside those directories, is not observed: the step is INCONCLUSIVE (never PASS,
+//     never PRODUCT) and names the files. The archive's data/ and its two checksum files are not copied by
+//     the Kubernetes installer and are not treated as gaps.
+//   - Symbolic links are resolved for the content comparison: the identity of a link (a link replaced by a
+//     copy of the same content) is not asserted. custom.d and the files that differ between two generations
+//     are checked for presence, not for content.
+//   - The runtime test does not verify ownership, modes, stale extra files or the preservation of operator
+//     files. The installer unit tests (cluster/prov_k8s_pvc_layout_test.go, run under sh and busybox sh)
+//     cover some of them: link targets, modes, operator files, removal of a dropped conf.d entry.
+//   - It runs on one server of MariaDB, MySQL or Percona. It does not cover Galera.
 //
 // The expected values are not written in the test: they are read from the archive replication-manager serves
 // to the init container (the same GetDatabaseConfig the /config endpoint runs), parsed like the server
@@ -71,7 +88,8 @@ import (
 //	C4  binary logging and GTID: MySQL/Percona gtid_mode and enforce_gtid_consistency ON; MariaDB a binlog GTID
 //	    position written by this server id
 //	C5  the running database container: data and etc/mysql are mount points, conf.d is not a mount of its
-//	    own, a non-empty my.cnf and conf.d, every generated etc/mysql file present with its hash. Which
+//	    own, a non-empty my.cnf and conf.d, every generated etc/mysql file present, with its hash compared
+//	    where the observation can hash it (custom.d: presence only). Which
 //	    directory of the claim each mount comes from is the subPath contract of C1/C8, not read from the
 //	    storage driver's mount roots
 //	C6  the same in the dbjobs container (which also mounts init)
@@ -663,12 +681,20 @@ func (r *k8sCPRun) stepContainer(step, container, role string) bool {
 	}
 	withInit := role == "dbjobs" // the database container mounts data and etc/mysql, not init
 	problems := k8sCPObservedMountProblems(obs, withInit)
-	problems = append(problems, k8sCPTreeProblems(obs, r.gen, r.volatile, withInit)...)
+	treeProblems, cov := k8sCPTreeProblems(obs, r.gen, r.volatile, withInit)
+	problems = append(problems, treeProblems...)
 	if len(problems) > 0 {
 		return r.fail(step, k8sSWProduct, "the running %s container %s: %s", role, container, strings.Join(problems, "; "))
 	}
 	r.logf("OBSERVE %s container mounts as the driver reports them (not asserted): etc/mysql from %q, data from %q, init from %q", role, obs.Mounts["etc"], obs.Mounts["data"], obs.Mounts["init"])
-	r.pass(step, fmt.Sprintf("%s container %s: the paths %s are mount points, /etc/mysql/conf.d is not a mount of its own, my.cnf non-empty, conf.d has %d entries, the generated files it sees are present with their hash", role, container, map[bool]string{true: "data, etc/mysql, init", false: "data, etc/mysql"}[withInit], obs.ConfdCount))
+	r.logf("OBSERVE %s container coverage: %d generated file(s) hash-compared, %d present with the content not compared (custom.d and volatile files: %s), %d unhashed (over the size limit), %d outside the observed depth",
+		role, cov.Hashed, len(cov.PresenceOnly), k8sCPFirst(cov.PresenceOnly, 4), len(cov.Unhashed), len(cov.OutOfDepth))
+	// nothing was found against the installation, but a tree whose content could not be observed completely
+	// is not a verified tree: INCONCLUSIVE, never PASS
+	if class, detail := k8sCPCoverageVerdict(cov); class != "" {
+		return r.fail(step, class, "the running %s container %s: %s", role, container, detail)
+	}
+	r.pass(step, fmt.Sprintf("%s container %s: the paths %s are mount points, /etc/mysql/conf.d is not a mount of its own, my.cnf non-empty, conf.d has %d entries, %d generated file(s) hash-compared (links resolved, symlink identity not asserted), %d present with the content not compared (custom.d and volatile files)", role, container, map[bool]string{true: "data, etc/mysql, init", false: "data, etc/mysql"}[withInit], obs.ConfdCount, cov.Hashed, len(cov.PresenceOnly)))
 	return true
 }
 

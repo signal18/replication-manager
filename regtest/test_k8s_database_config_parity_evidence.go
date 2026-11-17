@@ -63,16 +63,18 @@ var k8sCPContractMounts = map[string][]k8sCPMount{
 	"dbjobs":   {k8sCPMountData, k8sCPMountEtc, k8sCPMountInit},
 }
 
-// k8sCPLayoutVerdict says what the annotation of the data claim allows. skip is set (nothing is changed,
-// the test is not applicable) for a claim without the annotation: an older, legacy claim keeps the layout
-// it was created with and is not what this test is about. fail is set for any other value.
+// k8sCPLayoutVerdict says what the annotation of the data claim allows, with the same contract as the
+// product's k8sPVCLayoutOf: a claim WITHOUT the annotation is a legacy claim and gets skip (nothing is
+// changed, the test is not applicable: an older claim keeps the layout it was created with); the one known
+// value is eligible; any other value, an empty one included, is fail (the product refuses to provision a
+// database on a claim whose layout it does not know).
 func k8sCPLayoutVerdict(annotations map[string]string) (skip, fail string) {
 	v, ok := annotations[k8sCPLayoutAnnotation]
 	switch {
-	case !ok || v == "":
+	case !ok:
 		return fmt.Sprintf("the data PVC has no %s annotation: it is a legacy claim, not a service-dirs-v1 one; nothing is asserted on it", k8sCPLayoutAnnotation), ""
 	case v != k8sCPLayoutValue:
-		return "", fmt.Sprintf("the data PVC carries %s=%q, expected %q", k8sCPLayoutAnnotation, v, k8sCPLayoutValue)
+		return "", fmt.Sprintf("the data PVC carries %s=%q, expected %q: the product refuses to provision on a layout it does not know", k8sCPLayoutAnnotation, v, k8sCPLayoutValue)
 	}
 	return "", ""
 }
@@ -775,11 +777,58 @@ func k8sCPObservedMountProblems(o *k8sCPObserved, withInit bool) (problems []str
 	return problems
 }
 
-// k8sCPTreeProblems compares what a container sees with the generated tree: a non-empty my.cnf and a
-// conf.d with entries; every generated file of etc/mysql (and of init, for a container that mounts it) is there (links resolved), with the
-// generated content unless it is volatile; no dangling link. Extra files are allowed: operators add some.
-func k8sCPTreeProblems(o *k8sCPObserved, gen *k8sCPTree, volatile map[string]bool, withInit bool) []string {
-	var problems []string
+// k8sCPNoHash is what the observation script prints in place of a hash for a file larger than its size
+// limit (1 MiB): the file exists, its content was not hashed.
+const k8sCPNoHash = "-"
+
+// k8sCPExcludedRoots are the parts of the generated archive that the Kubernetes installer does not copy: data/
+// (the init container creates the .system directories itself) and the two checksum files of the archive root
+// (the generator writes them; nothing else in the repository reads them). They are not treated as gaps of the
+// observation. A path outside these and outside etc/mysql and init is a gap.
+var k8sCPExcludedRoots = []string{"data/", "checksums.txt", "root-checksum.txt"}
+
+// k8sCPCoverage says what k8sCPTreeProblems could and could not verify, so that a result never claims a
+// complete tree when part of it was not observed.
+type k8sCPCoverage struct {
+	Hashed       int      // generated files whose content hash was compared
+	PresenceOnly []string // present, content not compared by design: custom.d and the volatile files
+	Unhashed     []string // present, but larger than the script's size limit: the content was not compared
+	OutOfDepth   []string // generated files the script cannot list: too deep, or outside etc/mysql and init
+}
+
+// Gaps are the generated files whose content the observation could not check, apart from the ones left out
+// by design (PresenceOnly, k8sCPExcludedRoots).
+func (c k8sCPCoverage) Gaps() []string {
+	var out []string
+	if len(c.Unhashed) > 0 {
+		out = append(out, fmt.Sprintf("%d generated file(s) are present but larger than the hash limit, so their content was not compared: %s", len(c.Unhashed), k8sCPFirst(c.Unhashed, 8)))
+	}
+	if len(c.OutOfDepth) > 0 {
+		out = append(out, fmt.Sprintf("%d generated file(s) are outside what the observation lists (more than two levels below etc/mysql or init, or outside both): %s", len(c.OutOfDepth), k8sCPFirst(c.OutOfDepth, 8)))
+	}
+	return out
+}
+
+// k8sCPCoverageVerdict is INCONCLUSIVE, not PRODUCT, when the observation left part of the generated tree
+// unverified: nothing was found against the installation, but a complete tree was not shown either. The
+// class is empty when the coverage is complete.
+func k8sCPCoverageVerdict(c k8sCPCoverage) (k8sSWClass, string) {
+	if gaps := c.Gaps(); len(gaps) > 0 {
+		return k8sSWInconclusive, "the generated tree was not verified completely (no mismatch was found in what was observed): " + strings.Join(gaps, "; ")
+	}
+	return "", ""
+}
+
+// k8sCPTreeProblems compares what a container sees with the generated tree. problems are installation
+// failures (PRODUCT): a my.cnf that is missing or empty, an empty conf.d, a dangling link, a generated file
+// of etc/mysql (and of init, for a container that mounts it) that is not there, or whose content (links
+// resolved) is not the generated one. Extra files are allowed: operators add some. coverage says what the
+// observation could not check; the caller decides on it with k8sCPCoverageVerdict.
+//
+// Left out by design: the volatile files and custom.d (presence only), k8sCPExcludedRoots, and init for a
+// container that does not mount it. Not asserted at all: symlink identity (a link replaced by a copy of the
+// same content passes), modes, ownership, stale files.
+func k8sCPTreeProblems(o *k8sCPObserved, gen *k8sCPTree, volatile map[string]bool, withInit bool) (problems []string, cov k8sCPCoverage) {
 	if !o.MyCnfOK {
 		problems = append(problems, "/etc/mysql/my.cnf is missing or empty")
 	}
@@ -789,31 +838,48 @@ func k8sCPTreeProblems(o *k8sCPObserved, gen *k8sCPTree, volatile map[string]boo
 	if len(o.Dangling) > 0 {
 		problems = append(problems, fmt.Sprintf("%d dangling link(s): %s", len(o.Dangling), k8sCPFirst(o.Dangling, 8)))
 	}
-	var missing, differ []string
-	checked := 0
-	for _, n := range gen.Names("") {
-		if !(strings.HasPrefix(n, "etc/mysql/") || (withInit && strings.HasPrefix(n, "init/"))) {
-			continue
+	excluded := func(n string) bool {
+		for _, e := range k8sCPExcludedRoots {
+			if n == e || (strings.HasSuffix(e, "/") && strings.HasPrefix(n, e)) {
+				return true
+			}
 		}
-		// the script lists two levels below each directory
-		if depth := strings.Count(strings.TrimPrefix(strings.TrimPrefix(n, "etc/mysql/"), "init/"), "/"); depth > 1 {
-			continue
+		return false
+	}
+	var missing, differ []string
+	present := 0
+	for _, n := range gen.Names("") {
+		inEtc, inInit := strings.HasPrefix(n, "etc/mysql/"), strings.HasPrefix(n, "init/")
+		if excluded(n) || (inInit && !withInit) {
+			continue // left out by design
 		}
 		body, ok := gen.Resolve(n)
 		if !ok {
-			continue // a link the generated tree itself leaves dangling is not the container's problem
+			continue // a link the generated tree itself leaves dangling is not an observable file
 		}
-		got, present := o.Files[n]
-		if !present {
+		// the script lists two levels below each directory; anything else it cannot see is reported
+		if !inEtc && !inInit || strings.Count(strings.TrimPrefix(strings.TrimPrefix(n, "etc/mysql/"), "init/"), "/") > 1 {
+			cov.OutOfDepth = append(cov.OutOfDepth, n)
+			continue
+		}
+		got, there := o.Files[n]
+		if !there {
 			missing = append(missing, n)
 			continue
 		}
-		checked++
-		if !volatile[n] && got != k8sCPNormHash(body) {
+		present++
+		switch {
+		case volatile[n] || strings.HasPrefix(n, "etc/mysql/custom.d/"):
+			cov.PresenceOnly = append(cov.PresenceOnly, n)
+		case got == k8sCPNoHash:
+			cov.Unhashed = append(cov.Unhashed, n) // present; not a mismatch, and not a verified content either
+		case got != k8sCPNormHash(body):
 			differ = append(differ, n)
+		default:
+			cov.Hashed++
 		}
 	}
-	if checked == 0 && len(missing) == 0 {
+	if present == 0 && len(missing) == 0 {
 		problems = append(problems, "the generated tree has no file under etc/mysql or init to compare")
 	}
 	if len(missing) > 0 {
@@ -822,7 +888,8 @@ func k8sCPTreeProblems(o *k8sCPObserved, gen *k8sCPTree, volatile map[string]boo
 	if len(differ) > 0 {
 		problems = append(problems, fmt.Sprintf("%d generated file(s) differ from what was generated just now (the configuration may have changed since the last Start): %s", len(differ), k8sCPFirst(differ, 8)))
 	}
-	return problems
+	sort.Strings(cov.OutOfDepth)
+	return problems, cov
 }
 
 func k8sCPFirst(list []string, n int) string {

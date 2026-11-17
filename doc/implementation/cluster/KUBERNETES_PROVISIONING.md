@@ -252,6 +252,16 @@ never reinterpreted as the new layout; moving one is an explicit operation that 
 Deployments already running are not touched either: only provisioning renders a Deployment, and the
 update paths patch image, pull policy, resources and strategy.
 
+The database container mounts `data` and `etc/mysql` but not `init` (it never mounted it, in either layout; the
+init and dbjobs containers do). OpenSVC mounts `init` in the database container, where the image entrypoint runs
+the `*.sql` and `*.sh` files of `/docker-entrypoint-initdb.d` once, when the data directory is created. The
+shared configurator generates `init/galera_sst_account.sql` (the Galera SST account on MariaDB) for a cluster
+with the `wsrep` tag. On Kubernetes that file is installed in the volume but is not run by the database
+container. The monitor's `CheckGaleraSSTAccount` may create the account on a suitable running node (a Synced one
+first), which does not establish that every Kubernetes Galera initialization or state transfer succeeds. Galera on
+Kubernetes is not covered by the tests, and that fallback has not been validated there. This is unchanged by the
+service-directory layout.
+
 ### Secrets, image pull policy, storage class
 
 `MYSQL_ROOT_PASSWORD` lives in one Secret shared by the whole cluster
@@ -1431,12 +1441,28 @@ tag. A required check that did not run is not a PASS: the summary line
 its class (`PRODUCT`, `HARNESS`, `RESOURCE`, `INCONCLUSIVE`). A missing permission, a container that is not
 available and a failed Kubernetes call are never `PRODUCT`.
 
-**What is and is not covered.** The configuration assertions are a curated set: the settings listed in the C3 row
-(the ones with a reliable equivalent as a server variable), plus the hash of every generated file in the
-containers (C5, C6). The other settings of the generated tree (the generated tree has between 100 and 130 options, by engine) are
-verified to be installed, not to be loaded with the right value, and a setting that the server does not expose
-as a variable is not asserted at all. `custom.d` is checked for presence only. This is not complete
-configuration-semantic coverage.
+**What is and is not covered.**
+- **Effective settings:** a curated set, the settings listed in the C3 row (the ones with a reliable equivalent as
+  a server variable). The other settings of the generated tree (between 100 and 130 options, by engine) are
+  verified to be installed, not to be loaded with the right value, and a setting that the server does not expose
+  as a variable is not asserted at all. This is not complete configuration-semantic coverage.
+- **Generated files:** the content hash is compared only where the observation can produce it. It lists two
+  levels below `/etc/mysql` and `/docker-entrypoint-initdb.d` and hashes files up to 1 MiB. A generated file
+  that is larger, deeper, or outside those directories is not observed: C5 or C6 is then `INCONCLUSIVE` (never
+  `PASS`, never `PRODUCT`) and names the files. The archive's `data/` and its two checksum files are not
+  copied by the Kubernetes installer (the init container creates the `.system` directories itself, and nothing
+  in the repository reads the checksum files), and they are not treated as gaps. The step log says how many files were hash-compared and
+  how many were present with the content not compared.
+- **Links and volatile files:** symbolic links are resolved for the content comparison. The identity of a link
+  (a link replaced by a copy of the same content) is not asserted. `custom.d` and the files that differ between
+  two generations are checked for presence, not for content.
+- **Not verified at runtime:** file ownership, modes, stale extra files, and the preservation of operator files.
+  The installer unit tests (`cluster/prov_k8s_pvc_layout_test.go`, run under `sh` and `busybox sh`) cover some of
+  these: link targets, modes, operator files, and the removal of a `conf.d` entry the generator dropped.
+- **Engines:** one server of MariaDB, MySQL or Percona. Galera is not covered.
+- **Annotation:** a data claim without the annotation is a legacy claim and the test is `SKIP`. An annotation that
+  is present but empty, or has any value other than `service-dirs-v1`, is a `FAIL`, as the product refuses to
+  provision on a layout it does not know.
 
 Each observation comes from the one source that can make it:
 
@@ -1446,7 +1472,7 @@ Each observation comes from the one source that can make it:
 | C2 | lifecycle functions | guarded `StopDatabaseService` then `StartDatabaseService`; the replacement Pod mounts the same claim |
 | C3 | SQL (`dbhelper.GetVariableOrigins`) | for a **curated set** of settings, `server_id`, `max_connections`, `log_bin` (the prefix, which is not the default one, and ON: both are derived variables with no option-file origin), `innodb_data_home_dir`, `innodb_log_group_home_dir`, and when the generated tree carries them `innodb_undo_directory`, `binlog_format`, on MariaDB `gtid_strict_mode`, on MySQL/Percona `gtid_mode` and `enforce_gtid_consistency` (required with the `mysqlgtid` tag): the value the server reports is the value of the generated configuration, **and** the server says it got it from an option file under `/etc/mysql` (MariaDB `GLOBAL_VALUE_ORIGIN = CONFIG`, MySQL/Percona `VARIABLE_SOURCE = GLOBAL` with the file in `VARIABLE_PATH`). A matching value from the command line or a default is not a pass |
 | C4 | SQL | `log_bin` ON; MySQL/Percona `gtid_mode` and `enforce_gtid_consistency` ON and the server UUID in `gtid_executed`; MariaDB a binlog GTID position written by this `server_id` |
-| C5, C6 | `pods/exec` | what the **running** database and dbjobs containers see: the contract paths are mount points (`/var/lib/mysql`, `/etc/mysql`, and `/docker-entrypoint-initdb.d` for dbjobs) and `/etc/mysql/conf.d` is not a mount of its own, a non-empty `my.cnf`, a `conf.d` with entries, no dangling link, every generated file of `etc/mysql` (and of `init` in dbjobs) present with its hash; `custom.d` is checked for presence only (preserved and delta settings change at runtime). Which directory of the claim each mount comes from is the subPath contract of C1/C8; the roots a storage driver reports in `/proc/self/mountinfo` differ between drivers and are only logged |
+| C5, C6 | `pods/exec` | what the **running** database and dbjobs containers see: the contract paths are mount points (`/var/lib/mysql`, `/etc/mysql`, and `/docker-entrypoint-initdb.d` for dbjobs) and `/etc/mysql/conf.d` is not a mount of its own, a non-empty `my.cnf`, a `conf.d` with entries, no dangling link, every generated file of `etc/mysql` (and of `init` in dbjobs) present, with its content hash compared where the observation can produce it (see "What is and is not covered"); `custom.d` is checked for presence only (preserved and delta settings change at runtime). Which directory of the claim each mount comes from is the subPath contract of C1/C8; the roots a storage driver reports in `/proc/self/mountinfo` differ between drivers and are only logged |
 | C7 | SQL | fixture digest, claim UID and a write intact; `server_id` (and `server_uuid`) unchanged; the GTID position did not go back (`GTID_SUBSET` on MySQL/Percona, per-domain sequence on MariaDB: a containment check, because the test's own writes advance it); every followed setting has the same value, origin and option file (a change of a data or identity setting is `PRODUCT`; a change of another one, which a configuration change between the two starts can explain, is `INCONCLUSIVE`) |
 
 The expected values are not written in the test: they are read from the archive replication-manager serves to

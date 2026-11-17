@@ -86,8 +86,12 @@ func TestK8SCPLayoutVerdict(t *testing.T) {
 	if skip, fail := k8sCPLayoutVerdict(nil); skip == "" || fail != "" {
 		t.Errorf("an unannotated claim must be a SKIP with a reason, never a pass or a fail: skip=%q fail=%q", skip, fail)
 	}
-	if skip, fail := k8sCPLayoutVerdict(map[string]string{k8sCPLayoutAnnotation: ""}); skip == "" || fail != "" {
-		t.Errorf("an empty annotation is a SKIP: %q %q", skip, fail)
+	// the same contract as the product's k8sPVCLayoutOf: present but empty is a layout it does not know
+	if skip, fail := k8sCPLayoutVerdict(map[string]string{k8sCPLayoutAnnotation: ""}); skip != "" || fail == "" {
+		t.Errorf("a present but empty annotation must FAIL, as the product refuses it: skip=%q fail=%q", skip, fail)
+	}
+	if skip, fail := k8sCPLayoutVerdict(map[string]string{"unrelated": "x"}); skip == "" || fail != "" {
+		t.Errorf("an unrelated annotation leaves the claim unannotated: SKIP, not FAIL: %q %q", skip, fail)
 	}
 	if skip, fail := k8sCPLayoutVerdict(map[string]string{k8sCPLayoutAnnotation: "service-dirs-v2"}); skip != "" || fail == "" {
 		t.Errorf("an unknown value must FAIL: %q %q", skip, fail)
@@ -459,6 +463,8 @@ func TestK8SCPObserveScriptAndParser(t *testing.T) {
 	}
 	root := t.TempDir()
 	files := cpFiles("2026-11-17T01:00:00Z")
+	// a generated file over the script's 1 MiB limit: the script says "no hash", not a wrong one
+	files = append(files, cpFile{name: "etc/mysql/replication-manager.d/big.cnf", body: "[mysqld]\n" + strings.Repeat("loose_a=1\n", 120000)})
 	// a different stamp on disk than in the generated tree: the hash must not see it
 	for i := range files {
 		if files[i].name == "etc/mysql/my.cnf" {
@@ -533,6 +539,12 @@ func TestK8SCPObserveScriptAndParser(t *testing.T) {
 		}
 		local := root + "/" + strings.Replace(n, "init/", "docker-entrypoint-initdb.d/", 1)
 		if got, present := o.Files[local]; present {
+			if len(body) > 1<<20 {
+				if got != k8sCPNoHash {
+					t.Errorf("%s is over the size limit: the script must print %q, not a hash (%s)", n, k8sCPNoHash, got)
+				}
+				continue
+			}
 			compared++
 			if got != k8sCPNormHash(body) {
 				t.Errorf("%s: the script says %s, the test computes %s", n, got, k8sCPNormHash(body))
@@ -609,14 +621,14 @@ func TestK8SCPTreeProblems(t *testing.T) {
 	if len(good) == 0 {
 		t.Fatal("no generated file to compare")
 	}
-	if p := k8sCPTreeProblems(cpObserved(good), tree, nil, true); len(p) != 0 {
+	if p, _ := k8sCPTreeProblems(cpObserved(good), tree, nil, true); len(p) != 0 {
 		t.Fatalf("a good container: %v", p)
 	}
 	extra := map[string]string{"etc/mysql/custom.d/09_operator.cnf": "x", "init/replication-manager-cli": "-"}
 	for k, v := range good {
 		extra[k] = v
 	}
-	if p := k8sCPTreeProblems(cpObserved(extra), tree, nil, true); len(p) != 0 {
+	if p, _ := k8sCPTreeProblems(cpObserved(extra), tree, nil, true); len(p) != 0 {
 		t.Errorf("operator files are allowed: %v", p)
 	}
 	bad := func(f func(o *k8sCPObserved)) string {
@@ -626,7 +638,8 @@ func TestK8SCPTreeProblems(t *testing.T) {
 		}
 		o := cpObserved(files)
 		f(o)
-		return strings.Join(k8sCPTreeProblems(o, tree, nil, true), "; ")
+		p, _ := k8sCPTreeProblems(o, tree, nil, true)
+		return strings.Join(p, "; ")
 	}
 	for name, c := range map[string]struct {
 		f    func(o *k8sCPObserved)
@@ -650,10 +663,10 @@ func TestK8SCPTreeProblems(t *testing.T) {
 			noInit[k] = v
 		}
 	}
-	if p := k8sCPTreeProblems(cpObserved(noInit), tree, nil, false); len(p) != 0 {
+	if p, _ := k8sCPTreeProblems(cpObserved(noInit), tree, nil, false); len(p) != 0 {
 		t.Errorf("the database container without init: %v", p)
 	}
-	if p := k8sCPTreeProblems(cpObserved(noInit), tree, nil, true); len(p) == 0 {
+	if p, _ := k8sCPTreeProblems(cpObserved(noInit), tree, nil, true); len(p) == 0 {
 		t.Error("a container that must see init and does not is a problem")
 	}
 	// a volatile file is checked for presence only
@@ -662,7 +675,7 @@ func TestK8SCPTreeProblems(t *testing.T) {
 		files[k] = v
 	}
 	files["init/dbjobs_new"] = "other"
-	if p := k8sCPTreeProblems(cpObserved(files), tree, map[string]bool{"init/dbjobs_new": true}, true); len(p) != 0 {
+	if p, _ := k8sCPTreeProblems(cpObserved(files), tree, map[string]bool{"init/dbjobs_new": true}, true); len(p) != 0 {
 		t.Errorf("a volatile file differs: %v", p)
 	}
 }
@@ -804,5 +817,122 @@ func TestK8SCPPermissionsAreMinimal(t *testing.T) {
 		if p.Resource == "pods" && (p.Verb == "create" || p.Verb == "delete" || p.Verb == "watch") {
 			t.Errorf("the test does not need %s on pods", p.Verb)
 		}
+	}
+}
+
+// --- the coverage of the observation ------------------------------------------------------------------------
+
+func cpCoverageFixture(t *testing.T, extra ...cpFile) (*k8sCPTree, map[string]string) {
+	t.Helper()
+	tree := cpTree(t, append(cpFiles("t"), extra...))
+	return tree, cpGoodFiles(t, tree)
+}
+
+// A generated file the script could not hash (over the size limit) is present but was not verified: not a
+// PRODUCT mismatch, and not a PASS with complete coverage either.
+func TestK8SCPOversizedGeneratedFileIsNotAMismatchAndNotACompleteTree(t *testing.T) {
+	tree, files := cpCoverageFixture(t)
+	big := "etc/mysql/replication-manager.d/default_network.cnf"
+	link := "etc/mysql/conf.d/01_default_network.cnf" // the link resolves to the same oversized file
+	files[big], files[link] = k8sCPNoHash, k8sCPNoHash
+	problems, cov := k8sCPTreeProblems(cpObserved(files), tree, nil, true)
+	if len(problems) != 0 {
+		t.Fatalf("an unavailable hash is not a content mismatch: %v", problems)
+	}
+	if !slices.Contains(cov.Unhashed, big) || !slices.Contains(cov.Unhashed, link) || len(cov.Unhashed) != 2 {
+		t.Errorf("the files without a hash must be named: %v", cov.Unhashed)
+	}
+	class, detail := k8sCPCoverageVerdict(cov)
+	if class != k8sSWInconclusive || !strings.Contains(detail, big) || !strings.Contains(detail, "not compared") || !strings.Contains(detail, "no mismatch was found") {
+		t.Errorf("an unverified file must give INCONCLUSIVE, naming it: %q %q", class, detail)
+	}
+	if class == k8sSWProduct {
+		t.Error("never PRODUCT for a hash that was not produced")
+	}
+	// the existence is still verified: an oversized file that is not there is a PRODUCT problem
+	delete(files, big)
+	if p, _ := k8sCPTreeProblems(cpObserved(files), tree, nil, true); !strings.Contains(strings.Join(p, ";"), "not in the container: "+big) {
+		t.Errorf("a missing generated file is found whatever its size: %v", p)
+	}
+	// and a real mismatch elsewhere is still PRODUCT, ahead of the coverage gap
+	files[big] = k8sCPNoHash
+	files["etc/mysql/my.cnf"] = "deadbeef"
+	p, cov2 := k8sCPTreeProblems(cpObserved(files), tree, nil, true)
+	if !strings.Contains(strings.Join(p, ";"), "differ") || len(cov2.Unhashed) == 0 {
+		t.Errorf("a mismatch next to an unhashed file: %v %v", p, cov2.Unhashed)
+	}
+}
+
+// The coverage adds up: every generated file the observation sees is counted once.
+func TestK8SCPCoverageIsComplete(t *testing.T) {
+	tree, files := cpCoverageFixture(t)
+	problems, cov := k8sCPTreeProblems(cpObserved(files), tree, nil, true)
+	if len(problems) != 0 {
+		t.Fatal(problems)
+	}
+	if class, _ := k8sCPCoverageVerdict(cov); class != "" {
+		t.Errorf("a fully observed tree has no coverage gap: %q %+v", class, cov)
+	}
+	if !slices.Contains(cov.PresenceOnly, "etc/mysql/custom.d/03_agreed.cnf") {
+		t.Errorf("custom.d is presence only, and said so: %v", cov.PresenceOnly)
+	}
+	want := 0
+	for _, n := range tree.Names("") {
+		if _, ok := tree.Resolve(n); ok && (strings.HasPrefix(n, "etc/mysql/") || strings.HasPrefix(n, "init/")) {
+			want++
+		}
+	}
+	if cov.Hashed+len(cov.PresenceOnly) != want || cov.Hashed == 0 {
+		t.Errorf("hashed %d + presence-only %d must be the %d generated files observed", cov.Hashed, len(cov.PresenceOnly), want)
+	}
+	// a volatile file moves from hashed to presence-only, and is counted as such
+	_, cov = k8sCPTreeProblems(cpObserved(files), tree, map[string]bool{"init/dbjobs_new": true}, true)
+	if !slices.Contains(cov.PresenceOnly, "init/dbjobs_new") || cov.Hashed+len(cov.PresenceOnly) != want {
+		t.Errorf("a volatile file is presence only: %+v", cov)
+	}
+}
+
+// A generated file the script cannot list is reported, never skipped silently; what Kubernetes leaves out on
+// purpose is not a gap.
+func TestK8SCPOutOfDepthGeneratedFilesAreReported(t *testing.T) {
+	tree, files := cpCoverageFixture(t,
+		cpFile{name: "etc/mysql/replication-manager.d/sub/deep.cnf", body: "[mysqld]\n"}, // three levels below etc/mysql
+		cpFile{name: "init/sub/deeper/x.sh", body: "#!/bin/sh\n"},
+		cpFile{name: "newroot/new.txt", body: "x"}, // a generated path outside etc/mysql and init
+		cpFile{name: "data/.system/aria/marker", body: "x"},
+		cpFile{name: "checksums.txt", body: "x"},
+		cpFile{name: "root-checksum.txt", body: "x"},
+	)
+	problems, cov := k8sCPTreeProblems(cpObserved(files), tree, nil, true)
+	if len(problems) != 0 {
+		t.Fatalf("what was observed matches: %v", problems)
+	}
+	want := []string{"etc/mysql/replication-manager.d/sub/deep.cnf", "init/sub/deeper/x.sh", "newroot/new.txt"}
+	if !slices.Equal(cov.OutOfDepth, want) {
+		t.Errorf("out of depth = %v, want %v (data/ and the checksum files are not copied by the installer)", cov.OutOfDepth, want)
+	}
+	class, detail := k8sCPCoverageVerdict(cov)
+	if class != k8sSWInconclusive {
+		t.Fatalf("an unobserved generated file is INCONCLUSIVE, not a PASS and not PRODUCT: %q", class)
+	}
+	for _, n := range want {
+		if !strings.Contains(detail, n) {
+			t.Errorf("the verdict does not name %s: %s", n, detail)
+		}
+	}
+	for _, left := range []string{"data/.system/aria/marker", "checksums.txt", "root-checksum.txt"} {
+		if strings.Contains(detail, left) {
+			t.Errorf("%s is not copied by the Kubernetes installer and must not be a gap", left)
+		}
+	}
+	// the database container does not mount init: a deep file under init is not its gap
+	_, cov = k8sCPTreeProblems(cpObserved(files), tree, nil, false)
+	if slices.Contains(cov.OutOfDepth, "init/sub/deeper/x.sh") {
+		t.Errorf("init is not observed in the database container, by design: %v", cov.OutOfDepth)
+	}
+	// a dangling link of the generated tree is not a file of the container's
+	tree2 := cpTree(t, append(cpFiles("t"), cpFile{name: "etc/mysql/replication-manager.d/sub/dangling.cnf", link: "../nowhere"}))
+	if _, c := k8sCPTreeProblems(cpObserved(cpGoodFiles(t, tree2)), tree2, nil, true); len(c.OutOfDepth) != 0 {
+		t.Errorf("a link that resolves to nothing is not an observable generated file: %v", c.OutOfDepth)
 	}
 }
