@@ -68,17 +68,25 @@ func standbyNeverFailsOverWithLiveActive(cl *cluster.Cluster, label string) bool
 		return false
 	}
 	if peerMode != "automatic" {
+		// Registered before the set: the set can fail after the peer applied it (a read-back
+		// error), and a peer left in automatic failover is the unsafe direction. Restoring a
+		// mode that did not change is harmless.
+		defer func() {
+			var err error
+			for attempt := 1; attempt <= 3; attempt++ {
+				if err = SetPeerFailoverMode(cl.Name, peerMode); err == nil {
+					logf("peer failover mode put back to %s", peerMode)
+					return
+				}
+				time.Sleep(2 * time.Second)
+			}
+			cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
+				"%s: the peer may be left in automatic failover: put it back to %s by hand (%v)", label, peerMode, err)
+		}()
 		if err := SetPeerFailoverMode(cl.Name, "automatic"); err != nil {
 			logf("cannot set the peer to automatic failover: %v", err)
 			return false
 		}
-		defer func() {
-			if err := SetPeerFailoverMode(cl.Name, peerMode); err != nil {
-				logf("could not put the peer back to %s failover: %v", peerMode, err)
-				return
-			}
-			logf("peer failover mode put back to %s", peerMode)
-		}()
 	}
 	logf("peer failover mode: automatic (was %s)", peerMode)
 
