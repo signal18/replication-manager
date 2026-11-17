@@ -83,6 +83,8 @@ type Cluster struct {
 	// monitor tick only: no lock; a reader outside the tick must add one.
 	galeraSSTAccountLastTry time.Time
 	galeraSSTAccountErr     string
+	// jobsWatchSince: when this monitor became active for CheckJobsSilent (zero: not active)
+	jobsWatchSince time.Time
 
 	OsUser          *user.User `json:"-"`
 	Name            string     `json:"name" groups:"apps,web"`
@@ -1560,6 +1562,7 @@ func (cluster *Cluster) tickBody() {
 		cluster.CheckSecretLoginLegacy()
 		cluster.CheckJobStreamRefused()
 		cluster.CheckJobLoginRefused()
+		cluster.CheckJobsSilent(time.Now())
 		// the credential store entries: full passes, stores behind, queue drops (#2227)
 		cluster.CheckSecretKvStores()
 		// a skipped scheduled password rotation (#2269)

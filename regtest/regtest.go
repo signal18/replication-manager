@@ -163,6 +163,7 @@ var tests = []string{
 	"testK8SProvisionSchedulerVolumeBinding",
 	"testK8SStopStartDatabaseService",
 	"testSchemaPlugin",
+	"testJobsRoundTrip",
 	"testGraphiteMetricsQueueBound",
 	"testDirectReseedSystemAllEmptyDestination",
 	"testDirectReseedSystemAllPluginAlreadyActive",
@@ -326,6 +327,7 @@ var testTargets = map[string][]TestTarget{
 	"testK8SProvisionSchedulerVolumeBinding":                                   {{OrchestratorTarget: []string{config.ConstOrchestratorKubernetes}}},
 	"testK8SStopStartDatabaseService":                                          {{OrchestratorTarget: []string{config.ConstOrchestratorKubernetes}}},
 	"testSchemaPlugin":                                                         anyCluster,
+	"testJobsRoundTrip":                                                        {{OrchestratorTarget: []string{config.ConstOrchestratorOpenSVC, config.ConstOrchestratorKubernetes}}},
 	// its own local web service: any cluster
 	"testAppMonitorHTTP": anyCluster,
 	"testAppCheckInterval": anyCluster,

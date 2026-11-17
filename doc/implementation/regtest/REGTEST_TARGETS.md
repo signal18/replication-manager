@@ -160,6 +160,17 @@ gate of `MatchTarget` still applies first, so on MySQL and Percona the cluster m
 (a SKIP is never a PASS). See
 `doc/implementation/cluster/KUBERNETES_PROVISIONING.md`, "Kubernetes regtests".
 
+## A job must run through the jobs container (`testJobsRoundTrip`)
+
+The database runs whether its jobs container reaches replication-manager or not, so the lifecycle and
+configuration tests pass even when it cannot (a stock MySQL or Percona image without `socat` and without
+`prov-db-docker-xtrabackup-img`). A test on MySQL or Percona counts as passing only if a job ran through
+the jobs container. `testJobsRoundTrip` asks one server (a replica when there is one) for the error log
+collection, the lightest job, and expects its state to end done within 5 minutes; an error state or no state
+is a FAIL. Targets: OpenSVC and Kubernetes, the orchestrators that run a jobs container. It changes nothing
+on the database. Outside a regtest, the same failure is the state WARN0324 (a server whose
+jobs have not reached replication-manager for 10 minutes, `CheckJobsSilent`).
+
 ## Tests
 
 `regtest/regtest_targets_test.go`: `TestSkipReason` covers each condition, matched and missed, the unknown

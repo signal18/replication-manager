@@ -390,6 +390,9 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 		if test.Name == "testK8SProvisionSchedulerVolumeBinding" {
 			res = regtest.TestK8SProvisionSchedulerVolumeBinding(cl, test.ConfigFile, &test)
 		}
+		if test.Name == "testJobsRoundTrip" {
+			res = regtest.TestJobsRoundTrip(cl, test.ConfigFile, &test)
+		}
 		if test.Name == "testK8SStopStartDatabaseService" {
 			res = regtest.TestK8SStopStartDatabaseService(cl, test.ConfigFile, &test)
 		}
