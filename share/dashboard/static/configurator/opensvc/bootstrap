@@ -51,12 +51,14 @@ if [ -f "/bootstrap/version" ]; then
 	CURRENT_VERSION=$(cat /bootstrap/version)
 fi
 if [ -n "$MONITOR_VERSION" ] && { [ "$MONITOR_VERSION" != "$CURRENT_VERSION" ] || [ ! -x $CLI ]; }; then
-	if $GET $REPLICATION_MANAGER_URL/static/configurator/bin/replication-manager-cli > $CLI.new && [ -s $CLI.new ]; then
+	# the version is recorded only once the downloaded CLI runs: a truncated download is fetched
+	# again at the next start instead of being kept as current
+	if $GET $REPLICATION_MANAGER_URL/static/configurator/bin/replication-manager-cli > $CLI.new && chmod +x $CLI.new && $CLI.new version > /dev/null 2>&1; then
 		mv $CLI.new $CLI
-		chmod +x $CLI
 		echo "$MONITOR_VERSION" > /bootstrap/version
 	else
 		rm -f $CLI.new
+		echo "bootstrap: the replication-manager-cli download from $REPLICATION_MANAGER_URL does not run" >&2
 	fi
 fi
 
@@ -115,6 +117,10 @@ elif [ -n "$(jobs_key)" ]; then
 		case $FETCHED in
 		0) trace fetched "jobs login" ;;
 		1) trace not-needed "" ;;
+		126|127)
+			# the CLI does not run (damaged, wrong architecture): downloaded again at the next start
+			rm -f $CLI /bootstrap/version
+			FETCHED=2; trace failed "replication-manager-cli does not run" ;;
 		*) FETCHED=2; trace failed "jobs login or download refused, see the line above" ;;
 		esac
 	fi
@@ -143,8 +149,8 @@ if [ $FETCHED -eq 0 ]; then
 	cat config.tar.gz | tar xzvf - -C /bootstrap
 	rm -f config.tar.gz
 fi
-if [ $FETCHED -ne 1 ]; then
-	# a start that wanted a config (fetched or not) owns the data volume, as before
+if [ $FETCHED -eq 0 ]; then
+	# a fetched config owns the data volume; a failed start leaves the volume as it is
 	chown -R "$REPLICATION_MANAGER_DB_VOLUME_UID:$REPLICATION_MANAGER_DB_VOLUME_GID" /bootstrap/data
 	chmod -R 0755 /bootstrap/init
 fi

@@ -120,7 +120,9 @@ func TestJobsTokenForServerConfigFetch(t *testing.T) {
 		}
 		return tok
 	}
-	jobs := sign(map[string]interface{}{"Name": cl.JobsPrincipalName(), "Role": "Member", "Password": "", "Server": "db1:3306"})
+	jobs := sign(map[string]interface{}{"Name": cl.JobsPrincipalName(), "Role": "Member", "Password": "", "Server": "db1:3306", "Cluster": "c1"})
+	otherCluster := sign(map[string]interface{}{"Name": cl.JobsPrincipalName(), "Role": "Member", "Password": "", "Server": "db1:3306", "Cluster": "c2"})
+	noCluster := sign(map[string]interface{}{"Name": cl.JobsPrincipalName(), "Role": "Member", "Password": "", "Server": "db1:3306"})
 	session := sign(map[string]interface{}{"Name": "alice", "Role": "Member", "Password": "x"})
 
 	router := mux.NewRouter()
@@ -149,5 +151,18 @@ func TestJobsTokenForServerConfigFetch(t *testing.T) {
 	}
 	if got, _ := check(session, "/api/clusters/c1/servers/db1/3306/config"); got {
 		t.Error("a session token passed as a jobs token")
+	}
+	// another cluster monitoring the same server URL: its token is not this cluster's
+	if got, _ := check(otherCluster, "/api/clusters/c1/servers/db1/3306/config"); got {
+		t.Error("a jobs token of c2 fetched c1's config")
+	}
+	if got, _ := check(noCluster, "/api/clusters/c1/servers/db1/3306/config"); got {
+		t.Error("a jobs token naming no cluster fetched a config")
+	}
+	r := httptest.NewRequest("POST", "/api/clusters/c1/servers/db1/3306/actions/job-state/backup/done", nil)
+	r.Header.Set("Authorization", "Bearer "+otherCluster)
+	r = mux.SetURLVars(r, map[string]string{"clusterName": "c1", "serverName": "db1", "serverPort": "3306"})
+	if valid, _ := repman.IsValidClusterACL(r, cl); valid {
+		t.Error("a jobs token of c2 reached a job endpoint of c1")
 	}
 }

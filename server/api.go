@@ -612,8 +612,17 @@ func (repman *ReplicationManager) jobsTokenForServer(r *http.Request, cl *cluste
 		return false
 	}
 	server, _ := info["Server"].(string)
+	clusterName, _ := info["Cluster"].(string)
 	vars := mux.Vars(r)
-	return vars["serverPort"] != "" && cl.JobsTokenServerInScope(server, vars["serverName"], vars["serverPort"])
+	return clusterName == cl.Name && vars["serverPort"] != "" && cl.JobsTokenServerInScope(server, vars["serverName"], vars["serverPort"])
+}
+
+// jobsTokenClusterOK: a jobs token names the cluster it was minted on and acts there only (two
+// clusters may monitor the same server URL). A token minted before the claim existed (at most
+// api-secret-login-token-timeout old after an upgrade) names none and keeps its server check.
+func jobsTokenClusterOK(info map[string]interface{}, cl *cluster.Cluster) bool {
+	name, present := info["Cluster"].(string)
+	return !present || name == cl.Name
 }
 
 func (repman *ReplicationManager) IsValidClusterACL(r *http.Request, cluster *cluster.Cluster) (bool, string) {
@@ -652,7 +661,7 @@ func (repman *ReplicationManager) IsValidClusterACL(r *http.Request, cluster *cl
 			if isJobsPrincipal(meuser) {
 				server, _ := mycutinfo["Server"].(string)
 				vars := mux.Vars(r)
-				if !cluster.JobsTokenServerInScope(server, vars["serverName"], vars["serverPort"]) {
+				if !jobsTokenClusterOK(mycutinfo, cluster) || !cluster.JobsTokenServerInScope(server, vars["serverName"], vars["serverPort"]) {
 					return false, meuser
 				}
 			}

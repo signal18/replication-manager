@@ -5131,7 +5131,8 @@ func (repman *ReplicationManager) secretLoginHandler(w http.ResponseWriter, r *h
 		Role     string
 		Password string
 		Server   string
-	}{mycluster.JobsPrincipalName(), "Member", "", node.URL}
+		Cluster  string // a jobs token acts on its own cluster only (jobsTokenClusterOK)
+	}{mycluster.JobsPrincipalName(), "Member", "", node.URL, mycluster.Name}
 	tokenString, err := repman.issueJWTFor(userInfo, "", repman.secretLoginTokenLifetime())
 	if err != nil {
 		http.Error(w, "Error signing token: "+err.Error(), http.StatusInternalServerError)
