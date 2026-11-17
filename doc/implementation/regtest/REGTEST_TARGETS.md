@@ -149,6 +149,17 @@ resolves to the release the nodes already run (an exact release declares itself;
 `mysql:8.0`, resolves to its newest release): it had reported PASS for 8.0.41 -> 8.0.41 and 8.0.46 -> 8.0.46
 without upgrading anything.
 
+## A test run by name only (`testK8SSingleWriterLifecycle`)
+
+A test that stops, restarts and patches its database is not added to the ALL list and declares no
+targets (`TestTargetsDeclared` ties targets to ALL). It is dispatched in `server/regtest.go` and run through
+`POST /api/clusters/<cluster>/tests/actions/run/<testName>`. It checks its own preconditions before any
+change (Kubernetes orchestrator, one server, namespace labelled
+`regtest.replication-manager/disposable=true`) and sets `test.SkipReason` otherwise. The global MySQL GTID-tag
+gate of `MatchTarget` still applies first, so on MySQL and Percona the cluster must declare the `mysqlgtid` tag
+(a SKIP is never a PASS). See
+`doc/implementation/cluster/KUBERNETES_PROVISIONING.md`, "Kubernetes regtests".
+
 ## Tests
 
 `regtest/regtest_targets_test.go`: `TestSkipReason` covers each condition, matched and missed, the unknown
@@ -159,3 +170,12 @@ checks the must-set goes through setClusterSetting and an unknown key stops the 
 on every cluster. `TestMySQLClusterDeclaresGTIDTag` covers the MySQL GTID tag gate.
 `TestConsistencyChecksUseBenchTable` refuses a regtest that checks a literal table instead of
 `BenchTable()`.
+`regtest/test_k8s_single_writer_lifecycle_helper_test.go` covers the named-only Kubernetes test without a
+cluster or a workload: eligibility and SKIP before any change; the permission review; the data-claim resolution
+the baseline Pod ownership chain and data-claim mount, the shared replacement ownership check; the ordering analysis (zero or one replacement expected, a required
+observation missing is INCONCLUSIVE, old-Pod evidence, timestamps and nodes); the synchronisation of the watch
+with a List; the held-PVC observer (initial observation, recorded poll failures, coverage) and the decision on
+a Start made while a Pod holds the PVC (S2 and S2c); the classification of Start and SQL errors; the exact
+lifecycle JSON Patch, the strategy interlock and the restoration (ambiguous API responses, uncertain Pod state,
+no wait without a template change); the zero-replica interlock of S3; the effect of the cleanup on the result; the gates; the PVC-retention precondition and the SKIP of the reprovision test;
+registration (not in ALL, no targets, dispatched) and the absence of forced deletion, in both files of the test.
