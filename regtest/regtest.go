@@ -285,7 +285,7 @@ var testTargets = map[string][]TestTarget{
 	"testSplitBrainNoWinner":                                       arbitrationRequired,
 
 	// the active detects the master loss later than its standby (higher failcount): #2040
-	"testStandbyNeverFailsOverWithLiveActive": {{ConfigVariableMustHave: map[string]string{"arbitration-external": "true"}, ConfigVariableMustSet: map[string]string{"failover-falsepositive-ping-counter": "15"}}},
+	"testStandbyNeverFailsOverWithLiveActive": {{ConfigVariableMustHave: map[string]string{"arbitration-external": "true"}}},
 
 	"testMasterNil":                                                anyCluster,
 	"testStagingRecoverNoReadOnly":                                 {{ConfigVariableMustHave: map[string]string{"topology-staging": "true"}}},

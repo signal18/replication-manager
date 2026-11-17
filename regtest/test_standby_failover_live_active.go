@@ -13,10 +13,10 @@ import (
 )
 
 // TestStandbyNeverFailsOverWithLiveActive (#2040, #2397) — the master really dies while
-// both replication-managers are connected: no link cut, no split brain. The standby
-// detects the failure first (this node, the active, runs with a higher
-// failover-falsepositive-ping-counter, set by the runner), so it is the first to ask the
-// arbitrator. The standby must not fail over while its active peer is alive: the active
+// both replication-managers are connected: no link cut, no split brain. Both run the
+// cluster's own failover-falsepositive-ping-counter, so the standby can detect the failure
+// first and be the first to ask the arbitrator (the race of the incident). The standby
+// must not fail over while its active peer is alive: the active
 // runs the failover, keeps the crash record and rejoins the old master when it comes back.
 //
 // The other tests of the arbitration (test_split_brain.go) all cut a link. This one covers
