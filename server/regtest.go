@@ -48,6 +48,8 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 	regtest.SimulatePeerFailure = repman.SimulatePeerSplitBrain
 	regtest.SimulatePeerRestore = repman.SimulatePeerRestore
 	regtest.GetPeerIsActive = repman.PeerIsActive
+	regtest.GetPeerFailoverMode = repman.PeerFailoverMode
+	regtest.SetPeerFailoverMode = repman.SetPeerFailoverMode
 	regtest.APIToken = repman.regtestAPIToken
 	regtest.APIRequest = repman.regtestAPIRequest
 	regtest.APIRequestBody = repman.regtestAPIRequestBody
@@ -278,6 +280,9 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 		}
 		if test.Name == "testSplitBrainNoWinner" {
 			res = regtest.TestSplitBrainNoWinner(cl, test.ConfigFile, &test)
+		}
+		if test.Name == "testStandbyNeverFailsOverWithLiveActive" {
+			res = regtest.TestStandbyNeverFailsOverWithLiveActive(cl, test.ConfigFile, &test)
 		}
 		if test.Name == "testMasterNil" {
 			res = regtest.TestMasterNil(cl, test.ConfigFile, &test)

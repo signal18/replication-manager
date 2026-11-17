@@ -35,6 +35,11 @@ var (
 	// reproduce needs the peer's status too. Wired by the server package; nil in
 	// plain unit tests.
 	GetPeerIsActive func(clusterName string) (bool, error)
+	// GetPeerFailoverMode and SetPeerFailoverMode read and set the peer's failover mode for
+	// clusterName ("automatic" or "manual") through its API, so a test can run the peer in the
+	// mode it exercises and put it back. Wired by the server package; nil in plain unit tests.
+	GetPeerFailoverMode func(clusterName string) (string, error)
+	SetPeerFailoverMode func(clusterName, mode string) error
 )
 
 // Minority tests. A repman is in split brain because its infrastructure lost
