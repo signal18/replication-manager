@@ -411,7 +411,10 @@ its own, until no pod references the data PVC before it scales up.
   `prov-orchestrator-deployment-upgrade-on-start` off it is skipped and the Deployment is left as it is.
 - `RollingRestart` is deliberately **not** `K8SForceRepullDatabaseService`: it is triggered on a
   schedule (`scheduler-rolling-restart`) or in bulk (also backs the security-fix rolling-restart path)
-  and does not change the image the database runs.
+  and does not change the Deployment's image reference (the refresh keeps it). When the pull policy
+  is `Always` (`prov-kube-image-force-pull`) the new Pod pulls the tag again, so a mutable tag can
+  resolve to a different image digest; the image reference itself changes only through the
+  deployment-update path of the rolling upgrade.
 - **`RollingUpgrade`/`/actions/upgrade`** → see "Rolling upgrade" below.
 - **`RollingReprov`** unprovisions and reprovisions each server
   (`UnprovisionDatabaseService`, `InitDatabaseService`) rather than
@@ -686,9 +689,10 @@ pre-existing best-effort, log-only behavior in both phases, since its push
 runs before the stop.
 
 Deliberately **not** reusing `K8SForceRepullDatabaseService` for any of
-this: that function backs plain restarts and must never change what image
-gets pulled, so the image-change behavior stays isolated to
-`UpdateDatabaseServiceConfig`.
+this: that function backs plain restarts and does not change the Deployment's
+image reference (it patches the pull policy and the restart annotation), so the
+image-reference change stays isolated to `UpdateDatabaseServiceConfig`. A
+re-pull of a mutable tag can still resolve to a different image digest.
 
 `UpgradeDatabaseService`'s single-server `/actions/upgrade` path
 (`server/api_database.go`) reuses `rollingUpgradeStopUpdateStart` directly
