@@ -4199,32 +4199,102 @@ func (repman *ReplicationManager) SimulatePeerRestore(clusterName string) error 
 // regtest needs this because a node cannot observe a two-actives condition from
 // its own status alone.
 func (repman *ReplicationManager) PeerIsActive(clusterName string) (bool, error) {
-	base, token, err := repman.peerSplitBrainLogin(clusterName)
+	status, err := repman.peerClusterStatus(clusterName)
 	if err != nil {
 		return false, err
 	}
+	return status.ActivePassiveStatus == "A", nil
+}
+
+// peerClusterView is the part of the peer's cluster status the regtest reads.
+type peerClusterView struct {
+	ActivePassiveStatus string `json:"activePassiveStatus"`
+	Config              struct {
+		FailMode string `json:"failoverMode"`
+	} `json:"config"`
+}
+
+// peerClusterStatus reads clusterName's status on the arbitration peer.
+func (repman *ReplicationManager) peerClusterStatus(clusterName string) (peerClusterView, error) {
+	var view peerClusterView
+	base, token, err := repman.peerSplitBrainLogin(clusterName)
+	if err != nil {
+		return view, err
+	}
 	req, err := http.NewRequest("GET", base+"/api/clusters/"+clusterName, nil)
 	if err != nil {
-		return false, err
+		return view, err
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		return false, err
+		return view, err
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != http.StatusOK {
-		return false, fmt.Errorf("peer cluster status (%d): %s", resp.StatusCode, strings.TrimSpace(string(body)))
+		return view, fmt.Errorf("peer cluster status (%d): %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
-	var payload struct {
-		ActivePassiveStatus string `json:"activePassiveStatus"`
+	if err := json.Unmarshal(body, &view); err != nil {
+		return view, fmt.Errorf("peer cluster status parse: %w", err)
 	}
-	if err := json.Unmarshal(body, &payload); err != nil {
-		return false, fmt.Errorf("peer cluster status parse: %w", err)
+	return view, nil
+}
+
+// PeerFailoverMode returns clusterName's failover mode ("automatic" or "manual") on the
+// arbitration peer.
+func (repman *ReplicationManager) PeerFailoverMode(clusterName string) (string, error) {
+	status, err := repman.peerClusterStatus(clusterName)
+	if err != nil {
+		return "", err
 	}
-	return payload.ActivePassiveStatus == "A", nil
+	if status.Config.FailMode == "" {
+		return "", errors.New("peer cluster status carries no failover mode")
+	}
+	return status.Config.FailMode, nil
+}
+
+// SetPeerFailoverMode sets clusterName's failover mode on the arbitration peer through its
+// settings API, as an operator does (failover-mode on = manual, off = automatic), then reads
+// it back: a mode the peer did not take is an error.
+func (repman *ReplicationManager) SetPeerFailoverMode(clusterName, mode string) error {
+	var state string
+	switch mode {
+	case "automatic":
+		state = "off"
+	case "manual":
+		state = "on"
+	default:
+		return fmt.Errorf("unknown failover mode %q", mode)
+	}
+	base, token, err := repman.peerSplitBrainLogin(clusterName)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequest("POST", base+"/api/clusters/"+clusterName+"/settings/actions/switch/failover-mode/"+state, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("peer failover-mode call failed: %w", err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("peer failover-mode rejected (%d): %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	got, err := repman.PeerFailoverMode(clusterName)
+	if err != nil {
+		return err
+	}
+	if got != mode {
+		return fmt.Errorf("peer failover mode is %q after setting %q", got, mode)
+	}
+	return nil
 }
 
 // IsHeartbeatFailureSimulated reports whether the peer heartbeat is currently severed.

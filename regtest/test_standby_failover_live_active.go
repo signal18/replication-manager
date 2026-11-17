@@ -54,6 +54,34 @@ func standbyNeverFailsOverWithLiveActive(cl *cluster.Cluster, label string) bool
 	}
 	oldMasterURL := oldMaster.URL
 
+	// The peer runs in automatic failover too, as on the night of #2040: a peer in manual mode
+	// could not fail over anyway, and the test would prove nothing about the standby gate. Its
+	// mode is set through its API and put back at the end; a peer that cannot be set means the
+	// test does not run.
+	if GetPeerFailoverMode == nil || SetPeerFailoverMode == nil {
+		logf("no peer failover-mode hook: the peer must run in automatic failover for this test")
+		return false
+	}
+	peerMode, err := GetPeerFailoverMode(cl.Name)
+	if err != nil {
+		logf("cannot read the peer's failover mode: %v", err)
+		return false
+	}
+	if peerMode != "automatic" {
+		if err := SetPeerFailoverMode(cl.Name, "automatic"); err != nil {
+			logf("cannot set the peer to automatic failover: %v", err)
+			return false
+		}
+		defer func() {
+			if err := SetPeerFailoverMode(cl.Name, peerMode); err != nil {
+				logf("could not put the peer back to %s failover: %v", peerMode, err)
+				return
+			}
+			logf("peer failover mode put back to %s", peerMode)
+		}()
+	}
+	logf("peer failover mode: automatic (was %s)", peerMode)
+
 	cl.SetInteractive(false)
 	cl.SetRejoin(true)
 	failoverCtr := cl.FailoverCtr
