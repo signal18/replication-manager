@@ -1007,6 +1007,42 @@ func (cluster *Cluster) DriveDailyDynamicResize() {
 // dynamicMemoryResizeDue reports whether any up server's live InnoDB buffer pool differs from
 // the provisioned target (prov-db-memory -> GetConfigInnoDBBPSize, in MB), and the direction.
 // Lets the daily driver skip a no-op reconcile and decide grow vs shrink.
+// DriveDynamicResizeReconcile, under the scale-speed policy (the default), brings a live
+// buffer pool that differs from the provisioned target back to it, as DriveDailyDynamicResize
+// does once a day under daily-time. scale-speed resizes only when a saturation state asks
+// for it, so a server that started on another value (a config its init container could not
+// refresh, a value preserved at another container size) kept it: on 2026-11-17 a master ran
+// an 8 GB buffer pool in an 8 GB container against a 3840 MB target, and a full read
+// OOM-killed it. Same gates as the daily driver (active monitor, no running dbjob; the
+// per-server gates of ResizeDynamicResources still apply: in-flight, resource manager for a
+// grow), at most once per dynamicResizeWindowMinutes so a resize the server refuses is not
+// retried at every tick.
+func (cluster *Cluster) DriveDynamicResizeReconcile() {
+	grow, due := cluster.dynamicResizeReconcileDue(time.Now())
+	if !due {
+		return
+	}
+	cluster.LastDynamicResizeReconcile = time.Now()
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
+		"Live memory differs from the provisioned target (prov-db-dynamic-resize-policy=%s): reconciling it", cluster.Conf.ProvDBDynamicResizePolicy)
+	cluster.ResizeDynamicResources(resizeMemory, grow)
+}
+
+// dynamicResizeReconcileDue is the decision of DriveDynamicResizeReconcile at now.
+func (cluster *Cluster) dynamicResizeReconcileDue(now time.Time) (grow bool, due bool) {
+	if !cluster.IsActive() || !cluster.Conf.ProvDBDynamicResource || cluster.Conf.ProvDBDynamicResizePolicy == config.ConstResizePolicyDailyTime {
+		return false, false
+	}
+	if !cluster.LastDynamicResizeReconcile.IsZero() && now.Sub(cluster.LastDynamicResizeReconcile) < dynamicResizeWindowMinutes*time.Minute {
+		return false, false
+	}
+	grow, due = cluster.dynamicMemoryResizeDue()
+	if !due || cluster.anyServerRunningJobs() {
+		return false, false
+	}
+	return grow, true
+}
+
 func (cluster *Cluster) dynamicMemoryResizeDue() (grow bool, due bool) {
 	targetMB, err := strconv.ParseInt(cluster.Configurator.GetConfigInnoDBBPSize(), 10, 64)
 	if err != nil {

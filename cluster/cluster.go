@@ -143,6 +143,7 @@ type Cluster struct {
 	ConfigDbu                     float64                        `json:"configDbu" groups:"web"`             // cluster-wide configured DBU = per-node pivot x #DB nodes; the graph draws it as the "configured" line above the plan
 	IsNeedResourceCapDown         bool                           `json:"isNeedResourceCapDown" groups:"web"` // composed: EVERY up server under the plan -> LOWER THE PLAN (cap down); one non-under server breaks it (safe-shrink). Set by CheckResourceCapPlan
 	LastDynamicResizeDay          string                         `json:"-"`                                  // YYYY-MM-DD of the last daily-time memory reconcile (DriveDailyDynamicResize); one apply per day per window
+	LastDynamicResizeReconcile    time.Time                      `json:"-"`                                  // last scale-speed reconcile of live memory to the target (DriveDynamicResizeReconcile)
 	lastDynamicResize             time.Time                      `json:"-"`                                  // last dynamic in-plan grow (DriveDynamicResize); cooldown = one step per scale-up window
 	lastDynamicGrowAxis           string                         `json:"-"`                                  // axis of the last dynamic grow ("cpu"/"mem"/"io"); drives the QPS-feedback mem->io escalation
 	qpsBeforeDynamicGrow          float64                        `json:"-"`                                  // cluster QPS sampled just before that grow; next window compares to detect a plateau

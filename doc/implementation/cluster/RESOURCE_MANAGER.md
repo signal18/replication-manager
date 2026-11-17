@@ -599,6 +599,24 @@ Not done here (follow-ups): push the reading from the launcher loop itself so a 
 longer starves it, and gate both drivers on `anyServerRunningJobs` so nothing moves during a
 job even with fresh readings (the memory apply already does).
 
+### 2b. Reconcile a live buffer pool that differs from the target (scale-speed)
+
+The decision loop above resizes on a saturation state. Under `scale-speed` (the default
+`prov-db-dynamic-resize-policy`) nothing else compared the live buffer pool with the
+provisioned target: only `DriveDailyDynamicResize` did, under `daily-time`. A server that
+started on another value kept it until a saturation state moved it. On 2026-11-17 a preprod
+master ran an 8 GB buffer pool in an 8 GB container (its init container could not refresh its
+config, and the value was preserved from a 32 GB container) against a 3840 MB target; a
+logical backup filled the pool and the kernel killed `mariadbd` at the cgroup limit.
+
+`DriveDynamicResizeReconcile` (`SetStatus`, next to the daily driver), under any policy but
+`daily-time`: on the active monitor with `prov-db-dynamic-resource` on, when
+`dynamicMemoryResizeDue` finds a server whose live `innodb_buffer_pool_size` differs from
+`GetConfigInnoDBBPSize` and no dbjob runs, it calls `ResizeDynamicResources(resizeMemory, grow)`,
+whose per-server gates still apply (in-flight, ResourceManager for a grow). At most once per
+`dynamicResizeWindowMinutes` (60 min), so a resize the server refuses is not retried at every
+tick. Decision: `dynamicResizeReconcileDue`, tested by `TestDynamicResizeReconcileDue`.
+
 ### 3. Grow: +1 DBU, in-plan free, over-plan gated
 
 `growAxisInPlan(axis)`:
