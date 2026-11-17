@@ -77,6 +77,8 @@ var ClusterError = map[string]string{
 	"ERR00055":  "Arbitrator unreachable (%s)",
 	"ERR00056":  "Master user %s is not defined on replication candidate %s",
 	"ERR00057":  "Database duplicate users not allowed in proxysql %s",
+	"WARN0324":  "Server %s: its jobs have not reached replication-manager %s: no backup, log collection or config check runs there -- check the jobs container's log (a stock MySQL or Percona image has no socat: set prov-db-docker-xtrabackup-img), its network to replication-manager and its clock",
+	"WARN0323":  "Cluster %s: the root password stays in wsrep_sst_auth of the rendered database configuration (config.tar.gz): %s -- use the SST method mariabackup on MariaDB to let replication-manager authenticate the SST with its unix_socket account",
 	"WARN0321":  "Credential store %s is switched off: its path-prefix holds a segment system, . or .. and could reach the server's folder (system/repman/<instance name>) -- change its path-prefix (in the GUI or the config file), then turn it on",
 	"WARN0320":  "Server credential store %s is behind -- the server secrets every cluster reads are not the current ones in it; the instance's sysops or extsysops see why in the global settings",
 	"WARN0319":  "ProxySQL %s: users not loaded, their caching_sha2_password hash cannot be checked by ProxySQL and repman does not know their password: %s",

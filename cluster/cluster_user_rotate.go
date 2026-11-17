@@ -159,10 +159,17 @@ func (cluster *Cluster) ApplyServerSecret(key string) {
 	case "cloud18-domain-secret":
 		cluster.Conf.Cloud18DomainSecret = v
 	case "api-credentials":
-		before := cluster.GetAPIUsers()["admin"].Password
-		cluster.LoadAPIUsers()
-		cluster.followAdminPassword(before)
+		cluster.ReloadAPIUsers()
 	}
+}
+
+// ReloadAPIUsers reloads the accounts after the instance's user list changed (the global
+// settings, a rotation: every path that changes it), and has the init containers' login follow
+// admin's password (followAdminPassword).
+func (cluster *Cluster) ReloadAPIUsers() {
+	before := cluster.GetAPIUsers()["admin"].Password
+	cluster.LoadAPIUsers()
+	cluster.followAdminPassword(before)
 }
 
 // followAdminPassword keeps the init containers' login current. The provisioning writes the admin

@@ -40,6 +40,9 @@ func (repman *ReplicationManager) serverCredentialsACL(w http.ResponseWriter, r 
 	return user, true
 }
 
+// errServerStoreMandatory refuses to switch off, change or remove a mandatory store (serverEntryMandatory).
+var errServerStoreMandatory = errors.New("mandatory: the copy to the orchestrator the clusters run on, and on a marketplace partner to the Cloud18 vault, is set by replication-manager: it cannot be switched off, changed or removed")
+
 // errServerSecretKvsPinned refuses a change of a list a config file sets.
 var errServerSecretKvsPinned = errors.New("the server credential stores are set in a config file (server-secret-kv): change them there")
 
@@ -64,7 +67,7 @@ func (repman *ReplicationManager) serverSecretKvChange(w http.ResponseWriter, r 
 	name, err := change()
 	if err != nil {
 		code := http.StatusBadRequest
-		if errors.Is(err, config.ErrSecretKvOfferManaged) {
+		if errors.Is(err, config.ErrSecretKvOfferManaged) || errors.Is(err, errServerStoreMandatory) {
 			code = http.StatusConflict
 		}
 		http.Error(w, err.Error(), code)
@@ -74,6 +77,33 @@ func (repman *ReplicationManager) serverSecretKvChange(w http.ResponseWriter, r 
 	repman.startServerKvPass()
 	repman.logSecurityEvent("server_secret_kv_"+action, name, r.RemoteAddr, fmt.Sprintf("Server credential store %s %s by %s", name, action, user))
 	writeArchiveJSON(w, map[string]string{"name": name})
+}
+
+// serverSecretKvEdit changes a server entry's settings; a mandatory one is repman's.
+func (repman *ReplicationManager) serverSecretKvEdit(spec config.SecretKvSpec) (string, error) {
+	if repman.serverStoreMandatory(spec.Name) {
+		return spec.Name, fmt.Errorf("credential store %s: %w", spec.Name, errServerStoreMandatory)
+	}
+	if err := repman.checkServerStoreCluster(spec); err != nil {
+		return "", err
+	}
+	return repman.Conf.PutSecretKvAt(config.SecretKvLevelServer, spec, false)
+}
+
+// serverSecretKvDisable turns a server entry off; a mandatory one stays on.
+func (repman *ReplicationManager) serverSecretKvDisable(name string) (string, error) {
+	if repman.serverStoreMandatory(name) {
+		return name, fmt.Errorf("credential store %s: %w", name, errServerStoreMandatory)
+	}
+	return name, repman.Conf.SetSecretKvEnabledAt(config.SecretKvLevelServer, name, false)
+}
+
+// serverSecretKvRemove takes a server entry out of the list; a mandatory one stays.
+func (repman *ReplicationManager) serverSecretKvRemove(name string) (string, error) {
+	if repman.serverStoreMandatory(name) {
+		return name, fmt.Errorf("credential store %s: %w", name, errServerStoreMandatory)
+	}
+	return name, repman.Conf.DeleteSecretKvAt(config.SecretKvLevelServer, name)
 }
 
 // checkServerStoreCluster refuses an OpenSVC or Kubernetes server entry naming a cluster that is
@@ -160,6 +190,7 @@ func (repman *ReplicationManager) handlerMuxServerSecretKvAdd(w http.ResponseWri
 // @Failure 400 {string} string "Invalid entry"
 // @Failure 403 {string} string "No valid ACL: the server credentials grant is needed on every cluster"
 // @Failure 409 {string} string "A standby, or the list is set by a config file"
+// @Failure 409 {string} string "A mandatory store (the orchestrator the clusters run on; the Cloud18 vault on a marketplace partner): repman sets it, it cannot be changed or removed"
 // @Router /api/clusters/settings/actions/server-secret-kv/edit/{entryName} [post]
 func (repman *ReplicationManager) handlerMuxServerSecretKvEdit(w http.ResponseWriter, r *http.Request) {
 	spec, ok := decodeSecretKvSpec(w, r)
@@ -167,12 +198,7 @@ func (repman *ReplicationManager) handlerMuxServerSecretKvEdit(w http.ResponseWr
 		return
 	}
 	spec.Name = mux.Vars(r)["entryName"]
-	repman.serverSecretKvChange(w, r, "changed", func() (string, error) {
-		if err := repman.checkServerStoreCluster(spec); err != nil {
-			return "", err
-		}
-		return repman.Conf.PutSecretKvAt(config.SecretKvLevelServer, spec, false)
-	})
+	repman.serverSecretKvChange(w, r, "changed", func() (string, error) { return repman.serverSecretKvEdit(spec) })
 }
 
 // handlerMuxServerSecretKvEnable turns a server credential store on.
@@ -204,13 +230,12 @@ func (repman *ReplicationManager) handlerMuxServerSecretKvEnable(w http.Response
 // @Success 200 {object} map[string]string "name"
 // @Failure 400 {string} string "Unknown entry"
 // @Failure 403 {string} string "No valid ACL: the server credentials grant is needed on every cluster"
+// @Failure 409 {string} string "A mandatory store (the orchestrator the clusters run on; the Cloud18 vault on a marketplace partner): it cannot be switched off"
 // @Failure 409 {string} string "A standby, or the list is set by a config file"
 // @Router /api/clusters/settings/actions/server-secret-kv/disable/{entryName} [post]
 func (repman *ReplicationManager) handlerMuxServerSecretKvDisable(w http.ResponseWriter, r *http.Request) {
 	name := mux.Vars(r)["entryName"]
-	repman.serverSecretKvChange(w, r, "turned off", func() (string, error) {
-		return name, repman.Conf.SetSecretKvEnabledAt(config.SecretKvLevelServer, name, false)
-	})
+	repman.serverSecretKvChange(w, r, "turned off", func() (string, error) { return repman.serverSecretKvDisable(name) })
 }
 
 // handlerMuxServerSecretKvRemove removes a server credential store from the list.
@@ -224,10 +249,9 @@ func (repman *ReplicationManager) handlerMuxServerSecretKvDisable(w http.Respons
 // @Failure 400 {string} string "Unknown entry"
 // @Failure 403 {string} string "No valid ACL: the server credentials grant is needed on every cluster"
 // @Failure 409 {string} string "A standby, or the list is set by a config file"
+// @Failure 409 {string} string "A mandatory store (the orchestrator the clusters run on; the Cloud18 vault on a marketplace partner): repman sets it, it cannot be changed or removed"
 // @Router /api/clusters/settings/actions/server-secret-kv/remove/{entryName} [post]
 func (repman *ReplicationManager) handlerMuxServerSecretKvRemove(w http.ResponseWriter, r *http.Request) {
 	name := mux.Vars(r)["entryName"]
-	repman.serverSecretKvChange(w, r, "removed", func() (string, error) {
-		return name, repman.Conf.DeleteSecretKvAt(config.SecretKvLevelServer, name)
-	})
+	repman.serverSecretKvChange(w, r, "removed", func() (string, error) { return repman.serverSecretKvRemove(name) })
 }

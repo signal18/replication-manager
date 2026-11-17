@@ -1166,6 +1166,8 @@ type Config struct {
 	TokenTimeout                           int                    `scope:"server" mapstructure:"api-token-timeout" toml:"api-token-timeout" json:"apiTokenTimeout"`
 	APISecretLoginTokenTimeout             int                    `scope:"server" mapstructure:"api-secret-login-token-timeout" toml:"api-secret-login-token-timeout" json:"apiSecretLoginTokenTimeout"`
 	APISecretLoginWindow                   int                    `scope:"server" mapstructure:"api-secret-login-window" toml:"api-secret-login-window" json:"apiSecretLoginWindow"`
+	APISecretReveal                        bool                   `scope:"server" mapstructure:"api-secret-reveal" toml:"api-secret-reveal" json:"apiSecretReveal"`
+	APISecretRevealExpireHours             int                    `scope:"server" mapstructure:"api-secret-reveal-expire-hours" toml:"api-secret-reveal-expire-hours" json:"apiSecretRevealExpireHours"`
 	JobLogBatchSize                        int                    `mapstructure:"job-log-batch-size" toml:"job-log-batch-size" json:"jobLogBatchSize"`
 	APIUserTokens                          bool                   `scope:"server" mapstructure:"api-user-tokens" toml:"api-user-tokens" json:"apiUserTokens"`
 	APIUserTokensDefaultExpireDays         int                    `scope:"server" mapstructure:"api-user-tokens-default-expire-days" toml:"api-user-tokens-default-expire-days" json:"apiUserTokensDefaultExpireDays"`

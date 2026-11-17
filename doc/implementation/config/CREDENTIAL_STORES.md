@@ -314,7 +314,9 @@ test counts from what the file holds when it starts.
     "pathPrefix": "", "dc": "", "dcLocation": ""}]
   ```
   `mount` defaults to `kv`, `role` to the realm's client id, `pathPrefix` to the instance's
-  URI `<domain>/<sub-domain>-<zone>` (as the buckets). Each Cloud18-registered cluster gets
+  name, three folders `<domain>/<sub-domain>/<zone>` (`InstanceStoreName`; `<sub-domain>-<zone>`
+  is not unique: `a-b`+`c` and `a`+`b-c` are one folder). With no valid name and no
+  `pathPrefix`, the offer is not given (a WARN says so). Each Cloud18-registered cluster gets
   `cloud18-<name>`, sign-in `jwt`, **off**: the sponsor turns it on; a new catalogue updates
   its address, mount, role and prefix, never its switch. The entry records its origin
   (`offer = "<name>"` in the saved config); the list API gives `offer` (name, title, partner
@@ -611,13 +613,48 @@ is treated the same; only the path a level maps to differs per store.
   The tick never switches an existing entry on again, and the API never deletes it
   (`ErrSecretKvOfferManaged`): a partner who does not want it switches it off and it stays off.
   When the offer moves the entry (address, mount, prefix), it is a new place, as for an edit
-  (a WARN and a security event say so). The prefix is the offer's, else `<cloud18-domain>/<cloud18-sub-domain>-<cloud18-sub-domain-zone>`
-  as for the clusters' entries (not the instance name's form), each folder of it a real one
-  (no empty, `.` or `..`); the instance's folder `system/repman/<instance name>` is below it.
+  (a WARN and a security event say so). The prefix is the offer's, else the instance's name
+  `<cloud18-domain>/<cloud18-sub-domain>/<cloud18-sub-domain-zone>` as for the clusters' entries,
+  each folder of it a real one (no empty, `.` or `..`); the instance's folder
+  `system/repman/<instance name>` is below it.
   **Isolation rests on the Cloud18 Vault policy:** both levels sign in with the same Cloud18
-  identity (`jwt`, same role and address), so the role's policy must deny `*/system/repman/*`
-  to any session that is not the instance's own server level (a cluster sponsor's or a member's
-  session), as the members page already must not see a server path.
+  identity (`jwt`, the role `replication-manager`, bound to the shared client and the account's
+  `sub`), so replication-manager's sign-in is a Vault identity of its own per account, separate
+  from the person's browser login: only it reaches `<prefix>/system/*`, while the cluster folders
+  are shared with the cluster's sponsors (set up on the Cloud18 side); a cluster sponsor's or a
+  member's session never sees a server path.
+- **Mandatory copies.** When the instance's clusters run on OpenSVC or Kubernetes, copying the
+  server secrets to that orchestrator is not a choice, on-prem as on the marketplace: each
+  orchestrator gets a server entry of its own, `cloud18-opensvc` (`system/sec/repman`) or
+  `cloud18-kubernetes` (`repman-system`, in the carrying cluster's namespace), offer
+  `orchestrator`, always on, written through the monitored cluster it already uses while it still
+  runs there, else the first by name (`ensureServerOrchestratorStores`). A carrier that is not
+  listed (a start, a reload) or no longer on that orchestrator is kept for 10 minutes
+  (`serverKvCarrierGrace`) before the store moves to another cluster: a move copies every kept
+  version. On a marketplace partner
+  (`Cloud18MarketplacePartnerPublic`) the Cloud18 vault offer's server entry is always on too
+  (switched back on at each tick, next to the partner's own vault too; the security event is
+  written on that change only). Exactly these two are mandatory (`serverEntryMandatory`): offer
+  `orchestrator`, and a vault offer's entry on a partner; another offer value is not, until it is
+  decided there. Their disable, edit and remove are refused (409, `errServerStoreMandatory`).
+  The orchestrator entry also writes the instance's user list under the key the infrastructure
+  documents for it, `<api host>_api-credentials` (the host of `api-public-url`), as an alias item
+  (`StoreItem.Alias`) that is never taken as the entry's place. With no public host (none, or
+  `localhost`, a loopback or unspecified address, as the default `https://127.0.0.1:10005`) the
+  alias is not written, with a WARN: every such instance would share the same key.
+  **Upgrade:** this applies on-prem too. The first tick after the upgrade of an instance with a
+  cluster on OpenSVC or Kubernetes adds `cloud18-opensvc` or `cloud18-kubernetes` and writes the
+  server secrets there. **Orchestrator unreachable** (agent down, certificate not loaded, a
+  paused cluster): the entry is behind (GWARN024 on the server, WARN0320 on every cluster) with
+  the reason, and stays on; it catches up by itself once the orchestrator answers, nothing to do
+  but repair the access. It cannot stall the monitor (F2): the store writes in its own
+  goroutine (`credstore.StoreRunner`), every orchestrator call under the store write timeout
+  (`secret-kv-write-timeout`), the rest requeued.
+  These rules are repman's, not the operator's: the server list's state carries `mandatory`
+  (`serverStoreMandatory`), and the GUI shows such an entry locked (its switch fixed, a
+  "Mandatory" badge saying why). At the server level the GUI has no "Add OpenSVC" or
+  "Add Kubernetes" button, since those copies are automatic; "Add a vault" stays, for a vault of
+  the client's own.
 - **The init containers' login follows the admin password.** The provisioning writes the admin
   API password where the database and proxy init containers read it to fetch their config: on
   OpenSVC `REPLICATION_MANAGER_PASSWORD` in the cluster's env secret (`seedOrchestratorPasswords`),
@@ -637,6 +674,10 @@ is treated the same; only the path a level maps to differs per store.
   is tried again every `secret-kv-retry-interval`. So a release deployed on a fleet whose
   namespaces kept an old admin password repairs them by itself, and every namespace gets its jobs
   key. Nothing is logged but the key's name.
+- **The behind reason is whole.** A store's error over several lines (Vault's
+  `Error making API request.` then the URL, the HTTP code and Vault's own errors) is kept on one
+  line with every part, bounded to 512 bytes (`config.SecretKvBehindReason`), at both levels: the
+  first line alone said nothing of why.
 - **A new place gets the history.** An edit of a server entry's address, mount, path-prefix,
   cluster or namespace, or an offer that moves it, sets its `written-as` to `(new place)`
   (`ConstSecretKvWrittenAsNewPlace`, never an instance name): the move then copies every kept

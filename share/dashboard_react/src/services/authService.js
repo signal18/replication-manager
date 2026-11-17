@@ -11,6 +11,7 @@ export const authService = {
   cloud18SSOStatus,
   cloud18SSOSession,
   cloud18SSOLogoutEnd,
+  openSecretReveal,
 }
 
 function login(username, password, baseURL) {
@@ -61,4 +62,9 @@ function cloud18SSOLogoutEnd() {
 
 function pollUpgrade(upgradeId) {
   return localApi.get('login/upgrade', { upgrade_id: upgradeId })
+}
+
+// A one-time secret link (/reveal#<code>): no login, the code is the credential; shown once.
+function openSecretReveal(code) {
+  return publicApi.post('secret-reveal', { code })
 }

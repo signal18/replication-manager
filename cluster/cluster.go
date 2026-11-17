@@ -1560,6 +1560,7 @@ func (cluster *Cluster) tickBody() {
 		cluster.CheckSecretLoginLegacy()
 		cluster.CheckJobStreamRefused()
 		cluster.CheckJobLoginRefused()
+		cluster.CheckJobsSilent(time.Now())
 		// the credential store entries: full passes, stores behind, queue drops (#2227)
 		cluster.CheckSecretKvStores()
 		// a skipped scheduled password rotation (#2269)

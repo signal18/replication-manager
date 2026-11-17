@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/spf13/viper"
 )
@@ -266,5 +267,19 @@ func TestPutSecretKv(t *testing.T) {
 	}
 	if err := conf.DeleteSecretKv("own"); err != nil || len(conf.SecretKvs) != 0 {
 		t.Fatal("not removed")
+	}
+}
+
+// A store's error over several lines is kept whole on one line (Vault's code and errors follow its
+// first line "Error making API request."), and bounded.
+func TestSecretKvBehindReason(t *testing.T) {
+	vault := "vault login: vault jwt login: Error making API request.\n\nURL: PUT https://vault.example/v1/auth/jwt/login\nCode: 400. Errors:\n\n* role \"x\" could not be found"
+	got := SecretKvBehindReason(vault)
+	if strings.Contains(got, "\n") || !strings.Contains(got, "Code: 400.") || !strings.HasSuffix(got, `role "x" could not be found`) {
+		t.Fatalf("reason %q", got)
+	}
+	long := SecretKvBehindReason(strings.Repeat("é", 400))
+	if len(long) > secretKvBehindReasonMax+len("…") || !strings.HasSuffix(long, "…") || !utf8.ValidString(long) {
+		t.Fatalf("bounded reason: %d bytes, valid %v", len(long), utf8.ValidString(long))
 	}
 }

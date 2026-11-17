@@ -68,7 +68,8 @@ function PageContainer({ children }) {
   }, [dispatch, handleResize, user])
 
   useEffect(() => {
-    const isPublicAuthPage = location.pathname === '/login' || location.pathname === '/signup' || location.pathname === '/dashboard'
+    // /reveal: a one-time secret link, opened by someone who may have no session (a rotated password)
+    const isPublicAuthPage = location.pathname === '/login' || location.pathname === '/signup' || location.pathname === '/dashboard' || location.pathname === '/reveal'
     if (isPublicAuthPage) return
     // Redirect on confirmed unauthenticated state (401 from whoami or apiHelper).
     // Skip 'unknown' (still checking) and 'unavailable' (server restarting — keep user in app).

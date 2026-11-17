@@ -8,14 +8,17 @@ import (
 	"context"
 	"fmt"
 	"sort"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/config/credstore"
 	"github.com/signal18/replication-manager/utils/state"
+	"net"
+	"net/url"
+	"strings"
 )
 
 // The server level's credential stores (CREDENTIAL_STORES.md "Two levels"): the entries of
@@ -35,6 +38,10 @@ type serverSecretKv struct {
 	// wasActive: the monitor was active at the last tick; a standby that becomes active gives
 	// the server entries a full pass (a rotation made on the other monitor, versions pulled)
 	wasActive atomic.Bool
+
+	// carrierGone: orchestrator store -> when the cluster it writes through was first seen gone
+	// (serverKvCarrierGoneLongEnough)
+	carrierGone sync.Map
 
 	mu          sync.Mutex
 	behind      map[string]string    // entry -> why it is behind (never a value)
@@ -120,10 +127,7 @@ func (repman *ReplicationManager) setServerKvBehind(entry, why string) {
 		delete(k.behind, entry)
 		return
 	}
-	if i := strings.IndexByte(why, '\n'); i >= 0 {
-		why = why[:i]
-	}
-	k.behind[entry] = why
+	k.behind[entry] = config.SecretKvBehindReason(why)
 }
 
 // serverKvItems are the items writing ver of key to every active server entry ("" every one,
@@ -148,6 +152,15 @@ func (repman *ReplicationManager) serverKvItems(entry, key string, ver credstore
 			continue
 		}
 		items = append(items, credstore.StoreItem{Entry: e.Name, Path: repman.Conf.ServerSecretKvFolder(e, name), Key: key, Version: ver, Compare: compare})
+		// the key the infrastructure documents for the instance's user list in its orchestrator
+		// (<api host>_api-credentials, the CRM's SSH page): kept current by the mandatory store
+		if e.Offer == config.ConstSecretKvOrchestratorOffer && key == apiCredentialsKey {
+			if host, why := aliasHost(repman.Conf.APIPublicURL); why == "" {
+				items = append(items, credstore.StoreItem{Entry: e.Name, Path: host, Key: key, Version: ver, Compare: compare, Alias: true})
+			} else {
+				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModVault, config.LvlWarn, "Server credential store %s: the user list is not written under <api host>_%s: %s", e.Name, key, why)
+			}
+		}
 	}
 	return items
 }
@@ -251,6 +264,7 @@ func (repman *ReplicationManager) checkServerSecretKvStores() {
 		repman.serverKvRunner().Start()
 	}
 	repman.ensureServerMarketplaceVaults()
+	repman.ensureServerOrchestratorStores()
 	repman.checkServerKvMoves()
 	repman.checkEtcCredentials()
 	for name, why := range repman.ServerKvBehind() {
@@ -261,22 +275,28 @@ func (repman *ReplicationManager) checkServerSecretKvStores() {
 
 // ensureServerMarketplaceVaults gives the server level the marketplace's vault offers (the
 // Cloud18 vault) on a marketplace partner that takes clusters from Cloud18 users
-// (Cloud18MarketplacePartnerPublic): on when it is the only store, off next to the partner's
-// own. An on-prem instance never gets it. An entry given once stays when the instance stops
-// being a partner: nothing is removed or moved silently, a sysops switches it off. The
-// path-prefix is the offer's, else the instance's URI, as for the clusters' entries.
+// (Cloud18MarketplacePartnerPublic), always on: on the marketplace the copy to the Cloud18 vault
+// is not a choice (switched back on at each tick, its disable refused). An on-prem instance never
+// gets it. An entry given once stays when the instance stops being a partner: nothing is removed
+// or moved silently, and it may then be switched off. The
+// path-prefix is the offer's, else the instance's name (InstanceStoreName, three folders), as for
+// the clusters' entries; with neither, the offer is not given.
 func (repman *ReplicationManager) ensureServerMarketplaceVaults() {
 	c := repman.Conf
 	offers := repman.MarketplaceCatalogue().Vaults
 	if len(offers) == 0 || !c.Cloud18MarketplacePartnerPublic() || repman.serverSecretKvsPinned() {
 		return
 	}
-	uri := c.Cloud18Domain + "/" + c.Cloud18SubDomain + "-" + c.Cloud18SubDomainZone
+	instance, named := c.InstanceStoreName()
 	changed := false
 	for _, o := range offers {
 		prefix := o.PathPrefix
 		if prefix == "" {
-			prefix = uri
+			if !named {
+				repman.LogModulePrintf(c.Verbose, config.ConstLogModVault, config.LvlWarn, "Marketplace vault offer %s not given to the server level: the instance has no valid name (cloud18-domain, cloud18-sub-domain, cloud18-sub-domain-zone)", o.Name)
+				continue
+			}
+			prefix = instance
 		}
 		name := config.ConstSecretKvMarketplacePrefix + o.Name
 		before, existed := writtenAsOf(c.SecretKvListAt(config.SecretKvLevelServer), name)
@@ -284,6 +304,13 @@ func (repman *ReplicationManager) ensureServerMarketplaceVaults() {
 		if err != nil {
 			repman.LogModulePrintf(c.Verbose, config.ConstLogModVault, config.LvlWarn, "Marketplace vault offer not given to the server level: %s", err)
 			continue
+		}
+		if e, found := c.SecretKvEntryAt(config.SecretKvLevelServer, name); found && !e.Enabled {
+			// mandatory on the marketplace, whatever another store or an old switch said
+			if err := c.SetSecretKvEnabledAt(config.SecretKvLevelServer, name, true); err == nil {
+				ok = true
+				repman.logSecurityEvent("server_secret_kv_offer", name, "", "Server credential store "+name+" switched on: on a marketplace partner the copy to the Cloud18 vault is mandatory")
+			}
 		}
 		after, _ := writtenAsOf(c.SecretKvListAt(config.SecretKvLevelServer), name)
 		if ok && existed && after == config.ConstSecretKvWrittenAsNewPlace && before != after {
@@ -303,6 +330,130 @@ func (repman *ReplicationManager) ensureServerMarketplaceVaults() {
 	}
 }
 
+// serverOrchestratorStores are the mandatory orchestrator stores: the entry name, its plugin and
+// the orchestrator it writes to.
+var serverOrchestratorStores = []struct{ name, plugin, orchestrator string }{
+	{config.ConstSecretKvMarketplacePrefix + "opensvc", config.ConstSecretKvPluginOpenSVC, config.ConstOrchestratorOpenSVC},
+	{config.ConstSecretKvMarketplacePrefix + "kubernetes", config.ConstSecretKvPluginKubernetes, config.ConstOrchestratorKubernetes},
+}
+
+// ensureServerOrchestratorStores gives an instance whose clusters run on OpenSVC or Kubernetes its
+// mandatory server stores there: the OpenSVC secret system/sec/repman, the Kubernetes Secret
+// repman-system (in the carrying cluster's namespace, as the cluster level), each written through
+// a monitored cluster on that orchestrator, the one it already uses while it still runs there,
+// else the first by name. Always on, never removed: when replication-manager runs on an
+// orchestrator, the copy of its server secrets to it is not a choice, on-prem or on the
+// marketplace. An instance with no cluster on an orchestrator gets none.
+func (repman *ReplicationManager) ensureServerOrchestratorStores() {
+	c := repman.Conf
+	if repman.serverSecretKvsPinned() {
+		return
+	}
+	clusters := repman.clustersSnapshot() // name order
+	changed := false
+	for _, s := range serverOrchestratorStores {
+		var carrier *cluster.Cluster
+		if e, ok := c.SecretKvEntryAt(config.SecretKvLevelServer, s.name); ok {
+			current := c.SecretKvSetting(e, config.ConstSecretKvOrchestratorCluster)
+			if cl := repman.getClusterByName(current); cl != nil && cl.GetOrchestrator() == s.orchestrator {
+				carrier = cl
+				repman.serverSecretKv.carrierGone.Delete(s.name)
+			} else if current != "" && !repman.serverKvCarrierGoneLongEnough(s.name) {
+				// the carrier is not listed (a start or a reload) or not on that orchestrator: keep
+				// it until it has been gone for serverKvCarrierGrace, a move copies every version
+				continue
+			}
+		}
+		for _, cl := range clusters {
+			if carrier == nil && cl.GetOrchestrator() == s.orchestrator {
+				carrier = cl
+			}
+		}
+		if carrier == nil {
+			continue // no cluster on that orchestrator: nothing to write through
+		}
+		namespace := ""
+		if s.plugin == config.ConstSecretKvPluginKubernetes {
+			namespace = carrier.Name
+		}
+		_, existed := c.SecretKvEntryAt(config.SecretKvLevelServer, s.name)
+		ok, err := c.EnsureOrchestratorSecretKvAt(config.SecretKvLevelServer, s.name, s.plugin, carrier.Name, namespace)
+		if err != nil {
+			repman.LogModulePrintf(c.Verbose, config.ConstLogModVault, config.LvlWarn, "Server credential store %s not set: %s", s.name, err)
+			continue
+		}
+		if ok {
+			changed = true
+			how := "added"
+			if existed {
+				how = "set"
+			}
+			repman.logSecurityEvent("server_secret_kv_offer", s.name, "", fmt.Sprintf("Server credential store %s %s through cluster %s: the copy of the server secrets to the orchestrator the clusters run on is mandatory", s.name, how, carrier.Name))
+		}
+	}
+	if changed {
+		repman.Save()
+		repman.startServerKvPass()
+	}
+}
+
+// serverKvCarrierGrace is how long the cluster an orchestrator store writes through must be gone
+// (not monitored, or no longer on that orchestrator) before the store moves to another cluster.
+const serverKvCarrierGrace = 10 * time.Minute
+
+// serverKvCarrierGoneLongEnough records when the carrier of the store name was first seen gone,
+// and says whether it has been gone for serverKvCarrierGrace.
+func (repman *ReplicationManager) serverKvCarrierGoneLongEnough(name string) bool {
+	since, _ := repman.serverSecretKv.carrierGone.LoadOrStore(name, time.Now())
+	return time.Since(since.(time.Time)) >= serverKvCarrierGrace
+}
+
+// serverStoreMandatory: the server entry name is mandatory (serverEntryMandatory).
+func (repman *ReplicationManager) serverStoreMandatory(name string) bool {
+	e, ok := repman.Conf.SecretKvEntryAt(config.SecretKvLevelServer, name)
+	return ok && repman.serverEntryMandatory(e)
+}
+
+// serverEntryMandatory: an entry repman sets and nobody switches off, changes or removes, and only
+// these two: a mandatory orchestrator store (offer orchestrator, always), and a marketplace vault
+// offer's entry (the vault plugin, from an offer) while the instance is a marketplace partner.
+// Any other offer value is not mandatory until someone decides it here.
+func (repman *ReplicationManager) serverEntryMandatory(e config.SecretKvConfig) bool {
+	switch {
+	case e.Offer == config.ConstSecretKvOrchestratorOffer:
+		return true
+	case e.Offer != "" && e.Plugin == config.ConstSecretKvPluginVault:
+		return repman.Conf.Cloud18MarketplacePartnerPublic()
+	}
+	return false
+}
+
+// aliasHost is the host the user list's documented key is named after (<api host>_api-credentials),
+// with why there is none: api-public-url has no host, or a loopback or unspecified one (the
+// default https://127.0.0.1:10005), a name other instances would share in the same store.
+func aliasHost(raw string) (string, string) {
+	host := apiPublicHost(raw)
+	if host == "" {
+		return "", "api-public-url has no host"
+	}
+	if strings.EqualFold(host, "localhost") {
+		return "", "api-public-url names localhost, set the instance's public address"
+	}
+	if ip := net.ParseIP(host); ip != nil && (ip.IsLoopback() || ip.IsUnspecified()) {
+		return "", "api-public-url names " + host + ", set the instance's public address"
+	}
+	return host, ""
+}
+
+// apiPublicHost is the host of api-public-url, "" when it has none.
+func apiPublicHost(raw string) string {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return ""
+	}
+	return u.Hostname()
+}
+
 // writtenAsOf is the written-as of the entry named name in list, and whether it is there.
 func writtenAsOf(list []config.SecretKvConfig, name string) (string, bool) {
 	for _, e := range list {
@@ -319,6 +470,8 @@ type ServerSecretKvState struct {
 	Behind    string    `json:"behind,omitempty"`
 	// Path is the entry's folder for this instance, empty while the instance is not named
 	Path string `json:"path,omitempty"`
+	// Mandatory: the entry cannot be switched off (serverStoreMandatory); the GUI shows it locked
+	Mandatory bool `json:"mandatory,omitempty"`
 }
 
 // ServerSecretKvListResult is the server entries for the API: never a secret.
@@ -351,11 +504,15 @@ func (repman *ReplicationManager) serverSecretKvList() ServerSecretKvListResult 
 	}
 	sort.Strings(res.Keys)
 	behind := repman.ServerKvBehind()
+	mandatory := map[string]bool{}
+	for _, e := range res.Entries {
+		mandatory[e.Name] = repman.serverEntryMandatory(e)
+	}
 	k := &repman.serverSecretKv
 	k.mu.Lock()
 	defer k.mu.Unlock()
 	for _, e := range res.Entries {
-		st := ServerSecretKvState{LastWrite: k.lastWritten[e.Name], Behind: behind[e.Name]}
+		st := ServerSecretKvState{LastWrite: k.lastWritten[e.Name], Behind: behind[e.Name], Mandatory: mandatory[e.Name]}
 		if named {
 			st.Path = repman.Conf.ServerSecretKvLocation(e, name)
 		}

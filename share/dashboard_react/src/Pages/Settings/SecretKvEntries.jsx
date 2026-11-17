@@ -69,11 +69,15 @@ const PLUGINS = {
     server: 'The server secrets (api-credentials, SMTP, GitLab...) are written under the mount, at path-prefix/system/repman/<instance name>. Only the sysops and extsysops of this instance see this list. repman never deletes what the vault holds.',
     cluster: 'The secrets are written under the mount, at path-prefix/cluster. repman never deletes what the vault holds.'
   },
+  // at the server level the OpenSVC and Kubernetes copies are automatic (one per orchestrator the
+  // clusters run on, mandatory): no add button, only their state
   'secret_kv-opensvc': {
+    automatic: true,
     add: 'Add OpenSVC',
     server: 'The server secrets are written to the OpenSVC secret system/sec/repman, keys <instance name>_<key>, through the agent of the cluster named here (a cluster on OpenSVC). The OpenSVC cluster\'s administrators can read them. repman never deletes a key.'
   },
   'secret_kv-kubernetes': {
+    automatic: true,
     add: 'Add Kubernetes',
     server: 'The server secrets are written to the Secret repman-system of the namespace, keys <instance name>_<key>, through the client of the cluster named here (a cluster on Kubernetes). Whoever reads Secrets in that namespace can read them. repman never deletes a key.'
   }
@@ -221,7 +225,8 @@ function SecretKvEntries({ clusterName, user, level = 'cluster' }) {
   }
 
   // the plugins this level's list takes, in the order of PLUGINS
-  const manifests = Object.keys(PLUGINS).map((n) => list.plugins.find((p) => p.name === n)).filter(Boolean)
+  const manifests = Object.keys(PLUGINS).filter((n) => !(isServer && PLUGINS[n].automatic))
+    .map((n) => list.plugins.find((p) => p.name === n)).filter(Boolean)
   const manifestOf = (plugin) => list.plugins.find((p) => p.name === (plugin || 'secret_kv-vault'))
   const save = async (spec, isEdit) => {
     const err = await call(() => api.put(spec, isEdit))
@@ -252,13 +257,23 @@ function SecretKvEntries({ clusterName, user, level = 'cluster' }) {
         // an entry from a Cloud18 marketplace offer: the back-office manages its settings, only
         // its switch is the cluster's
         const offer = e.offer
+        // a mandatory copy (the orchestrator the clusters run on, the Cloud18 vault on the
+        // marketplace): repman decides it, nobody switches it off
+        const mandatory = !!state?.mandatory
         return (
           <Flex key={e.name} align='center' gap='3' wrap='wrap'>
-            <Switch isChecked={!!e.enabled} isDisabled={!canSwitch || list.pinned}
+            <Switch isChecked={!!e.enabled} isDisabled={!canSwitch || list.pinned || mandatory}
               onChange={() => call(() => api.switch(e.name, !e.enabled))} />
             <Text as='span' fontWeight='semibold'>{e.name}</Text>
             {statePill(e, state, badgeVariant)}
-            {offer && (
+            {mandatory && (
+              <Tooltip label={!isVault(e)
+                ? 'the clusters run on this orchestrator: the server secrets are always copied there'
+                : 'Cloud18 marketplace: the server secrets are always copied to the Cloud18 vault'} hasArrow>
+                <Badge colorScheme='red' variant={badgeVariant}>Mandatory</Badge>
+              </Tooltip>
+            )}
+            {offer && !mandatory && (
               <Tooltip label='from the Cloud18 marketplace: its settings are managed by Cloud18, only its switch is yours' hasArrow>
                 <Badge colorScheme='teal' variant={badgeVariant}>Cloud18{offer.title ? ` · ${offer.title}` : ''}{offer.partner ? ` · ${offer.partner}` : ''}</Badge>
               </Tooltip>

@@ -8,10 +8,12 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/spf13/viper"
 
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/config/credstore"
 	"github.com/signal18/replication-manager/config/credstore/vaultfake"
 	"github.com/signal18/replication-manager/utils/state"
 )
@@ -461,9 +463,9 @@ func TestServerKvRotationSaysStoresBehind(t *testing.T) {
 }
 
 // The Cloud18 vault is given to the server level of a marketplace partner that takes clusters
-// (registered, partner plan, a public API address), on when it is the only store; never to an
-// on-prem instance; off next to the partner's own vault; kept when the instance stops being a
-// partner.
+// (registered, partner plan, a public API address), always on (mandatory on the marketplace,
+// next to the partner's own vault too); never to an on-prem instance; kept when the instance
+// stops being a partner, and may then be switched off.
 func TestServerKvMarketplaceVaultPartnerOnly(t *testing.T) {
 	offer := config.MarketplaceVaultOffer{Name: "vault", Partner: "signal18", Address: "https://vault.example"}
 	partner := func(repman *ReplicationManager) {
@@ -503,6 +505,10 @@ func TestServerKvMarketplaceVaultPartnerOnly(t *testing.T) {
 	if !ok || !e.Enabled || e.Offer != "vault" || repman.Conf.SecretKvSetting(e, config.ConstSecretKvVaultAuth) != config.ConstVaultAuthJWT {
 		t.Fatalf("partner entry %+v %v", e, ok)
 	}
+	// its folder is the instance's name, three folders
+	if name, _ := repman.Conf.InstanceStoreName(); repman.Conf.SecretKvSetting(e, config.ConstSecretKvVaultPathPrefix) != name || strings.Count(name, "/") != 2 {
+		t.Fatalf("path-prefix %q, instance %q", repman.Conf.SecretKvSetting(e, config.ConstSecretKvVaultPathPrefix), name)
+	}
 	// no longer a partner: the entry stays as it is
 	repman.Conf.Cloud18SubscriptionPlan = "free"
 	repman.ensureServerMarketplaceVaults()
@@ -510,14 +516,25 @@ func TestServerKvMarketplaceVaultPartnerOnly(t *testing.T) {
 		t.Fatal("the entry went when the plan changed")
 	}
 
-	// switched off by a sysops: never switched on again by the tick
+	// once no longer a partner it may be switched off, and the tick leaves it off
 	if err := repman.Conf.SetSecretKvEnabledAt(config.SecretKvLevelServer, config.ConstSecretKvMarketplacePrefix+"vault", false); err != nil {
 		t.Fatal(err)
 	}
-	partner(repman)
+	if repman.serverStoreMandatory(config.ConstSecretKvMarketplacePrefix + "vault") {
+		t.Fatal("mandatory on an instance that is no longer a partner")
+	}
 	repman.ensureServerMarketplaceVaults()
 	if e, _ := entry(repman); e.Enabled {
-		t.Fatal("the tick switched the partner's choice back on")
+		t.Fatal("switched on again off the marketplace")
+	}
+	// a partner again: on the marketplace the copy is not a choice, switched back on, its disable refused
+	partner(repman)
+	repman.ensureServerMarketplaceVaults()
+	if e, _ := entry(repman); !e.Enabled {
+		t.Fatal("a partner's Cloud18 vault left off")
+	}
+	if !repman.serverStoreMandatory(config.ConstSecretKvMarketplacePrefix + "vault") {
+		t.Fatal("a partner's Cloud18 vault may be switched off")
 	}
 	// it cannot be removed through the API: the back-office manages it, the sysops switches it
 	if err := repman.Conf.DeleteSecretKvAt(config.SecretKvLevelServer, config.ConstSecretKvMarketplacePrefix+"vault"); !errors.Is(err, config.ErrSecretKvOfferManaged) {
@@ -543,14 +560,104 @@ func TestServerKvMarketplaceVaultPartnerOnly(t *testing.T) {
 		}
 	}
 
-	// a public partner with its own vault: added off
+	// a public partner with its own vault: the Cloud18 vault is on too, mandatory on the marketplace
 	own := vaultfake.New("kv", "role", "sid")
 	defer own.Close()
 	repman2 := serverKvTestManager(t, true, own)
 	repman2.marketplaceCatalogue.Store(&config.MarketplaceCatalogue{Vaults: []config.MarketplaceVaultOffer{offer}})
 	partner(repman2)
 	repman2.ensureServerMarketplaceVaults()
-	if e, ok := entry(repman2); !ok || e.Enabled {
+	if e, ok := entry(repman2); !ok || !e.Enabled {
 		t.Fatalf("next to the partner's own vault: %+v %v", e, ok)
+	}
+}
+
+// An instance whose clusters run on OpenSVC gets its mandatory orchestrator store, always on,
+// on-prem as on the marketplace, through a monitored cluster there; none with no cluster on an
+// orchestrator. It writes the user list also under the key the infrastructure documents
+// (<api host>_api-credentials), never taken as the entry's place.
+func TestServerKvOrchestratorMandatory(t *testing.T) {
+	repman := serverKvTestManager(t, true)
+	c := repman.Conf
+	c.APIPublicURL = "https://repman.example.com"
+	name := config.ConstSecretKvMarketplacePrefix + "opensvc"
+
+	repman.ensureServerOrchestratorStores()
+	if _, ok := c.SecretKvEntryAt(config.SecretKvLevelServer, name); ok {
+		t.Fatal("a store with no cluster on OpenSVC")
+	}
+	repman.Clusters["c1"].Conf.ProvOrchestrator = config.ConstOrchestratorOpenSVC
+	repman.ensureServerOrchestratorStores() // on-prem: not registered, not a partner
+	e, ok := c.SecretKvEntryAt(config.SecretKvLevelServer, name)
+	if !ok || !e.Enabled || e.Plugin != config.ConstSecretKvPluginOpenSVC || c.SecretKvSetting(e, config.ConstSecretKvOrchestratorCluster) != "c1" {
+		t.Fatalf("on-prem OpenSVC store %+v %v", e, ok)
+	}
+	if _, ok := c.SecretKvEntryAt(config.SecretKvLevelServer, config.ConstSecretKvMarketplacePrefix+"kubernetes"); ok {
+		t.Fatal("a Kubernetes store with no cluster on Kubernetes")
+	}
+	// switched off by hand (an old config): the tick switches it back on; the API refuses
+	_ = c.SetSecretKvEnabledAt(config.SecretKvLevelServer, name, false)
+	repman.ensureServerOrchestratorStores()
+	if e, _ := c.SecretKvEntryAt(config.SecretKvLevelServer, name); !e.Enabled || !repman.serverStoreMandatory(name) {
+		t.Fatal("the orchestrator store can stay off")
+	}
+	// the GUI shows it locked: the list says so
+	if !repman.serverSecretKvList().States[name].Mandatory {
+		t.Fatal("the list does not mark the orchestrator store mandatory")
+	}
+	// nobody switches it off, changes or removes it (409 at the API)
+	if _, err := repman.serverSecretKvDisable(name); !errors.Is(err, errServerStoreMandatory) {
+		t.Fatalf("disable: %v", err)
+	}
+	if _, err := repman.serverSecretKvEdit(config.SecretKvSpec{Name: name, Settings: map[string]interface{}{config.ConstSecretKvOrchestratorCluster: "c2"}}); !errors.Is(err, errServerStoreMandatory) {
+		t.Fatalf("edit: %v", err)
+	}
+	if _, err := repman.serverSecretKvRemove(name); !errors.Is(err, errServerStoreMandatory) {
+		t.Fatalf("remove: %v", err)
+	}
+	if e, ok := c.SecretKvEntryAt(config.SecretKvLevelServer, name); !ok || c.SecretKvSetting(e, config.ConstSecretKvOrchestratorCluster) != "c1" {
+		t.Fatal("the mandatory store changed")
+	}
+	// its carrier not listed for a moment (a start, a reload): the store stays where it is
+	carrier := repman.Clusters["c1"]
+	delete(repman.Clusters, "c1")
+	repman.Clusters["c0"] = carrier // another cluster on OpenSVC, first by name
+	carrier.Name = "c0"
+	repman.ensureServerOrchestratorStores()
+	if e, _ := c.SecretKvEntryAt(config.SecretKvLevelServer, name); c.SecretKvSetting(e, config.ConstSecretKvOrchestratorCluster) != "c1" {
+		t.Fatal("the store moved at once when its carrier was briefly gone")
+	}
+	// gone for longer than the grace: it moves
+	repman.serverSecretKv.carrierGone.Store(name, time.Now().Add(-serverKvCarrierGrace-time.Second))
+	repman.ensureServerOrchestratorStores()
+	if e, _ := c.SecretKvEntryAt(config.SecretKvLevelServer, name); c.SecretKvSetting(e, config.ConstSecretKvOrchestratorCluster) != "c0" {
+		t.Fatal("the store never left a carrier gone for good")
+	}
+	carrier.Name = "c1"
+	delete(repman.Clusters, "c0")
+	repman.Clusters["c1"] = carrier
+	repman.serverSecretKv.carrierGone.Store(name, time.Now().Add(-serverKvCarrierGrace-time.Second))
+	repman.ensureServerOrchestratorStores()
+	// the user list: the instance's key and the documented one
+	items := repman.serverKvItems(name, apiCredentialsKey, credstore.Version{Value: "admin:x"}, false)
+	var place, alias bool
+	for _, it := range items {
+		place = place || (!it.Alias && it.Path != "")
+		alias = alias || (it.Alias && it.Path == "repman.example.com")
+	}
+	if !place || !alias {
+		t.Fatalf("items %+v", items)
+	}
+	if other := repman.serverKvItems(name, "mail-smtp-password", credstore.Version{Value: "x"}, false); len(other) != 1 {
+		t.Fatalf("another secret written under the documented key too: %+v", other)
+	}
+	// no public address (the default 127.0.0.1): no key shared by every such instance
+	for _, u := range []string{"https://127.0.0.1:10005", "https://localhost:10005", "https://[::1]:10005", "https://0.0.0.0", ""} {
+		c.APIPublicURL = u
+		for _, it := range repman.serverKvItems(name, apiCredentialsKey, credstore.Version{Value: "admin:x"}, false) {
+			if it.Alias {
+				t.Fatalf("api-public-url %q: the user list under %s", u, it.Path)
+			}
+		}
 	}
 }

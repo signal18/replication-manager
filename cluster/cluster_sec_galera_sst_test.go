@@ -48,3 +48,32 @@ func TestGetTopologyTargetBeforeDiscovery(t *testing.T) {
 		t.Fatalf("topology-target: %q", got)
 	}
 }
+
+// WARN0323 says when the rendered wsrep_sst_auth keeps the root password (SSTAuthKeepReason):
+// a Galera cluster with the mysqldump SST, or on MySQL/Percona; never a MariaDB one with
+// mariabackup, whose SST uses the unix_socket account.
+func TestGaleraSSTAuthKeptState(t *testing.T) {
+	newCluster := func(method, image string) *Cluster {
+		c := &Cluster{Name: "g", Topology: config.TopoMultiMasterWsrep,
+			Conf:         &config.Config{ProvOrchestrator: config.ConstOrchestratorOpenSVC, MultiMasterWsrepSSTMethod: method},
+			StateMachine: new(state.StateMachine), SecurityStateMachine: new(state.StateMachine)}
+		c.StateMachine.Init()
+		c.SecurityStateMachine.Init()
+		c.Configurator.AddDBTag("wsrep")
+		c.Configurator.ClusterConfig.ProvDbImg = image
+		return c
+	}
+	kept := func(c *Cluster) bool {
+		c.CheckGaleraSSTAccount()
+		return c.SecurityStateMachine.IsInState("WARN0323")
+	}
+	if kept(newCluster("mariabackup", "mariadb:11.8")) {
+		t.Error("MariaDB with mariabackup: the SST uses the socket account, no WARN0323")
+	}
+	if !kept(newCluster("mysqldump", "mariadb:11.8")) {
+		t.Error("mysqldump keeps the root password: WARN0323 expected")
+	}
+	if !kept(newCluster("xtrabackup-v2", "percona/percona-xtradb-cluster:8.0")) {
+		t.Error("Percona keeps the root password: WARN0323 expected")
+	}
+}

@@ -62,6 +62,8 @@ function GlobalSettings({ config, cards }) {
   const hLogHeartbeat = `**Log HeartBeat**\n\nEnables logging of arbitration heartbeats exchanged with the arbitrator and peers.\n\nConfig: \`log-heartbeat\``
   const hLogHeartbeatLevel = `**Log HeartBeat Level**\n\nVerbosity of the heartbeat log channel.\n\nConfig: \`log-level-heartbeat\``
   const hApiV3 = `**Enable API v3**\n\nServes the v3 API (gRPC and its JSON gateway under \`/v3/\`) on the API port. The GUI and \`replication-manager-cli\` do not use it: they use the REST API under \`/api/\`. Off by default: a v3 request then gets 404. Applied live.\n\nConfig: \`api-v3-server\``
+  const hSecretReveal = `**Mail Passwords as One-time Links**\n\nA password reaches a person by mail as a one-time link (\`<api-public-url>/reveal\`), never in the mail: the new password of a rotated user whose login is an email (who rotated it then does not see it), and the credentials mails (sponsor, DBA, sysadmin). The page shows it once after a click, then the link is gone; the secrets wait encrypted with the instance's key. Off: a rotated password is shown once to who rotated it, and the credentials mails are not sent. The link is built on API Public URL: it must be the address the recipients reach.\n\nConfig: \`api-secret-reveal\``
+  const hSecretRevealExpire = `**One-time Link Expiry in Hours**\n\nHours a one-time password link works when nobody opens it. Default 24.\n\nConfig: \`api-secret-reveal-expire-hours\``
   const hSwagger = `**Enable API Swagger**\n\nServes the interactive API explorer at \`/api-docs/\`.\n\nConfig: \`api-swagger-enabled\``
   const hLogApiLogin = `**Log API Login**\n\nRecords every successful API login (user, source address) in the security log. On by default. Failed logins are always recorded. API tokens never log in, so token calls add nothing.\n\nConfig: \`monitoring-log-api-login\``
   const hLogApiSilent = `**Log API Login Silent Users**\n\nComma-separated users whose logins are not recorded (health probes, internal accounts).\n\nConfig: \`monitoring-log-api-login-silent-users\``
@@ -166,6 +168,33 @@ function GlobalSettings({ config, cards }) {
           showConfirmModal={true}
           confirmTitle={`Confirm change 'api-token-timeout' to: `}
           onConfirm={(value) => dispatch(setGlobalSetting({ setting: 'api-token-timeout', value: value }))}
+        />
+      )
+    },
+    {
+      globalSetting: 'api-secret-reveal',
+      key: 'Mail Passwords as One-time Links',
+      help: h(hSecretReveal, 'Mail Passwords as One-time Links'),
+      value: (
+        <RMSwitch
+          confirmTitle={'Confirm switch global settings for one-time password links?'}
+          onChange={(_v, setRefresh) => dispatch(switchGlobalSetting({ setting: 'api-secret-reveal', setRefresh }))}
+          isChecked={config?.apiSecretReveal}
+        />
+      )
+    },
+    {
+      globalSetting: 'api-secret-reveal-expire-hours',
+      key: 'One-time Link Expiry in Hours',
+      help: h(hSecretRevealExpire, 'One-time Link Expiry in Hours'),
+      value: (
+        <NumberInput
+          min={1}
+          value={config?.apiSecretRevealExpireHours}
+          showEditButton={true}
+          showConfirmModal={true}
+          confirmTitle={`Confirm change 'api-secret-reveal-expire-hours' to: `}
+          onConfirm={(value) => dispatch(setGlobalSetting({ setting: 'api-secret-reveal-expire-hours', value: value }))}
         />
       )
     },

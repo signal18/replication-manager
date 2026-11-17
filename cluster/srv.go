@@ -49,6 +49,8 @@ import (
 // ServerMonitor defines a server to monitor.
 type ServerMonitor struct {
 	legacyJobLoginAt int64        // unix time of the last legacy job body (OpenJobBody), read atomically; 0 never
+	jobBodyAt        int64        // unix time of the last job body accepted from this server's jobs (OpenJobBody), read atomically; 0 never (WARN0324)
+	jobsRunningSince time.Time    // when CheckJobsSilent first saw this server running on the active monitor (zero: not running); the tick only
 	jobStream        atomic.Value // jobStreamAuth: how the server's jobs script signs and checks its streams (OpenJobBody)
 	jobStreamRefused atomic.Value // jobStreamRefusal: the last stream of this server's jobs refused by a receiver (WARN0277)
 	jobsCheckSST     atomic.Pointer[SST] // the server's open jobs check receiver (SSTRunJobsCheckReceiver): one at a time

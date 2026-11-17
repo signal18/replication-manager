@@ -262,6 +262,6 @@ func (repman *ReplicationManager) applyServerSecret(key string) error {
 func (repman *ReplicationManager) applyServerSecrets() {
 	for _, cl := range repman.clustersSnapshot() {
 		cl.CredentialChain().Refresh()
-		cl.LoadAPIUsers()
+		cl.ReloadAPIUsers() // the rotation's path: the init login follows admin's password
 	}
 }
