@@ -164,7 +164,7 @@ kubeconfig's user needs the same permissions in each target database namespace.
 | `apps/deployments` | `get`, `create`, `patch`, `delete` | provision (`create`; `get` before creating one and to refuse one that is being deleted), start, stop, restart, force re-pull and upgrade (`patch`; `get` for the current spec and, on start, the replica count), unprovision (`delete`, then `get` until `NotFound`) |
 | `pods` | `list` | the PVC-consumer guard before a scale-up or the creation of a Deployment (detects Pods that still use the database PVC), the Manifest View, the resource sensor and native resize Pod lookup |
 | `services` | `create`, `delete` (`get` for the Manifest View) | provision, unprovision |
-| `persistentvolumeclaims` | `create` (`get` for the Manifest View) | provision |
+| `persistentvolumeclaims` | `create`, `get` | provision (`create`; `get` of one that already exists, to read its layout annotation, see "PVC layout"), the Manifest View (`get`) |
 | `secrets` | `create`, `patch` (`get`, `list` as documented before) | the server credentials Secret |
 
 Cluster scope: `list` on `nodes` (node placement) and on
@@ -216,6 +216,41 @@ The config archive itself is served by `handlerMuxServersPortConfig`
 recursive). The init container also pre-creates
 `.system/{tmp,logs,repl,innodb/undo,innodb/redo,aria}` under the datadir,
 mirroring OpenSVC's moduleset directory resources.
+
+### PVC layout (#2395)
+
+A database volume has one of two layouts. The layout is a property of the PVC, recorded when
+replication-manager creates it (the annotation `replication-manager.signal18.io/pvc-layout`);
+nothing is inferred from what a volume contains.
+
+| | `service-dirs-v1` (annotation present) | legacy (no annotation) |
+| --- | --- | --- |
+| Created for | every PVC replication-manager creates | every PVC that existed before the annotation |
+| `/var/lib/mysql` | subPath `data` | the PVC root |
+| `/etc/mysql` | subPath `etc/mysql`, whole, in the init, database and dbjobs containers | `/etc/mysql/conf.d` only (subPath `.system/conf.d`), init and database containers |
+| `/docker-entrypoint-initdb.d` | subPath `init` | subPath `.system/init` |
+| Init installer | OpenSVC's: clears `replication-manager.d/*` and `conf.d/*`, copies the archive's whole `etc/mysql` | the `conf.d/*.cnf` fragments only |
+| First install fails | the init container exits 1: no database starts without a usable `/etc/mysql` | exit 0, the database starts on what is there (unchanged) |
+
+`service-dirs-v1` is OpenSVC's service directory (`{name}/data`, `{name}/etc/mysql`, `{name}/init`
+mounted whole into the containers, `OpenSVCGetDBContainerSection`); the `.system/` runtime directories
+stay inside `data/`, where the generated configuration puts them. The archive is the one the generator
+always produced (`etc/`, `init/`, `data/`), installed by the same init container logic.
+
+**Fail closed on the first install.** `/etc/mysql` is a volume directory that hides the image's own
+configuration, so a first start whose fetch failed (repman unreachable, HTTP 403, a truncated archive) is
+not harmless: the server would start on compiled defaults and create new system files next to the
+existing ones. After its best-effort fetch the init container therefore requires a non-empty
+`/etc/mysql/my.cnf` and a `conf.d` with entries, and exits 1 otherwise; the pod stays in `Init` and
+Kubernetes retries it. A later refresh that fails still finds the last installed tree and passes, so the
+database starts on the last valid configuration.
+
+**Existing volumes.** A PVC that exists when a database is provisioned is read, never modified
+(`k8sEnsureDatabasePVC`): no annotation means legacy and the Deployment is rendered exactly as it was
+before; an annotation value this code does not know is an error. A legacy volume is not migrated and is
+never reinterpreted as the new layout; moving one is an explicit operation that does not exist yet. The
+Deployments already running are not touched either: only provisioning renders a Deployment, and the
+update paths patch image, pull policy, resources and strategy.
 
 ### Secrets, image pull policy, storage class
 

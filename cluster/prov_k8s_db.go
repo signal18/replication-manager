@@ -55,6 +55,89 @@ const k8sRoleDB = "db"
 const k8sConfPersistSubPath = ".system/conf.d"
 const k8sInitPersistSubPath = ".system/init"
 
+// PVC layouts of a database volume (#2395). The layout is a property of the PVC, recorded when
+// replication-manager creates it, never guessed from what the volume contains.
+//
+//   - legacy (no annotation): the datadir is the PVC root. Config and init persist under ".system/"
+//     inside it (k8sConfPersistSubPath, k8sInitPersistSubPath), and only /etc/mysql/conf.d is mounted.
+//     This is what every PVC created before the annotation existed holds, and what is rendered for it,
+//     unchanged: it is neither migrated nor reinterpreted.
+//   - service-dirs-v1: the PVC is OpenSVC's service directory. data/ is /var/lib/mysql, etc/mysql/ is
+//     /etc/mysql and init/ is /docker-entrypoint-initdb.d ({name}/data, {name}/etc/mysql, {name}/init
+//     of OpenSVCGetDBContainerSection), so the whole generated tree is mounted in the database and the
+//     dbjobs containers alike and the datadir holds only database files.
+//
+// A PVC without the annotation that already exists when a database is provisioned stays legacy: the
+// annotation is added only by the Create of a new PVC, so an existing volume is never relabelled.
+const k8sPVCLayoutAnnotation = "replication-manager.signal18.io/pvc-layout"
+const k8sPVCLayoutServiceDirsValue = "service-dirs-v1"
+
+const k8sSvcDataSubPath = "data"
+const k8sSvcEtcMysqlSubPath = "etc/mysql"
+const k8sSvcInitSubPath = "init"
+
+type k8sPVCLayout int
+
+const (
+	k8sLayoutLegacy k8sPVCLayout = iota
+	k8sLayoutServiceDirs
+)
+
+func (l k8sPVCLayout) String() string {
+	if l == k8sLayoutServiceDirs {
+		return k8sPVCLayoutServiceDirsValue
+	}
+	return "legacy"
+}
+
+// k8sPVCLayoutOf reads the layout of an existing PVC from its annotation: absent means legacy, the one
+// known value means service-dirs-v1, anything else is an error (a newer or foreign layout must not be
+// rendered as one this code knows).
+func k8sPVCLayoutOf(pvc *apiv1.PersistentVolumeClaim) (k8sPVCLayout, error) {
+	v, ok := pvc.GetAnnotations()[k8sPVCLayoutAnnotation]
+	switch {
+	case !ok:
+		return k8sLayoutLegacy, nil
+	case v == k8sPVCLayoutServiceDirsValue:
+		return k8sLayoutServiceDirs, nil
+	}
+	return k8sLayoutLegacy, fmt.Errorf("PVC %s carries %s=%q, a layout this replication-manager does not know: refusing to provision a database on it", pvc.Name, k8sPVCLayoutAnnotation, v)
+}
+
+// k8sDBMounts are the volume mounts of the three database pod containers for one layout.
+type k8sDBMounts struct {
+	layout k8sPVCLayout
+	volume string
+}
+
+func (m k8sDBMounts) data() apiv1.VolumeMount {
+	vm := apiv1.VolumeMount{Name: m.volume, MountPath: "/var/lib/mysql"}
+	if m.layout == k8sLayoutServiceDirs {
+		vm.SubPath = k8sSvcDataSubPath
+	}
+	return vm
+}
+
+func (m k8sDBMounts) init() apiv1.VolumeMount {
+	sub := k8sInitPersistSubPath
+	if m.layout == k8sLayoutServiceDirs {
+		sub = k8sSvcInitSubPath
+	}
+	return apiv1.VolumeMount{Name: m.volume, MountPath: "/docker-entrypoint-initdb.d", SubPath: sub}
+}
+
+// etc is the configuration mount of a container: legacy mounts only conf.d, in the init and the
+// database containers; service-dirs-v1 mounts the whole /etc/mysql in all three, like OpenSVC.
+func (m k8sDBMounts) etc(dbjobs bool) []apiv1.VolumeMount {
+	if m.layout == k8sLayoutServiceDirs {
+		return []apiv1.VolumeMount{{Name: m.volume, MountPath: "/etc/mysql", SubPath: k8sSvcEtcMysqlSubPath}}
+	}
+	if dbjobs {
+		return nil
+	}
+	return []apiv1.VolumeMount{{Name: m.volume, MountPath: "/etc/mysql/conf.d", SubPath: k8sConfPersistSubPath}}
+}
+
 // k8sClusterDomain resolves the Kubernetes cluster's DNS domain from
 // prov-orchestrator-cluster, falling back to "cluster.local" when unset or
 // left at "local" (that flag's own CLI default is OpenSVC-oriented, not a
@@ -290,6 +373,8 @@ func (cluster *Cluster) k8sDatabasePVC(s *ServerMonitor) *apiv1.PersistentVolume
 	pvc := &apiv1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: k8sDatabasePVCName(cluster.Name, s.Name),
+			// A volume replication-manager creates is service-dirs-v1 (#2395); see k8sPVCLayoutAnnotation.
+			Annotations: map[string]string{k8sPVCLayoutAnnotation: k8sPVCLayoutServiceDirsValue},
 		},
 		Spec: apiv1.PersistentVolumeClaimSpec{
 			AccessModes: []apiv1.PersistentVolumeAccessMode{
@@ -369,6 +454,16 @@ func (cluster *Cluster) k8sEnsureHeadlessService(client kubernetes.Interface, po
 // WaitForFirstConsumer StorageClass binding (that only happens during
 // scheduling).
 func (cluster *Cluster) k8sDatabaseDeployment(s *ServerMonitor, port int, nodeHostnameLabel string) *appsv1.Deployment {
+	return cluster.k8sDatabaseDeploymentWithLayout(s, port, nodeHostnameLabel, k8sLayoutLegacy)
+}
+
+// k8sDatabaseDeploymentWithLayout renders the database Deployment for one PVC layout (see
+// k8sPVCLayoutAnnotation). k8sLayoutLegacy is the Deployment this function always produced;
+// k8sLayoutServiceDirs is OpenSVC's service-directory layout, installed by the same init container logic
+// and with the one addition that the init container fails, instead of letting the database start, when
+// no usable configuration is on the volume after its fetch attempt.
+func (cluster *Cluster) k8sDatabaseDeploymentWithLayout(s *ServerMonitor, port int, nodeHostnameLabel string, layout k8sPVCLayout) *appsv1.Deployment {
+	mounts := k8sDBMounts{layout: layout, volume: k8sDatabaseVolumeName(s.Name)}
 	// api-credentials-secure-config requires Basic Auth, sent as a wget
 	// --header referencing an env var sourced from this server's own Secret
 	// (k8sSecretKeyAPIAuthHeader) rather than baking the base64 value
@@ -459,14 +554,39 @@ func (cluster *Cluster) k8sDatabaseDeployment(s *ServerMonitor, port int, nodeHo
 	// excludes replication-manager-cli: it's fetched separately below and
 	// shouldn't be destroyed by a config refresh whose own CLI re-fetch
 	// happens to fail.
+	//
+	// service-dirs-v1 (#2395) installs what OpenSVC installs: it clears
+	// /etc/mysql/replication-manager.d/* and conf.d/* and copies the archive's whole etc/mysql over
+	// /etc/mysql (custom.d and what an operator added stay; same-name files are overwritten).
+	clearEtc := "rm -f /etc/mysql/conf.d/*.cnf 2>/dev/null; "
+	copyEtc := "cp /tmp/cfg/etc/mysql/conf.d/*.cnf /etc/mysql/conf.d/ 2>/dev/null; "
+	if layout == k8sLayoutServiceDirs {
+		clearEtc = "rm -f /etc/mysql/replication-manager.d/* /etc/mysql/conf.d/* 2>/dev/null; "
+		copyEtc = "cp -a /tmp/cfg/etc/mysql/. /etc/mysql/ 2>/dev/null; "
+	}
 	applyConfig := "if " + needFetchCmd + " 2>/dev/null; then " +
 		"if " + remoteFetchCmd + " 2>/dev/null; then " +
 		"if tar xzf /tmp/config.tar.gz -C /tmp/cfg 2>/dev/null; then " +
-		"rm -f /etc/mysql/conf.d/*.cnf 2>/dev/null; " +
+		clearEtc +
 		"find /docker-entrypoint-initdb.d -mindepth 1 ! -name replication-manager-cli -delete 2>/dev/null; " +
-		"cp /tmp/cfg/etc/mysql/conf.d/*.cnf /etc/mysql/conf.d/ 2>/dev/null; " +
+		copyEtc +
 		"cp -r /tmp/cfg/init/. /docker-entrypoint-initdb.d/ 2>/dev/null; " +
 		"fi; fi; fi"
+
+	// The configuration guard of service-dirs-v1 (#2395). The fetch above is best effort by design: a
+	// failed first fetch must not become a database that starts on the image's defaults, because
+	// /etc/mysql is then an empty volume directory that hides the image's own configuration and the
+	// server would initialise new system files next to the existing data. After the fetch attempt, and
+	// whatever its outcome, the database may start only if a usable tree is on the volume: a non-empty
+	// my.cnf and a conf.d with entries. A later refresh that fails still finds the last installed tree
+	// and passes; a first install that fails does not, so the pod stays in Init until the fetch works.
+	// Legacy volumes keep the behaviour they had.
+	configGuard := ""
+	if layout == k8sLayoutServiceDirs {
+		configGuard = " ; if [ ! -s /etc/mysql/my.cnf ] || [ -z \"$(ls -A /etc/mysql/conf.d 2>/dev/null)\" ]; then " +
+			"echo \"ERROR: no usable configuration in /etc/mysql (my.cnf missing or empty, or conf.d empty): " +
+			"the database is not started; the init container is retried\" >&2; exit 1; fi"
+	}
 
 	// initEnv is empty (nil) unless a Basic Auth header is actually needed,
 	// so a cluster with api-credentials-secure-config off gets a
@@ -489,17 +609,7 @@ func (cluster *Cluster) k8sDatabaseDeployment(s *ServerMonitor, port int, nodeHo
 
 	dbSecurityContext, runtimeChown, jobsSecurityContext := cluster.k8sDBIdentity()
 
-	dbVolumeMounts := []apiv1.VolumeMount{
-		{
-			Name:      k8sDatabaseVolumeName(s.Name),
-			MountPath: "/var/lib/mysql",
-		},
-		{
-			Name:      k8sDatabaseVolumeName(s.Name),
-			MountPath: "/etc/mysql/conf.d",
-			SubPath:   k8sConfPersistSubPath,
-		},
-	}
+	dbVolumeMounts := append([]apiv1.VolumeMount{mounts.data()}, mounts.etc(false)...)
 	podVolumes := []apiv1.Volume{
 		{
 			Name: k8sDatabaseVolumeName(s.Name),
@@ -539,6 +649,7 @@ func (cluster *Cluster) k8sDatabaseDeployment(s *ServerMonitor, port int, nodeHo
 			" ; wget" + noCheckCert + " -T 8 -qO /tmp/replication-manager-cli.new " + baseRef + "/static/configurator/bin/replication-manager-cli 2>/dev/null && cp /tmp/replication-manager-cli.new /docker-entrypoint-initdb.d/replication-manager-cli 2>/dev/null" +
 			" ; chmod +x /docker-entrypoint-initdb.d/replication-manager-cli /docker-entrypoint-initdb.d/dbjobs_new /docker-entrypoint-initdb.d/dbjobs_launcher_with_sigterm 2>/dev/null" +
 			runtimeChown +
+			configGuard +
 			" ; exit \"$MKDIR_STATUS\"",
 	}
 	// Subdomain/role label are gated on prov-net-cni so a cluster that
@@ -594,25 +705,9 @@ func (cluster *Cluster) k8sDatabaseDeployment(s *ServerMonitor, port int, nodeHo
 							Image:   "alpine",
 							Command: cmd,
 							Env:     initEnv,
-							VolumeMounts: []apiv1.VolumeMount{
-								{
-									Name:      k8sDatabaseVolumeName(s.Name),
-									MountPath: "/var/lib/mysql",
-								},
-								{
-									// SubPath, not emptyDir: matches OpenSVC's own
-									// {name}/etc/mysql (see applyConfig above).
-									Name:      k8sDatabaseVolumeName(s.Name),
-									MountPath: "/etc/mysql/conf.d",
-									SubPath:   k8sConfPersistSubPath,
-								},
-								{
-									// SubPath, matches OpenSVC's {name}/init.
-									Name:      k8sDatabaseVolumeName(s.Name),
-									MountPath: "/docker-entrypoint-initdb.d",
-									SubPath:   k8sInitPersistSubPath,
-								},
-							},
+							// SubPaths of the one PVC, not emptyDir (see applyConfig above), matching
+							// OpenSVC's {name}/etc/mysql and {name}/init.
+							VolumeMounts: append(append([]apiv1.VolumeMount{mounts.data()}, mounts.etc(false)...), mounts.init()),
 						},
 					},
 					Containers: []apiv1.Container{
@@ -659,13 +754,15 @@ func (cluster *Cluster) k8sDatabaseDeployment(s *ServerMonitor, port int, nodeHo
 							// (db_owner in dbjobs_new.sh). Only with a managed
 							// identity; otherwise the image's own user, as before.
 							SecurityContext: jobsSecurityContext,
-							// Guarded, not a direct exec: on a server with nothing
+							// Guarded, not a direct exec: on a legacy volume with nothing
 							// ever persisted (a first boot with repman
 							// unreachable), /docker-entrypoint-initdb.d is empty --
 							// mariadbd degrades gracefully to the image's own
 							// defaults, but a bare exec here would crash-loop this
 							// container on a missing file. Idles instead until the
-							// next pod restart re-runs the init container.
+							// next pod restart re-runs the init container. (A
+							// service-dirs-v1 pod never gets here without a
+							// configuration: its init container fails first.)
 							Command: []string{"/bin/sh", "-c",
 								"if [ -f /docker-entrypoint-initdb.d/dbjobs_launcher_with_sigterm ]; then " +
 									"exec /bin/bash /docker-entrypoint-initdb.d/dbjobs_launcher_with_sigterm; " +
@@ -684,17 +781,9 @@ func (cluster *Cluster) k8sDatabaseDeployment(s *ServerMonitor, port int, nodeHo
 									},
 								},
 							},
-							VolumeMounts: []apiv1.VolumeMount{
-								{
-									Name:      k8sDatabaseVolumeName(s.Name),
-									MountPath: "/var/lib/mysql",
-								},
-								{
-									Name:      k8sDatabaseVolumeName(s.Name),
-									MountPath: "/docker-entrypoint-initdb.d",
-									SubPath:   k8sInitPersistSubPath,
-								},
-							},
+							// service-dirs-v1 also mounts /etc/mysql here, like OpenSVC's jobs container
+							// ({name}/etc/mysql:/etc/mysql:rw): dbjobs reads $MYSQL_CONF/my.cnf and what it includes.
+							VolumeMounts: append([]apiv1.VolumeMount{mounts.data(), mounts.init()}, mounts.etc(true)...),
 						},
 					},
 					Volumes: podVolumes,
@@ -1153,6 +1242,37 @@ func (cluster *Cluster) k8sExistingDeploymentUsable(client kubernetes.Interface,
 	return nil
 }
 
+// k8sEnsureDatabasePVC creates the database PVC and returns the layout its Deployment must be rendered
+// for (#2395). A PVC that does not exist is created with the service-dirs-v1 annotation. A PVC that
+// already exists is read, never modified: its annotation decides (absent: legacy, the datadir is the
+// PVC root, as before; service-dirs-v1; or an error for a value this code does not know). Nothing is
+// inferred from the files on the volume, so a legacy volume is never reinterpreted as the new layout.
+func (cluster *Cluster) k8sEnsureDatabasePVC(client kubernetes.Interface, pvc *apiv1.PersistentVolumeClaim) (k8sPVCLayout, error) {
+	claims := client.CoreV1().PersistentVolumeClaims(cluster.Name)
+	ctx, cancel := context.WithTimeout(context.Background(), k8sAPICallTimeout)
+	defer cancel()
+	created, err := claims.Create(ctx, pvc, metav1.CreateOptions{})
+	if err == nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Created Kubernetes physical volume claim %q (layout %s).\n", created.GetObjectMeta().GetName(), k8sLayoutServiceDirs)
+		return k8sLayoutServiceDirs, nil
+	}
+	if !apierrors.IsAlreadyExists(err) {
+		return k8sLayoutLegacy, err
+	}
+	existing, gerr := claims.Get(ctx, pvc.Name, metav1.GetOptions{})
+	if gerr != nil {
+		return k8sLayoutLegacy, fmt.Errorf("PVC %s already exists but cannot be read to tell its layout: %w", pvc.Name, gerr)
+	}
+	layout, lerr := k8sPVCLayoutOf(existing)
+	if lerr != nil {
+		return k8sLayoutLegacy, lerr
+	}
+	if layout == k8sLayoutLegacy {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "PVC %s predates the service-directories layout (no %s annotation): the database is provisioned on it with the legacy layout, datadir at the PVC root. It is not migrated.", pvc.Name, k8sPVCLayoutAnnotation)
+	}
+	return layout, nil
+}
+
 func (cluster *Cluster) K8SProvisionDatabaseService(s *ServerMonitor) {
 	cluster.ResolveDatabaseImage(false) // the deployment carries a release, not a pointer (#1862)
 	cluster.warnDBRunAsVolumeMismatch()
@@ -1186,16 +1306,11 @@ func (cluster *Cluster) K8SProvisionDatabaseService(s *ServerMonitor) {
 		}
 	}
 
-	persistentVolumeClaims := client.CoreV1().PersistentVolumeClaims(cluster.Name)
-	pvc := cluster.k8sDatabasePVC(s)
-	pvcresult, pvcerr := persistentVolumeClaims.Create(context.TODO(), pvc, metav1.CreateOptions{})
-	if pvcerr != nil && !apierrors.IsAlreadyExists(pvcerr) {
+	pvcLayout, pvcerr := cluster.k8sEnsureDatabasePVC(client, cluster.k8sDatabasePVC(s))
+	if pvcerr != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot deploy Kubernetes pvc %s ", pvcerr)
 		cluster.errorChan <- pvcerr
 		return
-	}
-	if pvcerr == nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Created Kubernetes physical volume claim %q.\n", pvcresult.GetObjectMeta().GetName())
 	}
 
 	// Nothing to prime: config now persists on the PVC itself, written by
@@ -1229,7 +1344,7 @@ func (cluster *Cluster) K8SProvisionDatabaseService(s *ServerMonitor) {
 	// survives for the life of this process, and durably across a restart
 	// only once config-merge writes it back to TOML -- not a gap unique to
 	// this feature).
-	deployment := cluster.k8sDatabaseDeployment(s, port, nodeHostnameLabel)
+	deployment := cluster.k8sDatabaseDeploymentWithLayout(s, port, nodeHostnameLabel, pvcLayout)
 
 	// Enable the DBU resource sensor's pod requirement: a shared PID namespace so
 	// the "-dbjobs" sidecar reads the database container's own cgroup via
