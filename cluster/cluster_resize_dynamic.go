@@ -592,10 +592,27 @@ func (cluster *Cluster) isDynamicResizeDailyWindowNow() bool {
 	return cur >= start && cur < start+dynamicResizeWindowMinutes
 }
 
+// resizeServers lists the servers a resize of this cluster may act on: its own, never a
+// replica of another cluster that this cluster's topology lists (a child or staging
+// cluster replicating from it, SourceClusterName != cluster.Name). That server belongs
+// to its own cluster, which sizes it from its own plan through its own orchestrator
+// service; resizing it from here would apply this cluster's targets and address this
+// cluster's service of the same name. A server with no source cluster known is this
+// cluster's own (the rule of the PostgreSQL election, cluster_fail_postgres.go).
+func (cluster *Cluster) resizeServers() []*ServerMonitor {
+	own := make([]*ServerMonitor, 0, len(cluster.Servers))
+	for _, s := range cluster.Servers {
+		if s != nil && (s.SourceClusterName == "" || s.SourceClusterName == cluster.Name) {
+			own = append(own, s)
+		}
+	}
+	return own
+}
+
 // anyServerRunningJobs reports whether a dbjob (backup, optimize, reseed, ...) is executing on
 // any monitored server — the gate that keeps a live resize from colliding with a job.
 func (cluster *Cluster) anyServerRunningJobs() bool {
-	for _, s := range cluster.Servers {
+	for _, s := range cluster.resizeServers() {
 		if s != nil && s.IsRunningJobs {
 			return true
 		}
@@ -742,7 +759,7 @@ func (cluster *Cluster) ResizeDynamicResources(dim resizeDimension, grow bool) {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
 		"Live resource resize: %s %s (prov-db-dynamic-resource)", dim.String(), dir)
 
-	for _, server := range cluster.Servers {
+	for _, server := range cluster.resizeServers() {
 		if server == nil || server.State == stateFailed || server.State == stateUnconn {
 			continue
 		}
@@ -1048,7 +1065,7 @@ func (cluster *Cluster) dynamicMemoryResizeDue() (grow bool, due bool) {
 	if err != nil {
 		return false, false
 	}
-	for _, s := range cluster.Servers {
+	for _, s := range cluster.resizeServers() {
 		if s == nil || s.State == stateFailed || s.State == stateUnconn {
 			continue
 		}
@@ -1118,7 +1135,7 @@ func (cluster *Cluster) DriveDynamicResize() {
 	// Observe which axes are saturated against config, cluster-wide. Also honour the
 	// in-flight gate: never start another step while a memory resize is still converging.
 	cpuDue, memDue, ioDue, diskDue := false, false, false, false
-	for _, s := range cluster.Servers {
+	for _, s := range cluster.resizeServers() {
 		if s == nil {
 			continue
 		}
@@ -1210,7 +1227,7 @@ func (cluster *Cluster) driveDynamicShrink() {
 	}
 	cpuUnder, memUnder, diskUnder, ioUnder := true, true, true, true
 	live := 0
-	for _, s := range cluster.Servers {
+	for _, s := range cluster.resizeServers() {
 		if s == nil || s.State == stateFailed || s.State == stateUnconn {
 			continue
 		}
@@ -1295,7 +1312,7 @@ func (cluster *Cluster) dynamicShrinkTarget(axis string) (from, to string, ok bo
 		headroom = 1
 	}
 	peakDbu, seen := 0.0, false
-	for _, s := range cluster.Servers {
+	for _, s := range cluster.resizeServers() {
 		if s == nil || s.State == stateFailed || s.State == stateUnconn || s.DBUConsumed == nil {
 			continue
 		}
@@ -1542,7 +1559,7 @@ func (cluster *Cluster) followDiskUsage() bool {
 	}
 	unitGB := cluster.resources.Ratios(ProfileDatabase).DiskGBPerUnit
 	var maxUsed, maxNeed int64
-	for _, s := range cluster.Servers {
+	for _, s := range cluster.resizeServers() {
 		if s == nil || s.IsDown() || s.DBUConsumed == nil {
 			continue
 		}
@@ -1610,7 +1627,7 @@ func (cluster *Cluster) applyDiskResize(fromGB, toGB int) {
 	}
 	grow := toGB > fromGB
 	rz := cluster.resourceResizer()
-	for _, s := range cluster.Servers {
+	for _, s := range cluster.resizeServers() {
 		if s == nil {
 			continue
 		}
@@ -1660,7 +1677,7 @@ func (cluster *Cluster) refuseDynamicGrow(axis string, dim resizeDimension, from
 	cluster.ResourceGrowRefused = &GrowRefusal{Axis: axis, From: from, To: to, TargetDbu: target, Reason: reason, Since: time.Now()}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn,
 		"Dynamic %s grow %s -> %s refused: %s", axis, from, to, reason)
-	for _, s := range cluster.Servers {
+	for _, s := range cluster.resizeServers() {
 		if s == nil || s.State == stateFailed || s.State == stateUnconn {
 			continue
 		}
@@ -1687,7 +1704,7 @@ func (cluster *Cluster) overPlanGrowAllowed(target float64) (bool, string) {
 		return true, ""
 	}
 	live := make([]*ServerMonitor, 0, len(cluster.Servers))
-	for _, s := range cluster.Servers {
+	for _, s := range cluster.resizeServers() {
 		if s == nil || s.State == stateFailed || s.State == stateUnconn {
 			continue
 		}
