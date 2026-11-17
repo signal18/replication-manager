@@ -14,8 +14,3 @@ export function rotationTitle(r) {
 export function rotationText(r) {
   return r.revealMailedTo ? 'Mailed to ' + r.revealMailedTo : r.password
 }
-
-// rotationCopyable: there is a password to copy, it was shown here instead of being mailed
-export function rotationCopyable(r) {
-  return !r.revealMailedTo
-}

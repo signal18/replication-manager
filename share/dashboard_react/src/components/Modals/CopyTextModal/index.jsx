@@ -18,8 +18,7 @@ import parentStyles from '../styles.module.scss'
 import CopyToClipboard from '../../CopyToClipboard'
 import CopyObjectText from '../../CopyObjectText'
 
-// copyable false: the text is a plain message, with nothing to copy (no copy button)
-function CopyTextModal({ title, isOpen, closeModal, text, showPrettyJsonCheckbox, copyable = true }) {
+function CopyTextModal({ title, isOpen, closeModal, text, showPrettyJsonCheckbox }) {
   const [printPretty, setPrintPretty] = useState(false)
   const { theme } = useTheme()
 
@@ -31,9 +30,7 @@ function CopyTextModal({ title, isOpen, closeModal, text, showPrettyJsonCheckbox
         {title && <ModalHeader className={styles.modalHeader}>{title}</ModalHeader>}
 
         <ModalBody className={styles.modalBody}>
-          {copyable
-            ? <CopyObjectText showPrettyJsonCheckbox={showPrettyJsonCheckbox} text={text} fromModal={true} />
-            : <Box>{text}</Box>}
+          <CopyObjectText showPrettyJsonCheckbox={showPrettyJsonCheckbox} text={text} fromModal={true} />
         </ModalBody>
         <ModalCloseButton />
       </ModalContent>
