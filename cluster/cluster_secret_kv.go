@@ -88,6 +88,12 @@ type secretKvStores struct {
 	orchestratorWrites  uint64
 	orchestratorChecked bool
 	orchestratorWriting atomic.Bool
+	// initChecked: the init and jobs logins of the orchestrator secret were read once since this
+	// monitor became active (checkInitCredentials); initChecking: a read runs; initTried: the
+	// unix time of the last read that did not get an answer
+	initChecked  atomic.Bool
+	initChecking atomic.Bool
+	initTried    atomic.Int64
 }
 
 func (cluster *Cluster) storeQueue() *credstore.StoreQueue {
@@ -681,10 +687,14 @@ func (cluster *Cluster) CheckSecretKvStores() {
 				ErrDesc: fmt.Sprintf(clusterError["WARN0321"], name)})
 		}
 	}
+	if !cluster.IsActive() {
+		c.initChecked.Store(false) // read again when this monitor becomes active
+	}
 	if !cluster.IsActive() || cluster.SecurityStateMachine == nil {
 		return
 	}
 	cluster.checkOpenSVCRootPassword()
+	cluster.checkInitCredentials()
 	active := map[string]bool{}
 	c.mu.Lock()
 	for _, e := range cluster.Conf.SecretKvActive() {
