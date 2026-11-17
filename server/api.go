@@ -578,6 +578,44 @@ var isTokenPrincipal = cluster.IsTokenPrincipal
 // isJobsPrincipal: a jobs token, bound to the server its secret-login named.
 var isJobsPrincipal = cluster.IsJobsPrincipal
 
+// jwtUserInfo is the CustomUserInfo of the request's signed JWT (a session or a service token),
+// false without a valid one.
+func jwtUserInfo(r *http.Request) (map[string]interface{}, bool) {
+	token, err := request.ParseFromRequest(r, request.AuthorizationHeaderExtractor, func(token *jwt.Token) (interface{}, error) {
+		vk, _ := jwt.ParseRSAPublicKeyFromPEM(verificationKey)
+		return vk, nil
+	})
+	if err != nil {
+		return nil, false
+	}
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok {
+		return nil, false
+	}
+	info, ok := claims["CustomUserInfo"].(map[string]interface{})
+	if !ok {
+		return nil, false
+	}
+	if _, ok := info["Name"].(string); !ok {
+		return nil, false
+	}
+	return info, true
+}
+
+// jobsTokenForServer: the request carries a jobs token (secret-login, the one-time job body of
+// the cluster's jobs key) minted for the very server the URL names (JobsTokenServerInScope). The
+// init container's config download accepts it (handlerMuxServersPortConfig): only the server's
+// own containers fetch its config, and no admin password is needed for it.
+func (repman *ReplicationManager) jobsTokenForServer(r *http.Request, cl *cluster.Cluster) bool {
+	info, ok := jwtUserInfo(r)
+	if !ok || !isJobsPrincipal(info["Name"].(string)) {
+		return false
+	}
+	server, _ := info["Server"].(string)
+	vars := mux.Vars(r)
+	return vars["serverPort"] != "" && cl.JobsTokenServerInScope(server, vars["serverName"], vars["serverPort"])
+}
+
 func (repman *ReplicationManager) IsValidClusterACL(r *http.Request, cluster *cluster.Cluster) (bool, string) {
 	// A user-issued API token (api_token.go): no password, the ACL runs under the
 	// token principal so the grants are the token's ∩ the owner's, and the cluster
@@ -597,16 +635,9 @@ func (repman *ReplicationManager) IsValidClusterACL(r *http.Request, cluster *cl
 		return ok, t.User
 	}
 
-	token, err := request.ParseFromRequest(r, request.AuthorizationHeaderExtractor, func(token *jwt.Token) (interface{}, error) {
-		vk, _ := jwt.ParseRSAPublicKeyFromPEM(verificationKey)
-		return vk, nil
-	})
-	if err == nil {
-		claims := token.Claims.(jwt.MapClaims)
-		userinfo := claims["CustomUserInfo"]
-		mycutinfo := userinfo.(map[string]interface{})
+	if mycutinfo, ok := jwtUserInfo(r); ok {
 		meuser := mycutinfo["Name"].(string)
-		mepwd := mycutinfo["Password"].(string)
+		mepwd, _ := mycutinfo["Password"].(string)
 		_, ok := mycutinfo["profile"]
 
 		if ok {

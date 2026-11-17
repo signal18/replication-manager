@@ -1062,10 +1062,23 @@ func (cluster *Cluster) OpenSVCGetInitContainerSection(port string) map[string]s
 // the shared one plus, when the owner is managed (dbVolumeOwner), the UID/GID the
 // bootstrap applies to the data volume. Otherwise the bootstrap keeps its legacy
 // 999:999.
+//
+// With the cluster's jobs key (a persistent replication-manager key), the database init container
+// logs in with it, not with the admin password: it mounts the key alone, read-only, from the jobs
+// secret volume ({name}-sec, OpenSVCGetJobsVolumeSecret), and gets neither
+// REPLICATION_MANAGER_USER nor REPLICATION_MANAGER_PASSWORD. The bootstrap then fetches the config
+// through `replication-manager-cli job config` (a jobs token of this server). An admin password
+// rotation no longer touches the database start. The proxies keep the admin login (no jobs login
+// for a proxy yet).
 func (cluster *Cluster) OpenSVCGetDBInitContainerSection(port string) map[string]string {
 	svccontainer := cluster.OpenSVCGetInitContainerSection(port)
 	if ownerUID, ownerGID, managed := cluster.dbVolumeOwner(); managed {
 		svccontainer["environment"] += fmt.Sprintf(" REPLICATION_MANAGER_DB_VOLUME_UID=%d REPLICATION_MANAGER_DB_VOLUME_GID=%d", ownerUID, ownerGID)
+	}
+	if len(svccontainer) > 0 && cluster.GetJobsKey() != "" {
+		delete(svccontainer, "secrets_environment")
+		svccontainer["configs_environment"] = strings.TrimSpace(strings.Replace(svccontainer["configs_environment"], "env/REPLICATION_MANAGER_USER", "", 1))
+		svccontainer["volume_mounts"] += " {name}-sec/JOBS_API_KEY:/credentials/JOBS_API_KEY:ro"
 	}
 	return svccontainer
 }

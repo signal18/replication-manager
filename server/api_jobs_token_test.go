@@ -90,3 +90,64 @@ func TestIsValidClusterACLJobsToken(t *testing.T) {
 		t.Error("a session naming bare system must be refused")
 	}
 }
+
+// The init container's config download (handlerMuxServersPortConfig) accepts a jobs token of
+// the very server the URL names, nothing wider: not another server's, not a route without the
+// port, not a session token; and the rule table still refuses the jobs token on /config, so
+// config-gen and config-path-preserve stay closed to it.
+func TestJobsTokenForServerConfigFetch(t *testing.T) {
+	repman := &ReplicationManager{Conf: &config.Config{}}
+	repman.initKeys()
+	cl := &cluster.Cluster{Name: "c1", Conf: &config.Config{}, APIUsers: map[string]cluster.APIUser{}, Grants: config.GetGrantType()}
+	cl.Servers = []*cluster.ServerMonitor{{URL: "db1:3306", Host: "db1", Port: "3306", Id: "dbA"}, {URL: "db2:3306", Host: "db2", Port: "3306", Id: "dbB"}}
+	sys := cluster.APIUser{User: "system", Password: "x", Roles: map[string]bool{}}
+	cl.SetUserGrants(&sys, "db proxy "+config.GrantClusterResourceSensor)
+	cl.APIUsers["system"] = sys
+	cl.EnsureJobsPrincipal()
+	sk, err := jwt.ParseRSAPrivateKeyFromPEM(signingKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sign := func(info map[string]interface{}) string {
+		signer := jwt.New(jwt.SigningMethodRS256)
+		claims := signer.Claims.(jwt.MapClaims)
+		claims["iat"] = time.Now().Unix()
+		claims["exp"] = time.Now().Add(15 * time.Minute).Unix()
+		claims["CustomUserInfo"] = info
+		tok, err := signer.SignedString(sk)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return tok
+	}
+	jobs := sign(map[string]interface{}{"Name": cl.JobsPrincipalName(), "Role": "Member", "Password": "", "Server": "db1:3306"})
+	session := sign(map[string]interface{}{"Name": "alice", "Role": "Member", "Password": "x"})
+
+	router := mux.NewRouter()
+	var ok, ruleOK bool
+	h := func(w http.ResponseWriter, r *http.Request) {
+		ok = repman.jobsTokenForServer(r, cl)
+		ruleOK, _ = repman.IsValidClusterACL(r, cl)
+	}
+	router.HandleFunc("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/config", h)
+	router.HandleFunc("/api/clusters/{clusterName}/servers/{serverName}/config", h)
+	check := func(tok, url string) (bool, bool) {
+		ok, ruleOK = false, false
+		r := httptest.NewRequest("GET", url, nil)
+		r.Header.Set("Authorization", "Bearer "+tok)
+		router.ServeHTTP(httptest.NewRecorder(), r)
+		return ok, ruleOK
+	}
+	if got, rule := check(jobs, "/api/clusters/c1/servers/db1/3306/config"); !got || rule {
+		t.Fatalf("own server: accepted %v (want true), rule table %v (want false)", got, rule)
+	}
+	if got, _ := check(jobs, "/api/clusters/c1/servers/db2/3306/config"); got {
+		t.Error("a jobs token of db1 fetched db2's config")
+	}
+	if got, _ := check(jobs, "/api/clusters/c1/servers/dbA/config"); got {
+		t.Error("a jobs token reached the route without the port")
+	}
+	if got, _ := check(session, "/api/clusters/c1/servers/db1/3306/config"); got {
+		t.Error("a session token passed as a jobs token")
+	}
+}

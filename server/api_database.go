@@ -3645,6 +3645,13 @@ func (repman *ReplicationManager) handlerMuxServersPortConfig(w http.ResponseWri
 	if mycluster != nil {
 		if mycluster.Conf.APISecureConfig {
 			valid, _ := repman.IsValidClusterACL(r, mycluster)
+			if !valid && r.Method == http.MethodGet && repman.jobsTokenForServer(r, mycluster) {
+				// the init container's fetch with the jobs login (replication-manager-cli job
+				// config): a jobs token of this very server reads its config archive, and only
+				// that (no rule: the /config rule would also open config-gen and
+				// config-path-preserve to it, JOB_LOGIN.md)
+				valid = true
+			}
 			if !valid {
 				// Orchestrator-driven bootstrap (e.g. the K8s init-container
 				// wget in cluster/prov_k8s_db.go) has no JWT to send, only
