@@ -15,6 +15,7 @@ import (
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/config/credstore"
 	"github.com/signal18/replication-manager/opensvc"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 )
 
 // Orchestrator credential copy as a StoreWriter (#2356, follow-up #2227).
@@ -296,4 +297,102 @@ func (cluster *Cluster) ServerOrchestratorStore(plugin, namespace string) (creds
 		return &k8sStore{cluster: cluster, namespace: namespace, secret: config.ConstSecretKvKubernetesServerSecret, prefixed: true}, nil
 	}
 	return nil, fmt.Errorf("plugin %s does not write through an orchestrator", plugin)
+}
+
+// initCredential is a key of the cluster's orchestrator secret a container logs in to
+// replication-manager with, and the value it must hold now.
+type initCredential struct {
+	key, value string
+	// onlyIfPresent: repaired where the provisioning put it, never added (a service whose
+	// definition does not map it would get a key nobody reads)
+	onlyIfPresent bool
+}
+
+// initCredentials are the logins of the cluster's orchestrator secret:
+//   - the init containers' admin login, OpenSVC REPLICATION_MANAGER_PASSWORD
+//     (seedOrchestratorPasswords), Kubernetes REPMAN_AUTH_HEADER (k8sAPIAuthHeaderValue);
+//   - the cluster's jobs key, JOBS_API_KEY (GetJobsKey), which the jobs containers log in with
+//     and which a definition maps only once the secret holds it (openSVCPublishJobsKey).
+func (cluster *Cluster) initCredentials() []initCredential {
+	var list []initCredential
+	switch cluster.GetOrchestrator() {
+	case config.ConstOrchestratorOpenSVC:
+		list = append(list, initCredential{key: "REPLICATION_MANAGER_PASSWORD", value: cluster.GetAPIUsers()["admin"].Password, onlyIfPresent: true})
+	case config.ConstOrchestratorKubernetes:
+		list = append(list, initCredential{key: k8sSecretKeyAPIAuthHeader, value: k8sAPIAuthHeaderValue(cluster), onlyIfPresent: true})
+	default:
+		return nil
+	}
+	return append(list, initCredential{key: "JOBS_API_KEY", value: cluster.GetJobsKey()})
+}
+
+// checkInitCredentials repairs the logins of the cluster's orchestrator secret
+// (initCredentials) once each time this monitor becomes active: each key is read
+// (ReadCurrent, bounded by the store timeout) and one that differs from the current value, or a
+// jobs key that is missing, is queued to the orchestrator writer (queueOrchestrator: its own
+// goroutine and timeout, <KEY>_OLD kept, behind state and retry on a failed write). Until then an
+// admin password changed elsewhere (a rotation, the global settings, another release) left every
+// init container failing its login: no config fetched, the database started on its old files.
+// The read runs in a goroutine, never on the tick; an unanswered read is tried again every
+// secret-kv-retry-interval. No value is logged (F10).
+func (cluster *Cluster) checkInitCredentials() {
+	c := &cluster.secretKv
+	if c.initChecked.Load() || cluster.orchestratorStoreWriter() == nil {
+		return
+	}
+	retry := time.Duration(cluster.Conf.SecretKvRetryInterval) * time.Second
+	if retry <= 0 {
+		retry = time.Minute
+	}
+	if time.Since(time.Unix(c.initTried.Load(), 0)) < retry || !c.initChecking.CompareAndSwap(false, true) {
+		return
+	}
+	go func() {
+		defer c.initChecking.Store(false)
+		if cluster.repairInitCredentials(cluster.orchestratorStoreWriter()) {
+			c.initChecked.Store(true)
+		} else {
+			c.initTried.Store(time.Now().Unix())
+		}
+	}()
+}
+
+// repairInitCredentials reads each init credential from w and queues those to repair. It returns
+// whether every read got an answer (an absent key or secret is an answer).
+func (cluster *Cluster) repairInitCredentials(w orchestratorStore) bool {
+	answered := true
+	for _, ic := range cluster.initCredentials() {
+		if ic.value == "" {
+			continue
+		}
+		cur, present, err := w.ReadCurrent(ic.key)
+		if err != nil {
+			if !orchestratorAbsent(err) {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "Cannot read %s of the orchestrator secret of %s, read again later: %s", ic.key, cluster.Name, err)
+				answered = false
+				continue
+			}
+			present = false
+		}
+		switch {
+		case present && cur == ic.value:
+			continue
+		case !present && ic.onlyIfPresent:
+			continue
+		}
+		what := "differs from the current one"
+		if !present {
+			what = "is missing"
+		}
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Orchestrator secret of %s: %s %s, written again", cluster.Name, ic.key, what)
+		cluster.queueOrchestrator(ic.key, ic.value)
+	}
+	return answered
+}
+
+// orchestratorAbsent: the error of a read says the secret or the key does not exist (OpenSVC 404,
+// Kubernetes NotFound): an answer, nothing to read.
+func orchestratorAbsent(err error) bool {
+	var se *opensvc.StatusError
+	return (errors.As(err, &se) && se.StatusCode == http.StatusNotFound) || apierrors.IsNotFound(err)
 }

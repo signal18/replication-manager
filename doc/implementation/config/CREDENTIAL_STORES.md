@@ -618,6 +618,25 @@ is treated the same; only the path a level maps to differs per store.
   identity (`jwt`, same role and address), so the role's policy must deny `*/system/repman/*`
   to any session that is not the instance's own server level (a cluster sponsor's or a member's
   session), as the members page already must not see a server path.
+- **The init containers' login follows the admin password.** The provisioning writes the admin
+  API password where the database and proxy init containers read it to fetch their config: on
+  OpenSVC `REPLICATION_MANAGER_PASSWORD` in the cluster's env secret (`seedOrchestratorPasswords`),
+  on Kubernetes `REPMAN_AUTH_HEADER` (Basic `admin:<password>`) in the Secret `<cluster>-secret`
+  (`k8sAPIAuthHeaderValue`, with `api-credentials-secure-config`). Nothing wrote them again: after
+  an admin password change every init failed its login, fetched no config and the database started
+  on its old files. Now, when a cluster applies a changed instance user list
+  (`ApplyServerSecret("api-credentials")`) and admin's password changed, `followAdminPassword`
+  queues the new value to that key through the cluster's orchestrator writer (`queueOrchestrator`:
+  the bounded queue, its own goroutine and timeout, `<KEY>_OLD` kept, an unchanged value skipped).
+  **Repair at activation** (`checkInitCredentials`, from `CheckSecretKvStores`): once each time
+  the monitor becomes active (a start, a standby taking over), each login of the orchestrator
+  secret is read (`ReadCurrent`, bounded, in a goroutine) and queued again when it differs: the
+  init login (`REPLICATION_MANAGER_PASSWORD` / `REPMAN_AUTH_HEADER`, repaired only where the
+  provisioning put it, never added) and the cluster's jobs key `JOBS_API_KEY` (`GetJobsKey`,
+  published when missing: a definition maps it only once the secret holds it). An unanswered read
+  is tried again every `secret-kv-retry-interval`. So a release deployed on a fleet whose
+  namespaces kept an old admin password repairs them by itself, and every namespace gets its jobs
+  key. Nothing is logged but the key's name.
 - **A new place gets the history.** An edit of a server entry's address, mount, path-prefix,
   cluster or namespace, or an offer that moves it, sets its `written-as` to `(new place)`
   (`ConstSecretKvWrittenAsNewPlace`, never an instance name): the move then copies every kept
