@@ -396,19 +396,22 @@ its own, until no pod references the data PVC before it scales up.
 - **`RollingRestart`** runs the same sequence as on OpenSVC, for every replica and for the
   original primary: maintenance on, `StopDatabaseService` (scales the Deployment to zero),
   `WaitDatabaseFailed` (the monitor has seen the database down), `UpgradeDatabaseDeploymentOnStart`
-  (the definition refresh, which here patches the pod template, refuses a Deployment that is not
-  at zero replicas, and keeps the running image), `StartDatabaseWaitRejoin` (Start keeps the
+  (the definition refresh, run when `prov-orchestrator-deployment-upgrade-on-start` is on, which is
+  the default: it patches the pod template, refuses a Deployment that is not at zero replicas, and
+  keeps the running image; a failure is logged as a warning and the rolling restart goes on),
+  `StartDatabaseWaitRejoin` (Start keeps the
   PVC-consumer guard, then waits for the rejoin of the returning database), then the replication
   synchronization and maintenance off. It does not use a rolling pod replacement:
   `K8SRestartDatabaseServiceWaitRejoin` and `K8SWaitRolloutComplete` are not called by it. A pod
   replaced without the monitor having seen the database Failed gives `WaitRejoin` nothing to wait for
   (it fires on the rejoin of a server that came back from Failed), and the Deployment's own readiness
   is the container started, not SQL available. With the Failed barrier the rejoin signal is the one of
-  the restarted database, as on OpenSVC. The refresh re-asserts the steady-state pull policy and keeps
-  the image.
+  the restarted database, as on OpenSVC. When the refresh runs it applies the pull policy of the
+  current `prov-kube-image-force-pull` setting and keeps the image; with
+  `prov-orchestrator-deployment-upgrade-on-start` off it is skipped and the Deployment is left as it is.
 - `RollingRestart` is deliberately **not** `K8SForceRepullDatabaseService`: it is triggered on a
   schedule (`scheduler-rolling-restart`) or in bulk (also backs the security-fix rolling-restart path)
-  and must never change what image gets pulled.
+  and does not change the image the database runs.
 - **`RollingUpgrade`/`/actions/upgrade`** → see "Rolling upgrade" below.
 - **`RollingReprov`** unprovisions and reprovisions each server
   (`UnprovisionDatabaseService`, `InitDatabaseService`) rather than
@@ -529,8 +532,12 @@ Where the waits run, and who waits for them:
   lengthen that window when they wait: the provision guard waits only for a Pod that
   still references the data PVC (a stale or externally created Pod, or a deletion that
   was not waited for), never for the Pods of a Deployment whose unprovision returned
-  (it did not wait in the validation runs), and then for at most 90s, after which the
-  provisioning fails and the state is cleared.
+  (it did not wait in the validation runs), and then for at most 90s, after which that
+  server's provisioning fails and its Deployment is not created. `InitDatabaseService`
+  then clears the failover state, whatever the result. `ProvisionServices` goes on to
+  `WaitDatabaseCanConn` and clears the state only when that succeeds: when it fails,
+  `ProvisionServices` returns before clearing it (existing behaviour of
+  `ProvisionServices`, not changed by this PR).
 - **The restart-cookie path** (`/actions/restart`, `CheckRestartContainerCookies`)
   is the force re-pull: a patch, no wait.
 - **Monitor tick and failover.** The MariaDB, MySQL and Percona monitoring and failover
@@ -614,6 +621,26 @@ no second patch (the client log of that run shows a single scale-up request). Th
 without the guard returns at once and starts the new database container while the old one is still
 running; the new `mariadbd` then waits on the Aria control file lock held by the old one. The
 guard exists to prevent exactly that.
+
+The rolling restart and the end of provisioning that follow OpenSVC (see "Start/stop/restart
+lifecycle") were validated in a real cluster (Kubernetes v1.37, `local-path` storage) on the
+production code of commit `3029ba39e`. A fresh two-server MariaDB 11.8.9 provisioning through the API
+returned after about 39s: `WaitDatabaseStart` was reached after about 22s and 24s,
+`WaitDatabaseCanConn` succeeded, replication was bootstrapped and caught up with equal GTID. A
+rolling restart of a fresh two-server MySQL 8.4.11 cluster through the API ran the shared sequence
+on the replica and on the original primary: the monitor saw each server `Failed` (after about 10s
+and 29s), each rejoined, and the original primary was the primary again at the end. The final
+state was read from the databases, not from the end of the rolling operation (the last switchover is
+signalled and runs asynchronously): replication threads running, executed GTID sets equal, and the
+2000-row fixture and its table checksums unchanged. From the kubelet timestamps the new database
+container started 13s (replica) and 33s (primary) after the previous one had finished, with no
+overlap, and the Deployment and PVC identities were unchanged. Limits of these runs: one run, one
+engine each, and not the multi-product Docker matrix; the previous Pod was already gone when each
+Start ran, so the PVC-consumer wait was not exercised; the database processes were not sampled on the
+node; the database containers ran without resource requests or limits
+(`prov-db-docker-run-args-limit` off), so the memory-limit reconciliation of the definition refresh
+was not exercised; and the refresh changed nothing observable in the Deployment (same image, same
+pull policy, strategy already `Recreate`).
 
 ### Rolling upgrade (image update)
 
