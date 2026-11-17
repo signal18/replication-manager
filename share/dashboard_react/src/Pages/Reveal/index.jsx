@@ -21,7 +21,7 @@ function Reveal() {
   const [state, setState] = useState(code ? 'ready' : 'nocode')
   const [reveal, setReveal] = useState(null)
   const [error, setError] = useState('')
-  const [copied, setCopied] = useState('')
+  const [copied, setCopied] = useState([])
 
   const open = async () => {
     setState('opening')
@@ -40,12 +40,15 @@ function Reveal() {
     }
   }
 
+  // a value copied leaves the screen and the page's memory at once (nobody reads it over the
+  // shoulder, a screenshot later shows nothing); a failed copy keeps it shown
   const copy = async (label, value) => {
     try {
       await navigator.clipboard.writeText(value)
-      setCopied(label)
+      setCopied((prev) => [...prev, label])
+      setReveal((prev) => ({ ...prev, items: prev.items.map((it) => (it.label === label ? { ...it, value: '' } : it)) }))
     } catch (e) {
-      setCopied('')
+      setError('The copy failed: select the value and copy it by hand.')
     }
   }
 
@@ -72,11 +75,21 @@ function Reveal() {
               {reveal.items.map((it) => (
                 <Flex key={it.label} gap='3' align='center' wrap='wrap'>
                   <Text minW='100px' fontWeight='bold'>{it.label}</Text>
-                  <Code p='2' wordBreak='break-all'>{it.value}</Code>
-                  <RMButton size='sm' onClick={() => copy(it.label, it.value)}>{copied === it.label ? 'Copied' : 'Copy'}</RMButton>
+                  {copied.includes(it.label)
+                    ? <Text fontSize='sm'>copied to your clipboard, no longer shown</Text>
+                    : (
+                      <>
+                        <Code p='2' wordBreak='break-all'>{it.value}</Code>
+                        <RMButton size='sm' onClick={() => copy(it.label, it.value)}>Copy</RMButton>
+                      </>
+                    )}
                 </Flex>
               ))}
-              <Text fontSize='sm'>This link no longer works: reloading this page will not show the secret again.</Text>
+              {error && <Text fontSize='sm'>{error}</Text>}
+              <Text fontSize='sm'>
+                This link no longer works: reloading this page will not show the secret again. A value disappears once
+                copied: paste it into a safe place (a password manager) before you copy anything else.
+              </Text>
             </>
           )}
           {state === 'gone' && (
