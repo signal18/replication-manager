@@ -1331,6 +1331,7 @@ func (server *ServerMonitor) Refresh() error {
 
 			// Update HasConfigDiff flag to indicate if there are differences between deployed and generated config
 			server.HasConfigDiff = server.VariablesMap.HasDifferences()
+			server.checkPreservedMemoryFitsContainer()
 
 			// Check if deployed config file was reloaded externally
 			// If so, re-read preserved variables to sync with any changes
@@ -1350,6 +1351,17 @@ func (server *ServerMonitor) Refresh() error {
 				// adopts them on its next restart. Value-changes only; deprecated /
 				// unknown drops are left for manual review (loose_ hides them, #1495).
 				if cluster.Conf.ProvDBComplianceAutoAgree {
+					// The variables the dynamic resize manages follow the container memory:
+					// a value preserved at another size is released to the configurator
+					// value, so no operator has to validate each resize.
+					if released := server.VariablesMap.ReleaseDynamicResizeMemoryPreserved(); len(released) > 0 {
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+							"Auto-agree released %d preserved memory variable(s) of %s to the configurator value (dynamic resize): %s", len(released), server.URL, strings.Join(released, ", "))
+						if err := server.WritePreservedVariables(); err != nil {
+							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+								"Failed to write preserved variables after the release for %s: %s", server.URL, err)
+						}
+					}
 					if agreed := server.VariablesMap.AutoAgreeValueDeltas(); len(agreed) > 0 {
 						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
 							"Auto-agreed %d value-differs delta(s) to compliance on %s: %s", len(agreed), server.URL, strings.Join(agreed, ", "))

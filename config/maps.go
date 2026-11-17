@@ -1088,6 +1088,51 @@ func (m *VariablesMap) DropReconciledAgreed() []string {
 	return dropped
 }
 
+// DynamicResizeMemoryVariables are the variables the dynamic memory resize sets online
+// (cluster resizeMemorySQL and applyRedoLogResize; a unit test there keeps both in step
+// with this list). Their value follows the memory of the container, so a value kept
+// from an earlier size is wrong after a resize.
+var DynamicResizeMemoryVariables = []string{
+	"innodb_buffer_pool_size",
+	"key_buffer_size",
+	"tmp_table_size",
+	"max_heap_table_size",
+	"join_buffer_size",
+	"join_buffer_space_limit",
+	"mrr_buffer_size",
+	"max_session_mem_used",
+	"query_cache_size",
+	"innodb_log_file_size",
+	"innodb_redo_log_capacity",
+}
+
+// ReleaseDynamicResizeMemoryPreserved, for auto-agree (prov-db-compliance-auto-agree),
+// releases the variables the dynamic resize manages from any value kept in
+// 01_preserved.cnf or 03_agreed.cnf that differs from the configurator value: the value
+// is agreed to Config (PreservedSource cleared, so it goes to 03_agreed.cnf and the DB
+// takes it at its next restart). Without it, a value preserved at one container size
+// (e.g. an 8 GB buffer pool kept from a 32 GB container) came back at every restart after
+// a resize down, and the first full read OOM-killed the server. A cluster-level preserve
+// (prov-db-config-preserve-vars) is a cluster setting re-read at every load and is left
+// alone. Returns "name old -> new" for each released variable.
+func (m *VariablesMap) ReleaseDynamicResizeMemoryPreserved() []string {
+	var released []string
+	for _, name := range DynamicResizeMemoryVariables {
+		state, ok := m.CheckAndGet(name)
+		if !ok || state.Preserved == nil || state.Config == nil || state.PreservedSource == "cluster-level" {
+			continue
+		}
+		if state.Preserved.String() == state.Config.String() {
+			continue
+		}
+		old := state.Preserved.String()
+		state.SetPreservedValue(state.Config.String())
+		state.PreservedSource = ""
+		released = append(released, fmt.Sprintf("%s %s -> %s", state.VariableName, old, state.Config.String()))
+	}
+	return released
+}
+
 // AutoAgreeValueDeltas agrees every value-differs delta to the compliance
 // (Config) value: a known variable (Config != nil) whose deployed value differs
 // from Config and is neither preserved nor dropped. Agreeing sets Preserved =
