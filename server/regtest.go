@@ -396,6 +396,9 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 		if test.Name == "testK8SSingleWriterLifecycle" {
 			res = regtest.TestK8SSingleWriterLifecycle(cl, test.ConfigFile, &test)
 		}
+		if test.Name == "testK8SDatabaseConfigParity" {
+			res = regtest.TestK8SDatabaseConfigParity(cl, test.ConfigFile, &test)
+		}
 		if test.Name == "testSchemaPlugin" {
 			res = regtest.TestSchemaPlugin(cl, test.ConfigFile, &test)
 		}

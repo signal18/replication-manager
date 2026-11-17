@@ -179,3 +179,21 @@ a Start made while a Pod holds the PVC (S2 and S2c); the classification of Start
 lifecycle JSON Patch, the strategy interlock and the restoration (ambiguous API responses, uncertain Pod state,
 no wait without a template change); the zero-replica interlock of S3; the effect of the cleanup on the result; the gates; the PVC-retention precondition and the SKIP of the reprovision test;
 registration (not in ALL, no targets, dispatched) and the absence of forced deletion, in both files of the test.
+
+## A second Kubernetes test run by name (`testK8SDatabaseConfigParity`)
+
+Same rules as `testK8SSingleWriterLifecycle`: not in ALL, no targets, dispatched in `server/regtest.go`, SKIP
+(with a reason, before any change) when the orchestrator is not Kubernetes, the cluster has not exactly one
+server, the namespace is not labelled `regtest.replication-manager/disposable=true`, or the data claim has no
+`replication-manager.signal18.io/pvc-layout=service-dirs-v1` annotation. A required check that did not run is not
+a PASS. It needs create on `pods/exec` in the cluster namespace (test only, not in the product's Role). See
+`doc/implementation/cluster/KUBERNETES_PROVISIONING.md`, "`testK8SDatabaseConfigParity` (#2395)".
+
+`regtest/test_k8s_database_config_parity_helper_test.go` covers it without a cluster: the layout verdict (an
+unannotated claim is a SKIP, an unknown value a FAIL), the mount contract of the three containers (legacy mounts,
+missing dbjobs `/etc/mysql`, wrong subPath or claim), the archive reader (links, bounds), the option-file parser
+and the groups each engine reads, the comparison of the generated configuration with the server (value, origin,
+runtime change, required option missing, GTID only with the tag, MariaDB without the MySQL GTID options), the
+GTID continuity checks, the observation script run for real on a fixture tree and its parser (an output without
+END is not complete), the claim-directory and tree checks, the gating of PASS on the required checks, registration
+(not in ALL, no targets, dispatched) and the absence of any delete, patch or update in the test's own code.

@@ -1277,6 +1277,7 @@ automatically, and they do not replace the Docker multi-product matrix.
 | `testK8SProvisionSchedulerVolumeBinding` | yes | unprovision/reprovision of a database on a real scheduler; the replacement Deployment uses `Recreate`, the data claim keeps its UID |
 | `testK8SStopStartDatabaseService` | yes | Stop/Start of the database Deployment. It stops and restarts the database, is part of ALL, and does not detect two database processes overlapping |
 | `testK8SSingleWriterLifecycle` | no, by name only | the single-writer guarantees of #2389/#2390 for stop, start, restart, force re-pull and the migration patch (below). It does not reprovision |
+| `testK8SDatabaseConfigParity` | no, by name only | the `service-dirs-v1` layout of #2395: annotation, mounts, the installed `/etc/mysql` tree (hash of every generated file), a curated set of settings the running server reports with their origin, GTID and binary logging, and their persistence across a guarded Stop and Start (below). It is not complete coverage of every setting the server loads |
 
 The two regtests are independent coverage and are run separately. The reprovision (unprovision, provision, the
 `Recreate` strategy and the retention of the data claim by its UID) is proven only by
@@ -1408,6 +1409,68 @@ The effective database configuration is logged but not asserted: Percona configu
 separate issue. This regtest is a single-server Kubernetes check; it is not the Docker multi-product
 matrix required by T13. On MySQL and Percona the global GTID-tag gate of the runner applies before the test:
 the preflight must use a cluster that legitimately declares the `mysqlgtid` tag, and a SKIP is never a PASS.
+
+### `testK8SDatabaseConfigParity` (#2395)
+
+The real-cluster regression test of the `service-dirs-v1` layout and of the installation of the generated
+`/etc/mysql` tree (see "PVC layout (#2395)"). It compares with the archive replication-manager generates and
+serves to the init container, produced by the same configurator that serves OpenSVC; it does not run OpenSVC and
+does not compare with an OpenSVC instance. It stops and restarts its database once, so it is never part of ALL and has no
+declared targets:
+
+```
+POST /api/clusters/<cluster>/tests/actions/run/testK8SDatabaseConfigParity
+```
+
+It is SKIP, with a reason and before anything is changed, unless the cluster uses `prov-orchestrator = kube`,
+has exactly one database server, the namespace carries `regtest.replication-manager/disposable=true`, **the data
+claim carries `replication-manager.signal18.io/pvc-layout=service-dirs-v1`** (an unannotated, legacy claim is a
+SKIP, never a PASS; any other value is a FAIL) and, on MySQL and Percona, the cluster declares the `mysqlgtid`
+tag. A required check that did not run is not a PASS: the summary line
+`SUMMARY testK8SDatabaseConfigParity result=... engine=... checks=...` lists what passed, and a failure carries
+its class (`PRODUCT`, `HARNESS`, `RESOURCE`, `INCONCLUSIVE`). A missing permission, a container that is not
+available and a failed Kubernetes call are never `PRODUCT`.
+
+**What is and is not covered.** The configuration assertions are a curated set: the settings listed in the C3 row
+(the ones with a reliable equivalent as a server variable), plus the hash of every generated file in the
+containers (C5, C6). The other settings of the generated tree (the generated tree has between 100 and 130 options, by engine) are
+verified to be installed, not to be loaded with the right value, and a setting that the server does not expose
+as a variable is not asserted at all. `custom.d` is checked for presence only. This is not complete
+configuration-semantic coverage.
+
+Each observation comes from the one source that can make it:
+
+| Check | Source | What is asserted |
+|---|---|---|
+| C1, C8 | Kubernetes API | claim annotation and UID; Deployment strategy `Recreate`; the init and dbjobs containers mount `data`, `etc/mysql` and `init` of the claim at `/var/lib/mysql`, `/etc/mysql` and `/docker-entrypoint-initdb.d`, the database container `data` and `etc/mysql` (like OpenSVC); no `.system` subPath and no separate `conf.d` mount; the running Pod uses the claim. C8 repeats them after the lifecycle |
+| C2 | lifecycle functions | guarded `StopDatabaseService` then `StartDatabaseService`; the replacement Pod mounts the same claim |
+| C3 | SQL (`dbhelper.GetVariableOrigins`) | for a **curated set** of settings, `server_id`, `max_connections`, `log_bin` (the prefix, which is not the default one, and ON: both are derived variables with no option-file origin), `innodb_data_home_dir`, `innodb_log_group_home_dir`, and when the generated tree carries them `innodb_undo_directory`, `binlog_format`, on MariaDB `gtid_strict_mode`, on MySQL/Percona `gtid_mode` and `enforce_gtid_consistency` (required with the `mysqlgtid` tag): the value the server reports is the value of the generated configuration, **and** the server says it got it from an option file under `/etc/mysql` (MariaDB `GLOBAL_VALUE_ORIGIN = CONFIG`, MySQL/Percona `VARIABLE_SOURCE = GLOBAL` with the file in `VARIABLE_PATH`). A matching value from the command line or a default is not a pass |
+| C4 | SQL | `log_bin` ON; MySQL/Percona `gtid_mode` and `enforce_gtid_consistency` ON and the server UUID in `gtid_executed`; MariaDB a binlog GTID position written by this `server_id` |
+| C5, C6 | `pods/exec` | what the **running** database and dbjobs containers see: the contract paths are mount points (`/var/lib/mysql`, `/etc/mysql`, and `/docker-entrypoint-initdb.d` for dbjobs) and `/etc/mysql/conf.d` is not a mount of its own, a non-empty `my.cnf`, a `conf.d` with entries, no dangling link, every generated file of `etc/mysql` (and of `init` in dbjobs) present with its hash; `custom.d` is checked for presence only (preserved and delta settings change at runtime). Which directory of the claim each mount comes from is the subPath contract of C1/C8; the roots a storage driver reports in `/proc/self/mountinfo` differ between drivers and are only logged |
+| C7 | SQL | fixture digest, claim UID and a write intact; `server_id` (and `server_uuid`) unchanged; the GTID position did not go back (`GTID_SUBSET` on MySQL/Percona, per-domain sequence on MariaDB: a containment check, because the test's own writes advance it); every followed setting has the same value, origin and option file (a change of a data or identity setting is `PRODUCT`; a change of another one, which a configuration change between the two starts can explain, is `INCONCLUSIVE`) |
+
+The expected values are not written in the test: they are read from the archive replication-manager serves to
+the init container (`GetDatabaseConfig`, the same call as the `/config` endpoint), parsed the way the server
+parses it (`my.cnf` includes in order, the option groups the engine and version read, `loose_`, last value
+wins). The generation is run twice: a file that differs between the two (apart from the `# Generated by` stamp
+line) is checked for presence only. The layout contract itself (the three directories and their mount paths) is
+written out in the test, as an oracle independent of the product's constants. The content of a file is never
+read or logged, only names, sizes and hashes.
+
+`pods/exec` is used through `utils/k8sexec`, a Go helper with no HTTP route: one argument vector in one named
+container, no stdin, no TTY, a timeout (30 s default, 5 min at most) and a bound on the bytes returned per
+stream (64 KiB default, 1 MiB at most). It classifies failures (`DENIED`, `NOT_FOUND`, `UNAVAILABLE`, `TIMEOUT`,
+`CANCELED`, `EXIT`, `INFRA`). **The permission is needed by this test only and is not part of the product's
+Role**: create on `pods/exec` in the cluster namespace, in addition to the permissions of the lifecycle test.
+Without it the test fails with class `HARNESS` and says which permission to grant. The test runs `sh`, `grep`,
+`cut`, `wc`, `ls` and `sha256sum` in the container; an image without one of them fails with `HARNESS`, not
+`PRODUCT`.
+
+Files: `regtest/test_k8s_database_config_parity.go` (the steps),
+`regtest/test_k8s_database_config_parity_evidence.go` (the decisions that need no cluster) and
+`regtest/test_k8s_database_config_parity_helper_test.go` (their unit tests, including the observation script run
+for real in a local shell). A unit test is not the T13 gate: the gate is the run against a real cluster on each
+engine, and the Docker multi-product matrix.
 
 ## Known limitations
 
