@@ -350,28 +350,33 @@ const jobsSilentAfter = 10 * time.Minute
 // network or certificate problem, a script that does not start) fails without a trace in the
 // database itself: no backup, no log collection, no config check, and nothing said. Only the
 // services replication-manager provisions with a jobs container (OpenSVC docker/podman,
-// Kubernetes), in the api jobs mode (each run logs in), on a running server that is not
-// ignored, and not before the monitor has been active for jobsSilentAfter (cluster.jobsWatchSince).
+// Kubernetes), in the api jobs mode (each run logs in), on a running server that is not ignored.
+// The grace is per server: the silence counts from the later of its last job body and the tick
+// this monitor first saw it running (jobsRunningSince), so a server provisioned, re-added or
+// restarted later, or a monitor that just became active, never opens the state before its jobs
+// had jobsSilentAfter to log in (no flap, T5).
 func (cluster *Cluster) CheckJobsSilent(now time.Time) {
-	if !cluster.hasJobsContainers() || !cluster.IsActive() {
-		cluster.jobsWatchSince = time.Time{}
-		return
-	}
-	if cluster.jobsWatchSince.IsZero() {
-		cluster.jobsWatchSince = now
-	}
-	if now.Sub(cluster.jobsWatchSince) < jobsSilentAfter {
-		return
-	}
+	watch := cluster.hasJobsContainers() && cluster.IsActive()
 	for _, s := range cluster.Servers {
-		if s == nil || s.IsIgnored() || !s.IsRunning() {
+		if s == nil {
 			continue
 		}
+		if !watch || s.IsIgnored() || !s.IsRunning() {
+			s.jobsRunningSince = time.Time{}
+			continue
+		}
+		if s.jobsRunningSince.IsZero() {
+			s.jobsRunningSince = now
+		}
+		last := s.jobsRunningSince
 		at := atomic.LoadInt64(&s.jobBodyAt)
-		if at != 0 && now.Sub(time.Unix(at, 0)) < jobsSilentAfter {
+		if t := time.Unix(at, 0); at != 0 && t.After(last) {
+			last = t
+		}
+		if now.Sub(last) < jobsSilentAfter {
 			continue
 		}
-		since := "since replication-manager became active"
+		since := "since " + s.jobsRunningSince.UTC().Format(time.RFC3339) + " (running, no job body)"
 		if at != 0 {
 			since = "since " + time.Unix(at, 0).UTC().Format(time.RFC3339)
 		}

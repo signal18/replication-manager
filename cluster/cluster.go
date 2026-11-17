@@ -83,8 +83,6 @@ type Cluster struct {
 	// monitor tick only: no lock; a reader outside the tick must add one.
 	galeraSSTAccountLastTry time.Time
 	galeraSSTAccountErr     string
-	// jobsWatchSince: when this monitor became active for CheckJobsSilent (zero: not active)
-	jobsWatchSince time.Time
 
 	OsUser          *user.User `json:"-"`
 	Name            string     `json:"name" groups:"apps,web"`

@@ -39,6 +39,29 @@ func TestCheckJobsSilent(t *testing.T) {
 		t.Fatalf("db1 silent %v (want true), db2 silent %v (want false)", silent(c, "db1:3306"), silent(c, "db2:3306"))
 	}
 
+	// a server that starts running after the monitor's first jobsSilentAfter (provisioned,
+	// re-added, restarted): its own grace, no flap at its first running tick
+	late := &ServerMonitor{URL: "db3:3306", State: stateSlave, ClusterGroup: c}
+	c.Servers = append(c.Servers, late)
+	t1 := t0.Add(2 * jobsSilentAfter)
+	c.CheckJobsSilent(t1)
+	if silent(c, "db3:3306") {
+		t.Fatal("WARN0324 at the first running tick of a server added late")
+	}
+	c.CheckJobsSilent(t1.Add(jobsSilentAfter + time.Second))
+	if !silent(c, "db3:3306") {
+		t.Fatal("no WARN0324 for a late server silent for jobsSilentAfter")
+	}
+	// stopped then running again: the grace starts over
+	late.State = stateFailed
+	c.CheckJobsSilent(t1.Add(jobsSilentAfter + 2*time.Second))
+	late.State = stateSlave
+	c.StateMachine.Init()
+	c.CheckJobsSilent(t1.Add(jobsSilentAfter + 3*time.Second))
+	if silent(c, "db3:3306") {
+		t.Fatal("WARN0324 right after a restart")
+	}
+
 	// a failed server, a cluster without jobs containers, the sql mode, a standby: nothing
 	c = newCluster(config.ConstOrchestratorOpenSVC, "docker", "api")
 	c.Servers[0].State = stateFailed
