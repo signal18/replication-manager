@@ -103,6 +103,11 @@ on a cluster of the right setup, a missing replica is a broken cluster, not a te
   `testSetMinorityWithoutMaster`, `testSetDualActive`, `testSplitBrainNoWinner`): must have
   `arbitration-external = true` (`arbitrationRequired`). Their "arbitration not enabled → PASS" gate is
   gone: a cluster without arbitration gave a PASS where nothing ran
+- `testStandbyNeverFailsOverWithLiveActive` (#2040, #2397): must have `arbitration-external = true`;
+  must set `failover-falsepositive-ping-counter = 15` on the node that runs it (the active), so its
+  standby, at the default counter, detects the master loss first. The master is really stopped with
+  both replication-managers connected: the standby must stay standby, the active fails over, keeps
+  the crash record and rejoins the old master. Red until #2040 is fixed
 
 The other tests declare `anyCluster` for now; they get real targets as they are worked on.
 

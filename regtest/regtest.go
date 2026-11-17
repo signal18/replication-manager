@@ -66,6 +66,7 @@ var tests = []string{
 	"testSetMinorityWithoutMaster",
 	"testSetDualActive",
 	"testSplitBrainNoWinner",
+	"testStandbyNeverFailsOverWithLiveActive",
 	"testMasterNil",
 	// skipped on a cluster without topology-staging (its config-variable target)
 	"testStagingRecoverNoReadOnly",
@@ -281,6 +282,10 @@ var testTargets = map[string][]TestTarget{
 	"testSetMinorityWithoutMaster":                                 arbitrationRequired,
 	"testSetDualActive":                                            arbitrationRequired,
 	"testSplitBrainNoWinner":                                       arbitrationRequired,
+
+	// the active detects the master loss later than its standby (higher failcount): #2040
+	"testStandbyNeverFailsOverWithLiveActive": {{ConfigVariableMustHave: map[string]string{"arbitration-external": "true"}, ConfigVariableMustSet: map[string]string{"failover-falsepositive-ping-counter": "15"}}},
+
 	"testMasterNil":                                                anyCluster,
 	"testStagingRecoverNoReadOnly":                                 {{ConfigVariableMustHave: map[string]string{"topology-staging": "true"}}},
 	"testRunSysbenchTPCPerMinuteIncreaseThreads":                   anyCluster,
