@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
 	log "github.com/sirupsen/logrus"
 )
@@ -221,18 +222,35 @@ func TestRotatedPasswordMailed(t *testing.T) {
 		strings.Contains((*sent)[0], "New-Pass-24") || !strings.HasPrefix((*sent)[0], "ops@example.com\n") {
 		t.Fatalf("mailed rotation: %+v, mails %q", res, *sent)
 	}
-	// the local admin: its email is the registered account's, as the GUI shows it
+	// self-rotation by an email login: the connected user is the owner, the link goes to them
+	self := &UserRotateResult{Username: "ops@example.com", Password: "Self-Pass", Scope: "instance"}
+	repman.mailRotatedPasswordTo(self, "c1", "ops@example.com", map[string]bool{config.RoleSysOps: true})
+	if self.Password != "" || self.RevealMailedTo != "ops@example.com" || len(*sent) != 2 {
+		t.Fatalf("self-rotation: %+v", self)
+	}
+	// an admin user of a registered instance: its email is the registered account's, as the GUI
+	// shows it (handlerMuxWhoAmI's predicate)
+	repman.Clusters = map[string]*cluster.Cluster{"c1": newClusterWithUser("admin", map[string]bool{config.GrantGlobalAdminShow: true})}
+	repman.Conf.Cloud18 = true
 	repman.Conf.Cloud18GitUser = "owner@example.com"
 	admin := &UserRotateResult{Username: "admin", Password: "Admin-Pass", Scope: "instance"}
 	repman.mailRotatedPasswordTo(admin, "c1", "admin", map[string]bool{config.RoleSysOps: true})
-	if admin.Password != "" || admin.RevealMailedTo != "owner@example.com" || len(*sent) != 2 {
+	if admin.Password != "" || admin.RevealMailedTo != "owner@example.com" || len(*sent) != 3 {
 		t.Fatalf("rotated by admin: %+v", admin)
 	}
+	// cloud18 off with a stale registered account: the GUI shows no email, none is used
+	repman.Conf.Cloud18 = false
+	off := &UserRotateResult{Username: "admin", Password: "Admin-Pass", Scope: "instance"}
+	repman.mailRotatedPasswordTo(off, "c1", "admin", map[string]bool{config.RoleSysOps: true})
+	if off.Password != "Admin-Pass" || off.RevealError == "" || len(*sent) != 3 {
+		t.Fatalf("rotated by admin, cloud18 off: %+v", off)
+	}
 	// not registered: admin has no email, the password is shown once
+	repman.Conf.Cloud18 = true
 	repman.Conf.Cloud18GitUser = ""
 	unreg := &UserRotateResult{Username: "admin", Password: "Admin-Pass", Scope: "instance"}
 	repman.mailRotatedPasswordTo(unreg, "c1", "admin", map[string]bool{config.RoleSysOps: true})
-	if unreg.Password != "Admin-Pass" || unreg.RevealError == "" || len(*sent) != 2 {
+	if unreg.Password != "Admin-Pass" || unreg.RevealError == "" || len(*sent) != 3 {
 		t.Fatalf("rotated by an unregistered admin: %+v", unreg)
 	}
 	repman.Conf.MailSMTPAddr = ""

@@ -1376,9 +1376,10 @@ func (repman *ReplicationManager) handlerMuxWhoAmI(w http.ResponseWriter, r *htt
 			log.Errorf("handlerMuxWhoAmI sjson roles error: %v", err)
 		}
 	}
-	// For registered instances, set admin email from Cloud18 registration
-	if repman.Conf.Cloud18 && repman.Conf.Cloud18GitUser != "" && repman.isAdminUser(username) {
-		if res, err = sjson.SetBytes(res, "Email", repman.Conf.Cloud18GitUser); err != nil {
+	// For registered instances, set admin email from Cloud18 registration (userEmail: the same
+	// address the rotation and credentials mails go to)
+	if email := repman.userEmail(username); email != username {
+		if res, err = sjson.SetBytes(res, "Email", email); err != nil {
 			log.Errorf("handlerMuxWhoAmI sjson email error: %v", err)
 		}
 	}

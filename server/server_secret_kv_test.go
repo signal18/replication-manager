@@ -8,6 +8,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/spf13/viper"
 
@@ -604,6 +605,39 @@ func TestServerKvOrchestratorMandatory(t *testing.T) {
 	if !repman.serverSecretKvList().States[name].Mandatory {
 		t.Fatal("the list does not mark the orchestrator store mandatory")
 	}
+	// nobody switches it off, changes or removes it (409 at the API)
+	if _, err := repman.serverSecretKvDisable(name); !errors.Is(err, errServerStoreMandatory) {
+		t.Fatalf("disable: %v", err)
+	}
+	if _, err := repman.serverSecretKvEdit(config.SecretKvSpec{Name: name, Settings: map[string]interface{}{config.ConstSecretKvOrchestratorCluster: "c2"}}); !errors.Is(err, errServerStoreMandatory) {
+		t.Fatalf("edit: %v", err)
+	}
+	if _, err := repman.serverSecretKvRemove(name); !errors.Is(err, errServerStoreMandatory) {
+		t.Fatalf("remove: %v", err)
+	}
+	if e, ok := c.SecretKvEntryAt(config.SecretKvLevelServer, name); !ok || c.SecretKvSetting(e, config.ConstSecretKvOrchestratorCluster) != "c1" {
+		t.Fatal("the mandatory store changed")
+	}
+	// its carrier not listed for a moment (a start, a reload): the store stays where it is
+	carrier := repman.Clusters["c1"]
+	delete(repman.Clusters, "c1")
+	repman.Clusters["c0"] = carrier // another cluster on OpenSVC, first by name
+	carrier.Name = "c0"
+	repman.ensureServerOrchestratorStores()
+	if e, _ := c.SecretKvEntryAt(config.SecretKvLevelServer, name); c.SecretKvSetting(e, config.ConstSecretKvOrchestratorCluster) != "c1" {
+		t.Fatal("the store moved at once when its carrier was briefly gone")
+	}
+	// gone for longer than the grace: it moves
+	repman.serverSecretKv.carrierGone.Store(name, time.Now().Add(-serverKvCarrierGrace-time.Second))
+	repman.ensureServerOrchestratorStores()
+	if e, _ := c.SecretKvEntryAt(config.SecretKvLevelServer, name); c.SecretKvSetting(e, config.ConstSecretKvOrchestratorCluster) != "c0" {
+		t.Fatal("the store never left a carrier gone for good")
+	}
+	carrier.Name = "c1"
+	delete(repman.Clusters, "c0")
+	repman.Clusters["c1"] = carrier
+	repman.serverSecretKv.carrierGone.Store(name, time.Now().Add(-serverKvCarrierGrace-time.Second))
+	repman.ensureServerOrchestratorStores()
 	// the user list: the instance's key and the documented one
 	items := repman.serverKvItems(name, apiCredentialsKey, credstore.Version{Value: "admin:x"}, false)
 	var place, alias bool
@@ -616,5 +650,14 @@ func TestServerKvOrchestratorMandatory(t *testing.T) {
 	}
 	if other := repman.serverKvItems(name, "mail-smtp-password", credstore.Version{Value: "x"}, false); len(other) != 1 {
 		t.Fatalf("another secret written under the documented key too: %+v", other)
+	}
+	// no public address (the default 127.0.0.1): no key shared by every such instance
+	for _, u := range []string{"https://127.0.0.1:10005", "https://localhost:10005", "https://[::1]:10005", "https://0.0.0.0", ""} {
+		c.APIPublicURL = u
+		for _, it := range repman.serverKvItems(name, apiCredentialsKey, credstore.Version{Value: "admin:x"}, false) {
+			if it.Alias {
+				t.Fatalf("api-public-url %q: the user list under %s", u, it.Path)
+			}
+		}
 	}
 }

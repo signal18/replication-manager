@@ -557,7 +557,6 @@ func (conf *Config) SecretKvActiveEntry(name string) (SecretKvConfig, bool) {
 	return conf.SecretKvActiveEntryAt(SecretKvLevelCluster, name)
 }
 
-// SecretKvActiveEntryAt is level's entry name when it is enabled.
 // SecretKvEntryAt is the entry name of level's list, on or off.
 func (conf *Config) SecretKvEntryAt(level SecretKvLevel, name string) (SecretKvConfig, bool) {
 	for _, e := range conf.SecretKvListAt(level) {
@@ -568,6 +567,7 @@ func (conf *Config) SecretKvEntryAt(level SecretKvLevel, name string) (SecretKvC
 	return SecretKvConfig{}, false
 }
 
+// SecretKvActiveEntryAt is level's entry name when it is enabled.
 func (conf *Config) SecretKvActiveEntryAt(level SecretKvLevel, name string) (SecretKvConfig, bool) {
 	for _, e := range conf.SecretKvActiveAt(level) {
 		if e.Name == name {
@@ -966,8 +966,8 @@ const ConstSecretKvOrchestratorOffer = "orchestrator"
 // EnsureOrchestratorSecretKvAt gives level's list the managed entry name writing through
 // plugin's orchestrator (secret_kv-opensvc, secret_kv-kubernetes) by clusterName's connection, in
 // namespace for Kubernetes; on, whatever its switch was: the copy of the server secrets to the
-// orchestrator the clusters run on is not a choice. An existing entry follows the cluster and namespace (a new place:
-// the secrets are copied there with their history). True when it changed.
+// orchestrator the clusters run on is not a choice. An existing entry follows the cluster and
+// namespace (a new place: the secrets are copied there with their history). True when it changed.
 func (conf *Config) EnsureOrchestratorSecretKvAt(level SecretKvLevel, name, plugin, clusterName, namespace string) (bool, error) {
 	if err := validateEntryName("credential store", name); err != nil {
 		return false, err

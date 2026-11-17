@@ -1183,7 +1183,7 @@ const docTemplate = `{
                         }
                     },
                     "409": {
-                        "description": "A standby, or the list is set by a config file",
+                        "description": "A mandatory store (the orchestrator the clusters run on; the Cloud18 vault on a marketplace partner): repman sets it, it cannot be changed or removed",
                         "schema": {
                             "type": "string"
                         }
@@ -1299,7 +1299,7 @@ const docTemplate = `{
                         }
                     },
                     "409": {
-                        "description": "A standby, or the list is set by a config file",
+                        "description": "A mandatory store (the orchestrator the clusters run on; the Cloud18 vault on a marketplace partner): repman sets it, it cannot be changed or removed",
                         "schema": {
                             "type": "string"
                         }

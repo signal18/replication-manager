@@ -8,12 +8,16 @@ forwarded, indexed and kept in mailboxes for years; a link that works once and e
 ## Who uses it
 
 - **Password rotation** (`POST /api/clusters/{cluster}/users/rotate-password`). The new password is
-  mailed as a link to the **connected user who rotated it**, at its email (its login; for the
-  local `admin`, the account the instance is registered with, as the credentials mails do), when its role
+  mailed as a link to the **connected user who rotated it**, at its email (`userEmail`, the one
+  the GUI shows: its login; on a registered instance, for an admin user (`global-admin-show`), the
+  account the instance is registered with; cloud18 off, admin has none), when its role
   covers the level of the secret: a user of the instance's list is a server secret, mailed to a
   **sysops or extsysops** only; a user of a cluster's own list is a cluster secret, mailed to a
   sysops, extsysops, **dbops, extdbops or sponsor** of that cluster. **Never to the rotated
-  account**: if it is compromised, its mailbox may be too. The answer then has no password
+  account when someone else rotates it**: if it is compromised, its mailbox may be too.
+  **Self-rotation** ("Rotate my password", "Rotate admin password" by admin) mails the connected
+  user, who is the owner: the alternative, the password in the answer, gives it to that same
+  session, which is no safer, and the mail keeps it off the screen. The answer then has no password
   (`password` empty, `revealMailedTo`, `revealExpires`). A connected user without an email (`admin` of an
   unregistered instance) or without such a role, no mail server, or the links off: the answer carries the password, shown
   once, as before, with `revealError` saying why (`rotatedPasswordRecipient`). The mail is sent

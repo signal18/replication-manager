@@ -628,13 +628,28 @@ is treated the same; only the path a level maps to differs per store.
   orchestrator gets a server entry of its own, `cloud18-opensvc` (`system/sec/repman`) or
   `cloud18-kubernetes` (`repman-system`, in the carrying cluster's namespace), offer
   `orchestrator`, always on, written through the monitored cluster it already uses while it still
-  runs there, else the first by name (`ensureServerOrchestratorStores`). On a marketplace partner
+  runs there, else the first by name (`ensureServerOrchestratorStores`). A carrier that is not
+  listed (a start, a reload) or no longer on that orchestrator is kept for 10 minutes
+  (`serverKvCarrierGrace`) before the store moves to another cluster: a move copies every kept
+  version. On a marketplace partner
   (`Cloud18MarketplacePartnerPublic`) the Cloud18 vault offer's server entry is always on too
-  (switched back on at each tick, next to the partner's own vault too). Their disable is refused
-  (409), their settings are repman's (edit and remove refused as for an offer). The orchestrator
-  entry also writes the instance's user list under the key the infrastructure documents for it,
-  `<api host>_api-credentials` (the host of `api-public-url`), as an alias item
-  (`StoreItem.Alias`) that is never taken as the entry's place.
+  (switched back on at each tick, next to the partner's own vault too; the security event is
+  written on that change only). Exactly these two are mandatory (`serverEntryMandatory`): offer
+  `orchestrator`, and a vault offer's entry on a partner; another offer value is not, until it is
+  decided there. Their disable, edit and remove are refused (409, `errServerStoreMandatory`).
+  The orchestrator entry also writes the instance's user list under the key the infrastructure
+  documents for it, `<api host>_api-credentials` (the host of `api-public-url`), as an alias item
+  (`StoreItem.Alias`) that is never taken as the entry's place. With no public host (none, or
+  `localhost`, a loopback or unspecified address, as the default `https://127.0.0.1:10005`) the
+  alias is not written, with a WARN: every such instance would share the same key.
+  **Upgrade:** this applies on-prem too. The first tick after the upgrade of an instance with a
+  cluster on OpenSVC or Kubernetes adds `cloud18-opensvc` or `cloud18-kubernetes` and writes the
+  server secrets there. **Orchestrator unreachable** (agent down, certificate not loaded, a
+  paused cluster): the entry is behind (GWARN024 on the server, WARN0320 on every cluster) with
+  the reason, and stays on; it catches up by itself once the orchestrator answers, nothing to do
+  but repair the access. It cannot stall the monitor (F2): the store writes in its own
+  goroutine (`credstore.StoreRunner`), every orchestrator call under the store write timeout
+  (`secret-kv-write-timeout`), the rest requeued.
   These rules are repman's, not the operator's: the server list's state carries `mandatory`
   (`serverStoreMandatory`), and the GUI shows such an entry locked (its switch fixed, a
   "Mandatory" badge saying why). At the server level the GUI has no "Add OpenSVC" or

@@ -119,7 +119,7 @@ func (repman *ReplicationManager) handlerMuxUserRotatePassword(w http.ResponseWr
 		tokens += ", /etc file " + res.EtcFile
 	}
 	if res.RevealMailedTo != "" {
-		tokens += ", new password mailed to the user as a one-time link"
+		tokens += ", new password mailed to " + res.RevealMailedTo + " (who rotated it) as a one-time link"
 	} else if res.RevealError != "" {
 		tokens += ", new password shown to " + delegator + " (" + res.RevealError + ")"
 	}
@@ -294,11 +294,11 @@ func rotatedPasswordRecipient(scope, delegator, delegatorEmail string, delegator
 	return delegatorEmail, ""
 }
 
-// userEmail is the email of a login: the login itself when it is one; for the local admin, the
-// account the instance is registered with (its owner, the email the GUI shows for admin), as the
-// credentials mails do.
+// userEmail is the email of a login, the one the GUI shows for it (handlerMuxWhoAmI): on a
+// registered instance (cloud18), for an admin user (global-admin-show), the account the instance
+// is registered with, its owner; otherwise the login itself (an email or not, the caller checks).
 func (repman *ReplicationManager) userEmail(login string) string {
-	if login == "admin" {
+	if repman.Conf.Cloud18 && repman.Conf.Cloud18GitUser != "" && repman.isAdminUser(login) {
 		return repman.Conf.Cloud18GitUser
 	}
 	return login
