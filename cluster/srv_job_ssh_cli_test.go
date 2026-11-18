@@ -110,15 +110,21 @@ func TestJobsCliProbe(t *testing.T) {
 	if uname, marker := run(); uname == "" || marker != "" {
 		t.Fatalf("no CLI: %q %q", uname, marker)
 	}
-	os.WriteFile(target+".sha256", []byte("aaa v1\n"), 0644)
+	if err := os.WriteFile(target+".sha256", []byte("aaa v1\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
 	if _, marker := run(); marker != "" {
 		t.Fatalf("a marker without a CLI is not read: %q", marker)
 	}
-	os.WriteFile(target, []byte("#!/bin/sh\n"), 0755)
+	if err := os.WriteFile(target, []byte("#!/bin/sh\n"), 0755); err != nil {
+		t.Fatal(err)
+	}
 	if _, marker := run(); marker != "aaa v1\n" {
 		t.Fatalf("CLI and marker: %q", marker)
 	}
-	os.Remove(target + ".sha256")
+	if err := os.Remove(target + ".sha256"); err != nil {
+		t.Fatal(err)
+	}
 	if _, marker := run(); marker != "" {
 		t.Fatalf("CLI without a marker: %q", marker)
 	}

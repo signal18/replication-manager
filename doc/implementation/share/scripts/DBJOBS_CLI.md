@@ -57,7 +57,8 @@ directory (`GetJobDatadir`, the script's `TMP_DIR`), over the same SSH connectio
    (API). A failed copy is retried at most every 10 minutes per server, not at every run, and
    one copy is given 15 minutes at most (the session is closed then): a stalled link never holds
    the server's job runner. Each copy first removes a temporary file an earlier copy cut by that
-   timeout may have left.
+   timeout may have left. Two monitors copying to the same host at the same moment (an HA pair)
+   can remove each other's temporary file: the losing copy fails its checksum and is retried.
 5. **The marker counts only next to an executable CLI:** a CLI removed or broken on the host is
    copied again even when its marker is still there.
 
