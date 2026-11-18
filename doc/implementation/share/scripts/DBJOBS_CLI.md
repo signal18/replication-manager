@@ -97,6 +97,29 @@ How the calls behave:
 - **Port check:** `job config-dummy` refuses to wait when replication-manager names another port
   than the one it listens on.
 
+## Upgrading a running container: deferred until the service restarts
+
+A jobs upgrade sends the script only, never the CLI. The CLI of a container is the one its init
+brought at the last service start. The current script would fail next to an older CLI, which
+lacks `job log`, `job check`, `job upgrade` and `job config-*`. So:
+
+- **The gate:** every CLI call names its version in the User-Agent, and the older script (bash
+  over socat) names none. When `needs jobs-upgrade` comes without a CLI version
+  (`handlerMuxServerNeeds`), replication-manager answers `false` and calls `DeferJobsUpgrade`.
+  PostgreSQL servers are not gated: their script needs nothing new from the CLI.
+- **Rolling upgrade:** the upgrade and rolling cookies are dropped, so the rolling jobs upgrade
+  does not wait 5 minutes on that server.
+- **WARN0325 (config domain, per server):** it names the server and the CLI version it saw
+  ("none" for an older script or CLI). `CheckJobsUpgradeDeferred` re-opens it every tick.
+- **Until the restart:** the jobs go on with their current script, through socat. This is why
+  socat stays in the xtrabackup bundle for this release.
+- **When it closes:** at the service restart, the init brings the new CLI and the new script
+  together. The first call that names a CLI version (`JobsCliCalled`) closes WARN0325, and so does
+  a delivered upgrade (`UpgradeJobsScript`).
+- **After a monitor-only deploy:** every database server whose service has not restarted since
+  the deploy shows WARN0325. On-premise SSH servers do not: their CLI is copied before each run.
+- **Follow-up:** a live CLI upgrade over the jobs listener (#2405).
+
 ## Streams
 
 | Script | CLI |

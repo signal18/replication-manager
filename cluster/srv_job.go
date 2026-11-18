@@ -2033,9 +2033,56 @@ func (server *ServerMonitor) UpgradeJobsScript() error {
 	if server.HasRollingJobsUpgradeCookie() {
 		server.DelRollingJobsUpgradeCookie()
 	}
+	server.jobsUpgradeDeferred.Store(nil)
 
 	server.SetWaitJobsCheckCookie()
 	return nil
+}
+
+// DeferJobsUpgrade: the jobs asked whether to upgrade their script (needs jobs-upgrade) without
+// a replication-manager-cli that names its version (cli ""): an older script (bash and socat) or
+// an older CLI. The current script reaches replication-manager only through a CLI new enough,
+// and a script upgrade does not bring the CLI, so the upgrade waits for the service restart,
+// whose init brings both. The upgrade and rolling cookies are dropped (the rolling jobs upgrade
+// does not wait on this server), and WARN0325 (config domain) says so until the upgrade is
+// delivered or the jobs call with a CLI version (JobsCliCalled).
+func (server *ServerMonitor) DeferJobsUpgrade(cli string) {
+	if cli == "" {
+		cli = "none"
+	}
+	if server.HasWaitJobsUpgradeCookie() {
+		server.DelWaitJobsUpgradeCookie()
+	}
+	if server.HasRollingJobsUpgradeCookie() {
+		server.DelRollingJobsUpgradeCookie()
+	}
+	if prev := server.jobsUpgradeDeferred.Swap(&cli); prev == nil {
+		cluster := server.ClusterGroup
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, clusterError["WARN0325"], server.URL, cli)
+	}
+}
+
+// JobsCliCalled records the CLI version a jobs call named; the jobs then run with a CLI new
+// enough for the current script, so a deferred upgrade is no longer deferred.
+func (server *ServerMonitor) JobsCliCalled(version string) {
+	server.JobsCliVersion = version
+	server.jobsUpgradeDeferred.Store(nil)
+}
+
+// CheckJobsUpgradeDeferred keeps WARN0325 open, per server, while its script upgrade is deferred.
+func (cluster *Cluster) CheckJobsUpgradeDeferred() {
+	if cluster.ConfigStateMachine == nil {
+		return
+	}
+	for _, s := range cluster.Servers {
+		if s == nil {
+			continue
+		}
+		if cli := s.jobsUpgradeDeferred.Load(); cli != nil {
+			cluster.ConfigStateMachine.AddState("WARN0325", state.State{ErrType: "WARNING", ErrFrom: "JOB", ServerUrl: s.URL,
+				ErrDesc: fmt.Sprintf(clusterError["WARN0325"], s.URL, *cli)})
+		}
+	}
 }
 
 // logicalBackupTasks: the job names a logical backup of the server runs under

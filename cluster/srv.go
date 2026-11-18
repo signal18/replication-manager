@@ -111,6 +111,9 @@ type ServerMonitor struct {
 	jobsCliMu      sync.Mutex
 	jobsCliErr     error
 	jobsCliErrAt   time.Time
+	// jobsUpgradeDeferred: the CLI version ("none" without one) the jobs asked for their script
+	// upgrade with, when it was deferred (DeferJobsUpgrade); nil when not deferred
+	jobsUpgradeDeferred atomic.Pointer[string]
 
 	HaveHealthyReplica          bool                     `json:"HaveHealthyReplica"`
 	HaveEventScheduler          bool                     `json:"eventScheduler"`

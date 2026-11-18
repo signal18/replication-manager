@@ -9,6 +9,8 @@ package cluster
 import (
 	"strings"
 	"testing"
+
+	"github.com/signal18/replication-manager/utils/state"
 )
 
 func TestUnameToGo(t *testing.T) {
@@ -52,5 +54,36 @@ func TestJobsCliPlan(t *testing.T) {
 func TestShellSingleQuote(t *testing.T) {
 	if got := shellSingleQuote(`/data/it's $HOME`); got != `'/data/it'"'"'s $HOME'` {
 		t.Fatalf("%s", got)
+	}
+}
+
+// An older script or CLI (no CLI version in its calls) asking for its script upgrade gets "no":
+// the current script would run next to a CLI that cannot run it. The cookies are dropped (the
+// rolling jobs upgrade does not wait), WARN0325 stays open in the config domain until the jobs
+// call with a CLI version (after the service restart) or the upgrade is delivered.
+func TestJobsUpgradeDeferredWithoutCli(t *testing.T) {
+	s := jobLoginServer()
+	c := s.ClusterGroup
+	s.Datadir = t.TempDir()
+	c.ConfigStateMachine = new(state.StateMachine)
+	c.ConfigStateMachine.Init()
+	s.SetWaitJobsUpgradeCookie()
+	s.SetRollingJobsUpgradeCookie()
+
+	s.DeferJobsUpgrade("")
+	if s.HasWaitJobsUpgradeCookie() || s.HasRollingJobsUpgradeCookie() {
+		t.Fatal("a deferred upgrade drops its cookies")
+	}
+	c.CheckJobsUpgradeDeferred()
+	open := c.ConfigStateMachine.GetOpenStates()
+	if len(open) != 1 || open[0].ErrKey != "WARN0325" || !strings.Contains(open[0].ErrDesc, "db1:3306") || !strings.Contains(open[0].ErrDesc, "none") {
+		t.Fatalf("WARN0325 naming the server and the CLI it saw: %+v", open)
+	}
+
+	s.JobsCliCalled("v3.1.52")
+	c.ConfigStateMachine.ClearState()
+	c.CheckJobsUpgradeDeferred()
+	if open := c.ConfigStateMachine.GetOpenStates(); len(open) != 0 || s.JobsCliVersion != "v3.1.52" {
+		t.Fatalf("jobs calling with a CLI version close it: %+v %q", open, s.JobsCliVersion)
 	}
 }

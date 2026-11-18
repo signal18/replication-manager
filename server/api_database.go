@@ -5350,6 +5350,17 @@ func (repman *ReplicationManager) handlerMuxServerNeeds(w http.ResponseWriter, r
 	if mycluster != nil {
 		node := mycluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
 		if node != nil && !node.IsDown() {
+			// the CLI the jobs call with (none for an older script or CLI): the current
+			// dbjobs_new.sh runs only with a CLI that names its version, which a script
+			// upgrade does not bring; its upgrade then waits for the service restart
+			if cli := jobapi.VersionFromUserAgent(r.UserAgent()); cli != "" {
+				node.JobsCliCalled(cli)
+			} else if checktype == string(config.ConstTaskJobsUpgrade) && !node.IsPostgreSQLHost() {
+				node.DeferJobsUpgrade("")
+				w.WriteHeader(http.StatusInternalServerError)
+				w.Write([]byte("false"))
+				return
+			}
 			if ok, err := node.CheckTaskNeeded(checktype); err == nil {
 				if ok {
 					w.WriteHeader(http.StatusOK)
