@@ -199,6 +199,7 @@ type Orchestrator interface {
 	AppOrchestrator
 	SecretOrchestrator
 	TerminalOrchestrator
+	HostOrchestrator // from step 3: the VM under a server, for a hypervisor backend (10.4)
 }
 
 type OrchestratorInfo interface {
@@ -708,7 +709,8 @@ developers' path, SlapOS is cookie-only; both are covered by the matrix unit tes
 | 0 | this document | 0 | - | - |
 | 1 | `cluster/orchestrator.go`: the interfaces of 2.1, `ErrOrchestratorNotSupported`, the states of 2.4 in `config/error.go`; five adapters (`orchestrator_opensvc.go`, `_k8s.go`, `_onpremise.go`, `_localhost.go`, `_slapos.go`) that call today's methods; `newOrchestratorList()` building the synthesized orchestrator per cluster (3.2); `cluster.orchestrator(server)`; the `DatabaseOrchetrator` stub deleted. No caller changes. | 0 | the full suite once per orchestrator, unchanged behaviour expected | `TestOrchestratorMatrix` (5.3); compile-time `var _ Orchestrator = (*openSVCOrchestrator)(nil)` per backend; `TestOrchestratorSynthesized`: a flat configuration and its block form build equal orchestrators |
 | 2 | database lifecycle through the interface: `ProvisionServices`, `InitDatabaseService`, `Unprovision`, `UnprovisionDatabaseService`, `Start`, `Stop`, `StopClean`, `Restart`, `Freeze`, `Unfreeze`, `UpgradeDatabaseService` in `cluster/prov.go`; the `errorChan` sends leave the five backends (2.2); the localhost stop bug of 1.1 fixed by construction | ~55 (prov.go) | OpenSVC: provision, unprovision, start/stop, restart with rid, rolling restart; Kubernetes on kind: `testK8SStopStartDatabaseService`, `testK8SProvisionSchedulerVolumeBinding`, `testJobsRoundTrip`; on-premise: the failover and switchover suite with `prov-db-*-script` hooks set | `TestProvisionReportsOnce` (one send per operation, from the orchestration layer); the existing `prov_unprovision_test.go`, `prov_opensvc_start_timeout_test.go`, `prov_k8s_concurrent_start_test.go` rewired on the adapters |
-| 3 | proxy and app services: `InitProxyService`, `UnprovisionProxyService`, `StartProxyService`, `StopProxyService`, `InitAppService`; the 15 direct OpenSVC app, abort and clear calls of `server/api_app.go`, `api_proxy.go`, `api_database.go` and `mcp/tools_app.go` go through `AppOrchestrator` / `ProxyOrchestrator` and answer 501 on `ErrOrchestratorNotSupported` (the MCP "OpenSVC only" strings go) | ~25 | OpenSVC: `testAppConditionalVariablesOpenSVC`, `testAppConditionalProxiesOpenSVC`, proxy provision and start/stop; Kubernetes: proxy provision on kind; on-premise: proxy start/stop hooks | `TestAppActionsRefusedWithoutAppOrchestrator` (a guard test as `cluster_tst_proxy_guard_test.go`) |
+| 3 | the Proxmox API backend (10.4): the `HostOrchestrator` facet and its four matrix rows, `HasHost`, the host step of the rolling upgrade behind `prov-db-rolling-upgrade-host`, the client's `prov-db-host-upgrade-script` hook, `orchestrator_proxmox.go` over the on-premise service operations, its configuration keys, the script backend's `host-*` actions | 0 | the rolling upgrade with the host step on a Proxmox lab or the client's cluster (10.4); the on-premise framework for the sequence without a host | `TestProxmoxHostFacet` against a fake Proxmox API, `TestRollingSequenceHostStep` on a recording fake backend (reboot between stop and upgrade, timeout, server without a vmid) |
+| 3b | proxy and app services: `InitProxyService`, `UnprovisionProxyService`, `StartProxyService`, `StopProxyService`, `InitAppService`; the 15 direct OpenSVC app, abort and clear calls of `server/api_app.go`, `api_proxy.go`, `api_database.go` and `mcp/tools_app.go` go through `AppOrchestrator` / `ProxyOrchestrator` and answer 501 on `ErrOrchestratorNotSupported` (the MCP "OpenSVC only" strings go) | ~25 | OpenSVC: `testAppConditionalVariablesOpenSVC`, `testAppConditionalProxiesOpenSVC`, proxy provision and start/stop; Kubernetes: proxy provision on kind; on-premise: proxy start/stop hooks | `TestAppActionsRefusedWithoutAppOrchestrator` (a guard test as `cluster_tst_proxy_guard_test.go`) |
 | 4 | service definition (#1775): `UpdateDatabaseServiceConfig`, `UpgradeDatabaseDeploymentOnStart` -> `RefreshDatabaseServiceDefinition`; the Kubernetes full-spec refresh and the on-premise config push written; the generic action `update-service-definition` on servers and apps (Swagger, ACL `GrantProvDBProvision` / the app grant, GUI button renamed), `update-opensvc-template` kept as an alias until the major; `cluster_roll.go`, `cluster_roll_plan.go` use the method on every orchestrator | ~15 | OpenSVC: rolling upgrade, `testOpenSVCUpgradeWarnRecovery`, `testRollingReprovReseed`; Kubernetes on kind: rolling upgrade with a changed `prov-db-docker-run-args` observed in the pod spec; on-premise: `rollingUpgradeOnPremise` with the SSH upgrade script | `TestRefreshDefinitionRendersCurrentConfig` per backend with the fake clients already used by `prov_k8s_*_test.go` |
 | 5 | inventory, secrets, terminal, traits, layout: `initOrchetratorNodes` (no `Fatalln`), `Storages`, `NodeStats`, `store_orchestrator.go` through `SecretOrchestrator`, `ProvisionRotatePasswords`, `cluster_user_rotate.go`, `UnprovisionSecret` on Kubernetes written, `server_tty.go` and `api.go` through `TerminalOrchestrator`, the ~40 capability checks of 1.5 through `Traits()`, the path switches of `srv_cnf.go`, `srv_get.go`, `prx_get.go`, `app_get.go`, `configurator.go` through `Layout()`; the resizer selection through the orchestrator | ~75 | OpenSVC: rotation (`testProvisionReplicationUser`, the secret-versions tests), terminal; Kubernetes on kind: rotation, unprovision leaves no Secret; on-premise: the SSH terminal, the dbjobs WARN0170 gate | `TestTraitsMatchLegacyChecks`: for each of the five types, each trait equals the boolean the deleted check computed; `TestLayoutMatchesLegacyPaths` |
 | 6 | configuration model (3.1, 3.2, 3.4): `Orchestrators` in `config.Config`, `[orchestrator.<name>]` reserved in `DiscoverClusters`, `prov-orchestrator` accepting a name, load-time validation, the orchestrators API, Swagger, ACL and GUI page | 0 | the full suite on a configuration converted to blocks, and on the flat one | `TestOrchestratorNamedResolution` (name, type, unknown, ambiguous), `TestOrchestratorConfigRoundTrip` (save and reload of a block, secrets encrypted) |
@@ -717,12 +719,13 @@ developers' path, SlapOS is cookie-only; both are covered by the matrix unit tes
 | 8 (the major) | the remaining switches deleted; `update-opensvc-template` alias removed; `GetOrchestrator()` returns the name, `GetOrchestratorType()` the type, the dashboard and `OrchestratorTarget` moved to the type; the backend files renamed | the rest (~25: the explicit refusals that stay as `Traits` tests, `GetOrchestratorsProv`) | the full matrix | `TestNoOrchestratorDispatchOutsideRegistry` (5.3) made strict |
 | later | the per-server override (3.3): `prov-db-orchestrators`, the private-address rule checked at load, the cluster-level facets run on every distinct orchestrator of the cluster | 0 | two orchestrators of the regtest framework (two Docker networks, a route between them) with one server on the second | `TestOrchestratorPerServerRule` (private address accepted, public refused, unknown name refused) |
 
-Step order is not negotiable in three places: 1 before everything, 2 before 4 (the refresh
-rides the rolling loop that step 2 rewires), and 2b right after 2: the script backend is
-the first new backend because a paying client's rolling upgrade needs it (section 10), so it
-does not wait for the configuration model; in its flat form (`prov-orchestrator = "script"`
-and the three keys of 4.1 at cluster level) it needs no block. Steps 3, 5 and 6 can be
-reordered. The per-server override comes after the major, when a client case brings the two
+Step order is not negotiable in four places: 1 before everything, 2 before 4 (the refresh
+rides the rolling loop that step 2 rewires), 2b right after 2 (the script backend is the
+first new backend because a paying client's rolling upgrade needs it, section 10, so it
+does not wait for the configuration model: in its flat form, `prov-orchestrator = "script"`
+and the three keys of 4.1 at cluster level, it needs no block), and 3 after 2b (the Proxmox
+backend, the objective of this work, rides the rolling sequence 2b proves on the client's
+cluster). Steps 3b, 5 and 6 can be reordered. The per-server override comes after the major, when a client case brings the two
 orchestrators and the path between them (3.3).
 
 Issue tracking (T9): #333 covers steps 1, 2, 3, 5, 6; #1775 step 4; #338 step 7. The gaps
@@ -980,9 +983,9 @@ here so the step is scoped from them and not rediscovered:
 
 ---
 
-## 10. First new backend after step 1: the client script, for a rolling restart that upgrades the host
+## 10. The first new backends after step 1: the client script (step 2), the Proxmox API (step 3)
 
-### 10.1 The case
+### 10.1 The case and the objective
 
 A client on Proxmox runs their databases on-premise and orchestrates everything with
 Ansible. Their requirement: during a replication-manager rolling restart, upgrade the
@@ -992,13 +995,18 @@ switchover. replication-manager drives no hypervisor today and has no step for "
 in its rolling paths: the on-premise backend knows SSH into the database host, and nothing
 above it.
 
-The interface answers it without a hypervisor backend: the script backend of #338 is the
-backend of that cluster, and each per-server step of the rolling path becomes a call of
-the client's script, which runs their playbook. The client keeps the orchestration they
-already have (F6); replication-manager keeps what only it knows: the order, the election,
-the waits on replication, the maintenance flags, the states. This is why the script
-backend is the first new backend, step 2b of section 5, before the proxies, the apps or
-the configuration model.
+The objective of this work is a **Proxmox API backend**: replication-manager drives the
+VM under each database server itself (stop, start, reboot, status) through the hypervisor
+API, and the rolling paths get a host step. It is step 3 (10.4). Its first step is the
+**script backend** of #338 (step 2b, 10.2 and 10.3): the same rolling sequence, each
+per-server step a call of the client's script, which runs the Ansible playbook they drive
+everything with today, the host reboot included. The client keeps the orchestration they
+have (F6) and moves to the Proxmox backend when it exists, by changing the cluster's
+orchestrator; replication-manager keeps, on both, what only it knows: the order, the
+election, the waits on replication, the maintenance flags, the states. The script backend
+comes first because the client needs the rolling upgrade now and drives Proxmox from
+Ansible already; the Proxmox backend comes second because the rolling sequence and the host
+facet it needs are then in place and proven on the client's cluster.
 
 ### 10.2 The rolling paths through the interface
 
@@ -1112,14 +1120,95 @@ already approximate the flow with the hooks of `prov_scripts.go` (`prov-db-stop-
 they cannot replace them and have no `upgrade` step, so they do not cover the reboot;
 that is the gap step 2b closes.
 
-### 10.4 Later, if a client wants replication-manager to drive the hypervisor
+### 10.4 Step 3: the Proxmox API backend and the host facet
 
-A `proxmox` backend type (or any hypervisor API) would implement the same interface:
-`StopDatabaseService` and `StartDatabaseService` as the VM's stop and start through the
-hypervisor API, `RestartDatabaseService` as its reboot, `UpgradeDatabaseService` as the
-reboot after the client's own host upgrade step (a hook, since the hypervisor does not
-upgrade a guest kernel), `Nodes` as the hypervisor nodes, `Layout` as the on-premise
-one, the shared secret and the app services `n/a`; its configuration block would carry the
-API endpoint, a token and a VM id per server. It is one more adapter and one more column
-of the matrix test, nothing in the orchestration layer. It is written only when a client
-wants repman, not their own tooling, to drive the hypervisor; the client of 10.1 does not.
+The database service and its host are two things: the on-premise backend stops and starts
+the service on a host it does not own; a hypervisor backend owns the host (the VM) and
+nothing inside it. So the Proxmox backend is not a fifth way to stop a database: it is the
+on-premise backend's service operations (SSH into the guest, as today) **plus a new facet
+for the host**, which only a backend that drives a hypervisor implements:
+
+```go
+// HostOrchestrator (step 3) is the host under a database server, for a backend that
+// drives a hypervisor. The other backends answer ErrOrchestratorNotSupported; the script
+// backend maps it to the host-* actions (10.3).
+type HostOrchestrator interface {
+	StopHost(server *ServerMonitor) error
+	StartHost(server *ServerMonitor) error
+	RebootHost(server *ServerMonitor) error
+	HostStatus(server *ServerMonitor) (HostStatus, error)
+}
+
+// HostStatus is what the hypervisor says of the VM: its node, its state, its uptime.
+type HostStatus struct {
+	Node   string // the hypervisor node the VM runs on
+	VMID   string
+	State  string // "running", "stopped", "paused", "unknown"
+	Uptime time.Duration
+}
+```
+
+`Orchestrator` (2.1) embeds `HostOrchestrator` from step 3; `unsupportedOrchestrator`
+answers the four methods for the backends without hosts, and the matrix test gets the four
+rows. `OrchestratorTraits` gets `HasHost bool`: the rolling sequence reads it.
+
+**The rolling upgrade with a host step** (10.2, `upgrade` mode, on a backend whose
+`Traits().HasHost` is true and whose cluster has `prov-db-rolling-upgrade-host = true`):
+
+```
+orch.StopDatabaseService(server)             the service, inside the guest (SSH, as on-premise)
+WaitDatabaseFailed (repman)
+prov-db-host-upgrade-script (repman runs the client's hook: the kernel and package upgrade
+                             inside the guest, F6: the hypervisor cannot upgrade a guest kernel)
+orch.RebootHost(server)                      the VM, through the hypervisor API
+wait orch.HostStatus(server).State == running, then the guest answers SSH (repman, bounded by prov-db-host-reboot-timeout)
+orch.UpgradeDatabaseService(server)          the database packages and the upgrade tool, inside the guest
+orch.StartDatabaseService(server)            unless the upgrade step started it
+WaitDatabaseStart, WaitRejoin, WaitSyncToMaster (repman)
+```
+
+Without the host step (the setting off, or a backend without hosts) the sequence is the one
+of 10.2. The host step is a feature with its own off-switch (T14: `prov-db-rolling-upgrade-host`,
+default `false`), and the host upgrade itself is the client's script (F6): repman reboots,
+it does not patch a kernel. A `RebootHost` that fails, or a host that does not come back
+within the timeout, is ERR00122 on the server, the rolling stops at it with its maintenance
+flag on, as any failed step.
+
+**The backend.** `orchestrator_proxmox.go`, `type proxmoxOrchestrator`, embedding the
+on-premise adapter's service operations (SSH into the guest for provision, start, stop,
+upgrade, the nodes as the configured hosts) and implementing `HostOrchestrator` through the
+Proxmox REST API (`/nodes/{node}/qemu/{vmid}/status/{stop,start,reboot,current}`, token
+authentication). Its traits are the on-premise ones plus `HasHost`. `Nodes()` lists the
+hypervisor nodes (`/nodes`) so the inventory shows where each VM runs; `Storages()` the
+storages of the node, `n/a` otherwise as on-premise.
+
+**Its configuration** (T16, T19), the flat form at cluster level or a block of
+`type = "proxmox"`:
+
+| Key | Meaning |
+|---|---|
+| `proxmox-api-url` | the API endpoint |
+| `proxmox-api-token` | the token (`user@realm!tokenid=secret`), a secret: encrypted in the file (F9), never logged (F10) |
+| `proxmox-api-insecure` | accept the API's certificate without verification (a lab); default `false` |
+| `prov-db-host-vmids` | `host=node/vmid` pairs, comma separated (`db1=pve1/101,db2=pve2/102`), the VM under each database server; a server without one has no host step (WARN0326 names it when the host step is on) |
+| `prov-db-rolling-upgrade-host` | the host step in the rolling upgrade (above); default `false` |
+| `prov-db-host-upgrade-script` | the client's host upgrade hook, run inside the guest step above; empty: no upgrade, a reboot only |
+| `prov-db-host-reboot-timeout` | seconds for the VM to be `running` again and the guest to answer; default 600 |
+
+The on-premise SSH keys (`onpremise-ssh-*`) stay the guest access. The client of 10.1
+moves from the script backend to this one by changing `prov-orchestrator` from `script` to
+`proxmox` and adding the keys above; their playbook's host step becomes
+`prov-db-host-upgrade-script`, the reboot becomes repman's.
+
+**Regtest (T13).** A Proxmox lab the project reaches (one node, three VMs, the on-premise
+Docker framework inside them is not enough: the host step needs real VMs): the rolling
+upgrade with the host step on and off, a VM that does not come back (the timeout and the
+state), a server without a vmid. Until the lab exists the backend's unit tests run against
+a fake Proxmox API (`httptest.Server` answering the four endpoints) and the matrix test;
+the T13 column is filled on the client's cluster, with their agreement, or on the lab.
+
+**The script backend's host actions.** From step 3 the script backend (4.2) maps the facet
+to four actions, `host-stop`, `host-start`, `host-reboot`, `host-status` (stdout: the
+`HostStatus` JSON), so a client without a Proxmox backend yet gets the same rolling
+sequence with the host step: their script answers `host-reboot` with the playbook that
+reboots the VM, and `upgrade` no longer has to do it.
