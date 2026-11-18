@@ -83,6 +83,33 @@ before `WriteDeltaVariables`) so agreed variables route to `03_agreed` instead o
 
 ---
 
+### 3. `ReleaseDynamicResizeMemoryPreserved()` — the dynamic resize's variables follow the memory
+
+Auto-agree exists so that an operator does not have to validate the values the dynamic resize
+changes. Those variables (`config.DynamicResizeMemoryVariables`: buffer pool, key buffer, tmp
+and heap tables, join buffers, MRR buffer, `max_session_mem_used`, query cache, redo log) follow
+the container memory, so a value kept from another size is wrong after a resize. With
+auto-agree on, a server-specific preserve or an older agreed value of one of them that differs
+from the configurator value is agreed to it (`PreservedSource` cleared, written to
+`03_agreed.cnf`), and the release is logged (`Auto-agree released N preserved memory
+variable(s)`). A cluster-level preserve (`prov-db-config-preserve-vars`) is a cluster setting
+and is left alone. The list is checked against the statements of `resizeMemorySQL` and
+`redoLogResizeSQL` by `TestDynamicResizeMemoryVariablesCoverResizeSQL`.
+
+Why: on 2026-11-17 a master of a preprod cluster had `innodb_buffer_pool_size=8192M` (and 2 GB
+key, aria and tmp buffers) preserved since at least 2026-10-08, while its container had been
+resized from 32 GB down to 8 GB. Auto-agree skipped it (preserved), it came back at the
+restart, and the first full read (a logical backup) filled the pool and the kernel killed
+`mariadbd` at the cgroup limit.
+
+### WARN0322 — preserved buffers larger than the container (always on)
+
+Auto-agree on or off, `checkPreservedMemoryFitsContainer` (`cluster/srv_preserved_memory.go`,
+run with the config diff) sums the global buffers the server starts with (buffer pool, key
+buffer, aria page cache, query cache: the preserved value where one is kept, the configurator
+value otherwise) and opens `WARN0322` in the config domain, on that server, when at least one is
+preserved and the sum reaches `prov-db-memory`.
+
 ## Scoping and safety
 
 Auto-agree is deliberately **scoped to value changes only** (`Config != nil`).

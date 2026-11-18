@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"unicode/utf8"
 )
 
 // A cluster's credential stores (#2227, doc/implementation/config/CREDENTIAL_STORES.md "Store
@@ -556,6 +557,16 @@ func (conf *Config) SecretKvActiveEntry(name string) (SecretKvConfig, bool) {
 	return conf.SecretKvActiveEntryAt(SecretKvLevelCluster, name)
 }
 
+// SecretKvEntryAt is the entry name of level's list, on or off.
+func (conf *Config) SecretKvEntryAt(level SecretKvLevel, name string) (SecretKvConfig, bool) {
+	for _, e := range conf.SecretKvListAt(level) {
+		if e.Name == name {
+			return e, true
+		}
+	}
+	return SecretKvConfig{}, false
+}
+
 // SecretKvActiveEntryAt is level's entry name when it is enabled.
 func (conf *Config) SecretKvActiveEntryAt(level SecretKvLevel, name string) (SecretKvConfig, bool) {
 	for _, e := range conf.SecretKvActiveAt(level) {
@@ -947,6 +958,61 @@ const ConstSecretKvWrittenAsNewPlace = "(new place)"
 // a cluster: cloud18-<offer name>.
 const ConstSecretKvMarketplacePrefix = "cloud18-"
 
+// ConstSecretKvOrchestratorOffer is the Offer of a mandatory orchestrator store at the server level
+// (cloud18-opensvc, cloud18-kubernetes), for an instance whose clusters run on that orchestrator:
+// repman manages it, always on.
+const ConstSecretKvOrchestratorOffer = "orchestrator"
+
+// EnsureOrchestratorSecretKvAt gives level's list the managed entry name writing through
+// plugin's orchestrator (secret_kv-opensvc, secret_kv-kubernetes) by clusterName's connection, in
+// namespace for Kubernetes; on, whatever its switch was: the copy of the server secrets to the
+// orchestrator the clusters run on is not a choice. An existing entry follows the cluster and
+// namespace (a new place: the secrets are copied there with their history). True when it changed.
+func (conf *Config) EnsureOrchestratorSecretKvAt(level SecretKvLevel, name, plugin, clusterName, namespace string) (bool, error) {
+	if err := validateEntryName("credential store", name); err != nil {
+		return false, err
+	}
+	if !IsOrchestratorSecretKvPlugin(plugin) {
+		return false, fmt.Errorf("credential store %s: %s does not write through an orchestrator", name, plugin)
+	}
+	want := map[string]interface{}{ConstSecretKvOrchestratorCluster: clusterName}
+	if plugin == ConstSecretKvPluginKubernetes {
+		want[ConstSecretKvKubernetesNamespace] = namespace
+	}
+	secretKvMu.Lock()
+	defer secretKvMu.Unlock()
+	e := conf.secretKvByNameAt(level, name)
+	if e == nil {
+		list := conf.secretKvsAt(level)
+		*list = append(*list, SecretKvConfig{Name: name, Plugin: plugin, Enabled: true, Settings: want, Offer: ConstSecretKvOrchestratorOffer})
+		return true, nil
+	}
+	if e.Plugin != plugin {
+		return false, fmt.Errorf("credential store %s is not a %s entry", name, plugin)
+	}
+	changed := false
+	if e.Offer != ConstSecretKvOrchestratorOffer {
+		e.Offer, changed = ConstSecretKvOrchestratorOffer, true
+	}
+	if !e.Enabled {
+		e.Enabled, changed = true, true
+	}
+	if e.Settings == nil {
+		e.Settings = map[string]interface{}{}
+	}
+	placeBefore := conf.secretKvPlace(e)
+	for k, v := range want {
+		if fmt.Sprintf("%v", e.Settings[k]) != fmt.Sprintf("%v", v) {
+			e.Settings[k] = v
+			changed = true
+		}
+	}
+	if conf.secretKvPlace(e) != placeBefore && e.WrittenAs != "" {
+		e.WrittenAs = ConstSecretKvWrittenAsNewPlace
+	}
+	return changed, nil
+}
+
 // EnsureMarketplaceVault gives the cluster the entry of a marketplace vault offer (#2227):
 // added off (the sponsor turns it on). See EnsureMarketplaceVaultAt.
 func (conf *Config) EnsureMarketplaceVault(offer MarketplaceVaultOffer, pathPrefix string) (bool, error) {
@@ -1020,6 +1086,27 @@ func (conf *Config) EnsureMarketplaceVaultAt(level SecretKvLevel, offer Marketpl
 		e.WrittenAs = ConstSecretKvWrittenAsNewPlace
 	}
 	return changed, nil
+}
+
+// secretKvBehindReasonMax bounds a store's behind reason: it is kept per entry and shown in the
+// states and the GUI.
+const secretKvBehindReasonMax = 512
+
+// SecretKvBehindReason is why a store is behind, on one line and whole: a store's error over
+// several lines keeps every line (Vault's "Error making API request." is followed by the URL,
+// the HTTP code and Vault's own errors, the only part that says why), joined by spaces and
+// bounded to secretKvBehindReasonMax bytes. The reasons are the stores' errors, which name a
+// path, never a value (F10).
+func SecretKvBehindReason(why string) string {
+	why = strings.Join(strings.Fields(why), " ")
+	if len(why) <= secretKvBehindReasonMax {
+		return why
+	}
+	cut := secretKvBehindReasonMax
+	for cut > 0 && !utf8.RuneStart(why[cut]) {
+		cut--
+	}
+	return why[:cut] + "…"
 }
 
 // InstanceStoreName is this instance's name in a shared credential store, the folder of its

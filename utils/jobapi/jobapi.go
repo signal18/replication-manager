@@ -254,3 +254,53 @@ func (c *Client) State(task, state string) error {
 	}
 	return nil
 }
+
+// maxConfigSize bounds the config archive the init container downloads (F3): the generated
+// configuration of one server is a few hundred kilobytes.
+const maxConfigSize = 64 << 20
+
+// ErrNoConfigFetch: replication-manager does not want this server to fetch its config now (an
+// ignored server, or one that keeps its files: need-config-fetch answered no).
+var ErrNoConfigFetch = fmt.Errorf("no config fetch needed")
+
+// Config writes the server's generated configuration archive (config.tar.gz) to w: the init
+// container's fetch, done with the jobs login instead of the admin password. It asks
+// need-config-fetch first (ErrNoConfigFetch when not wanted), logs in with the one-time job body
+// (a token scoped to this server), then downloads <server>/<port>/config with it.
+func (c *Client) Config(w io.Writer) error {
+	resp, err := c.http().Get(c.endpoint("/need-config-fetch"))
+	if err != nil {
+		return err
+	}
+	io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<12))
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return ErrNoConfigFetch
+	}
+	token, err := c.Login()
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequest(http.MethodGet, c.endpoint("/config"), nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err = c.http().Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<12))
+		return fmt.Errorf("config: http %d %s", resp.StatusCode, strings.TrimSpace(string(b)))
+	}
+	n, err := io.Copy(w, io.LimitReader(resp.Body, maxConfigSize+1))
+	if err != nil {
+		return err
+	}
+	if n > maxConfigSize {
+		return fmt.Errorf("config: larger than %d bytes", maxConfigSize)
+	}
+	return nil
+}

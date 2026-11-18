@@ -279,6 +279,7 @@ func (repman *ReplicationManager) apiserver() {
 		router.PathPrefix("/terminal/").HandlerFunc(repman.handlerApp)
 		router.HandleFunc("/login", repman.handlerApp)
 		router.HandleFunc("/signup", repman.handlerApp)
+		router.HandleFunc("/reveal", repman.handlerApp)
 		router.HandleFunc("/dashboard", repman.handlerApp)
 		router.HandleFunc("/slideshow", repman.handlerApp)
 		router.PathPrefix("/images/").Handler(http.FileServer(http.Dir(repman.Conf.HttpRoot)))
@@ -292,8 +293,10 @@ func (repman *ReplicationManager) apiserver() {
 		router.PathPrefix("/terminal/").HandlerFunc(repman.rootHandler)
 		router.HandleFunc("/login", repman.rootHandler)
 		router.HandleFunc("/signup", repman.rootHandler)
+		router.HandleFunc("/reveal", repman.rootHandler)
 		router.HandleFunc("/dashboard", repman.rootHandler)
 		router.HandleFunc("/slideshow", repman.rootHandler)
+		router.PathPrefix("/static/configurator/bin/").Handler(repman.handlerStatic(repman.handlerStaticCli(repman.DashboardFSHandler())))
 		router.PathPrefix("/static/").Handler(repman.handlerStatic(repman.DashboardFSHandler()))
 		router.PathPrefix("/app/").Handler(repman.handlerStatic(repman.DashboardFSHandler()))
 		router.PathPrefix("/images/").Handler(repman.handlerStatic(repman.DashboardFSHandler()))
@@ -334,6 +337,7 @@ func (repman *ReplicationManager) apiserver() {
 	router.HandleFunc("/api/signup", repman.handlerSignup).Methods(http.MethodPost, http.MethodOptions)
 	router.HandleFunc("/api/signup/promo", repman.handlerSignupPromo).Methods(http.MethodGet, http.MethodOptions)
 	router.HandleFunc("/api/signup/status", repman.handlerSignupStatus).Methods(http.MethodGet, http.MethodOptions)
+	router.HandleFunc(secretRevealPath, repman.handlerSecretReveal).Methods(http.MethodPost, http.MethodOptions) // one-time secret links: the code is the credential
 	router.HandleFunc("/api/autologin", repman.autologinHandler)
 	router.HandleFunc("/api/dashboard-token", repman.dashboardTokenHandler)
 	router.HandleFunc("/api/version", repman.handlerVersion)
@@ -575,6 +579,53 @@ var isTokenPrincipal = cluster.IsTokenPrincipal
 // isJobsPrincipal: a jobs token, bound to the server its secret-login named.
 var isJobsPrincipal = cluster.IsJobsPrincipal
 
+// jwtUserInfo is the CustomUserInfo of the request's signed JWT (a session or a service token),
+// false without a valid one.
+func jwtUserInfo(r *http.Request) (map[string]interface{}, bool) {
+	token, err := request.ParseFromRequest(r, request.AuthorizationHeaderExtractor, func(token *jwt.Token) (interface{}, error) {
+		vk, _ := jwt.ParseRSAPublicKeyFromPEM(verificationKey)
+		return vk, nil
+	})
+	if err != nil {
+		return nil, false
+	}
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok {
+		return nil, false
+	}
+	info, ok := claims["CustomUserInfo"].(map[string]interface{})
+	if !ok {
+		return nil, false
+	}
+	if _, ok := info["Name"].(string); !ok {
+		return nil, false
+	}
+	return info, true
+}
+
+// jobsTokenForServer: the request carries a jobs token (secret-login, the one-time job body of
+// the cluster's jobs key) minted for the very server the URL names (JobsTokenServerInScope). The
+// init container's config download accepts it (handlerMuxServersPortConfig): only the server's
+// own containers fetch its config, and no admin password is needed for it.
+func (repman *ReplicationManager) jobsTokenForServer(r *http.Request, cl *cluster.Cluster) bool {
+	info, ok := jwtUserInfo(r)
+	if !ok || !isJobsPrincipal(info["Name"].(string)) {
+		return false
+	}
+	server, _ := info["Server"].(string)
+	clusterName, _ := info["Cluster"].(string)
+	vars := mux.Vars(r)
+	return clusterName == cl.Name && vars["serverPort"] != "" && cl.JobsTokenServerInScope(server, vars["serverName"], vars["serverPort"])
+}
+
+// jobsTokenClusterOK: a jobs token names the cluster it was minted on and acts there only (two
+// clusters may monitor the same server URL). A token minted before the claim existed (at most
+// api-secret-login-token-timeout old after an upgrade) names none and keeps its server check.
+func jobsTokenClusterOK(info map[string]interface{}, cl *cluster.Cluster) bool {
+	name, present := info["Cluster"].(string)
+	return !present || name == cl.Name
+}
+
 func (repman *ReplicationManager) IsValidClusterACL(r *http.Request, cluster *cluster.Cluster) (bool, string) {
 	// A user-issued API token (api_token.go): no password, the ACL runs under the
 	// token principal so the grants are the token's ∩ the owner's, and the cluster
@@ -594,16 +645,9 @@ func (repman *ReplicationManager) IsValidClusterACL(r *http.Request, cluster *cl
 		return ok, t.User
 	}
 
-	token, err := request.ParseFromRequest(r, request.AuthorizationHeaderExtractor, func(token *jwt.Token) (interface{}, error) {
-		vk, _ := jwt.ParseRSAPublicKeyFromPEM(verificationKey)
-		return vk, nil
-	})
-	if err == nil {
-		claims := token.Claims.(jwt.MapClaims)
-		userinfo := claims["CustomUserInfo"]
-		mycutinfo := userinfo.(map[string]interface{})
+	if mycutinfo, ok := jwtUserInfo(r); ok {
 		meuser := mycutinfo["Name"].(string)
-		mepwd := mycutinfo["Password"].(string)
+		mepwd, _ := mycutinfo["Password"].(string)
 		_, ok := mycutinfo["profile"]
 
 		if ok {
@@ -618,7 +662,7 @@ func (repman *ReplicationManager) IsValidClusterACL(r *http.Request, cluster *cl
 			if isJobsPrincipal(meuser) {
 				server, _ := mycutinfo["Server"].(string)
 				vars := mux.Vars(r)
-				if !cluster.JobsTokenServerInScope(server, vars["serverName"], vars["serverPort"]) {
+				if !jobsTokenClusterOK(mycutinfo, cluster) || !cluster.JobsTokenServerInScope(server, vars["serverName"], vars["serverPort"]) {
 					return false, meuser
 				}
 			}
@@ -1373,9 +1417,10 @@ func (repman *ReplicationManager) handlerMuxWhoAmI(w http.ResponseWriter, r *htt
 			log.Errorf("handlerMuxWhoAmI sjson roles error: %v", err)
 		}
 	}
-	// For registered instances, set admin email from Cloud18 registration
-	if repman.Conf.Cloud18 && repman.Conf.Cloud18GitUser != "" && repman.isAdminUser(username) {
-		if res, err = sjson.SetBytes(res, "Email", repman.Conf.Cloud18GitUser); err != nil {
+	// For registered instances, set admin email from Cloud18 registration (userEmail: the same
+	// address the rotation and credentials mails go to)
+	if email := repman.userEmail(username); email != username {
+		if res, err = sjson.SetBytes(res, "Email", email); err != nil {
 			log.Errorf("handlerMuxWhoAmI sjson email error: %v", err)
 		}
 	}
@@ -2205,6 +2250,34 @@ func (repman *ReplicationManager) handlerMuxMonitorHeartbeat(w http.ResponseWrit
 	if err := json.NewEncoder(w).Encode(send); err != nil {
 		panic(err)
 	}
+}
+
+// staticCliPath is the public URL the database init containers, the K8s init and the app jobs
+// download replication-manager-cli from.
+const staticCliPath = "/static/configurator/bin/replication-manager-cli"
+
+// handlerStaticCli serves replication-manager-cli from disk when /static comes from the embedded
+// dashboard. A release image builds the server before the CLI is copied into share/dashboard, so
+// its embed has no CLI: the embedded file server answered 404 and every init that logs in with
+// the jobs key failed. A source build (make cli pro) embeds a copy: when no binary is found on
+// disk, the request falls back to the embedded handler. Any other path under
+// /static/configurator/bin/ is 404, like a missing file.
+func (repman *ReplicationManager) handlerStaticCli(embedded http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != staticCliPath {
+			http.NotFound(w, r)
+			return
+		}
+		path := repman.Conf.GetReplicationManagerCliPath()
+		fi, err := os.Stat(path)
+		if err != nil || !fi.Mode().IsRegular() {
+			log.Printf("static: replication-manager-cli not found on disk (looked for %q: replication-manager-cli-path, beside the executable, PATH): %s served from the embedded dashboard, 404 if it has none", path, staticCliPath)
+			embedded.ServeHTTP(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/octet-stream")
+		http.ServeFile(w, r, path)
+	})
 }
 
 func (repman *ReplicationManager) handlerStatic(h http.Handler) http.Handler {

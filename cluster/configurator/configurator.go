@@ -1404,7 +1404,7 @@ func (configurator *Configurator) WriteDatabaseConfigFile(Datadir string, Remote
 			content = galeraISTRecvBind(content) // IST listener without resolving its own name
 		}
 		var stripped []string
-		content, stripped = FilterRootPassword(fpath, content, TemplateEnv["%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%"], configurator.galeraSocketSST())
+		content, stripped = FilterRootPassword(fpath, content, TemplateEnv["%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%"], configurator.SSTAuthFor(TemplateEnv["%%ENV:SVC_CONF_ENV_SST_METHOD%%"]))
 		if len(stripped) > 0 {
 			if pw := TemplateEnv["%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%"]; len(pw) < shortRootPasswordLen {
 				// a short password matches more values by chance: say what was removed, loudly

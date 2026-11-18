@@ -30,6 +30,12 @@ func (cluster *Cluster) CheckGaleraSSTAccount() {
 	if orch == config.ConstOrchestratorOnPremise || orch == "" || cluster.GetTopology() != config.TopoMultiMasterWsrep {
 		return
 	}
+	// the rendered wsrep_sst_auth keeps the root password where the SST cannot authenticate
+	// otherwise (FilterRootPassword): said by a security state, never silently
+	if why := cluster.Configurator.SSTAuthKeepReasonFor(cluster.Conf.MultiMasterWsrepSSTMethod); why != "" && cluster.SecurityStateMachine != nil {
+		cluster.SecurityStateMachine.AddState("WARN0323", state.State{ErrType: "WARNING", ErrFrom: "SECURITY",
+			ErrDesc: fmt.Sprintf(clusterError["WARN0323"], cluster.Name, why)})
+	}
 	// MariaDB 10.3 and older: no built-in unix_socket, the SST of the rendered configuration
 	// cannot authenticate; not supported, said by an ERROR on every such server
 	for _, server := range cluster.Servers {

@@ -1294,11 +1294,9 @@ func (cluster *Cluster) K8SProvisionDatabaseService(s *ServerMonitor) {
 		cluster.errorChan <- err
 		return
 	}
-	// Only written here (provision/reprovision) -- an api-credentials
-	// change afterward goes stale until the next reprovision, same as
-	// OpenSVC's own REPLICATION_MANAGER_PASSWORD secret (OpenSVCCreateMaps,
-	// prov_opensvc.go), which has the identical characteristic. Consistent
-	// with that existing behavior, not a gap introduced here.
+	// Written here at provision/reprovision; an admin password change
+	// afterward is followed by followAdminPassword (cluster_user_rotate.go),
+	// as OpenSVC's REPLICATION_MANAGER_PASSWORD is.
 	if authHeaderValue := k8sAPIAuthHeaderValue(cluster); authHeaderValue != "" {
 		if err := cluster.k8sPatchSecretValues(client, map[string]string{k8sSecretKeyAPIAuthHeader: authHeaderValue}); err != nil {
 			cluster.errorChan <- err

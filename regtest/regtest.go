@@ -66,6 +66,7 @@ var tests = []string{
 	"testSetMinorityWithoutMaster",
 	"testSetDualActive",
 	"testSplitBrainNoWinner",
+	"testStandbyNeverFailsOverWithLiveActive",
 	"testMasterNil",
 	// skipped on a cluster without topology-staging (its config-variable target)
 	"testStagingRecoverNoReadOnly",
@@ -169,6 +170,7 @@ var tests = []string{
 	"testK8SProvisionSchedulerVolumeBinding",
 	"testK8SStopStartDatabaseService",
 	"testSchemaPlugin",
+	"testJobsRoundTrip",
 	"testGraphiteMetricsQueueBound",
 	"testDirectReseedSystemAllEmptyDestination",
 	"testDirectReseedSystemAllPluginAlreadyActive",
@@ -287,6 +289,10 @@ var testTargets = map[string][]TestTarget{
 	"testSetMinorityWithoutMaster":                                 arbitrationRequired,
 	"testSetDualActive":                                            arbitrationRequired,
 	"testSplitBrainNoWinner":                                       arbitrationRequired,
+
+	// the active detects the master loss later than its standby (higher failcount): #2040
+	"testStandbyNeverFailsOverWithLiveActive": {{ConfigVariableMustHave: map[string]string{"arbitration-external": "true"}}},
+
 	"testMasterNil":                                                anyCluster,
 	"testStagingRecoverNoReadOnly":                                 {{ConfigVariableMustHave: map[string]string{"topology-staging": "true"}}},
 	"testRunSysbenchTPCPerMinuteIncreaseThreads":                   anyCluster,
@@ -332,6 +338,7 @@ var testTargets = map[string][]TestTarget{
 	"testK8SProvisionSchedulerVolumeBinding":                                   {{OrchestratorTarget: []string{config.ConstOrchestratorKubernetes}}},
 	"testK8SStopStartDatabaseService":                                          {{OrchestratorTarget: []string{config.ConstOrchestratorKubernetes}}},
 	"testSchemaPlugin":                                                         anyCluster,
+	"testJobsRoundTrip":                                                        {{OrchestratorTarget: []string{config.ConstOrchestratorOpenSVC, config.ConstOrchestratorKubernetes}}},
 	// its own local web service: any cluster
 	"testAppMonitorHTTP": anyCluster,
 	"testAppCheckInterval": anyCluster,

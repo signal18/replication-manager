@@ -10,6 +10,7 @@ package clients
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -53,8 +54,8 @@ func jobClient() *jobapi.Client {
 		Secret:  os.Getenv(cliJobSecretEnv),
 		JobsKey: jobapi.JobsKeyFromEnv(),
 	}
-	if c.BaseURL == "" || c.Cluster == "" || c.Server == "" || c.Port == "" || c.Secret == "" {
-		fmt.Fprintln(os.Stderr, "job: url, cluster, server, port and the secret environment variable are required")
+	if c.BaseURL == "" || c.Cluster == "" || c.Server == "" || c.Port == "" || (c.Secret == "" && c.JobsKey == "") {
+		fmt.Fprintln(os.Stderr, "job: url, cluster, server, port and the jobs key (or the secret environment variable) are required")
 		os.Exit(2)
 	}
 	return c
@@ -123,11 +124,42 @@ var jobUsageCmd = &cobra.Command{
 	},
 }
 
+var jobConfigCmd = &cobra.Command{
+	Use:   "config FILE",
+	Short: "Download the server's config archive with the jobs login: exit 0 written, 1 not wanted now, 2 on error",
+	Long: "The init container's fetch: asks need-config-fetch, logs in with the cluster's jobs key " +
+		"($JOBS_API_KEY or /credentials/JOBS_API_KEY, a token scoped to this server) and writes " +
+		"config.tar.gz to FILE. No admin password.",
+	Args: cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		c := jobClient()
+		tmp := args[0] + ".part"
+		f, err := os.OpenFile(tmp, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0600)
+		if err != nil {
+			jobFail(err)
+		}
+		err = c.Config(f)
+		if cerr := f.Close(); err == nil {
+			err = cerr
+		}
+		if err != nil {
+			os.Remove(tmp)
+			if errors.Is(err, jobapi.ErrNoConfigFetch) {
+				os.Exit(1)
+			}
+			jobFail(err)
+		}
+		if err := os.Rename(tmp, args[0]); err != nil {
+			jobFail(err)
+		}
+	},
+}
+
 func initJobFlags(cmd *cobra.Command) {
 	cmd.PersistentFlags().StringVar(&cliJobURL, "url", "", "replication-manager URL (default $REPLICATION_MANAGER_URL)")
 	cmd.PersistentFlags().StringVar(&cliJobCluster, "cluster", "", "Cluster name (default $REPLICATION_MANAGER_CLUSTER_NAME)")
 	cmd.PersistentFlags().StringVar(&cliJobServer, "server", "", "Monitored server host (default $REPLICATION_MANAGER_HOST_NAME)")
 	cmd.PersistentFlags().StringVar(&cliJobPort, "port", "", "Monitored server port (default $REPLICATION_MANAGER_HOST_PORT)")
 	cmd.PersistentFlags().StringVar(&cliJobSecretEnv, "secret-env", "MYSQL_ROOT_PASSWORD", "Name of the environment variable holding the database password")
-	cmd.AddCommand(jobNeedsCmd, jobReceiverCmd, jobStateCmd, jobUsageCmd)
+	cmd.AddCommand(jobNeedsCmd, jobReceiverCmd, jobStateCmd, jobUsageCmd, jobConfigCmd)
 }

@@ -450,6 +450,16 @@ func TestMarketplaceVaultEntryManaged(t *testing.T) {
 	cl.Conf.Cloud18, cl.Conf.Cloud18GitUser = true, "u"
 	cl.Conf.Cloud18Domain, cl.Conf.Cloud18SubDomain, cl.Conf.Cloud18SubDomainZone = "d", "s", "fr"
 	cl.EnsureMarketplaceVaults([]config.MarketplaceVaultOffer{{Name: "vault-fr", Title: "Cloud18 vault", Partner: "partner-a", Address: "https://v:8200"}})
+	// the folder is the instance's name, three folders: d/s/fr, never d/s-fr (d/s-fr + "" = d/s + "-fr")
+	prefix := ""
+	for _, e := range cl.Conf.SecretKvs {
+		if e.Name == "cloud18-vault-fr" {
+			prefix, _ = e.Settings["path-prefix"].(string)
+		}
+	}
+	if prefix != "d/s/fr" {
+		t.Fatalf("path-prefix %q, want d/s/fr", prefix)
+	}
 	if _, err := cl.PutSecretKv(config.SecretKvSpec{Name: "own", Settings: map[string]interface{}{"address": "https://own:8200"}}, true); err != nil {
 		t.Fatal(err)
 	}

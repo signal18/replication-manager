@@ -301,6 +301,7 @@ func (server *ServerMonitor) OpenJobBody(raw []byte, now time.Time, legacyAllowe
 		if !legacyAllowed && !server.IsPostgreSQLHost() {
 			return nil, JobKeyLegacy, 401, fmt.Errorf("Legacy job body refused: an older jobs script may only fetch the new one (jobs upgrade)")
 		}
+		atomic.StoreInt64(&server.jobBodyAt, now.Unix())
 		return data, mode, 200, nil
 	}
 	var fresh struct {
@@ -335,7 +336,68 @@ func (server *ServerMonitor) OpenJobBody(raw []byte, now time.Time, legacyAllowe
 		return nil, mode, 401, fmt.Errorf("Job body already used (replay)")
 	}
 	server.jobStream.Store(jobStreamAuth{Key: mode, Name: fresh.Server})
+	atomic.StoreInt64(&server.jobBodyAt, now.Unix())
 	return data, mode, 200, nil
+}
+
+// jobsSilentAfter is how long a server's jobs may stay without a job body before WARN0324: the
+// jobs script logs in at each run (about every minute), the PostgreSQL sidecar every few seconds.
+const jobsSilentAfter = 10 * time.Minute
+
+// CheckJobsSilent runs every tick on the active monitor: WARN0324 per database server whose jobs
+// have posted no job body for jobsSilentAfter. A jobs container that cannot reach
+// replication-manager (no socat in a stock MySQL/Percona image without the xtrabackup bundle, a
+// network or certificate problem, a script that does not start) fails without a trace in the
+// database itself: no backup, no log collection, no config check, and nothing said. Only the
+// services replication-manager provisions with a jobs container (OpenSVC docker/podman,
+// Kubernetes), in the api jobs mode (each run logs in), on a running server that is not ignored.
+// The grace is per server: the silence counts from the later of its last job body and the tick
+// this monitor first saw it running (jobsRunningSince), so a server provisioned, re-added or
+// restarted later, or a monitor that just became active, never opens the state before its jobs
+// had jobsSilentAfter to log in (no flap, T5).
+func (cluster *Cluster) CheckJobsSilent(now time.Time) {
+	watch := cluster.hasJobsContainers() && cluster.IsActive()
+	for _, s := range cluster.Servers {
+		if s == nil {
+			continue
+		}
+		if !watch || s.IsIgnored() || !s.IsRunning() {
+			s.jobsRunningSince = time.Time{}
+			continue
+		}
+		if s.jobsRunningSince.IsZero() {
+			s.jobsRunningSince = now
+		}
+		last := s.jobsRunningSince
+		at := atomic.LoadInt64(&s.jobBodyAt)
+		if t := time.Unix(at, 0); at != 0 && t.After(last) {
+			last = t
+		}
+		if now.Sub(last) < jobsSilentAfter {
+			continue
+		}
+		since := "since " + s.jobsRunningSince.UTC().Format(time.RFC3339) + " (running, no job body)"
+		if at != 0 {
+			since = "since " + time.Unix(at, 0).UTC().Format(time.RFC3339)
+		}
+		cluster.StateMachine.AddState("WARN0324", state.State{ErrType: "WARNING", ErrFrom: "JOB", ServerUrl: s.URL,
+			ErrDesc: fmt.Sprintf(clusterError["WARN0324"], s.URL, since)})
+	}
+}
+
+// hasJobsContainers: the database services replication-manager provisions run a jobs container
+// that logs in at each run (the api jobs mode): OpenSVC with docker or podman, Kubernetes.
+func (cluster *Cluster) hasJobsContainers() bool {
+	if cluster.Conf.SchedulerJobsMode != "" && cluster.Conf.SchedulerJobsMode != "api" {
+		return false
+	}
+	switch cluster.GetOrchestrator() {
+	case config.ConstOrchestratorOpenSVC:
+		return cluster.Conf.ProvType == "docker" || cluster.Conf.ProvType == "podman"
+	case config.ConstOrchestratorKubernetes:
+		return true
+	}
+	return false
 }
 
 // namedBy: name is how a job body names this server, its URL or the host:port and ip:port its

@@ -61,7 +61,9 @@ func (cluster *Cluster) CheckFailed() {
 	// arbitrator — the peer probing seconds later read them and flapped
 	// active/passive (ERR00022 on every cluster). Old arbitrators keep that
 	// behavior forever, so an upgraded client must not probe them idly.
-	cluster.SetFalsePositiveCheck("ActiveArbitration", !cluster.isMasterFailed() || cluster.isActiveArbitration())
+	// failoverArbitrationCheck also opens ERR00022 when it refuses (a standby leaving the
+	// failover to its live active, or an arbitrator that did not name this node winner).
+	cluster.SetFalsePositiveCheck("ActiveArbitration", cluster.failoverArbitrationCheck())
 	cluster.SetFalsePositiveCheck("MaxClusterFailoverCountNotReached", cluster.isMaxClusterFailoverCountNotReached())
 	cluster.SetFalsePositiveCheck("AutomaticFailover", cluster.isAutomaticFailover())
 	cluster.SetFalsePositiveCheck("MasterFailed", cluster.isMasterFailed())
@@ -376,6 +378,31 @@ func (cluster *Cluster) isFoundCandidateMaster() bool {
 		return false
 	}
 	return true
+}
+
+// standbyLeavesFailoverToActive reports whether this monitor is a standby of an arbitrated pair
+// whose active peer is alive: arbitration on, this cluster standby, and no split brain (the
+// server-level peer heartbeat still answers; Heartbeat pushes it down as IsSplitBrain). Such a
+// standby does not fail over (#2040).
+func (cluster *Cluster) standbyLeavesFailoverToActive() bool {
+	return cluster.Conf.Arbitration && !cluster.IsActive() && !cluster.IsSplitBrain
+}
+
+// failoverArbitrationCheck is the ActiveArbitration condition of CheckFailed. True while the
+// master has not failed (nothing to decide, the arbitrator is not asked). Once it has failed: a
+// standby whose active peer is alive leaves the failover to it and does not ask the arbitrator
+// (the active never reports to the arbitrator in calm, so a standby asking first won the lease
+// and failed over under a healthy active, #2040; ERR00022 says why it waits); otherwise the
+// arbitrator's verdict decides.
+func (cluster *Cluster) failoverArbitrationCheck() bool {
+	if !cluster.isMasterFailed() {
+		return true
+	}
+	if cluster.standbyLeavesFailoverToActive() {
+		cluster.SetState("ERR00022", state.State{ErrType: config.LvlErr, ErrDesc: clusterError["ERR00022"], ErrFrom: "CHECK"})
+		return false
+	}
+	return cluster.isActiveArbitration()
 }
 
 func (cluster *Cluster) isActiveArbitration() bool {

@@ -133,6 +133,7 @@ func (repman *ReplicationManager) httpserver() {
 		router.PathPrefix("/terminal/").HandlerFunc(repman.handlerApp)
 		router.HandleFunc("/login", repman.handlerApp)
 		router.HandleFunc("/signup", repman.handlerApp)
+		router.HandleFunc("/reveal", repman.handlerApp)
 		router.HandleFunc("/dashboard", repman.handlerApp)
 		router.HandleFunc("/slideshow", repman.handlerApp)
 		router.PathPrefix("/images/").Handler(http.FileServer(http.Dir(repman.Conf.HttpRoot)))
@@ -145,10 +146,12 @@ func (repman *ReplicationManager) httpserver() {
 		router.PathPrefix("/terminal/").HandlerFunc(repman.rootHandler)
 		router.HandleFunc("/login", repman.rootHandler)
 		router.HandleFunc("/signup", repman.rootHandler)
+		router.HandleFunc("/reveal", repman.rootHandler)
 		router.HandleFunc("/dashboard", repman.rootHandler)
 		router.HandleFunc("/slideshow", repman.rootHandler)
 		router.PathPrefix("/images/").Handler(repman.handlerStatic(repman.DashboardFSHandler()))
 		router.PathPrefix("/assets/").Handler(repman.handlerStatic(repman.DashboardFSHandler()))
+		router.PathPrefix("/static/configurator/bin/").Handler(repman.handlerStatic(repman.handlerStaticCli(repman.DashboardFSHandler())))
 		router.PathPrefix("/static/").Handler(repman.handlerStatic(repman.DashboardFSHandler()))
 		router.PathPrefix("/app/").Handler(repman.handlerStatic(repman.DashboardFSHandler()))
 		router.PathPrefix("/grafana/").Handler(http.StripPrefix("/grafana/", repman.SharedirHandler("grafana")))
@@ -176,6 +179,7 @@ func (repman *ReplicationManager) httpserver() {
 	router.HandleFunc("/api/signup", repman.handlerSignup).Methods(http.MethodPost, http.MethodOptions)
 	router.HandleFunc("/api/signup/promo", repman.handlerSignupPromo).Methods(http.MethodGet, http.MethodOptions)
 	router.HandleFunc("/api/signup/status", repman.handlerSignupStatus).Methods(http.MethodGet, http.MethodOptions)
+	router.HandleFunc(secretRevealPath, repman.handlerSecretReveal).Methods(http.MethodPost, http.MethodOptions) // one-time secret links: the code is the credential
 	router.HandleFunc("/api/autologin", repman.autologinHandler)
 	router.HandleFunc("/api/dashboard-token", repman.dashboardTokenHandler)
 	// User-issued API tokens (issue #1835): list/create/revoke, admin list per cluster.

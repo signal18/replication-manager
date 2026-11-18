@@ -103,6 +103,15 @@ on a cluster of the right setup, a missing replica is a broken cluster, not a te
   `testSetMinorityWithoutMaster`, `testSetDualActive`, `testSplitBrainNoWinner`): must have
   `arbitration-external = true` (`arbitrationRequired`). Their "arbitration not enabled → PASS" gate is
   gone: a cluster without arbitration gave a PASS where nothing ran
+- `testStandbyNeverFailsOverWithLiveActive` (#2040, #2397): must have `arbitration-external = true`.
+  It runs with the cluster's own `failover-falsepositive-ping-counter` on both replication-managers:
+  the standby races the active to detect the master loss, as in production. (A higher counter on the
+  active cannot be set by the runner: the settings API has no case for that key.) The master is really stopped with
+  both replication-managers connected: the standby must stay standby, the active fails over, keeps
+  the crash record and rejoins the old master. Red before the #2040 fix. The peer runs in automatic
+  failover for the run: the test sets it through the peer API and restores its mode at the end (three
+  attempts, then an ERR line). If the repman process running the test dies between the set and the
+  restore, nothing restores the peer: check its failover mode after an aborted run
 
 The other tests declare `anyCluster` for now; they get real targets as they are worked on.
 
@@ -159,6 +168,17 @@ change (Kubernetes orchestrator, one server, namespace labelled
 gate of `MatchTarget` still applies first, so on MySQL and Percona the cluster must declare the `mysqlgtid` tag
 (a SKIP is never a PASS). See
 `doc/implementation/cluster/KUBERNETES_PROVISIONING.md`, "Kubernetes regtests".
+
+## A job must run through the jobs container (`testJobsRoundTrip`)
+
+The database runs whether its jobs container reaches replication-manager or not, so the lifecycle and
+configuration tests pass even when it cannot (a stock MySQL or Percona image without `socat` and without
+`prov-db-docker-xtrabackup-img`). A test on MySQL or Percona counts as passing only if a job ran through
+the jobs container. `testJobsRoundTrip` asks one server (a replica when there is one) for the error log
+collection, the lightest job, and expects its state to end done within 5 minutes; an error state or no state
+is a FAIL. Targets: OpenSVC and Kubernetes, the orchestrators that run a jobs container. It changes nothing
+on the database. Outside a regtest, the same failure is the state WARN0324 (a server whose
+jobs have not reached replication-manager for 10 minutes, `CheckJobsSilent`).
 
 ## Tests
 

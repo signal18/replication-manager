@@ -7916,7 +7916,7 @@ func (repman *ReplicationManager) handlerMuxClusterPluginsReload(w http.Response
 
 // handlerMuxClusterSendVaultToken sends the Vault token to the specified cluster via email.
 // @Summary Send Vault token to a specific cluster
-// @Description This endpoint sends the Vault token to the specified cluster via email.
+// @Description This endpoint mails the cluster's Vault token to its mail-to addresses (the cluster's external users left out), each as a one-time link (api-secret-reveal), never in the mail.
 // @Tags ClusterVault
 // @Accept json
 // @Produce json
@@ -7936,7 +7936,7 @@ func (repman *ReplicationManager) handlerMuxClusterSendVaultToken(w http.Respons
 			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
-		go mycluster.SendVaultTokenByMail(mycluster.Conf)
+		go repman.mailVaultTokenReveal(mycluster)
 	} else {
 		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
@@ -9057,10 +9057,7 @@ func (repman *ReplicationManager) handlerMuxSendCredentials(w http.ResponseWrite
 		return
 	}
 
-	to := u.User
-	if to == "admin" {
-		to = repman.Conf.Cloud18GitUser
-	}
+	to := repman.userEmail(u.User)
 
 	switch credForm.CredentialType {
 	case "db":
