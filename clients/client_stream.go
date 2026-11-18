@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"path/filepath"
 	"time"
@@ -52,7 +53,16 @@ var streamCmd = &cobra.Command{
 			if cliStreamJob {
 				check = jobStreamCheck(jobClient())
 			}
-			n, err := netstream.ReceiveChecked(cliStreamListen, os.Stdout, time.Duration(cliStreamAcceptTimeout)*time.Second, check)
+			ln, err := net.Listen("tcp", cliStreamListen)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "stream: %v\n", err)
+				os.Exit(1)
+			}
+			// the caller tells the sender to send only once this line is out (the jobs script
+			// reports a reseed waiting after it): a sender dialing earlier is refused
+			fmt.Fprintf(os.Stderr, "stream: listening on %s\n", cliStreamListen)
+			n, err := netstream.AcceptChecked(ln, os.Stdout, time.Duration(cliStreamAcceptTimeout)*time.Second, check)
+			ln.Close()
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "stream: %v (%d bytes received)\n", err, n)
 				if errors.Is(err, netstream.ErrRefused) {

@@ -1418,6 +1418,20 @@ receiveBackup() {
     ({ stream_cli --listen "$JOBS_LISTEN" --accept-timeout 600 2>"$LOG_DIR/stream.err" & echo $! >"$LOG_DIR/stream.pid"; wait $!; echo $? >"$LOG_DIR/stream.rc"; } |
         head -c "$budget" | tee >(wc -c >"$count") | $unpack -x -C "$BACKUPDIR") &
     sub=$!
+    # report the job waiting (replication-manager then sends) only once the listener is bound:
+    # a sender dialing earlier is refused and the reseed never comes
+    for i in $(seq 1 150); do
+        grep -q "listening on" "$LOG_DIR/stream.err" 2>/dev/null && break
+        kill -0 "$sub" 2>/dev/null || break
+        sleep 0.1
+    done
+    if ! grep -q "listening on" "$LOG_DIR/stream.err" 2>/dev/null; then
+        kill $(cat "$LOG_DIR/stream.pid" 2>/dev/null) "$sub" 2>/dev/null
+        wait "$sub" 2>/dev/null
+        receiveBackupAbort "Backup transfer not started: the listener on $JOBS_LISTEN did not open: $(tail -n 1 "$LOG_DIR/stream.err" 2>/dev/null). No database or table was changed."
+        return 1
+    fi
+    pauseJob "$job"
     while kill -0 "$sub" 2>/dev/null; do
         read -r total avail < <(df -P -B1 "$DATADIR" 2>/dev/null | awk 'NR==2{print $2, $4}')
         if [[ -n "$avail" && "$avail" -lt "$floor" ]]; then
@@ -1440,6 +1454,11 @@ receiveBackup() {
     rm -f "$count"
     if [[ "$(cat "$LOG_DIR/stream.rc" 2>/dev/null)" == "3" ]]; then
         receiveBackupAbort "Backup transfer refused: $(tail -n 1 "$LOG_DIR/stream.err" 2>/dev/null). Nothing was received; no database or table was changed."
+        return 1
+    fi
+    if [[ "$(cat "$LOG_DIR/stream.rc" 2>/dev/null)" != "0" && "${got:-0}" -eq 0 ]]; then
+        # nothing came (the sender never connected within the accept timeout, or failed)
+        receiveBackupAbort "Backup transfer failed: $(tail -n 1 "$LOG_DIR/stream.err" 2>/dev/null). Nothing was received; no database or table was changed."
         return 1
     fi
     if [[ "${got:-0}" -ge "$budget" ]]; then
@@ -3026,7 +3045,6 @@ for job in "${JOBS[@]}"; do
             echo "Waiting for the backup stream." >>"$LOG_DIR/reseed.out"
             listenerCleaner
             echo "Waiting backup." >"$LOG_DIR/$job.out"
-            pauseJob "$job"
             if receiveBackup xbstream; then
                 $XTRABACKUP --prepare --export --target-dir=$BACKUPDIR 2>>"$LOG_DIR/reseed.out"
                 partialRestore
@@ -3037,7 +3055,6 @@ for job in "${JOBS[@]}"; do
             echo "Waiting for the backup stream." >>"$LOG_DIR/reseed.out"
             listenerCleaner
             echo "Waiting backup." >"$LOG_DIR/$job.out"
-            pauseJob "$job"
             if receiveBackup mbstream; then
                 # mbstream -p, --parallel
                 # pr_stage_undo_dir: backup-my.cnf holds the source server's undo directory
@@ -3057,7 +3074,6 @@ for job in "${JOBS[@]}"; do
             echo "Waiting for the backup stream." >>"$LOG_DIR/flash.out"
             listenerCleaner
             echo "Waiting backup." >"$LOG_DIR/$job.out"
-            pauseJob "$job"
             if receiveBackup xbstream; then
                 $XTRABACKUP --prepare --export --target-dir=$BACKUPDIR 2>>"$LOG_DIR/flash.out"
                 partialRestore
@@ -3068,7 +3084,6 @@ for job in "${JOBS[@]}"; do
             echo "Waiting for the backup stream." >>"$LOG_DIR/flash.out"
             listenerCleaner
             echo "Waiting backup." >"$LOG_DIR/$job.out"
-            pauseJob "$job"
             if receiveBackup xbstream; then
                 if pr_stage_undo_dir "$LOG_DIR/flash.out"; then
                     $MARIADB_BACKUP --prepare --export --target-dir=$BACKUPDIR 2>>"$LOG_DIR/flash.out"
