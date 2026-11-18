@@ -296,6 +296,7 @@ func (repman *ReplicationManager) apiserver() {
 		router.HandleFunc("/reveal", repman.rootHandler)
 		router.HandleFunc("/dashboard", repman.rootHandler)
 		router.HandleFunc("/slideshow", repman.rootHandler)
+		router.PathPrefix("/static/configurator/bin/").Handler(repman.handlerStatic(repman.handlerStaticCli(repman.DashboardFSHandler())))
 		router.PathPrefix("/static/").Handler(repman.handlerStatic(repman.DashboardFSHandler()))
 		router.PathPrefix("/app/").Handler(repman.handlerStatic(repman.DashboardFSHandler()))
 		router.PathPrefix("/images/").Handler(repman.handlerStatic(repman.DashboardFSHandler()))
@@ -2249,6 +2250,34 @@ func (repman *ReplicationManager) handlerMuxMonitorHeartbeat(w http.ResponseWrit
 	if err := json.NewEncoder(w).Encode(send); err != nil {
 		panic(err)
 	}
+}
+
+// staticCliPath is the public URL the database init containers, the K8s init and the app jobs
+// download replication-manager-cli from.
+const staticCliPath = "/static/configurator/bin/replication-manager-cli"
+
+// handlerStaticCli serves replication-manager-cli from disk when /static comes from the embedded
+// dashboard. A release image builds the server before the CLI is copied into share/dashboard, so
+// its embed has no CLI: the embedded file server answered 404 and every init that logs in with
+// the jobs key failed. A source build (make cli pro) embeds a copy: when no binary is found on
+// disk, the request falls back to the embedded handler. Any other path under
+// /static/configurator/bin/ is 404, like a missing file.
+func (repman *ReplicationManager) handlerStaticCli(embedded http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != staticCliPath {
+			http.NotFound(w, r)
+			return
+		}
+		path := repman.Conf.GetReplicationManagerCliPath()
+		fi, err := os.Stat(path)
+		if err != nil || !fi.Mode().IsRegular() {
+			log.Printf("static: replication-manager-cli not found on disk (looked for %q: replication-manager-cli-path, beside the executable, PATH): %s served from the embedded dashboard, 404 if it has none", path, staticCliPath)
+			embedded.ServeHTTP(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/octet-stream")
+		http.ServeFile(w, r, path)
+	})
 }
 
 func (repman *ReplicationManager) handlerStatic(h http.Handler) http.Handler {

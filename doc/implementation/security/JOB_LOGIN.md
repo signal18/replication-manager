@@ -211,6 +211,18 @@ With the cluster's jobs key, the init container logs in like the jobs:
   and `config-path-preserve` to the token.
 - **Trace**: the bootstrap writes `/bootstrap/init-status`, one line `<unix time> <fetched |
   not-needed | failed> <detail>`, for the database's jobs to report as a state.
+- **The CLI download** (`/static/configurator/bin/replication-manager-cli`,
+  `handlerStaticCli`): outside test mode `/static` comes from the dashboard embedded in the
+  binary. A source build (`make cli pro`) copies the CLI into `share/dashboard` before the server
+  is built, so its embed holds one; a release image builds the server first, so its embed has
+  none and the URL answered 404. Every init then failed with "no replication-manager-cli to log
+  in with the jobs key" and the database started on its old files (found on the first image
+  instance of the v3.1.50 fleet deploy). The route is now registered before the `/static/` prefix
+  in both routers (API and HTTP monitor) and serves the binary from disk, located by
+  `config.Config.GetReplicationManagerCliPath` (`replication-manager-cli-path`, else beside the
+  running executable, else `PATH`), the one lookup the backup and job code use too. Not found on
+  disk: the embedded copy, 404 when there is none, with a log line naming where it looked. The
+  binary (about 150 MB) is never added to the embed.
 
 ## Not covered here
 
