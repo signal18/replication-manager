@@ -120,6 +120,14 @@ func unameToGo(uname string) string {
 	return goos + "/" + goarch
 }
 
+// jobsCliProbe is the one command each run sends to the host: `uname -sm`, an empty line, then
+// the marker of target, only when target is an executable CLI (a CLI removed or broken by hand is
+// copied again). It always exits 0: a host with no CLI or no marker yet is the first copy, not an
+// error.
+func jobsCliProbe(target string) string {
+	return "uname -sm; echo; if [ -x " + shellSingleQuote(target) + " ]; then cat " + shellSingleQuote(target+".sha256") + " 2>/dev/null; fi; true"
+}
+
 // jobsCliPlan decides from the host's `uname -sm` and its marker whether to copy: "" when the
 // copy on the host is the monitor's, else the reason to copy, or an error when it cannot be the
 // monitor's binary.
@@ -160,8 +168,7 @@ func (server *ServerMonitor) ensureJobsCliViaSSH(client *sshclient.Client) error
 	}
 	dir := server.GetJobDatadir()
 	target := dir + "/" + jobsCliName
-	// the marker counts only next to an executable CLI: a CLI removed or broken by hand is copied again
-	out, err := client.Cmd("uname -sm; echo; [ -x " + shellSingleQuote(target) + " ] && cat " + shellSingleQuote(target+".sha256") + " 2>/dev/null").Output()
+	out, err := client.Cmd(jobsCliProbe(target)).Output()
 	if err != nil {
 		return fail(fmt.Errorf("cannot read the host system and the %s marker: %v", jobsCliName, err))
 	}
@@ -198,7 +205,9 @@ func copyJobsCli(client *sshclient.Client, local jobsCliLocal, dir string) error
 	var stderr strings.Builder
 	session.Stdin, session.Stderr = f, &stderr
 	d := shellSingleQuote(dir)
-	script := `set -e; d=` + d + `; mkdir -p "$d"; t="$d/.` + jobsCliName + `.tmp.$$"; trap 'rm -f "$t"' EXIT; cat >"$t"
+	// a copy cut by the timeout may leave its temporary file (the remote shell is not always
+	// signalled when the session closes): the next copy removes it first (F4)
+	script := `set -e; d=` + d + `; mkdir -p "$d"; rm -f "$d"/.` + jobsCliName + `.tmp.*; t="$d/.` + jobsCliName + `.tmp.$$"; trap 'rm -f "$t"' EXIT; cat >"$t"
 h=$( (sha256sum "$t" 2>/dev/null || shasum -a 256 "$t") | cut -d' ' -f1)
 [ "$h" = ` + shellSingleQuote(local.hash) + ` ] || { echo "checksum mismatch after the copy (no space left?)" >&2; exit 3; }
 chmod 755 "$t"

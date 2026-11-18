@@ -7,6 +7,9 @@
 package cluster
 
 import (
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -85,5 +88,38 @@ func TestJobsUpgradeDeferredWithoutCli(t *testing.T) {
 	c.CheckJobsCli()
 	if open := c.ConfigStateMachine.GetOpenStates(); len(open) != 0 || func() bool { c.CheckJobsCli(); return s.JobsCliVersion != "v3.1.52" }() {
 		t.Fatalf("jobs calling with a CLI version close it: %+v %q", open, s.JobsCliVersion)
+	}
+}
+
+// The probe exits 0 and prints the system then the marker only next to an executable CLI: on a
+// host with no CLI, or a CLI without a marker, it is the first copy, not an error.
+func TestJobsCliProbe(t *testing.T) {
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("bash not found")
+	}
+	dir := t.TempDir()
+	target := filepath.Join(dir, "replication-manager-cli")
+	run := func() (string, string) {
+		out, err := exec.Command("bash", "-c", jobsCliProbe(target)).Output()
+		if err != nil {
+			t.Fatalf("the probe must exit 0: %v", err)
+		}
+		uname, marker, _ := strings.Cut(string(out), "\n\n")
+		return uname, marker
+	}
+	if uname, marker := run(); uname == "" || marker != "" {
+		t.Fatalf("no CLI: %q %q", uname, marker)
+	}
+	os.WriteFile(target+".sha256", []byte("aaa v1\n"), 0644)
+	if _, marker := run(); marker != "" {
+		t.Fatalf("a marker without a CLI is not read: %q", marker)
+	}
+	os.WriteFile(target, []byte("#!/bin/sh\n"), 0755)
+	if _, marker := run(); marker != "aaa v1\n" {
+		t.Fatalf("CLI and marker: %q", marker)
+	}
+	os.Remove(target + ".sha256")
+	if _, marker := run(); marker != "" {
+		t.Fatalf("CLI without a marker: %q", marker)
 	}
 }

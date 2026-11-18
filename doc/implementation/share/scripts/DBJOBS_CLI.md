@@ -34,7 +34,8 @@ script has no directory of its own (`BASH_SOURCE` is empty). Before each run,
 `ensureJobsCliViaSSH` (`cluster/srv_job_ssh_cli.go`) puts the monitor's CLI in the server's jobs
 directory (`GetJobDatadir`, the script's `TMP_DIR`), over the same SSH connection:
 
-1. **Check, one command:** `uname -sm` and the marker
+1. **Check, one command** (`jobsCliProbe`, it always exits 0: no CLI yet is the first copy, not an
+   error): `uname -sm` and the marker
    `<jobs dir>/replication-manager-cli.sha256`, which holds `<sha256> <CLI version>` of the copy.
    The CLI is never hashed on the host at each run: jobs run every minute on a production host.
 2. **Platform:** the copy is the monitor's binary, so only a host of the monitor's own OS and
@@ -55,7 +56,8 @@ directory (`GetJobDatadir`, the script's `TMP_DIR`), over the same SSH connectio
    run. The cause is logged once (task module, error) and kept in the server's `jobsCliError`
    (API). A failed copy is retried at most every 10 minutes per server, not at every run, and
    one copy is given 15 minutes at most (the session is closed then): a stalled link never holds
-   the server's job runner.
+   the server's job runner. Each copy first removes a temporary file an earlier copy cut by that
+   timeout may have left.
 5. **The marker counts only next to an executable CLI:** a CLI removed or broken on the host is
    copied again even when its marker is still there.
 
