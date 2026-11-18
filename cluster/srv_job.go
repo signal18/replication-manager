@@ -1574,6 +1574,17 @@ func (server *ServerMonitor) JobRunViaSSH() error {
 	}
 	defer client.Close()
 
+	// the script reaches replication-manager only through replication-manager-cli: put it on the
+	// host first; without it the run is skipped with the cause in JobsCliError
+	if err := server.ensureJobsCliViaSSH(client); err != nil {
+		if prev := server.jobsCliError.Load(); prev == nil || *prev != err.Error() {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Database jobs of %s not run: %s", server.URL, err)
+		}
+		server.setJobsCliError(err.Error())
+		return err
+	}
+	server.setJobsCliError("")
+
 	var (
 		stdout bytes.Buffer
 		stderr bytes.Buffer
@@ -2022,9 +2033,69 @@ func (server *ServerMonitor) UpgradeJobsScript() error {
 	if server.HasRollingJobsUpgradeCookie() {
 		server.DelRollingJobsUpgradeCookie()
 	}
+	server.jobsUpgradeDeferred.Store(nil)
 
 	server.SetWaitJobsCheckCookie()
 	return nil
+}
+
+// DeferJobsUpgrade: the jobs asked whether to upgrade their script (needs jobs-upgrade) without
+// a replication-manager-cli that names its version (cli ""): an older script (bash and socat) or
+// an older CLI. The current script reaches replication-manager only through a CLI new enough,
+// and a script upgrade does not bring the CLI, so the upgrade waits for the service restart,
+// whose init brings both. The upgrade and rolling cookies are dropped (the rolling jobs upgrade
+// does not wait on this server), and WARN0325 (config domain) says so until the upgrade is
+// delivered or the jobs call with a CLI version (JobsCliCalled).
+func (server *ServerMonitor) DeferJobsUpgrade(cli string) {
+	if cli == "" {
+		cli = "none"
+	}
+	if server.HasWaitJobsUpgradeCookie() {
+		server.DelWaitJobsUpgradeCookie()
+	}
+	if server.HasRollingJobsUpgradeCookie() {
+		server.DelRollingJobsUpgradeCookie()
+	}
+	if prev := server.jobsUpgradeDeferred.Swap(&cli); prev == nil {
+		cluster := server.ClusterGroup
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, clusterError["WARN0325"], server.URL, cli)
+	}
+}
+
+// JobsCliCalled records the CLI version a jobs call named; the jobs then run with a CLI new
+// enough for the current script, so a deferred upgrade is no longer deferred.
+func (server *ServerMonitor) JobsCliCalled(version string) {
+	server.jobsCliVersion.Store(&version)
+	server.jobsUpgradeDeferred.Store(nil)
+}
+
+// setJobsCliError records why the on-premise jobs cannot run on the host, "" when they can.
+func (server *ServerMonitor) setJobsCliError(msg string) {
+	server.jobsCliError.Store(&msg)
+}
+
+// CheckJobsCli runs every tick: it publishes the CLI version and the CLI error of each server
+// (JobsCliVersion, JobsCliError, read by the API) and keeps WARN0325 open while a server's
+// script upgrade is deferred.
+func (cluster *Cluster) CheckJobsCli() {
+	for _, s := range cluster.Servers {
+		if s == nil {
+			continue
+		}
+		if v := s.jobsCliVersion.Load(); v != nil {
+			s.JobsCliVersion = *v
+		}
+		if e := s.jobsCliError.Load(); e != nil {
+			s.JobsCliError = *e
+		}
+		if cluster.ConfigStateMachine == nil {
+			continue
+		}
+		if cli := s.jobsUpgradeDeferred.Load(); cli != nil {
+			cluster.ConfigStateMachine.AddState("WARN0325", state.State{ErrType: "WARNING", ErrFrom: "JOB", ServerUrl: s.URL,
+				ErrDesc: fmt.Sprintf(clusterError["WARN0325"], s.URL, *cli)})
+		}
+	}
 }
 
 // logicalBackupTasks: the job names a logical backup of the server runs under

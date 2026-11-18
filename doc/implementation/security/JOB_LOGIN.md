@@ -1,7 +1,9 @@
 # Job login: the one-time job body
 
 The database jobs script (`share/scripts/dbjobs_new.sh`, served by replication-manager to each
-database server) talks to the API in two ways:
+database server) talks to the API through `replication-manager-cli job` and `stream --job`, which
+implement the protocol below with `utils/jobapi` (the script has no crypto of its own since #2405,
+see `doc/implementation/share/scripts/DBJOBS_CLI.md`). Two kinds of calls:
 
 - **Job bodies:** `secret-login`, job state, tasks, config receiver, jobs upgrade, `write-log`.
   The body is `{"data": <base64>, "iv": <hex>, "key": "jobs"|"db"}`: a JSON object encrypted
@@ -30,8 +32,9 @@ replication-manager's persistent key (`monitoring-key-path`), never stored.
   shown by `docker inspect`).
 - **Delivery, on-premise (ssh):** exported in the ssh environment (`GetSshEnv`,
   `JOBS_API_KEY`) that precedes the script at each run; nothing is written on the host.
-- **Script:** `jobs_key` reads `$JOBS_API_KEY`, else `/credentials/JOBS_API_KEY`. With a key,
-  the bodies carry no `secret` (`job_secret`) and `secret-login` accepts them without it: the
+- **Jobs side:** the CLI reads `$JOBS_API_KEY`, else `/credentials/JOBS_API_KEY`
+  (`jobapi.JobsKeyFromEnv`). With a key, the bodies carry no `secret` and `secret-login` accepts
+  them without it: the
   database password never travels, and rotating it does not touch the login. Without a key
   (no persistent key, or a service not refreshed yet), the bodies use the database password and
   carry it (`"key": "db"`).
@@ -46,7 +49,7 @@ replication-manager's persistent key (`monitoring-key-path`), never stored.
 | Part | Value |
 |---|---|
 | IV | random, 16 bytes, sent in clear as `iv` (32 hex) |
-| Clear object | the request's JSON, stamped by the script with `"ts"` (unix seconds) and `"nonce"` (16 random bytes, hex) |
+| Clear object | the request's JSON, stamped by the CLI with `"ts"` (unix seconds) and `"nonce"` (16 random bytes, hex) |
 
 `OpenJobBody` accepts a one-time body once:
 
@@ -61,10 +64,10 @@ A replay is refused with 401 and logged. A body cannot be forged without the pas
 not decrypt to a JSON object.
 
 `secret-login` with a one-time body returns a token valid `api-secret-login-token-timeout`
-minutes (default 15). The script keeps it in `<jobs dir>/.job_token` (0600) so its background
-tasks share it, and logs in again once it is older than 10 minutes (`job_token`), so a long task
-(a backup) always posts with a valid token. Each run starts with a fresh login
-(`job_token refresh`); a failed login stops the run.
+minutes (default 15). The CLI logs in for each call that needs a token (`job usage`,
+`job config`, `job config-receiver`, `job config-dummy`) and keeps nothing: no token is stored in
+the jobs directory, and a long task never holds an expired one. The other calls carry their own
+one-time body and need no token.
 
 ## The jobs token: the jobs grants, its own server
 
@@ -135,7 +138,8 @@ first start of the new release.
 
 ## Streams between replication-manager and the jobs
 
-The data does not go through the API: it goes over raw TCP (socat on the database side).
+The data does not go through the API: it goes over raw TCP (`replication-manager-cli stream` on
+the database side).
 - **To the database:** replication-manager sends to the jobs listener (`SST_RECEIVER_PORT`)
   a backup to restore (reseed, flashback, PostgreSQL restore), the jobs script (jobs upgrade)
   and a config.
@@ -147,8 +151,7 @@ was restored, installed and run as the new jobs script, or stored as a backup. T
 password is not in the config, so neither side had a secret to check the stream with. The
 jobs key is that secret.
 
-Every stream now starts with a header line (`utils/jobapi/stream.go`; `job_stream_mac` in the
-script):
+Every stream now starts with a header line (`utils/jobapi/stream.go`, on both sides):
 
     MRMSTREAM1 <ts> <nonce> <hex HMAC-SHA256(SHA256(secret), "<direction>:<server>:<ts>:<nonce>")>
 
@@ -158,14 +161,14 @@ script):
 - **Direction:** `to-db` or `to-repman`, so a header sent one way cannot be replayed the other.
 - **To the database:**
   - The four senders of `cluster_sst.go` write the header before any data.
-  - `job_stream_open` sits between socat and the consumer. It copies the rest only when the
-    MAC matches, the timestamp is within 300 seconds (`JOB_STREAM_WINDOW`) and the nonce is
-    new (`<jobs dir>/.stream_nonces`, twice the window: bounded).
-  - Otherwise nothing is written: the restore aborts before unpacking, the new script is not
-    installed, the config is not extracted, and the job logs why.
-  - The PostgreSQL sidecar does the same with `replication-manager-cli stream --listen --job`.
+  - The listener is the CLI (`stream --listen --job`, `job upgrade`, `job config-dummy`:
+    `Client.CheckStream`). It copies the rest only when the MAC matches, the timestamp is within
+    300 seconds (`jobapi.StreamWindow`) and the nonce is new (a file in the temporary directory,
+    twice the window: bounded).
+  - Otherwise nothing is written and the CLI exits 3: the restore aborts before unpacking, the
+    new script is not installed, the config is not extracted, and the job logs why.
 - **To replication-manager:**
-  - The script signs with `job_stream_signed`; the PostgreSQL sidecar with `stream --to --job`.
+  - The jobs (the script and the PostgreSQL sidecar) sign with `stream --to --job`.
   - The receivers (`tcp_con_handle_to_file`, `_to_gzip`) check it with `acceptJobStream`:
     MAC, window, and the nonce in the job body store.
   - A refused connection is closed, and the receiver waits for the next one until its
@@ -226,7 +229,7 @@ With the cluster's jobs key, the init container logs in like the jobs:
 
 ## Not covered here
 
-- **Certificate check.** The script talks TLS to `api-port` with `verify=0`: without
+- **Certificate check.** The CLI talks TLS to `api-port` without checking the certificate: without
   `monitoring-ssl-cert`, replication-manager serves a self-signed certificate generated at each
   start, which a database server cannot verify. A man in the middle can still read a live token
   (15 minutes) or a body before it is used; it can no longer replay a body, and a token it

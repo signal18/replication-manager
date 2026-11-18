@@ -13,10 +13,12 @@ package netstream
 
 import (
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"io"
 	"net"
 	"runtime"
+	"sync/atomic"
 	"time"
 
 	"github.com/klauspost/pgzip"
@@ -32,8 +34,23 @@ type Options struct {
 	Header           []byte        // written first, uncompressed (the job stream header), nil for none
 }
 
+// ErrReceiverClosed: the receiver closed the connection before the end of the stream (a
+// backup cancelled or failed on its side). Send returns it as soon as that happens, while
+// in may still be sending nothing (a dump client blocked on a lock): the sender is then
+// stopped by its caller, not left running under its lock.
+var ErrReceiverClosed = errors.New("the receiver closed the stream")
+
+// ErrRefused: the listener took no stream, every connection failed its check (the job
+// stream header).
+var ErrRefused = errors.New("stream refused")
+
 // Send copies in to addr (host:port) and closes the write side, so the receiver sees the
 // end of the stream. It returns the bytes read from in (before compression).
+//
+// The stream is two-way, as socat's was: the connection is read too, so Send ends with
+// ErrReceiverClosed when the receiver closes it first, without waiting for in. What the
+// receiver sends is discarded. The copy from in is then left behind, blocked at most until
+// in ends: for the CLI, which exits at once; do not call it from a long-running process.
 func Send(in io.Reader, addr string, opts Options) (int64, error) {
 	timeout := opts.ConnectTimeout
 	if timeout <= 0 {
@@ -57,6 +74,39 @@ func Send(in io.Reader, addr string, opts Options) (int64, error) {
 		}
 	}
 
+	closed := make(chan struct{})
+	go func() {
+		io.Copy(io.Discard, conn)
+		close(closed)
+	}()
+	counted := &countingReader{r: in}
+	sent := make(chan error, 1)
+	var written atomic.Bool // everything was written, set before the half-close
+	go func() { sent <- copyTo(conn, counted, opts, &written) }()
+
+	select {
+	case err = <-sent:
+	case <-closed:
+		if written.Load() {
+			// the receiver closed after the end of the stream (on our EOF): the send is
+			// complete, its outcome is the copy's
+			err = <-sent
+			break
+		}
+		select {
+		case err = <-sent: // ended together: the copy's own outcome
+		default:
+			return counted.n.Load(), fmt.Errorf("send to %s: %w", addr, ErrReceiverClosed)
+		}
+	}
+	if err != nil {
+		return counted.n.Load(), fmt.Errorf("send to %s: %w", addr, err)
+	}
+	return counted.n.Load(), nil
+}
+
+// copyTo writes in to conn, through parallel gzip when asked, and closes the write side.
+func copyTo(conn net.Conn, in io.Reader, opts Options, written *atomic.Bool) error {
 	var out io.Writer = conn
 	var gz *pgzip.Writer
 	if opts.Gzip {
@@ -64,33 +114,44 @@ func Send(in io.Reader, addr string, opts Options) (int64, error) {
 		if level < 1 || level > 9 {
 			level = pgzip.DefaultCompression
 		}
+		var err error
 		if gz, err = pgzip.NewWriterLevel(conn, level); err != nil {
-			return 0, fmt.Errorf("gzip writer: %w", err)
+			return fmt.Errorf("gzip writer: %w", err)
 		}
+		// blocks of 1 MiB, one per CPU: the backup is the job's whole work
 		gz.SetConcurrency(1<<20, runtime.NumCPU())
 		out = gz
 	}
-
-	n, err := io.Copy(out, in)
-	if err != nil {
-		return n, fmt.Errorf("send to %s: %w", addr, err)
+	if _, err := io.Copy(out, in); err != nil {
+		return err
 	}
 	if gz != nil {
 		if err := gz.Close(); err != nil {
-			return n, fmt.Errorf("flush gzip to %s: %w", addr, err)
+			return fmt.Errorf("flush gzip: %w", err)
 		}
 	}
-	// half-close: the receiver reads EOF while the socket stays readable
+	// before the half-close: the receiver cannot see the end of the stream earlier, so a
+	// close it makes on that end always finds this set
+	written.Store(true)
+	// half-close: the receiver reads EOF, the connection stays open for its close
 	switch c := conn.(type) {
 	case *net.TCPConn:
-		err = c.CloseWrite()
+		return c.CloseWrite()
 	case *tls.Conn:
-		err = c.CloseWrite()
+		return c.CloseWrite()
 	}
-	if err != nil {
-		return n, fmt.Errorf("close stream to %s: %w", addr, err)
-	}
-	return n, nil
+	return nil
+}
+
+type countingReader struct {
+	r io.Reader
+	n atomic.Int64
+}
+
+func (c *countingReader) Read(p []byte) (int, error) {
+	n, err := c.r.Read(p)
+	c.n.Add(int64(n))
+	return n, err
 }
 
 // Receive listens on addr, accepts ONE connection and copies what it sends to out until the
@@ -103,17 +164,24 @@ func Receive(addr string, out io.Writer, accept time.Duration) (int64, error) {
 
 // ReceiveChecked is Receive taking only a connection check accepts (the job stream header,
 // read from the connection before its data): a refused connection is closed and the listener
-// waits for the next one, within the same accept time. The last refusal is returned when
-// none was accepted.
+// waits for the next one, within the same accept time. ErrRefused (with the last refusal) is
+// returned when none was accepted.
 func ReceiveChecked(addr string, out io.Writer, accept time.Duration, check func(io.Reader) error) (int64, error) {
-	if accept <= 0 {
-		accept = 10 * time.Minute
-	}
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		return 0, err
 	}
 	defer ln.Close()
+	return AcceptChecked(ln, out, accept, check)
+}
+
+// AcceptChecked is ReceiveChecked on a listener already open: the caller opens it before it
+// asks replication-manager to send (the jobs upgrade, the config), so the sender never finds
+// the port closed.
+func AcceptChecked(ln net.Listener, out io.Writer, accept time.Duration, check func(io.Reader) error) (int64, error) {
+	if accept <= 0 {
+		accept = 10 * time.Minute
+	}
 	if tl, ok := ln.(*net.TCPListener); ok {
 		tl.SetDeadline(time.Now().Add(accept))
 	}
@@ -122,12 +190,11 @@ func ReceiveChecked(addr string, out io.Writer, accept time.Duration, check func
 		conn, err := ln.Accept()
 		if err != nil {
 			if refused != nil {
-				return 0, refused
+				return 0, fmt.Errorf("%w: %v", ErrRefused, refused)
 			}
 			return 0, err
 		}
 		if check != nil {
-			// a connection that sends nothing must not hold the listener
 			conn.SetReadDeadline(time.Now().Add(30 * time.Second))
 			refused = check(conn)
 			conn.SetReadDeadline(time.Time{})

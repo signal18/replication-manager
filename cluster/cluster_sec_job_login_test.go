@@ -9,12 +9,14 @@ package cluster
 
 import (
 	"bytes"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net"
-	"path/filepath"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -26,31 +28,35 @@ import (
 	"github.com/signal18/replication-manager/utils/state"
 )
 
-// scriptJobBody builds a job body with the jobs script's own functions (job_body and the
-// helpers it calls), so the test covers what a database server really posts.
-func scriptJobBody(t *testing.T, payload, password string) []byte {
+// clientJobBody builds a job body as the jobs post it (jobapi, replication-manager-cli job):
+// the payload's members stamped with a timestamp and a random nonce, encrypted under a random
+// IV with the database password. The payload is the test's own, so a body without a server
+// can be built too.
+func clientJobBody(t *testing.T, payload, password string) []byte {
 	t.Helper()
-	return scriptJobBodyKey(t, payload, password, "")
+	return clientJobBodyKey(t, payload, password, "")
 }
 
-// scriptJobBodyKey is scriptJobBody with JOBS_API_KEY set as the ssh environment sets it.
-func scriptJobBodyKey(t *testing.T, payload, password, jobsKey string) []byte {
+// clientJobBodyKey is clientJobBody encrypted with the jobs key when jobsKey is set.
+func clientJobBodyKey(t *testing.T, payload, password, jobsKey string) []byte {
 	t.Helper()
-	for _, bin := range []string{"bash", "openssl", "sha256sum"} {
-		if _, err := exec.LookPath(bin); err != nil {
-			t.Skipf("%s not found", bin)
-		}
+	clear := map[string]interface{}{}
+	if err := json.Unmarshal([]byte(payload), &clear); err != nil {
+		t.Fatalf("payload %s: %v", payload, err)
 	}
-	fns := `src=../share/scripts/dbjobs_new.sh
-eval "$(sed -n '/^pad_pkcs7() {/,/^}/p; /^derive_key() {/,/^}/p; /^jobs_key() {/,/^}/p; /^job_body() {/,/^}/p' "$src")"
-job_body "$1" "$2"`
-	cmd := exec.Command("bash", "-c", fns, "job_body", payload, password)
-	cmd.Env = append(cmd.Environ(), "JOBS_API_KEY="+jobsKey)
-	out, err := cmd.Output()
+	nonce, iv := make([]byte, 16), make([]byte, 16)
+	rand.Read(nonce)
+	rand.Read(iv)
+	clear["ts"], clear["nonce"] = time.Now().Unix(), hex.EncodeToString(nonce)
+	secret, keyname := password, "db"
+	if jobsKey != "" {
+		secret, keyname = jobsKey, "jobs"
+	}
+	body, err := jobapi.SealBody(clear, secret, keyname, iv)
 	if err != nil {
-		t.Fatalf("job_body: %v", err)
+		t.Fatal(err)
 	}
-	return bytes.TrimSpace(out)
+	return body
 }
 
 // legacyJobBody is the body of a jobs script older than the one-time format: the IV derived
@@ -80,7 +86,7 @@ func jobLoginServer() *ServerMonitor {
 // a replay; a body outside the window is refused.
 func TestOpenJobBodyOneTime(t *testing.T) {
 	s := jobLoginServer()
-	body := scriptJobBody(t, `{"server":"db1:3306", "secret":"pw"}`, s.Pass)
+	body := clientJobBody(t, `{"server":"db1:3306", "secret":"pw"}`, s.Pass)
 	now := time.Now()
 
 	data, mode, code, err := s.OpenJobBody(body, now, false)
@@ -95,11 +101,11 @@ func TestOpenJobBodyOneTime(t *testing.T) {
 		t.Fatalf("replay must be refused 401, got %d %v", code, err)
 	}
 
-	late := scriptJobBody(t, `{"server":"db1:3306", "secret":"pw"}`, s.Pass)
+	late := clientJobBody(t, `{"server":"db1:3306", "secret":"pw"}`, s.Pass)
 	if _, _, code, _ = s.OpenJobBody(late, now.Add(10*time.Minute), false); code != 401 {
 		t.Fatalf("a body 10 min old must be refused with a 5 min window, got %d", code)
 	}
-	empty := scriptJobBody(t, `{}`, s.Pass)
+	empty := clientJobBody(t, `{}`, s.Pass)
 	if _, _, code, err = s.OpenJobBody(empty, now, false); code != 200 {
 		t.Fatalf("an empty object stamped by the script must be valid JSON, got %d %v", code, err)
 	}
@@ -129,7 +135,7 @@ func TestOpenJobBodyLegacy(t *testing.T) {
 	}
 
 	// the new script answers: a one-time body from the server closes the legacy one everywhere
-	if _, _, code, err := s.OpenJobBody(scriptJobBody(t, `{"server":"db1:3306","secret":"pw"}`, s.Pass), time.Now(), false); code != 200 {
+	if _, _, code, err := s.OpenJobBody(clientJobBody(t, `{"server":"db1:3306","secret":"pw"}`, s.Pass), time.Now(), false); code != 200 {
 		t.Fatalf("one-time body of the new script: %d %v", code, err)
 	}
 	if _, _, code, _ := s.OpenJobBody(body, time.Now(), true); code != 401 {
@@ -161,7 +167,7 @@ func TestOpenJobBodyBadIVAndBound(t *testing.T) {
 			t.Fatalf("nonce %d: %v %v", i, ok, err)
 		}
 	}
-	body := scriptJobBody(t, `{"server":"db1:3306","secret":"pw"}`, s.Pass)
+	body := clientJobBody(t, `{"server":"db1:3306","secret":"pw"}`, s.Pass)
 	if _, _, code, _ := s.OpenJobBody(body, now, false); code != 503 {
 		t.Fatalf("a full cluster share must refuse 503, got %d", code)
 	}
@@ -202,7 +208,7 @@ func TestOpenJobBodyJobsKey(t *testing.T) {
 		t.Fatalf("the jobs key is derived per cluster, apart from the system key: %q", jk)
 	}
 
-	body := scriptJobBodyKey(t, `{"server":"db1:3306"}`, s.Pass, jk)
+	body := clientJobBodyKey(t, `{"server":"db1:3306"}`, s.Pass, jk)
 	if !strings.Contains(string(body), `"key":"jobs"`) {
 		t.Fatalf("the script must name the jobs key: %s", body)
 	}
@@ -211,18 +217,18 @@ func TestOpenJobBodyJobsKey(t *testing.T) {
 		t.Fatalf("jobs key: code %d, mode %s, err %v, data %s", code, mode, err, data)
 	}
 
-	stolen := scriptJobBodyKey(t, `{"server":"db1:3306"}`, s.Pass, jk)
+	stolen := clientJobBodyKey(t, `{"server":"db1:3306"}`, s.Pass, jk)
 	if _, _, code, _ := other.OpenJobBody(stolen, time.Now(), false); code != 401 {
 		t.Fatalf("a body naming db1 posted for db2 must be refused, got %d", code)
 	}
 
-	login := scriptJobBodyKey(t, `{"server":"db1:3306"}`, s.Pass, jk)
+	login := clientJobBodyKey(t, `{"server":"db1:3306"}`, s.Pass, jk)
 	if node, _, code, err := c.SecretLoginCheck(map[string]string{"serverName": "db1", "serverPort": "3306"}, io.NopCloser(bytes.NewReader(login))); code != 200 || node != s {
 		t.Fatalf("secret-login with the jobs key and no secret: code %d, err %v", code, err)
 	}
 
 	c.Conf.SecretKey = nil
-	late := scriptJobBodyKey(t, `{"server":"db1:3306"}`, s.Pass, jk)
+	late := clientJobBodyKey(t, `{"server":"db1:3306"}`, s.Pass, jk)
 	if _, _, code, _ := s.OpenJobBody(late, time.Now(), false); code != 401 {
 		t.Fatalf("no persistent key: a jobs-key body must be refused, got %d", code)
 	}
@@ -294,22 +300,27 @@ func TestJobsPrincipalGrants(t *testing.T) {
 	}
 }
 
-// scriptStream runs the jobs script's stream functions as the jobs of db1:3306 do: fn is
-// job_stream_open (a stream to the jobs listener) or job_stream_signed (a stream to
-// replication-manager). It returns what goes through and why it was refused (job_stream_open).
-func scriptStream(t *testing.T, fn, logDir string, stream []byte, password, jobsKey string) (string, string) {
+// openJobStream takes a stream on the jobs listener of db1:3306 as replication-manager-cli
+// does (Client.CheckStream, nonces in dir): it returns what goes through and why it was refused.
+func openJobStream(dir string, stream []byte, password, jobsKey string) (string, string) {
+	c := &jobapi.Client{Server: "db1", Port: "3306", Secret: password, JobsKey: jobsKey}
+	r := bytes.NewReader(stream)
+	if err := c.CheckStream(r, filepath.Join(dir, "nonces"), time.Now()); err != nil {
+		return "", err.Error()
+	}
+	rest, _ := io.ReadAll(r)
+	return string(rest), ""
+}
+
+// signedJobStream is a stream of db1:3306 to replication-manager as replication-manager-cli
+// sends it (stream --job --to): the job stream header, then the payload.
+func signedJobStream(t *testing.T, payload, jobsKey string) string {
 	t.Helper()
-	fns := `src=../share/scripts/dbjobs_new.sh
-eval "$(sed -n '/^derive_key() {/,/^}/p; /^jobs_key() {/,/^}/p; /^readonly JOB_STREAM_WINDOW=/p; /^job_stream_open() {/,/^}/p; /^job_stream_mac() {/,/^}/p; /^job_stream_signed() {/,/^}/p; /^job_stream_refused() {/,/^}/p' "$src")"
-` + fn + `
-job_stream_refused >&2`
-	cmd := exec.Command("bash", "-c", fns)
-	cmd.Env = append(cmd.Environ(), "JOBS_API_KEY="+jobsKey, "MYSQL_ROOT_PASSWORD="+password, "MYSQL_SERVER=db1", "MYSQL_PORT=3306", "LOG_DIR="+logDir)
-	cmd.Stdin = bytes.NewReader(stream)
-	var out, refused bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &out, &refused
-	cmd.Run()
-	return out.String(), strings.TrimSpace(refused.String())
+	h, err := jobapi.StreamHeader(jobsKey, jobapi.StreamToMonitor, "db1:3306", time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(h) + payload
 }
 
 // A stream to the jobs listener is taken only with the header replication-manager signs with
@@ -323,9 +334,7 @@ func TestJobStreamHeader(t *testing.T) {
 	c.Conf.SecretKey = []byte("0123456789abcdef0123456789abcdef")
 	jk := c.GetJobsKey()
 	payload := "#!/bin/bash\necho new script\n# EOF\n"
-	open := func(dir string, stream []byte, password, key string) (string, string) {
-		return scriptStream(t, "job_stream_open", dir, stream, password, key)
-	}
+	open := openJobStream
 
 	if _, _, code, _ := s.OpenJobBody(legacyJobBody(t, `{"server":"db1:3306"}`, s.Pass), time.Now(), true); code != 200 {
 		t.Fatalf("legacy body: %d", code)
@@ -333,7 +342,7 @@ func TestJobStreamHeader(t *testing.T) {
 	if h, err := s.JobStreamHeader(time.Now()); h != nil || err != nil {
 		t.Fatalf("an older script reads no header: got %q %v", h, err)
 	}
-	if _, _, code, err := s.OpenJobBody(scriptJobBodyKey(t, `{"server":"db1:3306"}`, s.Pass, jk), time.Now(), false); code != 200 {
+	if _, _, code, err := s.OpenJobBody(clientJobBodyKey(t, `{"server":"db1:3306"}`, s.Pass, jk), time.Now(), false); code != 200 {
 		t.Fatalf("jobs key body: %d %v", code, err)
 	}
 	if _, _, code, _ := s.OpenJobBody(legacyJobBody(t, `{"server":"db1:3306"}`, s.Pass), time.Now(), true); code != 401 {
@@ -369,7 +378,7 @@ func TestJobStreamHeader(t *testing.T) {
 	}
 
 	// without a jobs key the script signs with the database password, and so does the header
-	if _, _, code, err := s.OpenJobBody(scriptJobBody(t, `{"server":"db1:3306"}`, s.Pass), time.Now(), false); code != 200 {
+	if _, _, code, err := s.OpenJobBody(clientJobBody(t, `{"server":"db1:3306"}`, s.Pass), time.Now(), false); code != 200 {
 		t.Fatalf("db key body: %d %v", code, err)
 	}
 	h, _ = s.JobStreamHeader(time.Now())
@@ -378,7 +387,7 @@ func TestJobStreamHeader(t *testing.T) {
 	}
 }
 
-// A replication-manager receiver takes the stream the script signs (job_stream_signed) and
+// A replication-manager receiver takes the stream the jobs sign (stream --job --to) and
 // refuses one without the header, closing it and waiting for the next on the same listener:
 // whoever connects first neither writes the backup nor blocks it; WARN0277 says so.
 func TestJobStreamReceiver(t *testing.T) {
@@ -386,13 +395,13 @@ func TestJobStreamReceiver(t *testing.T) {
 	c := s.ClusterGroup
 	c.Conf.SecretKey = []byte("0123456789abcdef0123456789abcdef")
 	jk := c.GetJobsKey()
-	if _, _, code, err := s.OpenJobBody(scriptJobBodyKey(t, `{"server":"db1:3306"}`, s.Pass, jk), time.Now(), false); code != 200 {
+	if _, _, code, err := s.OpenJobBody(clientJobBodyKey(t, `{"server":"db1:3306"}`, s.Pass, jk), time.Now(), false); code != 200 {
 		t.Fatalf("jobs key body: %d %v", code, err)
 	}
 	payload := "backup bytes\x00\x01 and more\n"
-	signed, _ := scriptStream(t, "job_stream_signed", t.TempDir(), []byte(payload), s.Pass, jk)
+	signed := signedJobStream(t, payload, jk)
 	if !strings.HasPrefix(signed, jobapi.StreamTag+" ") || !strings.HasSuffix(signed, payload) {
-		t.Fatalf("job_stream_signed: %q", signed)
+		t.Fatalf("signed stream: %q", signed)
 	}
 
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
@@ -524,7 +533,7 @@ func TestOpenJobBodyLegacyPostgreSQL(t *testing.T) {
 	if len(open) != 1 || open[0].ErrKey != "WARN0278" || !strings.Contains(open[0].ErrDesc, s.URL) {
 		t.Fatalf("WARN0278 on the PostgreSQL server: %+v", open)
 	}
-	if _, _, code, err := s.OpenJobBody(scriptJobBody(t, `{"server":"db1:3306","secret":"pw"}`, s.Pass), time.Now(), false); code != 200 {
+	if _, _, code, err := s.OpenJobBody(clientJobBody(t, `{"server":"db1:3306","secret":"pw"}`, s.Pass), time.Now(), false); code != 200 {
 		t.Fatalf("one-time body of the new client: %d %v", code, err)
 	}
 	if _, _, code, _ := s.OpenJobBody(body, time.Now(), false); code != 401 {
@@ -539,11 +548,11 @@ func TestJobStreamSilentConnectionDoesNotBlock(t *testing.T) {
 	c := s.ClusterGroup
 	c.Conf.SecretKey = []byte("0123456789abcdef0123456789abcdef")
 	jk := c.GetJobsKey()
-	if _, _, code, err := s.OpenJobBody(scriptJobBodyKey(t, `{"server":"db1:3306"}`, s.Pass, jk), time.Now(), false); code != 200 {
+	if _, _, code, err := s.OpenJobBody(clientJobBodyKey(t, `{"server":"db1:3306"}`, s.Pass, jk), time.Now(), false); code != 200 {
 		t.Fatalf("jobs key body: %d %v", code, err)
 	}
 	payload := "backup bytes\n"
-	signed, _ := scriptStream(t, "job_stream_signed", t.TempDir(), []byte(payload), s.Pass, jk)
+	signed := signedJobStream(t, payload, jk)
 
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -589,7 +598,7 @@ func TestJobStreamSilentConnectionDoesNotBlock(t *testing.T) {
 // ERR00120, its jobs stop; a replay of a captured body does not.
 func TestOpenJobBodyRefusedIsAState(t *testing.T) {
 	s := jobLoginServer()
-	body := scriptJobBody(t, `{"server":"db1:3306","secret":"pw"}`, s.Pass)
+	body := clientJobBody(t, `{"server":"db1:3306","secret":"pw"}`, s.Pass)
 	if _, _, code, _ := s.OpenJobBody(body, time.Now().Add(time.Hour), false); code != 401 {
 		t.Fatalf("a body an hour off must be refused, got %d", code)
 	}
@@ -600,7 +609,7 @@ func TestOpenJobBodyRefusedIsAState(t *testing.T) {
 	}
 
 	r := jobLoginServer()
-	fresh := scriptJobBody(t, `{"server":"db1:3306","secret":"pw"}`, r.Pass)
+	fresh := clientJobBody(t, `{"server":"db1:3306","secret":"pw"}`, r.Pass)
 	if _, _, code, _ := r.OpenJobBody(fresh, time.Now(), false); code != 200 {
 		t.Fatalf("first use: %d", code)
 	}
@@ -643,6 +652,37 @@ func TestJobsCheckReceiverOnePerServer(t *testing.T) {
 	}
 	if n := count(); n != 1 {
 		t.Fatalf("one jobs check receiver per server, got %d", n)
+	}
+	s.jobsCheckSST.Load().tcplistener.Close()
+}
+
+// A jobs check whose stream ended frees its server: the next check opens a receiver instead of
+// being refused as busy (the receiver used to stay registered with its connection until restart).
+func TestJobsCheckReceiverFreedAfterItsStream(t *testing.T) {
+	s := jobLoginServer()
+	c := s.ClusterGroup
+	c.Conf.BindAddr = "127.0.0.1"
+	c.SstAvailablePorts = map[string]string{}
+	file := filepath.Join(t.TempDir(), "dbjobs_new.current")
+	port, err := c.SSTRunJobsCheckReceiver(s, file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	conn, err := net.Dial("tcp", "127.0.0.1:"+port)
+	if err != nil {
+		t.Fatal(err)
+	}
+	conn.Write([]byte("#!/bin/bash\n# EOF\n"))
+	conn.Close()
+	deadline := time.Now().Add(5 * time.Second)
+	for s.jobsCheckSST.Load() != nil && time.Now().Before(deadline) {
+		time.Sleep(20 * time.Millisecond)
+	}
+	if s.jobsCheckSST.Load() != nil {
+		t.Fatal("the jobs check receiver stays registered after its stream")
+	}
+	if _, err := c.SSTRunJobsCheckReceiver(s, file); err != nil {
+		t.Fatalf("the next jobs check is refused: %v", err)
 	}
 	s.jobsCheckSST.Load().tcplistener.Close()
 }

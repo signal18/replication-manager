@@ -29,8 +29,8 @@ import (
 // The secret is the one the jobs sign their bodies with: the cluster's jobs key, else the
 // database password. The direction (StreamToDB, StreamToMonitor) keeps a header sent one way
 // from being replayed the other way. The receiver refuses a header outside its window or
-// with a nonce it already took. dbjobs_new.sh builds and checks the same line with openssl
-// (job_stream_header, job_stream_open).
+// with a nonce it already took. The jobs build and check it through replication-manager-cli
+// (stream --job, job upgrade, job config-dummy: Client.CheckStream).
 
 const (
 	StreamTag       = "MRMSTREAM1"
@@ -38,6 +38,8 @@ const (
 	StreamToMonitor = "to-repman" // the jobs to a replication-manager receiver
 	// StreamHeaderMax bounds the header line a receiver reads before giving up.
 	StreamHeaderMax = 200
+	// StreamWindow is the accepted distance to a header's timestamp, on the jobs' side.
+	StreamWindow = 300 * time.Second
 )
 
 var streamHeaderRe = regexp.MustCompile(`^` + StreamTag + ` ([0-9]+) ([0-9a-f]{32}) ([0-9a-f]{64})$`)
@@ -129,4 +131,21 @@ func TakeStreamNonce(path, nonce string, now time.Time, keep time.Duration) erro
 		return err
 	}
 	return os.Rename(tmp, path)
+}
+
+// CheckStream takes a stream to the jobs listener only with the header replication-manager
+// signs for this server (StreamToDB), once: it reads the header from r, checks it within
+// StreamWindow and records its nonce in noncesFile (the nonces of twice the window). What
+// follows the header stays in r.
+func (c *Client) CheckStream(r io.Reader, noncesFile string, now time.Time) error {
+	line, err := ReadStreamHeader(r)
+	if err != nil {
+		return err
+	}
+	secret, _ := c.StreamSecret()
+	nonce, err := CheckStreamHeader(line, secret, StreamToDB, c.Name(), now, StreamWindow)
+	if err != nil {
+		return err
+	}
+	return TakeStreamNonce(noncesFile, nonce, now, 2*StreamWindow)
 }
