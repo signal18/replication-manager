@@ -151,6 +151,7 @@ func (repman *ReplicationManager) httpserver() {
 		router.HandleFunc("/slideshow", repman.rootHandler)
 		router.PathPrefix("/images/").Handler(repman.handlerStatic(repman.DashboardFSHandler()))
 		router.PathPrefix("/assets/").Handler(repman.handlerStatic(repman.DashboardFSHandler()))
+		router.PathPrefix("/static/configurator/bin/").Handler(repman.handlerStatic(repman.handlerStaticCli(repman.DashboardFSHandler())))
 		router.PathPrefix("/static/").Handler(repman.handlerStatic(repman.DashboardFSHandler()))
 		router.PathPrefix("/app/").Handler(repman.handlerStatic(repman.DashboardFSHandler()))
 		router.PathPrefix("/grafana/").Handler(http.StripPrefix("/grafana/", repman.SharedirHandler("grafana")))
