@@ -48,17 +48,17 @@ func TestNeedsJobsUpgradeDeferredWithoutCli(t *testing.T) {
 	if got := ask(""); got != "false" || node.HasWaitJobsUpgradeCookie() {
 		t.Fatalf("an older script is not upgraded: %q, cookie %v", got, node.HasWaitJobsUpgradeCookie())
 	}
-	cl.CheckJobsUpgradeDeferred()
+	cl.CheckJobsCli()
 	if open := cl.ConfigStateMachine.GetOpenStates(); len(open) != 1 || open[0].ErrKey != "WARN0325" {
 		t.Fatalf("WARN0325: %+v", open)
 	}
 
 	node.SetWaitJobsUpgradeCookie()
-	if got := ask(jobapi.UserAgentPrefix + "v3.1.52"); got != "true" || node.JobsCliVersion != "v3.1.52" {
+	if got := ask(jobapi.UserAgentPrefix + "v3.1.52"); got != "true" || func() bool { cl.CheckJobsCli(); return node.JobsCliVersion != "v3.1.52" }() {
 		t.Fatalf("the current CLI gets its upgrade: %q, version %q", got, node.JobsCliVersion)
 	}
 	cl.ConfigStateMachine.ClearState()
-	cl.CheckJobsUpgradeDeferred()
+	cl.CheckJobsCli()
 	if open := cl.ConfigStateMachine.GetOpenStates(); len(open) != 0 {
 		t.Fatalf("no longer deferred: %+v", open)
 	}

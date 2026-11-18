@@ -151,3 +151,26 @@ func TestVersionFromUserAgent(t *testing.T) {
 		t.Fatalf("bounded: %d", len(v))
 	}
 }
+
+// need-config-refresh says "not needed" with a 500 and its text: no error; any other answer is one.
+func TestNeedConfigRefreshAnswers(t *testing.T) {
+	answer := http.StatusInternalServerError
+	text := "500 -No config refresh needed!"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(answer)
+		w.Write([]byte(text))
+	}))
+	defer srv.Close()
+	c := &Client{BaseURL: srv.URL, Cluster: "c1", Server: "db1", Port: "3306", JobsKey: "jk", HTTP: srv.Client()}
+	if ok, err := c.NeedConfigRefresh(); ok || err != nil {
+		t.Fatalf("not needed: %v %v", ok, err)
+	}
+	answer, text = http.StatusOK, "200 -Need config refresh!"
+	if ok, err := c.NeedConfigRefresh(); !ok || err != nil {
+		t.Fatalf("needed: %v %v", ok, err)
+	}
+	answer, text = http.StatusUnauthorized, "no"
+	if _, err := c.NeedConfigRefresh(); err == nil {
+		t.Fatal("a 401 is an error, not a no")
+	}
+}

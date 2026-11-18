@@ -166,3 +166,26 @@ func TestAcceptCheckedRefusesAndTakesTheNextStream(t *testing.T) {
 		t.Fatalf("no stream accepted within the time is ErrRefused, got %v", err)
 	}
 }
+
+// A receiver that closes as soon as it reads the end of the stream (on our half-close) does not
+// turn a complete send into ErrReceiverClosed.
+func TestSendCompleteWhenTheReceiverClosesOnEOF(t *testing.T) {
+	for i := 0; i < 50; i++ {
+		l, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		go func() {
+			c, err := l.Accept()
+			if err != nil {
+				return
+			}
+			io.Copy(io.Discard, c)
+			c.Close()
+		}()
+		if _, err := Send(strings.NewReader("whole stream"), l.Addr().String(), Options{}); err != nil {
+			t.Fatalf("run %d: a complete send is no error: %v", i, err)
+		}
+		l.Close()
+	}
+}

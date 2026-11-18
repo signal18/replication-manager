@@ -1577,13 +1577,13 @@ func (server *ServerMonitor) JobRunViaSSH() error {
 	// the script reaches replication-manager only through replication-manager-cli: put it on the
 	// host first; without it the run is skipped with the cause in JobsCliError
 	if err := server.ensureJobsCliViaSSH(client); err != nil {
-		if server.JobsCliError != err.Error() {
+		if prev := server.jobsCliError.Load(); prev == nil || *prev != err.Error() {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Database jobs of %s not run: %s", server.URL, err)
 		}
-		server.JobsCliError = err.Error()
+		server.setJobsCliError(err.Error())
 		return err
 	}
-	server.JobsCliError = ""
+	server.setJobsCliError("")
 
 	var (
 		stdout bytes.Buffer
@@ -2065,17 +2065,30 @@ func (server *ServerMonitor) DeferJobsUpgrade(cli string) {
 // JobsCliCalled records the CLI version a jobs call named; the jobs then run with a CLI new
 // enough for the current script, so a deferred upgrade is no longer deferred.
 func (server *ServerMonitor) JobsCliCalled(version string) {
-	server.JobsCliVersion = version
+	server.jobsCliVersion.Store(&version)
 	server.jobsUpgradeDeferred.Store(nil)
 }
 
-// CheckJobsUpgradeDeferred keeps WARN0325 open, per server, while its script upgrade is deferred.
-func (cluster *Cluster) CheckJobsUpgradeDeferred() {
-	if cluster.ConfigStateMachine == nil {
-		return
-	}
+// setJobsCliError records why the on-premise jobs cannot run on the host, "" when they can.
+func (server *ServerMonitor) setJobsCliError(msg string) {
+	server.jobsCliError.Store(&msg)
+}
+
+// CheckJobsCli runs every tick: it publishes the CLI version and the CLI error of each server
+// (JobsCliVersion, JobsCliError, read by the API) and keeps WARN0325 open while a server's
+// script upgrade is deferred.
+func (cluster *Cluster) CheckJobsCli() {
 	for _, s := range cluster.Servers {
 		if s == nil {
+			continue
+		}
+		if v := s.jobsCliVersion.Load(); v != nil {
+			s.JobsCliVersion = *v
+		}
+		if e := s.jobsCliError.Load(); e != nil {
+			s.JobsCliError = *e
+		}
+		if cluster.ConfigStateMachine == nil {
 			continue
 		}
 		if cli := s.jobsUpgradeDeferred.Load(); cli != nil {

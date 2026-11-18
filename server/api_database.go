@@ -5357,6 +5357,8 @@ func (repman *ReplicationManager) handlerMuxServerNeeds(w http.ResponseWriter, r
 				node.JobsCliCalled(cli)
 			} else if checktype == string(config.ConstTaskJobsUpgrade) && !node.IsPostgreSQLHost() {
 				node.DeferJobsUpgrade("")
+				// 500 and "false" on purpose: it is how this route says "not needed", and what
+				// every older script (check_task_needs) and CLI (job needs, exit 1) read as no
 				w.WriteHeader(http.StatusInternalServerError)
 				w.Write([]byte("false"))
 				return
@@ -5415,7 +5417,9 @@ func (repman *ReplicationManager) handlerMuxServerJobsCheckReceiver(w http.Respo
 
 		if node != nil {
 			// the CLI the jobs run with (an older script without it names none)
-			node.JobsCliVersion = jobapi.VersionFromUserAgent(r.UserAgent())
+			if cli := jobapi.VersionFromUserAgent(r.UserAgent()); cli != "" {
+				node.JobsCliCalled(cli)
+			}
 			rcv_port, err := mycluster.SSTRunJobsCheckReceiver(node, filepath.Join(node.Datadir, "dbjobs_new.current"))
 			if err != nil {
 				http.Error(w, "Error opening receiver ports: "+err.Error(), 500)
@@ -5789,7 +5793,9 @@ func (repman *ReplicationManager) handlerMuxServerJobsUpgradeSender(w http.Respo
 		}
 
 		if node != nil {
-			node.JobsCliVersion = jobapi.VersionFromUserAgent(r.UserAgent())
+			if cli := jobapi.VersionFromUserAgent(r.UserAgent()); cli != "" {
+				node.JobsCliCalled(cli)
+			}
 			mycluster.SetJobsUpgradeSender(node)
 			w.WriteHeader(200)
 			w.Write([]byte("Sending dbjobs_new file"))

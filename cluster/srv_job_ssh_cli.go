@@ -42,6 +42,9 @@ import (
 const (
 	jobsCliName      = "replication-manager-cli"
 	jobsCliCopyRetry = 10 * time.Minute
+	// jobsCliCopyTimeout bounds one copy (F2: the server's job runner never waits on a stalled
+	// link or a hung host): 200 MB at about 250 kB/s
+	jobsCliCopyTimeout = 15 * time.Minute
 )
 
 // jobsCliLocal is the CLI on the monitor and what the hosts compare their copy with, computed
@@ -157,7 +160,8 @@ func (server *ServerMonitor) ensureJobsCliViaSSH(client *sshclient.Client) error
 	}
 	dir := server.GetJobDatadir()
 	target := dir + "/" + jobsCliName
-	out, err := client.Cmd("uname -sm; echo; cat " + shellSingleQuote(target+".sha256") + " 2>/dev/null").Output()
+	// the marker counts only next to an executable CLI: a CLI removed or broken by hand is copied again
+	out, err := client.Cmd("uname -sm; echo; [ -x " + shellSingleQuote(target) + " ] && cat " + shellSingleQuote(target+".sha256") + " 2>/dev/null").Output()
 	if err != nil {
 		return fail(fmt.Errorf("cannot read the host system and the %s marker: %v", jobsCliName, err))
 	}
@@ -201,7 +205,12 @@ chmod 755 "$t"
 "$t" version >/dev/null 2>&1 || { echo "the copy does not run (noexec mount?)" >&2; exit 4; }
 mv -f "$t" "$d/` + jobsCliName + `"; trap - EXIT
 printf '%s %s\n' "$h" ` + shellSingleQuote(local.version) + ` >"$d/` + jobsCliName + `.sha256"`
+	timer := time.AfterFunc(jobsCliCopyTimeout, func() { session.Close() })
+	defer timer.Stop()
 	if err := session.Run(script); err != nil {
+		if !timer.Stop() {
+			return fmt.Errorf("not done within %s", jobsCliCopyTimeout)
+		}
 		if msg := strings.TrimSpace(stderr.String()); msg != "" {
 			return fmt.Errorf("%s", msg)
 		}

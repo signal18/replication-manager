@@ -50,7 +50,7 @@ var ErrRefused = errors.New("stream refused")
 // The stream is two-way, as socat's was: the connection is read too, so Send ends with
 // ErrReceiverClosed when the receiver closes it first, without waiting for in. What the
 // receiver sends is discarded. The copy from in is then left behind, blocked at most until
-// in ends (the CLI exits at once).
+// in ends: for the CLI, which exits at once; do not call it from a long-running process.
 func Send(in io.Reader, addr string, opts Options) (int64, error) {
 	timeout := opts.ConnectTimeout
 	if timeout <= 0 {
@@ -81,11 +81,18 @@ func Send(in io.Reader, addr string, opts Options) (int64, error) {
 	}()
 	counted := &countingReader{r: in}
 	sent := make(chan error, 1)
-	go func() { sent <- copyTo(conn, counted, opts) }()
+	var written atomic.Bool // everything was written, set before the half-close
+	go func() { sent <- copyTo(conn, counted, opts, &written) }()
 
 	select {
 	case err = <-sent:
 	case <-closed:
+		if written.Load() {
+			// the receiver closed after the end of the stream (on our EOF): the send is
+			// complete, its outcome is the copy's
+			err = <-sent
+			break
+		}
 		select {
 		case err = <-sent: // ended together: the copy's own outcome
 		default:
@@ -99,7 +106,7 @@ func Send(in io.Reader, addr string, opts Options) (int64, error) {
 }
 
 // copyTo writes in to conn, through parallel gzip when asked, and closes the write side.
-func copyTo(conn net.Conn, in io.Reader, opts Options) error {
+func copyTo(conn net.Conn, in io.Reader, opts Options, written *atomic.Bool) error {
 	var out io.Writer = conn
 	var gz *pgzip.Writer
 	if opts.Gzip {
@@ -123,6 +130,9 @@ func copyTo(conn net.Conn, in io.Reader, opts Options) error {
 			return fmt.Errorf("flush gzip: %w", err)
 		}
 	}
+	// before the half-close: the receiver cannot see the end of the stream earlier, so a
+	// close it makes on that end always finds this set
+	written.Store(true)
 	// half-close: the receiver reads EOF, the connection stays open for its close
 	switch c := conn.(type) {
 	case *net.TCPConn:

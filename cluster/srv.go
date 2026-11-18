@@ -109,6 +109,10 @@ type ServerMonitor struct {
 	JobsCliError   string `json:"jobsCliError"`
 	JobsCliVersion string `json:"jobsCliVersion"`
 	jobsCliMu      sync.Mutex
+	// written by the API handlers and the SSH job runner, copied to the two fields above by
+	// the tick (CheckJobsCli), which alone writes them
+	jobsCliVersion atomic.Pointer[string]
+	jobsCliError   atomic.Pointer[string]
 	jobsCliErr     error
 	jobsCliErrAt   time.Time
 	// jobsUpgradeDeferred: the CLI version ("none" without one) the jobs asked for their script

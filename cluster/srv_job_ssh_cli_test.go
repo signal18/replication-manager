@@ -74,7 +74,7 @@ func TestJobsUpgradeDeferredWithoutCli(t *testing.T) {
 	if s.HasWaitJobsUpgradeCookie() || s.HasRollingJobsUpgradeCookie() {
 		t.Fatal("a deferred upgrade drops its cookies")
 	}
-	c.CheckJobsUpgradeDeferred()
+	c.CheckJobsCli()
 	open := c.ConfigStateMachine.GetOpenStates()
 	if len(open) != 1 || open[0].ErrKey != "WARN0325" || !strings.Contains(open[0].ErrDesc, "db1:3306") || !strings.Contains(open[0].ErrDesc, "none") {
 		t.Fatalf("WARN0325 naming the server and the CLI it saw: %+v", open)
@@ -82,8 +82,8 @@ func TestJobsUpgradeDeferredWithoutCli(t *testing.T) {
 
 	s.JobsCliCalled("v3.1.52")
 	c.ConfigStateMachine.ClearState()
-	c.CheckJobsUpgradeDeferred()
-	if open := c.ConfigStateMachine.GetOpenStates(); len(open) != 0 || s.JobsCliVersion != "v3.1.52" {
+	c.CheckJobsCli()
+	if open := c.ConfigStateMachine.GetOpenStates(); len(open) != 0 || func() bool { c.CheckJobsCli(); return s.JobsCliVersion != "v3.1.52" }() {
 		t.Fatalf("jobs calling with a CLI version close it: %+v %q", open, s.JobsCliVersion)
 	}
 }

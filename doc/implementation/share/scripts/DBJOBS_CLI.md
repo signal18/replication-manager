@@ -53,11 +53,17 @@ directory (`GetJobDatadir`, the script's `TMP_DIR`), over the same SSH connectio
    per file (path, size, modification time).
 4. **Failure:** permissions, space, `noexec`, a checksum mismatch or another platform skip the
    run. The cause is logged once (task module, error) and kept in the server's `jobsCliError`
-   (API). A failed copy is retried at most every 10 minutes per server, not at every run.
+   (API). A failed copy is retried at most every 10 minutes per server, not at every run, and
+   one copy is given 15 minutes at most (the session is closed then): a stalled link never holds
+   the server's job runner.
+5. **The marker counts only next to an executable CLI:** a CLI removed or broken on the host is
+   copied again even when its marker is still there.
 
 **The version in use:** every CLI call names its version in the User-Agent
 (`replication-manager-cli/<version>`, `jobapi.Client.Version`). The jobs check and jobs upgrade
-handlers record it in the server's `jobsCliVersion`, so a host running an older CLI shows.
+handlers record it, and the tick (`CheckJobsCli`) publishes it in the server's `jobsCliVersion`
+(the version and the copy error are written by handlers and the job runner as atomics; only the
+tick writes the fields the API reads), so a host running an older CLI shows.
 
 ## Identity
 
@@ -110,7 +116,7 @@ lacks `job log`, `job check`, `job upgrade` and `job config-*`. So:
 - **Rolling upgrade:** the upgrade and rolling cookies are dropped, so the rolling jobs upgrade
   does not wait 5 minutes on that server.
 - **WARN0325 (config domain, per server):** it names the server and the CLI version it saw
-  ("none" for an older script or CLI). `CheckJobsUpgradeDeferred` re-opens it every tick.
+  ("none" for an older script or CLI). `CheckJobsCli` re-opens it every tick.
 - **Until the restart:** the jobs go on with their current script, through socat. This is why
   socat stays in the xtrabackup bundle for this release.
 - **When it closes:** at the service restart, the init brings the new CLI and the new script

@@ -466,11 +466,18 @@ func (c *Client) RequestJobsUpgrade() error {
 // NeedConfigRefresh tells whether replication-manager wants the configuration of the
 // running server read again (need-config-refresh).
 func (c *Client) NeedConfigRefresh() (bool, error) {
-	code, _, err := c.do(http.MethodGet, c.endpoint("/need-config-refresh"), nil, "")
+	code, body, err := c.do(http.MethodGet, c.endpoint("/need-config-refresh"), nil, "")
 	if err != nil {
 		return false, err
 	}
-	return code == http.StatusOK, nil
+	switch {
+	case code == http.StatusOK:
+		return true, nil
+	case strings.Contains(body, "No config refresh needed"):
+		// the route answers "not needed" with a 500 and this text
+		return false, nil
+	}
+	return false, fmt.Errorf("config refresh: http %d %s", code, body)
 }
 
 // ConfigReceiver opens the receivers of the configuration check and returns their JSON

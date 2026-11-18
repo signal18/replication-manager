@@ -89,6 +89,9 @@ func jobFail(err error) {
 // jobRetry runs call up to --retries times, 2 seconds apart, each with a new job body: a
 // state or log line lost to a replication-manager restart is sent again.
 func jobRetry(call func() error) error {
+	if cliJobRetries > 10 {
+		cliJobRetries = 10 // 20 s at most between the first and the last attempt
+	}
 	var err error
 	for i := 0; i < cliJobRetries || i == 0; i++ {
 		if i > 0 {
@@ -297,7 +300,9 @@ var jobConfigDummyCmd = &cobra.Command{
 				return err
 			}
 			if _, listen, _ := net.SplitHostPort(cliJobListen); listen != port {
-				return fmt.Errorf("replication-manager sends the config to port %s, the listener is on %s", port, cliJobListen)
+				// the port is known only from this answer: the send is already asked for and
+				// goes to a port nobody listens on (it fails on its side)
+				return fmt.Errorf("replication-manager was asked to send the config and sends it to port %s, not to the listener on %s: check SST_RECEIVER_PORT against the server's sst port", port, cliJobListen)
 			}
 			return nil
 		})
