@@ -1,0 +1,779 @@
+# Orchestrator plugin interface (design, refs #333, #338, #1775)
+
+Status: design, waiting for the maintainer's decisions (section 8). No implementation code
+is written before they are taken.
+
+The provisioning layer of replication-manager drives five backends (OpenSVC, Kubernetes,
+on-premise over SSH, localhost processes, SlapOS) through `switch cluster.GetOrchestrator()`
+and `if ... == config.ConstOrchestratorOpenSVC` statements spread over the `cluster`,
+`server`, `mcp`, `configurator` and `regtest` packages. Law T7 asks for one Go interface
+with several backends, as `DatabaseProxy` does for the routers; F6 asks that the client
+can replace every action with a script. #333 (2021) asked for the interface and for named
+orchestrators in the configuration; #338 for an external-script backend; #1775 for the
+full service-definition refresh behind the interface. This document is the design the
+next major implements.
+
+Measured on `origin/develop` at `3fe5c6578` (2026-11-18):
+
+```
+git grep -n -E 'ConstOrchestrator|ProvOrchestrator\s*(==|!=)' -- '*.go' | grep -v _test | wc -l
+227
+```
+
+Of the 227 lines: 15 are the constants and `GetOrchestratorsProv` in `config/config.go`,
+16 are the regtest targets and skips; **196 are dispatch or capability checks in the
+product** (`cluster/` 171, `server/` 21, `mcp/` 2, `cluster/configurator/` 6 counted in
+`cluster/`). `cluster/prov.go` alone holds 79. On top of these, **27 calls from `server/`
+and `mcp/` reach a backend method directly** (`mycluster.OpenSVC*`, `mycluster.K8S*`,
+`mycluster.OnPremiseGetSSHKey`) with no dispatch at all: the app actions, abort and
+clear-instance-state, the OpenSVC template push, the Kubernetes manifests and storage
+classes, the OpenSVC pools, the SSH key for the terminal. They are the hidden half of the
+inventory and are listed with the rest.
+
+The precedent to copy is `DatabaseProxy` (`cluster/prx.go`): one interface, the
+implementations in the `cluster` package (`cluster/prx_haproxy.go`, `prx_proxysql.go`,
+`prx_maxscale.go`, `prx_mariadbshardproxy.go`, `prx_myproxy.go`, with the protocol clients
+under `router/`), one registry (`newProxyList()`), the callers hold the interface. A
+`DatabaseOrchetrator` interface (misspelled) already exists in `cluster/orchestrator.go`
+since 2021 with eleven methods and no implementation: nothing calls it. The design
+replaces it (T2, T19) rather than adding a second one beside it.
+
+---
+
+## 1. Inventory of the dispatch
+
+Operations, where they dispatch today, which backends answer, and which backends fall
+through a `default:` or a `return nil` without saying so ("silent no-op"). File paths are
+relative to the repository root; line numbers are those of `3fe5c6578`.
+
+### 1.1 Database service lifecycle
+
+| Operation | Site (file:function) | OpenSVC | Kubernetes | on-premise | localhost | SlapOS | Silent no-op |
+|---|---|---|---|---|---|---|---|
+| provision (all) | `cluster/prov.go:ProvisionServices` | yes | yes | yes | yes | cookie only | unknown type falls through `default:` then blocks on `errorChan` |
+| provision (one) | `cluster/prov.go:InitDatabaseService` | yes | yes | yes | yes | cookie only | unknown type returns nil |
+| unprovision (all) | `cluster/prov.go:Unprovision` | yes | yes | yes | yes | cookie only | unknown type falls through |
+| unprovision (one) | `cluster/prov.go:UnprovisionDatabaseService` | yes | yes | yes | default branch | cookie only | none: `default:` is localhost |
+| start | `cluster/prov.go:StartDatabaseService` | yes | yes | SSH script | process | cookie only | unknown type: "No valid orchestrator" |
+| stop | `cluster/prov.go:StopDatabaseService` | yes | yes | `OnPremiseStop` (SQL SHUTDOWN) | **`OnPremiseStop`**, not `LocalhostStop` | SQL shutdown | unknown type: error |
+| clean stop (upgrade) | `cluster/prov.go:StopDatabaseServiceClean` | through stop | through stop | through stop | through stop | through stop | none |
+| restart | `cluster/prov.go:RestartDatabaseService` | atomic restart with `rid` | pod repull | stop, wait, start | stop, wait, start | stop, wait, start | none |
+| restart allowed (API) | `server/api_database.go:restartSupportedForOrchestrator` | yes | yes | 501 | 501 | 501 | the HTTP 501 is explicit |
+| freeze / unfreeze | `cluster/prov.go:FreezeDatabaseService`, `UnfreezeDatabaseService` | v3 only | **nil** | **nil** | **nil** | **nil** | every other backend returns nil |
+| upgrade (one) | `cluster/prov.go:UpgradeDatabaseService` | two-phase pull in the caller | two-phase pull | SSH upgrade script | two-phase pull (no image: no-op) | two-phase pull (no-op) | localhost and SlapOS run a pull cycle that changes nothing |
+| abort | `server/api_database.go:2783` -> `OpenSVCAbortDatabaseService` | yes | - | - | - | - | API handler is OpenSVC-only, no dispatch |
+| clear instance state | `server/api_database.go:2833` -> `OpenSVCClearDatabaseInstanceState` | yes | - | - | - | - | same |
+| working node of a service | `cluster/srv.go:GetWorkingOrchestratorNode`, `cluster/prx.go:(*Proxy).GetWorkingOrchestratorNode` | yes | **nil** | nil | nil | nil | Kubernetes has a node (the pod's) and does not report it |
+| placement node | `cluster/prov.go:placementNode` | yes | through agent | agent | agent | agent | none |
+| database agent | `cluster/prov.go:GetDatabaseAgent`, `GetDatabaseAgentNames`, `GetAgentInOrchetrator` | agents | nodes | hosts | localhost | partitions | none (generic over `cluster.Agents`) |
+| bootstrap jobs table (test) | `cluster/prov.go:Bootstrap:122` | yes | **no** | no | no | no | Kubernetes runs the same jobs containers |
+
+### 1.2 Service definition (#1775)
+
+| Operation | Site | OpenSVC | Kubernetes | on-premise | localhost | SlapOS | Silent no-op |
+|---|---|---|---|---|---|---|---|
+| update image / pull policy | `cluster/prov.go:UpdateDatabaseServiceConfig` | `image_pull_policy` | image + pull policy | **nil** | **nil** | **nil** | three |
+| full definition refresh | `cluster/prov.go:UpgradeDatabaseDeploymentOnStart` | v3: `OpenSVCUpdateDatabaseTemplate`; v2: nil | `k8sUpdateDatabaseServiceConfigKeepImage` (image and pull policy only, not the full spec) | **nil** | **nil** | **nil** | the issue #1775 |
+| full definition refresh (API) | `server/api_database.go:2934` `update-opensvc-template` -> `OpenSVCUpdateDatabaseTemplate` | yes | - | - | - | - | OpenSVC-named action, no dispatch |
+| rolling plan: push definitions | `cluster/cluster_roll_plan.go:215,291` | yes | **no** | n/a (plan ends at 264) | no | no | Kubernetes definitions are not pushed by the plan |
+| rolling restart/upgrade step | `cluster/cluster_roll.go:437,492` | generic | `isKubernetes` branch | `rollingUpgradeOnPremise` | generic | generic | none |
+| current image of the service | `cluster/prov.go:openSVCCurrentDatabaseImage` | yes | - | - | - | - | OpenSVC-only helper, called from the OpenSVC branch |
+| service definition read (API) | `server/api_database.go:4768` | `GetDatabaseServiceConfig` | `K8SGetDatabaseManifests` | default: error | error | error | explicit |
+| image resolution | `cluster/prov_image.go:ResolveDatabaseImage:50` | yes | yes | **skipped** | yes | yes | on-premise has no image: correct, but by name |
+
+### 1.3 Proxy services
+
+| Operation | Site | OpenSVC | Kubernetes | on-premise | localhost | SlapOS | Silent no-op |
+|---|---|---|---|---|---|---|---|
+| provision / unprovision / start / stop | `cluster/prov.go:ProvisionServices`, `InitProxyService`, `Unprovision`, `UnprovisionProxyService`, `StopProxyService`, `StartProxyService` | yes | yes | yes | yes | cookie only | unknown type falls through; `proxyServiceOrchestrator` routes HAProxy standby to localhost whatever the cluster |
+| start reapplies config | `cluster/prov.go:startReappliesProxyConfig` | if fetch-config | if fetch-config | false | true | false | capability by name |
+| abort / clear instance state | `server/api_proxy.go:218,268` -> `OpenSVC*ProxyService` | yes | - | - | - | - | OpenSVC-only handlers |
+| proxy FQDN | `cluster/prx_haproxy.go:273`, `prx_maxscale.go:53`, `prx_proxysql.go:51` | `prov-orchestrator-cluster` | `k8sClusterDomain` | n/a | n/a | n/a | capability by name |
+| local HAProxy render | `cluster/prx_haproxy.go:359` | no | no | no | yes (and standby) | no | capability by name |
+| ProxySQL default user | `cluster/cluster_get.go:799` | external | external | external | admin | external | by name |
+| bind address, datadir, confdir | `cluster/prx_get.go:174,211,214,222` | `/var/lib/<type>` | same | same | same | partition paths | layout by name |
+| DNS presence | `cluster/prx_has.go:80` | true | true | by host | by host | by host | capability by name |
+
+### 1.4 App services
+
+| Operation | Site | OpenSVC | others | Silent no-op |
+|---|---|---|---|---|
+| provision | `cluster/prov.go:InitAppService` | yes | **return nil** | four backends |
+| unprovision | `server/api_app.go:1182`, `mcp/tools_app.go:153` -> `OpenSVCUnprovisionAppService` | yes | mcp answers "implemented for the OpenSVC orchestrator only" | API has no check |
+| start / stop / restart | `server/api_app.go:699,766,856`, `mcp/tools_app.go:130,187,201-205` | yes | mcp refuses; API calls OpenSVC whatever the cluster | API |
+| abort / clear | `server/api_app.go:906,956` | yes | - | - |
+| update config / template / route | `server/api_app.go:1055,1104,1146,3501` | yes | - | - |
+| drop app: gateway routes, DNS | `cluster/cluster_del.go:228` | yes | **no** | Kubernetes apps keep their routes |
+| layout, bind, DNS | `cluster/app_get.go:501,514,517,525`, `app_has.go:81` | as proxies | as proxies | by name |
+| compute sensor units | `cluster/cluster_compute_sensor.go:204` | v3 | **no** | by name |
+
+### 1.5 Cluster level and bootstrap
+
+| Operation | Site | OpenSVC | Kubernetes | on-premise | localhost | SlapOS | Note |
+|---|---|---|---|---|---|---|---|
+| nodes / agents inventory | `cluster/cluster.go:initOrchetratorNodes:1104` | `OpenSVCGetNodes` | `K8SGetNodes` | `OnPremiseGetNodes` | `LocalhostGetNodes` | `SlapOSGetNodes` | unknown type: `log.Fatalln` (kills the monitor, F2) |
+| storage inventory (API) | `server/api_cluster.go:10892,10939` | `OpenSVCGetPoolInfoList` | `K8SGetStorageClasses` | - | - | - | two endpoints, no dispatch |
+| daemon node stats | `cluster/prov.go:ReloadOpenSVCDaemonNodeStats`, `cluster/cluster_get.go:GetOpenSVCStats:1845`, `cluster/cluster_chk.go:CheckOpenSVCTresholds:1294`, `server/server.go:2671,2676` | yes | no | no | no | no | OpenSVC-only, by name |
+| service agents check | `cluster/cluster_chk.go:CheckClusterServiceAgents:1472` | yes | **no** | no | no | no | Kubernetes pods move too |
+| jobs version / jobs containers | `cluster/cluster_chk.go:CheckJobsVersion:1425`, `cluster_set.go:SetRollingJobsUpgradeState:3089`, `srv_job_postgres.go:255`, `srv_wal_archive.go:97` | yes | **no** | n/a | n/a | n/a | Kubernetes runs jobs containers too |
+| dbjobs need scheduler + SSH | `cluster/cluster_chk.go:1352,1404` | no | no | yes | yes | no | capability by name |
+| certificate load check | `cluster/cluster_chk.go:CheckHasFailCertLoadP12:1504` | yes | - | - | - | - | OpenSVC-only, correct |
+| orchestrator default | `cluster/cluster_set.go:SetProvOrchestrator:2208` | | | fallback | | | an unknown value becomes on-premise with an ERROR log and no state |
+| add servers / proxies in test mode | `cluster/cluster_set.go:1814-1900` | `dbN` | `dbN` | none | free port | `dbN` | by name |
+| DB tags for localhost | `cluster/cluster.go:1044` | | | | pkg, no docker | | by name |
+| service plan DBU | `cluster/cluster.go:1603` | plan | plan | computed | computed | plan | by name |
+| hosts known | `cluster/cluster_has.go:229` | | | true | | | by name |
+| Galera SST account check | `cluster/cluster_sec_galera_sst.go:30` | yes | yes | skipped | yes | yes | by name |
+| jobs login from container | `cluster/cluster_sec_job_login.go:395` | docker/podman | true | false | false | false | by name |
+| child / staging cluster | `server/server_child_cluster.go:120` | yes | yes | refused | refused | refused | explicit error |
+| self-service | `server/server_selfservice.go:56,418` | yes | yes | refused | refused | refused | explicit |
+| bootstrap DR URL | `cluster/bootstrap_dr.go:98` | v3 | error | error | error | error | explicit "OpenSVC cluster API only" |
+| domain of a service | `cluster/cluster_get.go:GetDomain:372,378`, `GetDomainHeadCluster:391,397` | `prov-orchestrator-cluster` | `k8sClusterDomain` | "" | "" | "" | by name |
+| plan disk for the binlog budget | `cluster/srv_binlog_budget.go:152` | yes | yes | 0 | 0 | 0 | by name |
+| provisioned TLS CA path | `cluster/srv_set.go:1165` | yes | yes | own | own | own | by name |
+| container orchestrator | `cluster/configurator/distribution.go:isContainerOrchestrator:128` | yes | yes | no | no | no | by name |
+| config rendering paths | `cluster/configurator/configurator.go:962,1383,1393,1397`, `cluster/srv_cnf.go:147-186`, `cluster/srv_get.go:208,1519` | container paths | container paths | host paths | `server.Datadir` | partition paths | layout by name |
+| settings refused by orchestrator | `cluster/cluster_set.go:2239,2278` (xtrabackup image, run-as UID) | yes | yes | refused | refused | refused | explicit |
+| Kubernetes resource sensor | `cluster/prov_k8s_db.go:962` | - | yes | - | - | - | correct, by name |
+| OpenSVC pg cap | `cluster/cluster_resize_dynamic.go:1744,1758` | v3 | - | - | - | - | correct, by name |
+
+### 1.6 Resize and dynamic resources
+
+| Operation | Site | OpenSVC | Kubernetes | on-premise | localhost | SlapOS | Note |
+|---|---|---|---|---|---|---|---|
+| resizer selection | `cluster/cluster_resize_dynamic.go:resourceResizer:135` | `openSVCResizer` | `k8sResizer` or script | script | script | script | already an interface (`resourceResizer`); the switch picks the implementation |
+| cpu step | `cluster/cluster_resize_dynamic.go:794,801` | v3 cgroup | pod patch | - | - | - | by name inside a generic loop |
+| client change script | `cluster/prov_scripts.go:RunDynamicResourceChangeScript` | override | override | override | override | override | F6: already orchestrator-agnostic |
+
+### 1.7 Secrets, credentials, password rotation
+
+| Operation | Site | OpenSVC | Kubernetes | others | Note |
+|---|---|---|---|---|---|
+| orchestrator secret writer | `cluster/store_orchestrator.go:orchestratorStoreWriter:210` | `openSVCStore` | `k8sStore` | nil | already an interface (`orchestratorStore`); callers test for nil |
+| server credential store | `cluster/store_orchestrator.go:ServerOrchestratorStore:287` | yes | yes | error | explicit |
+| init credentials | `cluster/store_orchestrator.go:initCredentials:318` | `REPLICATION_MANAGER_PASSWORD` | `REPMAN_AUTH_HEADER` | nil | explicit |
+| rotate root password | `cluster/prov.go:ProvisionRotatePasswords:1331` | `writeOpenSVCRootPassword` | `k8sRotatePasswordsWithClient` | **nil** | three silent |
+| admin password follows rotation | `cluster/cluster_user_rotate.go:192` | queue | queue | nothing | by name |
+| root password drift check | `cluster/cluster_secret_kv.go:checkOpenSVCRootPassword:1244` | yes | **no** | no | Kubernetes has the same secret and no drift check |
+| unprovision secret | `cluster/prov.go:Unprovision:454` | `OpenSVCUnprovisionSecret` | **no** | no | the Kubernetes Secret stays after unprovision |
+| mandatory server stores | `server/server_secret_kv.go:336` | yes | yes | - | table by type |
+
+### 1.8 Terminal and exec
+
+| Operation | Site | OpenSVC | others | Note |
+|---|---|---|---|---|
+| terminal enabled | `server/server.go:1933,1994` | kept | forced off at load | by name, before the cluster exists |
+| terminal in a container | `server/server_tty.go:53,64`, `server/api.go:2714` (gotty) | container `rid` | refused | by name |
+| SSH key for the terminal | `server/server_tty.go:151,241` -> `OnPremiseGetSSHKey` | - | on-premise | direct call |
+
+### 1.9 Settings and GUI
+
+`config.GetOrchestratorsProv` (`config/config.go:3157`) lists the five types with their
+availability from `prov-orchestrator-enable`; the dashboard reads `provOrchestrator` in 33
+places of `share/dashboard_react/src` (the Top, Home, Settings, ClusterDB, Terminal, Apps
+and DBServers pages) to show or hide the provisioning actions and the terminal.
+
+---
+
+## 2. The interface
+
+### 2.1 Shape
+
+One value per orchestrator, several facets. A backend implements every facet; a facet
+whose concept does not exist on that backend returns the sentinel (2.3), never nil. Callers
+hold the facet they need, as `DatabaseProxy` callers hold `DatabaseProxy`.
+
+```go
+// cluster/orchestrator.go (replaces the 2021 DatabaseOrchetrator stub)
+
+// Orchestrator drives the services of a cluster on one infrastructure: it creates,
+// starts, stops and removes the database, proxy and app services, holds the shared
+// secret the services read, and knows the nodes they run on. One value per named
+// orchestrator (3.1); the cluster's servers resolve to one of them (3.3).
+type Orchestrator interface {
+	OrchestratorInfo
+	NodeInventory
+	DatabaseOrchestrator
+	ProxyOrchestrator
+	AppOrchestrator
+	SecretOrchestrator
+	TerminalOrchestrator
+}
+
+type OrchestratorInfo interface {
+	Name() string            // the configured name ("infra1"), or the type for a synthesized one
+	Type() string            // config.ConstOrchestratorOpenSVC, ...Kubernetes, ...OnPremise, ...Localhost, ...SlapOS, ...Script
+	Traits() OrchestratorTraits
+	Layout(server *ServerMonitor) ServiceLayout
+	ProxyLayout(prx DatabaseProxy) ServiceLayout
+	Check() error            // reachability and credentials, for the state WARN0325 (2.4)
+}
+
+// OrchestratorTraits replaces the "== OpenSVC || == Kubernetes" capability checks (1.5).
+// A trait is a fact about the backend, not a per-cluster setting: the settings that
+// refine it (prov-net-cni, haproxy-mode) stay where they are and are tested beside it.
+type OrchestratorTraits struct {
+	IsContainer         bool // configurator/distribution.go isContainerOrchestrator; TLS CA path; xtrabackup image; run-as UID
+	HasDNS              bool // prx_has.go, app_has.go HasDNS
+	HasSharedSecret     bool // store_orchestrator.go: a secret object the services read
+	HasPlacement        bool // agents mean something: prov-db-agents, placementNode, CheckClusterServiceAgents
+	HasPlanDisk         bool // srv_binlog_budget.go planDiskBytes
+	HasImage            bool // prov_image.go ResolveDatabaseImage; the two-phase pull upgrade
+	RunsJobsInContainer bool // cluster_chk.go WARN0170 gate, cluster_sec_job_login.go
+	StartFetchesConfig  bool // prov.go startReappliesProxyConfig (with prov-*-start-fetch-config)
+	ProvisionsNewHosts  bool // server_child_cluster.go, server_selfservice.go
+	HasTerminal         bool // server_tty.go, api.go: a shell in the service container
+	HasAtomicRestart    bool // restartSupportedForOrchestrator
+}
+
+// ServiceLayout replaces the path switches of srv_cnf.go, srv_get.go, prx_get.go and
+// app_get.go: where the service keeps its data, configuration, binaries and socket, and
+// what it binds to.
+type ServiceLayout struct {
+	Datadir, Confdir, Basedir, ClientBasedir, Binary, Socket, BindAddress, Domain string
+}
+
+type NodeInventory interface {
+	Nodes() ([]Agent, error)        // cluster.go initOrchetratorNodes; the Agent type stays
+	Storages() ([]Storage, error)   // OpenSVC pools, Kubernetes storage classes (api_cluster.go)
+	NodeStats() ([]NodeStats, error) // OpenSVC daemon node stats; ErrOrchestratorNotSupported elsewhere
+}
+
+type DatabaseOrchestrator interface {
+	ProvisionDatabaseService(server *ServerMonitor) error
+	UnprovisionDatabaseService(server *ServerMonitor) error
+	StartDatabaseService(server *ServerMonitor) error
+	StopDatabaseService(server *ServerMonitor) error
+	RestartDatabaseService(server *ServerMonitor, node, rid string) error // ErrOrchestratorNotSupported: the caller runs stop, wait, start
+	FreezeDatabaseService(server *ServerMonitor) error
+	UnfreezeDatabaseService(server *ServerMonitor) error
+	UpdateDatabaseServiceConfig(server *ServerMonitor, forcePull bool) error      // image and pull policy
+	RefreshDatabaseServiceDefinition(server *ServerMonitor, keepImage bool) error // #1775: the whole definition
+	UpgradeDatabaseService(server *ServerMonitor) error // the backend's own upgrade (on-premise script); ErrOrchestratorNotSupported: the caller runs the two-phase pull
+	DatabaseServiceDefinition(server *ServerMonitor) ([]byte, error) // the definition as the backend holds it
+	DatabaseServiceImage(server *ServerMonitor) (string, error)      // the image the service runs
+	DatabaseWorkingNode(server *ServerMonitor) (string, error)
+	AbortDatabaseService(server *ServerMonitor) error
+	ClearDatabaseInstanceState(server *ServerMonitor) error
+}
+
+type ProxyOrchestrator interface {
+	ProvisionProxyService(prx DatabaseProxy) error
+	UnprovisionProxyService(prx DatabaseProxy) error
+	StartProxyService(prx DatabaseProxy) error
+	StopProxyService(prx DatabaseProxy) error
+	RefreshProxyServiceDefinition(prx DatabaseProxy) error
+	ProxyWorkingNode(prx DatabaseProxy) (string, error)
+	AbortProxyService(prx DatabaseProxy) error
+	ClearProxyInstanceState(prx DatabaseProxy) error
+}
+
+type AppOrchestrator interface {
+	ProvisionAppService(app *App) error
+	UnprovisionAppService(app *App) error
+	StartAppService(app *App, node string) error
+	StopAppService(app *App, node string) error
+	RestartAppService(app *App, node, rid string) error
+	UpdateAppConfig(app *App) error            // variable maps and secrets, no restart
+	RefreshAppServiceDefinition(app *App) error // the whole definition, no restart
+	ProvisionAppRoute(app *App, route config.Route) error
+	WithdrawAppRoutes(app *App) error           // cluster_del.go
+	AbortAppService(app *App) error
+	ClearAppInstanceState(app *App) error
+}
+
+type SecretOrchestrator interface {
+	SecretStore() orchestratorStore // the existing interface of store_orchestrator.go; nil never: a backend without a secret returns a writer whose every method returns ErrOrchestratorNotSupported
+	ServerSecretStore(namespace string) (credstore.StoreWriter, error)
+	InitCredentials() []initCredential
+	RotateDatabasePassword(password string) error
+	UnprovisionSecret() error
+}
+
+type TerminalOrchestrator interface {
+	TerminalCommand(target terminalTarget, rid string) (tty.Command, error) // the shell into a service container, or the SSH command
+	DefaultContainer(target terminalTarget) (string, bool)
+}
+```
+
+What stays out of the interface, on purpose:
+
+- **The orchestration itself.** `ProvisionServices`, `Unprovision`, `RestartDatabaseService`'s
+  stop-wait-start, `UpgradeDatabaseService`'s two-phase pull, the rolling loops, the
+  cookies, the failover state, the `provisioningMutex`, the client script hooks
+  (`ProvisionDatabaseScript` and the others of `cluster/prov_scripts.go`) are the
+  orchestration layer in `cluster/prov.go`. They call the interface; they are not in it.
+  The Galera provision order and the engine-app case of a PostgreSQL member stay there too.
+- **The resizer.** `resourceResizer` (`cluster/cluster_resize_dynamic.go`) is already an
+  interface with four implementations; the switch that picks one becomes
+  `cluster.orchestrator(server).Resizer()` on `OrchestratorInfo` later, not in the first
+  steps. Listed in 5.
+- **The scripts of F6.** The `prov-db-*-script` and `prov-proxy-*-script` hooks run around
+  every backend's operation, as today. They are not the script backend of #338 (section 4):
+  a hook runs in addition to the backend; the script backend is the backend.
+
+### 2.2 Synchronous methods, the `errorChan` stays in the orchestration layer
+
+Every backend method returns its error. The `go backend(); err := <-cluster.errorChan`
+pattern, its ~90 sends inside the backends and the cross-talk class of #1769
+(`doc/implementation/cluster/ERRORCHAN_PROVISIONING.md`) move to one place:
+
+```go
+// cluster/prov.go
+func (cluster *Cluster) provisionDatabaseAsync(orch DatabaseOrchestrator, server *ServerMonitor) {
+	go func() { cluster.errorChan <- orch.ProvisionDatabaseService(server) }()
+}
+```
+
+A backend can then no longer send twice for one operation (the intra-op multi-send of
+#1769): it has no channel. The fan-out and its serialisation (`provisioningMutex`) are
+unchanged. This is the largest behaviour-preserving change of the migration (5, step 2) and
+the first decision of section 8.
+
+### 2.3 The sentinel
+
+```go
+// ErrOrchestratorNotSupported: the orchestrator has no such operation (a freeze on
+// Kubernetes, an app service on on-premise, a shared secret on localhost). Returned,
+// never nil: the caller decides between its generic path, a refusal to the user, or a
+// state. Wrapped with the operation and the orchestrator name: errors.Is tests it.
+var ErrOrchestratorNotSupported = errors.New("operation not supported by this orchestrator")
+```
+
+Named like `ErrOpenSVCAbortNotSupported` and `ErrOpenSVCClearNotSupported`
+(`cluster/prov_opensvc_db_failover.go`), which it replaces. Three caller patterns, and
+only three:
+
+1. **Generic fallback**: `RestartDatabaseService` not supported -> stop, wait, start;
+   `UpgradeDatabaseService` not supported -> two-phase pull; `FreezeDatabaseService` not
+   supported -> continue (logged at DEBUG, as the OpenSVC v2 no-op is today).
+2. **Refusal to the user**: an API action answers HTTP 501 with the error text (the
+   `restartSupportedForOrchestrator` 501 today); the MCP tool answers its error result.
+3. **A state** when the monitor needed the operation: `RotateDatabasePassword` not
+   supported while a rotation is pending keeps WARN0275 open with the reason, as the
+   failed write does today (2.4).
+
+A `default:` that returns nil for an unknown orchestrator type disappears with the
+switches: the registry refuses an unknown type at load (3.4).
+
+### 2.4 States and logs (T3, T5)
+
+Level and domain: an orchestrator failure is about one server's service, so a server-level
+state in the HA machine (the main `StateMachine`), as the provisioning states are today
+(WARN0170, WARN0275, WARN0324). Log module `config.ConstLogModOrchestrator`, as every
+backend logs today. New states, numbered after the last ones (WARN0324, ERR00121):
+
+| State | Level | Severity | When | Clears |
+|---|---|---|---|---|
+| ERR00122 | server | ERROR | an orchestrator operation the monitor or the user asked for failed on this server (provision, start, refresh): the service cannot do its job until someone acts. Text: `Orchestrator %s: %s of %s failed: %s` | the next successful operation of the same kind on the server |
+| WARN0325 | cluster | WARNING | `Check()` of a configured orchestrator fails (unreachable, bad credentials, script missing or not executable): every provisioning action of the cluster will fail. Text: `Orchestrator %s (%s) unreachable: %s` | the next successful check |
+| WARN0326 | cluster | WARNING | a configuration names an orchestrator that does not exist, or a server names one of another type than the cluster's and the operation needs the cluster's (3.3). Text: `Server %s names orchestrator %s: %s` | the configuration is fixed |
+
+The existing states keep their meaning: WARN0275 (the orchestrator secret lags the
+rotation), WARN0170 (dbjobs need a scheduler and SSH), WARN0324 (jobs never reached
+replication-manager). The error text never carries a secret (F10): the backends already
+log the key, not the value.
+
+### 2.5 Backend x method matrix
+
+Legend: **today** = the code exists and moves behind the method as is; **write** = to
+write in the migration; **n/a** = returns `ErrOrchestratorNotSupported` by design (the
+concept does not exist there); **hook** = the script backend runs its script with that
+action (section 4).
+
+| Method | OpenSVC | Kubernetes | on-premise | localhost | SlapOS | script |
+|---|---|---|---|---|---|---|
+| `Nodes` | today | today | today | today | today | hook `nodes` |
+| `Storages` | today (pools) | today (storage classes) | n/a | n/a | n/a | hook, optional |
+| `NodeStats` | today | write (metrics API) or n/a | n/a | n/a | n/a | n/a |
+| `Check` | write (`OpenSVCConnect` + a GET) | write (API server version) | write (SSH dial) | write (binary present) | write | write (stat, mode) |
+| `Traits` | write (constant) | write | write | write | write | from the script's `traits` action, cached at load |
+| `Layout` | today (paths) | today | today | today | today | hook `layout`, optional, defaults to on-premise paths |
+| `ProvisionDatabaseService` | today | today | today | today | cookie only (today) | hook |
+| `UnprovisionDatabaseService` | today | today | today | today | cookie only | hook |
+| `StartDatabaseService` | today | today | today | today | today | hook |
+| `StopDatabaseService` | today | today | today | **write** (`LocalhostStopDatabaseService` exists and is not called: the switch routes localhost to `OnPremiseStop`, 1.1) | today | hook |
+| `RestartDatabaseService` | today (rid) | today (repull) | n/a | n/a | n/a | hook, n/a on exit 3 |
+| `Freeze`/`Unfreeze` | today (v3), n/a on v2 | n/a | n/a | n/a | n/a | hook, optional |
+| `UpdateDatabaseServiceConfig` | today | today | n/a | n/a | n/a | hook |
+| `RefreshDatabaseServiceDefinition` | today (`OpenSVCUpdateDatabaseTemplate`) | **write**: the full Deployment spec, not only the image (#1775) | **write**: regenerate and push the host configuration (#1775) | write (same as on-premise) | n/a | hook |
+| `UpgradeDatabaseService` | n/a (generic two-phase) | n/a | today (SSH script) | n/a | n/a | hook |
+| `DatabaseServiceDefinition` | today (`GetDatabaseServiceConfig`) | today (`K8SGetDatabaseManifests`) | write (the rendered config bundle) | write | n/a | hook, optional |
+| `DatabaseServiceImage` | today | **write** (pod spec image) | n/a | n/a | n/a | hook, optional |
+| `DatabaseWorkingNode` | today | **write** (pod node) | n/a (the host) | n/a | n/a | hook, optional |
+| `Abort`/`ClearInstanceState` (db, proxy, app) | today | n/a | n/a | n/a | n/a | n/a |
+| `ProvisionProxyService` ... `StopProxyService` | today | today | today | today | cookie only | hook |
+| `RefreshProxyServiceDefinition` | today (`OpenSVCGetProxyTemplateV3` + update) | write | write | n/a (regenerated at start) | n/a | hook |
+| `ProxyWorkingNode` | today | write | n/a | n/a | n/a | hook, optional |
+| `ProvisionAppService` ... `RestartAppService` | today | **write** (app Deployment: open question, see 8) | n/a | n/a | n/a | hook |
+| `UpdateAppConfig`, `RefreshAppServiceDefinition`, `ProvisionAppRoute`, `WithdrawAppRoutes` | today | write or n/a | n/a | n/a | n/a | hook, optional |
+| `SecretStore` | today (`openSVCStore`) | today (`k8sStore`) | n/a | n/a | n/a | n/a (the script reads env) |
+| `ServerSecretStore` | today | today | n/a | n/a | n/a | n/a |
+| `InitCredentials` | today | today | none | none | none | none |
+| `RotateDatabasePassword` | today | today | n/a | n/a | n/a | hook `rotate-passwords` |
+| `UnprovisionSecret` | today | **write** (delete the cluster Secret) | n/a | n/a | n/a | n/a |
+| `TerminalCommand` | today (gotty) | **write** (`kubectl exec`-equivalent through the API) | today (SSH) | write (local shell) | n/a | n/a |
+
+Everything marked **write** is a gap the inventory found, not a feature request: each is
+the operation another backend has and this one lacks silently. They are listed so the
+matrix test (5.3) carries them as `n/a` or `todo` explicitly, and so the gaps become
+issues when their step comes, not before (T9).
+
+---
+
+## 3. Configuration model (#333)
+
+### 3.1 Named orchestrators
+
+A named orchestrator is a TOML table whose keys are **the same keys the flat configuration
+uses today**, without renaming: the OpenSVC block carries `opensvc-host`,
+`opensvc-admin-user`, `opensvc-user`, `opensvc-codeapp`, `opensvc-p12-certificate`,
+`opensvc-p12-secret`, `opensvc-use-collector-api`, `opensvc-collector-account`,
+`opensvc-v3-provision-delay`, `opensvc-image-force-pull`, `opensvc-use-orchestrated-start`,
+`opensvc-register`, `prov-orchestrator-cluster`; the Kubernetes block `kube-config`,
+`prov-kube-image-force-pull`, `prov-kube-storage-class`, `prov-kube-proxy-storage-class`,
+`prov-net-cni-cluster`; the on-premise block `onpremise-ssh`, `onpremise-ssh-port`,
+`onpremise-ssh-private-key`, `onpremise-ssh-credential` and the five
+`onpremise-ssh-*-script`; the SlapOS block `slapos-config` and the `slapos-*-partitions`;
+the script block the keys of section 4. One new key per block: `type`.
+
+```toml
+[orchestrator.infra1]
+type = "opensvc"
+opensvc-host = "collector.example:1215"
+opensvc-admin-user = "hash_..."          # a secret, encrypted as in the flat form (F9)
+opensvc-p12-secret = "hash_..."
+prov-orchestrator-cluster = "infra1"
+
+[orchestrator.infra2]
+type = "kube"
+kube-config = "/etc/replication-manager/kube/infra2.yaml"
+prov-kube-storage-class = "fast"
+
+[orchestrator.lab]
+type = "script"
+prov-orchestrator-script = "/usr/local/bin/repman-orchestrator"
+prov-orchestrator-script-timeout = 600
+
+[cluster1]
+prov-orchestrator = "infra1"
+db-servers-hosts = "db1,db2,db3"
+
+[cluster2]
+prov-orchestrator = "infra2"
+```
+
+Why the same key names (T19, T2): the synthesized orchestrator of 3.2 is then the identity
+transform, the encryption of secrets (`GetDecryptedValue("opensvc-p12-secret")`) and the
+immutable-key logic (`ImmuableMap`) apply by key name as they do today, and the user
+documentation of each key stays valid. The alternative, short names inside the block
+(`host`, `admin-user`), is a rename of fourteen keys and a second documentation.
+
+Where it lives: in `config.Config` as `Orchestrators map[string]OrchestratorConfig`
+(`mapstructure:"orchestrator" toml:"orchestrator" json:"orchestrators" scope:"server"`).
+`OrchestratorConfig` is a struct with the `Type` field and the subset of the `Config`
+fields above, with the same tags, so one `mapstructure` decode fills both. Every key is a
+Viper key (T16): `orchestrator.infra1.opensvc-host`. Hot reload and the API: the blocks are
+server-scope settings, changed through the global settings API and GUI (`GET/POST/DELETE
+/api/orchestrators[/{name}]`, Swagger, grant `GrantGlobalSettings` in
+`globalSettingsACLRules`; T6), immutable when set in `/etc` as every setting. They are
+written by `repman.SaveCallBack()` only (T25).
+
+Discovery: `DiscoverClusters` (`server/server.go:1535`) treats every top-level table as a
+cluster, except `default`, `saved-default` and `overwrite-default`. `orchestrator` joins
+that list. A cluster named `orchestrator` is refused at load (6).
+
+### 3.2 Compatibility: the synthesized orchestrator
+
+An existing configuration carries `prov-orchestrator = "opensvc"` (a type) and the flat
+keys at cluster level or in `[DEFAULT]`. It keeps working unchanged:
+
+- When `prov-orchestrator` names no `[orchestrator.<name>]` block and is one of the five
+  types, the registry builds a **synthesized orchestrator named after the type** from the
+  cluster's flat keys. Its `Name()` is the type. Two clusters with the same type and
+  different flat keys (two OpenSVC collectors) get two synthesized orchestrators, one per
+  cluster, as today.
+- A `prov-orchestrator` value equal to a block name uses that block.
+- A block name equal to a type (`[orchestrator.opensvc]`) is refused at load: ambiguous.
+- `prov-orchestrator-enable` keeps its meaning (which types the instance offers) and the
+  GUI list (`GetOrchestratorsProv`) grows the named blocks beside the types.
+- `GetOrchestrator()` keeps returning the string the configuration carries, so the 33
+  dashboard uses and the regtest targets (`OrchestratorTarget`) match on it until the
+  major; `cluster.Orchestrator().Type()` is what the code compares, never the name.
+
+The flat keys are not deprecated by this design. They are the per-cluster form; the blocks
+are the shared form. Deprecating the flat form is a separate decision for a later major.
+
+### 3.3 Per-server override
+
+#333 and #338 want a server mapped to its own orchestrator. Today the only per-server
+provisioning facts are ordered lists aligned on `db-servers-hosts` (`prov-db-agents`,
+round-robin). Proposed key, cluster level, `host=name` pairs, comma separated, as the
+`prov-db-agents` family is a comma list:
+
+```toml
+[cluster1]
+prov-orchestrator = "infra1"
+prov-db-orchestrators = "db3=infra2"    # db1 and db2 stay on infra1
+```
+
+Resolution: `cluster.orchestrator(server)` returns the server's override, else the
+cluster's. The orchestration layer resolves per server inside its loops
+(`ProvisionServices`, `Unprovision`), so a cluster can span two OpenSVC collectors or an
+OpenSVC and a Kubernetes site. Two consequences the maintainer must weigh (8, decision 2):
+
+- Cluster-level facets (`Nodes`, `SecretStore`, `InitCredentials`, `UnprovisionSecret`)
+  are the cluster orchestrator's. A server on another orchestrator of the same type shares
+  the secret through its own backend (the write is repeated on each distinct orchestrator
+  of the cluster). A server on an orchestrator of another type than the cluster's raises
+  WARN0326 and is provisioned without the shared secret: the init container cannot log in.
+  Mixed types are therefore refused at load in the first version; mixed instances of one
+  type are allowed.
+- The proxies and apps follow the cluster orchestrator; there is no per-proxy override
+  (the HAProxy standby exception of `proxyServiceOrchestrator` stays as the one routing
+  rule, expressed as the localhost orchestrator).
+
+### 3.4 Load-time validation
+
+The registry (`cluster.newOrchestratorList()`, built in `cluster.Init` beside
+`newProxyList()`) refuses at load, with a WARN0326 state and the cluster held in the
+"configuration invalid" condition it already has for a bad topology: an unknown type, an
+unknown name, a name equal to a type, a mixed-type per-server map, a script path that is
+not an executable file. It never calls `log.Fatalln` (`cluster/cluster.go:1116` does
+today for an unknown orchestrator: F2).
+
+---
+
+## 4. The script backend (#338)
+
+Type `script`. A first-class backend, not a hook: when a cluster's orchestrator is of type
+`script`, every method of section 2 runs the one configured executable with the operation
+as its first argument. The client owns the whole provisioning (F6); replication-manager
+keeps the orchestration (order, cookies, states, waits).
+
+### 4.1 Settings (T16, T19)
+
+| Key | Type | Default | Meaning |
+|---|---|---|---|
+| `prov-orchestrator-script` | string | "" | path of the executable; required for the type |
+| `prov-orchestrator-script-timeout` | int (seconds) | 600 | one invocation's budget; `provision` and `unprovision` use it, the others use a third of it, as `backup-restic-timeout` is one number for the family |
+| `prov-orchestrator-script-env` | string | "" | `KEY=VALUE,KEY=VALUE` added to the environment, for the client's own parameters (an API endpoint, a site name); never a secret, which belongs in `secret-kv` and reaches the script through the versioned store |
+
+The three keys live in the flat form (cluster level or `[DEFAULT]`) and in an
+`[orchestrator.<name>]` block of `type = "script"`, as every other backend's keys.
+
+### 4.2 Contract
+
+**Invocation**: `<script> <action> <kind> <host> <port> <cluster>`. The positional form of
+the existing hooks (`cluster/prov_scripts.go`: host, port, user, password, cluster) minus
+the credentials, which never go on the command line (F10: visible in `ps`).
+
+- `action`: `provision`, `unprovision`, `start`, `stop`, `restart`, `freeze`, `unfreeze`,
+  `update-service-config`, `refresh-service-definition`, `upgrade`, `service-definition`,
+  `service-image`, `working-node`, `rotate-passwords`, `nodes`, `storages`, `traits`,
+  `layout`, `check`. One action per method of section 2; the method name in kebab case
+  without the kind.
+- `kind`: `database`, `proxy`, `app`, `cluster` (for `nodes`, `storages`, `check`,
+  `rotate-passwords`, `traits`).
+- `host`, `port`: the service's; empty for `cluster`.
+
+**Environment**: `cluster.GetExecEnv()` as every script hook gets today
+(`REPLICATION_MANAGER_URL`, `REPLICATION_MANAGER_USER`, `REPLICATION_MANAGER_PASSWORD`,
+`REPLICATION_MANAGER_CLUSTER_NAME`), plus:
+
+| Variable | Value |
+|---|---|
+| `REPLICATION_MANAGER_ORCHESTRATOR` | the orchestrator's name |
+| `REPLICATION_MANAGER_ACTION`, `REPLICATION_MANAGER_KIND` | as argv, for scripts that read env only |
+| `REPLICATION_MANAGER_SERVER_HOST`, `REPLICATION_MANAGER_SERVER_PORT`, `REPLICATION_MANAGER_SERVER_NAME`, `REPLICATION_MANAGER_SERVER_ID` | the service |
+| `REPLICATION_MANAGER_DB_USER`, `REPLICATION_MANAGER_DB_PASSWORD` | the database credential (#338: "bdd user, bdd password"), in the environment only |
+| `REPLICATION_MANAGER_PROXY_USER`, `REPLICATION_MANAGER_PROXY_PASSWORD` | for `kind = proxy` |
+| `REPLICATION_MANAGER_FORCE_PULL`, `REPLICATION_MANAGER_KEEP_IMAGE` | `true`/`false` for `update-service-config` and `refresh-service-definition` |
+| `REPLICATION_MANAGER_NODE`, `REPLICATION_MANAGER_RID` | for `restart` and the app actions |
+| `REPLICATION_MANAGER_NEW_PASSWORD` | for `rotate-passwords` |
+| the `prov-orchestrator-script-env` pairs | as given |
+
+The existing hook variables of the resize scripts (`REPMAN_*`, `cluster/prov_scripts.go`)
+keep their names there; the backend uses the `REPLICATION_MANAGER_*` prefix of
+`GetExecEnv` (T19: the prefix of the environment this process exports). Unifying the two
+prefixes is not in this design.
+
+**Standard input**: for `kind = database`, the JSON of the server as the API serves it
+(`GET /api/clusters/{cluster}/servers/{server}`, the `ServerMonitor` marshalled with its
+`json` tags: `Pass` is `json:"-"` already, so the password is absent, F10). For `proxy`,
+the proxy's JSON (`Pass` is `json:"-"` too); for `app`, the app's; for `cluster`, the
+cluster's configuration JSON as `GET /api/clusters/{cluster}` serves it, with the secrets
+redacted as that endpoint redacts them. The script may ignore stdin.
+
+**Standard output**: logged line by line at DEBUG in module `orchestrator`, attributed to
+the server (`server.copyLogs`) as the hooks do. Actions that answer something read stdout
+as data: `nodes` and `storages` a JSON array (`[]Agent`, `[]Storage`); `service-definition`
+raw bytes; `service-image`, `working-node` the last non-empty line; `traits` a JSON object
+with the field names of `OrchestratorTraits`; `layout` a JSON object with the field names
+of `ServiceLayout`; `check` nothing. **Standard error** is logged at WARNING line by line.
+
+**Exit codes**: `0` success; `3` not supported (`ErrOrchestratorNotSupported`: the caller
+takes its generic path or refuses, 2.3); any other non-zero, or a kill on timeout, is a
+failure: the error carries the action, the host and the last stderr line, state ERR00122
+opens on the server (2.4), and the operation reports the error to its caller exactly as a
+Kubernetes API error would.
+
+**Logging (F11)**: the full command line is logged at INFO before the run, as the hooks
+log theirs; it carries no secret, so no masking is needed. The environment is not logged.
+The user reproduces the action by running the same command with the same
+`REPLICATION_MANAGER_*` environment, the credentials supplied by hand.
+
+**Concurrency**: the backend runs one script per method call; the orchestration layer
+already runs provisioning per server in parallel under `provisioningMutex`. A script that
+cannot run concurrently takes its own lock. Each run has the timeout above: no run blocks
+the monitor without a deadline (F2).
+
+### 4.3 What #338 asked that this changes
+
+#338 lists "bdd user, bdd password" as script parameters: they are passed, in the
+environment, not on the command line (F10). #338 lists "json representation of the
+replication-manager server (the database password is hidden)": on stdin, as the API
+already redacts it. #338 wants "the default orchestrator for a cluster should be call
+external scripts": today the default is `onpremise` (`opensvc` when built with OpenSVC).
+Changing the default is a user-visible change; it is decision 3 of section 8 and, if taken,
+belongs in section 6.
+
+---
+
+## 5. Migration plan
+
+Strangler: the interface and the registry arrive first with every backend behind an
+adapter that calls today's methods; then one operation group per pull request moves its
+callers to the interface and deletes its switches; the backend methods move file by file
+(`prov_opensvc_db.go` -> `orchestrator_opensvc.go` and so on) as their callers disappear.
+Each step leaves `develop` releasable: the interface and the switches coexist until a
+group's switches are all gone, and that group's regtests run on both paths before the
+switches are deleted.
+
+The regtest matrix per step (T13) is: **OpenSVC** on the dev instances (the regtest
+framework on a provisioned cluster), **Kubernetes** on a `kind` cluster (the Kubernetes
+provisioning was verified against `kind`, `KUBERNETES_PROVISIONING.md`; no CI job runs it
+today, so the first step adds the `kind` job to the regtest workflow), **on-premise** with
+the Docker regtest framework (real MariaDB, MySQL and Percona containers, the on-premise
+backend driving them over SSH or, from step 7, the script backend driving `docker`). The
+localhost and SlapOS backends have no regtest and get none here: localhost is the
+developers' path, SlapOS is cookie-only; both are covered by the matrix unit test.
+
+| Step | Pull request content | Switches removed | Regtests (T13) | Unit tests |
+|---|---|---|---|---|
+| 0 | this document | 0 | - | - |
+| 1 | `cluster/orchestrator.go`: the interfaces of 2.1, `ErrOrchestratorNotSupported`, the states of 2.4 in `config/error.go`; five adapters (`orchestrator_opensvc.go`, `_k8s.go`, `_onpremise.go`, `_localhost.go`, `_slapos.go`) that call today's methods; `newOrchestratorList()` building the synthesized orchestrator per cluster (3.2); `cluster.orchestrator(server)`; the `DatabaseOrchetrator` stub deleted. No caller changes. | 0 | the full suite once per orchestrator, unchanged behaviour expected | `TestOrchestratorMatrix` (5.3); compile-time `var _ Orchestrator = (*openSVCOrchestrator)(nil)` per backend; `TestOrchestratorSynthesized`: a flat configuration and its block form build equal orchestrators |
+| 2 | database lifecycle through the interface: `ProvisionServices`, `InitDatabaseService`, `Unprovision`, `UnprovisionDatabaseService`, `Start`, `Stop`, `StopClean`, `Restart`, `Freeze`, `Unfreeze`, `UpgradeDatabaseService` in `cluster/prov.go`; the `errorChan` sends leave the five backends (2.2); the localhost stop bug of 1.1 fixed by construction | ~55 (prov.go) | OpenSVC: provision, unprovision, start/stop, restart with rid, rolling restart; Kubernetes on kind: `testK8SStopStartDatabaseService`, `testK8SProvisionSchedulerVolumeBinding`, `testJobsRoundTrip`; on-premise: the failover and switchover suite with `prov-db-*-script` hooks set | `TestProvisionReportsOnce` (one send per operation, from the orchestration layer); the existing `prov_unprovision_test.go`, `prov_opensvc_start_timeout_test.go`, `prov_k8s_concurrent_start_test.go` rewired on the adapters |
+| 3 | proxy and app services: `InitProxyService`, `UnprovisionProxyService`, `StartProxyService`, `StopProxyService`, `InitAppService`; the 15 direct OpenSVC app, abort and clear calls of `server/api_app.go`, `api_proxy.go`, `api_database.go` and `mcp/tools_app.go` go through `AppOrchestrator` / `ProxyOrchestrator` and answer 501 on `ErrOrchestratorNotSupported` (the MCP "OpenSVC only" strings go) | ~25 | OpenSVC: `testAppConditionalVariablesOpenSVC`, `testAppConditionalProxiesOpenSVC`, proxy provision and start/stop; Kubernetes: proxy provision on kind; on-premise: proxy start/stop hooks | `TestAppActionsRefusedWithoutAppOrchestrator` (a guard test as `cluster_tst_proxy_guard_test.go`) |
+| 4 | service definition (#1775): `UpdateDatabaseServiceConfig`, `UpgradeDatabaseDeploymentOnStart` -> `RefreshDatabaseServiceDefinition`; the Kubernetes full-spec refresh and the on-premise config push written; the generic action `update-service-definition` on servers and apps (Swagger, ACL `GrantProvDBProvision` / the app grant, GUI button renamed), `update-opensvc-template` kept as an alias until the major; `cluster_roll.go`, `cluster_roll_plan.go` use the method on every orchestrator | ~15 | OpenSVC: rolling upgrade, `testOpenSVCUpgradeWarnRecovery`, `testRollingReprovReseed`; Kubernetes on kind: rolling upgrade with a changed `prov-db-docker-run-args` observed in the pod spec; on-premise: `rollingUpgradeOnPremise` with the SSH upgrade script | `TestRefreshDefinitionRendersCurrentConfig` per backend with the fake clients already used by `prov_k8s_*_test.go` |
+| 5 | inventory, secrets, terminal, traits, layout: `initOrchetratorNodes` (no `Fatalln`), `Storages`, `NodeStats`, `store_orchestrator.go` through `SecretOrchestrator`, `ProvisionRotatePasswords`, `cluster_user_rotate.go`, `UnprovisionSecret` on Kubernetes written, `server_tty.go` and `api.go` through `TerminalOrchestrator`, the ~40 capability checks of 1.5 through `Traits()`, the path switches of `srv_cnf.go`, `srv_get.go`, `prx_get.go`, `app_get.go`, `configurator.go` through `Layout()`; the resizer selection through the orchestrator | ~75 | OpenSVC: rotation (`testProvisionReplicationUser`, the secret-versions tests), terminal; Kubernetes on kind: rotation, unprovision leaves no Secret; on-premise: the SSH terminal, the dbjobs WARN0170 gate | `TestTraitsMatchLegacyChecks`: for each of the five types, each trait equals the boolean the deleted check computed; `TestLayoutMatchesLegacyPaths` |
+| 6 | configuration model (3): `Orchestrators` in `config.Config`, `[orchestrator.<name>]` reserved in `DiscoverClusters`, `prov-orchestrator` accepting a name, `prov-db-orchestrators`, load-time validation (3.4), the orchestrators API, Swagger, ACL and GUI page | 0 | the full suite on a configuration converted to blocks, and on the flat one | `TestOrchestratorNamedResolution` (name, type, unknown, ambiguous, mixed types), `TestOrchestratorConfigRoundTrip` (save and reload of a block, secrets encrypted) |
+| 7 | the script backend (4) as `orchestrator_script.go`, with a reference script `share/scripts/orchestrator-docker.sh` that drives `docker` for the regtest containers | 0 | on-premise framework with `prov-orchestrator = "script"` and the reference script: the failover, switchover, provision and rolling suites | `TestScriptOrchestratorContract` with a fake script: argv, env, stdin JSON without password, exit 0/3/other, timeout kill, stdout data actions, no secret in the logged command |
+| 8 (the major) | the remaining switches deleted; `update-opensvc-template` alias removed; `GetOrchestrator()` returns the name, `GetOrchestratorType()` the type, the dashboard and `OrchestratorTarget` moved to the type; the backend files renamed | the rest (~25: the explicit refusals that stay as `Traits` tests, `GetOrchestratorsProv`) | the full matrix | `TestNoOrchestratorDispatchOutsideRegistry` (5.3) made strict |
+
+Step order is not negotiable in two places: 1 before everything, 2 before 4 (the refresh
+rides the rolling loop that step 2 rewires). Steps 3, 5, 6 and 7 can be reordered; 6 before
+7 is natural (the script backend is the first backend whose only useful form is a block).
+
+Issue tracking (T9): #333 covers steps 1, 2, 3, 5, 6; #1775 step 4; #338 step 7. The gaps
+of 2.5 marked **write** are filed as issues when their step opens, with `opensvc`,
+`Kubernetes`, `onpremise` labels, not now (no issue for undelivered work). One open pull
+request per step and per session (T29).
+
+### 5.3 The two tests that lock the matrix
+
+`TestOrchestratorMatrix` (`cluster/orchestrator_matrix_test.go`): a table of every (type,
+method) with the expected status `implemented`, `notSupported`, `todo`. For each cell it
+calls the method on the backend built from a minimal `config.Config` with a fake client
+(the Kubernetes fake clientset already used by `prov_k8s_test.go`; an OpenSVC collector
+stub; a script that exits 3) and asserts `implemented` returns no
+`ErrOrchestratorNotSupported`, `notSupported` returns it, `todo` is listed in the document.
+A new method added to the interface without a row fails the test: the matrix of 2.5 and the
+test are one.
+
+`TestNoOrchestratorDispatchOutsideRegistry` (`cluster/orchestrator_dispatch_test.go`):
+parses the `cluster`, `server` and `mcp` packages with `go/ast` and fails on a comparison
+to `config.ConstOrchestrator*` or a call to a backend-prefixed method (`OpenSVC*`, `K8S*`,
+`OnPremise*`, `Localhost*`, `SlapOS*`) outside the allowed files (the adapters, the
+registry, the explicit-refusal list). The allowed list shrinks at each step and is empty
+at step 8. This is the lock: a switch cannot come back.
+
+---
+
+## 6. What the next major changes for users, and the off-switch (T14)
+
+Nothing changes for a configuration that is not touched: the flat keys and
+`prov-orchestrator = "<type>"` keep working through the synthesized orchestrator (3.2),
+with the same behaviour on every operation that works today. The changes:
+
+- A cluster named `orchestrator` is refused at load (the TOML table is reserved, 3.1).
+- The API action `update-opensvc-template` (servers and apps) is renamed
+  `update-service-definition`; the old path answers until the major and is removed at the
+  major. The dashboard button carries the new name from step 4.
+- `GET /api/clusters/{cluster}` returns `provOrchestrator` as the configured value (a type
+  or a name); `provOrchestratorType` is added. At the major the dashboard switches to the
+  type for its show/hide logic.
+- An unknown `prov-orchestrator` value no longer falls back to `onpremise` with a log line
+  (`SetProvOrchestrator`) nor kills the process (`initOrchetratorNodes`): the cluster loads
+  with WARN0326 and no provisioning action (3.4).
+- Operations that were silent no-ops on a backend (1.1 to 1.7) either work (the **write**
+  cells of 2.5) or answer "not supported" explicitly: an API caller sees HTTP 501 where it
+  saw 200 with nothing done. The localhost stop calls the localhost stop.
+- The MCP app tools answer the same "not supported" error on every non-OpenSVC
+  orchestrator as today, from the sentinel instead of a string check: no change for the
+  caller.
+- If decision 3 is taken, a cluster with no `prov-orchestrator` on a build without OpenSVC
+  defaults to the script backend, and a cluster without `prov-orchestrator-script` then has
+  no provisioning (WARN0326) instead of the on-premise SSH path.
+
+Off-switch during the transition: `prov-orchestrator-legacy-dispatch` (bool, default
+`false`, `scope:"server"`). When true, the orchestration layer calls the switch-based
+functions of the current release for the operation groups whose step landed in that
+release, instead of the interface. It exists for one release per step (the release that
+carries the step), is removed when the step's switches are deleted (the next release), and
+is documented as such. It is a refactor's safety net, not a feature switch: the interface
+is not a feature a user turns off, and the perpetual-monitoring laws are untouched by it
+(no state, buffer or bound depends on the dispatch). The script backend, the named blocks
+and the per-server map are features and need no switch beyond not configuring them
+(`type = "script"`, a block, `prov-db-orchestrators` empty).
+
+---
+
+## 7. Documentation and interfaces to ship with each step (T6, T8)
+
+- User documentation (docs.signal18.io): the named orchestrators and the `[orchestrator]`
+  table (step 6), the script backend contract (step 7), the generic
+  `update-service-definition` action (step 4), the two new states (step 1).
+- This document is updated at each step: the inventory rows of a group removed, the matrix
+  cells moved from **write**/**today** to **implemented**.
+- Swagger regenerated for every new or renamed endpoint (`doc/implementation/server/API_SWAGGER.md`).
+- The dashboard: the orchestrators page in Settings (step 6), the renamed action (step 4),
+  the type-based show/hide (step 8).
+
+---
+
+## 8. Decisions for the maintainer
+
+1. **Synchronous backends (2.2).** The backend methods return their error and the
+   `errorChan` goroutine wrapper lives in `cluster/prov.go` only, which removes the ~90
+   sends from the backends in step 2 and closes the #1769 class by construction. The
+   alternative keeps the sends in the backends during the transition (smaller step 2,
+   two reporting conventions until the major). Proposed: synchronous, in step 2.
+2. **Configuration shape and per-server override (3).** Top-level `[orchestrator.<name>]`
+   blocks carrying the same key names as the flat form, `prov-orchestrator` reused to name
+   a block, `prov-db-orchestrators = "host=name,..."` for the per-server map, mixed types
+   refused in the first version. The alternatives are blocks under `[DEFAULT]` (no reserved
+   table name, a longer key path), short key names inside the blocks (a rename), a new key
+   for the name instead of reusing `prov-orchestrator`, and no per-server map in the first
+   major (cluster-level only, the simplest). Proposed: as written, with the per-server map
+   in step 6 only if a client case needs it before the major.
+3. **The script backend as a default (#338, 4.3).** Whether a build without OpenSVC
+   defaults `prov-orchestrator` to `script` instead of `onpremise`, and whether a cluster
+   without a script then has no provisioning. Proposed: keep `onpremise` as the default in
+   this major, ship the script backend as an opt-in type, revisit when the reference
+   script has run on a client cluster.
+
+Open questions that do not block the design: whether an `AppOrchestrator` for Kubernetes
+is wanted (today apps are OpenSVC-only; the matrix lists it as `write or n/a`); whether
+`NodeStats` on Kubernetes reads the metrics API or stays `n/a`; the name of the generic
+action (`update-service-definition` here, `update-service-template` in #1775).
