@@ -453,6 +453,10 @@ func (cluster *Cluster) k8sEnsureHeadlessService(client kubernetes.Interface, po
 // Spec.NodeName: NodeName bypasses the scheduler, which breaks
 // WaitForFirstConsumer StorageClass binding (that only happens during
 // scheduling).
+//
+// It renders the legacy PVC layout only, the Deployment this function produced before #2395, and is
+// the reference the tests compare the other layouts with. Provisioning does not call it: it calls
+// k8sDatabaseDeploymentWithLayout with the layout k8sEnsureDatabasePVC read from the claim.
 func (cluster *Cluster) k8sDatabaseDeployment(s *ServerMonitor, port int, nodeHostnameLabel string) *appsv1.Deployment {
 	return cluster.k8sDatabaseDeploymentWithLayout(s, port, nodeHostnameLabel, k8sLayoutLegacy)
 }
