@@ -155,7 +155,7 @@ branch() { # <job name> -> prints the state the branch left
     (
         job=$1 LOG_DIR="$tmp/jobs" MARIADB_BACKUP="$fake_mb" PR_STATUS=0 PARTIAL_RESTORE_JSON='{"stale":"yes"}'
         rm -rf "$LOG_DIR" "$tmp/mb.calls" "$tmp/pr.calls"; mkdir -p "$LOG_DIR"
-        reset_backupdir() { :; }; socatCleaner() { :; }; pauseJob() { :; }; receiveBackup() { return 0; }
+        reset_backupdir() { :; }; listenerCleaner() { :; }; socatCleaner() { :; }; pauseJob() { :; }; receiveBackup() { return 0; }
         partialRestore() { echo called >>"$tmp/pr.calls"; PR_STATUS=0; }
         eval "case \"\$job\" in $blk esac"
         echo "status=$PR_STATUS json=[$PARTIAL_RESTORE_JSON] prepare_calls=$(cat "$tmp/mb.calls" 2>/dev/null | wc -l) restore_calls=$(cat "$tmp/pr.calls" 2>/dev/null | wc -l)"

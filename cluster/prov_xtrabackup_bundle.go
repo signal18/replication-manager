@@ -24,7 +24,9 @@ import (
 // libraries and loader into a volume, and checks at that moment that each one runs and that xtrabackup is of the
 // server's series; the jobs container mounts the volume read-only at xtrabackupBundleMount and its definition puts the
 // bin directory last on PATH, so a tool the image ships itself always wins. All of it is Docker level: nothing depends
-// on dbjobs_new.sh, which needs socat to run at all. Empty setting: nothing is rendered, the services are exactly what
+// on dbjobs_new.sh. The script reaches repman through replication-manager-cli since #2405; socat stays in the bundle
+// for one release, for a container still running an older script (a failed config fetch keeps it), which reaches
+// repman and receives its upgrade only through socat. Empty setting: nothing is rendered, the services are exactly what
 // they were. See
 // doc/implementation/cluster/XTRABACKUP_BUNDLE_INJECTION.md.
 
@@ -247,8 +249,9 @@ func dockerImageRepository(ref string) string {
 // last (a tool the image ships itself wins). It is empty, and the container keeps its own PATH, when the injection is
 // off or the database image is not a stock one (its default PATH is not known, so the bundle is then not on the PATH).
 //
-// Why not dbjobs_new.sh: a stock image has no socat, and the script reaches repman through it. A jobs container
-// that runs an older script cannot call the API, so it can never fetch the script that would add the bundle to the PATH.
+// Why not dbjobs_new.sh: a script older than #2405 reaches repman through socat, which a stock image does not ship. A
+// jobs container that runs such a script cannot call the API, so it can never fetch the script that would add the
+// bundle to the PATH.
 func (cluster *Cluster) xtrabackupBundlePath() string {
 	return cluster.xtrabackupBundlePathForImage(cluster.xtrabackupBundleImage())
 }
