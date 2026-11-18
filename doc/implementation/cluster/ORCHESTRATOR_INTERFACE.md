@@ -1,7 +1,8 @@
 # Orchestrator plugin interface (design, refs #333, #338, #1775)
 
-Status: design, waiting for the maintainer's decisions (section 8). No implementation code
-is written before they are taken.
+Status: design approved by the maintainer on 2026-11-18 (the decisions are recorded in
+section 8; the three open points of section 8 stay open). Section 9 scopes the first
+implementation pull request. No implementation code is in this branch.
 
 The provisioning layer of replication-manager drives five backends (OpenSVC, Kubernetes,
 on-premise over SSH, localhost processes, SlapOS) through `switch cluster.GetOrchestrator()`
@@ -327,8 +328,8 @@ func (cluster *Cluster) provisionDatabaseAsync(orch DatabaseOrchestrator, server
 
 A backend can then no longer send twice for one operation (the intra-op multi-send of
 #1769): it has no channel. The fan-out and its serialisation (`provisioningMutex`) are
-unchanged. This is the largest behaviour-preserving change of the migration (5, step 2) and
-the first decision of section 8.
+unchanged. This is the largest behaviour-preserving change of the migration (5, step 2);
+decided (section 8, decision 1): synchronous, in step 2.
 
 ### 2.3 The sentinel
 
@@ -504,11 +505,11 @@ keys at cluster level or in `[DEFAULT]`. It keeps working unchanged:
 The flat keys are not deprecated by this design. They are the per-cluster form; the blocks
 are the shared form. Deprecating the flat form is a separate decision for a later major.
 
-### 3.3 Per-server override
+### 3.3 Per-server override (a later step)
 
 #333 and #338 want a server mapped to its own orchestrator. Today the only per-server
 provisioning facts are ordered lists aligned on `db-servers-hosts` (`prov-db-agents`,
-round-robin). Proposed key, cluster level, `host=name` pairs, comma separated, as the
+round-robin). The key, cluster level, `host=name` pairs, comma separated, as the
 `prov-db-agents` family is a comma list:
 
 ```toml
@@ -520,26 +521,46 @@ prov-db-orchestrators = "db3=infra2"    # db1 and db2 stay on infra1
 Resolution: `cluster.orchestrator(server)` returns the server's override, else the
 cluster's. The orchestration layer resolves per server inside its loops
 (`ProvisionServices`, `Unprovision`), so a cluster can span two OpenSVC collectors or an
-OpenSVC and a Kubernetes site. Two consequences the maintainer must weigh (8, decision 2):
+OpenSVC and a Kubernetes site. `cluster.orchestrator(server)` exists from step 1 (it
+returns the cluster's orchestrator until the key exists); the key itself comes after the
+major's steps of section 5 (decision 2, section 8).
 
-- Cluster-level facets (`Nodes`, `SecretStore`, `InitCredentials`, `UnprovisionSecret`)
-  are the cluster orchestrator's. A server on another orchestrator of the same type shares
-  the secret through its own backend (the write is repeated on each distinct orchestrator
-  of the cluster). A server on an orchestrator of another type than the cluster's raises
-  WARN0326 and is provisioned without the shared secret: the init container cannot log in.
-  Mixed types are therefore refused at load in the first version; mixed instances of one
-  type are allowed.
-- The proxies and apps follow the cluster orchestrator; there is no per-proxy override
-  (the HAProxy standby exception of `proxyServiceOrchestrator` stays as the one routing
-  rule, expressed as the localhost orchestrator).
+**The one rule.** A server may be placed on another orchestrator than its cluster's only
+when the other servers of its cluster reach it at a private address: replication, the
+proxies' backends and the monitor's connection use that address, and nothing else. The
+rule is checked at load for each `host=name` pair (the server's host is an address of a
+private range, or resolves to one) and refused with WARN0326 otherwise. It is a rule on
+the addresses, not on the types: two OpenSVC sites, or an OpenSVC and a Kubernetes site,
+are both allowed when the rule holds. The cluster-level facets (`Nodes`, `SecretStore`,
+`InitCredentials`, `UnprovisionSecret`) run on every distinct orchestrator of the cluster
+(the shared secret is written on each), so a server's init container logs in through its
+own orchestrator's secret.
+
+**The expected mechanism, outside replication-manager.** Two orchestrators each have a
+gateway (the HAProxy replication-manager already provisions, or the site's own) with an
+internal address. A tunnel between the two gateways, over those internal addresses, lets
+each gateway route its orchestrator's private network to the other: the database servers
+of one site reach those of the other at their private addresses, as they reach their own.
+No database port is published; the nodes see nothing new (their routes do not change, the
+gateway's do); replication-manager only needs each server's private address, which the
+rule above requires. Backups and reseeds do not need the path: their streams go through
+the receivers of replication-manager (the backup and reseed sockets of the monitor host),
+on the connection the servers already have. The tunnel, its keys and its routes are the
+infrastructure's and the orchestrators' job, not a replication-manager feature; this
+document only states what replication-manager needs from them (a private address per
+server) and what it checks (the rule).
+
+The proxies and apps follow the cluster orchestrator; there is no per-proxy override (the
+HAProxy standby exception of `proxyServiceOrchestrator` stays as the one routing rule,
+expressed as the localhost orchestrator).
 
 ### 3.4 Load-time validation
 
 The registry (`cluster.newOrchestratorList()`, built in `cluster.Init` beside
 `newProxyList()`) refuses at load, with a WARN0326 state and the cluster held in the
 "configuration invalid" condition it already has for a bad topology: an unknown type, an
-unknown name, a name equal to a type, a mixed-type per-server map, a script path that is
-not an executable file. It never calls `log.Fatalln` (`cluster/cluster.go:1116` does
+unknown name, a name equal to a type, a per-server override whose server has no private
+address (the rule of 3.3), a script path that is not an executable file. It never calls `log.Fatalln` (`cluster/cluster.go:1116` does
 today for an unknown orchestrator: F2).
 
 ---
@@ -667,13 +688,16 @@ developers' path, SlapOS is cookie-only; both are covered by the matrix unit tes
 | 3 | proxy and app services: `InitProxyService`, `UnprovisionProxyService`, `StartProxyService`, `StopProxyService`, `InitAppService`; the 15 direct OpenSVC app, abort and clear calls of `server/api_app.go`, `api_proxy.go`, `api_database.go` and `mcp/tools_app.go` go through `AppOrchestrator` / `ProxyOrchestrator` and answer 501 on `ErrOrchestratorNotSupported` (the MCP "OpenSVC only" strings go) | ~25 | OpenSVC: `testAppConditionalVariablesOpenSVC`, `testAppConditionalProxiesOpenSVC`, proxy provision and start/stop; Kubernetes: proxy provision on kind; on-premise: proxy start/stop hooks | `TestAppActionsRefusedWithoutAppOrchestrator` (a guard test as `cluster_tst_proxy_guard_test.go`) |
 | 4 | service definition (#1775): `UpdateDatabaseServiceConfig`, `UpgradeDatabaseDeploymentOnStart` -> `RefreshDatabaseServiceDefinition`; the Kubernetes full-spec refresh and the on-premise config push written; the generic action `update-service-definition` on servers and apps (Swagger, ACL `GrantProvDBProvision` / the app grant, GUI button renamed), `update-opensvc-template` kept as an alias until the major; `cluster_roll.go`, `cluster_roll_plan.go` use the method on every orchestrator | ~15 | OpenSVC: rolling upgrade, `testOpenSVCUpgradeWarnRecovery`, `testRollingReprovReseed`; Kubernetes on kind: rolling upgrade with a changed `prov-db-docker-run-args` observed in the pod spec; on-premise: `rollingUpgradeOnPremise` with the SSH upgrade script | `TestRefreshDefinitionRendersCurrentConfig` per backend with the fake clients already used by `prov_k8s_*_test.go` |
 | 5 | inventory, secrets, terminal, traits, layout: `initOrchetratorNodes` (no `Fatalln`), `Storages`, `NodeStats`, `store_orchestrator.go` through `SecretOrchestrator`, `ProvisionRotatePasswords`, `cluster_user_rotate.go`, `UnprovisionSecret` on Kubernetes written, `server_tty.go` and `api.go` through `TerminalOrchestrator`, the ~40 capability checks of 1.5 through `Traits()`, the path switches of `srv_cnf.go`, `srv_get.go`, `prx_get.go`, `app_get.go`, `configurator.go` through `Layout()`; the resizer selection through the orchestrator | ~75 | OpenSVC: rotation (`testProvisionReplicationUser`, the secret-versions tests), terminal; Kubernetes on kind: rotation, unprovision leaves no Secret; on-premise: the SSH terminal, the dbjobs WARN0170 gate | `TestTraitsMatchLegacyChecks`: for each of the five types, each trait equals the boolean the deleted check computed; `TestLayoutMatchesLegacyPaths` |
-| 6 | configuration model (3): `Orchestrators` in `config.Config`, `[orchestrator.<name>]` reserved in `DiscoverClusters`, `prov-orchestrator` accepting a name, `prov-db-orchestrators`, load-time validation (3.4), the orchestrators API, Swagger, ACL and GUI page | 0 | the full suite on a configuration converted to blocks, and on the flat one | `TestOrchestratorNamedResolution` (name, type, unknown, ambiguous, mixed types), `TestOrchestratorConfigRoundTrip` (save and reload of a block, secrets encrypted) |
+| 6 | configuration model (3.1, 3.2, 3.4): `Orchestrators` in `config.Config`, `[orchestrator.<name>]` reserved in `DiscoverClusters`, `prov-orchestrator` accepting a name, load-time validation, the orchestrators API, Swagger, ACL and GUI page | 0 | the full suite on a configuration converted to blocks, and on the flat one | `TestOrchestratorNamedResolution` (name, type, unknown, ambiguous), `TestOrchestratorConfigRoundTrip` (save and reload of a block, secrets encrypted) |
 | 7 | the script backend (4) as `orchestrator_script.go`, with a reference script `share/scripts/orchestrator-docker.sh` that drives `docker` for the regtest containers | 0 | on-premise framework with `prov-orchestrator = "script"` and the reference script: the failover, switchover, provision and rolling suites | `TestScriptOrchestratorContract` with a fake script: argv, env, stdin JSON without password, exit 0/3/other, timeout kill, stdout data actions, no secret in the logged command |
 | 8 (the major) | the remaining switches deleted; `update-opensvc-template` alias removed; `GetOrchestrator()` returns the name, `GetOrchestratorType()` the type, the dashboard and `OrchestratorTarget` moved to the type; the backend files renamed | the rest (~25: the explicit refusals that stay as `Traits` tests, `GetOrchestratorsProv`) | the full matrix | `TestNoOrchestratorDispatchOutsideRegistry` (5.3) made strict |
+| later | the per-server override (3.3): `prov-db-orchestrators`, the private-address rule checked at load, the cluster-level facets run on every distinct orchestrator of the cluster | 0 | two orchestrators of the regtest framework (two Docker networks, a route between them) with one server on the second | `TestOrchestratorPerServerRule` (private address accepted, public refused, unknown name refused) |
 
 Step order is not negotiable in two places: 1 before everything, 2 before 4 (the refresh
 rides the rolling loop that step 2 rewires). Steps 3, 5, 6 and 7 can be reordered; 6 before
 7 is natural (the script backend is the first backend whose only useful form is a block).
+The per-server override comes after the major, when a client case brings the two
+orchestrators and the path between them (3.3).
 
 Issue tracking (T9): #333 covers steps 1, 2, 3, 5, 6; #1775 step 4; #338 step 7. The gaps
 of 2.5 marked **write** are filed as issues when their step opens, with `opensvc`,
@@ -722,9 +746,8 @@ with the same behaviour on every operation that works today. The changes:
 - The MCP app tools answer the same "not supported" error on every non-OpenSVC
   orchestrator as today, from the sentinel instead of a string check: no change for the
   caller.
-- If decision 3 is taken, a cluster with no `prov-orchestrator` on a build without OpenSVC
-  defaults to the script backend, and a cluster without `prov-orchestrator-script` then has
-  no provisioning (WARN0326) instead of the on-premise SSH path.
+- The default `prov-orchestrator` does not change (`onpremise`, `opensvc` on a build with
+  OpenSVC): the script backend is an opt-in type (decision 3, section 8).
 
 Off-switch during the transition: `prov-orchestrator-legacy-dispatch` (bool, default
 `false`, `scope:"server"`). When true, the orchestration layer calls the switch-based
@@ -752,28 +775,123 @@ and the per-server map are features and need no switch beyond not configuring th
 
 ---
 
-## 8. Decisions for the maintainer
+## 8. Decisions (taken by the maintainer, 2026-11-18)
 
-1. **Synchronous backends (2.2).** The backend methods return their error and the
-   `errorChan` goroutine wrapper lives in `cluster/prov.go` only, which removes the ~90
-   sends from the backends in step 2 and closes the #1769 class by construction. The
-   alternative keeps the sends in the backends during the transition (smaller step 2,
-   two reporting conventions until the major). Proposed: synchronous, in step 2.
-2. **Configuration shape and per-server override (3).** Top-level `[orchestrator.<name>]`
-   blocks carrying the same key names as the flat form, `prov-orchestrator` reused to name
-   a block, `prov-db-orchestrators = "host=name,..."` for the per-server map, mixed types
-   refused in the first version. The alternatives are blocks under `[DEFAULT]` (no reserved
-   table name, a longer key path), short key names inside the blocks (a rename), a new key
-   for the name instead of reusing `prov-orchestrator`, and no per-server map in the first
-   major (cluster-level only, the simplest). Proposed: as written, with the per-server map
-   in step 6 only if a client case needs it before the major.
-3. **The script backend as a default (#338, 4.3).** Whether a build without OpenSVC
-   defaults `prov-orchestrator` to `script` instead of `onpremise`, and whether a cluster
-   without a script then has no provisioning. Proposed: keep `onpremise` as the default in
-   this major, ship the script backend as an opt-in type, revisit when the reference
-   script has run on a client cluster.
+1. **Synchronous backends (2.2): yes.** The backend methods return their error; the
+   `errorChan` goroutine wrapper lives in `cluster/prov.go` only; done in step 2. This
+   removes the ~90 sends from the backends and closes the #1769 class by construction.
+2. **Configuration (3): yes to the blocks, the override later.** Top-level
+   `[orchestrator.<name>]` blocks carrying today's key names, `prov-orchestrator` naming a
+   block or a type, a flat configuration synthesized into an orchestrator named after its
+   type. The per-server override `prov-db-orchestrators` stays in the design as a later
+   step (after the major), gated on one rule and not on a mechanism: a server may be placed
+   on another orchestrator only when the other servers of its cluster reach it at a private
+   address (3.3). The path between the orchestrators is the infrastructure's job.
+3. **Script backend (4): opt-in type in this major.** `onpremise` stays the default
+   (`opensvc` on a build with OpenSVC); revisited once the reference script has run on a
+   real cluster.
 
-Open questions that do not block the design: whether an `AppOrchestrator` for Kubernetes
-is wanted (today apps are OpenSVC-only; the matrix lists it as `write or n/a`); whether
-`NodeStats` on Kubernetes reads the metrics API or stays `n/a`; the name of the generic
-action (`update-service-definition` here, `update-service-template` in #1775).
+Open points, kept open (the Kubernetes column of the matrix is under a separate review):
+whether an `AppOrchestrator` for Kubernetes is wanted (today apps are OpenSVC-only; the
+matrix lists it as `write or n/a`); whether `NodeStats` on Kubernetes reads the metrics API
+or stays `n/a`; the name of the generic action (`update-service-definition` here,
+`update-service-template` in #1775).
+
+---
+
+## 9. Step 1, scoped: the interface, the registry, the adapters
+
+The first implementation pull request. It changes no caller and no behaviour: after it,
+every switch of section 1 still runs; the interface exists beside them, implemented by
+five adapters that call today's methods, and the two tests of 5.3 exist with their
+allowed list equal to today's inventory. It references #333 (T9).
+
+### 9.1 Files
+
+| File | Content |
+|---|---|
+| `cluster/orchestrator.go` | rewritten: the seven interfaces of 2.1, `OrchestratorTraits`, `ServiceLayout`, `Storage`, `NodeStats`, `terminalTarget`, `ErrOrchestratorNotSupported`, `notSupported(op, orch string) error` (the wrap helper). The 2021 `Orchetrator` struct, `DatabaseOrchetrator` and `orchestratorList` are deleted. |
+| `cluster/orchestrator_registry.go` | `newOrchestratorList()` called from `cluster.Init` beside `newProxyList()`; `cluster.Orchestrators map[string]Orchestrator` (the synthesized one under its type name); `cluster.Orchestrator() Orchestrator` (the cluster's); `cluster.orchestrator(server *ServerMonitor) Orchestrator` (returns the cluster's until 3.3 exists); the load-time refusal of an unknown type with WARN0326 instead of `log.Fatalln` is NOT in this step (it is a behaviour change: step 5). |
+| `cluster/orchestrator_opensvc.go` | `type openSVCOrchestrator struct{ cluster *Cluster }`; every method calls the existing `OpenSVC*` method or the existing helper (`openSVCStore`, `openSVCCurrentDatabaseImage`, `GetDatabaseServiceConfig`, `OpenSVCGetPoolInfoList`, the gotty command); `Freeze`/`Unfreeze` keep the v2 nil (documented); `UpgradeDatabaseService`, `NodeStats` on v2, `WithdrawAppRoutes` call what exists; `RestartDatabaseService` with an empty `rid` returns `notSupported` (the caller's stop-wait-start stays in prov.go). Methods that today send on `errorChan` (provision, unprovision) are wrapped: the adapter launches today's method in a goroutine and receives on a private channel of its own, so the adapter is synchronous and today's code is untouched until step 2 removes the sends. |
+| `cluster/orchestrator_k8s.go` | `type k8sOrchestrator struct{ cluster *Cluster }`; the `K8S*` methods; `Storages` from `K8SGetStorageClasses`; `DatabaseServiceDefinition` from `K8SGetDatabaseManifests`; `Freeze`, `Unfreeze`, `NodeStats`, `DatabaseServiceImage`, `DatabaseWorkingNode`, `UnprovisionSecret`, the app methods, `Abort`/`Clear`, `TerminalCommand` return `notSupported` (the **write** cells of 2.5 are not written here). |
+| `cluster/orchestrator_onpremise.go` | `type onPremiseOrchestrator struct{ cluster *Cluster }`; `OnPremise*` methods, `UpgradeDatabaseService` from `OnPremiseUpgradeDatabaseService`, `TerminalCommand` from `OnPremiseGetSSHKey` and the SSH command of `server_tty.go` (moved as a helper, the handler still builds its own in this step); the rest `notSupported`. |
+| `cluster/orchestrator_localhost.go` | `type localhostOrchestrator struct{ cluster *Cluster }`; `Localhost*` methods; `StopDatabaseService` calls `LocalhostStopDatabaseService` (the adapter is correct; the switch keeps calling the on-premise stop until step 2, so no behaviour changes in this step: the discrepancy is a row of the matrix test marked `legacyDiffers`). |
+| `cluster/orchestrator_slapos.go` | `type slapOSOrchestrator struct{ cluster *Cluster }`; the `SlapOS*` methods; the rest `notSupported`. |
+| `config/error.go` | ERR00122, WARN0325, WARN0326 texts (2.4). Not raised by anything in this step. |
+| `cluster/orchestrator_matrix_test.go` | `TestOrchestratorMatrix` (9.3). |
+| `cluster/orchestrator_dispatch_test.go` | `TestNoOrchestratorDispatchOutsideRegistry` (9.3) with the allowed list equal to the inventory of section 1. |
+| `cluster/orchestrator_registry_test.go` | `TestOrchestratorSynthesized`, `TestOrchestratorResolvesClusterOrchestrator`. |
+| `doc/implementation/cluster/ORCHESTRATOR_INTERFACE.md` | this document: section 1 unchanged (no site removed in step 1), section 2.5 cells annotated `adapter` where the adapter exists. |
+
+No change in `server/`, `mcp/`, `regtest/`, `config/config.go` (no new setting: the
+off-switch of section 6 arrives with step 2, the first step that reroutes a caller), no
+Swagger, no ACL, no GUI (no endpoint changes), no user documentation (nothing a user can
+see; T8 is satisfied by this document until step 2).
+
+### 9.2 The declaration
+
+Exactly the Go of 2.1, with these fixed decisions:
+
+- Package `cluster`, unexported adapters, exported interfaces and sentinel (as
+  `DatabaseProxy` and `HaproxyProxy`). The adapters hold `cluster *Cluster` because every
+  backend method is a `Cluster` method today; the field goes when the methods move (steps
+  2 to 5).
+- Compile-time checks at the top of each adapter file:
+  `var _ Orchestrator = (*openSVCOrchestrator)(nil)` and the same for the four others.
+- `Storage` is a new struct `{Name, Type, Capacity, Free string}` covering the fields the
+  two existing API endpoints return (OpenSVC pool info, Kubernetes storage class); the
+  endpoints keep their own types in this step.
+- `NodeStats` aliases `opensvc.DaemonNodeStats` in this step (the only producer); a neutral
+  struct comes with the Kubernetes answer, if any (open point).
+- `terminalTarget` reuses the `terminalTargetServer` / `terminalTargetApp` strings of
+  `server/server_tty.go`, moved to `cluster` as constants (the server package imports
+  them back): the one cross-package move of the step.
+- `notSupported(op string, orch Orchestrator) error` returns
+  `fmt.Errorf("%w: %s on %s (%s)", ErrOrchestratorNotSupported, op, orch.Name(), orch.Type())`.
+  `ErrOpenSVCAbortNotSupported` and `ErrOpenSVCClearNotSupported` become
+  `ErrOrchestratorNotSupported` wraps in the OpenSVC adapter; their declarations stay
+  until step 3 removes their last caller.
+
+### 9.3 Tests
+
+- `TestOrchestratorMatrix`: a table `[]struct{ typ, method string; want status }` with one
+  row per cell of 2.5 (`implemented`, `notSupported`, `todo`, `legacyDiffers`). The
+  backends are built from a `config.Config` with `ProvOrchestrator` set and the clients
+  faked: the Kubernetes fake clientset injected as `prov_k8s_test.go` does
+  (`k8sProvisionProxyServiceWithClient`-style `WithClient` variants where they exist; for
+  the others the test asserts only the `notSupported` cells), an OpenSVC collector pointed
+  at an `httptest.Server` answering 404, an on-premise adapter with `OnPremiseSSH` false
+  (every SSH method returns the "onpremise-ssh disable" error, which counts as
+  `implemented`), localhost and SlapOS as they are. Assertion per cell: `notSupported`
+  rows return an error for which `errors.Is(err, ErrOrchestratorNotSupported)`;
+  `implemented` rows return any error but that one, or nil; `todo` rows are listed in 2.5
+  with **write**. A method of the interface without a row fails the test (reflection over
+  the interface's method set).
+- `TestNoOrchestratorDispatchOutsideRegistry`: `go/parser` over `cluster`, `server`,
+  `mcp`, `cluster/configurator` (non-test files); fails on a `BinaryExpr` comparing to a
+  `config.ConstOrchestrator*` selector, a `SwitchStmt` whose cases are those selectors, a
+  string literal `"opensvc"`, `"kube"`, `"onpremise"`, `"local"`, `"slapos"` compared to
+  `ProvOrchestrator`, or a `CallExpr` to a method named `OpenSVC*`, `K8S*`, `k8s*`,
+  `OnPremise*`, `Localhost*`, `SlapOS*` on a `*Cluster` receiver, unless the file is in the
+  allowed list. The allowed list of step 1 is every file of section 1 plus the adapters and
+  the backend files (`prov_*.go`, `store_orchestrator*.go`); each later step removes its
+  files from the list in the same pull request that removes the switches. The count per
+  allowed file is asserted too, so a new switch in an allowed file fails as well.
+- `TestOrchestratorSynthesized`: two clusters, one with `ProvOrchestrator = "opensvc"` and
+  the flat keys, one with the same keys in an `OrchestratorConfig` block (the struct exists
+  in this step for the test only, unexported, without the `config.Config` field: that field
+  is step 6); both registries hold one orchestrator whose `Name()`, `Type()` and `Traits()`
+  are equal.
+- `TestOrchestratorResolvesClusterOrchestrator`: `cluster.orchestrator(server)` returns
+  `cluster.Orchestrator()` for every server; a cluster with an unknown `ProvOrchestrator`
+  gets a registry with no orchestrator and `cluster.Orchestrator()` returns a
+  `nullOrchestrator` whose every method returns `notSupported` (so a caller rewired later
+  never dereferences nil).
+- `go vet`, the existing unit tests of the `cluster` package, and the regtest suite once
+  per orchestrator with no change expected (T13): OpenSVC on a dev instance, Kubernetes on
+  kind, on-premise in the Docker framework. The adapters are not on any caller's path yet,
+  so the regtest run is the proof that the step touched nothing: it is recorded in the
+  pull request, as T28 asks.
+
+Size: about 900 lines of Go (five adapters of 100 to 180 lines, the interface file of 150,
+the registry of 60, three test files of 400 together), one pull request, one review.
