@@ -58,17 +58,10 @@ func (server *ServerMonitor) GetSshEnv() string {
 		adminpassword = user.Password
 	}
 
-	// shellEsc escapes single quotes for safe embedding in shell single-quoted strings.
-	// Using single quotes avoids issues with double quotes, backslashes, and dollar signs
-	// in passwords and other values.
-	shellEsc := func(s string) string {
-		return strings.ReplaceAll(s, "'", "'\"'\"'")
-	}
-
 	// Build shell exports using single-quoted values to prevent injection from
 	// passwords containing double quotes, backslashes, or dollar signs.
 	shellExport := func(name, value string) string {
-		return "export " + name + "='" + shellEsc(value) + "'"
+		return "export " + name + "=" + shellSingleQuote(value)
 	}
 
 	env := shellExport("REPLICATION_MANAGER_HOST_USER", server.User) +
@@ -1914,4 +1907,10 @@ func (server *ServerMonitor) ApplyPFSJoinLinksToSchema(tablemap map[string]*dbhe
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
 		"PFS join links: enriched table graph from %d explain records on %s", len(records), server.URL)
+}
+
+// shellSingleQuote quotes s for a POSIX shell: single quotes, each single quote inside closed,
+// escaped and reopened. Nothing in it is expanded (dollar signs, backslashes, double quotes).
+func shellSingleQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", "'\"'\"'") + "'"
 }

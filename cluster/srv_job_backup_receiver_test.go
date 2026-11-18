@@ -22,7 +22,9 @@ import (
 	gzip "github.com/klauspost/pgzip"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/backupmgr"
+	"github.com/signal18/replication-manager/utils/jobapi"
 	"github.com/signal18/replication-manager/utils/misc"
+	"github.com/signal18/replication-manager/utils/netstream"
 	"github.com/signal18/replication-manager/utils/state"
 	"github.com/signal18/replication-manager/utils/version"
 )
@@ -688,21 +690,28 @@ func TestPhysicalBackupTruncatedStreamEndingCleanlyIsNotDetected(t *testing.T) {
 }
 
 // producerTail runs the end of the jobs script's physical backup pipeline: what the backup
-// tool writes goes through job_stream_signed (the header replication-manager's receiver checks)
-// and a real socat to the receiver (dbjobs_new.sh: `... | job_stream_signed | socat -u stdio TCP:$ADDRESS`).
-func producerTail(t *testing.T, producer, port, jobsKey string) *exec.Cmd {
+// tool (producer, a shell command) writes goes to the receiver after the job stream header,
+// as replication-manager-cli does it (dbjobs_new.sh: `... | stream_cli --to $ADDRESS`, which
+// is netstream.Send with jobapi.StreamHeader).
+func producerTail(t *testing.T, producer, port, jobsKey string) error {
 	t.Helper()
-	for _, bin := range []string{"bash", "openssl", "sha256sum", "socat"} {
-		if _, err := exec.LookPath(bin); err != nil {
-			t.Skipf("%s not found", bin)
-		}
+	cmd := exec.Command("bash", "-c", producer)
+	out, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
 	}
-	fns := `src=../share/scripts/dbjobs_new.sh
-eval "$(sed -n '/^derive_key() {/,/^}/p; /^jobs_key() {/,/^}/p; /^readonly JOB_STREAM_WINDOW=/p; /^job_stream_signed() {/,/^}/p; /^job_stream_mac() {/,/^}/p' "$src")"
-` + producer + ` | job_stream_signed | socat -u stdio TCP:127.0.0.1:` + port
-	cmd := exec.Command("bash", "-c", fns)
-	cmd.Env = append(cmd.Environ(), "JOBS_API_KEY="+jobsKey, "MYSQL_ROOT_PASSWORD=s3cr3t", "MYSQL_SERVER=127.0.0.1", "MYSQL_PORT=3306", "LOG_DIR="+t.TempDir())
-	return cmd
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	header, err := jobapi.StreamHeader(jobsKey, jobapi.StreamToMonitor, "127.0.0.1:3306", time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = netstream.Send(out, "127.0.0.1:"+port, netstream.Options{Header: header})
+	if werr := cmd.Wait(); err == nil {
+		err = werr
+	}
+	return err
 }
 
 // newSignedStreamFixture is a dispatched API-mode physical backup whose server logged in with
@@ -716,7 +725,7 @@ func newSignedStreamFixture(t *testing.T) (*Cluster, *ServerMonitor, string, str
 	cl.SecurityStateMachine.Init()
 	server.Pass = "s3cr3t"
 	jk := cl.GetJobsKey()
-	if _, _, code, err := server.OpenJobBody(scriptJobBodyKey(t, `{"server":"127.0.0.1:3306"}`, server.Pass, jk), time.Now(), false); code != 200 {
+	if _, _, code, err := server.OpenJobBody(clientJobBodyKey(t, `{"server":"127.0.0.1:3306"}`, server.Pass, jk), time.Now(), false); code != 200 {
 		t.Fatalf("login with the jobs key: %d %v", code, err)
 	}
 	before := sstConnectionPorts(t)
@@ -739,13 +748,14 @@ func receiverOf(t *testing.T, port string) *SST {
 	return SSTs.SSTconnections[p]
 }
 
-// TestPhysicalBackupRealProducerTail: the way socat ends its stream is what the receiver calls a
-// complete one. A socat that finishes shuts the connection down with EOF after every byte: no
-// read error, the backup completes. A socat killed in the middle of the stream also ends it with
-// EOF (the receiver cannot tell it from the end); the producer then fails (SIGPIPE), the job
-// reports an error, and the backup is not completed and the previous one comes back.
+// TestPhysicalBackupRealProducerTail: the way the jobs' sender ends its stream is what the
+// receiver calls a complete one. A sender that finishes shuts the connection down with EOF
+// after every byte: no read error, the backup completes. A sender killed in the middle of the
+// stream also ends it with EOF (the receiver cannot tell it from the end); the producer then
+// fails (SIGPIPE), the job reports an error, and the backup is not completed and the previous
+// one comes back.
 func TestPhysicalBackupRealProducerTail(t *testing.T) {
-	t.Run("socat finishes", func(t *testing.T) {
+	t.Run("sender finishes", func(t *testing.T) {
 		cl, server, port, jk := newSignedStreamFixture(t)
 		task := config.ConstBackupPhysicalTypeMariaBackup
 		server.JobsUpdateState(task, "completed", JobStateSuccess, 1)
@@ -755,8 +765,8 @@ func TestPhysicalBackupRealProducerTail(t *testing.T) {
 			t.Fatal(err)
 		}
 		sst := receiverOf(t, port)
-		if out, err := producerTail(t, "cat "+file, port, jk).CombinedOutput(); err != nil {
-			t.Fatalf("producer tail: %v: %s", err, out)
+		if err := producerTail(t, "cat "+file, port, jk); err != nil {
+			t.Fatalf("producer tail: %v", err)
 		}
 		waitReceiverGone(t, port)
 		waitBackupStateReleased(t, cl, server)
@@ -769,7 +779,7 @@ func TestPhysicalBackupRealProducerTail(t *testing.T) {
 		completed := server.LastBackupMeta.Physical != nil && server.LastBackupMeta.Physical.Completed
 		server.backupMetaMutex.Unlock()
 		if !completed || !server.HasBackupMariabackupCookie() {
-			t.Fatalf("a stream ended by a finished socat must complete the backup: completed=%v cookie=%v", completed, server.HasBackupMariabackupCookie())
+			t.Fatalf("a stream ended by a finished sender must complete the backup: completed=%v cookie=%v", completed, server.HasBackupMariabackupCookie())
 		}
 		dest := server.GetMyBackupDirectory() + task + ".xbtream.gz"
 		if out := gunzipFile(t, dest); !bytes.Equal(out, payload) {
@@ -777,39 +787,43 @@ func TestPhysicalBackupRealProducerTail(t *testing.T) {
 		}
 	})
 
-	t.Run("socat killed midway", func(t *testing.T) {
+	t.Run("sender killed midway", func(t *testing.T) {
 		cl, server, port, jk := newSignedStreamFixture(t)
 		task := config.ConstBackupPhysicalTypeMariaBackup
 		cl.Conf.BackupKeepUntilValid = false
 		server.JobsUpdateState(task, "error", JobStateErrorExec, 1) // the producer fails on SIGPIPE
 		sst := receiverOf(t, port)
-		cmd := producerTail(t, "dd if=/dev/zero bs=1M count=2000 2>/dev/null", port, jk)
-		if err := cmd.Start(); err != nil {
+		// the sender process killed in the middle of the stream: its kernel closes the
+		// connection, the receiver reads EOF after what was sent
+		conn, err := net.Dial("tcp", "127.0.0.1:"+port)
+		if err != nil {
 			t.Fatal(err)
 		}
+		header, _ := jobapi.StreamHeader(jk, jobapi.StreamToMonitor, "127.0.0.1:3306", time.Now())
+		conn.Write(header)
+		chunk := make([]byte, 1<<20)
 		dest := server.GetMyBackupDirectory() + task + ".xbtream.gz"
 		deadline := time.Now().Add(10 * time.Second)
 		for time.Now().Before(deadline) {
+			conn.Write(chunk)
 			if st, err := os.Stat(dest); err == nil && st.Size() > 0 {
 				break
 			}
-			time.Sleep(10 * time.Millisecond)
 		}
-		exec.Command("pkill", "-KILL", "-f", "socat -u stdio TCP:127.0.0.1:"+port).Run()
-		cmd.Wait()
+		conn.Close()
 		waitReceiverGone(t, port)
 		waitBackupStateReleased(t, cl, server)
 
 		if sst.rcvErr != nil {
 			t.Logf("the receiver saw a read error: %v", sst.rcvErr)
 		} else {
-			t.Log("the receiver saw a clean EOF from the killed socat")
+			t.Log("the receiver saw a clean EOF from the killed sender")
 		}
 		server.backupMetaMutex.Lock()
 		completed := server.LastBackupMeta.Physical != nil && server.LastBackupMeta.Physical.Completed
 		server.backupMetaMutex.Unlock()
 		if completed || server.HasBackupMariabackupCookie() {
-			t.Fatalf("a stream cut by a killed socat, its job in error, must not complete the backup: completed=%v cookie=%v", completed, server.HasBackupMariabackupCookie())
+			t.Fatalf("a stream cut by a killed sender, its job in error, must not complete the backup: completed=%v cookie=%v", completed, server.HasBackupMariabackupCookie())
 		}
 	})
 }

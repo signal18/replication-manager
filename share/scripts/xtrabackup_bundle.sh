@@ -109,8 +109,9 @@ done
 
 # every tool must run through the bundled loader before the bundle replaces the previous one
 run() { t=$1; shift; "$STAGE/lib/$LOADER" --library-path "$STAGE/lib" "$STAGE/libexec/$t" "$@" 2>&1; }
-# socat first: dbjobs_new.sh cannot run, nor reach repman, nor receive its own upgrade without it
-run socat -V >/dev/null || fail "socat does not run from the bundle: the jobs script cannot run without it"
+# socat first: a jobs script older than #2405 cannot reach repman, nor receive its own upgrade without it (the
+# current script uses replication-manager-cli; socat leaves the bundle once no older script can run)
+run socat -V >/dev/null || fail "socat does not run from the bundle: an older jobs script cannot run without it"
 XBV=$(run xtrabackup --version) || fail "xtrabackup does not run from the bundle: $XBV"
 # keep only the version, not the temporary path the binary was run from
 XBV=$(echo "$XBV" | tail -1 | sed 's#^.*xtrabackup version#xtrabackup version#')
