@@ -349,6 +349,9 @@ func (sst *SST) tcp_con_handle_to_gzip(server *ServerMonitor, task string) {
 
 		server.releasePhysicalBackupReceiver(task, strconv.Itoa(port))
 		server.jobFinishReceiveFile(task, streamed)
+		// a jobs check receiver that took its stream is no longer the server's open one: kept,
+		// its connection made every later jobs check of the server "busy" until a restart
+		server.jobsCheckSST.CompareAndSwap(sst, nil)
 	}()
 
 	var conn net.Conn
@@ -400,6 +403,9 @@ func (sst *SST) tcp_con_handle_to_file(server *ServerMonitor, task string) {
 
 		server.releasePhysicalBackupReceiver(task, strconv.Itoa(port))
 		server.jobFinishReceiveFile(task, streamed)
+		// a jobs check receiver that took its stream is no longer the server's open one: kept,
+		// its connection made every later jobs check of the server "busy" until a restart
+		server.jobsCheckSST.CompareAndSwap(sst, nil)
 	}()
 
 	var conn net.Conn

@@ -655,3 +655,34 @@ func TestJobsCheckReceiverOnePerServer(t *testing.T) {
 	}
 	s.jobsCheckSST.Load().tcplistener.Close()
 }
+
+// A jobs check whose stream ended frees its server: the next check opens a receiver instead of
+// being refused as busy (the receiver used to stay registered with its connection until restart).
+func TestJobsCheckReceiverFreedAfterItsStream(t *testing.T) {
+	s := jobLoginServer()
+	c := s.ClusterGroup
+	c.Conf.BindAddr = "127.0.0.1"
+	c.SstAvailablePorts = map[string]string{}
+	file := filepath.Join(t.TempDir(), "dbjobs_new.current")
+	port, err := c.SSTRunJobsCheckReceiver(s, file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	conn, err := net.Dial("tcp", "127.0.0.1:"+port)
+	if err != nil {
+		t.Fatal(err)
+	}
+	conn.Write([]byte("#!/bin/bash\n# EOF\n"))
+	conn.Close()
+	deadline := time.Now().Add(5 * time.Second)
+	for s.jobsCheckSST.Load() != nil && time.Now().Before(deadline) {
+		time.Sleep(20 * time.Millisecond)
+	}
+	if s.jobsCheckSST.Load() != nil {
+		t.Fatal("the jobs check receiver stays registered after its stream")
+	}
+	if _, err := c.SSTRunJobsCheckReceiver(s, file); err != nil {
+		t.Fatalf("the next jobs check is refused: %v", err)
+	}
+	s.jobsCheckSST.Load().tcplistener.Close()
+}
