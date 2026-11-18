@@ -47,7 +47,25 @@ type Client struct {
 	Port    string
 	Secret  string // the database password
 	JobsKey string // the cluster's jobs key (JOBS_API_KEY), signs instead of the password when set
+	// Version names the client in the User-Agent of every call ("replication-manager-cli/<version>"),
+	// so replication-manager can show the CLI a host's jobs run with
+	Version string
 	HTTP    *http.Client
+}
+
+// UserAgentPrefix starts the User-Agent of the jobs' calls; the version follows it.
+const UserAgentPrefix = "replication-manager-cli/"
+
+// VersionFromUserAgent is the CLI version a jobs call names, "" for another client.
+func VersionFromUserAgent(ua string) string {
+	v, ok := strings.CutPrefix(ua, UserAgentPrefix)
+	if !ok {
+		return ""
+	}
+	if len(v) > 128 {
+		v = v[:128]
+	}
+	return v
 }
 
 func (c *Client) http() *http.Client {
@@ -170,6 +188,9 @@ func (c *Client) do(method, url string, body []byte, token string) (int, string,
 	}
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	if c.Version != "" {
+		req.Header.Set("User-Agent", UserAgentPrefix+c.Version)
 	}
 	resp, err := c.http().Do(req)
 	if err != nil {
@@ -337,13 +358,11 @@ var ErrNoConfigFetch = fmt.Errorf("no config fetch needed")
 // need-config-fetch first (ErrNoConfigFetch when not wanted), logs in with the one-time job body
 // (a token scoped to this server), then downloads <server>/<port>/config with it.
 func (c *Client) Config(w io.Writer) error {
-	resp, err := c.http().Get(c.endpoint("/need-config-fetch"))
+	code, _, err := c.do(http.MethodGet, c.endpoint("/need-config-fetch"), nil, "")
 	if err != nil {
 		return err
 	}
-	io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<12))
-	resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
+	if code != http.StatusOK {
 		return ErrNoConfigFetch
 	}
 	token, err := c.Login()
@@ -355,7 +374,10 @@ func (c *Client) Config(w io.Writer) error {
 		return err
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
-	resp, err = c.http().Do(req)
+	if c.Version != "" {
+		req.Header.Set("User-Agent", UserAgentPrefix+c.Version)
+	}
+	resp, err := c.http().Do(req)
 	if err != nil {
 		return err
 	}

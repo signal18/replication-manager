@@ -26,12 +26,6 @@ add_ipv6_brackets() {
 ########################
 
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# replication-manager-cli: the jobs' only way to replication-manager, for every call and every
-# stream (job, stream --job), signed with the cluster's jobs key. Beside this script (the
-# OpenSVC bootstrap and the Kubernetes init container put it there), else on the PATH.
-REPMAN_CLIENT="$SCRIPT_DIR/replication-manager-cli"
-[[ -x "$REPMAN_CLIENT" ]] || REPMAN_CLIENT="$(command -v replication-manager-cli 2>/dev/null || echo "$REPMAN_CLIENT")"
-readonly REPMAN_CLIENT
 
 # MySQL/MariaDB Configuration
 # Note: %%ENV:...%% placeholders are replaced during script generation
@@ -148,6 +142,15 @@ readonly BACKUPDIR="${DATADIR}/.system/backup"
 readonly SYSTEM_DIR="${DATADIR}/.system"
 readonly SYSTEM_DIR_COOKIE="${SYSTEM_DIR}/.mrm_created"
 readonly TMP_DIR="%%ENV:SVC_CONF_ENV_JOBS_DATADIR%%"
+# replication-manager-cli: the jobs' only way to replication-manager, for every call and every
+# stream (job, stream --job), signed with the cluster's jobs key. Beside this script (the
+# OpenSVC bootstrap and the Kubernetes init container put it there), else in the jobs directory
+# (replication-manager copies it there before an on-premise run over SSH, where this script is
+# piped into a shell and has no directory of its own), else on the PATH (installed by hand).
+REPMAN_CLIENT="$SCRIPT_DIR/replication-manager-cli"
+[[ -x "$REPMAN_CLIENT" ]] || REPMAN_CLIENT="$TMP_DIR/replication-manager-cli"
+[[ -x "$REPMAN_CLIENT" ]] || REPMAN_CLIENT="$(command -v replication-manager-cli 2>/dev/null || echo "$SCRIPT_DIR/replication-manager-cli")"
+readonly REPMAN_CLIENT
 readonly LOG_DIR="${TMP_DIR}"
 readonly CHECKPOINT_DIR="${TMP_DIR}/checkpoints"
 readonly LOCK_DIR="${TMP_DIR}/locks"
@@ -302,7 +305,7 @@ require_repman_client() {
         rm -f "$TMP_DIR/jobs-status"
         return 0
     fi
-    local msg="failed no replication-manager-cli beside $SCRIPT_DIR nor on the PATH: the jobs reach replication-manager only through it"
+    local msg="failed no replication-manager-cli in $SCRIPT_DIR, in $TMP_DIR nor on the PATH: the jobs reach replication-manager only through it"
     echo "ERROR: $msg" >&2
     [[ -d "$TMP_DIR" ]] && echo "$(date +%s) $msg" >"$TMP_DIR/jobs-status"
     return 1

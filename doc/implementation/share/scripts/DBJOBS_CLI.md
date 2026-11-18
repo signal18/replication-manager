@@ -17,11 +17,47 @@ which stock MySQL and Percona Server images do not ship.
 - **OpenSVC:** the bootstrap downloads it from `/static/configurator/bin/replication-manager-cli`
   into the init directory, beside the script.
 - **Kubernetes:** the init container copies it into `/docker-entrypoint-initdb.d`.
-- **The script:** it looks beside itself first (`$SCRIPT_DIR/replication-manager-cli`), then on
-  the `PATH`.
+- **On-premise (SSH):** replication-manager copies it into the server's jobs directory before
+  each run that needs it (see below).
+- **The script:** it looks beside itself first (`$SCRIPT_DIR/replication-manager-cli`), then in
+  the jobs directory (`$TMP_DIR`), then on the `PATH` (a CLI installed by hand).
 - **Without the CLI:** `require_repman_client` writes one error on stderr and
   `<unix time> failed no replication-manager-cli ...` in `$TMP_DIR/jobs-status`, and the run
   stops. There is no fallback to another implementation.
+- **How replication-manager sees it:** jobs that never reach it open **WARN0324** (the jobs of a
+  server silent for 10 minutes); a dedicated state for "no CLI" is a follow-up.
+
+## On-premise jobs over SSH: the CLI copied to the host
+
+replication-manager pipes the script into a shell on the database host (`JobRunViaSSH`), so the
+script has no directory of its own (`BASH_SOURCE` is empty). Before each run,
+`ensureJobsCliViaSSH` (`cluster/srv_job_ssh_cli.go`) puts the monitor's CLI in the server's jobs
+directory (`GetJobDatadir`, the script's `TMP_DIR`), over the same SSH connection:
+
+1. **Check, one command:** `uname -sm` and the marker
+   `<jobs dir>/replication-manager-cli.sha256`, which holds `<sha256> <CLI version>` of the copy.
+   The CLI is never hashed on the host at each run: jobs run every minute on a production host.
+2. **Platform:** the copy is the monitor's binary, so only a host of the monitor's own OS and
+   architecture gets it. On a mismatch nothing is copied, and the run fails with an error naming
+   both platforms. The error says the CLI can be installed by hand on the jobs user's `PATH`,
+   which the script also looks at. Multi-architecture CLIs are a follow-up.
+3. **Copy:** when the marker is missing or names another hash. The copy streams the file into one
+   SSH session:
+   - written to a temporary name in the jobs directory;
+   - its sha256 checked against the monitor's (catches a full disk);
+   - run once (`version`; catches a `noexec` mount);
+   - made 755, then renamed over `replication-manager-cli`;
+   - then the marker is written.
+
+   A running job never sees a half-written CLI. The monitor's hash and version are computed once
+   per file (path, size, modification time).
+4. **Failure:** permissions, space, `noexec`, a checksum mismatch or another platform skip the
+   run. The cause is logged once (task module, error) and kept in the server's `jobsCliError`
+   (API). A failed copy is retried at most every 10 minutes per server, not at every run.
+
+**The version in use:** every CLI call names its version in the User-Agent
+(`replication-manager-cli/<version>`, `jobapi.Client.Version`). The jobs check and jobs upgrade
+handlers record it in the server's `jobsCliVersion`, so a host running an older CLI shows.
 
 ## Identity
 
@@ -99,9 +135,6 @@ The bundle (`prov-db-docker-xtrabackup-img`) still copies `socat` for one releas
   200 and is never taken.
 - **The SQL jobs mode:** it reads the jobs table with the database client. Its log lines and
   streams go through the CLI like the API mode's.
-- **On-premise SSH:** replication-manager pipes the script into a remote shell. `BASH_SOURCE` is
-  empty there, so the CLI must be on the `PATH` of the jobs user. A host without it now stops
-  with the "no replication-manager-cli" error instead of running jobs.
 
 ## Tests
 

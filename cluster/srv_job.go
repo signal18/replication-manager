@@ -1574,6 +1574,17 @@ func (server *ServerMonitor) JobRunViaSSH() error {
 	}
 	defer client.Close()
 
+	// the script reaches replication-manager only through replication-manager-cli: put it on the
+	// host first; without it the run is skipped with the cause in JobsCliError
+	if err := server.ensureJobsCliViaSSH(client); err != nil {
+		if server.JobsCliError != err.Error() {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Database jobs of %s not run: %s", server.URL, err)
+		}
+		server.JobsCliError = err.Error()
+		return err
+	}
+	server.JobsCliError = ""
+
 	var (
 		stdout bytes.Buffer
 		stderr bytes.Buffer

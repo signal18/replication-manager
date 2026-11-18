@@ -43,6 +43,9 @@ func TestJobsScriptCalls(t *testing.T) {
 		b, _ := io.ReadAll(r.Body)
 		key := r.Method + " " + r.URL.Path
 		bodies[key], auth[key] = b, r.Header.Get("Authorization")
+		if v := VersionFromUserAgent(r.UserAgent()); v != "v3.1.51-2-gabc" {
+			t.Errorf("%s: the call names the CLI version, got %q (%q)", key, v, r.UserAgent())
+		}
 		p := r.URL.Path
 		if !strings.Contains(p, "/clusters/c1/") {
 			http.Error(w, "No cluster", 500)
@@ -72,7 +75,7 @@ func TestJobsScriptCalls(t *testing.T) {
 		}
 	}))
 	defer srv.Close()
-	c := &Client{BaseURL: srv.URL, Cluster: "c1", Server: "db1", Port: "3306", JobsKey: "jk", Secret: "dbpass", HTTP: srv.Client()}
+	c := &Client{BaseURL: srv.URL, Cluster: "c1", Server: "db1", Port: "3306", JobsKey: "jk", Secret: "dbpass", Version: "v3.1.51-2-gabc", HTTP: srv.Client()}
 	base := "/api/clusters/c1/servers/db1/3306"
 
 	if ok, err := c.LogLevel("mysqldump", "INFO"); !ok || err != nil {
@@ -134,5 +137,17 @@ func TestJobsScriptCalls(t *testing.T) {
 	c.Cluster = "other"
 	if _, err := c.JobsCheckReceiver(); err == nil {
 		t.Fatal("a refused call is an error")
+	}
+}
+
+func TestVersionFromUserAgent(t *testing.T) {
+	if v := VersionFromUserAgent("replication-manager-cli/v3.1.51"); v != "v3.1.51" {
+		t.Fatal(v)
+	}
+	if v := VersionFromUserAgent("Wget/1.21"); v != "" {
+		t.Fatalf("another client names no CLI version: %q", v)
+	}
+	if v := VersionFromUserAgent(UserAgentPrefix + strings.Repeat("x", 500)); len(v) != 128 {
+		t.Fatalf("bounded: %d", len(v))
 	}
 }

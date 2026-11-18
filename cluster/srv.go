@@ -102,6 +102,16 @@ type ServerMonitor struct {
 	SemiSyncMasterStatus        bool                     `json:"semiSyncMasterStatus"`
 	SemiSyncSlaveStatus         bool                     `json:"semiSyncSlaveStatus"`
 	HaveSSHError                bool                     `json:"HaveSshError"`
+
+	// JobsCliError: why the on-premise jobs cannot run on the host (no replication-manager-cli
+	// there and none could be copied: another OS or architecture, permissions, space, noexec), ""
+	// when they can (ensureJobsCliViaSSH). JobsCliVersion: the CLI version the jobs last called with.
+	JobsCliError   string `json:"jobsCliError"`
+	JobsCliVersion string `json:"jobsCliVersion"`
+	jobsCliMu      sync.Mutex
+	jobsCliErr     error
+	jobsCliErrAt   time.Time
+
 	HaveHealthyReplica          bool                     `json:"HaveHealthyReplica"`
 	HaveEventScheduler          bool                     `json:"eventScheduler"`
 	HaveSemiSync                bool                     `json:"haveSemiSync"`

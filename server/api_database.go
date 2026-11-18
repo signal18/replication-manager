@@ -27,6 +27,7 @@ import (
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/backupmgr"
+	"github.com/signal18/replication-manager/utils/jobapi"
 	"github.com/signal18/replication-manager/utils/state"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
@@ -5402,6 +5403,8 @@ func (repman *ReplicationManager) handlerMuxServerJobsCheckReceiver(w http.Respo
 		}
 
 		if node != nil {
+			// the CLI the jobs run with (an older script without it names none)
+			node.JobsCliVersion = jobapi.VersionFromUserAgent(r.UserAgent())
 			rcv_port, err := mycluster.SSTRunJobsCheckReceiver(node, filepath.Join(node.Datadir, "dbjobs_new.current"))
 			if err != nil {
 				http.Error(w, "Error opening receiver ports: "+err.Error(), 500)
@@ -5775,6 +5778,7 @@ func (repman *ReplicationManager) handlerMuxServerJobsUpgradeSender(w http.Respo
 		}
 
 		if node != nil {
+			node.JobsCliVersion = jobapi.VersionFromUserAgent(r.UserAgent())
 			mycluster.SetJobsUpgradeSender(node)
 			w.WriteHeader(200)
 			w.Write([]byte("Sending dbjobs_new file"))
