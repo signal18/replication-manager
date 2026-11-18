@@ -99,6 +99,10 @@ type Cluster struct {
 	ProxyIdList     []string   `json:"proxyServers" groups:"web"`
 	FailoverCtr     int        `json:"failoverCounter" groups:"web"`
 	FailoverTs      int64      `json:"failoverLastTime" groups:"web"`
+	// Orchestrators are the cluster's orchestrator backends by name (newOrchestratorList);
+	// read through Orchestrator() and orchestrator(server), never directly.
+	Orchestrators      map[string]Orchestrator `json:"-"`
+	orchestratorsMutex sync.RWMutex            `json:"-"`
 	// MasterChangeTs is when the CURRENT master was designated in this process (failover,
 	// switchover, or first discovery). Anchors the rejoin staleness guards (#1793): a crash
 	// record older than this names a loser that is no longer relevant to the live master.
@@ -1060,6 +1064,10 @@ func (cluster *Cluster) InitFromConf() {
 	err = cluster.newProxyList()
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could not set proxy list %s", err)
+	}
+	err = cluster.newOrchestratorList()
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could not set orchestrator list %s", err)
 	}
 	// Proxies were just rebuilt with no knowledge of maintenance restored onto
 	// Servers above (see newServerMonitor) -- replay the notification so

@@ -16,9 +16,11 @@ const (
 	defaultProxyServiceContainer  = "container#prx"
 	defaultAppServiceContainer    = "container#app"
 
-	terminalTargetServer = "server"
-	terminalTargetProxy  = "proxy"
-	terminalTargetApp    = "app"
+	// the targets are the cluster package's (cluster.TerminalTarget), which the orchestrator
+	// interface routes on; this file keeps its string constants for its own switches
+	terminalTargetServer = string(cluster.TerminalTargetServer)
+	terminalTargetProxy  = string(cluster.TerminalTargetProxy)
+	terminalTargetApp    = string(cluster.TerminalTargetApp)
 )
 
 // resolveOpenSVCTerminalContainerRID validates and resolves the target OpenSVC
