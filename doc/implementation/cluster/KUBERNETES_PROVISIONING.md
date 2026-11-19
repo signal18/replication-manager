@@ -230,7 +230,7 @@ nothing is inferred from what a volume contains.
 
 | | `service-dirs-v1` (annotation present) | legacy (no annotation) |
 | --- | --- | --- |
-| Created for | every PVC replication-manager creates | every PVC that existed before the annotation |
+| Created for | every PVC replication-manager creates, unless `prov-kube-pvc-layout = legacy` | every PVC that existed before the annotation, and every PVC created under `prov-kube-pvc-layout = legacy` |
 | `/var/lib/mysql` | subPath `data` | the PVC root |
 | `/etc/mysql` | subPath `etc/mysql`, whole, in the init, database and dbjobs containers | `/etc/mysql/conf.d` only (subPath `.system/conf.d`), init and database containers |
 | `/docker-entrypoint-initdb.d` | subPath `init` | subPath `.system/init` |
@@ -282,6 +282,19 @@ before; an annotation value this code does not know is an error. A legacy volume
 never reinterpreted as the new layout; moving one is an explicit operation that does not exist yet. The
 Deployments already running are not touched either: only provisioning renders a Deployment, and the
 update paths patch image, pull policy, resources and strategy.
+
+**Off-switch: `prov-kube-pvc-layout`.** A cluster setting (`config.Config.ProvKubePVCLayout`, flag
+`prov-kube-pvc-layout`, settings API `prov-kube-pvc-layout`, GUI "Kubernetes Database PVC Layout (new
+volumes)" in the orchestrator settings), with the values `service-dirs-v1` (the default; an empty value, a
+cluster configuration that predates the key, is the default too) and `legacy`. It decides the layout of a
+database PVC that does not exist yet: under `legacy` the new PVC is created without the annotation, exactly
+like one created before the layout existed, the Deployment is rendered for the legacy layout and the
+volume is read as legacy at every later provisioning (`k8sConfiguredPVCLayout`, `k8sDatabasePVC`;
+`k8sEnsureDatabasePVC` returns the layout read back from the created claim). An existing PVC keeps the
+layout its annotation says whatever the setting, so changing it migrates nothing and sets no reprovision
+cookie. Any other value is a configuration error: the setter (`SetProvKubePVCLayout`) refuses it and leaves
+the setting, and provisioning refuses it before anything is created (log and `errorChan`). It is the
+fallback for an operator hit by a defect of the new layout, short of downgrading replication-manager.
 
 **An existing Deployment must match the volume.** When the Deployment `Create` reports `AlreadyExists`,
 provisioning reads the existing Deployment and derives the layout it was rendered for from the

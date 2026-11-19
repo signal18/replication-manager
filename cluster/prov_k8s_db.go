@@ -69,8 +69,13 @@ const k8sInitPersistSubPath = ".system/init"
 //
 // A PVC without the annotation that already exists when a database is provisioned stays legacy: the
 // annotation is added only by the Create of a new PVC, so an existing volume is never relabelled.
+//
+// prov-kube-pvc-layout (ProvKubePVCLayout) chooses the layout of a PVC created from now on: the two values
+// below, service-dirs-v1 by default, legacy as the off-switch (T14). A legacy PVC created under it gets no
+// annotation, like one created before the layout existed.
 const k8sPVCLayoutAnnotation = "replication-manager.signal18.io/pvc-layout"
 const k8sPVCLayoutServiceDirsValue = "service-dirs-v1"
+const k8sPVCLayoutLegacyValue = "legacy"
 
 const k8sSvcDataSubPath = "data"
 const k8sSvcEtcMysqlSubPath = "etc/mysql"
@@ -87,7 +92,20 @@ func (l k8sPVCLayout) String() string {
 	if l == k8sLayoutServiceDirs {
 		return k8sPVCLayoutServiceDirsValue
 	}
-	return "legacy"
+	return k8sPVCLayoutLegacyValue
+}
+
+// k8sConfiguredPVCLayout is the layout a PVC created now gets, from prov-kube-pvc-layout: service-dirs-v1
+// (the default; an empty value, a cluster configuration that predates the key, is the default too) or
+// legacy. Any other value is a configuration error: nothing is created on it.
+func k8sConfiguredPVCLayout(value string) (k8sPVCLayout, error) {
+	switch value {
+	case "", k8sPVCLayoutServiceDirsValue:
+		return k8sLayoutServiceDirs, nil
+	case k8sPVCLayoutLegacyValue:
+		return k8sLayoutLegacy, nil
+	}
+	return k8sLayoutLegacy, fmt.Errorf("prov-kube-pvc-layout is %q, want %s or %s", value, k8sPVCLayoutServiceDirsValue, k8sPVCLayoutLegacyValue)
 }
 
 // k8sPVCLayoutOf reads the layout of an existing PVC from its annotation: absent means legacy, the one
@@ -373,8 +391,6 @@ func (cluster *Cluster) k8sDatabasePVC(s *ServerMonitor) *apiv1.PersistentVolume
 	pvc := &apiv1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: k8sDatabasePVCName(cluster.Name, s.Name),
-			// A volume replication-manager creates is service-dirs-v1 (#2395); see k8sPVCLayoutAnnotation.
-			Annotations: map[string]string{k8sPVCLayoutAnnotation: k8sPVCLayoutServiceDirsValue},
 		},
 		Spec: apiv1.PersistentVolumeClaimSpec{
 			AccessModes: []apiv1.PersistentVolumeAccessMode{
@@ -386,6 +402,13 @@ func (cluster *Cluster) k8sDatabasePVC(s *ServerMonitor) *apiv1.PersistentVolume
 				},
 			},
 		},
+	}
+	// A volume replication-manager creates is service-dirs-v1 (#2395; see k8sPVCLayoutAnnotation) unless
+	// prov-kube-pvc-layout is the legacy off-switch: a legacy PVC created now gets no annotation, like one
+	// created before the layout existed. The value is validated by k8sConfiguredPVCLayout before this builder
+	// is called (K8SProvisionDatabaseService, SetProvKubePVCLayout).
+	if cluster.Conf.ProvKubePVCLayout != k8sPVCLayoutLegacyValue {
+		pvc.Annotations = map[string]string{k8sPVCLayoutAnnotation: k8sPVCLayoutServiceDirsValue}
 	}
 	if cluster.Conf.ProvKubeStorageClass != "" {
 		storageClass := cluster.Conf.ProvKubeStorageClass
@@ -1321,18 +1344,24 @@ func (cluster *Cluster) k8sExistingDeploymentMatchesPVCLayout(client kubernetes.
 }
 
 // k8sEnsureDatabasePVC creates the database PVC and returns the layout its Deployment must be rendered
-// for (#2395). A PVC that does not exist is created with the service-dirs-v1 annotation. A PVC that
-// already exists is read, never modified: its annotation decides (absent: legacy, the datadir is the
-// PVC root, as before; service-dirs-v1; or an error for a value this code does not know). Nothing is
-// inferred from the files on the volume, so a legacy volume is never reinterpreted as the new layout.
+// for (#2395). A PVC that does not exist is created as k8sDatabasePVC built it (the service-dirs-v1
+// annotation, or none under the prov-kube-pvc-layout = legacy off-switch) and the layout returned is the
+// one actually created, read back from the claim. A PVC that already exists is read, never modified: its
+// annotation decides (absent: legacy, the datadir is the PVC root, as before; service-dirs-v1; or an
+// error for a value this code does not know). Nothing is inferred from the files on the volume, so a
+// legacy volume is never reinterpreted as the new layout.
 func (cluster *Cluster) k8sEnsureDatabasePVC(client kubernetes.Interface, pvc *apiv1.PersistentVolumeClaim) (k8sPVCLayout, error) {
 	claims := client.CoreV1().PersistentVolumeClaims(cluster.Name)
 	ctx, cancel := context.WithTimeout(context.Background(), k8sAPICallTimeout)
 	defer cancel()
 	created, err := claims.Create(ctx, pvc, metav1.CreateOptions{})
 	if err == nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Created Kubernetes physical volume claim %q (layout %s).\n", created.GetObjectMeta().GetName(), k8sLayoutServiceDirs)
-		return k8sLayoutServiceDirs, nil
+		layout, lerr := k8sPVCLayoutOf(created)
+		if lerr != nil {
+			return k8sLayoutLegacy, lerr
+		}
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Created Kubernetes physical volume claim %q (layout %s).\n", created.GetObjectMeta().GetName(), layout)
+		return layout, nil
 	}
 	if !apierrors.IsAlreadyExists(err) {
 		return k8sLayoutLegacy, err
@@ -1346,7 +1375,7 @@ func (cluster *Cluster) k8sEnsureDatabasePVC(client kubernetes.Interface, pvc *a
 		return k8sLayoutLegacy, lerr
 	}
 	if layout == k8sLayoutLegacy {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "PVC %s predates the service-directories layout (no %s annotation): the database is provisioned on it with the legacy layout, datadir at the PVC root. It is not migrated.", pvc.Name, k8sPVCLayoutAnnotation)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "PVC %s has no %s annotation (created before the service-directories layout, or with prov-kube-pvc-layout = legacy): the database is provisioned on it with the legacy layout, datadir at the PVC root. It is not migrated.", pvc.Name, k8sPVCLayoutAnnotation)
 	}
 	return layout, nil
 }
@@ -1381,6 +1410,12 @@ func (cluster *Cluster) K8SProvisionDatabaseService(s *ServerMonitor) {
 		}
 	}
 
+	// the layout a new PVC would get is a configuration error before anything is created on it (#2395)
+	if _, cfgErr := k8sConfiguredPVCLayout(cluster.Conf.ProvKubePVCLayout); cfgErr != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot provision %s: %s ", s.Name, cfgErr)
+		cluster.errorChan <- cfgErr
+		return
+	}
 	pvcLayout, pvcerr := cluster.k8sEnsureDatabasePVC(client, cluster.k8sDatabasePVC(s))
 	if pvcerr != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot deploy Kubernetes pvc %s ", pvcerr)

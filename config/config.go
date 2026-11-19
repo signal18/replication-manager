@@ -745,6 +745,7 @@ type Config struct {
 	ProvKubeImageForcePull                    bool              `mapstructure:"prov-kube-image-force-pull" toml:"prov-kube-image-force-pull" json:"provKubeImageForcePull"`
 	ProvKubeStorageClass                      string            `mapstructure:"prov-kube-storage-class" toml:"prov-kube-storage-class" json:"provKubeStorageClass"`
 	ProvKubeProxyStorageClass                 string            `mapstructure:"prov-kube-proxy-storage-class" toml:"prov-kube-proxy-storage-class" json:"provKubeProxyStorageClass"`
+	ProvKubePVCLayout                         string            `mapstructure:"prov-kube-pvc-layout" toml:"prov-kube-pvc-layout" json:"provKubePvcLayout"` // layout of a database PVC created from now on: service-dirs-v1 (default) or legacy (#2395)
 	ProvNetDockerRunArgs                      string            `mapstructure:"prov-net-docker-run-args" toml:"prov-net-docker-run-args" json:"provNetDockerRunArgs"`
 	ProvDockerDaemonPrivate                   bool              `mapstructure:"prov-docker-daemon-private" toml:"prov-docker-daemon-private" json:"provDockerDaemonPrivate"`
 	ProvServicePlan                           string            `mapstructure:"prov-service-plan" toml:"prov-service-plan" json:"provServicePlan"`

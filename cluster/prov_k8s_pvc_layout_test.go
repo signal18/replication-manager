@@ -296,9 +296,69 @@ func TestK8SServiceDirsDeployment_DiffersFromLegacyOnlyInInstallerAndMounts(t *t
 }
 
 func TestK8SDatabasePVC_CarriesTheLayoutAnnotation(t *testing.T) {
-	pvc := layoutTestCluster().k8sDatabasePVC(layoutTestServer)
-	if got := pvc.Annotations[k8sPVCLayoutAnnotation]; got != "service-dirs-v1" {
-		t.Fatalf("annotation = %q, want service-dirs-v1", got)
+	for _, value := range []string{"", "service-dirs-v1"} {
+		c := layoutTestCluster()
+		c.Conf.ProvKubePVCLayout = value
+		pvc := c.k8sDatabasePVC(layoutTestServer)
+		if got := pvc.Annotations[k8sPVCLayoutAnnotation]; got != "service-dirs-v1" {
+			t.Fatalf("prov-kube-pvc-layout %q: annotation = %q, want service-dirs-v1", value, got)
+		}
+	}
+}
+
+// The off-switch (T14): prov-kube-pvc-layout = legacy makes a new PVC legacy again, with no annotation,
+// like one created before the layout existed; the layout returned is the one actually created. An unknown
+// value is a configuration error, refused by the setter and by provisioning, and nothing is created on it.
+func TestK8SPVCLayoutOffSwitch(t *testing.T) {
+	if l, err := k8sConfiguredPVCLayout(""); err != nil || l != k8sLayoutServiceDirs {
+		t.Errorf("empty: %v, %v; want service-dirs (the default)", l, err)
+	}
+	if l, err := k8sConfiguredPVCLayout("service-dirs-v1"); err != nil || l != k8sLayoutServiceDirs {
+		t.Errorf("service-dirs-v1: %v, %v; want service-dirs", l, err)
+	}
+	if l, err := k8sConfiguredPVCLayout("legacy"); err != nil || l != k8sLayoutLegacy {
+		t.Errorf("legacy: %v, %v; want legacy", l, err)
+	}
+	if _, err := k8sConfiguredPVCLayout("service-dirs-v2"); err == nil || !strings.Contains(err.Error(), "prov-kube-pvc-layout") {
+		t.Errorf("an unknown value must be a configuration error naming the key: %v", err)
+	}
+
+	c := layoutTestCluster()
+	if err := c.SetProvKubePVCLayout("something"); err == nil || c.Conf.ProvKubePVCLayout != "" {
+		t.Fatalf("the setter must refuse an unknown value and leave the setting: err=%v value=%q", err, c.Conf.ProvKubePVCLayout)
+	}
+	if err := c.SetProvKubePVCLayout("legacy"); err != nil || c.Conf.ProvKubePVCLayout != "legacy" {
+		t.Fatalf("SetProvKubePVCLayout(legacy): err=%v value=%q", err, c.Conf.ProvKubePVCLayout)
+	}
+
+	pvc := c.k8sDatabasePVC(layoutTestServer)
+	if len(pvc.Annotations) != 0 {
+		t.Fatalf("a legacy PVC created under the off-switch must carry no annotation, got %v", pvc.Annotations)
+	}
+	client := fake.NewSimpleClientset()
+	l, err := c.k8sEnsureDatabasePVC(client, pvc)
+	if err != nil || l != k8sLayoutLegacy {
+		t.Fatalf("layout %v err %v, want legacy: the layout actually created", l, err)
+	}
+	got, err := client.CoreV1().PersistentVolumeClaims("k8stest").Get(context.TODO(), "k8stest-db1-claim", metav1.GetOptions{})
+	if err != nil || len(got.Annotations) != 0 {
+		t.Fatalf("created PVC = %+v, %v; want no annotation", got, err)
+	}
+	// the Deployment rendered for it is the legacy one, and the volume is read as legacy on the next provisioning
+	if l, err := c.k8sEnsureDatabasePVC(client, c.k8sDatabasePVC(layoutTestServer)); err != nil || l != k8sLayoutLegacy {
+		t.Fatalf("second provisioning: layout %v err %v, want legacy", l, err)
+	}
+
+	// back to the default: the next new PVC is service-dirs-v1 again, the existing legacy one stays legacy
+	if err := c.SetProvKubePVCLayout("service-dirs-v1"); err != nil {
+		t.Fatal(err)
+	}
+	if l, err := c.k8sEnsureDatabasePVC(client, c.k8sDatabasePVC(layoutTestServer)); err != nil || l != k8sLayoutLegacy {
+		t.Fatalf("the existing legacy PVC must stay legacy after the switch is turned back: %v %v", l, err)
+	}
+	other := c.k8sDatabasePVC(&ServerMonitor{Name: "db2", Port: "3306"})
+	if l, err := c.k8sEnsureDatabasePVC(client, other); err != nil || l != k8sLayoutServiceDirs {
+		t.Fatalf("a new PVC after the switch is turned back: %v %v, want service-dirs", l, err)
 	}
 }
 
