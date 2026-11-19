@@ -57,7 +57,7 @@ type MarketplaceArchiveOffer struct {
 // MarketplaceVaultOffer is a vault offer of the marketplace catalogue
 // (.pull/marketplace-vault.json, #2227): a Vault a Cloud18-registered instance writes its
 // clusters' secrets to, signed in with the instance's Cloud18 identity (jwt), no setting to
-// type. Each cluster gets it as a vault entry, on when the cluster has no other vault on; its
+// type. Each cluster gets it as a vault entry, on when the cluster has no other credential store on; its
 // switch is then the sponsor's.
 type MarketplaceVaultOffer struct {
 	Name    string `json:"name"`

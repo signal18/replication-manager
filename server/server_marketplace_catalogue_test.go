@@ -155,17 +155,19 @@ func TestLoadMarketplaceVaultOffers(t *testing.T) {
 		t.Fatalf("vaults = %+v", c.Vaults)
 	}
 	conf := &config.Config{ImmuableFlagMap: map[string]interface{}{}, DefaultFlagMap: map[string]interface{}{}}
-	changed, err := conf.EnsureMarketplaceVault(c.Vaults[0], "d/s-fr")
-	if err != nil || !changed {
-		t.Fatalf("%v %v", changed, err)
+	changed, created, err := conf.EnsureMarketplaceVault(c.Vaults[0], "d/s-fr")
+	if err != nil || !changed || !created {
+		t.Fatalf("%v %v %v", changed, created, err)
 	}
 	e := conf.SecretKvs[0]
 	if e.Name != "cloud18-vault-fr" || !e.Enabled || e.Settings["auth"] != "jwt" || e.Settings["path-prefix"] != "d/s-fr" || e.Settings["mount"] != "kv" {
 		t.Fatalf("entry %+v", e)
 	}
 	// the sponsor turns it off; the offer read again leaves the switch alone
-	conf.SetSecretKvEnabled(e.Name, false)
-	if changed, _ := conf.EnsureMarketplaceVault(c.Vaults[0], "d/s-fr"); changed || conf.SecretKvs[0].Enabled {
+	if err := conf.SetSecretKvEnabled(e.Name, false); err != nil {
+		t.Fatal(err)
+	}
+	if changed, created, _ := conf.EnsureMarketplaceVault(c.Vaults[0], "d/s-fr"); changed || created || conf.SecretKvs[0].Enabled {
 		t.Fatalf("read again: changed %v, entry %+v", changed, conf.SecretKvs[0])
 	}
 }

@@ -291,21 +291,21 @@ func TestEnsureMarketplaceVaultClusterDefaultOn(t *testing.T) {
 	offer := MarketplaceVaultOffer{Name: "vault-fr", Address: "https://vault.example:8200"}
 
 	alone := &Config{}
-	changed, err := alone.EnsureMarketplaceVault(offer, "d/s/fr")
-	if err != nil || !changed || len(alone.SecretKvs) != 1 || !alone.SecretKvs[0].Enabled {
-		t.Fatalf("alone: changed %v err %v entries %+v", changed, err, alone.SecretKvs)
+	changed, created, err := alone.EnsureMarketplaceVault(offer, "d/s/fr")
+	if err != nil || !changed || !created || len(alone.SecretKvs) != 1 || !alone.SecretKvs[0].Enabled {
+		t.Fatalf("alone: changed %v created %v err %v entries %+v", changed, created, err, alone.SecretKvs)
 	}
 	// the operator switches it off: the next catalogue load leaves it off
 	if err := alone.SetSecretKvEnabled("cloud18-vault-fr", false); err != nil {
 		t.Fatal(err)
 	}
-	if changed, err := alone.EnsureMarketplaceVault(offer, "d/s/fr"); err != nil || changed || alone.SecretKvs[0].Enabled {
-		t.Fatalf("switched off then read again: changed %v err %v entry %+v", changed, err, alone.SecretKvs[0])
+	if changed, created, err := alone.EnsureMarketplaceVault(offer, "d/s/fr"); err != nil || changed || created || alone.SecretKvs[0].Enabled {
+		t.Fatalf("switched off then read again: changed %v created %v err %v entry %+v", changed, created, err, alone.SecretKvs[0])
 	}
 
 	// next to the cluster's own vault that is on, the offer comes off
 	own := &Config{SecretKvs: []SecretKvConfig{{Name: "own", Plugin: ConstSecretKvPluginVault, Enabled: true, Settings: map[string]interface{}{"address": "https://own:8200"}}}}
-	if _, err := own.EnsureMarketplaceVault(offer, "d/s/fr"); err != nil {
+	if _, _, err := own.EnsureMarketplaceVault(offer, "d/s/fr"); err != nil {
 		t.Fatal(err)
 	}
 	if e, ok := own.SecretKvEntryAt(SecretKvLevelCluster, "cloud18-vault-fr"); !ok || e.Enabled {
@@ -315,7 +315,7 @@ func TestEnsureMarketplaceVaultClusterDefaultOn(t *testing.T) {
 	if err := own.SetSecretKvEnabled("cloud18-vault-fr", true); err != nil {
 		t.Fatal(err)
 	}
-	if changed, _ := own.EnsureMarketplaceVault(offer, "d/s/fr"); changed {
+	if changed, _, _ := own.EnsureMarketplaceVault(offer, "d/s/fr"); changed {
 		t.Fatal("read again changed the entry")
 	}
 	if e, _ := own.SecretKvEntryAt(SecretKvLevelCluster, "cloud18-vault-fr"); !e.Enabled {
@@ -324,10 +324,24 @@ func TestEnsureMarketplaceVaultClusterDefaultOn(t *testing.T) {
 
 	// an own entry that is off does not hold the offer back
 	offOwn := &Config{SecretKvs: []SecretKvConfig{{Name: "own", Plugin: ConstSecretKvPluginVault, Enabled: false, Settings: map[string]interface{}{"address": "https://own:8200"}}}}
-	if _, err := offOwn.EnsureMarketplaceVault(offer, "d/s/fr"); err != nil {
+	if _, _, err := offOwn.EnsureMarketplaceVault(offer, "d/s/fr"); err != nil {
 		t.Fatal(err)
 	}
 	if e, _ := offOwn.SecretKvEntryAt(SecretKvLevelCluster, "cloud18-vault-fr"); !e.Enabled {
 		t.Fatalf("next to an entry off: %+v", e)
+	}
+
+	// two offers in one catalogue: the first comes on, the second off (the first one counts)
+	two := &Config{}
+	second := MarketplaceVaultOffer{Name: "vault-de", Address: "https://vault-de.example:8200"}
+	for _, o := range []MarketplaceVaultOffer{offer, second} {
+		if _, created, err := two.EnsureMarketplaceVault(o, "d/s/fr"); err != nil || !created {
+			t.Fatalf("offer %s: created %v err %v", o.Name, created, err)
+		}
+	}
+	first, _ := two.SecretKvEntryAt(SecretKvLevelCluster, "cloud18-vault-fr")
+	other, _ := two.SecretKvEntryAt(SecretKvLevelCluster, "cloud18-vault-de")
+	if !first.Enabled || other.Enabled {
+		t.Fatalf("two offers: first %v second %v", first.Enabled, other.Enabled)
 	}
 }

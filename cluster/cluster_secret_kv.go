@@ -1442,8 +1442,8 @@ func (cluster *Cluster) initialSource(key string) string {
 
 // EnsureMarketplaceVaults gives a Cloud18-registered cluster the entries of the marketplace's
 // vault offers (#2227): the Cloud18 vault, as the Cloud18 storages for the archives. The vault is
-// the central place of the cluster's credentials: a new entry is on when no other entry of the
-// cluster is on (off next to the cluster's own vault), and its switch is then the sponsor's: a
+// the central place of the cluster's credentials: a new entry is on when no other credential
+// store of the cluster is on (off next to one that is), and its switch is then the sponsor's: a
 // catalogue read again never changes it. The path-prefix is the offer's, else the instance's name
 // (InstanceStoreName: <domain>/<sub-domain>/<zone>, three folders, so two instances never share one).
 func (cluster *Cluster) EnsureMarketplaceVaults(offers []config.MarketplaceVaultOffer) {
@@ -1468,16 +1468,15 @@ func (cluster *Cluster) EnsureMarketplaceVaults(offers []config.MarketplaceVault
 			}
 			prefix = instance
 		}
-		name := config.ConstSecretKvMarketplacePrefix + o.Name
-		_, existed := c.SecretKvEntryAt(config.SecretKvLevelCluster, name)
-		ok, err := c.EnsureMarketplaceVault(o, prefix)
+		ok, created, err := c.EnsureMarketplaceVault(o, prefix)
 		if err != nil {
 			cluster.LogModulePrintf(c.Verbose, config.ConstLogModVault, config.LvlWarn, "Marketplace vault offer not given to the cluster: %s", err)
 			continue
 		}
-		if e, found := c.SecretKvEntryAt(config.SecretKvLevelCluster, name); found && !existed {
+		if created {
+			name := config.ConstSecretKvMarketplacePrefix + o.Name
 			onOff := "off: another credential store of the cluster is on"
-			if e.Enabled {
+			if e, found := c.SecretKvEntryAt(config.SecretKvLevelCluster, name); found && e.Enabled {
 				onOff = "on"
 			}
 			cluster.LogModulePrintf(c.Verbose, config.ConstLogModVault, config.LvlInfo, "Credential store %s given by the marketplace vault offer, %s", name, onOff)
