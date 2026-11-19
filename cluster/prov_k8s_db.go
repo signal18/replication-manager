@@ -612,6 +612,14 @@ func (cluster *Cluster) k8sDatabaseDeploymentWithLayout(s *ServerMonitor, port i
 	}
 
 	dbSecurityContext, runtimeChown, jobsSecurityContext := cluster.k8sDBIdentity()
+	// OpenSVC's bootstrap hands the data volume to dbVolumeOwner() after a successful configuration fetch (by
+	// default at every start): the configured owner, or the legacy 999:999 when it is not managed. The .system
+	// directories created above are root-owned, which a non-root database process (prov-db-run-as-uid) cannot
+	// use. Only the new layout follows OpenSVC here: a legacy volume keeps its rendering and its behaviour.
+	if layout == k8sLayoutServiceDirs && runtimeChown == "" {
+		uid, gid, _ := cluster.dbVolumeOwner()
+		runtimeChown = k8sDatadirChown(uid, gid)
+	}
 
 	dbVolumeMounts := append([]apiv1.VolumeMount{mounts.data()}, mounts.etc(false)...)
 	podVolumes := []apiv1.Volume{
@@ -806,28 +814,34 @@ func (cluster *Cluster) k8sDatabaseDeploymentWithLayout(s *ServerMonitor, port i
 // OpenSVC's bootstrap chown, and the dbjobs sidecar's securityContext (root
 // whenever any of this is managed; it takes file ownership from the datadir:
 // db_owner in dbjobs_new.sh). With nothing managed all three are empty: the pod
-// is what it was before these settings.
+// is what it was before these settings (the service-dirs-v1 layout then adds the
+// legacy owner step itself, k8sDatabaseDeploymentWithLayout).
 func (cluster *Cluster) k8sDBIdentity() (db *apiv1.SecurityContext, chown string, jobs *apiv1.SecurityContext) {
 	if runAsUID, runAsGID, set := cluster.dbRunAs(); set {
 		runAsUser, runAsGroup := int64(runAsUID), int64(runAsGID)
 		db = &apiv1.SecurityContext{RunAsUser: &runAsUser, RunAsGroup: &runAsGroup}
 	}
 	if uid, gid, managed := cluster.dbVolumeOwner(); managed {
-		u, g := strconv.Itoa(uid), strconv.Itoa(gid)
-		// Only entries that differ are touched, so a restart of a pod whose
-		// volume already matches does not rewrite the whole datadir.
-		// Best effort like the rest of that command (the init container's exit code is
-		// only MKDIR_STATUS, and a volume the process can still use must not block the
-		// pod), but a failure is written to the init container log, where
-		// `kubectl logs -c <name>-init` shows why mysqld then cannot use the datadir.
-		chown = " ; find /var/lib/mysql \\( ! -user " + u + " -o ! -group " + g + " \\) -exec chown -h " + u + ":" + g + " {} +" +
-			" || echo \"WARNING: could not set the owner of /var/lib/mysql to " + u + ":" + g + "\" >&2"
+		chown = k8sDatadirChown(uid, gid)
 	}
 	if cluster.dbIdentityManaged() {
 		root := int64(0)
 		jobs = &apiv1.SecurityContext{RunAsUser: &root, RunAsGroup: &root}
 	}
 	return db, chown, jobs
+}
+
+// k8sDatadirChown is the init container step that gives /var/lib/mysql to uid:gid.
+// Only entries that differ are touched, so a restart of a pod whose volume already
+// matches does not rewrite the whole datadir.
+// Best effort like the rest of that command (the init container's exit code is
+// only MKDIR_STATUS, and a volume the process can still use must not block the
+// pod), but a failure is written to the init container log, where
+// `kubectl logs -c <name>-init` shows why mysqld then cannot use the datadir.
+func k8sDatadirChown(uid, gid int) string {
+	u, g := strconv.Itoa(uid), strconv.Itoa(gid)
+	return " ; find /var/lib/mysql \\( ! -user " + u + " -o ! -group " + g + " \\) -exec chown -h " + u + ":" + g + " {} +" +
+		" || echo \"WARNING: could not set the owner of /var/lib/mysql to " + u + ":" + g + "\" >&2"
 }
 
 // k8sDatabaseMemoryMiB is the memory limit, in MiB, of the database container. It is the value
@@ -1279,7 +1293,6 @@ func (cluster *Cluster) k8sEnsureDatabasePVC(client kubernetes.Interface, pvc *a
 
 func (cluster *Cluster) K8SProvisionDatabaseService(s *ServerMonitor) {
 	cluster.ResolveDatabaseImage(false) // the deployment carries a release, not a pointer (#1862)
-	cluster.warnDBRunAsVolumeMismatch()
 
 	client, err := cluster.K8SConnectAPI()
 	if err != nil {
@@ -1314,6 +1327,8 @@ func (cluster *Cluster) K8SProvisionDatabaseService(s *ServerMonitor) {
 		cluster.errorChan <- pvcerr
 		return
 	}
+	// reported once the layout of the volume is known: the new layout gives the data to dbVolumeOwner() like OpenSVC
+	cluster.warnDBRunAsVolumeMismatchFor(pvcLayout == k8sLayoutServiceDirs)
 
 	// Nothing to prime: config now persists on the PVC itself, written by
 	// the init container's own fetch at pod-start time. The live endpoint

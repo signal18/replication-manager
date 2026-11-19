@@ -200,6 +200,63 @@ func TestK8SLegacyDeployment_IsTheUnchangedRendering(t *testing.T) {
 	}
 }
 
+// OpenSVC's bootstrap gives the data volume to dbVolumeOwner() after a successful configuration fetch: the configured
+// owner, the legacy 999:999 when the owner is not managed, 1001:1001 for a Percona Server image. The new layout follows
+// that for the init container's
+// ownership step, whatever the process identity (prov-db-run-as-uid is independent); a legacy volume keeps its
+// behaviour: the step exists only when the owner is managed.
+func TestK8SServiceDirsDeployment_DatadirOwner(t *testing.T) {
+	step := func(owner string) string {
+		return `find /var/lib/mysql \( ! -user ` + strings.Split(owner, ":")[0] + ` -o ! -group ` + strings.Split(owner, ":")[1] +
+			` \) -exec chown -h ` + owner + ` {} +`
+	}
+	for _, tc := range []struct {
+		name, image, runAs, volume string
+		svcOwner                   string // the owner step of service-dirs-v1
+		legacyOwner                string // "" = no step on a legacy volume
+	}{
+		{"default MySQL", "mysql:8.4", "", "", "999:999", ""},
+		{"default MariaDB", "mariadb:11.8", "", "", "999:999", ""},
+		{"run-as alone is the process, the owner stays the legacy one", "mysql:8.4", "999:999", "", "999:999", ""},
+		{"another run-as uid does not move the owner", "mysql:8.4", "1234:1235", "", "999:999", ""},
+		{"default Percona Server", "percona/percona-server:8.4", "", "", "1001:1001", "1001:1001"},
+		{"explicit owner", "mysql:8.4", "", "1234:1235", "1234:1235", "1234:1235"},
+		{"explicit owner and the same process", "mysql:8.4", "1234:1235", "1234:1235", "1234:1235", "1234:1235"},
+		{"root owner", "mysql:8.4", "", "0", "0:0", "0:0"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := layoutTestCluster()
+			c.Conf.ProvDbImg = tc.image
+			c.Conf.ProvDBRunAsUID = tc.runAs
+			c.Conf.ProvDBVolumeUID = tc.volume
+			svc := c.k8sDatabaseDeploymentWithLayout(layoutTestServer, 3306, "node-a", k8sLayoutServiceDirs).Spec.Template.Spec.InitContainers[0].Command[2]
+			legacy := c.k8sDatabaseDeploymentWithLayout(layoutTestServer, 3306, "node-a", k8sLayoutLegacy).Spec.Template.Spec.InitContainers[0].Command[2]
+
+			if got := strings.Count(svc, "chown -h"); got != 1 || !strings.Contains(svc, step(tc.svcOwner)) {
+				t.Fatalf("service-dirs-v1 init must hand /var/lib/mysql to %s exactly once (chown steps: %d): %s", tc.svcOwner, got, svc)
+			}
+			// before the guard, so a failed first fetch does not skip it, and never on /etc/mysql or the init directory
+			if strings.Index(svc, "chown -h") > strings.Index(svc, "no usable configuration in /etc/mysql") {
+				t.Fatalf("the owner step must come before the guard: %s", svc)
+			}
+			for _, other := range []string{"/etc/mysql", "/docker-entrypoint-initdb.d"} {
+				for _, seg := range strings.Split(svc, " ; ") {
+					if strings.Contains(seg, "chown") && strings.Contains(seg, other) && !strings.Contains(seg, "WARNING") {
+						t.Fatalf("%s must not be chowned: %s", other, seg)
+					}
+				}
+			}
+			if tc.legacyOwner == "" {
+				if strings.Contains(legacy, "chown") {
+					t.Fatalf("a legacy volume must keep having no ownership step when the owner is not managed: %s", legacy)
+				}
+			} else if strings.Count(legacy, "chown -h") != 1 || !strings.Contains(legacy, step(tc.legacyOwner)) {
+				t.Fatalf("a legacy volume must keep its managed owner %s: %s", tc.legacyOwner, legacy)
+			}
+		})
+	}
+}
+
 // The two layouts differ in the init command and the mounts, and in nothing else.
 func TestK8SServiceDirsDeployment_DiffersFromLegacyOnlyInInstallerAndMounts(t *testing.T) {
 	c := layoutTestCluster()
@@ -211,9 +268,12 @@ func TestK8SServiceDirsDeployment_DiffersFromLegacyOnlyInInstallerAndMounts(t *t
 	want := strings.Replace(lcmd, "rm -f /etc/mysql/conf.d/*.cnf 2>/dev/null; ", "rm -f /etc/mysql/replication-manager.d/* /etc/mysql/conf.d/* 2>/dev/null; ", 1)
 	want = strings.Replace(want, "cp /tmp/cfg/etc/mysql/conf.d/*.cnf /etc/mysql/conf.d/ 2>/dev/null; ", "cp -a /tmp/cfg/etc/mysql/. /etc/mysql/ 2>/dev/null; ", 1)
 	const guard = ` ; if [ ! -s /etc/mysql/my.cnf ] || [ -z "$(ls -A /etc/mysql/conf.d 2>/dev/null)" ]; then echo "ERROR: no usable configuration in /etc/mysql (my.cnf missing or empty, or conf.d empty): the database is not started; the init container is retried" >&2; exit 1; fi`
-	want = strings.Replace(want, ` ; exit "$MKDIR_STATUS"`, guard+` ; exit "$MKDIR_STATUS"`, 1)
+	// the new layout gives the data to dbVolumeOwner() like OpenSVC's bootstrap, also when it is not managed
+	// (here the legacy 999:999): the one step the legacy installer has no counterpart of for an unmanaged owner
+	const owner = ` ; find /var/lib/mysql \( ! -user 999 -o ! -group 999 \) -exec chown -h 999:999 {} + || echo "WARNING: could not set the owner of /var/lib/mysql to 999:999" >&2`
+	want = strings.Replace(want, ` ; exit "$MKDIR_STATUS"`, owner+guard+` ; exit "$MKDIR_STATUS"`, 1)
 	if got := svc.Spec.Template.Spec.InitContainers[0].Command[2]; got != want {
-		t.Fatalf("service-dirs installer is not the legacy one plus the two fragments and the guard:\n got: %s\nwant: %s", got, want)
+		t.Fatalf("service-dirs installer is not the legacy one plus the two fragments, the owner step and the guard:\n got: %s\nwant: %s", got, want)
 	}
 
 	// nothing else differs: images, env, resources, identity, ports, probes, volumes, strategy
