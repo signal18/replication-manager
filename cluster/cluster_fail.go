@@ -1206,7 +1206,7 @@ func (cluster *Cluster) isSlaveElectable(sl *ServerMonitor, forcingLog bool) boo
 	if ss.SlaveIORunning.String == "No" && cluster.Conf.RplChecks && !cluster.IsMasterFailed() {
 		cluster.SetState("ERR00087", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00087"], sl.URL), ErrFrom: "CHECK", ServerUrl: sl.URL})
 		// if cluster.Conf.LogLevel > 1 || forcingLog {
-		cluster.LogModulePrintf(forcingLog, config.ConstLogModWriterElection, elecSkipLevel(forcingLog), "Unsafe failover condition. Slave %s IO Thread is stopped %s. Skipping", sl.URL, ss.LastIOError.String)
+		cluster.LogModulePrintf(forcingLog, config.ConstLogModWriterElection, elecSkipLevel(forcingLog), "Unsafe failover condition. Slave %s IO Thread is stopped %s. Skipping", sl.URL, cluster.redactCredentialUsers(ss.LastIOError.String))
 		// }
 		return false
 	}

@@ -197,6 +197,25 @@ settings (secrets encrypted, F9), on/off, forms drawn from the manifest.
 15. **Never a value in a log** (F10); the log line names the store, path and key.
 16. **Accepted race**: an API change made while a newer remote value is being applied may
     skip its vault writes; the next full pass repairs it.
+17. **A credential is user:password, checked at the settings API** (`checkCredentialSetting`,
+    `server/api_cluster.go`), before the chain is asked. Each key is decoded the way the GUI
+    sends it (`SetCredentialsModal`): in clear for `db-servers-credential`,
+    `replication-credential` and the three proxy credentials; base64 for
+    `backup-verification-credential` and the two Cloud18 user credentials. Anything else, a user
+    or a password missing, or a value in the other encoding, is refused with 400
+    (`ErrInvalidCredentialFormat`); the refusal names the key and the expected format, never the
+    value. An empty value clears the verification and the Cloud18 sponsor credentials only.
+    Before this check, a base64 value sent for `db-servers-credential` was stored as is: no
+    colon, so the whole value became the user and the password was empty. The next provision
+    seeded an empty root password, and the database echoed that "user" in its access denied.
+18. **Logs and states name the credential, not its user.** A database's access denied
+    (`'user'@'host'`) and a replication IO error (`'user@host:port'`) quote the user of the
+    credential: the monitoring states (WARN0171, ERR00004), the privilege checks (ERR00005,
+    ERR00015), the replication IO error (WARN0269, the failover's IO thread check) and the
+    ProxySQL user conflict (WARN0233) show `<db-servers-credential user>` or
+    `<replication-credential user>` instead (`cluster/credential_log.go`). The user of a
+    credential set in a config file without its colon is the whole value; it never reaches a
+    log. The Credentials settings page still shows each user.
 
 ### Regtest (T13)
 
@@ -213,6 +232,13 @@ container) in `regtest/test_credential_versions_rotation.go`. A repman restart i
 in-process as `testCredentialPersistTagReload` does: the config the server builds from the
 files on disk, and the chain a start builds over it with the local file
 (`Cluster.ChainAtStart`). A credential set in a config file is rotated as well (rule 9).
+
+`testCredentialPersistTagReload` also checks rule 17 and the T16 credential exception through
+the API. A verification credential without user:password is refused with 400, its value
+unchanged; that key reaches no monitored server, so a wrongly accepted value never reaches a
+database. A database or replication credential pinned in a config file is sent in clear, as the
+GUI sends it, only when no store keeps versions, and must be refused with 409. With a store
+keeping versions, it is settable as a version (rule 9) and the test sends nothing.
 
 The app secret versions (#2306) are covered by `testAppSecretVersions` (in the default list,
 `monitoring-secret-versioning` on) and `testAppSecretVersionsVault` (run by name on a cluster

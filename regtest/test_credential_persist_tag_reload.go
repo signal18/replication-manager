@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"net/http"
+	"net/url"
 	"path/filepath"
 	"strings"
 	"time"
@@ -27,8 +28,9 @@ var LoadClusterConfigFromDisk func(clusterName string) (config.Config, error)
 // step 1, #2017), through repman's own API as the GUI calls it: a credential set at runtime
 // must survive a database tag added then dropped (each rereads the credentials), be saved
 // encrypted to the datadir <cluster>.toml by the save callback, and be the value a start
-// builds from the files on disk (the server's own loader, not a parse of the file). A
-// credential pinned in a config file must be refused and left unchanged.
+// builds from the files on disk (the server's own loader, not a parse of the file). A value
+// that is not user:password must be refused (400). A credential pinned in a config file must be
+// refused and left unchanged when no store keeps versions; with one, it is settable (T16).
 //
 // It uses backup-verification-credential: repman uses it only to reach the verification
 // server, so the marker value never touches a monitored server. The former value is put back
@@ -48,7 +50,8 @@ func (regtest *RegTest) TestCredentialPersistTagReload(cl *cluster.Cluster, conf
 		logf(config.LvlErr, "FAIL no API user with the settings and database tag grants: %s", err)
 		return false
 	}
-	// api calls a cluster route, the setting's value base64 as the GUI sends it
+	// api calls a cluster route; set sends the setting's value base64, as the GUI sends the
+	// verification credential (the database and replication credentials travel in clear)
 	api := func(path string) (int, string) {
 		code, _, body, err := APIRequest(token, http.MethodPost, "/api/clusters/"+cl.Name+path)
 		if err != nil {
@@ -119,23 +122,42 @@ func (regtest *RegTest) TestCredentialPersistTagReload(cl *cluster.Cluster, conf
 	}
 	logf("TEST", "%s kept across the tag %s added and dropped -- OK", key, tag)
 
-	// a credential pinned in a config file is refused, its value unchanged: the value sent
-	// is the current one, so even a wrongly accepted change changes nothing
+	// a value that is not user:password is refused (400) before any store changes: sent on the
+	// verification credential, which reaches no monitored server, so even a wrongly accepted
+	// value is put back by the deferred restore and never reaches a database
+	if code, body := set(key, "regtest-no-colon"); code != http.StatusBadRequest || strings.Contains(body, "regtest-no-colon") {
+		logf(config.LvlErr, "FAIL a %s without user:password was not refused with 400 (%d)", key, code)
+		return false
+	}
+	if cl.Conf.GetDecryptedValue(key) != marker {
+		logf(config.LvlErr, "FAIL the refused %s changed its value", key)
+		return false
+	}
+	logf("TEST", "%s without user:password refused (400), value unchanged -- OK", key)
+
+	// a credential pinned in a config file (T16): refused when no store keeps versions, settable
+	// as a new version when one does (the credential exception), so only the first case is sent.
+	// These keys travel in clear, as the GUI sends them; the value sent is the current one, so
+	// even a wrongly accepted change changes nothing
 	for _, pinned := range []string{"db-servers-credential", "replication-credential"} {
 		if _, ok := cl.Conf.GetImmuableFlag(pinned); !ok {
 			continue
 		}
+		if chain.CanSet(pinned) == nil {
+			logf("TEST", "%s is pinned in a config file and a store keeps versions: settable as a version (T16), not sent -- OK", pinned)
+			continue
+		}
 		before := cl.Conf.GetDecryptedValue(pinned)
-		code, body := set(pinned, before)
-		if code == http.StatusOK || !strings.Contains(body, credstore.ErrChangeRefused.Error()) {
-			logf(config.LvlErr, "FAIL %s is pinned in a config file and the API did not refuse it (%d)", pinned, code)
+		code, body := api("/settings/actions/set/" + pinned + "/" + url.PathEscape(before))
+		if code != http.StatusConflict || !strings.Contains(body, credstore.ErrChangeRefused.Error()) {
+			logf(config.LvlErr, "FAIL %s is pinned in a config file, no store keeps versions, and the API did not refuse it with 409 (%d)", pinned, code)
 			return false
 		}
 		if cl.Conf.GetDecryptedValue(pinned) != before {
 			logf(config.LvlErr, "FAIL the refused change of %s changed its value", pinned)
 			return false
 		}
-		logf("TEST", "%s is pinned: the API refused the change, value unchanged -- OK", pinned)
+		logf("TEST", "%s is pinned and no store keeps versions: the API refused the change, value unchanged -- OK", pinned)
 	}
 
 	if !chain.Persists(key) {
