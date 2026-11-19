@@ -148,6 +148,13 @@ relative to the repository root; line numbers are those of `3fe5c6578`.
 
 ### 1.7 Secrets, credentials, password rotation
 
+This is the inventory of today: a shared secret, a server credential store, the init
+credentials, the root-password rotation and its drift check exist for OpenSVC and
+Kubernetes only, and the on-premise, localhost and SlapOS clusters have none of it. **It is the
+gap the design closes**: the secret facet is mandatory on every backend (2.5, section 11), and
+the on-premise backend gets it in step 2, with the client script, because the paying client of
+section 10 runs on-premise.
+
 | Operation | Site | OpenSVC | Kubernetes | others | Note |
 |---|---|---|---|---|---|
 | orchestrator secret writer | `cluster/store_orchestrator.go:orchestratorStoreWriter:210` | `openSVCStore` | `k8sStore` | nil | already an interface (`orchestratorStore`); callers test for nil |
@@ -432,11 +439,15 @@ action (section 4).
 | `ProxyWorkingNode` | today | write | n/a | n/a | n/a | hook, optional |
 | `ProvisionAppService` ... `RestartAppService` | today | **write** (app Deployment: open question, see 8) | n/a | n/a | n/a | hook |
 | `UpdateAppConfig`, `RefreshAppServiceDefinition`, `ProvisionAppRoute`, `WithdrawAppRoutes` | today | write or n/a | n/a | n/a | n/a | hook, optional |
-| `SecretStore` | today (`openSVCStore`) | today (`k8sStore`) | n/a | n/a | n/a | n/a (the script reads env) |
-| `ServerSecretStore` | today | today | n/a | n/a | n/a | n/a |
-| `InitCredentials` | today | today | none | none | none | none |
-| `RotateDatabasePassword` | today | today | n/a | n/a | n/a | hook `rotate-passwords` |
-| `UnprovisionSecret` | today | **write** (delete the cluster Secret) | n/a | n/a | n/a | n/a |
+| `SecretStore` | today (`openSVCStore`) | today (`k8sStore`) | **write, step 2** (`hostCredentialStore`: the credentials directory on each database host, 11.2) | **write, step 2** (`localCredentialStore`: the same directory under the local data directory, 11.3) | **write, step 2** (the on-premise store over the SlapOS channel, 11.3) | **write, step 2b** (hook `secret-write`, value on stdin, 11.3) |
+| `ServerSecretStore` | today | today | **write, step 2** (the same directory, prefixed keys, 11.2) | **write, step 2** | **write, step 2** | **write, step 2b** (hook `secret-write` with the server prefix) |
+| `InitCredentials` | today | today | **write, step 2** (`REPLICATION_MANAGER_PASSWORD`, `JOBS_API_KEY` in the directory, 11.2) | **write, step 2** | **write, step 2** | **write, step 2b** (hook `init-credentials`) |
+| `RotateDatabasePassword` | today | today | **write, step 2** (the file rewritten over SSH, `_OLD` kept, 11.2) | **write, step 2** | **write, step 2** | **write, step 2b** (hook `rotate-root`, value on stdin) |
+| `UnprovisionSecret` | today | **write, step 2** (delete the cluster Secret) | **write, step 2** (the directory removed over SSH) | **write, step 2** (the directory removed) | **write, step 2** | **write, step 2b** (hook `secret-remove`) |
+| root-password drift check (`checkOpenSVCRootPassword`, WARN0275) | today | **write, step 2** (`ReadCurrent` on the Secret) | **write, step 2** (`ReadCurrent` reads the file over SSH, 11.2) | **write, step 2** | **write, step 2** | **write, step 2b** (hook `secret-check`) |
+
+The secret facet has no `n/a` cell: every backend keeps the shared secret of its cluster
+somewhere the services read it, and the step that writes it is named. Section 11 says how.
 | `TerminalCommand` | today (gotty) | **write** (`kubectl exec`-equivalent through the API) | today (SSH) | write (local shell) | n/a | n/a |
 
 Everything marked **write** is a gap the inventory found, not a feature request: each is
@@ -714,7 +725,8 @@ developers' path, SlapOS is cookie-only; both are covered by the matrix unit tes
 | 4 | service definition (#1775): `UpdateDatabaseServiceConfig`, `UpgradeDatabaseDeploymentOnStart` -> `RefreshDatabaseServiceDefinition`; the Kubernetes full-spec refresh and the on-premise config push written; the generic action `update-service-definition` on servers and apps (Swagger, ACL `GrantProvDBProvision` / the app grant, GUI button renamed), `update-opensvc-template` kept as an alias until the major; `cluster_roll.go`, `cluster_roll_plan.go` use the method on every orchestrator | ~15 | OpenSVC: rolling upgrade, `testOpenSVCUpgradeWarnRecovery`, `testRollingReprovReseed`; Kubernetes on kind: rolling upgrade with a changed `prov-db-docker-run-args` observed in the pod spec; on-premise: `rollingUpgradeOnPremise` with the SSH upgrade script | `TestRefreshDefinitionRendersCurrentConfig` per backend with the fake clients already used by `prov_k8s_*_test.go` |
 | 5 | inventory, secrets, terminal, traits, layout: `initOrchetratorNodes` (no `Fatalln`), `Storages`, `NodeStats`, `store_orchestrator.go` through `SecretOrchestrator`, `ProvisionRotatePasswords`, `cluster_user_rotate.go`, `UnprovisionSecret` on Kubernetes written, `server_tty.go` and `api.go` through `TerminalOrchestrator`, the ~40 capability checks of 1.5 through `Traits()`, the path switches of `srv_cnf.go`, `srv_get.go`, `prx_get.go`, `app_get.go`, `configurator.go` through `Layout()`; the resizer selection through the orchestrator | ~75 | OpenSVC: rotation (`testProvisionReplicationUser`, the secret-versions tests), terminal; Kubernetes on kind: rotation, unprovision leaves no Secret; on-premise: the SSH terminal, the dbjobs WARN0170 gate | `TestTraitsMatchLegacyChecks`: for each of the five types, each trait equals the boolean the deleted check computed; `TestLayoutMatchesLegacyPaths` |
 | 6 | configuration model (3.1, 3.2, 3.4): `Orchestrators` in `config.Config`, `[orchestrator.<name>]` reserved in `DiscoverClusters`, `prov-orchestrator` accepting a name, load-time validation, the orchestrators API, Swagger, ACL and GUI page | 0 | the full suite on a configuration converted to blocks, and on the flat one | `TestOrchestratorNamedResolution` (name, type, unknown, ambiguous), `TestOrchestratorConfigRoundTrip` (save and reload of a block, secrets encrypted) |
-| 2b | the script backend (4) as `orchestrator_script.go`, in the same pull request as step 2 or the next one: the first client of the interface needs it (section 10), so it is the first new backend, before any other work on the proxies, the apps or the configuration model; the rolling restart, upgrade and reprov per-server sequence goes through the interface in the same step (10.2) | 0 | on-premise framework with `prov-orchestrator = "script"` and a reference script `share/scripts/orchestrator-docker.sh` that drives `docker` for the regtest containers: the failover, switchover, provision and rolling suites | `TestScriptOrchestratorContract` with a fake script: argv, env, stdin JSON without password, exit 0/3/other, timeout kill, stdout data actions, no secret in the logged command; `TestRollingSequenceHooks`: the per-server sequence calls the interface in the order of 10.2 on a recording fake backend |
+| 2 (secrets) | the secret facet on every backend (section 11), in the same pull request as step 2's lifecycle routing or the next one: `hostCredentialStore` for on-premise (the credentials directory on each database host over the SSH session of the provisioning), `localCredentialStore` for localhost, the on-premise store over the SlapOS channel for SlapOS, the Kubernetes `UnprovisionSecret` and drift check; `orchestratorStoreWriter`, `initCredentials`, `ProvisionRotatePasswords`, `checkOpenSVCRootPassword` and `checkInitCredentials` become calls of `cluster.Orchestrator()`'s secret facet and lose their type switches; the step 1 adapters' not-supported writers are the recorded gap this step closes | ~15 (store_orchestrator.go, cluster_secret_kv.go, cluster_user_rotate.go, prov.go rotate) | on-premise framework: provision writes the directory, the jobs run with the key from it, a rotation rewrites it with `_OLD`, the drift check opens and clears WARN0275, unprovision removes it; OpenSVC and Kubernetes rotation unchanged | `TestHostCredentialStoreWriteAll` on a fake SSH session, `TestRotationRewritesHostCredentials`, the matrix test rows of 2.5 turned to implemented |
+| 2b | the script backend (4) as `orchestrator_script.go`, in the same pull request as step 2 or the next one: the first client of the interface needs it (section 10), so it is the first new backend, before any other work on the proxies, the apps or the configuration model; the rolling restart, upgrade and reprov per-server sequence goes through the interface in the same step (10.2); its secret facet is the five hooks of 11.3 | 0 | on-premise framework with `prov-orchestrator = "script"` and a reference script `share/scripts/orchestrator-docker.sh` that drives `docker` for the regtest containers: the failover, switchover, provision and rolling suites | `TestScriptOrchestratorContract` with a fake script: argv, env, stdin JSON without password, exit 0/3/other, timeout kill, stdout data actions, no secret in the logged command; `TestRollingSequenceHooks`: the per-server sequence calls the interface in the order of 10.2 on a recording fake backend |
 | 7 | the reference script run on a real on-premise cluster (the client case of section 10), its findings folded into section 4 | 0 | the client's own rolling upgrade, observed | - |
 | 8 (the major) | the remaining switches deleted; `update-opensvc-template` alias removed; `GetOrchestrator()` returns the name, `GetOrchestratorType()` the type, the dashboard and `OrchestratorTarget` moved to the type; the backend files renamed | the rest (~25: the explicit refusals that stay as `Traits` tests, `GetOrchestratorsProv`) | the full matrix | `TestNoOrchestratorDispatchOutsideRegistry` (5.3) made strict |
 | later | the per-server override (3.3): `prov-db-orchestrators`, the private-address rule checked at load, the cluster-level facets run on every distinct orchestrator of the cluster | 0 | two orchestrators of the regtest framework (two Docker networks, a route between them) with one server on the second | `TestOrchestratorPerServerRule` (private address accepted, public refused, unknown name refused) |
@@ -1198,7 +1210,8 @@ storages of the node, `n/a` otherwise as on-premise.
 The on-premise SSH keys (`onpremise-ssh-*`) stay the guest access. The client of 10.1
 moves from the script backend to this one by changing `prov-orchestrator` from `script` to
 `proxmox` and adding the keys above; their playbook's host step becomes
-`prov-db-host-upgrade-script`, the reboot becomes repman's.
+`prov-db-host-upgrade-script`, the reboot becomes repman's. Its secret facet is the
+on-premise one (11.2): the credentials directory inside each guest, over SSH.
 
 **Regtest (T13).** A Proxmox lab the project reaches (one node, three VMs, the on-premise
 Docker framework inside them is not enough: the host step needs real VMs): the rolling
@@ -1212,3 +1225,129 @@ to four actions, `host-stop`, `host-start`, `host-reboot`, `host-status` (stdout
 `HostStatus` JSON), so a client without a Proxmox backend yet gets the same rolling
 sequence with the host step: their script answers `host-reboot` with the playbook that
 reboots the VM, and `upgrade` no longer has to do it.
+
+---
+
+## 11. The secret facet on every backend: on-premise first
+
+### 11.1 The rule
+
+The `SecretOrchestrator` facet (2.1) is mandatory: `SecretStore`, `ServerSecretStore`,
+`InitCredentials`, `RotateDatabasePassword`, `UnprovisionSecret`, and the root-password
+drift check that `checkOpenSVCRootPassword` does for OpenSVC alone today, exist on every
+backend. No backend answers `ErrOrchestratorNotSupported` to them once its step has landed;
+until then the step 1 adapter's not-supported writer is the recorded gap of 2.5, and the
+matrix test turns each cell to implemented with the step. What the facet guarantees,
+whatever the backend:
+
+- the cluster's services read the database root password, the jobs key and the
+  replication-manager login from **one place the orchestrator owns**, written by
+  replication-manager through the credential chain's version queue (`credstore.StoreWriter`,
+  `WriteAll`), never by hand;
+- a rotation reaches that place as it reaches the Vault entries, through the same queue, with
+  the superseded value kept as `<KEY>_OLD` (as `openSVCStore` and `k8sStore` do);
+- a drift between that place and replication-manager's reference is a state (WARN0275),
+  rewritten at every tick until it clears; a failed write, a failed removal, a failed read is
+  a state (ERR00122 on the server, WARN0325 on the orchestrator), never a log line alone
+  (F7, T5);
+- an unprovision removes it.
+
+The one interface is the existing one: `orchestratorStore` (`store_orchestrator.go`) =
+`credstore.StoreWriter` + `ReadCurrent(key)`. The on-premise, localhost and SlapOS backends
+implement it; the script backend maps it to hooks. `orchestratorStoreWriter()`,
+`initCredentials()`, `ProvisionRotatePasswords()`, `checkOpenSVCRootPassword()` and
+`checkInitCredentials()` lose their type switches and call `cluster.Orchestrator()`'s facet.
+
+### 11.2 On-premise: the credentials directory on each database host
+
+What OpenSVC gives a database service today is a secret object (`<cluster>/sec/env`:
+`MYSQL_ROOT_PASSWORD`, `JOBS_API_KEY`, `REPLICATION_MANAGER_PASSWORD`, `SHARDPROXY_ROOT_PASSWORD`)
+projected as files in the container at `/credentials` (`{name}-sec/:/credentials` in
+`OpenSVCGetVolumeDataSection`'s mounts, the `secrets` keyword of the `-sec` volume,
+`prov_opensvc_db.go:1372-1383`). The jobs CLI already reads the key there
+(`utils/jobapi/stream.go:99-104`: `$JOBS_API_KEY`, else `/credentials/JOBS_API_KEY`), and so
+does the init container for its login. The on-premise backend gives the host the same thing:
+
+- **Where:** a credentials directory on each database host, `/etc/replication-manager/credentials/`
+  by default, root-owned, mode 0700, one file per key, mode 0600: `MYSQL_ROOT_PASSWORD`,
+  `JOBS_API_KEY`, `REPLICATION_MANAGER_PASSWORD` (the login the config fetch uses, as the
+  OpenSVC init container's), and the `<KEY>_OLD` files of a rotation. Setting
+  `onpremise-credentials-dir` (T16, T19: the `onpremise-` family), default as above; a
+  host where it cannot be created (not root, read-only) is ERR00122 on the server at provision.
+- **How it is written:** over the SSH session the on-premise provisioning already opens,
+  `OnPremiseConnect(server)` (`prov_onpremise_db.go:36`, `go-sshclient`, key or password from
+  `onpremise-ssh-credential`), the one `JobRunViaSSH` (`srv_job.go:1543`) runs the jobs script
+  through. The writer is `hostCredentialStore` (`cluster/store_orchestrator_onpremise.go`),
+  implementing `orchestratorStore`: `WriteAll` opens the session once per call, writes each
+  item to `<dir>/<KEY>.tmp` through the session's stdin (never on a command line, F10), moves
+  it into place, keeps the previous content as `<KEY>_OLD`, with the version queue's timeout
+  (`storeTimeout`); `ReadCurrent` reads the file over the same session. A server entry's store
+  (`ServerOrchestratorStore`) is the same directory with the instance prefix on the file name
+  (`<instance>_<KEY>`), as the OpenSVC and Kubernetes server stores prefix their keys.
+- **Init credentials:** `initCredentials()` returns, for on-premise, `REPLICATION_MANAGER_PASSWORD`
+  (the admin login the config fetch and the jobs use, `onlyIfPresent` false: there is no
+  service definition to map it, the file is the mapping) and `JOBS_API_KEY`; `checkInitCredentials`
+  repairs them once per activation as it does for OpenSVC. The jobs script reads
+  `/credentials` today only inside a container: `JobRunViaSSH` exports the key in the SSH
+  environment (`GetSshEnv`). Step 2 makes the SSH path read the directory too: `GetSshEnv`
+  points `JOBS_API_KEY` and `MYSQL_ROOT_PASSWORD` at `<dir>/` when the directory exists (the
+  CLI's `/credentials` lookup gains the directory as a second location, `utils/jobapi/stream.go`),
+  so one script, one credentials path, every orchestrator.
+- **Rotation:** `RotatePasswords` (`cluster_sec.go:228`) is orchestrator-independent until the
+  orchestrator step: the chain sets the new values (`SetAllRevertible`), the SQL changes the
+  accounts (`SetUserPassword`), then `ProvisionRotatePasswords(password)` hands the password
+  to the orchestrator. On-premise that is `hostCredentialStore.WriteAll` of `MYSQL_ROOT_PASSWORD`
+  on every database host of the cluster, the old value to `MYSQL_ROOT_PASSWORD_OLD`, through the
+  queue (`queueOrchestrator`), so a host that does not answer is retried and WARN0275 stays open
+  until it does; the same for `REPLICATION_MANAGER_PASSWORD` when the admin password changes
+  (`cluster_user_rotate.go`).
+- **Drift check:** `checkOpenSVCRootPassword` becomes `checkOrchestratorRootPassword`: it reads
+  `ReadCurrent("MYSQL_ROOT_PASSWORD")` on every host, compares with `GetDbPass()`, opens WARN0275
+  naming the host on a difference and queues the write; the text of WARN0275 names the store
+  (`the credentials directory of <host>`) instead of the OpenSVC object. The check runs in the
+  background, never on the tick, bounded by `storeTimeout`, as today.
+- **Unprovision:** `UnprovisionSecret` removes the directory over SSH; a host it cannot reach
+  leaves WARN0325 and the directory, named, for the operator.
+- **What does not change:** the database itself (no SQL beyond the rotation's own), the client's
+  scripts (`prov-db-*-script` keep running around each step), the immutable keys in `/etc`.
+  Nothing of the host is read but the directory.
+
+### 11.3 Localhost, script, SlapOS
+
+- **Localhost:** `localCredentialStore` is `hostCredentialStore` without the SSH session: the
+  directory is `<server.Datadir>/credentials/` (the layout's data directory, 2.1), written with
+  the local file API, same files, same `_OLD`, same drift check, same removal at unprovision.
+  The jobs run locally and read it through the same `GetSshEnv` path.
+- **Script backend:** five hooks of the one script (4.2), kind `database` per server or
+  `cluster` for the cluster's own store, the value **never on argv** (F10): `secret-write`
+  (stdin: the server JSON, then the value on file descriptor 3, `REPLICATION_MANAGER_SECRET_KEY`
+  the key name in the environment), `secret-remove` (the key, or the whole store for `cluster`),
+  `init-credentials` (writes the two login keys; same contract as `secret-write`, called once per
+  activation), `rotate-root` (the new password on fd 3, the old one on fd 4 for the `_OLD` the
+  client keeps), `secret-check` (prints on stdout the current value of the key named in the
+  environment, read by `ReadCurrent`; exit 3 = the client keeps no copy, the drift check then
+  records WARN0275 as "unverifiable" and does not rewrite). The client of section 10 answers
+  them with the Ansible task that writes their own vault or the host file; the reference script
+  of step 2b writes the on-premise directory.
+- **SlapOS:** SlapOS offers no secret object the services read; its databases are processes in
+  partitions on hosts replication-manager reaches the same way as on-premise ones. The SlapOS
+  backend inherits `hostCredentialStore` with the partition's directory as the location
+  (`<partition>/etc/replication-manager/credentials/`, from `slapos-db-partitions`) over its own
+  channel: the SlapOS backend has no SSH session today (its methods are cookies and a SQL
+  shutdown), so step 2 gives it the on-premise session when `onpremise-ssh` is on for the
+  cluster, and records ERR00122 on the server otherwise. SlapOS is not on any client's path; it
+  gets the facet because the rule has no exception, not because a client waits.
+
+### 11.4 What step 2 ships for the secret facet
+
+`cluster/store_orchestrator_onpremise.go` (`hostCredentialStore`, `localCredentialStore`),
+the five script hooks in `orchestrator_script.go`, the rewiring of `orchestratorStoreWriter`,
+`initCredentials`, `ProvisionRotatePasswords`, `checkOpenSVCRootPassword`,
+`checkInitCredentials`, `cluster_user_rotate.go` and `Unprovision` to the facet, the
+`onpremise-credentials-dir` setting, the jobs CLI's second credentials location, the WARN0275
+text naming the store, and the matrix rows of 2.5 turned to implemented. T13: the on-premise
+Docker framework — provision writes the directory, the jobs run with the key from it, a
+rotation rewrites it with `_OLD`, the drift check opens and clears WARN0275 when a file is
+altered on the host, unprovision removes it; OpenSVC and Kubernetes rotation unchanged. Unit
+tests: `TestHostCredentialStoreWriteAll` on a fake SSH session, `TestRotationRewritesHostCredentials`,
+`TestScriptSecretHooks` (the value never in argv, the fd contract, exit 3 on `secret-check`).
