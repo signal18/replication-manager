@@ -235,6 +235,7 @@ nothing is inferred from what a volume contains.
 | `/etc/mysql` | subPath `etc/mysql`, whole, in the init, database and dbjobs containers | `/etc/mysql/conf.d` only (subPath `.system/conf.d`), init and database containers |
 | `/docker-entrypoint-initdb.d` | subPath `init` | subPath `.system/init` |
 | Init installer | OpenSVC's: clears `replication-manager.d/*` and `conf.d/*`, copies the archive's whole `etc/mysql` | the `conf.d/*.cnf` fragments only |
+| `need-config-fetch` gate | asked for a refresh only: a volume with no usable `my.cnf` yet is always installed | asked at every start, as before |
 | First install fails | the init container exits 1: no database starts without a usable `/etc/mysql` | exit 0, the database starts on what is there (unchanged) |
 | Data ownership | the init container hands `/var/lib/mysql` (the `data` subPath, `.system` included) to `dbVolumeOwner()` at every start, as OpenSVC's bootstrap does after a successful configuration fetch, also when the owner is not managed | only when the owner is managed (`prov-db-volume-uid`, or a Percona Server image), as before |
 
@@ -250,6 +251,14 @@ existing ones. After its best-effort fetch the init container therefore requires
 `/etc/mysql/my.cnf` and a `conf.d` with entries, and exits 1 otherwise; the pod stays in `Init` and
 Kubernetes retries it. A later refresh that fails still finds the last installed tree and passes, so the
 database starts on the last valid configuration.
+
+**The first install does not ask `need-config-fetch`.** The route answers 500 for a server that carries the
+no-config-fetch cookie (`prov-db-start-fetch-config = false`) or is ignored. On a legacy volume that only
+skips the refresh; on `service-dirs-v1` it would skip the install of a volume that has no configuration yet,
+and the guard would then hold the pod in `Init` with no state saying why. Nothing else populates `etc/mysql`
+on Kubernetes (OpenSVC's service directory is populated by its own bootstrap), so the init container fetches
+unconditionally while `/etc/mysql/my.cnf` is missing or empty, and asks the route only once a usable tree is
+on the volume (`{ [ ! -s /etc/mysql/my.cnf ] || wget .../need-config-fetch; }`).
 
 **Data ownership.** After a successful configuration fetch (which `prov-db-start-fetch-config`, true by default, makes every
 start) OpenSVC's bootstrap runs `chown -R <owner> /bootstrap/data` (the owner is `dbVolumeOwner()`: `prov-db-volume-uid`,

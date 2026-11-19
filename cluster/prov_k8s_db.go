@@ -568,7 +568,18 @@ func (cluster *Cluster) k8sDatabaseDeploymentWithLayout(s *ServerMonitor, port i
 		clearEtc = "rm -f /etc/mysql/replication-manager.d/* /etc/mysql/conf.d/* 2>/dev/null; "
 		copyEtc = "cp -a /tmp/cfg/etc/mysql/. /etc/mysql/ 2>/dev/null; "
 	}
-	applyConfig := "if " + needFetchCmd + " 2>/dev/null; then " +
+	// On service-dirs-v1 the first install fetches whatever need-config-fetch answers. The route returns 500
+	// for a server that carries the no-config-fetch cookie (prov-db-start-fetch-config = false) or is
+	// ignored: on a legacy volume that only skipped the refresh, but on a volume with no configuration yet
+	// it would skip the install, leave /etc/mysql empty and keep the Pod in Init behind the guard below,
+	// with no state saying why. Nothing else populates etc/mysql on Kubernetes, unlike the OpenSVC service
+	// directory, so the route is asked only for a refresh (a usable my.cnf is on the volume). Legacy volumes
+	// keep the gate they had.
+	fetchGate := needFetchCmd
+	if layout == k8sLayoutServiceDirs {
+		fetchGate = "{ [ ! -s /etc/mysql/my.cnf ] || " + needFetchCmd + " 2>/dev/null; }"
+	}
+	applyConfig := "if " + fetchGate + " 2>/dev/null; then " +
 		"if " + remoteFetchCmd + " 2>/dev/null; then " +
 		"if tar xzf /tmp/config.tar.gz -C /tmp/cfg 2>/dev/null; then " +
 		clearEtc +

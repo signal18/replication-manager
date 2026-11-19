@@ -264,9 +264,12 @@ func TestK8SServiceDirsDeployment_DiffersFromLegacyOnlyInInstallerAndMounts(t *t
 	legacy := c.k8sDatabaseDeploymentWithLayout(layoutTestServer, 3306, "node-a", k8sLayoutLegacy)
 	svc := c.k8sDatabaseDeploymentWithLayout(layoutTestServer, 3306, "node-a", k8sLayoutServiceDirs)
 
-	// the installer is the legacy one with exactly the archive fragments swapped and the guard added
+	// the installer is the legacy one with exactly the archive fragments swapped, the first install freed
+	// from the need-config-fetch gate, and the guard added
 	lcmd := legacy.Spec.Template.Spec.InitContainers[0].Command[2]
-	want := strings.Replace(lcmd, "rm -f /etc/mysql/conf.d/*.cnf 2>/dev/null; ", "rm -f /etc/mysql/replication-manager.d/* /etc/mysql/conf.d/* 2>/dev/null; ", 1)
+	gate := lcmd[strings.Index(lcmd, "if wget")+len("if ") : strings.Index(lcmd, "/need-config-fetch")+len("/need-config-fetch")]
+	want := strings.Replace(lcmd, "if "+gate+" 2>/dev/null; then ", "if { [ ! -s /etc/mysql/my.cnf ] || "+gate+" 2>/dev/null; } 2>/dev/null; then ", 1)
+	want = strings.Replace(want, "rm -f /etc/mysql/conf.d/*.cnf 2>/dev/null; ", "rm -f /etc/mysql/replication-manager.d/* /etc/mysql/conf.d/* 2>/dev/null; ", 1)
 	want = strings.Replace(want, "cp /tmp/cfg/etc/mysql/conf.d/*.cnf /etc/mysql/conf.d/ 2>/dev/null; ", "cp -a /tmp/cfg/etc/mysql/. /etc/mysql/ 2>/dev/null; ", 1)
 	const guard = ` ; if [ ! -s /etc/mysql/my.cnf ] || [ -z "$(ls -A /etc/mysql/conf.d 2>/dev/null)" ]; then echo "ERROR: no usable configuration in /etc/mysql (my.cnf missing or empty, or conf.d empty): the database is not started; the init container is retried" >&2; exit 1; fi`
 	// the new layout gives the data to dbVolumeOwner() like OpenSVC's bootstrap, also when it is not managed
@@ -591,6 +594,50 @@ func TestK8SServiceDirsInstaller_FirstInstall(t *testing.T) {
 	}
 }
 
+// A volume with no configuration yet is installed whatever need-config-fetch answers: the route returns
+// 500 for a server with the no-config-fetch cookie or an ignored one, which must not leave /etc/mysql empty
+// behind the guard. Only a refresh (a usable my.cnf on the volume) obeys the route. Legacy keeps its gate.
+func TestK8SServiceDirsInstaller_FirstInstallFetchesWhateverTheGateAnswers(t *testing.T) {
+	c := layoutTestCluster()
+	const firstInstall = "if { [ ! -s /etc/mysql/my.cnf ] || wget"
+	svc := c.k8sDatabaseDeploymentWithLayout(layoutTestServer, 3306, "node-a", k8sLayoutServiceDirs).Spec.Template.Spec.InitContainers[0].Command[2]
+	if !strings.Contains(svc, firstInstall) {
+		t.Fatalf("the service-dirs-v1 installer does not free the first install from the gate: %s", svc)
+	}
+	legacy := c.k8sDatabaseDeploymentWithLayout(layoutTestServer, 3306, "node-a", k8sLayoutLegacy).Spec.Template.Spec.InitContainers[0].Command[2]
+	if strings.Contains(legacy, "[ ! -s /etc/mysql/my.cnf ]") || !strings.Contains(legacy, "if wget") {
+		t.Fatalf("the legacy installer must keep its need-config-fetch gate unchanged: %s", legacy)
+	}
+
+	for name, shell := range layoutShells() {
+		t.Run(name, func(t *testing.T) {
+			e := newLayoutEnv(t, k8sLayoutServiceDirs, shell...)
+			// the gate says no (500, unreachable): the first install fetches and succeeds
+			if rc, out := e.run(layoutArchive(t, "v1"), false, true); rc != 0 {
+				t.Fatalf("first install with the gate refusing: exit %d, want 0: %s", rc, out)
+			}
+			snap := etcSnapshot(t, e.etc())
+			if !strings.Contains(snap["my.cnf"], "generation v1") {
+				t.Fatalf("my.cnf was not installed on the first start: %q", snap["my.cnf"])
+			}
+			// the same answer on a refresh is obeyed: the tree is not replaced
+			if rc, out := e.run(layoutArchive(t, "v2"), false, true); rc != 0 {
+				t.Fatalf("refresh with the gate refusing: exit %d, want 0: %s", rc, out)
+			}
+			if after := etcSnapshot(t, e.etc()); !reflect.DeepEqual(snap, after) {
+				t.Errorf("a refresh the gate refused changed the tree:\n before=%v\n after=%v", snap, after)
+			}
+			// and a refresh the gate allows replaces it
+			if rc, out := e.run(layoutArchive(t, "v2"), true, true); rc != 0 {
+				t.Fatalf("refresh exit %d: %s", rc, out)
+			}
+			if after := etcSnapshot(t, e.etc()); !strings.Contains(after["my.cnf"], "generation v2") {
+				t.Errorf("a refresh the gate allowed did not install the new tree: %q", after["my.cnf"])
+			}
+		})
+	}
+}
+
 // The case of the failed first fetch on a new volume: whatever fails, the init container fails and no
 // database starts without configuration. Legacy behaviour is exit 0 with an empty directory.
 func TestK8SServiceDirsInstaller_FirstInstallFailureFailsClosed(t *testing.T) {
@@ -600,7 +647,7 @@ func TestK8SServiceDirsInstaller_FirstInstallFailureFailsClosed(t *testing.T) {
 		gate, fetch   bool
 		seedOperators bool
 	}{
-		{"need-config-fetch gate unreachable", func(t *testing.T) string { return layoutArchive(t, "v1") }, false, true, false},
+		{"need-config-fetch gate unreachable, /config fetch fails", func(t *testing.T) string { return layoutArchive(t, "v1") }, false, false, false},
 		{"gate answers, /config fetch fails (HTTP 403)", func(t *testing.T) string { return layoutArchive(t, "v1") }, true, false, false},
 		{"archive truncated", corruptLayoutArchive, true, true, false},
 		{"a failed fetch beside operator files", func(t *testing.T) string { return layoutArchive(t, "v1") }, true, false, true},
