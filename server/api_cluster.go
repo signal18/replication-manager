@@ -1015,6 +1015,12 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxDropClusterUser)),
 	))
 
+	// the cluster's credentials in clear for their owner: a read, never a rotation
+	router.Handle("/api/clusters/{clusterName}/secrets", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterSecrets)),
+	)).Methods(http.MethodGet)
+
 	router.Handle("/api/clusters/{clusterName}/users/rotate-password", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxUserRotatePassword)),

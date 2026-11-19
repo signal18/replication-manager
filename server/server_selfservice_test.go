@@ -127,6 +127,11 @@ func TestClusterAddAuthorize(t *testing.T) {
 	if f := cl.APIUsers["frank@example.com"]; !f.Roles[config.RoleSponsor] || !f.Grants[config.GrantClusterSettings] || f.Password != "" {
 		t.Errorf("visitor must become a passwordless sponsor: %+v", f)
 	}
+	// the self-service creator reads the credentials of the cluster it created (onboarding): the
+	// cluster-show family it holds carries cluster-show-secrets, on that cluster only
+	if !cl.APIUsers["frank@example.com"].Grants[config.GrantClusterShowSecrets] {
+		t.Error("the self-service sponsor must read its cluster's secrets")
+	}
 	// (fixture users set directly in the map are gone after LoadAPIUsers, so use a
 	// persisted local account with a password here)
 	if err := cl.AddUser(cluster.UserForm{Username: "local1", Grants: "db-show"}, "admin", false); err != nil {

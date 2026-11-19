@@ -99,6 +99,11 @@ const (
 	GrantClusterShowAgents         string = "cluster-show-agents"
 	GrantClusterShowCertificates   string = "cluster-show-certificates"
 	GrantClusterRotatePasswords    string = "cluster-rotate-passwords"
+	// read the cluster's credentials in clear (GET /secrets): a pure read, never a rotation; the
+	// holders of the rotation (sysops, extsysops, the Cloud18 owner) and the self-service creator
+	// of the cluster (its cluster-show family, selfServiceSponsorGrants); not dbops, extdbops nor
+	// a sponsor given the role's defaults
+	GrantClusterShowSecrets string = "cluster-show-secrets"
 	// the instance's server-scope credentials and its name in the shared stores
 	// (CREDENTIAL_STORES.md "Two levels"): sysops and extsysops only, so in the cluster family
 	// (dbops and the sponsor do not get it) and outside global (extsysops does not get that)
@@ -228,6 +233,7 @@ func GetGrantType() map[string]string {
 		GrantClusterShowCertificates:     GrantClusterShowCertificates,
 		GrantClusterResetSLA:             GrantClusterResetSLA,
 		GrantClusterRotatePasswords:      GrantClusterRotatePasswords,
+		GrantClusterShowSecrets:          GrantClusterShowSecrets,
 		GrantClusterServerCredentials:    GrantClusterServerCredentials,
 		GrantClusterStaging:              GrantClusterStaging,
 		GrantClusterAlert:                GrantClusterAlert,
@@ -350,6 +356,7 @@ func GetGrantCluster() []string {
 		GrantClusterShowCertificates,
 		GrantClusterResetSLA,
 		GrantClusterRotatePasswords,
+		GrantClusterShowSecrets,
 		GrantClusterServerCredentials,
 		GrantClusterStaging,
 		GrantClusterAlert,

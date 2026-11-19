@@ -363,6 +363,8 @@ var clusterACLRules = []ACLRule{
 	{"/users/drop", nil, []string{config.GrantGrantDrop}},
 	// a user's password: the owners (sysops, extsysops) through the rotation grant
 	{"/users/rotate-password", nil, []string{config.GrantClusterRotatePasswords}},
+	// the cluster's credentials in clear (a read, never a rotation): the same holders as the rotation
+	{"/secrets", nil, []string{config.GrantClusterShowSecrets}},
 
 	// External Roles
 	{"/ext-role/subscribe", nil, []string{config.GrantExternalRole}},

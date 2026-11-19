@@ -17,6 +17,7 @@ import remarkGfm from 'remark-gfm'
 import { HiQuestionMarkCircle } from 'react-icons/hi'
 import RMIconButton from '../../components/RMIconButton'
 import SecretKvEntries from './SecretKvEntries'
+import ClusterSecrets from './ClusterSecrets'
 
 // where a credential's value comes from (cluster JSON `credentials`, #2050, #2227)
 const SOURCE_LABEL = {
@@ -99,6 +100,7 @@ function CredentialsSettings({ selectedCluster, user, openConfirmModal }) {
   // what a store is for, under its switch
   const role = (text) => <Text as='span' fontSize='sm' color='gray.500'>{text}</Text>
 
+  const hSecrets = `**Secrets**\n\nThe cluster's credentials in clear: the database, replication and heartbeat users, the sponsor and DBA users, the passwords of the proxies that are on, the backup repository password and each app's database user; with the server credentials grant on every cluster, the replication-manager administration login too.\n\nA read only: **Reveal never changes a credential**. Each reveal is written to the security log (who, which keys, never the values). Needs \`cluster-show-secrets\` (sysops, extsysops, the Cloud18 owner) and the global setting \`api-cluster-secrets\`.`
   const hMonitoring = `**Monitoring User**\n\nThe account replication-manager uses to monitor and manage the databases.\n\n- **initial**: the starting value, kept by the config forever (a file under /etc, the cluster's dynamic config, or the default).\n- **current**: from the first change or rotation, the newest version of the versioned stores (the local file, the vaults); before it, the initial value.\n\nA change is a new version in every active store, refused when none keeps versions or when the value is set in a file under /etc. It applies to every database at once. Config: \`db-servers-credential\``
   const hReplication = `**Replication User**\n\nThe account the replicas use to connect to the primary. Same sources and refusals as the monitoring user.\n\nConfig: \`replication-credential\``
   const hRotate = `**Rotate Passwords**\n\nGenerates new passwords for the monitoring and replication users and sets them on the databases (with a Vault database engine, Vault rotates them).\n\nIt needs an active store that keeps the versions, **Local encrypted** on or a vault on. Otherwise a restart would lose access to the databases. A user set in a config file under /etc is rotated too: the newest version wins at a restart, unless that file is edited.`
@@ -110,6 +112,9 @@ function CredentialsSettings({ selectedCluster, user, openConfirmModal }) {
   const hVault = `**Store: Vaults**\n\nEach vault that is on gets every version of every secret of the cluster at mount/path-prefix/cluster/databases, proxies, apps or archives/name/key. The newest version across the stores is the current one. A vault behind the others is flagged and gets the newest version at the next pass. The cluster's sponsor can turn a vault on or off. Turning one off keeps what it holds.\n\nConfig: \`[[secret-kv]]\``
 
   const dataObject = [
+    ...(g['cluster-show-secrets'] && monitor?.config?.apiClusterSecrets !== false
+      ? [{ key: 'Secrets', help: h(hSecrets, 'Secrets'), value: <ClusterSecrets clusterName={selectedCluster?.name} user={user} enabled={monitor?.config?.apiClusterSecrets} /> }]
+      : []),
     { key: 'Monitoring User', help: h(hMonitoring, 'Monitoring User'), value: credentialRow('db-servers-credential') },
     { key: 'Replication User', help: h(hReplication, 'Replication User'), value: credentialRow('replication-credential') },
     {
@@ -120,7 +125,7 @@ function CredentialsSettings({ selectedCluster, user, openConfirmModal }) {
           <GatedButton
             reason={selectedCluster?.rotatePasswordsRefusal ? `Refused: ${selectedCluster.rotatePasswordsRefusal}` : ''}
             isDisabled={!g['cluster-rotate-passwords']}
-            onClick={() => openConfirmModal('Rotate the database passwords?', () => () => dispatch(rotateDBCredential({ clusterName: selectedCluster?.name })))}>
+            onClick={() => openConfirmModal('Rotate the monitoring and replication passwords? The old ones stop working at once: every application, script or person using them loses access until updated.', () => () => dispatch(rotateDBCredential({ clusterName: selectedCluster?.name })))}>
             Rotate
           </GatedButton>
           {storesMissing && role('needs Local Encrypted on, or a vault on')}

@@ -12779,6 +12779,55 @@
                 }
             }
         },
+        "/api/clusters/{clusterName}/secrets": {
+            "get": {
+                "description": "Returns, in clear, the credentials replication-manager generated or holds for the cluster: the database administration, replication and heartbeat users, the Cloud18 sponsor and DBA users, the passwords of the proxies that are on, the backup repository password, and the database user of each app. The instance's own secrets (API users, git, registry, Vault, OpenSVC, SSH, mail and alert tokens, cloud keys) are never returned. A caller holding cluster-server-credentials on every cluster of the instance also gets the instance's administration login. A pure read: no credential is ever changed by this call. Each call is a security event naming the caller and the keys returned, never the values. Needs the grant cluster-show-secrets and the setting api-cluster-secrets.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterSecrets"
+                ],
+                "summary": "Read the cluster's credentials",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The credentials, in clear",
+                        "schema": {
+                            "$ref": "#/definitions/server.ClusterSecretsResult"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL (cluster-show-secrets), or api-cluster-secrets is off",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No valid cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/security/apply-fix": {
             "post": {
                 "consumes": [
@@ -28389,6 +28438,23 @@
                 }
             }
         },
+        "cluster.ClusterSecret": {
+            "type": "object",
+            "properties": {
+                "key": {
+                    "type": "string"
+                },
+                "label": {
+                    "type": "string"
+                },
+                "password": {
+                    "type": "string"
+                },
+                "user": {
+                    "type": "string"
+                }
+            }
+        },
         "cluster.ClusterStatement": {
             "type": "object",
             "properties": {
@@ -30314,6 +30380,9 @@
                 },
                 "apiBind": {
                     "type": "string"
+                },
+                "apiClusterSecrets": {
+                    "type": "boolean"
                 },
                 "apiCredentials": {
                     "type": "string"
@@ -34286,6 +34355,28 @@
                 },
                 "username": {
                     "type": "string"
+                }
+            }
+        },
+        "server.ClusterSecretsResult": {
+            "type": "object",
+            "properties": {
+                "cluster": {
+                    "type": "string"
+                },
+                "instanceAdmin": {
+                    "description": "InstanceAdmin: the repman administration login of the instance, only for a caller holding\ncluster-server-credentials on every cluster (the owner, sysops, extsysops)",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/cluster.ClusterSecret"
+                        }
+                    ]
+                },
+                "secrets": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/cluster.ClusterSecret"
+                    }
                 }
             }
         },
