@@ -283,3 +283,51 @@ func TestSecretKvBehindReason(t *testing.T) {
 		t.Fatalf("bounded reason: %d bytes, valid %v", len(long), utf8.ValidString(long))
 	}
 }
+
+// The Cloud18 vault is the central place of a registered cluster's credentials: its entry is
+// created on when the cluster has no other entry on, off next to the cluster's own vault, and
+// once it exists a catalogue read again never changes its switch, whichever way the operator set it.
+func TestEnsureMarketplaceVaultClusterDefaultOn(t *testing.T) {
+	offer := MarketplaceVaultOffer{Name: "vault-fr", Address: "https://vault.example:8200"}
+
+	alone := &Config{}
+	changed, err := alone.EnsureMarketplaceVault(offer, "d/s/fr")
+	if err != nil || !changed || len(alone.SecretKvs) != 1 || !alone.SecretKvs[0].Enabled {
+		t.Fatalf("alone: changed %v err %v entries %+v", changed, err, alone.SecretKvs)
+	}
+	// the operator switches it off: the next catalogue load leaves it off
+	if err := alone.SetSecretKvEnabled("cloud18-vault-fr", false); err != nil {
+		t.Fatal(err)
+	}
+	if changed, err := alone.EnsureMarketplaceVault(offer, "d/s/fr"); err != nil || changed || alone.SecretKvs[0].Enabled {
+		t.Fatalf("switched off then read again: changed %v err %v entry %+v", changed, err, alone.SecretKvs[0])
+	}
+
+	// next to the cluster's own vault that is on, the offer comes off
+	own := &Config{SecretKvs: []SecretKvConfig{{Name: "own", Plugin: ConstSecretKvPluginVault, Enabled: true, Settings: map[string]interface{}{"address": "https://own:8200"}}}}
+	if _, err := own.EnsureMarketplaceVault(offer, "d/s/fr"); err != nil {
+		t.Fatal(err)
+	}
+	if e, ok := own.SecretKvEntryAt(SecretKvLevelCluster, "cloud18-vault-fr"); !ok || e.Enabled {
+		t.Fatalf("next to an entry on: %+v %v", e, ok)
+	}
+	// the operator switches it on: the next catalogue load leaves it on
+	if err := own.SetSecretKvEnabled("cloud18-vault-fr", true); err != nil {
+		t.Fatal(err)
+	}
+	if changed, _ := own.EnsureMarketplaceVault(offer, "d/s/fr"); changed {
+		t.Fatal("read again changed the entry")
+	}
+	if e, _ := own.SecretKvEntryAt(SecretKvLevelCluster, "cloud18-vault-fr"); !e.Enabled {
+		t.Fatalf("switched on then read again: %+v", e)
+	}
+
+	// an own entry that is off does not hold the offer back
+	offOwn := &Config{SecretKvs: []SecretKvConfig{{Name: "own", Plugin: ConstSecretKvPluginVault, Enabled: false, Settings: map[string]interface{}{"address": "https://own:8200"}}}}
+	if _, err := offOwn.EnsureMarketplaceVault(offer, "d/s/fr"); err != nil {
+		t.Fatal(err)
+	}
+	if e, _ := offOwn.SecretKvEntryAt(SecretKvLevelCluster, "cloud18-vault-fr"); !e.Enabled {
+		t.Fatalf("next to an entry off: %+v", e)
+	}
+}

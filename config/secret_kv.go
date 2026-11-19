@@ -1013,10 +1013,13 @@ func (conf *Config) EnsureOrchestratorSecretKvAt(level SecretKvLevel, name, plug
 	return changed, nil
 }
 
-// EnsureMarketplaceVault gives the cluster the entry of a marketplace vault offer (#2227):
-// added off (the sponsor turns it on). See EnsureMarketplaceVaultAt.
+// EnsureMarketplaceVault gives the cluster the entry of a marketplace vault offer (#2227): the
+// Cloud18 vault is the central place of a registered cluster's credentials, so a new entry is
+// on when no other cluster entry is on, off next to the cluster's own vault. Once the entry
+// exists its switch is the operator's (the sponsor turns it off or on): a catalogue read again
+// never changes it. See EnsureMarketplaceVaultAt.
 func (conf *Config) EnsureMarketplaceVault(offer MarketplaceVaultOffer, pathPrefix string) (bool, error) {
-	return conf.EnsureMarketplaceVaultAt(SecretKvLevelCluster, offer, pathPrefix, false)
+	return conf.EnsureMarketplaceVaultAt(SecretKvLevelCluster, offer, pathPrefix, true)
 }
 
 // EnsureMarketplaceVaultAt gives level's list the entry of a marketplace vault offer, signed in

@@ -133,7 +133,7 @@ func TestLoadMarketplaceCatalogueBounds(t *testing.T) {
 }
 
 // #2227: the vault offers are read from .pull/marketplace-vault.json, and each registered
-// cluster gets the offer as a vault entry, off, jwt, at the instance's URI
+// cluster gets the offer as a vault entry, on (no other entry is on), jwt, at the instance's URI
 func TestLoadMarketplaceVaultOffers(t *testing.T) {
 	dir := t.TempDir()
 	pull := filepath.Join(dir, ".pull")
@@ -160,12 +160,12 @@ func TestLoadMarketplaceVaultOffers(t *testing.T) {
 		t.Fatalf("%v %v", changed, err)
 	}
 	e := conf.SecretKvs[0]
-	if e.Name != "cloud18-vault-fr" || e.Enabled || e.Settings["auth"] != "jwt" || e.Settings["path-prefix"] != "d/s-fr" || e.Settings["mount"] != "kv" {
+	if e.Name != "cloud18-vault-fr" || !e.Enabled || e.Settings["auth"] != "jwt" || e.Settings["path-prefix"] != "d/s-fr" || e.Settings["mount"] != "kv" {
 		t.Fatalf("entry %+v", e)
 	}
-	// the sponsor turns it on; the offer read again leaves the switch alone
-	conf.SetSecretKvEnabled(e.Name, true)
-	if changed, _ := conf.EnsureMarketplaceVault(c.Vaults[0], "d/s-fr"); changed || !conf.SecretKvs[0].Enabled {
+	// the sponsor turns it off; the offer read again leaves the switch alone
+	conf.SetSecretKvEnabled(e.Name, false)
+	if changed, _ := conf.EnsureMarketplaceVault(c.Vaults[0], "d/s-fr"); changed || conf.SecretKvs[0].Enabled {
 		t.Fatalf("read again: changed %v, entry %+v", changed, conf.SecretKvs[0])
 	}
 }

@@ -3787,7 +3787,7 @@ func (repman *ReplicationManager) initCluster(clusterName string) (*cluster.Clus
 	// Reload Users
 	repman.currentCluster.LoadAPIUsers()
 	repman.currentCluster.SaveAcls()
-	// the marketplace's vault offers, off until the sponsor turns them on (#2227): here for
+	// the marketplace's vault offers, on when the cluster has no other vault on (#2227): here for
 	// the clusters of the startup too, whose catalogue was read before they existed
 	repman.currentCluster.EnsureMarketplaceVaults(repman.MarketplaceCatalogue().Vaults)
 	repman.ConfigManager.UpdateLoggerConfig(clusterName, repman.currentCluster.Conf)
