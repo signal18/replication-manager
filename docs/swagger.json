@@ -21772,7 +21772,7 @@
         },
         "/api/clusters/{clusterName}/settings/actions/set/{settingName}/{settingValue}": {
             "post": {
-                "description": "This endpoint sets the settings for the specified cluster.",
+                "description": "This endpoint sets the settings for the specified cluster.\nA credential setting is user:password, with a user and a password: in clear for db-servers-credential, replication-credential, proxysql-servers-credential, maxscale-servers-credential and shardproxy-servers-credential; encoded in base64 for backup-verification-credential, cloud18-dba-user-credentials and cloud18-sponsor-user-credentials (an empty value clears the verification and sponsor credentials). Any other value is refused with 400, the value never echoed.",
                 "consumes": [
                     "application/json"
                 ],
@@ -21821,8 +21821,20 @@
                             "type": "string"
                         }
                     },
+                    "400": {
+                        "description": "A credential setting that is not user:password",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
                     "403": {
                         "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "409": {
+                        "description": "A credential change refused (no store keeps versions)",
                         "schema": {
                             "type": "string"
                         }
@@ -32704,6 +32716,10 @@
                     "type": "boolean"
                 },
                 "provKubeProxyStorageClass": {
+                    "type": "string"
+                },
+                "provKubePvcLayout": {
+                    "description": "layout of a database PVC created from now on: service-dirs-v1 (default) or legacy (#2395)",
                     "type": "string"
                 },
                 "provKubeStorageClass": {

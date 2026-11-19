@@ -178,7 +178,7 @@ func (server *ServerMonitor) checkStoppedReplication(ss *dbhelper.SlaveStatus) s
 			if ss.LastIOErrno.String == "2026" {
 				return "NOT OK, IO Connecting (2026)"
 			}
-			server.ClusterGroup.SetState("WARN0269", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0269"], server.URL, ss.ConnectionName.String, ss.LastIOErrno.String, ss.LastIOError.String), ErrFrom: "TOPO", ServerUrl: server.URL})
+			server.ClusterGroup.SetState("WARN0269", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0269"], server.URL, ss.ConnectionName.String, ss.LastIOErrno.String, server.ClusterGroup.redactCredentialUsers(ss.LastIOError.String)), ErrFrom: "TOPO", ServerUrl: server.URL})
 			return fmt.Sprintf("NOT OK, IO Connecting (%s)", ss.LastIOErrno.String)
 		}
 		return "NOT OK, IO Connecting"
@@ -541,12 +541,12 @@ func (server *ServerMonitor) CheckPrivileges() {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Client connection found on server %s with IP %s for host %s", server.URL, myip, myhost)
 		// }
 		if err != nil {
-			cluster.SetState("ERR00078", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00005"], cluster.GetDbUser(), server.URL, myhost, err), ErrFrom: "CONF", ServerUrl: server.URL})
+			cluster.SetState("ERR00078", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00005"], credentialUserLabel("db-servers-credential"), server.URL, myhost, cluster.redactCredentialError(err)), ErrFrom: "CONF", ServerUrl: server.URL})
 		} else {
 			priv, logs, err := dbhelper.GetPrivileges(server.Conn, cluster.GetDbUser(), cluster.RepMgrHostname, myip, server.DBVersion)
-			cluster.LogSQL(logs, err, server.URL, "Monitor", config.LvlDbg, clusterError["ERR00005"], cluster.GetDbUser(), cluster.RepMgrHostname, err)
+			cluster.LogSQL(logs, err, server.URL, "Monitor", config.LvlDbg, clusterError["ERR00005"], credentialUserLabel("db-servers-credential"), cluster.RepMgrHostname, cluster.redactCredentialError(err))
 			if err != nil {
-				cluster.SetState("ERR00005", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00005"], cluster.GetDbUser(), cluster.RepMgrHostname, err), ErrFrom: "CONF", ServerUrl: server.URL})
+				cluster.SetState("ERR00005", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00005"], credentialUserLabel("db-servers-credential"), cluster.RepMgrHostname, cluster.redactCredentialError(err)), ErrFrom: "CONF", ServerUrl: server.URL})
 			}
 			if priv.Repl_client_priv == "N" {
 				cluster.SetState("ERR00006", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00006"], server.URL), ErrFrom: "CONF", ServerUrl: server.URL})
@@ -563,9 +563,9 @@ func (server *ServerMonitor) CheckPrivileges() {
 			if sv2.URL != server.URL && !sv2.IsRelay && !sv2.IsDown() {
 				rplhost, _ := misc.GetIPSafe(misc.Unbracket(sv2.Host))
 				rpriv, logs, err := dbhelper.GetPrivileges(server.Conn, cluster.GetRplUser(), sv2.Host, rplhost, server.DBVersion)
-				cluster.LogSQL(logs, err, server.URL, "Monitor", config.LvlDbg, clusterError["ERR00015"], cluster.GetRplUser(), sv2.URL, err)
+				cluster.LogSQL(logs, err, server.URL, "Monitor", config.LvlDbg, clusterError["ERR00015"], credentialUserLabel("replication-credential"), sv2.URL, cluster.redactCredentialError(err))
 				if err != nil {
-					cluster.SetState("ERR00015", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00015"], cluster.GetRplUser(), sv2.URL, err), ErrFrom: "CONF", ServerUrl: sv2.URL})
+					cluster.SetState("ERR00015", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00015"], credentialUserLabel("replication-credential"), sv2.URL, cluster.redactCredentialError(err)), ErrFrom: "CONF", ServerUrl: sv2.URL})
 				}
 				if rpriv.Repl_slave_priv == "N" {
 					cluster.SetState("ERR00007", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00007"], sv2.URL), ErrFrom: "CONF", ServerUrl: sv2.URL})
@@ -607,7 +607,7 @@ func (server *ServerMonitor) CheckMonitoringCredentialsRotation() {
 				cluster.SetClusterMonitorCredentialsFromConfig()
 				server.SetCredential(server.URL, cluster.GetDbUser(), cluster.GetDbPass())
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Vault monitoring user password rotation")
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Ping function User: %s", server.User) // never the password (F10)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Vault monitoring credential applied to %s", server.URL) // never the user nor the password (F10)
 
 				for _, pri := range cluster.Proxies {
 					if prx, ok := pri.(*ProxySQLProxy); ok {

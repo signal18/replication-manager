@@ -885,7 +885,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 		if server.State != stateFailed {
 			cluster.StateMachine.CopyOldStateFromUnknowServer(server.URL)
 		}
-		cluster.SetState("WARN0171", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0171"], server.URL, err), ErrFrom: "MON", ServerUrl: server.URL})
+		cluster.SetState("WARN0171", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0171"], server.URL, cluster.redactCredentialError(err, server.User)), ErrFrom: "MON", ServerUrl: server.URL})
 
 		if driverErr, ok := err.(*mysql.MySQLError); ok {
 			//	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlDbg, "Driver Error %s %d ", server.URL, driverErr.Number)
@@ -893,7 +893,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 			// access denied
 			if driverErr.Number == 1045 {
 				server.SetState(stateErrorAuth)
-				cluster.SetState("ERR00004", state.State{ErrType: config.LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00004"], server.URL, err.Error()), ErrFrom: "SRV"})
+				cluster.SetState("ERR00004", state.State{ErrType: config.LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00004"], server.URL, cluster.redactCredentialError(err, server.User)), ErrFrom: "SRV"})
 				//if vault and credential change, then repare
 				server.CheckMonitoringCredentialsRotation()
 				return

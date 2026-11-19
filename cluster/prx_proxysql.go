@@ -650,7 +650,7 @@ func (proxy *ProxySQLProxy) Refresh() error {
 				// credential and the write heartbeat one only.
 				pgUsers, conflict := cluster.proxySQLClearUsers()
 				if conflict {
-					cluster.SetState("WARN0233", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0233"], proxy.Name, cluster.GetDbUser()), ErrFrom: "PRX", ServerUrl: proxy.Name})
+					cluster.SetState("WARN0233", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0233"], proxy.Name, credentialUserLabel("db-servers-credential")), ErrFrom: "PRX", ServerUrl: proxy.Name})
 				}
 				for _, u := range pgUsers {
 					if u.Password != "" {
