@@ -216,6 +216,15 @@ settings (secrets encrypted, F9), on/off, forms drawn from the manifest.
     `<replication-credential user>` instead (`cluster/credential_log.go`). The user of a
     credential set in a config file without its colon is the whole value; it never reaches a
     log. The Credentials settings page still shows each user.
+    - **Best effort:** an exact replace of those two quoted forms in the messages listed. A
+      user containing `'` or `@` may also replace an unrelated quoted text (harmless). Other
+      paths that print a raw connection error (proxy, backup, verification connections) are
+      not covered yet.
+    - **Not checked:** a value read from a config file or a vault. Only the API checks the
+      format. A start-time state for a stored value without its colon is a follow-up.
+    - **Empty password:** `user:` is refused through the API for every credential key,
+      including the proxy credentials (a behaviour change: an empty password could be set
+      before). A proxy whose admin password is empty keeps it from its config file.
 
 ### Regtest (T13)
 

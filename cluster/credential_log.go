@@ -7,8 +7,9 @@ package cluster
 import "strings"
 
 // credentialUserLabel is how a log line or a state names the user of a credential: by the
-// credential's key, never by the user string (F10). A credential stored without its colon
-// (user:password sent in another encoding) is all user, so its user is the secret itself.
+// credential's key, never by the user string (F10). The settings API refuses a value without
+// its colon; one already stored that way (a config file, a vault, a version written before
+// that check) is all user, so its "user" is the secret itself. The label protects those.
 func credentialUserLabel(key string) string {
 	return "<" + key + " user>"
 }
