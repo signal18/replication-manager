@@ -30,6 +30,15 @@ replication-manager's persistent key (`monitoring-key-path`), never stored.
   volume `{name}-sec` (`/credentials/JOBS_API_KEY`, mode 600, user 99) next to the database
   password. A file read at use time, not an environment variable (frozen at container start,
   shown by `docker inspect`).
+- **Delivery, Kubernetes:** the key is the `JOBS_API_KEY` entry of the cluster's Secret
+  (`<cluster>-secret`, next to `MYSQL_ROOT_PASSWORD`). It is written at provisioning, before the
+  Deployment is rendered (`k8sPublishJobsKey`: an unchanged value is not written again, a changed one
+  keeps `JOBS_API_KEY_OLD`), and repaired by the monitor with the other init credentials
+  (`initCredentials`). The Deployment maps it only with a persistent key: a Secret volume `jobs-key`
+  that projects that one entry (mode 0444, see "The key file on Kubernetes"), mounted read-only, as a directory so that the kubelet
+  refreshes it, at `/credentials` in the database init container and the dbjobs sidecar and in no
+  other container. The jobs read the file (`jobapi.JobsKeyFromEnv`) and keep `MYSQL_ROOT_PASSWORD`
+  for the database connection only.
 - **Delivery, on-premise (ssh):** exported in the ssh environment (`GetSshEnv`,
   `JOBS_API_KEY`) that precedes the script at each run; nothing is written on the host.
 - **Jobs side:** the CLI reads `$JOBS_API_KEY`, else `/credentials/JOBS_API_KEY`
@@ -226,6 +235,49 @@ With the cluster's jobs key, the init container logs in like the jobs:
   running executable, else `PATH`), the one lookup the backup and job code use too. Not found on
   disk: the embedded copy, 404 when there is none, with a log line naming where it looked. The
   binary (about 150 MB) is never added to the embed.
+
+## The Kubernetes init container
+
+The database init container (`k8sDatabaseDeployment`, `cluster/prov_k8s_jobs_key.go`) follows the
+same model as OpenSVC's bootstrap. With a persistent key:
+
+- it mounts the jobs key (above) and gets no `REPMAN_AUTH_HEADER`: no admin login, so an admin
+  password change no longer touches the database start;
+- it downloads the CLI from the public `/static` route first (it must run, `version`; a failed
+  download uses the copy a previous start left in `/docker-entrypoint-initdb.d`), then fetches the
+  config with `replication-manager-cli job config` (`REPLICATION_MANAGER_URL` is the
+  replication-manager that answered `/api/version`, and the cluster, server and port are plain
+  environment values), then applies the archive as before. The CLI's own messages reach the
+  container log; they carry no key;
+- the CLI is copied into `/docker-entrypoint-initdb.d` for the dbjobs sidecar.
+
+Without a persistent key, and for a Deployment created before this change (only provisioning renders
+one), the init container keeps the admin login and the jobs sign with the database password, as
+before. The proxies keep the admin login. Existing volumes and the PVC layout are not touched.
+
+### The key file on Kubernetes
+
+- **Mode 0444, readable by any UID of the containers that mount it.** A Secret volume belongs to
+  root, and the dbjobs container runs as root only when the identity is managed
+  (`dbIdentityManaged`: `prov-db-run-as-uid`, `prov-db-volume-uid` or an image whose name contains
+  `percona`, as OpenSVC's jobs container); otherwise it runs as the image's own `USER`. The default
+  `mariadb` and `mysql` images run as root, `percona/percona-server` as `mysql`, and a Percona image
+  renamed without `percona`, or a custom image with a non-root `USER`, leaves the jobs non-root. A 0400
+  file is unreadable by such a user, which was measured (uid 1001 and 999: not readable; 0444: readable).
+- **What the exposure is.** The volume projects `JOBS_API_KEY` only, not the database password or
+  the admin login of the same Secret, and it is mounted read-only in the init container and the dbjobs
+  sidecar only: the database container does not mount it. Within those two containers any process can
+  read it. The key is a cluster-scoped authentication credential: it is derived from the persistent
+  key, never stored, and not to be logged or copied; protect the pods' exec access accordingly.
+- **A missing, unreadable or empty key is not an error.** `jobapi.JobsKeyFromEnv` ignores a read
+  error and returns an empty key; the shared CLI then signs with the database password
+  (`MYSQL_ROOT_PASSWORD`, carried in the encrypted body) without a message, and the server accepts it.
+  This applies on OpenSVC and Kubernetes alike (an OpenSVC key file is mode 600, owner 99) and is not
+  changed here: the jobs authentication is not fail-closed. No Pod-level `fsGroup` is used (it would
+  also own the data volume) and the dbjobs container is not forced to root.
+- **Not established.** A complete DBJobs workflow (backup, reseed) with a custom non-root image has
+  not been run; the authentication of a non-root user was checked with the CLI call of the jobs
+  (`job config`) and with the real round trip as root.
 
 ## Not covered here
 

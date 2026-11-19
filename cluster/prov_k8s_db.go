@@ -412,6 +412,12 @@ func (cluster *Cluster) k8sDatabaseDeployment(s *ServerMonitor, port int, nodeHo
 		}
 	}
 	authHeaderValue := k8sAPIAuthHeaderValue(cluster)
+	// With the cluster's jobs key the init container logs in like the jobs, through the CLI (k8sJobsKeyInit), and
+	// gets no admin login, as OpenSVC's database init container does (OpenSVCGetDBInitContainerSection).
+	jobsKey := cluster.k8sJobsKeyInUse()
+	if jobsKey {
+		authHeaderValue = ""
+	}
 	authHeader := ""
 	if authHeaderValue != "" {
 		authHeader = " --header=\"Authorization: Basic $" + k8sSecretKeyAPIAuthHeader + "\""
@@ -449,6 +455,11 @@ func (cluster *Cluster) k8sDatabaseDeployment(s *ServerMonitor, port int, nodeHo
 	// unreachable repman and "fetch not needed" both skip the fetch the
 	// same way.
 	needFetchCmd := "wget" + noCheckCert + " -T 8 -qO /dev/null" + authHeader + " " + baseRef + "/api/clusters/" + cluster.Name + "/servers/" + serverPath + "/" + s.Port + "/need-config-fetch"
+	jobsKeyInit := cluster.k8sJobsKeyInit(s, serverPath, noCheckCert, baseRef)
+	jobsKeyPrep := ""
+	if jobsKey {
+		needFetchCmd, remoteFetchCmd, jobsKeyPrep = jobsKeyInit.need, jobsKeyInit.fetch, jobsKeyInit.prep
+	}
 
 	// Mirrors OpenSVC's own bootstrap script: fetch into a scratch dir, and
 	// only on a successful fetch *and* extract, clear the persisted
@@ -487,6 +498,10 @@ func (cluster *Cluster) k8sDatabaseDeployment(s *ServerMonitor, port int, nodeHo
 		}
 	}
 
+	if jobsKey {
+		initEnv = jobsKeyInit.env
+	}
+
 	dbSecurityContext, runtimeChown, jobsSecurityContext := cluster.k8sDBIdentity()
 
 	dbVolumeMounts := []apiv1.VolumeMount{
@@ -519,6 +534,13 @@ func (cluster *Cluster) k8sDatabaseDeployment(s *ServerMonitor, port int, nodeHo
 		})
 	}
 
+	// The CLI for the dbjobs container, fetched to a temp file first. With the jobs key it was fetched before the config
+	// (k8sJobsKeyInit): only copied here.
+	cliTail := " ; wget" + noCheckCert + " -T 8 -qO /tmp/replication-manager-cli.new " + baseRef + "/static/configurator/bin/replication-manager-cli 2>/dev/null && cp /tmp/replication-manager-cli.new /docker-entrypoint-initdb.d/replication-manager-cli 2>/dev/null"
+	if jobsKey {
+		cliTail = jobsKeyInit.tail
+	}
+
 	// MKDIR_STATUS is the only thing that determines this container's exit
 	// code. Kubernetes init containers have no "optional" resource flag
 	// like OpenSVC's (a nonzero exit always blocks the pod), so everything
@@ -529,6 +551,7 @@ func (cluster *Cluster) k8sDatabaseDeployment(s *ServerMonitor, port int, nodeHo
 		"mkdir -p /tmp/cfg /docker-entrypoint-initdb.d " + systemDirs +
 			" ; MKDIR_STATUS=$? ; " +
 			pickBase +
+			jobsKeyPrep +
 			applyConfig +
 			// replication-manager-cli persists across restarts like
 			// conf.d/init above -- a failed fetch just means it isn't
@@ -536,7 +559,7 @@ func (cluster *Cluster) k8sDatabaseDeployment(s *ServerMonitor, port int, nodeHo
 			// into place only on success: busybox wget's "-qO" has no
 			// atomic rename, so a connection dropped mid-transfer would
 			// otherwise corrupt a previously-good cached binary in place.
-			" ; wget" + noCheckCert + " -T 8 -qO /tmp/replication-manager-cli.new " + baseRef + "/static/configurator/bin/replication-manager-cli 2>/dev/null && cp /tmp/replication-manager-cli.new /docker-entrypoint-initdb.d/replication-manager-cli 2>/dev/null" +
+			cliTail +
 			" ; chmod +x /docker-entrypoint-initdb.d/replication-manager-cli /docker-entrypoint-initdb.d/dbjobs_new /docker-entrypoint-initdb.d/dbjobs_launcher_with_sigterm 2>/dev/null" +
 			runtimeChown +
 			" ; exit \"$MKDIR_STATUS\"",
@@ -703,6 +726,7 @@ func (cluster *Cluster) k8sDatabaseDeployment(s *ServerMonitor, port int, nodeHo
 		},
 	}
 	cluster.k8sAddXtrabackupBundle(dep, s)
+	cluster.k8sAddJobsKey(dep, s)
 	return dep
 }
 
@@ -1171,6 +1195,12 @@ func (cluster *Cluster) K8SProvisionDatabaseService(s *ServerMonitor) {
 	}
 	cluster.k8sEnsureNamespace(client, cluster.Name)
 	if err := cluster.k8sEnsureDatabaseSecret(client, s.Pass); err != nil {
+		cluster.errorChan <- err
+		return
+	}
+	// The jobs key (OpenSVC: openSVCPublishJobsKey) is in the Secret before any Deployment maps it; a monitor that
+	// becomes active later repairs it (initCredentials).
+	if err := cluster.k8sPublishJobsKey(client); err != nil {
 		cluster.errorChan <- err
 		return
 	}

@@ -16,7 +16,8 @@ which stock MySQL and Percona Server images do not ship.
 
 - **OpenSVC:** the bootstrap downloads it from `/static/configurator/bin/replication-manager-cli`
   into the init directory, beside the script.
-- **Kubernetes:** the init container copies it into `/docker-entrypoint-initdb.d`.
+- **Kubernetes:** the init container copies it into `/docker-entrypoint-initdb.d` (with the jobs key
+  it downloads it before the config fetch, see `doc/implementation/security/JOB_LOGIN.md`).
 - **On-premise (SSH):** replication-manager copies it into the server's jobs directory before
   each run that needs it (see below).
 - **The script:** it looks beside itself first (`$SCRIPT_DIR/replication-manager-cli`), then in
@@ -74,7 +75,7 @@ Every call passes `--url --cluster --server --port` (`JOBS_IDENTITY`):
 
 - **URL:** `https://` on 443 and 10005, `http://` otherwise, as before.
 - **Signing key:** the CLI signs with the cluster's jobs key, `$JOBS_API_KEY`, else
-  `/credentials/JOBS_API_KEY`.
+  `/credentials/JOBS_API_KEY` (OpenSVC: the jobs shm volume; Kubernetes: a read-only Secret volume).
 - **Without a jobs key:** it falls back to the database password from `$MYSQL_ROOT_PASSWORD`. The
   password stays in the environment, never in an argument (`ps`).
 
