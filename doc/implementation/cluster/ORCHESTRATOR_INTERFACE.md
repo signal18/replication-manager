@@ -206,7 +206,7 @@ type Orchestrator interface {
 	AppOrchestrator
 	SecretOrchestrator
 	TerminalOrchestrator
-	HostOrchestrator // from step 3: the VM under a server, for a hypervisor backend (10.4)
+	HostOrchestrator // from step 3b: the VM under a server, for a hypervisor backend (10.4)
 }
 
 type OrchestratorInfo interface {
@@ -271,8 +271,10 @@ type ProxyOrchestrator interface {
 	UnprovisionProxyService(prx DatabaseProxy) error
 	StartProxyService(prx DatabaseProxy) error
 	StopProxyService(prx DatabaseProxy) error
+	RestartProxyService(prx DatabaseProxy, node string, rid string) error // step 3: the backend's own restart, as the database's
 	RefreshProxyServiceDefinition(prx DatabaseProxy) error
 	ProxyWorkingNode(prx DatabaseProxy) (string, error)
+	ProxyServiceImage(prx DatabaseProxy) (string, error) // step 3: the image or the package version the proxy runs
 	AbortProxyService(prx DatabaseProxy) error
 	ClearProxyInstanceState(prx DatabaseProxy, node string) error
 }
@@ -399,6 +401,8 @@ backend logs today. New states, numbered after the last ones (WARN0324, ERR00121
 | ERR00122 | server | ERROR | an orchestrator operation the monitor or the user asked for failed on this server (provision, start, refresh): the service cannot do its job until someone acts. Text: `Orchestrator %s: %s of %s failed: %s` | the next successful operation of the same kind on the server |
 | WARN0325 | cluster | WARNING | `Check()` of a configured orchestrator fails (unreachable, bad credentials, script missing or not executable): every provisioning action of the cluster will fail. Text: `Orchestrator %s (%s) unreachable: %s` | the next successful check |
 | WARN0326 | cluster | WARNING | a configuration names an orchestrator that does not exist, or a server names one of another type than the cluster's and the operation needs the cluster's (3.3). Text: `Server %s names orchestrator %s: %s` | the configuration is fixed |
+| WARN0327 | server | WARNING | the server is frozen for a rolling operation on a backend without a freeze of its own (the frozen flag, 2.5): the monitor rejoins, restarts and reprovisions nothing on it. Text: `Server %s frozen for a rolling operation: no rejoin, restart or reprovision until unfrozen` | `UnfreezeDatabaseService` |
+| WARN0328 | server (the proxy) | WARNING | the proxy's runtime differs from its configuration (12.2): a materialization failed, a runtime change was refused for want of a hook, or the drift check found a difference. Text: `Proxy %s: runtime differs from configuration (%s): %s` | the materialization succeeds, or runtime and configuration agree |
 
 The existing states keep their meaning: WARN0275 (the orchestrator secret lags the
 rotation), WARN0170 (dbjobs need a scheduler and SSH), WARN0324 (jobs never reached
@@ -407,53 +411,123 @@ log the key, not the value.
 
 ### 2.5 Backend x method matrix
 
-Legend: **today** = the code exists and moves behind the method as is; **write** = to
-write in the migration; **n/a** = returns `ErrOrchestratorNotSupported` by design (the
-concept does not exist there); **hook** = the script backend runs its script with that
-action (section 4).
+The rule, the maintainer's: **every operation of the interface has an implementation on every
+backend.** A cell says **today** (the code exists and moves behind the method as is) or
+**step N** with how it is done and what it reuses (T2). A cell says "not applicable" only
+when the concept does not exist for that backend, and then only in the short table at the
+end of this section, with its reason; such a method returns `ErrOrchestratorNotSupported`,
+and a caller that depended on it opens a tracked state. **hook** = the script backend runs
+the client's script with that action (4.2, 10.3, 11.3). Steps: 2 the database lifecycle and
+the secret facet, 2b the script backend, 3 the proxy and app services on every backend, 3b
+the Proxmox API backend, 4 the service definition, 5 the inventory, traits, layout and
+terminal, 6 the configuration model (section 5).
 
 | Method | OpenSVC | Kubernetes | on-premise | localhost | SlapOS | script |
 |---|---|---|---|---|---|---|
-| `Nodes` | today | today | today | today | today | hook `nodes` |
-| `Storages` | today (pools) | today (storage classes) | n/a | n/a | n/a | hook, optional |
-| `NodeStats` | today | write (metrics API) or n/a | n/a | n/a | n/a | n/a |
-| `Check` | write (`OpenSVCConnect` + a GET) | write (API server version) | write (SSH dial) | write (binary present) | write | write (stat, mode) |
-| `Traits` | write (constant) | write | write | write | write | from the script's `traits` action, cached at load |
-| `Layout` | today (paths) | today | today | today | today | hook `layout`, optional, defaults to on-premise paths |
-| `ProvisionDatabaseService` | today | today | today | today | cookie only (today) | hook |
-| `UnprovisionDatabaseService` | today | today | today | today | cookie only | hook |
-| `StartDatabaseService` | today | today | today | today | today | hook |
-| `StopDatabaseService` | today | today | today | **write** (`LocalhostStopDatabaseService` exists and is not called: the switch routes localhost to `OnPremiseStop`, 1.1) | today | hook |
-| `RestartDatabaseService` | today (rid) | today (repull) | n/a | n/a | n/a | hook, n/a on exit 3 |
-| `Freeze`/`Unfreeze` | today (v3), n/a on v2 | n/a | n/a | n/a | n/a | hook, optional |
-| `UpdateDatabaseServiceConfig` | today | today | n/a | n/a | n/a | hook |
-| `RefreshDatabaseServiceDefinition` | today (`OpenSVCUpdateDatabaseTemplate`) | **write**: the full Deployment spec, not only the image (#1775) | **write**: regenerate and push the host configuration (#1775) | write (same as on-premise) | n/a | hook |
-| `UpgradeDatabaseService` | n/a (generic two-phase) | n/a | today (SSH script) | n/a | n/a | hook |
-| `DatabaseServiceDefinition` | today (`GetDatabaseServiceConfig`) | today (`K8SGetDatabaseManifests`) | write (the rendered config bundle) | write | n/a | hook, optional |
-| `DatabaseServiceImage` | today | **write** (pod spec image) | n/a | n/a | n/a | hook, optional |
-| `DatabaseWorkingNode` | today | **write** (pod node) | n/a (the host) | n/a | n/a | hook, optional |
-| `Abort`/`ClearInstanceState` (db, proxy, app) | today | n/a | n/a | n/a | n/a | n/a |
-| `ProvisionProxyService`, `UnprovisionProxyService` | today | today | today | today | n/a: `SlapOSProvisionProxyService` and `SlapOSUnprovisionProxyService` are empty and never report on `errorChan` (today's caller blocks on them) | hook |
-| `StartProxyService`, `StopProxyService` | today | today | today | today | today (cookie, SQL) | hook |
-| `RefreshProxyServiceDefinition` | **write**: `OpenSVCGetProxyTemplateV3` renders, nothing pushes it to a live service yet | write | write | n/a (regenerated at start) | n/a | hook |
-| `ProxyWorkingNode` | today | write | n/a | n/a | n/a | hook, optional |
-| `ProvisionAppService` ... `RestartAppService` | today | **write** (app Deployment: open question, see 8) | n/a | n/a | n/a | hook |
-| `UpdateAppConfig`, `RefreshAppServiceDefinition`, `ProvisionAppRoute`, `WithdrawAppRoutes` | today | write or n/a | n/a | n/a | n/a | hook, optional |
-| `SecretStore` | today (`openSVCStore`) | today (`k8sStore`) | **write, step 2** (`hostCredentialStore`: the credentials directory on each database host, 11.2) | **write, step 2** (`localCredentialStore`: the same directory under the local data directory, 11.3) | **write, step 2** (the on-premise store over the SlapOS channel, 11.3) | **write, step 2b** (hook `secret-write`, value on stdin, 11.3) |
-| `ServerSecretStore` | today | today | **write, step 2** (the same directory, prefixed keys, 11.2) | **write, step 2** | **write, step 2** | **write, step 2b** (hook `secret-write` with the server prefix) |
-| `InitCredentials` | today | today | **write, step 2** (`REPLICATION_MANAGER_PASSWORD`, `JOBS_API_KEY` in the directory, 11.2) | **write, step 2** | **write, step 2** | **write, step 2b** (hook `init-credentials`) |
-| `RotateDatabasePassword` | today | today | **write, step 2** (the file rewritten over SSH, `_OLD` kept, 11.2) | **write, step 2** | **write, step 2** | **write, step 2b** (hook `rotate-root`, value on stdin) |
-| `UnprovisionSecret` | today | **write, step 2** (delete the cluster Secret) | **write, step 2** (the directory removed over SSH) | **write, step 2** (the directory removed) | **write, step 2** | **write, step 2b** (hook `secret-remove`) |
-| root-password drift check (`checkOpenSVCRootPassword`, WARN0275) | today | **write, step 2** (`ReadCurrent` on the Secret) | **write, step 2** (`ReadCurrent` reads the file over SSH, 11.2) | **write, step 2** | **write, step 2** | **write, step 2b** (hook `secret-check`) |
+| `Check` | step 1 (the nodes answer) | step 1 | step 1 (SSH dial) | step 1 | step 1 | hook `check` |
+| `Traits`, `Layout`, `ProxyLayout` | step 1 | step 1 | step 1 | step 1 | step 1 | hook `traits`, `layout` |
+| `Nodes` | today | today | today (`OnPremiseGetNodes`) | today | today (`SlapOSGetNodes`, the partitions) | hook `nodes` |
+| `Storages` | today (pools) | today (storage classes) | step 5: `df` of the data directory's filesystem on each host over `OnPremiseConnect` | step 5: `df` locally | step 5: the partition's filesystem over the host session (11.3) | hook `storages` |
+| `NodeStats` | today | step 5: the metrics API (`metrics.k8s.io`, node CPU and memory) | step 5: `/proc/loadavg`, `/proc/meminfo`, `/proc/stat` over the session, into a neutral `NodeStats` | step 5: the same locally | step 5: over the host session | hook `node-stats` |
+| `ProvisionDatabaseService` | today | today | today | today | step 3: the two empty methods filled: the configurator's SlapOS paths (`configurator.go:1397`) rendered into the partition's `etc/mysql`, the partition's service started through the host session (`slapos node supervisorctl` of the partition), the result returned (no `errorChan` send: step 2 has removed them) | hook |
+| `UnprovisionDatabaseService` | today | today | today | today | step 3: the service stopped and the partition's data directory emptied through the host session | hook |
+| `StartDatabaseService` | today | today | today | today | today (cookie), step 3: the partition's service | hook |
+| `StopDatabaseService` | today | today | today | step 2: `LocalhostStopDatabaseService` (exists, the switch never calls it) | today (SQL shutdown) | hook |
+| `RestartDatabaseService` | today (`rid`) | today (repull) | step 2: `onpremise-ssh-restart-db-script` when set, else the backend's own stop then `OnPremiseStartDatabaseService` over one session | step 2: the process stopped then `LocalhostStartDatabaseService` | step 3: the partition's service restarted | hook `restart` |
+| `FreezeDatabaseService`, `UnfreezeDatabaseService` | today (v3); v2: the frozen flag | step 2: the frozen flag | step 2: the frozen flag | step 2 | step 2 | hook `freeze`/`unfreeze`, else the flag |
+| `UpdateDatabaseServiceConfig` | today | today | step 4: the release the next upgrade installs, pinned on the host (`<onpremise-credentials-dir>/../DB_RELEASE`, the repository URL from `configurator/distribution.go` `ResolveRepoURL`) | step 4: the same locally | step 3: the partition's software release | hook `update-service-config` |
+| `RefreshDatabaseServiceDefinition` | today (`OpenSVCUpdateDatabaseTemplate`) | step 4: the full Deployment spec, not only the image (#1775) | step 4: the configurator's bundle (`config.tar.gz`) pushed to the host over the session, the service reloaded by the start script | step 4: the bundle written locally, the process reloaded | step 3: the bundle into the partition | hook `refresh-service-definition` |
+| `UpgradeDatabaseService` | step 2: the backend runs the two-phase pull itself (`UpdateDatabaseServiceConfig(forcePull)`, restart, clean), so the caller has no fallback | step 2: the same | today (`onpremise-ssh-upgrade-db-script`) | step 2: the upgrade script run locally, same contract | step 3: the partition's software release changed and the service restarted | hook `upgrade` |
+| `DatabaseServiceDefinition` | today (`GetDatabaseServiceConfig`) | today (`K8SGetDatabaseManifests`) | step 4: the rendered bundle | step 4 | step 3 | hook `service-definition` |
+| `DatabaseServiceImage` | today | step 4: the pod spec's image (`k8sFindDatabasePod`) | step 2: `server.DBVersion` when up, `mysqld --version` over the session when down | step 2: the same locally | step 3: the partition's binary version | hook `service-image` |
+| `DatabaseWorkingNode` | today | step 2: the pod's node (`k8sFindDatabasePod`) | step 2: the host (`server.Host`) | step 2: the monitor host | step 3: the partition's host | hook `working-node` |
+| `AbortDatabaseService` | today (v3) | step 2: cancel the in-flight wait (`K8SWaitRolloutComplete`, `k8sWaitDeploymentGone` contexts) | step 2: close the session running the operation (the SSH command dies) | step 2: kill the in-flight local command | step 3 | hook `abort` |
+| `ClearDatabaseInstanceState` | today (v3) | step 2: delete the failing pod, the Deployment recreates it | step 2: the restart and wait cookies removed, ERR00122 cleared, the start script run again | step 2 | step 3 | hook `clear` |
+| `ProvisionProxyService` | today | today | today for HAProxy and ProxySQL (`OnPremiseProvisionHaProxyService`, `OnPremiseProvisionProxySQLService`, `OnPremiseProvisionBootsrapProxy`); step 3: MaxScale and the shard proxy, the packages from the distribution repositories, the configuration from `GetProxyConfig` | today for HAProxy and ProxySQL (`LocalhostProvisionHaProxyService`, `LocalhostProvisionProxySQLService`); step 3: MaxScale and the shard proxy as local processes | step 3: the two empty methods filled: the partition's proxy configured from `GetProxyConfig` and started through the host session, the error returned | hook |
+| `UnprovisionProxyService` | today | today | today HAProxy/ProxySQL; step 3 the others | today HAProxy/ProxySQL; step 3 the others | step 3 | hook |
+| `StartProxyService`, `StopProxyService` | today | today | today | today | today (cookie), step 3: the partition's service | hook |
+| `RestartProxyService` (added in step 3) | step 3: the instance restart through the API (as the database's `OpenSVCRestartDatabaseService`) | step 3: a rollout restart of the Deployment | step 3: stop then start over one session (`OnPremiseStopHaproxyService`, `OnPremiseStartHaProxyService`, the ProxySQL pair) | step 3: stop then start locally | step 3 | hook `restart` |
+| `RefreshProxyServiceDefinition` (the materialization of 12.2) | step 3: `OpenSVCGetProxyTemplateV3` pushed with the database's update call | step 3: the ConfigMap and the Deployment spec | step 3: the regenerated configuration written over the session and the proxy reloaded, the first fix of the client's case (12.3) | today: `HaproxyProxy.Init()` regenerates and reloads (`startReappliesProxyConfig`) | step 3 | hook `refresh-service-definition`, or the client's `prov-proxy-config-change-script` when not in charge (12.1) |
+| `ProxyWorkingNode` | today | step 3: the pod's node | step 3: the host (`prx.GetHost()`) | step 3: the monitor host | step 3: the partition's host | hook `working-node` |
+| `ProxyServiceImage` (added in step 3) | step 3: `env.docker_image` of the proxy service (`openSVCConfigValue`) | today (`k8sProxyImage`) | step 3: `haproxy -v`, `proxysql --version`, `maxscale --version` over the session | step 3: the same locally | step 3 | hook `service-image` |
+| `AbortProxyService`, `ClearProxyInstanceState` | today (v3) | step 3: as the database's | step 3: as the database's | step 3 | step 3 | hook |
+| `ProvisionAppService`, `UnprovisionAppService`, `StartAppService`, `StopAppService`, `RestartAppService` | today | step 3: a Deployment and a Service from the app template (image, command, environment, volumes) | step 3: a container on the agent host over the session (`docker run` from the template's image, command, environment and volumes; `prov-docker-daemon-private` already names the daemon), or a host process when the template has no image | step 3: the same locally | step 3: a partition service | hook |
+| `UpdateAppConfig`, `RefreshAppServiceDefinition` | today | step 3: the Deployment patched | step 3: the container recreated with the new environment and definition | step 3 | step 3 | hook |
+| `ProvisionAppRoutes`, `WithdrawAppRoutes` | today (the gateway's HAProxy fragments) | step 3: an Ingress | step 3: the fragment on the cluster's own HAProxy on the host (`withdrawGatewayRoutes` generalized to that gateway) | step 3: the local HAProxy | step 3 | hook |
+| `AbortAppService`, `ClearAppInstanceState` | today (v3) | step 3 | step 3 | step 3 | step 3 | hook |
+| `SecretStore` | today (`openSVCStore`) | today (`k8sStore`) | step 2: `hostCredentialStore`, the credentials directory on each database host (11.2) | step 2: `localCredentialStore` (11.3) | step 2: the host store over the SlapOS channel (11.3) | hook `secret-write`, value on fd 3 (11.3) |
+| `ServerSecretStore` | today | today | step 2: the same directory, prefixed keys | step 2 | step 2 | hook `secret-write` with the server prefix |
+| `InitCredentials` | today | today | step 2: `REPLICATION_MANAGER_PASSWORD`, `JOBS_API_KEY` in the directory | step 2 | step 2 | hook `init-credentials` |
+| `RotateDatabasePassword` | today | today | step 2: the file rewritten over the session, `_OLD` kept | step 2 | step 2 | hook `rotate-root`, values on fd 3 and 4 |
+| `UnprovisionSecret` | today | step 2: the cluster Secret deleted | step 2: the directory removed over the session | step 2 | step 2 | hook `secret-remove` |
+| root-password drift check (WARN0275) | today | step 2: `ReadCurrent` on the Secret | step 2: `ReadCurrent` reads the file over the session | step 2 | step 2 | hook `secret-check` |
+| `TerminalCommand` | today (gotty) | step 5: an exec into the pod through the API | today (SSH) | step 5: a local shell | step 5: SSH to the partition's host (the on-premise command) | hook `terminal`, stdout: the command |
+| `DefaultContainer` | today (`container#db`, `container#app`) | step 5: the pod's database container name | step 5: no container: the service unit's name, the shell opens on the host | step 5: the same | step 5: the partition | hook `terminal` |
+| `HostOrchestrator` (step 3b, 10.4) | not applicable (below) | not applicable | not applicable | not applicable | not applicable | hook `host-*` |
 
-The secret facet has no `n/a` cell: every backend keeps the shared secret of its cluster
-somewhere the services read it, and the step that writes it is named. Section 11 says how.
-| `TerminalCommand` | today (gotty) | **write** (`kubectl exec`-equivalent through the API) | today (SSH) | write (local shell) | n/a | n/a |
+**The frozen flag.** Where the orchestrator has no freeze (Kubernetes, the hosts, the
+partitions, OpenSVC v2), `FreezeDatabaseService` sets a server cookie `freeze` (the cookie
+mechanism of `createCookie`, as `cookiePGCapPending`) that replication-manager's own
+orchestration honours: no automatic rejoin, no restart, no reprovision of a frozen server
+from the monitor, and the state WARN0327 (2.4) on the server while it is set;
+`UnfreezeDatabaseService` removes the cookie and the state. The rolling loop freezes before
+its stop and unfreezes after its start on every backend, so what the OpenSVC v3 freeze
+protects (opensvc/om3#1142) is protected everywhere repman is the one that acts.
 
-Everything marked **write** is a gap the inventory found, not a feature request: each is
-the operation another backend has and this one lacks silently. They are listed so the
-matrix test (5.3) carries them as `n/a` or `todo` explicitly, and so the gaps become
-issues when their step comes, not before (T9).
+**Not applicable, and why** (the only cells allowed to answer `ErrOrchestratorNotSupported`
+once the steps have landed):
+
+| Method | Backends | Why | What a dependent caller does |
+|---|---|---|---|
+| `HostOrchestrator` (`StopHost`, `StartHost`, `RebootHost`, `HostStatus`) | OpenSVC, Kubernetes, on-premise, localhost, SlapOS | the backend does not own the machine under the server; only a hypervisor backend (Proxmox, 10.4) or the client's script does | the rolling upgrade with `prov-db-rolling-upgrade-host` on such a backend opens WARN0326 naming the server and skips the host step |
+| `AbortDatabaseService`, `AbortProxyService`, `AbortAppService`, `Clear*InstanceState` | OpenSVC through the collector API (v2) | the v2 API has no abort and no instance-state clear; v2 is not developed further | the API action answers 501 with the reason; no state, the user asked |
+| `secret-check`, `secret-remove` answering exit 3 | script | the client's tooling keeps no copy of the secret to check or remove | the drift check records WARN0275 as unverifiable and does not rewrite; the unprovision logs the absence |
+
+Everything marked **step N** is a gap the inventory found: the operation another backend has
+and this one lacks silently today. The matrix test (5.3) carries each cell with its status
+(`implemented`, `todo` with the step, `notApplicable` for the table above) and a step cannot
+land while a cell it owns is still `todo`.
+
+### 2.6 One dispatch layer, one set of states (F7, T3, T5)
+
+The maintainer's expectation of the single interface: **what the orchestrators do becomes
+trackable by the state machine.** The requirement, stated: every orchestrator call goes
+through the registry and its dispatch layer (`cluster.Orchestrator()`,
+`cluster.orchestrator(server)`, `cluster.proxyOrchestrator(prx)`, the per-server sequence of
+10.2), and **that layer is the only place where orchestration states open and close**,
+uniformly for every backend, per target (server, proxy, app, cluster) and per operation. A
+backend returns errors and values; it never opens a state, never logs as the only trace. One
+set of codes for all backends, in the existing numbering, the existing ones reused:
+
+| Condition | State | Level | Opened by the dispatch layer when | Cleared when |
+|---|---|---|---|---|
+| running | WARN0329 (INFO) | server, proxy, app, cluster | an operation starts: `Orchestrator %s: %s of %s running since %s` (the start time kept in the state) | the operation returns |
+| failed | ERR00122 (ERROR) | the target | the backend returned an error: `Orchestrator %s: %s of %s failed: %s`, the backend's error text | the next successful operation of the same kind on the target |
+| refused, not supported | WARN0331 (WARNING) | the target | a caller depended on an operation the backend answers `ErrOrchestratorNotSupported` to (2.3, pattern 3): `Orchestrator %s: %s not supported on %s, %s` (what the caller did instead) | the caller no longer needs it, or the configuration changes |
+| slow | WARN0330 (WARNING) | the target | an operation runs past its threshold (`prov-orchestrator-slow-threshold`, seconds, default 300, T16): `Orchestrator %s: %s of %s running for %s, threshold %s` | the operation returns |
+| unreachable | WARN0325 (WARNING) | cluster | `Check()` fails (2.4) | `Check()` succeeds |
+| misnamed | WARN0326 (WARNING) | cluster | the configuration names an orchestrator wrongly (2.4, 3.3) | the configuration is fixed |
+| frozen | WARN0327 (WARNING) | server | the frozen flag (2.5) | unfreeze |
+| secret drift | WARN0275 (WARNING) | cluster | the shared secret differs from the reference (11.1) | the rewrite succeeds |
+| proxy drift | WARN0328 (WARNING) | proxy | the proxy's runtime differs from its configuration (12.2) | they agree |
+
+The dispatch layer wraps each call: it opens WARN0329 before, measures, opens WARN0330 past
+the threshold, maps the return to ERR00122 or WARN0331 or clears, and logs the one line that
+names the backend, the target, the operation and the duration (module `orchestrator`). The
+GUI's orchestrator view reads these states per target: what is running, since when, what
+failed and why, what the backend cannot do here, what drifted. An operator never has to open
+a backend's log to learn one of those.
+
+**The gap today:** the backend files open states themselves, 18 calls in 7 files
+(`prov_k8s_db.go` 9, `prov_opensvc_app.go` 2, `prov_opensvc.go` 2, `prov_k8s_prx.go` 2,
+`prov_opensvc_prx.go` 1, `prov_opensvc_db.go` 1, `prov_opensvc_cert.go` 1; the codes
+WARN0212, WARN0215, ERR00082, WARN0275, WARN0099, WARN0045, WARN0046, ERR00109, ERR00110,
+ERR00113 among them, several backend-specific). Each moves to the dispatch layer with the
+step that routes its operation (the secret ones in step 2, the Kubernetes resource sensor's in
+step 5), expressed in the codes above or kept as a general state the layer opens from the
+backend's returned error. The dispatch lock (5.3) refuses a `SetState`, `AddState` or
+`PreserveState` in a backend file from step 2 on, the 18 of today being the allowed list
+that shrinks.
 
 ---
 
@@ -720,8 +794,8 @@ developers' path, SlapOS is cookie-only; both are covered by the matrix unit tes
 | 0 | this document | 0 | - | - |
 | 1 | `cluster/orchestrator.go`: the interfaces of 2.1, `ErrOrchestratorNotSupported`, the states of 2.4 in `config/error.go`; five adapters (`orchestrator_opensvc.go`, `_k8s.go`, `_onpremise.go`, `_localhost.go`, `_slapos.go`) that call today's methods; `newOrchestratorList()` building the synthesized orchestrator per cluster (3.2); `cluster.orchestrator(server)`; the `DatabaseOrchetrator` stub deleted. No caller changes. | 0 | the full suite once per orchestrator, unchanged behaviour expected | `TestOrchestratorMatrix` (5.3); compile-time `var _ Orchestrator = (*openSVCOrchestrator)(nil)` per backend; `TestOrchestratorSynthesized`: a flat configuration and its block form build equal orchestrators |
 | 2 | database lifecycle through the interface: `ProvisionServices`, `InitDatabaseService`, `Unprovision`, `UnprovisionDatabaseService`, `Start`, `Stop`, `StopClean`, `Restart`, `Freeze`, `Unfreeze`, `UpgradeDatabaseService` in `cluster/prov.go`; the `errorChan` sends leave the five backends (2.2); the localhost stop bug of 1.1 fixed by construction | ~55 (prov.go) | OpenSVC: provision, unprovision, start/stop, restart with rid, rolling restart; Kubernetes on kind: `testK8SStopStartDatabaseService`, `testK8SProvisionSchedulerVolumeBinding`, `testJobsRoundTrip`; on-premise: the failover and switchover suite with `prov-db-*-script` hooks set | `TestProvisionReportsOnce` (one send per operation, from the orchestration layer); the existing `prov_unprovision_test.go`, `prov_opensvc_start_timeout_test.go`, `prov_k8s_concurrent_start_test.go` rewired on the adapters |
-| 3 | the Proxmox API backend (10.4): the `HostOrchestrator` facet and its four matrix rows, `HasHost`, the host step of the rolling upgrade behind `prov-db-rolling-upgrade-host`, the client's `prov-db-host-upgrade-script` hook, `orchestrator_proxmox.go` over the on-premise service operations, its configuration keys, the script backend's `host-*` actions | 0 | the rolling upgrade with the host step on a Proxmox lab or the client's cluster (10.4); the on-premise framework for the sequence without a host | `TestProxmoxHostFacet` against a fake Proxmox API, `TestRollingSequenceHostStep` on a recording fake backend (reboot between stop and upgrade, timeout, server without a vmid) |
-| 3b | proxy and app services: `InitProxyService`, `UnprovisionProxyService`, `StartProxyService`, `StopProxyService`, `InitAppService`; the 15 direct OpenSVC app, abort and clear calls of `server/api_app.go`, `api_proxy.go`, `api_database.go` and `mcp/tools_app.go` go through `AppOrchestrator` / `ProxyOrchestrator` and answer 501 on `ErrOrchestratorNotSupported` (the MCP "OpenSVC only" strings go) | ~25 | OpenSVC: `testAppConditionalVariablesOpenSVC`, `testAppConditionalProxiesOpenSVC`, proxy provision and start/stop; Kubernetes: proxy provision on kind; on-premise: proxy start/stop hooks | `TestAppActionsRefusedWithoutAppOrchestrator` (a guard test as `cluster_tst_proxy_guard_test.go`) |
+| 3 | **proxy and app services on every backend** (the maintainer's rule, 2.5) and **a route changed at runtime materialized in the configuration** (section 12: `prov-proxy-apply-dynamic-config` and `prov-proxy-config-change-script` modelled on `prov-db-apply-dynamic-config`, the refusal with WARN0328, the drift check per tick, the on-premise HAProxy file first): `InitProxyService`, `UnprovisionProxyService`, `StartProxyService`, `StopProxyService`, `InitAppService` through the interface with `cluster.proxyOrchestrator(prx)` (9.4); `RestartProxyService` and `ProxyServiceImage` added to the facet; on-premise MaxScale and shard proxy on the host (the distribution repositories, `GetProxyConfig`), localhost the same as processes, SlapOS's empty provision and unprovision filled (the partition's service through the host session, the error returned); `ProxyWorkingNode`, abort and clear on every backend; the app services as a Deployment on Kubernetes, a container on the agent host over the session on on-premise (or a host process without an image), the same locally, a partition service on SlapOS, their routes on the cluster's own HAProxy; the 15 direct OpenSVC app, abort and clear calls of `server/api_app.go`, `api_proxy.go`, `api_database.go` and `mcp/tools_app.go` go through `AppOrchestrator` / `ProxyOrchestrator` and answer 501 on `ErrOrchestratorNotSupported` (the MCP "OpenSVC only" strings go) | ~25 | OpenSVC: `testAppConditionalVariablesOpenSVC`, `testAppConditionalProxiesOpenSVC`, proxy provision and start/stop; Kubernetes: proxy provision on kind; on-premise: proxy start/stop hooks | `TestAppActionsRefusedWithoutAppOrchestrator` (a guard test as `cluster_tst_proxy_guard_test.go`) |
+| 3b | the Proxmox API backend (10.4): the `HostOrchestrator` facet and its four matrix rows, `HasHost`, the host step of the rolling upgrade behind `prov-db-rolling-upgrade-host`, the client's `prov-db-host-upgrade-script` hook, `orchestrator_proxmox.go` over the on-premise service operations, its configuration keys, the script backend's `host-*` actions | 0 | the rolling upgrade with the host step on a Proxmox lab or the client's cluster (10.4); the on-premise framework for the sequence without a host | `TestProxmoxHostFacet` against a fake Proxmox API, `TestRollingSequenceHostStep` on a recording fake backend (reboot between stop and upgrade, timeout, server without a vmid) |
 | 4 | service definition (#1775): `UpdateDatabaseServiceConfig`, `UpgradeDatabaseDeploymentOnStart` -> `RefreshDatabaseServiceDefinition`; the Kubernetes full-spec refresh and the on-premise config push written; the generic action `update-service-definition` on servers and apps (Swagger, ACL `GrantProvDBProvision` / the app grant, GUI button renamed), `update-opensvc-template` kept as an alias until the major; `cluster_roll.go`, `cluster_roll_plan.go` use the method on every orchestrator | ~15 | OpenSVC: rolling upgrade, `testOpenSVCUpgradeWarnRecovery`, `testRollingReprovReseed`; Kubernetes on kind: rolling upgrade with a changed `prov-db-docker-run-args` observed in the pod spec; on-premise: `rollingUpgradeOnPremise` with the SSH upgrade script | `TestRefreshDefinitionRendersCurrentConfig` per backend with the fake clients already used by `prov_k8s_*_test.go` |
 | 5 | inventory, secrets, terminal, traits, layout: `initOrchetratorNodes` (no `Fatalln`), `Storages`, `NodeStats`, `store_orchestrator.go` through `SecretOrchestrator`, `ProvisionRotatePasswords`, `cluster_user_rotate.go`, `UnprovisionSecret` on Kubernetes written, `server_tty.go` and `api.go` through `TerminalOrchestrator`, the ~40 capability checks of 1.5 through `Traits()`, the path switches of `srv_cnf.go`, `srv_get.go`, `prx_get.go`, `app_get.go`, `configurator.go` through `Layout()`; the resizer selection through the orchestrator | ~75 | OpenSVC: rotation (`testProvisionReplicationUser`, the secret-versions tests), terminal; Kubernetes on kind: rotation, unprovision leaves no Secret; on-premise: the SSH terminal, the dbjobs WARN0170 gate | `TestTraitsMatchLegacyChecks`: for each of the five types, each trait equals the boolean the deleted check computed; `TestLayoutMatchesLegacyPaths` |
 | 6 | configuration model (3.1, 3.2, 3.4): `Orchestrators` in `config.Config`, `[orchestrator.<name>]` reserved in `DiscoverClusters`, `prov-orchestrator` accepting a name, load-time validation, the orchestrators API, Swagger, ACL and GUI page | 0 | the full suite on a configuration converted to blocks, and on the flat one | `TestOrchestratorNamedResolution` (name, type, unknown, ambiguous), `TestOrchestratorConfigRoundTrip` (save and reload of a block, secrets encrypted) |
@@ -812,7 +886,9 @@ and the per-server map are features and need no switch beyond not configuring th
   cells moved from **write**/**today** to **implemented**.
 - Swagger regenerated for every new or renamed endpoint (`doc/implementation/server/API_SWAGGER.md`).
 - The dashboard: the orchestrators page in Settings (step 6), the renamed action (step 4),
-  the type-based show/hide (step 8).
+  the type-based show/hide (step 8), and in step 3 the proxy configuration switch and its hook
+  beside `prov-db-apply-dynamic-config` in the cluster settings, with "runtime differs from
+  configuration" (WARN0328) on the proxy's card (section 12).
 
 ---
 
@@ -924,7 +1000,11 @@ Exactly the Go of 2.1, with these fixed decisions:
   are counted per file and compared to the allowed list for equality: a file above its count
   added a switch, a file below it removed one and must lower its count in the same pull
   request, a file not listed is refused, a listed file with no line left must leave the
-  list. Measured at step 1 and locked: **710 lines in 75 files**. The grep of the preamble
+  list. From step 2 the same test carries a second rule (2.6): **no backend file opens a
+  state** — a call to `SetState`, `AddState` or `PreserveState` in `prov_*.go`,
+  `store_orchestrator*.go` or `orchestrator_*.go` fails it; the 18 calls of today in 7 files
+  are that rule's allowed list, counted per file, shrinking with the steps as the dispatch
+  list does. Measured at step 1 and locked: **710 lines in 75 files**. The grep of the preamble
   (227) sees the type comparisons only; the measure adds the backend-method calls, which
   are the dispatch the lock is for (the 27 direct calls from `server/` and `mcp/`, the
   backends calling one another). The heaviest files: `prov.go` 156, `prov_k8s_db.go` 57,
@@ -995,7 +1075,7 @@ here so the step is scoped from them and not rediscovered:
 
 ---
 
-## 10. The first new backends after step 1: the client script (step 2), the Proxmox API (step 3)
+## 10. The first new backends after step 1: the client script (step 2b), the Proxmox API (step 3b)
 
 ### 10.1 The case and the objective
 
@@ -1009,7 +1089,8 @@ above it.
 
 The objective of this work is a **Proxmox API backend**: replication-manager drives the
 VM under each database server itself (stop, start, reboot, status) through the hypervisor
-API, and the rolling paths get a host step. It is step 3 (10.4). Its first step is the
+API, and the rolling paths get a host step. It is step 3b (10.4), after the proxy and app
+services exist on every backend (step 3). Its first step is the
 **script backend** of #338 (step 2b, 10.2 and 10.3): the same rolling sequence, each
 per-server step a call of the client's script, which runs the Ansible playbook they drive
 everything with today, the host reboot included. The client keeps the orchestration they
@@ -1132,7 +1213,7 @@ already approximate the flow with the hooks of `prov_scripts.go` (`prov-db-stop-
 they cannot replace them and have no `upgrade` step, so they do not cover the reboot;
 that is the gap step 2b closes.
 
-### 10.4 Step 3: the Proxmox API backend and the host facet
+### 10.4 Step 3b: the Proxmox API backend and the host facet
 
 The database service and its host are two things: the on-premise backend stops and starts
 the service on a host it does not own; a hypervisor backend owns the host (the VM) and
@@ -1141,7 +1222,7 @@ on-premise backend's service operations (SSH into the guest, as today) **plus a 
 for the host**, which only a backend that drives a hypervisor implements:
 
 ```go
-// HostOrchestrator (step 3) is the host under a database server, for a backend that
+// HostOrchestrator (step 3b) is the host under a database server, for a backend that
 // drives a hypervisor. The other backends answer ErrOrchestratorNotSupported; the script
 // backend maps it to the host-* actions (10.3).
 type HostOrchestrator interface {
@@ -1160,7 +1241,7 @@ type HostStatus struct {
 }
 ```
 
-`Orchestrator` (2.1) embeds `HostOrchestrator` from step 3; `unsupportedOrchestrator`
+`Orchestrator` (2.1) embeds `HostOrchestrator` from step 3b; `unsupportedOrchestrator`
 answers the four methods for the backends without hosts, and the matrix test gets the four
 rows. `OrchestratorTraits` gets `HasHost bool`: the rolling sequence reads it.
 
@@ -1220,7 +1301,7 @@ state), a server without a vmid. Until the lab exists the backend's unit tests r
 a fake Proxmox API (`httptest.Server` answering the four endpoints) and the matrix test;
 the T13 column is filled on the client's cluster, with their agreement, or on the lab.
 
-**The script backend's host actions.** From step 3 the script backend (4.2) maps the facet
+**The script backend's host actions.** From step 3b the script backend (4.2) maps the facet
 to four actions, `host-stop`, `host-start`, `host-reboot`, `host-status` (stdout: the
 `HostStatus` JSON), so a client without a Proxmox backend yet gets the same rolling
 sequence with the host step: their script answers `host-reboot` with the playbook that
@@ -1351,3 +1432,90 @@ rotation rewrites it with `_OLD`, the drift check opens and clears WARN0275 when
 altered on the host, unprovision removes it; OpenSVC and Kubernetes rotation unchanged. Unit
 tests: `TestHostCredentialStoreWriteAll` on a fake SSH session, `TestRotationRewritesHostCredentials`,
 `TestScriptSecretHooks` (the value never in argv, the fd contract, exit 3 on `secret-check`).
+
+---
+
+## 12. Proxies: a route changed at runtime is materialized in the configuration
+
+### 12.1 The principle (the maintainer's)
+
+**If replication-manager changes a route in a proxy, whatever the orchestrator, the route
+must be materialized in the configuration; if the backend cannot, the change is disabled for
+that orchestrator.** The case behind it, at an on-premise client: replication-manager changed
+HAProxy at runtime (the Runtime API), the configuration file on the host was never
+regenerated, a hand restart of HAProxy reloaded the old file and the routes went back to the
+wrong state. Nothing said so until the application failed.
+
+It is the same concept as the database configurator's: replication-manager says whether it
+is in charge of a configuration or not. For the databases that is
+`prov-db-apply-dynamic-config` (`ProvDBApplyDynamicConfig`, "Dynamic database config
+change"): on, replication-manager generates, pushes and reconciles the database configuration
+(the configurator, the config bundle, the dynamic variables); off, it drives the database and
+leaves the configuration to the client. The proxies get the sibling by the same transform:
+
+| Setting | Field | Meaning |
+|---|---|---|
+| `prov-proxy-apply-dynamic-config` (bool, default the value of `prov-db-apply-dynamic-config`) | `ProvProxyApplyDynamicConfig`, json `provProxyApplyDynamicConfig` | **in charge:** replication-manager generates the proxy configuration (`GetProxyConfig`, the templates of `share/`), pushes it where the proxy reads it at start (`RefreshProxyServiceDefinition`: the OpenSVC template, the Kubernetes ConfigMap and Deployment, the file over SSH on-premise, the local file, the partition), and checks the drift. **not in charge:** replication-manager drives the proxy at runtime only; the client's hook materializes the change; without a hook the runtime change is refused. |
+| `prov-proxy-config-change-script` (string, default empty) | `ProvProxyConfigChangeScript` | the client's hook that regenerates and reloads the proxy configuration when replication-manager is not in charge (an Ansible run, for instance), named as `prov-db-dynamic-resource-change-script` is: `<family>-<concept>-change-script`. It receives on stdin the proxy's JSON and the cluster's server list with their roles, as `GET /api/clusters/<cluster>/topology/proxies` and `.../topology/servers` serve them, the proxy's host and port on argv, the credentials in the environment (4.2); exit 0 = materialized, 3 = not supported, else failed. |
+
+The two switches are one concept and share one place in the GUI: the cluster settings'
+"configuration" group where `prov-db-apply-dynamic-config` sits, with the proxy switch and
+its hook beside it, and the states of 12.2 shown on the proxy's card.
+
+### 12.2 The transaction, the refusal, the drift
+
+Every runtime change replication-manager makes to a proxy (12.3 lists them) is followed, in
+the same operation, by the materialization of the regenerated configuration where the proxy
+reads it at start:
+
+- **in charge:** `RefreshProxyServiceDefinition(prx)` of the cluster's orchestrator (2.1),
+  the backend's own push (2.5), through `cluster.proxyOrchestrator(prx)` (9.4);
+- **not in charge, hook set:** the hook runs with the current server list; exit 0 closes the
+  operation;
+- **not in charge, no hook:** the runtime change is **not applied**: the method returns
+  `ErrOrchestratorNotSupported` with the reason "proxy configuration not managed and no
+  `prov-proxy-config-change-script`", and the state WARN0328 opens on the proxy; the feature
+  (a failover's route switch, a maintenance, a weight) is visibly disabled for that proxy
+  until the operator sets the switch or the hook. A failover never silently leaves a proxy
+  pointing at the old master: the refusal is logged as the failover's own error on that
+  proxy, and the state says what to set.
+
+The runtime change and the materialization are one transaction from replication-manager's
+point of view: a materialization that fails (the push refused, the file not written, the
+hook exit non-zero) opens WARN0328 on the proxy, naming the proxy, the backend's target (the
+template, the ConfigMap, the file, the hook) and the error; the GUI shows "runtime differs
+from configuration" on the proxy. The runtime change itself is kept (the application is
+routed right now); the state says the next restart of the proxy will not be.
+
+**The drift check, per tick** (`CheckProxyConfigDrift`, in the proxy check loop of
+`prx_chk.go`): the proxy's running definition (the HAProxy Runtime API's `show servers state`,
+ProxySQL's `runtime_mysql_servers`, MaxScale's REST servers, the shard proxy's server
+tables) compared with the configuration replication-manager expects for the current topology
+(`GetProxyConfig` rendered in memory, not written); a difference opens WARN0328 with the
+differing servers, whoever wrote the file, and clears it when they agree. The check reads,
+never writes. The on-premise case of 12.1 would have been a state the day it happened.
+
+| State | Level | Severity | When | Clears |
+|---|---|---|---|---|
+| WARN0328 | server (the proxy) | WARNING | the proxy's runtime differs from its configuration: a materialization failed, or a runtime change was refused for want of a hook, or the drift check found a difference. Text: `Proxy %s: runtime differs from configuration (%s): %s` | the materialization succeeds, or the drift check finds them equal |
+
+### 12.3 Inventory of today's runtime changes without a regenerated configuration
+
+| Proxy | Runtime change today | Where it is made | Configuration today, per orchestrator |
+|---|---|---|---|
+| HAProxy | `add server`, `del server`, `set server ... addr`, `set server ... fqdn`, `set server ... state maint/ready`, `set weight` through the Runtime API (stats socket) | `cluster/prx_haproxy.go`: `reconcileReadBackendServers`, `completeOrRollbackPendingAdd`, `removeReadBackendServer`, `SetMaintenance`, `setReadBackendMaintenance`, `Failover`, `BackendsStateChange`; `router/haproxy/runtime_api.go`, `runtime.go` | **localhost and `haproxy-mode = standby`:** `HaproxyProxy.Init()` renders `haproxy_config.template` to the local `haproxy.cfg` and reloads (`prx_haproxy.go:306-364`): materialized. **OpenSVC, Kubernetes:** the container fetches the generated configuration at start when `prov-proxy-start-fetch-config` is on (`startReappliesProxyConfig`): materialized at the next start, not written at the change. **On-premise:** `OnPremiseProvisionHaProxyService` copies `/bootstrap/etc/haproxy.cfg` to `/etc/haproxy/haproxy.cfg` and starts the service at provision (`prov_onpremise_haproxy.go:24`); **nothing rewrites it afterwards**: the client's case. `startReappliesProxyConfig` says so (on-premise never reapplies on start). **The first fix of step 3.** |
+| ProxySQL | `INSERT`/`UPDATE`/`DELETE mysql_servers`, `LOAD MYSQL SERVERS TO RUNTIME`, the query rules, the users, through the admin interface | `router/proxysql/proxysql.go`: `AddServerAsReader`, `AddServerAsWriter`, `SetOffline`, `SetOnline`, `SetReader`, `SetWriter`, `DropReader`, `DropWriter`, `ReplaceWriter`, `AddUser`, `LoadQueryRulesToRuntime`; `cluster/prx_proxysql.go` | the proxy persists its own runtime through `SAVE MYSQL SERVERS TO DISK` (`proxysql.go:518`), `SAVE ... VARIABLES TO DISK` (533, 538): materialized in ProxySQL's own database on every orchestrator, as long as the proxy starts from that database and not from a configuration file (`prov-proxy-start-fetch-config` on OpenSVC and Kubernetes re-fetches the generated one). The drift check covers the case where a restart loads the file instead. |
+| MaxScale | `SetServer`, `ClearServer` (maintenance, drain), `SetMasterAcceptReads`, `RestartMonitor` through the REST API (`PATCH`) or maxadmin | `router/maxscale/maxscale.go` | MaxScale persists REST changes in its own persisted configuration directory (its behaviour, to be verified in step 3); the generated `maxscale.cnf` is fetched at start on OpenSVC and Kubernetes; on-premise and localhost the file is the provision's. |
+| Shard proxy (Spider) | the server and connection definitions changed in SQL on failover and backend change | `cluster/prx_mariadbshardproxy.go`: `Failover`, `BackendsStateChange` | the definitions live in the proxy's own system tables: materialized by the database itself. |
+| MyProxy | in-process routing | `cluster/prx_myproxy.go` | the proxy is replication-manager's own process: its configuration is replication-manager's state; nothing to materialize (the one proxy outside the rule, and the reason it is not in the not-applicable table of 2.5: there is no file to drift from). |
+
+Step 3 (section 5) carries the rule: the on-premise HAProxy first (the client's case), then
+the on-premise ProxySQL and MaxScale file paths, then the switch, the hook, the refusal and
+the drift check on every backend. **T13 scenario, on the on-premise Docker framework:** with
+`prov-proxy-apply-dynamic-config` off and the hook set to a reference script that regenerates
+the proxy configuration from the server list it receives: a switchover moves the writer, the
+proxy's configuration on the host changes in the same operation, the proxy is restarted by
+hand (the container restarted), the route survives; with the hook unset: the switchover's
+route change on that proxy is refused, WARN0328 opens, the proxy keeps the old route and says
+so; with the switch on: replication-manager writes the file over SSH and the same restart
+keeps the route; a file altered by hand on the host opens WARN0328 at the next tick.
