@@ -119,6 +119,12 @@ var tests = []string{
 	// the label regtest.replication-manager/disposable=true; without it, with another orchestrator or
 	// with more than one server it is SKIP, before anything is changed. Run it by name:
 	// /api/clusters/<cluster>/tests/actions/run/testK8SSingleWriterLifecycle
+	// testK8SDatabaseConfigParity is not in this list either: it stops and restarts the database of a
+	// Kubernetes cluster with ONE server whose data claim has the service-dirs-v1 layout (#2395), and it
+	// executes read-only commands in the database and dbjobs containers (RBAC create on pods/exec, for the
+	// test only). Same eligibility as above, plus the annotation of the claim; otherwise SKIP, before
+	// anything is changed. Run it by name:
+	// /api/clusters/<cluster>/tests/actions/run/testK8SDatabaseConfigParity
 	"testRunSysbenchTPCPerMinuteIncreaseThreads",
 	"testConfigPersistBackupOption",
 	"testCredentialPersistTagReload",

@@ -161,6 +161,31 @@ function OrchestratorDbVM({ selectedCluster, user, scope }) {
       )
     },
     selectedCluster?.config?.provOrchestrator === 'kube' && {
+      // The layout of a database PVC that does not exist yet (#2395); an existing PVC keeps the layout its annotation says.
+      clusterSetting: 'prov-kube-pvc-layout',
+      key: 'Kubernetes Database PVC Layout (new volumes)',
+      value: (
+        <Dropdown
+          className={parentStyles.dropdown}
+          options={[
+            { name: 'service-dirs-v1 (data, etc/mysql, init: the OpenSVC service directory)', value: 'service-dirs-v1' },
+            { name: 'legacy (datadir at the PVC root, conf.d only)', value: 'legacy' }
+          ]}
+          selectedValue={selectedCluster?.config?.provKubePvcLayout || 'service-dirs-v1'}
+          confirmTitle={`Confirm change Kubernetes database PVC layout for new volumes to `}
+          onChange={(value) => {
+            dispatch(
+              setSetting({
+                clusterName: selectedCluster?.name,
+                setting: 'prov-kube-pvc-layout',
+                value: value
+              })
+            )
+          }}
+        />
+      )
+    },
+    selectedCluster?.config?.provOrchestrator === 'kube' && {
       clusterSetting: 'prov-kube-image-force-pull',
       key: 'Kubernetes Force Image Pull',
       value: (

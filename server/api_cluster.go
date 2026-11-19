@@ -4778,6 +4778,10 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.SetProvKubeStorageClass(value)
 	case "prov-kube-proxy-storage-class":
 		mycluster.SetProvKubeProxyStorageClass(value)
+	case "prov-kube-pvc-layout":
+		if err := mycluster.SetProvKubePVCLayout(value); err != nil {
+			return err
+		}
 	case "prov-db-disk-size":
 		mycluster.SetDBDiskSize(value)
 	case "prov-db-cpu-cores":

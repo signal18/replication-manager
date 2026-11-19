@@ -69,6 +69,13 @@ func TestK8SDatabaseInitOwnershipCommandInAlpine(t *testing.T) {
 			t.Fatalf("every entry must be 999:1001, got:\n%s", out)
 		}
 	})
+	t.Run("the unmanaged owner of service-dirs-v1: root-owned .system directories become 999:999", func(t *testing.T) {
+		out := run(t, prologue+`mkdir -p .system/logs .system/innodb/undo .system/tmp; touch .system/logs/error.log; chown -R 0:0 .; chmod 777 .`+
+			k8sDatadirChown(999, 999)+`; echo "bad=$(find /var/lib/mysql \( ! -user 999 -o ! -group 999 \) | wc -l) logs=$(stat -c %u:%g .system/logs) root=$(stat -c %u:%g .) exit=$MKDIR_STATUS"`)
+		if !strings.Contains(out, "bad=0 logs=999:999 root=999:999 exit=0") || strings.Contains(out, "WARNING") {
+			t.Fatalf("the data root and .system must be 999:999 with exit 0 and no warning, got:\n%s", out)
+		}
+	})
 	t.Run("root", func(t *testing.T) {
 		out := run(t, prologue+`mkdir -p d; touch d/f; chown -R 1001:1001 .`+
 			fragment("0", "0")+`; echo "bad=$(find /var/lib/mysql \( ! -user 0 -o ! -group 0 \) | wc -l) exit=$MKDIR_STATUS"`)
