@@ -32786,6 +32786,10 @@ const docTemplate = `{
                 "provKubeProxyStorageClass": {
                     "type": "string"
                 },
+                "provKubePvcLayout": {
+                    "description": "layout of a database PVC created from now on: service-dirs-v1 (default) or legacy (#2395)",
+                    "type": "string"
+                },
                 "provKubeStorageClass": {
                     "type": "string"
                 },
