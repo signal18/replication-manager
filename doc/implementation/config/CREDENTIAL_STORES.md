@@ -352,8 +352,15 @@ test counts from what the file holds when it starts.
   name, three folders `<domain>/<sub-domain>/<zone>` (`InstanceStoreName`; `<sub-domain>-<zone>`
   is not unique: `a-b`+`c` and `a`+`b-c` are one folder). With no valid name and no
   `pathPrefix`, the offer is not given (a WARN says so). Each Cloud18-registered cluster gets
-  `cloud18-<name>`, sign-in `jwt`, **off**: the sponsor turns it on; a new catalogue updates
-  its address, mount, role and prefix, never its switch. The entry records its origin
+  `cloud18-<name>`, sign-in `jwt`, **on** when no other credential store of the cluster is on
+  (any plugin, another offer's entry included; the vault is the central place of a registered
+  cluster's credentials), off next to one that is. Only the creation chooses the switch: from
+  then on it is the sponsor's (enable and disable stay open, T14), and a new catalogue updates
+  its address, mount, role and prefix, never its switch. An entry an earlier release created
+  off stays off until someone switches it on (a sponsor, or a one-time migration). The creation
+  is logged (vault module), naming the entry and whether it came on. Its first write is a full
+  pass of the cluster's store runner, off the monitor loop: bounded queue, write timeout, a
+  vault out of reach only puts the entry behind (WARN0271). The entry records its origin
   (`offer = "<name>"` in the saved config); the list API gives `offer` (name, title, partner
   from the catalogue; null for the user's own entries); its edit and remove are refused (409:
   the back-office manages its settings), only enable and disable remain; a user's own entry
@@ -800,7 +807,8 @@ is treated the same; only the path a level maps to differs per store.
 On a Cloud18-registered instance the marketplace catalogue offers a `secret_kv-vault` entry
 for the Cloud18 vault, as it offers Cloud18 storages for archives: its address comes with
 the registration, it signs in with the instance's Cloud18 identity (`jwt`, #2159), no
-setting to type. The sponsor turns it on per cluster.
+setting to type. It comes on for a cluster with no other credential store on; the sponsor can switch it
+off (or on) per cluster, and the catalogue never changes that switch again.
 
 ## Packaging: the `secret_kv` plugin family
 
