@@ -257,32 +257,37 @@ before. The proxies keep the admin login. Existing volumes and the PVC layout ar
 
 ### The key file on Kubernetes
 
-- **Mode 0400, owned by root: OpenSVC's boundary.** The file is the counterpart of OpenSVC's jobs
-  volume (owner 99, mode 600, directory 700): readable by root in the two containers that mount it, by
-  no other user. Kubernetes cannot make a Secret file belong to uid 99; root-owned is at least as strict.
-  The volume projects `JOBS_API_KEY` only, not the database password or the admin login of the same
-  Secret, and it is not mounted in the database container, as on OpenSVC.
+- **Mode 0400, owned by root: restricted access comparable to OpenSVC's, not identical.** OpenSVC's jobs
+  volume is owned by uid 99 with mode 600 and directory mode 700. A Kubernetes Secret file cannot belong
+  to uid 99, so the file is root-owned 0400 (the directory can be traversed, the file name is visible). It
+  is readable by root in the two containers that mount it. A process with uid 99 reads it on OpenSVC and
+  not on Kubernetes. The volume projects `JOBS_API_KEY` only, not the database password or the admin
+  login of the same Secret, and it is not mounted in the database container, as on OpenSVC.
 - **The jobs container runs as root only when the identity is managed** (`prov-db-run-as-uid`,
-  `prov-db-volume-uid`, or an image whose name contains `percona`: `dbIdentityManaged`), exactly like
+  `prov-db-volume-uid`, or an image whose name contains `percona`: `dbIdentityManaged`), the same rule as
   OpenSVC's; otherwise it runs as the image's own `USER`. The `mariadb` and `mysql` images run as root,
   `percona/percona-server` as `mysql`; a Percona image renamed without `percona`, or a custom image with a
   non-root `USER`, leaves the jobs non-root.
-- **Not every configuration authenticates with the key.** A jobs container that cannot read the file (an
-  unmanaged non-root image user) has no key: `jobapi.JobsKeyFromEnv` ignores a read error, the shared CLI
-  then signs with the database password (`MYSQL_ROOT_PASSWORD`, carried in the encrypted body) without a
-  message, and the server accepts it. It is the OpenSVC behaviour too, is not changed here and is not
-  fail-closed. Measured on Kubernetes: a root jobs container authenticates with the key although the
-  database password it holds is wrong; a non-root user (uid 1001, 999) cannot read the file and
-  authenticates only with the right database password. To have the jobs use the key in such a
-  configuration, set an explicit identity so that they run as root. No Pod-level `fsGroup` is used (it
-  would also own the data volume) and the jobs container is not forced to root.
-- **A shared process namespace is not isolated by the file mode.** With `monitoring-system-resources`
-  the Pod shares its process namespace so that the sidecar can read the database container's cgroup
-  (`doc/implementation/cluster/DBU_RESOURCE_SENSOR.md`); OpenSVC binds the service's cgroup slice and
-  shares only the network namespace. That behaviour predates the jobs key and is not changed here. When
-  the namespace is shared, neither the file mode nor "not mounted in the database container" is an
-  isolation between the two containers for processes of the other container that run with the same
-  identity. The analysis is kept for maintainer review.
+- **Not every configuration authenticates with the key, and the fallback is not claimed to be identical
+  on both orchestrators.** A jobs container that cannot read the file (an unmanaged non-root image user)
+  has no key: `jobapi.JobsKeyFromEnv` ignores a read error, the shared CLI then signs with the database
+  password (`MYSQL_ROOT_PASSWORD`, carried in the encrypted body) without a message, and the server
+  accepts it. By the source OpenSVC falls back the same way for a jobs process that cannot read its key
+  file (not tested at runtime), but which users can read the file differs (uid 99, above). The fallback
+  is not fail-closed and is not changed here. Measured on Kubernetes: a root jobs container authenticates
+  with the key although the database password it holds is wrong; a non-root user (uid 1001, 999) cannot
+  read the file and authenticates only with the right database password. To have the jobs use the key in
+  such a configuration, set an explicit identity so that they run as root. No Pod-level `fsGroup` is used
+  (it would also own the data volume) and the jobs container is not forced to root.
+- **A shared process namespace: the mode does not give OpenSVC's cross-container isolation.** With
+  `monitoring-system-resources` the Pod shares its process namespace so that the sidecar can read the
+  database container's cgroup (`doc/implementation/cluster/DBU_RESOURCE_SENSOR.md`); OpenSVC binds the
+  service's cgroup slice and shares only the network namespace. The sharing predates the jobs key, but
+  the key is one more credential that can become reachable through it: when the namespace is shared,
+  neither the file mode nor "not mounted in the database container" isolates the key from processes of
+  the other container that run with the same identity (in practice root). Full OpenSVC-equivalent
+  isolation is not established. The analysis is kept for maintainer review, and whether this boundary is
+  accepted is a decision to take before the change is marked ready.
 - **Not established.** A complete DBJobs workflow (backup, reseed) with a custom non-root image has not
   been run.
 

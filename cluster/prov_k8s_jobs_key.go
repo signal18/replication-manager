@@ -100,16 +100,18 @@ func (cluster *Cluster) k8sJobsKeyInit(s *ServerMonitor, serverPath, noCheckCert
 // the same Secret are not in the volume. A volume, not a subPath mount, so that the kubelet refreshes the file when the
 // key is written again.
 //
-// The file is 0400 and belongs to root, the Kubernetes counterpart of OpenSVC's jobs volume (owner 99, mode 600, directory
-// 700; OpenSVCGetJobsVolumeSecret): readable by root in the two containers that mount it, by no other user. The dbjobs
-// container runs as root only when the identity is managed (dbIdentityManaged), as on OpenSVC; otherwise it runs as the
-// image's own USER, which then cannot read the file, and the shared CLI uses the database password without a message
-// (JobsKeyFromEnv ignores a read error). That is the OpenSVC behaviour too and is not changed here: not every DBJobs
-// configuration authenticates with the jobs key, and the fallback is not fail-closed. No Pod-level fsGroup (it also
-// applies to the data volume) and the jobs container is not forced to root.
+// The file is 0400 and belongs to root: restricted access comparable to OpenSVC's jobs volume (owner 99, mode 600,
+// directory 700; OpenSVCGetJobsVolumeSecret), not identical to it (a Secret file cannot belong to uid 99). It is readable
+// by root in the two containers that mount it. The dbjobs container runs as root only when the identity is managed
+// (dbIdentityManaged), the same rule as OpenSVC's; otherwise it runs as the image's own USER, which then cannot read the
+// file, and the shared CLI uses the database password without a message (JobsKeyFromEnv ignores a read error). Which
+// users can read the file differs between the orchestrators, so this is not claimed to behave identically for every uid:
+// not every DBJobs configuration authenticates with the jobs key, and the fallback is not fail-closed. No Pod-level
+// fsGroup (it also applies to the data volume) and the jobs container is not forced to root.
 //
-// The mode does not isolate the containers of a Pod that shares its process namespace (monitoring-system-resources,
-// k8sProvisionDatabaseService), which OpenSVC does not do: see doc/implementation/security/JOB_LOGIN.md.
+// The mode does not give the cross-container isolation OpenSVC has when the Pod shares its process namespace
+// (monitoring-system-resources, K8SProvisionDatabaseService), which OpenSVC does not do: the sharing predates the key,
+// but the key is one more credential reachable through it. See doc/implementation/security/JOB_LOGIN.md.
 func (cluster *Cluster) k8sJobsKeyVolume() apiv1.Volume {
 	mode := int32(0400)
 	return apiv1.Volume{

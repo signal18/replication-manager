@@ -161,9 +161,10 @@ func TestK8SJobsKey_NoSecretInTheDeployment(t *testing.T) {
 }
 
 // The volume projects the jobs key alone (not the database password or the admin login of the same Secret), 0400 and
-// root-owned, the counterpart of OpenSVC's mode 600 / directory 700. A dbjobs container that runs as a non-root image
-// user (identity not managed) cannot read it and the shared CLI then uses the database password, as on OpenSVC: not every
-// configuration authenticates with the key, and the mode is no isolation between containers that share a process namespace.
+// root-owned: restricted access comparable to, not identical to, OpenSVC's mode 600 / directory 700 / owner 99. A dbjobs
+// container that runs as a non-root image user (identity not managed) cannot read it and the shared CLI then uses the
+// database password: not every configuration authenticates with the key, and the mode is no isolation between containers
+// that share a process namespace.
 func TestK8SJobsKey_VolumeProjectsOnlyTheKeyReadableByRootOnly(t *testing.T) {
 	c := jobsKeyTestCluster(true)
 	dep := c.k8sDatabaseDeployment(jobsKeyTestServer(), 3306, "node-a")
