@@ -155,9 +155,9 @@ func TestLoadMarketplaceVaultOffers(t *testing.T) {
 		t.Fatalf("vaults = %+v", c.Vaults)
 	}
 	conf := &config.Config{ImmuableFlagMap: map[string]interface{}{}, DefaultFlagMap: map[string]interface{}{}}
-	changed, created, err := conf.EnsureMarketplaceVault(c.Vaults[0], "d/s-fr")
-	if err != nil || !changed || !created {
-		t.Fatalf("%v %v %v", changed, created, err)
+	changed, created, on, err := conf.EnsureMarketplaceVault(c.Vaults[0], "d/s-fr")
+	if err != nil || !changed || !created || !on {
+		t.Fatalf("%v %v %v %v", changed, created, on, err)
 	}
 	e := conf.SecretKvs[0]
 	if e.Name != "cloud18-vault-fr" || !e.Enabled || e.Settings["auth"] != "jwt" || e.Settings["path-prefix"] != "d/s-fr" || e.Settings["mount"] != "kv" {
@@ -167,7 +167,7 @@ func TestLoadMarketplaceVaultOffers(t *testing.T) {
 	if err := conf.SetSecretKvEnabled(e.Name, false); err != nil {
 		t.Fatal(err)
 	}
-	if changed, created, _ := conf.EnsureMarketplaceVault(c.Vaults[0], "d/s-fr"); changed || created || conf.SecretKvs[0].Enabled {
+	if changed, created, _, _ := conf.EnsureMarketplaceVault(c.Vaults[0], "d/s-fr"); changed || created || conf.SecretKvs[0].Enabled {
 		t.Fatalf("read again: changed %v, entry %+v", changed, conf.SecretKvs[0])
 	}
 }

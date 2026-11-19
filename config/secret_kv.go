@@ -1018,8 +1018,8 @@ func (conf *Config) EnsureOrchestratorSecretKvAt(level SecretKvLevel, name, plug
 // on when no other credential store of the cluster is on (any plugin, another offer's entry
 // included), off next to one that is. Once the entry exists its switch is the operator's (the
 // sponsor turns it off or on): a catalogue read again never changes it. created is true when
-// this call added the entry. See EnsureMarketplaceVaultAt.
-func (conf *Config) EnsureMarketplaceVault(offer MarketplaceVaultOffer, pathPrefix string) (changed, created bool, err error) {
+// this call added the entry, on its switch at that creation. See EnsureMarketplaceVaultAt.
+func (conf *Config) EnsureMarketplaceVault(offer MarketplaceVaultOffer, pathPrefix string) (changed, created, on bool, err error) {
 	return conf.ensureMarketplaceVaultAt(SecretKvLevelCluster, offer, pathPrefix, true)
 }
 
@@ -1029,25 +1029,25 @@ func (conf *Config) EnsureMarketplaceVault(offer MarketplaceVaultOffer, pathPref
 // A new entry is on when onIfAlone and no other entry of the list is on, else off. True when
 // it changed.
 func (conf *Config) EnsureMarketplaceVaultAt(level SecretKvLevel, offer MarketplaceVaultOffer, pathPrefix string, onIfAlone bool) (bool, error) {
-	changed, _, err := conf.ensureMarketplaceVaultAt(level, offer, pathPrefix, onIfAlone)
+	changed, _, _, err := conf.ensureMarketplaceVaultAt(level, offer, pathPrefix, onIfAlone)
 	return changed, err
 }
 
-// ensureMarketplaceVaultAt is EnsureMarketplaceVaultAt, and whether it created the entry: the
-// creation is decided under secretKvMu, so the caller never looks it up apart.
-func (conf *Config) ensureMarketplaceVaultAt(level SecretKvLevel, offer MarketplaceVaultOffer, pathPrefix string, onIfAlone bool) (changed, created bool, err error) {
+// ensureMarketplaceVaultAt is EnsureMarketplaceVaultAt, and whether it created the entry with
+// which switch: both decided under secretKvMu, so the caller never looks the entry up apart.
+func (conf *Config) ensureMarketplaceVaultAt(level SecretKvLevel, offer MarketplaceVaultOffer, pathPrefix string, onIfAlone bool) (changed, created, on bool, err error) {
 	name := ConstSecretKvMarketplacePrefix + offer.Name
 	if err := validateEntryName("credential store", name); err != nil {
-		return false, false, err
+		return false, false, false, err
 	}
 	if strings.TrimSpace(offer.Address) == "" {
-		return false, false, fmt.Errorf("vault offer %s: no address", offer.Name)
+		return false, false, false, fmt.Errorf("vault offer %s: no address", offer.Name)
 	}
 	// the prefix comes from the remote catalogue or the instance's URI: each folder of it is a
 	// real one, never empty, "." or ".."
 	for _, seg := range strings.Split(strings.Trim(pathPrefix, "/"), "/") {
 		if seg == "" || seg == "." || seg == ".." {
-			return false, false, fmt.Errorf("vault offer %s: path-prefix %q holds an empty, \".\" or \"..\" folder", offer.Name, pathPrefix)
+			return false, false, false, fmt.Errorf("vault offer %s: path-prefix %q holds an empty, \".\" or \"..\" folder", offer.Name, pathPrefix)
 		}
 	}
 	mount := offer.Mount
@@ -1068,17 +1068,17 @@ func (conf *Config) ensureMarketplaceVaultAt(level SecretKvLevel, offer Marketpl
 	e := conf.secretKvByNameAt(level, name)
 	if e == nil {
 		list := conf.secretKvsAt(level)
-		on := onIfAlone
+		on = onIfAlone
 		for _, o := range *list {
 			if o.Enabled {
 				on = false
 			}
 		}
 		*list = append(*list, SecretKvConfig{Name: name, Plugin: ConstSecretKvPluginVault, Enabled: on, Settings: want, Offer: offer.Name})
-		return true, true, nil
+		return true, true, on, nil
 	}
 	if e.Plugin != ConstSecretKvPluginVault {
-		return false, false, fmt.Errorf("credential store %s is not a vault entry", name)
+		return false, false, false, fmt.Errorf("credential store %s is not a vault entry", name)
 	}
 	if e.Offer != offer.Name {
 		e.Offer, changed = offer.Name, true
@@ -1095,7 +1095,7 @@ func (conf *Config) ensureMarketplaceVaultAt(level SecretKvLevel, offer Marketpl
 		// (PutSecretKvAt): the secrets are copied there with their history
 		e.WrittenAs = ConstSecretKvWrittenAsNewPlace
 	}
-	return changed, false, nil
+	return changed, false, false, nil
 }
 
 // secretKvBehindReasonMax bounds a store's behind reason: it is kept per entry and shown in the

@@ -1468,7 +1468,7 @@ func (cluster *Cluster) EnsureMarketplaceVaults(offers []config.MarketplaceVault
 			}
 			prefix = instance
 		}
-		ok, created, err := c.EnsureMarketplaceVault(o, prefix)
+		ok, created, on, err := c.EnsureMarketplaceVault(o, prefix)
 		if err != nil {
 			cluster.LogModulePrintf(c.Verbose, config.ConstLogModVault, config.LvlWarn, "Marketplace vault offer not given to the cluster: %s", err)
 			continue
@@ -1476,7 +1476,7 @@ func (cluster *Cluster) EnsureMarketplaceVaults(offers []config.MarketplaceVault
 		if created {
 			name := config.ConstSecretKvMarketplacePrefix + o.Name
 			onOff := "off: another credential store of the cluster is on"
-			if e, found := c.SecretKvEntryAt(config.SecretKvLevelCluster, name); found && e.Enabled {
+			if on {
 				onOff = "on"
 			}
 			cluster.LogModulePrintf(c.Verbose, config.ConstLogModVault, config.LvlInfo, "Credential store %s given by the marketplace vault offer, %s", name, onOff)
