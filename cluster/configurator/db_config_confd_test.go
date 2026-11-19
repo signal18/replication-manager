@@ -47,7 +47,11 @@ func TestGeneratedDBConfigSatisfiesKubernetesGuard(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			etc := filepath.Join(datadir, "init/etc/mysql")
+			// resolved like the links below: t.TempDir() may itself sit under a symlink (/var on macOS)
+			etc, err := filepath.EvalSymlinks(filepath.Join(datadir, "init/etc/mysql"))
+			if err != nil {
+				t.Fatal(err)
+			}
 			confd := filepath.Join(etc, "conf.d")
 			entries, err := os.ReadDir(confd)
 			if err != nil {
