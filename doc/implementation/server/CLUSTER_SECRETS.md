@@ -31,10 +31,15 @@ The handler and `GetClusterSecrets` change nothing.
 
 ## Access
 
-- The grant is `cluster-show-secrets`, in the cluster family. Its holders are those of
-  `cluster-rotate-passwords`: sysops, extsysops, and the Cloud18 owner through
-  `CreateAdminUserForm`'s `cluster` family. dbops, extdbops and the sponsor do not get it
-  (`TestShowSecretsGrantHolders`).
+- The grant is `cluster-show-secrets`, in the cluster family. Its holders:
+  - the holders of `cluster-rotate-passwords`: sysops, extsysops, and the Cloud18 owner through
+    `CreateAdminUserForm`'s `cluster` family;
+  - the self-service creator of a cluster, on that cluster only. `selfServiceSponsorGrants` gives
+    it the `cluster-show` family, so the buyer reads the credentials of the cluster they
+    provisioned: that is the onboarding need.
+
+  dbops, extdbops and a sponsor given the role's defaults do not get it
+  (`TestShowSecretsGrantHolders`, `TestClusterAddAuthorize`).
 - ACL rule `/secrets` in `clusterACLRules`. No shorter pattern matches the URL.
 - A Cloud18 realm token reaches the handler as the SSO session of its person
   (`cloud18TokenSession`). That is how the member area of the Signal18 website reads the
