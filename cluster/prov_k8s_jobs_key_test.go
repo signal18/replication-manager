@@ -6,9 +6,11 @@ import (
 	"encoding/json"
 	"os"
 	"os/exec"
+	"reflect"
 	"strings"
 	"testing"
 
+	appsv1 "k8s.io/api/apps/v1"
 	apiv1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
@@ -251,6 +253,85 @@ func TestK8SJobsKey_InitCommandIsValidShell(t *testing.T) {
 				t.Fatalf("not valid shell: %v\n%s\n%s", err, out, cmd[2])
 			}
 		})
+	}
+}
+
+// The jobs-key rendering is the same on both PVC layouts (the key volume and mounts, the CLI download, the CLI fetch),
+// and on service-dirs-v1 it composes with the unconditional first install (#2395): `job config` asks need-config-fetch
+// itself, so while the volume has no usable my.cnf the CLI is passed --force; a refresh asks. Legacy keeps the plain
+// `job config`. Rendering first, then the installer run for real with a stub CLI.
+func TestK8SJobsKey_ServiceDirsFirstInstallFetchesWhateverTheGateAnswers(t *testing.T) {
+	c := jobsKeyTestCluster(true)
+	s := jobsKeyTestServer()
+	legacy := c.k8sDatabaseDeploymentWithLayout(s, 3306, "node-a", k8sLayoutLegacy)
+	svc := c.k8sDatabaseDeploymentWithLayout(s, 3306, "node-a", k8sLayoutServiceDirs)
+	for name, dep := range map[string]*appsv1.Deployment{"legacy": legacy, "service-dirs-v1": svc} {
+		if !k8sInitUsesJobsKey(dep) {
+			t.Fatalf("%s: the init container does not log in with the jobs key", name)
+		}
+		var jobsMounted bool
+		for _, ctr := range dep.Spec.Template.Spec.Containers {
+			for _, m := range ctr.VolumeMounts {
+				jobsMounted = jobsMounted || (ctr.Name == s.Name+"-dbjobs" && m.Name == k8sJobsKeyVolumeName && m.MountPath == k8sJobsKeyDir)
+			}
+		}
+		if !jobsMounted {
+			t.Fatalf("%s: the dbjobs container does not mount the key", name)
+		}
+		cmd := dep.Spec.Template.Spec.InitContainers[0].Command[2]
+		if !strings.Contains(cmd, "/static/configurator/bin/replication-manager-cli") || strings.Contains(cmd, "Authorization") {
+			t.Fatalf("%s: the CLI download is missing or the admin login is still there: %s", name, cmd)
+		}
+	}
+	lcmd := legacy.Spec.Template.Spec.InitContainers[0].Command[2]
+	scmd := svc.Spec.Template.Spec.InitContainers[0].Command[2]
+	if strings.Contains(lcmd, "--force") || !strings.Contains(lcmd, k8sInitCLIPath+" job config /tmp/config.tar.gz") {
+		t.Fatalf("legacy must keep the plain job config: %s", lcmd)
+	}
+	const forced = "FORCE= ; [ -s /etc/mysql/my.cnf ] || FORCE=--force ; REPLICATION_MANAGER_URL=https://repman.s18.svc.cloud18:10005 " + k8sInitCLIPath + " job config $FORCE /tmp/config.tar.gz"
+	if !strings.Contains(scmd, forced) || !strings.Contains(scmd, "if { [ ! -s /etc/mysql/my.cnf ] || [ -x "+k8sInitCLIPath+" ] 2>/dev/null; } 2>/dev/null; then") {
+		t.Fatalf("service-dirs-v1 must force the first install and keep the CLI gate for a refresh: %s", scmd)
+	}
+	if sh, err := exec.LookPath("sh"); err == nil {
+		if out, err := exec.Command(sh, "-n", "-c", scmd).CombinedOutput(); err != nil {
+			t.Fatalf("not valid shell: %v\n%s\n%s", err, out, scmd)
+		}
+	}
+
+	for name, shell := range layoutShells() {
+		t.Run(name, func(t *testing.T) {
+			e := newLayoutEnvFor(t, c, k8sLayoutServiceDirs, shell...)
+			// need-config-fetch would say no: the first install fetches anyway
+			if rc, out := e.run(layoutArchive(t, "v1"), false, true); rc != 0 {
+				t.Fatalf("first install with the gate refusing: exit %d, want 0: %s", rc, out)
+			}
+			snap := etcSnapshot(t, e.etc())
+			if !strings.Contains(snap["my.cnf"], "generation v1") {
+				t.Fatalf("my.cnf was not installed on the first start: %q", snap["my.cnf"])
+			}
+			if _, err := os.Stat(e.tmp + "/init-out/replication-manager-cli"); err != nil {
+				t.Errorf("the CLI was not kept for the dbjobs container: %v", err)
+			}
+			// a refresh obeys the route: the tree is kept
+			if rc, out := e.run(layoutArchive(t, "v2"), false, true); rc != 0 {
+				t.Fatalf("refresh with the gate refusing: exit %d, want 0: %s", rc, out)
+			}
+			if after := etcSnapshot(t, e.etc()); !reflect.DeepEqual(snap, after) {
+				t.Errorf("a refresh the route refused changed the tree:\n before=%v\n after=%v", snap, after)
+			}
+			// and a refresh the route allows installs the new tree
+			if rc, out := e.run(layoutArchive(t, "v2"), true, true); rc != 0 {
+				t.Fatalf("refresh exit %d: %s", rc, out)
+			}
+			if after := etcSnapshot(t, e.etc()); !strings.Contains(after["my.cnf"], "generation v2") {
+				t.Errorf("a refresh the route allowed did not install the new tree: %q", after["my.cnf"])
+			}
+		})
+	}
+	// a first install whose download fails still fails closed
+	e := newLayoutEnvFor(t, c, k8sLayoutServiceDirs)
+	if rc, out := e.run(layoutArchive(t, "v1"), false, false); rc != 1 || !strings.Contains(out, "no usable configuration") {
+		t.Fatalf("a failed first install must exit 1 with the guard's reason, got %d: %s", rc, out)
 	}
 }
 

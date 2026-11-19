@@ -577,7 +577,7 @@ func (cluster *Cluster) k8sDatabaseDeploymentWithLayout(s *ServerMonitor, port i
 	// unreachable repman and "fetch not needed" both skip the fetch the
 	// same way.
 	needFetchCmd := "wget" + noCheckCert + " -T 8 -qO /dev/null" + authHeader + " " + baseRef + "/api/clusters/" + cluster.Name + "/servers/" + serverPath + "/" + s.Port + "/need-config-fetch"
-	jobsKeyInit := cluster.k8sJobsKeyInit(s, serverPath, noCheckCert, baseRef)
+	jobsKeyInit := cluster.k8sJobsKeyInit(s, serverPath, noCheckCert, baseRef, layout)
 	jobsKeyPrep := ""
 	if jobsKey {
 		needFetchCmd, remoteFetchCmd, jobsKeyPrep = jobsKeyInit.need, jobsKeyInit.fetch, jobsKeyInit.prep

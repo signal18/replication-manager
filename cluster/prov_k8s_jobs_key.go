@@ -78,15 +78,27 @@ type k8sJobsKeyInitParts struct {
 // `replication-manager-cli job config`. serverPath and baseRef are the values the admin-login fetch uses.
 // The CLI's own messages reach the container log (the surrounding `2>/dev/null` of the fetch would hide why a login
 // was refused); they carry no key.
-func (cluster *Cluster) k8sJobsKeyInit(s *ServerMonitor, serverPath, noCheckCert, baseRef string) k8sJobsKeyInitParts {
+//
+// `job config` asks need-config-fetch itself, which answers 500 for a server with the no-config-fetch cookie or an
+// ignored one. On the service-dirs-v1 layout the first install must happen whatever that answer (#2395: nothing else
+// populates /etc/mysql and the guard holds the Pod in Init otherwise), so while the volume has no usable my.cnf the
+// fetch passes `--force` to the CLI, which then does not ask; a refresh asks, as the admin-login fetch does through
+// its own gate. The legacy layout keeps the plain `job config`.
+func (cluster *Cluster) k8sJobsKeyInit(s *ServerMonitor, serverPath, noCheckCert, baseRef string, layout k8sPVCLayout) k8sJobsKeyInitParts {
 	cli := k8sInitCLIPath
 	cached := "/docker-entrypoint-initdb.d/replication-manager-cli"
+	force := ""
+	configArgs := ""
+	if layout == k8sLayoutServiceDirs {
+		force = "FORCE= ; [ -s /etc/mysql/my.cnf ] || FORCE=--force ; "
+		configArgs = "$FORCE "
+	}
 	return k8sJobsKeyInitParts{
 		prep: "if wget" + noCheckCert + " -T 8 -qO " + cli + ".new " + baseRef + "/static/configurator/bin/replication-manager-cli 2>/dev/null" +
 			" && chmod +x " + cli + ".new && " + cli + ".new version >/dev/null 2>&1 ; then mv " + cli + ".new " + cli +
 			" ; else rm -f " + cli + ".new ; [ -x " + cached + " ] && cp " + cached + " " + cli + " 2>/dev/null ; fi ; ",
 		need:  "[ -x " + cli + " ]",
-		fetch: "{ REPLICATION_MANAGER_URL=" + baseRef + " " + cli + " job config /tmp/config.tar.gz 2>&3 ; } 3>&2",
+		fetch: "{ " + force + "REPLICATION_MANAGER_URL=" + baseRef + " " + cli + " job config " + configArgs + "/tmp/config.tar.gz 2>&3 ; } 3>&2",
 		tail:  " ; [ -x " + cli + " ] && cp " + cli + " " + cached + " 2>/dev/null",
 		env: []apiv1.EnvVar{
 			{Name: "REPLICATION_MANAGER_CLUSTER_NAME", Value: cluster.Name},

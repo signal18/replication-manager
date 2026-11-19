@@ -559,6 +559,12 @@ type layoutEnv struct {
 // subPath directory that exists and is empty at the first start, init-out the init one.
 func newLayoutEnv(t *testing.T, layout k8sPVCLayout, shell ...string) *layoutEnv {
 	t.Helper()
+	return newLayoutEnvFor(t, layoutTestCluster(), layout, shell...)
+}
+
+// newLayoutEnvFor is newLayoutEnv for a given cluster (one with a jobs key, for instance).
+func newLayoutEnvFor(t *testing.T, c *Cluster, layout k8sPVCLayout, shell ...string) *layoutEnv {
+	t.Helper()
 	if len(shell) == 0 {
 		shell = []string{"sh", "-c"}
 	}
@@ -566,11 +572,12 @@ func newLayoutEnv(t *testing.T, layout k8sPVCLayout, shell ...string) *layoutEnv
 		t.Skipf("%s not available", shell[0])
 	}
 	tmp := t.TempDir()
-	dep := layoutTestCluster().k8sDatabaseDeploymentWithLayout(layoutTestServer, 3306, "node-a", layout)
+	dep := c.k8sDatabaseDeploymentWithLayout(layoutTestServer, 3306, "node-a", layout)
 	script := dep.Spec.Template.Spec.InitContainers[0].Command[2]
 	for _, r := range [][2]string{
 		{"/tmp/config.tar.gz", tmp + "/config.tar.gz"},
 		{"/tmp/replication-manager-cli.new", tmp + "/cli.new"},
+		{"/tmp/replication-manager-cli", tmp + "/cli"}, // the CLI the jobs-key init keeps for its login
 		{"/tmp/cfg", tmp + "/cfg"},
 		// the destinations are separate arguments, preceded by a space; the archive's own source path
 		// (already relocated above) must not be rewritten again
@@ -590,11 +597,15 @@ func newLayoutEnv(t *testing.T, layout k8sPVCLayout, shell ...string) *layoutEnv
 
 func (e *layoutEnv) etc() string { return e.tmp + "/etc-mysql" }
 
-// run executes the init command once, as a pod start does (/tmp is empty at every start).
+// run executes the init command once, as a pod start does (/tmp is empty at every start). GATE is what
+// need-config-fetch answers (the wget gate of the admin login, or the CLI's own question), FETCH whether
+// the config download works. The wget stub also serves the CLI download of the jobs-key init with a stub
+// CLI whose `job config` honours GATE unless `--force` is passed, as jobapi.Client.Config does.
 func (e *layoutEnv) run(archive string, gate, fetch bool) (int, string) {
 	e.t.Helper()
 	os.RemoveAll(e.tmp + "/cfg")
 	os.RemoveAll(e.tmp + "/config.tar.gz")
+	os.RemoveAll(e.tmp + "/cli")
 	bin := e.t.TempDir()
 	stub := `#!/bin/sh
 prev=""; out=""
@@ -602,10 +613,25 @@ for a in "$@"; do [ "$prev" = "-qO" ] && out="$a"; prev="$a"; done
 case "$out" in
   /dev/null) [ "$GATE" = 1 ] || exit 1; exit 0 ;;
   */config.tar.gz) [ "$FETCH" = 1 ] || exit 1; cp "$ARCHIVE" "$out"; exit 0 ;;
+  */cli.new) cp "$CLISTUB" "$out"; exit 0 ;;
 esac
 exit 1
 `
+	cliStub := `#!/bin/sh
+case "$1" in
+  version) exit 0 ;;
+  job) [ "$2" = config ] || exit 9
+    shift 2; force=0; out=""
+    for a in "$@"; do [ "$a" = --force ] && force=1; out="$a"; done
+    if [ "$force" = 1 ] || [ "$GATE" = 1 ]; then [ "$FETCH" = 1 ] || exit 2; cp "$ARCHIVE" "$out"; exit 0; fi
+    exit 1 ;;
+esac
+exit 9
+`
 	if err := os.WriteFile(bin+"/wget", []byte(stub), 0755); err != nil {
+		e.t.Fatal(err)
+	}
+	if err := os.WriteFile(bin+"/cli-stub", []byte(cliStub), 0755); err != nil {
 		e.t.Fatal(err)
 	}
 	b2i := map[bool]string{true: "1", false: "0"}
@@ -613,7 +639,7 @@ exit 1
 	prelude := "umask 022\nwget() { \"$WGETSTUB\" \"$@\"; }\n"
 	args := append(append([]string{}, e.shell[1:]...), prelude+e.script)
 	cmd := exec.Command(e.shell[0], args...)
-	cmd.Env = append(os.Environ(), "PATH="+bin+":"+os.Getenv("PATH"), "WGETSTUB="+bin+"/wget", "ARCHIVE="+archive, "GATE="+b2i[gate], "FETCH="+b2i[fetch])
+	cmd.Env = append(os.Environ(), "PATH="+bin+":"+os.Getenv("PATH"), "WGETSTUB="+bin+"/wget", "CLISTUB="+bin+"/cli-stub", "ARCHIVE="+archive, "GATE="+b2i[gate], "FETCH="+b2i[fetch])
 	out, err := cmd.CombinedOutput()
 	var ee *exec.ExitError
 	switch {

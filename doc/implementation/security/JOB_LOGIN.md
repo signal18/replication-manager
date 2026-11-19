@@ -216,7 +216,11 @@ With the cluster's jobs key, the init container logs in like the jobs:
   config.tar.gz`. Without one it falls back to the admin login, as before.
 - **CLI** (`job config`, `jobapi.Client.Config`): asks `need-config-fetch`, logs in with the
   one-time body (`secret-login`), downloads `<server>/<port>/config` with the jobs token, at most
-  64 MB. Exit 0 written, 1 not wanted, 2 error.
+  64 MB. Exit 0 written, 1 not wanted, 2 error. `--force` does not ask `need-config-fetch`: the
+  Kubernetes init container passes it on a `service-dirs-v1` volume that has no usable `my.cnf`
+  yet, whose first install must happen whatever the route answers (the no-config-fetch cookie, an
+  ignored server; `doc/implementation/cluster/KUBERNETES_PROVISIONING.md`, "PVC layout"); a
+  refresh asks.
 - **Server** (`handlerMuxServersPortConfig`, `jobsTokenForServer`): the config download accepts a
   jobs token minted for the very server the URL names, GET only. No ACL rule is added: the
   matcher falls back to shorter patterns, so `db-jobs` on `/config` would also open `config-gen`

@@ -152,6 +152,47 @@ func TestVersionFromUserAgent(t *testing.T) {
 	}
 }
 
+// Config asks need-config-fetch and stops on its 500 (ErrNoConfigFetch); with force it does not ask
+// and downloads the archive whatever the route would answer.
+func TestConfigForceSkipsNeedConfigFetch(t *testing.T) {
+	calls := map[string]int{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		p := r.URL.Path
+		calls[p[strings.LastIndex(p, "/"):]]++
+		switch {
+		case strings.HasSuffix(p, "/need-config-fetch"):
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("500 -No config fetch needed!"))
+		case strings.HasSuffix(p, "/secret-login"):
+			w.Write([]byte(`{"token":"t0k"}`))
+		case strings.HasSuffix(p, "/config"):
+			if r.Header.Get("Authorization") != "Bearer t0k" {
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+			w.Write([]byte("archive"))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+	c := &Client{BaseURL: srv.URL, Cluster: "c1", Server: "db1", Port: "3306", JobsKey: "jk", HTTP: srv.Client()}
+
+	var out strings.Builder
+	if err := c.Config(&out, false); err != ErrNoConfigFetch || out.Len() != 0 {
+		t.Fatalf("not wanted: err=%v written=%q", err, out.String())
+	}
+	if calls["/need-config-fetch"] != 1 || calls["/config"] != 0 {
+		t.Fatalf("the route is asked and the download not made: %v", calls)
+	}
+	if err := c.Config(&out, true); err != nil || out.String() != "archive" {
+		t.Fatalf("forced: err=%v written=%q", err, out.String())
+	}
+	if calls["/need-config-fetch"] != 1 || calls["/secret-login"] != 1 || calls["/config"] != 1 {
+		t.Fatalf("forced: the route is not asked again, the login and the download are made once: %v", calls)
+	}
+}
+
 // need-config-refresh says "not needed" with a 500 and its text: no error; any other answer is one.
 func TestNeedConfigRefreshAnswers(t *testing.T) {
 	answer := http.StatusInternalServerError
