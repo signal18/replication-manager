@@ -202,6 +202,7 @@ export const clusterService = {
   rejectSubscription,
   sendCredentials,
   rotateUserPassword,
+  getClusterSecrets,
   endSubscription,
 
   subscribeExternalRole,
@@ -928,6 +929,11 @@ function dropUser(clusterName, username, baseURL) {
 
 function rotateUserPassword(clusterName, username, baseURL) {
   return getApi(baseURL).post(`clusters/${clusterName}/users/rotate-password`, { username })
+}
+
+// the cluster's credentials in clear: a read, never a rotation (cluster-show-secrets)
+function getClusterSecrets(clusterName, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/secrets`)
 }
 
 function sendCredentials(clusterName, username, type, baseURL) {

@@ -663,6 +663,8 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 		repman.Conf.ApiSwaggerEnabled = isactive
 	case "api-secret-reveal":
 		repman.Conf.APISecretReveal = isactive
+	case "api-cluster-secrets":
+		repman.Conf.APIClusterSecrets = isactive
 	case "mcp-server":
 		repman.Conf.MCPServ = isactive
 		repman.restartMCPServer()
@@ -852,6 +854,8 @@ func (repman *ReplicationManager) switchRepmanSetting(name string) error {
 		repman.Conf.ApiSwaggerEnabled = !repman.Conf.ApiSwaggerEnabled
 	case "api-secret-reveal":
 		repman.Conf.APISecretReveal = !repman.Conf.APISecretReveal
+	case "api-cluster-secrets":
+		repman.Conf.APIClusterSecrets = !repman.Conf.APIClusterSecrets
 	case "mcp-server":
 		repman.Conf.MCPServ = !repman.Conf.MCPServ
 		repman.restartMCPServer()

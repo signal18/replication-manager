@@ -63,6 +63,7 @@ function GlobalSettings({ config, cards }) {
   const hLogHeartbeatLevel = `**Log HeartBeat Level**\n\nVerbosity of the heartbeat log channel.\n\nConfig: \`log-level-heartbeat\``
   const hApiV3 = `**Enable API v3**\n\nServes the v3 API (gRPC and its JSON gateway under \`/v3/\`) on the API port. The GUI and \`replication-manager-cli\` do not use it: they use the REST API under \`/api/\`. Off by default: a v3 request then gets 404. Applied live.\n\nConfig: \`api-v3-server\``
   const hSecretReveal = `**Mail Passwords as One-time Links**\n\nA password reaches a person by mail as a one-time link (\`<api-public-url>/reveal\`), never in the mail: the new password of a rotated user whose login is an email (who rotated it then does not see it), and the credentials mails (sponsor, DBA, sysadmin). The page shows it once after a click, then the link is gone; the secrets wait encrypted with the instance's key. Off: a rotated password is shown once to who rotated it, and the credentials mails are not sent. The link is built on API Public URL: it must be the address the recipients reach.\n\nConfig: \`api-secret-reveal\``
+  const hClusterSecrets = `**Cluster Secrets Panel**\n\nA holder of \`cluster-show-secrets\` (sysops, extsysops, the Cloud18 owner) reads the credentials of a cluster in clear, in the cluster's Secrets panel or through \`GET /api/clusters/{clusterName}/secrets\`: the database, replication, proxy, sponsor, DBA and application users that replication-manager generated. A read only, it never changes a credential; each read is a security event naming the reader and the keys, never the values. Off: the endpoint answers 403 and the panel is hidden.\n\nConfig: \`api-cluster-secrets\``
   const hSecretRevealExpire = `**One-time Link Expiry in Hours**\n\nHours a one-time password link works when nobody opens it. Default 24.\n\nConfig: \`api-secret-reveal-expire-hours\``
   const hSwagger = `**Enable API Swagger**\n\nServes the interactive API explorer at \`/api-docs/\`.\n\nConfig: \`api-swagger-enabled\``
   const hLogApiLogin = `**Log API Login**\n\nRecords every successful API login (user, source address) in the security log. On by default. Failed logins are always recorded. API tokens never log in, so token calls add nothing.\n\nConfig: \`monitoring-log-api-login\``
@@ -168,6 +169,18 @@ function GlobalSettings({ config, cards }) {
           showConfirmModal={true}
           confirmTitle={`Confirm change 'api-token-timeout' to: `}
           onConfirm={(value) => dispatch(setGlobalSetting({ setting: 'api-token-timeout', value: value }))}
+        />
+      )
+    },
+    {
+      globalSetting: 'api-cluster-secrets',
+      key: 'Cluster Secrets Panel',
+      help: h(hClusterSecrets, 'Cluster Secrets Panel'),
+      value: (
+        <RMSwitch
+          confirmTitle={'Confirm switch global settings for the cluster secrets panel?'}
+          onChange={(_v, setRefresh) => dispatch(switchGlobalSetting({ setting: 'api-cluster-secrets', setRefresh }))}
+          isChecked={config?.apiClusterSecrets}
         />
       )
     },
