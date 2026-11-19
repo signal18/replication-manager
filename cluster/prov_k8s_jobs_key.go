@@ -7,11 +7,14 @@ package cluster
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	appsv1 "k8s.io/api/apps/v1"
 	apiv1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 
+	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/config/credstore"
 )
 
@@ -97,14 +100,18 @@ func (cluster *Cluster) k8sJobsKeyInit(s *ServerMonitor, serverPath, noCheckCert
 // the same Secret are not in the volume. A volume, not a subPath mount, so that the kubelet refreshes the file when the
 // key is written again.
 //
-// The file is 0444: a Secret volume belongs to root, and the dbjobs container runs as the image's own USER unless the
-// identity is managed (dbIdentityManaged), so a 0400 file is unreadable by a non-root user and the shared CLI then
-// silently signs with the database password (JobsKeyFromEnv ignores a read error). 0444 gives read access to every UID
-// of the containers that mount the volume, the init and the dbjobs containers, and of no other: the database container
-// never mounts it. The key is a cluster-scoped authentication credential and stays one; a Pod-level fsGroup is not an
-// option (it also applies to the data volume).
+// The file is 0400 and belongs to root, the Kubernetes counterpart of OpenSVC's jobs volume (owner 99, mode 600, directory
+// 700; OpenSVCGetJobsVolumeSecret): readable by root in the two containers that mount it, by no other user. The dbjobs
+// container runs as root only when the identity is managed (dbIdentityManaged), as on OpenSVC; otherwise it runs as the
+// image's own USER, which then cannot read the file, and the shared CLI uses the database password without a message
+// (JobsKeyFromEnv ignores a read error). That is the OpenSVC behaviour too and is not changed here: not every DBJobs
+// configuration authenticates with the jobs key, and the fallback is not fail-closed. No Pod-level fsGroup (it also
+// applies to the data volume) and the jobs container is not forced to root.
+//
+// The mode does not isolate the containers of a Pod that shares its process namespace (monitoring-system-resources,
+// k8sProvisionDatabaseService), which OpenSVC does not do: see doc/implementation/security/JOB_LOGIN.md.
 func (cluster *Cluster) k8sJobsKeyVolume() apiv1.Volume {
-	mode := int32(0444)
+	mode := int32(0400)
 	return apiv1.Volume{
 		Name: k8sJobsKeyVolumeName,
 		VolumeSource: apiv1.VolumeSource{
@@ -137,4 +144,53 @@ func (cluster *Cluster) k8sAddJobsKey(dep *appsv1.Deployment, s *ServerMonitor) 
 			spec.Containers[i].VolumeMounts = append(spec.Containers[i].VolumeMounts, mount)
 		}
 	}
+}
+
+// k8sInitUsesJobsKey says whether the init container of a database Deployment logs in with the jobs key: it maps the
+// jobs-key volume and fetches its config with the CLI. It reads the Deployment itself: the cluster's persistent key does
+// not say which authentication an existing Deployment uses (provisioning keeps one that exists, whatever it was rendered
+// with, and only a Deployment rendered by this code maps the key).
+func k8sInitUsesJobsKey(dep *appsv1.Deployment) bool {
+	if dep == nil {
+		return false
+	}
+	for _, c := range dep.Spec.Template.Spec.InitContainers {
+		mounted := false
+		for _, m := range c.VolumeMounts {
+			mounted = mounted || m.Name == k8sJobsKeyVolumeName
+		}
+		if mounted && strings.Contains(strings.Join(c.Command, " "), k8sInitCLIPath+" job config") {
+			return true
+		}
+	}
+	return false
+}
+
+// k8sDeploymentInEffect is the Deployment whose init container will log in: the one Create returned, or, when Create
+// reported that it already exists, the existing one. nil when it cannot be read.
+func (cluster *Cluster) k8sDeploymentInEffect(client kubernetes.Interface, created *appsv1.Deployment, name string, alreadyExists bool) *appsv1.Deployment {
+	if !alreadyExists {
+		return created
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), k8sAPICallTimeout)
+	defer cancel()
+	dep, err := client.AppsV1().Deployments(cluster.Name).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return nil
+	}
+	return dep
+}
+
+// k8sAdminGrantWarning is the warning that the admin login of the init container will be refused, or "". The admin login
+// fetches the config only with the db-config-flag grant (api-credentials-secure-config): a Deployment that logs in with
+// the jobs key does not need it, so it gets no warning; a Deployment that does not (a legacy one, or one rendered without
+// a persistent key) keeps it. When the Deployment cannot be read the path is unknown and the warning is given as before.
+func (cluster *Cluster) k8sAdminGrantWarning(s *ServerMonitor, dep *appsv1.Deployment) string {
+	if !cluster.Conf.APISecureConfig || k8sInitUsesJobsKey(dep) {
+		return ""
+	}
+	if u, ok := cluster.GetAPIUsers()["admin"]; ok && u.Grants != nil && u.Grants[config.GrantDBConfigFlag] {
+		return ""
+	}
+	return fmt.Sprintf("api-credentials-secure-config is enabled but the admin user lacks the db-config-flag grant: the Kubernetes DB init-container config fetch will get HTTP 403, so %s will not bootstrap", s.Name)
 }

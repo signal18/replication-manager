@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"os"
 	"os/exec"
 	"strings"
 	"testing"
@@ -159,10 +160,11 @@ func TestK8SJobsKey_NoSecretInTheDeployment(t *testing.T) {
 	}
 }
 
-// The volume projects the jobs key alone (not the database password or the admin login of the same Secret), 0444: the
-// dbjobs container may run as a non-root image user, which a root-owned 0400 file would lock out (the shared CLI would
-// then sign with the database password).
-func TestK8SJobsKey_VolumeProjectsOnlyTheKeyReadableByAnyUIDOfItsContainers(t *testing.T) {
+// The volume projects the jobs key alone (not the database password or the admin login of the same Secret), 0400 and
+// root-owned, the counterpart of OpenSVC's mode 600 / directory 700. A dbjobs container that runs as a non-root image
+// user (identity not managed) cannot read it and the shared CLI then uses the database password, as on OpenSVC: not every
+// configuration authenticates with the key, and the mode is no isolation between containers that share a process namespace.
+func TestK8SJobsKey_VolumeProjectsOnlyTheKeyReadableByRootOnly(t *testing.T) {
 	c := jobsKeyTestCluster(true)
 	dep := c.k8sDatabaseDeployment(jobsKeyTestServer(), 3306, "node-a")
 	var vol *apiv1.Volume
@@ -180,8 +182,8 @@ func TestK8SJobsKey_VolumeProjectsOnlyTheKeyReadableByAnyUIDOfItsContainers(t *t
 	if len(vol.Secret.Items) != 1 || vol.Secret.Items[0].Key != "JOBS_API_KEY" || vol.Secret.Items[0].Path != "JOBS_API_KEY" {
 		t.Fatalf("only JOBS_API_KEY is projected, got %+v", vol.Secret.Items)
 	}
-	if vol.Secret.DefaultMode == nil || *vol.Secret.DefaultMode != 0444 {
-		t.Fatalf("the file is 0444 (readable by a non-root dbjobs user), got %v", vol.Secret.DefaultMode)
+	if vol.Secret.DefaultMode == nil || *vol.Secret.DefaultMode != 0400 {
+		t.Fatalf("the file is 0400 (as OpenSVC's 600), got %v", vol.Secret.DefaultMode)
 	}
 	if vol.Secret.Optional != nil && *vol.Secret.Optional {
 		t.Fatal("a Pod must not start without the key it maps")
@@ -342,5 +344,128 @@ func TestK8SJobsKey_RepairedWithTheOtherInitCredentials(t *testing.T) {
 	}
 	if strings.Join(keys, ",") != k8sSecretKeyAPIAuthHeader+","+k8sSecretKeyJobsKey {
 		t.Fatalf("init credentials of a Kubernetes cluster: %v", keys)
+	}
+}
+
+// The admin-login warning follows the Deployment that stands, not the cluster's persistent key.
+
+// adminGrantCluster is a cluster whose admin lacks the db-config-flag grant, with api-credentials-secure-config on.
+func adminGrantCluster(withKey bool) *Cluster {
+	c := jobsKeyTestCluster(withKey)
+	c.APIUsers = map[string]APIUser{"admin": {User: "admin", Password: "s3cr3t", Grants: map[string]bool{}}}
+	return c
+}
+
+func TestK8SAdminGrantWarning_NewJobsKeyDeploymentHasNone(t *testing.T) {
+	c := adminGrantCluster(true)
+	s := jobsKeyTestServer()
+	created := c.k8sDatabaseDeployment(s, 3306, "node-a")
+	dep := c.k8sDeploymentInEffect(fake.NewSimpleClientset(), created, s.Name, false)
+	if !k8sInitUsesJobsKey(dep) {
+		t.Fatal("a Deployment rendered with the key logs in with the jobs key")
+	}
+	if msg := c.k8sAdminGrantWarning(s, dep); msg != "" {
+		t.Fatalf("no admin-grant warning for a jobs-key Deployment, got %q", msg)
+	}
+}
+
+func TestK8SAdminGrantWarning_DeploymentWithoutAPersistentKeyKeepsIt(t *testing.T) {
+	c := adminGrantCluster(false)
+	s := jobsKeyTestServer()
+	dep := c.k8sDeploymentInEffect(fake.NewSimpleClientset(), c.k8sDatabaseDeployment(s, 3306, "node-a"), s.Name, false)
+	if k8sInitUsesJobsKey(dep) {
+		t.Fatal("no persistent key: the admin login")
+	}
+	if msg := c.k8sAdminGrantWarning(s, dep); !strings.Contains(msg, "db-config-flag") || !strings.Contains(msg, "db1 will not bootstrap") {
+		t.Fatalf("the admin-grant warning stays for the admin login, got %q", msg)
+	}
+}
+
+// Provisioning keeps a Deployment that exists: a legacy one, created before the cluster had a persistent key or by an
+// older release, still logs in as the admin although this replication-manager now has the key and would render it
+// differently. The warning follows the existing Deployment, fetched when Create reports AlreadyExists.
+func TestK8SAdminGrantWarning_ExistingLegacyDeploymentKeepsItWhateverTheClusterKey(t *testing.T) {
+	legacy := adminGrantCluster(false)
+	s := jobsKeyTestServer()
+	existing := legacy.k8sDatabaseDeployment(s, 3306, "node-a")
+	client := fake.NewSimpleClientset()
+	if _, err := client.AppsV1().Deployments("k8stest").Create(context.TODO(), existing, metav1.CreateOptions{}); err != nil {
+		t.Fatal(err)
+	}
+
+	now := adminGrantCluster(true) // the same cluster, now with a persistent key
+	if !now.k8sJobsKeyInUse() {
+		t.Fatal("the cluster has a persistent key")
+	}
+	// what Create would have rendered now is not what stands
+	if !k8sInitUsesJobsKey(now.k8sDatabaseDeployment(s, 3306, "node-a")) {
+		t.Fatal("a new render maps the key")
+	}
+	dep := now.k8sDeploymentInEffect(client, nil, s.Name, true)
+	if dep == nil || k8sInitUsesJobsKey(dep) {
+		t.Fatalf("the existing Deployment is the legacy one, got %v", dep)
+	}
+	if msg := now.k8sAdminGrantWarning(s, dep); msg == "" {
+		t.Fatal("the existing legacy Deployment keeps the admin-grant warning although the cluster has a key")
+	}
+}
+
+func TestK8SAdminGrantWarning_ExistingJobsKeyDeploymentHasNone(t *testing.T) {
+	c := adminGrantCluster(true)
+	s := jobsKeyTestServer()
+	client := fake.NewSimpleClientset()
+	if _, err := client.AppsV1().Deployments("k8stest").Create(context.TODO(), c.k8sDatabaseDeployment(s, 3306, "node-a"), metav1.CreateOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if msg := c.k8sAdminGrantWarning(s, c.k8sDeploymentInEffect(client, nil, s.Name, true)); msg != "" {
+		t.Fatalf("an existing jobs-key Deployment needs no admin grant, got %q", msg)
+	}
+}
+
+// An existing Deployment that cannot be read leaves the path unknown: the warning is given as it was.
+func TestK8SAdminGrantWarning_UnreadableExistingDeploymentKeepsTheWarning(t *testing.T) {
+	c := adminGrantCluster(true)
+	s := jobsKeyTestServer()
+	dep := c.k8sDeploymentInEffect(fake.NewSimpleClientset(), nil, s.Name, true)
+	if dep != nil {
+		t.Fatalf("nothing to read, got %v", dep)
+	}
+	if msg := c.k8sAdminGrantWarning(s, dep); msg == "" {
+		t.Fatal("an unknown path keeps the warning")
+	}
+}
+
+func TestK8SAdminGrantWarning_NoneWhenTheGrantIsThereOrSecureConfigIsOff(t *testing.T) {
+	s := jobsKeyTestServer()
+	legacy := adminGrantCluster(false)
+	dep := legacy.k8sDatabaseDeployment(s, 3306, "node-a")
+	legacy.APIUsers = map[string]APIUser{"admin": {User: "admin", Grants: map[string]bool{"db-config-flag": true}}}
+	if msg := legacy.k8sAdminGrantWarning(s, dep); msg != "" {
+		t.Fatalf("the admin holds the grant, got %q", msg)
+	}
+	off := adminGrantCluster(false)
+	off.Conf.APISecureConfig = false
+	if msg := off.k8sAdminGrantWarning(s, off.k8sDatabaseDeployment(s, 3306, "node-a")); msg != "" {
+		t.Fatalf("api-credentials-secure-config is off, got %q", msg)
+	}
+}
+
+// The provisioning gives the warning only through the Deployment that stands: the unconditional check at its start is gone.
+func TestK8SAdminGrantWarning_ProvisioningUsesTheDeploymentInEffect(t *testing.T) {
+	b, err := os.ReadFile("prov_k8s_db.go")
+	if err != nil {
+		t.Skip("source not readable")
+	}
+	src := string(b)
+	i := strings.Index(src, "func (cluster *Cluster) K8SProvisionDatabaseService(")
+	if i < 0 {
+		t.Fatal("K8SProvisionDatabaseService not found")
+	}
+	body := src[i:]
+	if strings.Contains(body, "lacks the db-config-flag grant") {
+		t.Fatal("the message is built by k8sAdminGrantWarning, not inline at the start of the provisioning")
+	}
+	if !strings.Contains(body, "k8sAdminGrantWarning(s, cluster.k8sDeploymentInEffect(") {
+		t.Fatal("the provisioning warns through the Deployment in effect")
 	}
 }

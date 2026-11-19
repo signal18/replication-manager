@@ -35,7 +35,7 @@ replication-manager's persistent key (`monitoring-key-path`), never stored.
   Deployment is rendered (`k8sPublishJobsKey`: an unchanged value is not written again, a changed one
   keeps `JOBS_API_KEY_OLD`), and repaired by the monitor with the other init credentials
   (`initCredentials`). The Deployment maps it only with a persistent key: a Secret volume `jobs-key`
-  that projects that one entry (mode 0444, see "The key file on Kubernetes"), mounted read-only, as a directory so that the kubelet
+  that projects that one entry (mode 0400, see "The key file on Kubernetes"), mounted read-only, as a directory so that the kubelet
   refreshes it, at `/credentials` in the database init container and the dbjobs sidecar and in no
   other container. The jobs read the file (`jobapi.JobsKeyFromEnv`) and keep `MYSQL_ROOT_PASSWORD`
   for the database connection only.
@@ -257,27 +257,41 @@ before. The proxies keep the admin login. Existing volumes and the PVC layout ar
 
 ### The key file on Kubernetes
 
-- **Mode 0444, readable by any UID of the containers that mount it.** A Secret volume belongs to
-  root, and the dbjobs container runs as root only when the identity is managed
-  (`dbIdentityManaged`: `prov-db-run-as-uid`, `prov-db-volume-uid` or an image whose name contains
-  `percona`, as OpenSVC's jobs container); otherwise it runs as the image's own `USER`. The default
-  `mariadb` and `mysql` images run as root, `percona/percona-server` as `mysql`, and a Percona image
-  renamed without `percona`, or a custom image with a non-root `USER`, leaves the jobs non-root. A 0400
-  file is unreadable by such a user, which was measured (uid 1001 and 999: not readable; 0444: readable).
-- **What the exposure is.** The volume projects `JOBS_API_KEY` only, not the database password or
-  the admin login of the same Secret, and it is mounted read-only in the init container and the dbjobs
-  sidecar only: the database container does not mount it. Within those two containers any process can
-  read it. The key is a cluster-scoped authentication credential: it is derived from the persistent
-  key, never stored, and not to be logged or copied; protect the pods' exec access accordingly.
-- **A missing, unreadable or empty key is not an error.** `jobapi.JobsKeyFromEnv` ignores a read
-  error and returns an empty key; the shared CLI then signs with the database password
-  (`MYSQL_ROOT_PASSWORD`, carried in the encrypted body) without a message, and the server accepts it.
-  This applies on OpenSVC and Kubernetes alike (an OpenSVC key file is mode 600, owner 99) and is not
-  changed here: the jobs authentication is not fail-closed. No Pod-level `fsGroup` is used (it would
-  also own the data volume) and the dbjobs container is not forced to root.
-- **Not established.** A complete DBJobs workflow (backup, reseed) with a custom non-root image has
-  not been run; the authentication of a non-root user was checked with the CLI call of the jobs
-  (`job config`) and with the real round trip as root.
+- **Mode 0400, owned by root: OpenSVC's boundary.** The file is the counterpart of OpenSVC's jobs
+  volume (owner 99, mode 600, directory 700): readable by root in the two containers that mount it, by
+  no other user. Kubernetes cannot make a Secret file belong to uid 99; root-owned is at least as strict.
+  The volume projects `JOBS_API_KEY` only, not the database password or the admin login of the same
+  Secret, and it is not mounted in the database container, as on OpenSVC.
+- **The jobs container runs as root only when the identity is managed** (`prov-db-run-as-uid`,
+  `prov-db-volume-uid`, or an image whose name contains `percona`: `dbIdentityManaged`), exactly like
+  OpenSVC's; otherwise it runs as the image's own `USER`. The `mariadb` and `mysql` images run as root,
+  `percona/percona-server` as `mysql`; a Percona image renamed without `percona`, or a custom image with a
+  non-root `USER`, leaves the jobs non-root.
+- **Not every configuration authenticates with the key.** A jobs container that cannot read the file (an
+  unmanaged non-root image user) has no key: `jobapi.JobsKeyFromEnv` ignores a read error, the shared CLI
+  then signs with the database password (`MYSQL_ROOT_PASSWORD`, carried in the encrypted body) without a
+  message, and the server accepts it. It is the OpenSVC behaviour too, is not changed here and is not
+  fail-closed. Measured on Kubernetes: a root jobs container authenticates with the key although the
+  database password it holds is wrong; a non-root user (uid 1001, 999) cannot read the file and
+  authenticates only with the right database password. To have the jobs use the key in such a
+  configuration, set an explicit identity so that they run as root. No Pod-level `fsGroup` is used (it
+  would also own the data volume) and the jobs container is not forced to root.
+- **A shared process namespace is not isolated by the file mode.** With `monitoring-system-resources`
+  the Pod shares its process namespace so that the sidecar can read the database container's cgroup
+  (`doc/implementation/cluster/DBU_RESOURCE_SENSOR.md`); OpenSVC binds the service's cgroup slice and
+  shares only the network namespace. That behaviour predates the jobs key and is not changed here. When
+  the namespace is shared, neither the file mode nor "not mounted in the database container" is an
+  isolation between the two containers for processes of the other container that run with the same
+  identity. The analysis is kept for maintainer review.
+- **Not established.** A complete DBJobs workflow (backup, reseed) with a custom non-root image has not
+  been run.
+
+The warning about the admin's `db-config-flag` grant (`api-credentials-secure-config`) concerns the
+admin login only. At provisioning it is given for the Deployment that stands, read from the one Create
+returned or, when it already exists, from the existing one (`k8sAdminGrantWarning`): a Deployment whose
+init container logs in with the jobs key does not need the grant and gets no warning, a legacy one, or one
+rendered without a persistent key, keeps it. The cluster's persistent key does not tell which one an
+existing Deployment is.
 
 ## Not covered here
 

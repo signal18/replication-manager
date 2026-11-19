@@ -1187,12 +1187,6 @@ func (cluster *Cluster) K8SProvisionDatabaseService(s *ServerMonitor) {
 		cluster.errorChan <- err
 		return
 	}
-	if cluster.Conf.APISecureConfig {
-		if u, ok := cluster.GetAPIUsers()["admin"]; !ok || u.Grants == nil || !u.Grants[config.GrantDBConfigFlag] {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn,
-				"api-credentials-secure-config is enabled but the admin user lacks the db-config-flag grant: the Kubernetes DB init-container config fetch will get HTTP 403, so %s will not bootstrap", s.Name)
-		}
-	}
 	cluster.k8sEnsureNamespace(client, cluster.Name)
 	if err := cluster.k8sEnsureDatabaseSecret(client, s.Pass); err != nil {
 		cluster.errorChan <- err
@@ -1314,6 +1308,15 @@ func (cluster *Cluster) K8SProvisionDatabaseService(s *ServerMonitor) {
 	}
 	if err == nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Created Kubernetes deployment %q.\n", result.GetObjectMeta().GetName())
+	}
+	// The admin-login warning is about the Deployment that stands (the one just created, or the existing one a
+	// provisioning keeps), not about what this replication-manager would render now.
+	var created *appsv1.Deployment
+	if err == nil {
+		created = result
+	}
+	if msg := cluster.k8sAdminGrantWarning(s, cluster.k8sDeploymentInEffect(client, created, deployment.Name, apierrors.IsAlreadyExists(err))); msg != "" {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "%s", msg)
 	}
 	servicesClient := client.CoreV1().Services(cluster.Name)
 
