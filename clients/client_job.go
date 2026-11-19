@@ -324,12 +324,15 @@ var jobUsageCmd = &cobra.Command{
 	},
 }
 
+var cliJobConfigForce bool
+
 var jobConfigCmd = &cobra.Command{
 	Use:   "config FILE",
-	Short: "Download the server's config archive with the jobs login: exit 0 written, 1 not wanted now, 2 on error",
+	Short: "Download the server's config archive with the jobs login: exit 0 written, 1 not wanted now (never with --force), 2 on error",
 	Long: "The init container's fetch: asks need-config-fetch, logs in with the cluster's jobs key " +
 		"($JOBS_API_KEY or /credentials/JOBS_API_KEY, a token scoped to this server) and writes " +
-		"config.tar.gz to FILE. No admin password.",
+		"config.tar.gz to FILE. No admin password. --force does not ask need-config-fetch: for a volume " +
+		"that has no configuration yet, whose first install must happen whatever the route answers.",
 	Args: cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		c := jobClient()
@@ -338,7 +341,7 @@ var jobConfigCmd = &cobra.Command{
 		if err != nil {
 			jobFail(err)
 		}
-		err = c.Config(f)
+		err = c.Config(f, cliJobConfigForce)
 		if cerr := f.Close(); err == nil {
 			err = cerr
 		}
@@ -363,6 +366,7 @@ func initJobFlags(cmd *cobra.Command) {
 	cmd.PersistentFlags().StringVar(&cliJobSecretEnv, "secret-env", "MYSQL_ROOT_PASSWORD", "Name of the environment variable holding the database password")
 	cmd.PersistentFlags().IntVar(&cliJobRetries, "retries", 1, "Attempts of a state or log call, 2 seconds apart")
 	jobStateCmd.Flags().StringVar(&cliJobRestore, "restore", "", "Restore metadata (JSON) of a physical reseed or flashback, sent with its state")
+	jobConfigCmd.Flags().BoolVar(&cliJobConfigForce, "force", false, "Fetch without asking need-config-fetch (a volume with no configuration yet)")
 	for _, c := range []*cobra.Command{jobUpgradeCmd, jobConfigDummyCmd} {
 		c.Flags().StringVar(&cliJobListen, "listen", "", "Jobs listener address host:port (SST_RECEIVER_PORT)")
 		c.Flags().IntVar(&cliJobAcceptTimeout, "accept-timeout", 300, "Seconds to wait for replication-manager's stream")

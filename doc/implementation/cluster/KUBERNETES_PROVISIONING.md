@@ -258,7 +258,10 @@ skips the refresh; on `service-dirs-v1` it would skip the install of a volume th
 and the guard would then hold the pod in `Init` with no state saying why. Nothing else populates `etc/mysql`
 on Kubernetes (OpenSVC's service directory is populated by its own bootstrap), so the init container fetches
 unconditionally while `/etc/mysql/my.cnf` is missing or empty, and asks the route only once a usable tree is
-on the volume (`{ [ ! -s /etc/mysql/my.cnf ] || wget .../need-config-fetch; }`).
+on the volume (`{ [ ! -s /etc/mysql/my.cnf ] || wget .../need-config-fetch; }`). With the cluster's jobs key
+(`doc/implementation/security/JOB_LOGIN.md`) the gate tests the CLI instead and `replication-manager-cli job
+config` asks the route itself, so the init container passes it `--force` while `my.cnf` is missing or empty
+(`k8sJobsKeyInit`); a refresh asks. The legacy layout keeps the plain `job config`.
 
 **Data ownership.** After a successful configuration fetch (which `prov-db-start-fetch-config`, true by default, makes every
 start) OpenSVC's bootstrap runs `chown -R <owner> /bootstrap/data` (the owner is `dbVolumeOwner()`: `prov-db-volume-uid`,

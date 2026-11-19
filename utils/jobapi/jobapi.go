@@ -356,14 +356,19 @@ var ErrNoConfigFetch = fmt.Errorf("no config fetch needed")
 // Config writes the server's generated configuration archive (config.tar.gz) to w: the init
 // container's fetch, done with the jobs login instead of the admin password. It asks
 // need-config-fetch first (ErrNoConfigFetch when not wanted), logs in with the one-time job body
-// (a token scoped to this server), then downloads <server>/<port>/config with it.
-func (c *Client) Config(w io.Writer) error {
-	code, _, err := c.do(http.MethodGet, c.endpoint("/need-config-fetch"), nil, "")
-	if err != nil {
-		return err
-	}
-	if code != http.StatusOK {
-		return ErrNoConfigFetch
+// (a token scoped to this server), then downloads <server>/<port>/config with it. With force the
+// route is not asked: the caller knows the server has no configuration yet (a Kubernetes
+// service-dirs-v1 volume without my.cnf, whose first install must happen whatever the route
+// answers for the no-config-fetch cookie or an ignored server).
+func (c *Client) Config(w io.Writer, force bool) error {
+	if !force {
+		code, _, err := c.do(http.MethodGet, c.endpoint("/need-config-fetch"), nil, "")
+		if err != nil {
+			return err
+		}
+		if code != http.StatusOK {
+			return ErrNoConfigFetch
+		}
 	}
 	token, err := c.Login()
 	if err != nil {
