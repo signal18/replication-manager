@@ -1271,6 +1271,55 @@ func (cluster *Cluster) k8sExistingDeploymentUsable(client kubernetes.Interface,
 	return nil
 }
 
+// k8sDeploymentLayoutOf derives the PVC layout an existing database Deployment was rendered for from the
+// /var/lib/mysql mount of its database container (k8sDBMounts.data): subPath "data" is service-dirs-v1, no
+// subPath is legacy. Any other shape (no such container, no such mount, another subPath) is an error,
+// never a guess.
+func k8sDeploymentLayoutOf(dep *appsv1.Deployment, dbContainerName string) (k8sPVCLayout, error) {
+	for _, c := range dep.Spec.Template.Spec.Containers {
+		if c.Name != dbContainerName {
+			continue
+		}
+		for _, m := range c.VolumeMounts {
+			if m.MountPath != "/var/lib/mysql" {
+				continue
+			}
+			switch m.SubPath {
+			case "":
+				return k8sLayoutLegacy, nil
+			case k8sSvcDataSubPath:
+				return k8sLayoutServiceDirs, nil
+			}
+			return k8sLayoutLegacy, fmt.Errorf("Deployment %s mounts /var/lib/mysql from subPath %q in container %s, a layout this replication-manager does not know", dep.Name, m.SubPath, c.Name)
+		}
+		return k8sLayoutLegacy, fmt.Errorf("Deployment %s has no /var/lib/mysql mount in container %s: its layout cannot be told", dep.Name, c.Name)
+	}
+	return k8sLayoutLegacy, fmt.Errorf("Deployment %s has no container %s: its layout cannot be told", dep.Name, dbContainerName)
+}
+
+// k8sExistingDeploymentMatchesPVCLayout refuses a Deployment a Create reported as already existing when the
+// layout it was rendered for (k8sDeploymentLayoutOf) is not the one read from the PVC (#2395). The two
+// drift when the PVC is deleted and recreated under a kept Deployment (the new claim carries the
+// service-dirs-v1 annotation, the Pod writes the datadir at the PVC root) or when a Deployment is kept
+// across a volume restore: the next provisioning would render the other layout and initialise a new
+// datadir beside the real one. The error says what to do; nothing is changed.
+func (cluster *Cluster) k8sExistingDeploymentMatchesPVCLayout(client kubernetes.Interface, name, dbContainerName, pvcName string, pvcLayout k8sPVCLayout) error {
+	ctx, cancel := context.WithTimeout(context.Background(), k8sAPICallTimeout)
+	defer cancel()
+	dep, err := client.AppsV1().Deployments(cluster.Name).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return fmt.Errorf("Deployment %s already exists but cannot be read to tell its layout: %w", name, err)
+	}
+	depLayout, err := k8sDeploymentLayoutOf(dep, dbContainerName)
+	if err != nil {
+		return err
+	}
+	if depLayout != pvcLayout {
+		return fmt.Errorf("Deployment %s was rendered for the %s layout but PVC %s carries the %s layout: the Pod would write the datadir where the volume has none. Unprovision the server so the Deployment is rendered again for this volume, or restore the volume the Deployment was rendered for", name, depLayout, pvcName, pvcLayout)
+	}
+	return nil
+}
+
 // k8sEnsureDatabasePVC creates the database PVC and returns the layout its Deployment must be rendered
 // for (#2395). A PVC that does not exist is created with the service-dirs-v1 annotation. A PVC that
 // already exists is read, never modified: its annotation decides (absent: legacy, the datadir is the
@@ -1424,6 +1473,12 @@ func (cluster *Cluster) K8SProvisionDatabaseService(s *ServerMonitor) {
 		if existErr := cluster.k8sExistingDeploymentUsable(client, deployment.Name); existErr != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot provision %s: %s ", deployment.Name, existErr)
 			cluster.errorChan <- existErr
+			return
+		}
+		// and only for a Deployment rendered for the layout the volume has (#2395)
+		if layoutErr := cluster.k8sExistingDeploymentMatchesPVCLayout(client, deployment.Name, s.Name, k8sDatabasePVCName(cluster.Name, s.Name), pvcLayout); layoutErr != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot provision %s: %s ", deployment.Name, layoutErr)
+			cluster.errorChan <- layoutErr
 			return
 		}
 	}

@@ -283,6 +283,17 @@ never reinterpreted as the new layout; moving one is an explicit operation that 
 Deployments already running are not touched either: only provisioning renders a Deployment, and the
 update paths patch image, pull policy, resources and strategy.
 
+**An existing Deployment must match the volume.** When the Deployment `Create` reports `AlreadyExists`,
+provisioning reads the existing Deployment and derives the layout it was rendered for from the
+`/var/lib/mysql` mount of its database container (`k8sDeploymentLayoutOf`: subPath `data` is
+`service-dirs-v1`, no subPath is legacy, anything else is an error). A layout that differs from the PVC's
+is refused (`k8sExistingDeploymentMatchesPVCLayout`): the error names the Deployment, the PVC and both
+layouts, and says what to do (unprovision the server so the Deployment is rendered again for this volume,
+or restore the volume the Deployment was rendered for). Nothing is changed. Without this check a PVC deleted
+and recreated under a kept legacy Deployment gets the `service-dirs-v1` annotation while the Pod writes the
+datadir at the PVC root, and the next reprovision would render `data/` and initialise a new datadir beside
+the real one.
+
 The database container mounts `data` and `etc/mysql` but not `init` (it never mounted it, in either layout; the
 init and dbjobs containers do). OpenSVC mounts `init` in the database container, where the image entrypoint runs
 the `*.sql` and `*.sh` files of `/docker-entrypoint-initdb.d` once, when the data directory is created. The

@@ -401,6 +401,91 @@ func TestK8SEnsureDatabasePVC(t *testing.T) {
 	})
 }
 
+// The layout of an existing Deployment is read from its database container's /var/lib/mysql mount, and
+// nothing else: both renderings are recognised, anything else is an error.
+func TestK8SDeploymentLayoutOf(t *testing.T) {
+	c := layoutTestCluster()
+	if l, err := k8sDeploymentLayoutOf(c.k8sDatabaseDeploymentWithLayout(layoutTestServer, 3306, "node-a", k8sLayoutLegacy), "db1"); err != nil || l != k8sLayoutLegacy {
+		t.Errorf("legacy rendering: %v, %v; want legacy", l, err)
+	}
+	if l, err := k8sDeploymentLayoutOf(c.k8sDatabaseDeploymentWithLayout(layoutTestServer, 3306, "node-a", k8sLayoutServiceDirs), "db1"); err != nil || l != k8sLayoutServiceDirs {
+		t.Errorf("service-dirs rendering: %v, %v; want service-dirs", l, err)
+	}
+	if _, err := k8sDeploymentLayoutOf(c.k8sDatabaseDeploymentWithLayout(layoutTestServer, 3306, "node-a", k8sLayoutServiceDirs), "db2"); err == nil {
+		t.Error("a Deployment without the database container must be an error, not a guess")
+	}
+	foreign := c.k8sDatabaseDeploymentWithLayout(layoutTestServer, 3306, "node-a", k8sLayoutServiceDirs)
+	for i, ctr := range foreign.Spec.Template.Spec.Containers {
+		for j, m := range ctr.VolumeMounts {
+			if ctr.Name == "db1" && m.MountPath == "/var/lib/mysql" {
+				foreign.Spec.Template.Spec.Containers[i].VolumeMounts[j].SubPath = "data-v2"
+			}
+		}
+	}
+	if _, err := k8sDeploymentLayoutOf(foreign, "db1"); err == nil {
+		t.Error("an unknown data subPath must be an error, not a guess")
+	}
+	noMount := c.k8sDatabaseDeploymentWithLayout(layoutTestServer, 3306, "node-a", k8sLayoutLegacy)
+	for i, ctr := range noMount.Spec.Template.Spec.Containers {
+		if ctr.Name == "db1" {
+			noMount.Spec.Template.Spec.Containers[i].VolumeMounts = nil
+		}
+	}
+	if _, err := k8sDeploymentLayoutOf(noMount, "db1"); err == nil {
+		t.Error("a database container without a /var/lib/mysql mount must be an error, not a guess")
+	}
+}
+
+// An existing Deployment is accepted only when it was rendered for the layout the PVC carries: a volume
+// recreated under a kept legacy Deployment is refused with the two layouts and what to do, not re-rendered
+// on the next provisioning with a new datadir beside the real one.
+func TestK8SExistingDeploymentMatchesPVCLayout(t *testing.T) {
+	c := layoutTestCluster()
+	legacy := c.k8sDatabaseDeploymentWithLayout(layoutTestServer, 3306, "node-a", k8sLayoutLegacy)
+	legacy.Namespace = c.Name
+	svc := c.k8sDatabaseDeploymentWithLayout(layoutTestServer, 3306, "node-a", k8sLayoutServiceDirs)
+	svc.Namespace = c.Name
+
+	for name, tc := range map[string]struct {
+		existing  *appsv1.Deployment
+		pvcLayout k8sPVCLayout
+		wantErr   bool
+	}{
+		"legacy Deployment on a legacy PVC":                {legacy, k8sLayoutLegacy, false},
+		"service-dirs Deployment on a service-dirs PVC":    {svc, k8sLayoutServiceDirs, false},
+		"legacy Deployment, PVC recreated as service-dirs": {legacy, k8sLayoutServiceDirs, true},
+		"service-dirs Deployment, legacy volume restored":  {svc, k8sLayoutLegacy, true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			client := fake.NewSimpleClientset(tc.existing)
+			err := c.k8sExistingDeploymentMatchesPVCLayout(client, "db1", "db1", "k8stest-db1-claim", tc.pvcLayout)
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("err = %v, want an error: %v", err, tc.wantErr)
+			}
+			if err == nil {
+				return
+			}
+			for _, want := range []string{"Deployment db1", "PVC k8stest-db1-claim", "legacy", "service-dirs-v1", "Unprovision the server", "restore the volume"} {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("the error does not say %q: %v", want, err)
+				}
+			}
+			// nothing is changed: the Deployment is read, never patched or deleted
+			for _, a := range client.Actions() {
+				if a.GetResource().Resource == "deployments" && a.GetVerb() != "get" {
+					t.Errorf("the existing Deployment was touched: verb %s", a.GetVerb())
+				}
+			}
+		})
+	}
+
+	t.Run("a Deployment that cannot be read is an error, not a go-ahead", func(t *testing.T) {
+		if err := c.k8sExistingDeploymentMatchesPVCLayout(fake.NewSimpleClientset(), "db1", "db1", "k8stest-db1-claim", k8sLayoutServiceDirs); err == nil {
+			t.Fatal("expected an error")
+		}
+	})
+}
+
 // ---- the installer, run for real ------------------------------------------------------------
 
 type layoutEnv struct {
