@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/signal18/replication-manager/config"
 	appsv1 "k8s.io/api/apps/v1"
 	apiv1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -725,6 +726,41 @@ func TestK8SServiceDirsInstaller_GuardRejectsAPartialTree(t *testing.T) {
 			seed(e, c.myCnf, c.confd)
 			if rc, out := e.run(layoutArchive(t, "v1"), false, false); rc != c.rc {
 				t.Fatalf("exit %d, want %d: %s", rc, c.rc, out)
+			}
+		})
+	}
+}
+
+// The service-dirs-v1 layout gives the data volume to dbVolumeOwner() even when the owner is not managed, so the
+// "owner the storage gives it" wording must not be reported for it; a non-root run-as UID that differs from the owner
+// still is. A legacy volume keeps its wording.
+func TestDBRunAsVolumeMismatchServiceDirs(t *testing.T) {
+	for _, tc := range []struct {
+		name, image, runAs, volume string
+		serviceDirs                bool
+		warn                       bool
+	}{
+		{"legacy volume, run-as 999 alone keeps the warning", "mariadb:11.8", "999", "", false, true},
+		{"new layout, run-as 999 alone: the legacy owner is applied", "mariadb:11.8", "999", "", true, false},
+		{"new layout, run-as 999:999 alone", "mysql:8.4", "999:999", "", true, false},
+		{"new layout, another uid with no owner: the owner is 999", "mariadb:11.8", "1234", "", true, true},
+		{"new layout, same explicit uid", "mariadb:11.8", "1234", "1234", true, false},
+		{"new layout, root", "mariadb:11.8", "0", "", true, false},
+		{"new layout, Percona run-as 1001 equals its owner", "percona/percona-server:8.4", "1001", "", true, false},
+		{"new layout, Percona with another uid", "percona/percona-server:8.4", "1234", "", true, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cluster := newIdentityCluster(tc.image, tc.runAs, tc.volume)
+			cluster.Conf.ProvOrchestrator = config.ConstOrchestratorKubernetes
+			msg := cluster.dbRunAsVolumeMismatchFor(tc.serviceDirs)
+			if (msg != "") != tc.warn {
+				t.Fatalf("dbRunAsVolumeMismatchFor(%v) = %q, want a warning: %v", tc.serviceDirs, msg, tc.warn)
+			}
+			if tc.serviceDirs && strings.Contains(msg, "keeps the owner the storage gives it") {
+				t.Fatalf("the storage wording does not apply to the new layout: %q", msg)
+			}
+			if got := cluster.dbRunAsVolumeMismatch(); !tc.serviceDirs && got != msg {
+				t.Fatalf("dbRunAsVolumeMismatch must stay dbRunAsVolumeMismatchFor(false): %q vs %q", got, msg)
 			}
 		})
 	}
