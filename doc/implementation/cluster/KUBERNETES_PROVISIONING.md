@@ -236,6 +236,7 @@ nothing is inferred from what a volume contains.
 | `/docker-entrypoint-initdb.d` | subPath `init` | subPath `.system/init` |
 | Init installer | OpenSVC's: clears `replication-manager.d/*` and `conf.d/*`, copies the archive's whole `etc/mysql` | the `conf.d/*.cnf` fragments only |
 | First install fails | the init container exits 1: no database starts without a usable `/etc/mysql` | exit 0, the database starts on what is there (unchanged) |
+| Data ownership | the init container hands `/var/lib/mysql` (the `data` subPath, `.system` included) to `dbVolumeOwner()` at every start, as OpenSVC's bootstrap does after a successful configuration fetch, also when the owner is not managed | only when the owner is managed (`prov-db-volume-uid`, or a Percona Server image), as before |
 
 `service-dirs-v1` is OpenSVC's service directory (`{name}/data`, `{name}/etc/mysql`, `{name}/init`
 mounted whole into the containers, `OpenSVCGetDBContainerSection`); the `.system/` runtime directories
@@ -249,6 +250,22 @@ existing ones. After its best-effort fetch the init container therefore requires
 `/etc/mysql/my.cnf` and a `conf.d` with entries, and exits 1 otherwise; the pod stays in `Init` and
 Kubernetes retries it. A later refresh that fails still finds the last installed tree and passes, so the
 database starts on the last valid configuration.
+
+**Data ownership.** After a successful configuration fetch (which `prov-db-start-fetch-config`, true by default, makes every
+start) OpenSVC's bootstrap runs `chown -R <owner> /bootstrap/data` (the owner is `dbVolumeOwner()`: `prov-db-volume-uid`,
+1001:1001 for a Percona Server image, else the legacy 999:999), and the archive's `data/.system/*` directories reach the
+volume owned by that call. On `service-dirs-v1` the init container does the same for `/var/lib/mysql`, which is the
+`data` subPath, at every start whether or not a fetch ran: the existing selective `find ... -exec chown -h` (only entries that
+differ are touched), now also when the owner is not managed, whatever the process identity (`prov-db-run-as-uid` is
+independent: run-as `1234` alone leaves the data to the legacy 999:999, as on OpenSVC, and the mismatch is reported). It
+runs before the guard, and a failure is a warning in the init container log, not an exit. Without it,
+a non-root `prov-db-run-as-uid` (no root phase in the image entrypoint) found `.system/*` created by the init container,
+root-owned, and `mysqld` aborted with `Could not open file '/var/lib/mysql/.system/logs/error.log' for error logging:
+Permission denied`. The step touches nothing else: not `/etc/mysql` (which OpenSVC does not chown either: it keeps the
+archive's owner and is read through its world-readable modes), not `/docker-entrypoint-initdb.d`, not the TLS files. A
+legacy volume is unchanged. On a datadir with many entries the pass costs one `lstat` per entry at each start (about
+2 s per million entries with warm caches, about 0.6 times the cost of OpenSVC's `chown -R` per start); the official
+MariaDB and MySQL entrypoints scan the datadir in the same way when they start as root.
 
 **Existing volumes.** A PVC that exists when a database is provisioned is read, never modified
 (`k8sEnsureDatabasePVC`): no annotation means legacy and the Deployment is rendered exactly as it was

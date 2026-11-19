@@ -102,7 +102,8 @@ repman does not force the owner to follow the user, nor the other way round:
   `prov-db-run-as-uid = 1234` with the legacy 999 owner) is the operator's choice, and mysqld
   then reports `Permission denied`; set `prov-db-volume-uid` to the same numbers to avoid it.
   replication-manager logs a warning at provisioning time in that case (a non-root run-as UID that
-  differs from the volume owner, or, on Kubernetes, a non-root run-as UID with no managed owner), and does
+  differs from the volume owner, or, on a legacy Kubernetes volume, a non-root run-as UID with no managed owner: only
+  a `service-dirs-v1` volume is given to the legacy owner), and does
   not correct it (`TestDBRunAsVolumeMismatch`). The check compares the UID only: for a process that is the
   owner of the files, the owner permission bits decide, whatever their group is.
 
@@ -222,7 +223,10 @@ possible but was left out to keep this change minimal.
   the process can use anyway is not blocked; if it cannot, mysqld reports
   `Permission denied`. It runs after the `.system` directories are created and the
   configuration is applied, and does not decide the init container's exit code, which stays
-  `MKDIR_STATUS`. Empty on other images: no ownership step, as before;
+  `MKDIR_STATUS`. Empty on other images: no ownership step, as before **on a legacy volume**. On a
+  `service-dirs-v1` volume (#2395) the step is always there and uses `dbVolumeOwner()`, the legacy `999:999` when
+  the owner is not managed, as OpenSVC's bootstrap does, so a non-root `prov-db-run-as-uid` equal to the owner
+  starts without `prov-db-volume-uid`; the data owner stays independent of the process UID;
 - no pod `fsGroup`: the init chown already gives the volume its owner, and
   `fsGroup` would also make the kubelet change the volume's group on mounts;
 - with `prov-db-run-as-uid = 0`, `runAsUser: 0` is explicit; a namespace enforcing the
