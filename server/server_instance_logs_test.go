@@ -1,6 +1,7 @@
 package server
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -52,6 +53,7 @@ func TestAPIAccessLogMiddlewareRedactsAndIsBounded(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		req := httptest.NewRequest("GET", "/api/clusters/dev3/settings/actions/set/db-servers-credential/root:s3cret?token=qwerty", nil)
 		req.Header.Set("Authorization", "Bearer eyJhbGciOiJSUzI1NiJ9.bearer-secret.sig")
+		req.RemoteAddr = fmt.Sprintf("192.0.2.%d:1234", i+1) // distinct callers: no collapse
 		router.ServeHTTP(httptest.NewRecorder(), req)
 	}
 	// not recorded: a successful read (the GUI's polling), and paths outside /api/
@@ -115,5 +117,63 @@ func TestSecurityEventRing(t *testing.T) {
 	ring.resize(1, 3)
 	if got := len(ring.snapshot().Buffer); got != 1 {
 		t.Fatalf("resize to 1 must keep 1 entry, got %d", got)
+	}
+}
+
+func TestAPIAccessLogSkipsJobsProtocolAndCollapsesRepeats(t *testing.T) {
+	repman := &ReplicationManager{Conf: &config.Config{}}
+	repman.Conf.LogAPIAccess = true
+	repman.APIAccessLogs = newInstanceLogRing(10, DefaultAPIAccessLogLength)
+
+	router := mux.NewRouter()
+	router.Use(repman.apiAccessLogMiddleware)
+	no := func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("false"))
+	}
+	router.HandleFunc("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/needs/{taskname}", no)
+	router.HandleFunc("/api/clusters/{clusterName}/jobs-log-level/{task}/{level}", no)
+	router.HandleFunc("/api/clusters/{clusterName}/actions/stop", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+	})
+
+	poll := func() {
+		for i := 0; i < 20; i++ {
+			router.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("POST", "/api/clusters/dev3/servers/db1/3306/needs/mysqldump", nil))
+		}
+	}
+	// at the default task level, the jobs protocol's "no" answers leave no trace
+	repman.Conf.LogTask = true
+	repman.Conf.LogTaskLevel = 1
+	poll()
+	router.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "/api/clusters/dev3/jobs-log-level/jobs-check/DEBUG", nil))
+	if n := len(repman.APIAccessLogs.snapshot().Buffer); n != 0 {
+		t.Fatalf("the jobs protocol polling must not be recorded below debug, got %d entries", n)
+	}
+	// at debug: one DEBUG entry naming the task, the repeats collapsed
+	repman.Conf.LogTaskLevel = 4
+	poll()
+	snap0 := repman.APIAccessLogs.snapshot()
+	if len(snap0.Buffer) != 1 || snap0.Buffer[0].Level != "DEBUG" ||
+		!strings.Contains(snap0.Buffer[0].Text, "/needs/mysqldump 500") || !strings.Contains(snap0.Buffer[0].Text, "(repeated 20 times)") {
+		t.Fatalf("want one collapsed DEBUG entry naming the task, got %+v", snap0.Buffer)
+	}
+	repman.APIAccessLogs = newInstanceLogRing(10, DefaultAPIAccessLogLength)
+
+	// identical refusals in a row from one host (any source port) collapse into one entry
+	for i := 0; i < 5; i++ {
+		req := httptest.NewRequest("POST", "/api/clusters/dev3/actions/stop", nil)
+		req.RemoteAddr = fmt.Sprintf("10.0.0.7:%d", 40000+i)
+		router.ServeHTTP(httptest.NewRecorder(), req)
+	}
+	snap := repman.APIAccessLogs.snapshot()
+	if len(snap.Buffer) != 1 || !strings.Contains(snap.Buffer[0].Text, "(repeated 5 times)") {
+		t.Fatalf("want one collapsed entry, got %+v", snap.Buffer)
+	}
+	other := httptest.NewRequest("POST", "/api/clusters/dev3/actions/stop", nil)
+	other.RemoteAddr = "10.0.0.8:1"
+	router.ServeHTTP(httptest.NewRecorder(), other)
+	if n := len(repman.APIAccessLogs.snapshot().Buffer); n != 2 {
+		t.Fatalf("another host is a new entry, got %d", n)
 	}
 }

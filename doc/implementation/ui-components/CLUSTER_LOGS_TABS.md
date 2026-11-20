@@ -148,7 +148,14 @@ Server side (`server/server_instance_logs.go`):
   into it (F10). The user is read from the token only for a recorded call, and a panic in
   the recording is recovered: the access log never costs a request. A path that matches
   no route (a 404 before any handler) is not recorded: a mux middleware runs on matched
-  routes only. A bounded display ring can be flooded: a client sending refused calls in a
+  routes only. The jobs containers' polling routes (`.../needs/{taskname}`,
+  `.../jobs-log-level/{task}/{level}`) answer "no" with a 500 "false" on purpose (the
+  compatibility contract of older dbjobs scripts), several times a second: they are
+  recorded at DEBUG under the task module's verbosity only (`log-task-level` at debug,
+  `IsEligibleForPrinting(ConstLogModTask, DEBUG)`), with the task name, and leave no trace
+  at the default level. Identical entries in a row (same method, path, status, user and
+  host, whatever the source port) collapse into one, "(repeated N times)" with the time
+  of the last, so a caller in a loop never floods the ring. A bounded display ring can still be flooded: a client sending refused calls in a
   loop pushes the older entries out; the security log file keeps the refused logins, and
   the full history is in the log files. Off-switch:
   `log-api-access` (T14), a global setting, live.

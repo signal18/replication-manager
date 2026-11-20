@@ -15,6 +15,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -41,6 +42,12 @@ const (
 type instanceLogRing struct {
 	log     s18log.HttpLog
 	dropped atomic.Uint64
+	// the collapse of identical consecutive entries (addCollapsing): the key and text of the
+	// newest entry and how many times it came in a row
+	mu       sync.Mutex
+	lastKey  string
+	lastText string
+	repeats  int
 }
 
 func newInstanceLogRing(size, defaultSize int) *instanceLogRing {
@@ -64,6 +71,31 @@ func (r *instanceLogRing) add(level string, module int, text string) {
 	}) {
 		r.dropped.Add(1)
 	}
+}
+
+// addCollapsing records an entry unless it repeats the newest one (same key): then the
+// newest entry takes the count and the time of the last repeat instead of a new slot, so a
+// caller in a loop never floods the ring (F4) nor pushes the other entries out (T4).
+func (r *instanceLogRing) addCollapsing(key, level string, module int, text string) {
+	if r == nil {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	now := time.Now().Format(timestampFormat)
+	if key != "" && key == r.lastKey {
+		r.repeats++
+		r.log.Update(0, s18log.HttpMessage{
+			Group:     s18log.GroupNone,
+			Level:     level,
+			Timestamp: now,
+			Text:      fmt.Sprintf("%s (repeated %d times)", r.lastText, r.repeats),
+			Module:    module,
+		})
+		return
+	}
+	r.lastKey, r.lastText, r.repeats = key, text, 1
+	r.add(level, module, text)
 }
 
 func (r *instanceLogRing) resize(size, defaultSize int) {
@@ -103,7 +135,7 @@ func (r *instanceLogRing) addSecurityEvent(event, user, remoteAddr, msg string) 
 // server, proxy, app, setting...), ports, and a few action words.
 var accessLogLoggedVars = map[string]bool{
 	"action": true, "task": true, "level": true, "logType": true, "topology": true,
-	"state": true, "index": true, "field": true, "month": true,
+	"state": true, "index": true, "field": true, "month": true, "taskname": true,
 }
 
 func accessLogVarLogged(name string) bool {
@@ -205,6 +237,16 @@ func (w *accessStatusWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	return nil, nil, fmt.Errorf("access log: the response writer cannot be hijacked")
 }
 
+// accessLogProtocolRoutes are the routes the jobs containers poll in a loop and that answer
+// "no" with a 500 "false" on purpose (the compatibility contract of older dbjobs scripts).
+// They are recorded at DEBUG only, under the task module's verbosity (log-task-level at
+// debug): at the default level they leave no trace; at debug their entries name the task
+// and collapse like any repeated entry.
+var accessLogProtocolRoutes = map[string]bool{
+	"/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/needs/{taskname}": true,
+	"/api/clusters/{clusterName}/jobs-log-level/{task}/{level}":                      true,
+}
+
 // apiAccessLogMiddleware records the API calls that matter in the Access Logs ring: every
 // call that changes something (any method but GET, HEAD, OPTIONS) and every failed call
 // (status 400 and above, refusals first). A successful read is not recorded: the GUI polls
@@ -229,11 +271,31 @@ func (repman *ReplicationManager) apiAccessLogMiddleware(next http.Handler) http
 		if status < 400 && (r.Method == http.MethodGet || r.Method == http.MethodHead || r.Method == http.MethodOptions) {
 			return
 		}
+		if route := mux.CurrentRoute(r); route != nil {
+			if template, err := route.GetPathTemplate(); err == nil && accessLogProtocolRoutes[template] {
+				if repman.Conf.IsEligibleForPrinting(config.ConstLogModTask, config.LvlDbg) {
+					repman.recordAPIAccessAt(r, status, time.Since(start), config.LvlDbg, config.ConstLogModTask)
+				}
+				return
+			}
+		}
 		repman.recordAPIAccess(r, status, time.Since(start))
 	})
 }
 
 func (repman *ReplicationManager) recordAPIAccess(r *http.Request, status int, duration time.Duration) {
+	level := config.LvlInfo
+	switch {
+	case status >= 500:
+		level = config.LvlErr
+	case status >= 400:
+		level = config.LvlWarn
+	}
+	repman.recordAPIAccessAt(r, status, duration, level, config.ConstLogModGeneral)
+}
+
+// recordAPIAccessAt records one call at the given level and module.
+func (repman *ReplicationManager) recordAPIAccessAt(r *http.Request, status int, duration time.Duration, level string, module int) {
 	defer func() {
 		// nothing in the recording may cost the request
 		_ = recover()
@@ -254,14 +316,14 @@ func (repman *ReplicationManager) recordAPIAccess(r *http.Request, status int, d
 	if user == "" {
 		user = "-"
 	}
-	level := config.LvlInfo
-	switch {
-	case status >= 500:
-		level = config.LvlErr
-	case status >= 400:
-		level = config.LvlWarn
+	method, path, remote := accessLogClean(r.Method), accessLogClean(accessLogPath(template, mux.Vars(r), r.URL.Path)), accessLogClean(r.RemoteAddr)
+	user = accessLogClean(user)
+	// identical calls in a row collapse into one entry: same method, path, status, user and
+	// host (not the source port, which changes with each connection)
+	host := remote
+	if h, _, err := net.SplitHostPort(remote); err == nil {
+		host = h
 	}
-	repman.APIAccessLogs.add(level, config.ConstLogModGeneral, fmt.Sprintf("[access] %s %s %d %dms user %s from %s",
-		accessLogClean(r.Method), accessLogClean(accessLogPath(template, mux.Vars(r), r.URL.Path)), status, duration.Milliseconds(),
-		accessLogClean(user), accessLogClean(r.RemoteAddr)))
+	repman.APIAccessLogs.addCollapsing(fmt.Sprintf("%s %s %d %s %s", method, path, status, user, host), level, module,
+		fmt.Sprintf("[access] %s %s %d %dms user %s from %s", method, path, status, duration.Milliseconds(), user, remote))
 }
