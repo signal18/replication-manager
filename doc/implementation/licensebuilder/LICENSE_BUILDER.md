@@ -42,7 +42,12 @@ The modes differ in identity, expiry and delivery:
 
 - **Air-gapped** (`airGapped:true`): URI `<company>.<YYYYMM>.<seat>`, expiry in the URI. Steps 1–5
   above build the full `<uri>.tar.gz` (release plugins + licence plugin), test it with `license-pull`,
-  and `GET /packages/<uri>.tar.gz` hands it to the admin to install by hand.
+  then push it into the client's licences repository `<company>/licences` (root, `<uri>.tar.gz`, one
+  commit per build; the same package again is a no-op), with the same git token and step as the
+  online `-pull` delivery (`pushFiles`). The client's GitLab group members read it there and load it
+  with `license-pull`. The project must exist: the builder's token only reads and writes repositories
+  (`read_repository`, `write_repository`), so the back office, which owns GitLab, creates
+  `<company>/licences` for each air-gapped support client. `GET /packages/<uri>.tar.gz` still serves the package to an admin.
 - **Online** (`airGapped:false`): URI is the instance's full `<domain>.<subdomain>.<zone>`, expiry
   passed separately (`LICENCE_EXPIRY`, the contract end). Only the `plugin-licence` is built (no
   release plugins, no `license-pull` self-test — that exercises the air-gapped install path); the
@@ -64,7 +69,8 @@ default `cloud18-crm`) of a signal18-admin (`groups` `/signal18-admins` or realm
   or the queue is full.
 - `GET /queue`: `{pending, current, results}`, each result with its state (`queued`, `building`,
   `testing`, `done`, `failed`), error, package and the plugins loaded.
-- `GET /packages/<uri>.tar.gz`: the built package, for the admin to hand to the client.
+- `GET /packages/<uri>.tar.gz`: the built package (an admin's copy; the client fetches it in its
+  licences repository).
 
 ## Environment
 

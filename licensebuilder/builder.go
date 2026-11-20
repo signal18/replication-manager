@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -335,6 +336,10 @@ func (b *Builder) process(res *Result) error {
 	if len(loaded) != len(plugins) {
 		return fmt.Errorf("license-pull loaded %d of the %d plugins", len(loaded), len(plugins))
 	}
+	// 6. deliver: the tested package into the client's licences repository, where it fetches it
+	if err := b.deliverPackage(r, name, pkg); err != nil {
+		return fmt.Errorf("deliver to the licences repository: %w", err)
+	}
 	return nil
 }
 
@@ -375,17 +380,46 @@ func pluginNames(plugins []Plugin) []string {
 // plugins/ directory the enterprise plugins live in (inject_plugins' layout: binary + .sig). On its
 // next git pull repman syncs and verifies it against the embedded public key, exactly as for the
 // other plugins. The repo is <GitBaseURL>/<domain>/<subdomain>-<zone>-pull, derived from the full
-// URI domain.subdomain.zone. The git token is sent in an Authorization header, never in the remote
-// URL or any error output (F10). Unchanged content (same wire/expiry already there) is a no-op.
+// URI domain.subdomain.zone. Unchanged content (same wire/expiry already there) is a no-op.
 func (b *Builder) deliverToPull(r Request, licence []Plugin) error {
 	parts := strings.Split(r.URI, ".")
 	if len(parts) != 3 {
 		return fmt.Errorf("uri %q is not domain.subdomain.zone", r.URI)
 	}
-	if b.cfg.GitBaseURL == "" || b.cfg.GitToken == "" {
-		return fmt.Errorf("-pull delivery not configured (git-base-url / git-token)")
+	files := map[string]gitFile{}
+	for _, p := range licence {
+		files[filepath.Join("plugins", p.Name)] = gitFile{p.Data, 0o755}
+		files[filepath.Join("plugins", p.Name+".sig")] = gitFile{p.Sig, 0o644}
 	}
-	repoPath := fmt.Sprintf("%s/%s-%s-pull", parts[0], parts[1], parts[2])
+	return b.pushFiles(fmt.Sprintf("%s/%s-%s-pull", parts[0], parts[1], parts[2]), files, "licence plugin for "+r.URI)
+}
+
+// deliverPackage pushes an air-gapped seat's tested package into the client's licences repository,
+// <GitBaseURL>/<company>/licences, as <uri>.tar.gz at its root (one commit per build): the client
+// fetches it there (its GitLab group's members read the project) and loads it with license-pull.
+// The project must exist: the builder's token only reads and writes repositories, the back office
+// (which owns GitLab) creates it. The same package already there is a no-op.
+func (b *Builder) deliverPackage(r Request, name string, pkg []byte) error {
+	company := r.Company
+	if company == "" {
+		company = strings.SplitN(r.URI, ".", 2)[0]
+	}
+	return b.pushFiles(company+"/licences", map[string]gitFile{name: {pkg, 0o644}}, "licence package "+name)
+}
+
+// gitFile is one file pushFiles writes: its content and mode.
+type gitFile struct {
+	data []byte
+	mode os.FileMode
+}
+
+// pushFiles writes files (paths relative to the repository root) into <GitBaseURL>/<repoPath>.git
+// and pushes them in one commit. The git token is sent in an Authorization header, never in the
+// remote URL or any error output (F10). Nothing staged (the same content already there) is a no-op.
+func (b *Builder) pushFiles(repoPath string, files map[string]gitFile, message string) error {
+	if b.cfg.GitBaseURL == "" || b.cfg.GitToken == "" {
+		return fmt.Errorf("git delivery not configured (git-base-url / git-token)")
+	}
 	cloneURL := strings.TrimSuffix(b.cfg.GitBaseURL, "/") + "/" + repoPath + ".git"
 	user := b.cfg.GitUser
 	if user == "" {
@@ -397,7 +431,7 @@ func (b *Builder) deliverToPull(r Request, licence []Plugin) error {
 		"GIT_COMMITTER_NAME=license-builder", "GIT_COMMITTER_EMAIL=license-builder@signal18.io",
 	}
 
-	dir, err := os.MkdirTemp("", "pull-")
+	dir, err := os.MkdirTemp("", "deliver-")
 	if err != nil {
 		return err
 	}
@@ -406,27 +440,27 @@ func (b *Builder) deliverToPull(r Request, licence []Plugin) error {
 	if err := b.run("", nil, "git", "-c", authHdr, "clone", "--depth", "1", cloneURL, dir); err != nil {
 		return fmt.Errorf("clone %s: %w", repoPath, err)
 	}
-	plugins := filepath.Join(dir, "plugins")
-	if err := os.MkdirAll(plugins, 0o755); err != nil {
-		return err
-	}
-	for _, p := range licence {
-		if err := os.WriteFile(filepath.Join(plugins, p.Name), p.Data, 0o755); err != nil {
+	paths := make([]string, 0, len(files))
+	for rel, f := range files {
+		full := filepath.Join(dir, rel)
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
 			return err
 		}
-		if err := os.WriteFile(filepath.Join(plugins, p.Name+".sig"), p.Sig, 0o644); err != nil {
+		if err := os.WriteFile(full, f.data, f.mode); err != nil {
 			return err
 		}
+		paths = append(paths, rel)
 	}
-	if err := b.run(dir, nil, "git", "add", "plugins"); err != nil {
+	sort.Strings(paths)
+	if err := b.run(dir, nil, "git", append([]string{"add", "--"}, paths...)...); err != nil {
 		return err
 	}
-	// git diff --cached --quiet exits 0 when nothing is staged: the same plugin is already there
-	// (same wire/expiry), so there is nothing to deliver — a no-op, not an error.
+	// git diff --cached --quiet exits 0 when nothing is staged: the same content is already there,
+	// so there is nothing to deliver — a no-op, not an error.
 	if b.run(dir, nil, "git", "diff", "--cached", "--quiet") == nil {
 		return nil
 	}
-	if err := b.run(dir, ident, "git", "commit", "-m", "licence plugin for "+r.URI); err != nil {
+	if err := b.run(dir, ident, "git", "commit", "-m", message); err != nil {
 		return err
 	}
 	if err := b.run(dir, nil, "git", "-c", authHdr, "push"); err != nil {
