@@ -460,7 +460,7 @@ function Home() {
                             case 'Tops':
                               return <Top key='tops' selectedCluster={selectedCluster} onOpenMonitoringSettings={openMonitoringSettings} onOpenTopologySettings={openTopologySettings} />
                             default:
-                              return <Shards key='schema' selectedCluster={selectedCluster} user={user} onOpenSchedulerSettings={openMaintenanceScheduler} onOpenLogsSettings={openLogsSettings} onOpenMonitoringSettings={openMonitoringSettings} />
+                              return <Shards key='schema' selectedCluster={selectedCluster} user={user} onOpenSchedulerSettings={openMaintenanceScheduler} onOpenLogsSettings={openLogsSettings} onOpenMonitoringSettings={openMonitoringSettings} onOpenPluginsSettings={openPluginsSettings} />
                           }
                         })}
                       />

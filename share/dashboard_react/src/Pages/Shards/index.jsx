@@ -163,7 +163,7 @@ function ViewToggleBtn({ active, onClick, children }) {
 }
 
 // ─── Main Shards page ─────────────────────────────────────────────────────────
-function Shards({ selectedCluster, user, onOpenSchedulerSettings, onOpenLogsSettings, onOpenMonitoringSettings }) {
+function Shards({ selectedCluster, user, onOpenSchedulerSettings, onOpenLogsSettings, onOpenMonitoringSettings, onOpenPluginsSettings }) {
   const dispatch = useDispatch()
 
   // ── Redux selectors ────────────────────────────────────────────────────────
@@ -827,7 +827,8 @@ function Shards({ selectedCluster, user, onOpenSchedulerSettings, onOpenLogsSett
 
       {/* ── Logs: the same tabs as the Dashboard's Logs section ─────────── */}
       <ClusterLogsTabs
-        openSettings={{ logs: onOpenLogsSettings, scheduler: onOpenSchedulerSettings, monitoring: onOpenMonitoringSettings }}
+        className={styles.accordion}
+        openSettings={{ logs: onOpenLogsSettings, scheduler: onOpenSchedulerSettings, monitoring: onOpenMonitoringSettings, plugins: onOpenPluginsSettings }}
       />
 
       {/* ── Schema-cache confirm modal ────────────────────────────────────── */}

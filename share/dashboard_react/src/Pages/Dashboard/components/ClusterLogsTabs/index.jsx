@@ -11,9 +11,10 @@ import { GeneralLogs, TaskLogs, SecurityLogs, WorkloadLogs, DDLLogs, SchemaLogs,
 import styles from './styles.module.scss'
 
 // The cluster's logs in one place: one tab per domain log, with the titles and in the
-// order of the sections they replace, Cluster Logs (the HA log) first and the default. Each tab reuses the component that rendered its log as a separate section,
-// fed by the one call the cluster tick already makes (getClusterLogs, /topology/http-logs),
-// so no tab adds a request; TabItems mounts only the open tab. See
+// order of the sections they replace, Cluster Logs (the HA log) first and the default.
+// Each tab reuses the component that rendered its log as a separate section, fed by the
+// one call the cluster tick already makes (getClusterLogs, /topology/http-logs), so no
+// tab adds a request; TabItems mounts only the open tab. See
 // doc/implementation/ui-components/CLUSTER_LOGS_TABS.md.
 // key: the log type in state.cluster.clusterLogs (the API's logType); settings: the
 // openSettings entry its gear opens.
@@ -99,7 +100,13 @@ function LogTabLabel({ title, description, count }) {
   return (
     <HStack spacing={2}>
       <Box>{title}</Box>
-      {count > 0 && <TagPill text={count} colorScheme='gray' variant='subtle' />}
+      {count > 0 && (
+        <Tooltip label='Entries in the live buffer (not counting older history or filters)' placement='top' hasArrow>
+          <Box>
+            <TagPill text={String(count)} colorScheme='gray' variant='subtle' />
+          </Box>
+        </Tooltip>
+      )}
       <Tooltip label={description} placement='top' hasArrow>
         <Box className={styles.help}>?</Box>
       </Tooltip>
@@ -107,7 +114,7 @@ function LogTabLabel({ title, description, count }) {
   )
 }
 
-function ClusterLogsTabs({ openSettings = {} }) {
+function ClusterLogsTabs({ openSettings = {}, className }) {
   const clusterLogs = useSelector((state) => state.cluster.clusterLogs)
   const [selectedTab, setSelectedTabState] = useState(readStoredTab)
   const setSelectedTab = (index) => {
@@ -124,6 +131,7 @@ function ClusterLogsTabs({ openSettings = {} }) {
 
   return (
     <AccordionComponent
+      className={className}
       heading={'Logs'}
       headerActions={
         onOpenSettings ? (
@@ -160,7 +168,8 @@ LogTabLabel.propTypes = {
 
 ClusterLogsTabs.propTypes = {
   // the gear of each tab: logs, scheduler, plugins, monitoring (Home's openSettings)
-  openSettings: PropTypes.object
+  openSettings: PropTypes.object,
+  className: PropTypes.string
 }
 
 export default ClusterLogsTabs

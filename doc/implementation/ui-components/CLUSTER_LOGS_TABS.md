@@ -33,10 +33,11 @@ The tab titles, order and help texts are the ones of the sections they replace:
 
 Each tab reuses the existing component of its log (`Pages/Dashboard/components/Logs`),
 so search, level filters and on-disk history ("Load older", Cluster Logs and Job Logs
-only) behave as before. The section's gear follows the selected tab; a gear whose
-handler the page does not pass (Plugin settings on Monitoring > Schema) is hidden. The
-"Gear opens" column is the Dashboard's; Monitoring > Schema keeps what its sections had
-(Log settings, the Scheduler, Monitoring settings).
+only) behave as before. The section's gear follows the selected tab. Monitoring > Schema
+passes the same four openers (Log settings, the Scheduler, Plugin settings, Monitoring
+settings), so its gears match the Dashboard's; its Job Logs gear, Log settings before, now
+opens the Scheduler like the Dashboard's. A gear whose opener a page does not pass is
+hidden.
 
 Not shown, no cluster API today: the maintenance log (`maintenance.log`, written by
 `MaintenanceLogrus`, file only) and a config log (the config domain has no log yet, see
@@ -53,7 +54,8 @@ it is opened.
 
 The badge on a tab is the number of entries its in-memory buffer holds
 (`clusterLogs[key].buffer.length`, bounded by the server ring size), shown when it is
-above zero. It is a `TagPill` (`tagpill` class), which the global span colour override
+above zero. It counts neither older history loaded with "Load older" nor the level or
+text filters; its tooltip says so. It is a `TagPill` (`tagpill` class), which the global span colour override
 in `styles/_global.scss` excludes. The tab label itself uses divs, not spans, so its
 text follows the selected tab's colour.
 
