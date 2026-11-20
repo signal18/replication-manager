@@ -27,8 +27,8 @@ cap the service runs under, read from its definition on the orchestrator (`appCa
 `pg_mem_limit` / `pg_cpu_quota`, else the docker `--memory` / `--cpus` of run_args), not
 remembered: coalesced changes, a reprovision, a failed or partial resize and a restart of
 replication-manager all leave it right (F5). When the definition cannot be read, the
-shrink order (configuration first) is used: it never runs a configuration larger than the
-cap in force.
+shrink order (configuration first) is used: the safe order for a real shrink; for a real
+grow the larger configuration runs under the old cap until the cap moves a moment later.
 
 Nodes (`appInstanceNodes`): every agent of a flex app; the running node of a failover app;
 all agents of a failover app whose node is not known yet, where one success is enough

@@ -390,11 +390,13 @@ func (cluster *Cluster) ResizeAppDynamicResources(app *App, grow bool) error {
 	if observed, ok := cluster.appResizeGrows(app); ok {
 		grow = observed
 	} else {
-		// the cap in force cannot be read: the shrink order (configuration first) never
-		// runs a configuration larger than the cap in force
+		// the cap in force cannot be read: the shrink order (configuration first). On a real
+		// shrink it is the safe order; on a real grow the larger configuration runs under
+		// the old cap until the cap moves a moment later. The opposite mistake (cap first
+		// on a real shrink) would leave the larger configuration under a smaller cap.
 		grow = false
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlInfo,
-			"App %s: cap in force not readable on the orchestrator, applying in the shrink order (configuration first)", app.Name)
+			"App %s: cap in force not readable on the orchestrator, applying in the shrink order (configuration first; a grow runs its configuration under the old cap until the cap moves)", app.Name)
 	}
 	dir := "shrink"
 	if grow {
