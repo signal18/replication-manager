@@ -397,8 +397,8 @@ func (b *Builder) deliverToPull(r Request, licence []Plugin) error {
 // deliverPackage pushes an air-gapped seat's tested package into the client's licences repository,
 // <GitBaseURL>/<company>/licences, as <uri>.tar.gz at its root (one commit per build): the client
 // fetches it there (its GitLab group's members read the project) and loads it with license-pull.
-// The project must exist: the builder's token only reads and writes repositories, the CRM creates
-// the project when it queues the builds. The same package already there is a no-op.
+// The project must exist: the builder's token only reads and writes repositories, the back office
+// (which owns GitLab) creates it. The same package already there is a no-op.
 func (b *Builder) deliverPackage(r Request, name string, pkg []byte) error {
 	company := r.Company
 	if company == "" {
