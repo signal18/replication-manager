@@ -31,9 +31,9 @@ const (
 	ErrAppTCPConnectFailed = "APPERR003"
 	ErrAppUnsupportedProto = "APPERR004"
 	ErrAppGatewayConflict  = "APPERR005"
-	ErrAppDbProvision      = "APPERR008"     // database auto-create refused or failed (#1870)
-	ErrAppPingFailed       = "APPERR009"     // app-monitor-mode ping: the ICMP echo to the app host failed (#1919)
-	ErrAppCertificate      = "APPERR010"     // app-monitor-mode https-cert: certificate invalid or expiring (#2209)
+	ErrAppDbProvision      = "APPERR008" // database auto-create refused or failed (#1870)
+	ErrAppPingFailed       = "APPERR009" // app-monitor-mode ping: the ICMP echo to the app host failed (#1919)
+	ErrAppCertificate      = "APPERR010" // app-monitor-mode https-cert: certificate invalid or expiring (#2209)
 	StateAppRunning        = stateAppRunning // exported for the MCP tools
 	appErrFailureThreshold = 3
 )
@@ -104,9 +104,10 @@ type App struct {
 	liveResizePending atomic.Bool
 	pgCapInFlight     atomic.Bool  // ApplyOpenSVCPGCapIfPending runs one at a time
 	pgCapAttempts     atomic.Int32 // failed pg updates after start, bounded (appPGCapMaxAttempts)
-	// liveResizeArmedReprov: the reprovision cookie was armed by a failed live resize, so
-	// a later successful one may clear it (under liveResizeMutex).
-	liveResizeArmedReprov bool
+	// liveResizeArmedReprov: the reprovision cookie was armed by a failed live resize and by
+	// nothing else since, so a later successful one may clear it. Reset by every other arm
+	// (SetReprovCookie) and by every removal (DelReprovisionCookie).
+	liveResizeArmedReprov atomic.Bool
 
 	*sync.Mutex `json:"-"`
 }

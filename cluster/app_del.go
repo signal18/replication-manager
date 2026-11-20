@@ -35,6 +35,7 @@ func (app *App) DelUnprovisionCookie() error {
 }
 
 func (app *App) DelReprovisionCookie() error {
+	app.liveResizeArmedReprov.Store(false)
 	return app.delCookie("cookie_reprov")
 }
 

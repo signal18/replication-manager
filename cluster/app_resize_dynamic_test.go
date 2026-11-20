@@ -118,8 +118,8 @@ func TestResizeAppDynamicResourcesDirection(t *testing.T) {
 	}
 	calls = nil
 	c.appCapOverride = func(*App) (int, int, bool) { return 0, 0, false }
-	if err := c.ResizeAppDynamicResources(a, true); err != nil || strings.Join(calls, ",") != "cap:1024:grow" {
-		t.Fatalf("cap unreadable: the caller's guess: %v %v", err, calls)
+	if err := c.ResizeAppDynamicResources(a, true); err != nil || strings.Join(calls, ",") != "cap:1024:shrink" {
+		t.Fatalf("cap unreadable: the shrink order (configuration first): %v %v", err, calls)
 	}
 }
 
@@ -154,6 +154,23 @@ func TestResizeAppDynamicResourcesFailureReprov(t *testing.T) {
 	c.resizerOverride = appResizer{calls: &calls, applied: true}
 	if err := c.ResizeAppDynamicResources(a, true); err != nil || a.HasReprovCookie() || a.getLiveResizeError() != "" {
 		t.Fatalf("success clears what the failure armed: %v cookie=%v", err, a.HasReprovCookie())
+	}
+}
+
+// A cookie armed for another reason after the failure is never removed by a later good
+// live resize, nor is a cookie re-armed after the reprovision consumed the failure's.
+func TestResizeAppDynamicResourcesReprovNotStolen(t *testing.T) {
+	c, a := liveResizeTestApp(t)
+	var calls []string
+	c.appCapOverride = func(*App) (int, int, bool) { return 1024, 200, true }
+	c.resizerOverride = failingAppResizer{}
+	a.AppConfig.ProvAppMem = "2048"
+	c.ResizeAppDynamicResources(a, true)
+	a.DelReprovisionCookie() // the reprovision consumed it
+	a.SetReprovCookie()      // another change needs a reprovision
+	c.resizerOverride = appResizer{calls: &calls, applied: true}
+	if err := c.ResizeAppDynamicResources(a, true); err != nil || !a.HasReprovCookie() {
+		t.Fatalf("the other reason's cookie must stay: %v cookie=%v", err, a.HasReprovCookie())
 	}
 }
 

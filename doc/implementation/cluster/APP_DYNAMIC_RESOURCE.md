@@ -26,8 +26,9 @@ The direction (grow or shrink, hence the order) is computed by the apply itself 
 cap the service runs under, read from its definition on the orchestrator (`appCapInForce`:
 `pg_mem_limit` / `pg_cpu_quota`, else the docker `--memory` / `--cpus` of run_args), not
 remembered: coalesced changes, a reprovision, a failed or partial resize and a restart of
-replication-manager all leave it right (F5). The caller's guess is used only when the
-definition cannot be read.
+replication-manager all leave it right (F5). When the definition cannot be read, the
+shrink order (configuration first) is used: it never runs a configuration larger than the
+cap in force.
 
 Nodes (`appInstanceNodes`): every agent of a flex app; the running node of a failover app;
 all agents of a failover app whose node is not known yet, where one success is enough
@@ -63,7 +64,8 @@ a collector export, never hand-written).
 
 A failed live resize leaves the plan stored but not in force: it arms the reprovision
 cookie (the plan applies there) and raises APPERR011. A later successful live resize clears
-the cookie it armed (not one armed by anything else) and the state. An app whose service was written before its
+that cookie only if nothing else armed or consumed it since (`liveResizeArmedReprov`, reset by
+`SetReprovCookie` and `DelReprovisionCookie`), and clears the state. An app whose service was written before its
 template had a reload command has no `task#reload` yet: the reload is skipped with a warning
 until `update-opensvc-template` or a reprovision adds it.
 

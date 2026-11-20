@@ -90,6 +90,7 @@ func (app *App) SetRestartCookie() error {
 }
 
 func (app *App) SetReprovCookie() error {
+	app.liveResizeArmedReprov.Store(false) // armed for another reason: not the live resize's to clear
 	return app.createCookie("cookie_reprov")
 }
 

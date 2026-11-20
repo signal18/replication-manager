@@ -319,6 +319,11 @@ func (cluster *Cluster) appCapInForce(app *App) (memMB int, cpuPct int, ok bool)
 	return appCapFromDefinition(string(raw))
 }
 
+var (
+	appRunArgsMemoryRe = regexp.MustCompile(`--memory=(\d+)m\b`)
+	appRunArgsCPUsRe   = regexp.MustCompile(`--cpus=([0-9.]+)`)
+)
+
 // appCapFromDefinition reads the cap of an app service definition (see appCapInForce).
 func appCapFromDefinition(raw string) (memMB int, cpuPct int, ok bool) {
 	if v := openSVCConfigValue(raw, "DEFAULT", "pg_mem_limit"); v != "" {
@@ -332,12 +337,13 @@ func appCapFromDefinition(raw string) (memMB int, cpuPct int, ok bool) {
 	if memMB == 0 || cpuPct == 0 {
 		runArgs := openSVCConfigValue(raw, "container#app", "run_args")
 		if memMB == 0 {
-			if m := regexp.MustCompile(`--memory=(\d+)m\b`).FindStringSubmatch(runArgs); m != nil {
+			// rendered by OpenSVCGetAppContainerSection as --memory=<MB>m
+			if m := appRunArgsMemoryRe.FindStringSubmatch(runArgs); m != nil {
 				memMB, _ = strconv.Atoi(m[1])
 			}
 		}
 		if cpuPct == 0 {
-			if m := regexp.MustCompile(`--cpus=([0-9.]+)`).FindStringSubmatch(runArgs); m != nil {
+			if m := appRunArgsCPUsRe.FindStringSubmatch(runArgs); m != nil {
 				if f, err := strconv.ParseFloat(m[1], 64); err == nil {
 					cpuPct = int(f*100 + 0.5)
 				}
@@ -383,6 +389,12 @@ func (cluster *Cluster) ResizeAppDynamicResources(app *App, grow bool) error {
 	mem, cores := app.planSnapshot()
 	if observed, ok := cluster.appResizeGrows(app); ok {
 		grow = observed
+	} else {
+		// the cap in force cannot be read: the shrink order (configuration first) never
+		// runs a configuration larger than the cap in force
+		grow = false
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlInfo,
+			"App %s: cap in force not readable on the orchestrator, applying in the shrink order (configuration first)", app.Name)
 	}
 	dir := "shrink"
 	if grow {
@@ -419,14 +431,14 @@ func (cluster *Cluster) ResizeAppDynamicResources(app *App, grow bool) error {
 		app.setLiveResizeError(err.Error())
 		if !app.HasReprovCookie() {
 			app.SetReprovCookie()
-			app.liveResizeArmedReprov = true
+			app.liveResizeArmedReprov.Store(true) // after SetReprovCookie, which resets it
 		}
 		return err
 	}
-	if app.liveResizeArmedReprov {
-		// the plan the failed apply left to the reprovision is in force now
+	if app.liveResizeArmedReprov.Load() {
+		// the plan the failed apply left to the reprovision is in force now, and nothing
+		// else armed the cookie since (SetReprovCookie / DelReprovisionCookie reset the flag)
 		app.DelReprovisionCookie()
-		app.liveResizeArmedReprov = false
 	}
 	app.setLiveResizeError("")
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlInfo, "App %s: live resize (%s) done", app.Name, dir)
