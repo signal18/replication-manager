@@ -659,6 +659,20 @@ infrastructure's and the orchestrators' job, not a replication-manager feature; 
 document only states what replication-manager needs from them (a private address per
 server) and what it checks (the rule).
 
+**The tunnel, concretely: the OpenSVC `strongswan` template, om3 rc64 or later.** On
+OpenSVC the gateway-to-gateway tunnel is the OpenSVC template `opensvc_template/strongswan`
+v2: an IPsec (strongSwan) tunnel between the two gateways' internal addresses, routing each
+side's private network to the other. It exists only on OpenSVC **om3 rc64 or later**. An
+instance whose OpenSVC agents are older than om3 rc64 cannot use the per-server map: at load
+the check reads the agents' version (`GetOrchestratorVersion`, the version the daemon reports)
+and, below om3 rc64, refuses each `host=name` pair with WARN0326, the state text saying why
+(`Server %s names orchestrator %s: the cross-orchestrator private path needs the OpenSVC
+strongswan template, om3 rc64 or later, the agents run %s`). Deploying the template and the
+tunnel stays out of replication-manager's scope: the infrastructure's operators instantiate
+it on the gateways; replication-manager checks the version and the private address, nothing
+more. On a non-OpenSVC orchestrator (a Kubernetes site, a hypervisor) the tunnel is the
+site's own, and only the private-address rule applies.
+
 The proxies and apps follow the cluster orchestrator; there is no per-proxy override (the
 HAProxy standby exception of `proxyServiceOrchestrator` stays as the one routing rule,
 expressed as the localhost orchestrator).
