@@ -1270,6 +1270,24 @@ type AppConfig struct {
 	// AppMonitorOnly: the app was added without image nor template to watch a service that
 	// runs elsewhere (#2209): checked by app-monitor-mode, never provisioned, reserves no plan unit.
 	AppMonitorOnly bool `mapstructure:"app-monitor-only" toml:"app-monitor-only" json:"appMonitorOnly"`
+	// ProvAppApplyDynamicConfig: the app's runtime configuration follows its plan (memory,
+	// cores), as prov-db-apply-dynamic-config does for a database: today the PHP sizing
+	// (php-fpm pool, memory_limit, opcache) rendered by app_dynamic_config.go, applied at
+	// start and reloaded live on a resize. Off by default (T14).
+	ProvAppApplyDynamicConfig bool `mapstructure:"prov-app-apply-dynamic-config" toml:"prov-app-apply-dynamic-config" json:"provAppApplyDynamicConfig"`
+	// ProvAppPhpFpmPoolDir: where the image reads its php-fpm pool files (empty: the official
+	// php image layout, /usr/local/etc/php-fpm.d).
+	ProvAppPhpFpmPoolDir string `mapstructure:"prov-app-php-fpm-pool-dir" toml:"prov-app-php-fpm-pool-dir" json:"provAppPhpFpmPoolDir"`
+	// ProvAppPhpIniDir: where the image reads its PHP ini files (empty: /usr/local/etc/php/conf.d).
+	ProvAppPhpIniDir string `mapstructure:"prov-app-php-ini-dir" toml:"prov-app-php-ini-dir" json:"provAppPhpIniDir"`
+	// ProvAppPhpFpmPool: the php-fpm pool to size (empty: www).
+	ProvAppPhpFpmPool string `mapstructure:"prov-app-php-fpm-pool" toml:"prov-app-php-fpm-pool" json:"provAppPhpFpmPool"`
+	// ProvAppPhpProcessMemory: the average memory of one PHP worker in MB (empty: 64), the
+	// divisor of pm.max_children.
+	ProvAppPhpProcessMemory string `mapstructure:"prov-app-php-process-memory" toml:"prov-app-php-process-memory" json:"provAppPhpProcessMemory"`
+	// ProvAppPhpReservedMemory: the memory of the container kept out of the pool in MB, for
+	// the web server, the master and anything else the image runs (empty: 128).
+	ProvAppPhpReservedMemory string `mapstructure:"prov-app-php-reserved-memory" toml:"prov-app-php-reserved-memory" json:"provAppPhpReservedMemory"`
 	// AppConfigVersion is the explicit persisted migration marker stamped by
 	// cluster.CanonicalizeAppContent. 0/missing means unflagged legacy (V1)
 	// content; AppConfigVersionV2 means content already matches the V1 -> V2

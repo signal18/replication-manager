@@ -311,6 +311,7 @@ func (app *App) SetSetting(key, value string) error {
 			return errors.New("invalid units value: " + value + " (whole number >= 1)")
 		}
 		app.applyUnitShape(units)
+		app.onAppPlanChange()
 	case "prov-app-sizing-mode":
 		if value == "" {
 			prevAppMode := app.AppConfig.ProvAppSizingMode
@@ -389,6 +390,51 @@ func (app *App) SetSetting(key, value string) error {
 		}
 	case "prov-app-ha-topology":
 		app.AppConfig.ProvAppHATopology = value
+	case "prov-app-apply-dynamic-config":
+		// the PHP sizing follows the plan (app_dynamic_config.go); the files, their mounts
+		// and task#phpconfig join the service at its next template update or reprovision
+		on := value == "true" || value == "1" || value == "on"
+		if on && app.ClusterGroup != nil && app.ClusterGroup.engineServerOfApp(app) != nil {
+			return errors.New("this app is a database server of the cluster: its configuration follows prov-db-apply-dynamic-config")
+		}
+		if on && appFirstVolumeName(app) == "" {
+			return errors.New("prov-app-apply-dynamic-config needs a volume in the app deployment to hold the PHP sizing")
+		}
+		if on != app.AppConfig.ProvAppApplyDynamicConfig {
+			app.AppConfig.ProvAppApplyDynamicConfig = on
+			app.SetReprovCookie()
+		}
+	case "prov-app-php-fpm-pool-dir", "prov-app-php-ini-dir":
+		dir := strings.TrimSpace(value)
+		if dir != "" && (!strings.HasPrefix(dir, "/") || strings.ContainsAny(dir, " :'\"\n")) {
+			return fmt.Errorf("%s: %q must be an absolute path without space, quote or colon", key, value)
+		}
+		if key == "prov-app-php-fpm-pool-dir" {
+			app.AppConfig.ProvAppPhpFpmPoolDir = dir
+		} else {
+			app.AppConfig.ProvAppPhpIniDir = dir
+		}
+		if app.AppConfig.ProvAppApplyDynamicConfig {
+			app.SetReprovCookie() // a mount of the container moves
+		}
+	case "prov-app-php-fpm-pool":
+		pool := strings.TrimSpace(value)
+		if pool != "" && !appPHPPoolNameRe.MatchString(pool) {
+			return fmt.Errorf("prov-app-php-fpm-pool: %q is not a pool name", value)
+		}
+		app.AppConfig.ProvAppPhpFpmPool = pool
+		app.onAppPlanChange()
+	case "prov-app-php-process-memory", "prov-app-php-reserved-memory":
+		v := strings.TrimSpace(value)
+		if v != "" && appMeasureMB(v) < 1 {
+			return fmt.Errorf("%s: %q is not a memory size in MB (64, 64M, 1G)", key, value)
+		}
+		if key == "prov-app-php-process-memory" {
+			app.AppConfig.ProvAppPhpProcessMemory = v
+		} else {
+			app.AppConfig.ProvAppPhpReservedMemory = v
+		}
+		app.onAppPlanChange()
 	case "app-monitor-mode":
 		// How an app without a route is probed: port (TCP connect to app-port), ping
 		// (ICMP echo to the host, for a process that listens on nothing, #1919), or http /
@@ -447,11 +493,13 @@ func (app *App) SetSetting(key, value string) error {
 		if app.effectiveSizingMode() == config.AppSizingModeManual {
 			app.SetReprovCookie()
 		}
+		app.onAppPlanChange()
 	case "prov-app-memory":
 		app.AppConfig.ProvAppMem = value
 		if app.effectiveSizingMode() == config.AppSizingModeManual {
 			app.SetReprovCookie()
 		}
+		app.onAppPlanChange()
 	case "prov-app-disk-size":
 		app.AppConfig.ProvAppDisk = value
 		if app.effectiveSizingMode() == config.AppSizingModeManual {
@@ -470,6 +518,8 @@ func (app *App) SetSetting(key, value string) error {
 
 func (app *App) SwitchSetting(key string) error {
 	switch key {
+	case "prov-app-apply-dynamic-config":
+		return app.SetSetting(key, strconv.FormatBool(!app.AppConfig.ProvAppApplyDynamicConfig))
 	case "app-db-auto-create":
 		if app.AppConfig.AppDbAutoCreate {
 			return app.SetSetting(key, "false")

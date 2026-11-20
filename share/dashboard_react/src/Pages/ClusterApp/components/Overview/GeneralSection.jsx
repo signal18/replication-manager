@@ -92,7 +92,9 @@ const GeneralSection = ({ clusterName, appId, appName, appHost, config, appConfi
     provAppAgents = '', provAppHaTopology = '',
     provAppSizingMode: appSizingMode = '', provAppCpuCores = '', provAppMemory = '', provAppDiskSize = '',
     appS3Provider = false, appStateful = false, appMonitorMode = '', appMonitorPath = '', appMonitorExpectStatus = '', appMonitorCertExpireDays = 0, appMonitorInterval = 0,
-    appDbAutoCreate = false, appDbOwned = false, appDbSchema = '', appDbUser = ''
+    appDbAutoCreate = false, appDbOwned = false, appDbSchema = '', appDbUser = '',
+    provAppApplyDynamicConfig = false, provAppPhpFpmPoolDir = '', provAppPhpIniDir = '', provAppPhpFpmPool = '',
+    provAppPhpProcessMemory = '', provAppPhpReservedMemory = ''
   } = appConfig;
 
   // Effective mode resolution mirrors backend logic:
@@ -207,6 +209,8 @@ const GeneralSection = ({ clusterName, appId, appName, appHost, config, appConfi
   const onSaveDbSchema = useCallback((value) => dispatch(setAppSetting({ clusterName: clusterName, appId: appId, setting: 'app-db-schema', value: value })), [clusterName, appId, dispatch])
   const onSaveDbUser = useCallback((value) => dispatch(setAppSetting({ clusterName: clusterName, appId: appId, setting: 'app-db-user', value: value })), [clusterName, appId, dispatch])
   const onSaveDbPass = useCallback((value) => dispatch(setAppSetting({ clusterName: clusterName, appId: appId, setting: 'app-db-pass', value: value })), [clusterName, appId, dispatch])
+  const onDynamicConfigChange = useCallback(() => { dispatch(setAppSetting({ clusterName: clusterName, appId: appId, setting: 'prov-app-apply-dynamic-config', value: provAppApplyDynamicConfig ? 'false' : 'true' })) }, [clusterName, appId, provAppApplyDynamicConfig, dispatch])
+  const onSavePhpSetting = useCallback((setting) => (value) => dispatch(setAppSetting({ clusterName: clusterName, appId: appId, setting: setting, value: value })), [clusterName, appId, dispatch])
   const onStatefulChange = useCallback(() => { dispatch(setAppSetting({ clusterName: clusterName, appId: appId, setting: 'app-stateful', value: appStateful ? 'false' : 'true' })) }, [clusterName, appId, appStateful, dispatch])
   const onPreviewTemplate = useCallback(() => {
     if (!provAppTemplate) {
@@ -483,6 +487,34 @@ const GeneralSection = ({ clusterName, appId, appName, appHost, config, appConfi
         },
       ] : []),
       {
+        key: 'PHP sizing follows the plan',
+        value: (
+          <RMSwitch
+            confirmTitle={`Confirm switch prov-app-apply-dynamic-config to ${provAppApplyDynamicConfig ? 'off' : 'on'}? The php-fpm pool, memory_limit and opcache are computed from the app memory and cores, and php-fpm is reloaded on each resize. Applies to the service at its next template update or reprovision.`}
+            onChange={onDynamicConfigChange}
+            isChecked={!!provAppApplyDynamicConfig}
+          />
+        )
+      },
+      ...(provAppApplyDynamicConfig ? [
+        ['PHP-FPM pool directory', 'prov-app-php-fpm-pool-dir', provAppPhpFpmPoolDir, '/usr/local/etc/php-fpm.d', 'Directory where the image reads its php-fpm pool files'],
+        ['PHP ini directory', 'prov-app-php-ini-dir', provAppPhpIniDir, '/usr/local/etc/php/conf.d', 'Directory where the image reads its PHP ini files'],
+        ['PHP-FPM pool', 'prov-app-php-fpm-pool', provAppPhpFpmPool, 'www', 'Name of the php-fpm pool to size'],
+        ['PHP worker memory (MB)', 'prov-app-php-process-memory', provAppPhpProcessMemory, '64', 'Average memory of one PHP worker, the divisor of pm.max_children'],
+        ['PHP reserved memory (MB)', 'prov-app-php-reserved-memory', provAppPhpReservedMemory, '128', 'Memory of the container kept out of the pool (web server, master, cache)'],
+      ].map(([label, setting, value, placeholder, help]) => ({
+        key: label,
+        value: (
+          <TextForm
+            value={value}
+            placeholder={placeholder}
+            confirmTitle={`${label} Change`}
+            confirmBody={`${help}. Change "${setting}" to: `}
+            onSave={onSavePhpSetting(setting)}
+          />
+        )
+      })) : []),
+      {
         key: 'Stateful (accounted as DBU)',
         value: (
           <RMSwitch
@@ -621,6 +653,8 @@ const GeneralSection = ({ clusterName, appId, appName, appHost, config, appConfi
     agentList, onAgentsChange, provAppAgents, onHATopologyChange, provAppHaTopology, haTopologyOptions, onMonitorModeChange, appMonitorMode, monitorModeOptions,
     appMonitorPath, appMonitorExpectStatus, onSaveMonitorPath, onSaveMonitorExpectStatus, appMonitorCertExpireDays, onSaveMonitorCertExpireDays, appMonitorInterval, onSaveMonitorInterval,
     appS3Provider, onS3ProviderChange, appStateful, onStatefulChange,
+    provAppApplyDynamicConfig, onDynamicConfigChange, provAppPhpFpmPoolDir, provAppPhpIniDir, provAppPhpFpmPool,
+    provAppPhpProcessMemory, provAppPhpReservedMemory, onSavePhpSetting,
     isUnitMode, isManualMode, isLegacyMode,
     appSizingMode, clusterSizingMode, provAppSizingMode,
     isLegacyAppInUnitCluster, derivedUnitFromResources,

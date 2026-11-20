@@ -96,6 +96,10 @@ type App struct {
 	// CheckResults: the last result of each check, by check, for its interval (#2362).
 	CheckResults map[string]appCheckResult `json:"-"`
 
+	// dynamicConfigMutex serializes the live PHP sizing applies of the app
+	// (ApplyAppDynamicConfig): each one renders the plan in force when it runs.
+	dynamicConfigMutex sync.Mutex
+
 	*sync.Mutex `json:"-"`
 }
 

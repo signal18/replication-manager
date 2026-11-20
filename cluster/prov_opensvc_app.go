@@ -652,6 +652,8 @@ func (cluster *Cluster) OpenSVCGetAppTemplateSectionMap(app *App) (map[string]ma
 
 	svcsection["container#app"] = cluster.OpenSVCGetAppContainerSection(app)
 	cluster.openSVCAddAppJobsSections(svcsection, app, &containernum)
+	// PHP sizing that follows the plan (prov-app-apply-dynamic-config, app_dynamic_config.go)
+	cluster.openSVCAddAppDynamicConfigSections(svcsection, app)
 	// APU (Compute) + internal network sensor sidecar, same gate as the proxy one (the
 	// monitoring-system-resources off-switch, T14). Needs the script key published in the
 	// namespace `env` object (openSVCPublishAppJobScript, done by the V3 provision).
@@ -1660,6 +1662,15 @@ func (cluster *Cluster) OpenSVCCreateAppVariableMaps(agent string, app *App) err
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to config: %s %s ", appConfiguratorScriptKey, err)
 			addKeyErr(fmt.Errorf("config key %q: %w", appConfiguratorScriptKey, err))
+		}
+	}
+
+	// PHP sizing (app_dynamic_config.go): the pool and ini files the first volume installs
+	// at start, and the script task#phpconfig runs on a resize.
+	if cluster.AppDynamicConfigEnabled(app) {
+		if _, _, err = cluster.openSVCPushAppDynamicConfigKeys(svc, app); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to config: %s ", err)
+			addKeyErr(err)
 		}
 	}
 
