@@ -416,6 +416,32 @@ export const getGlobalLogs = createGuardedAsyncThunk('globalClusters/getGlobalLo
   }
 })
 
+// the instance Security Logs and Access Logs rings, stored next to the global log in
+// state.globalLogs (security, access) as the cluster logs are in state.cluster.clusterLogs
+export const getGlobalSecurityLogs = createGuardedAsyncThunk('globalClusters/getGlobalSecurityLogs', async ({ baseURL = '' } = {}, thunkAPI) => {
+  try {
+    const { data, status } = await globalClustersService.getGlobalSecurityLogs(baseURL)
+    if (status !== 200) {
+      throw new Error(data)
+    }
+    return { data, status }
+  } catch (error) {
+    return handleError(error, thunkAPI)
+  }
+})
+
+export const getGlobalAccessLogs = createGuardedAsyncThunk('globalClusters/getGlobalAccessLogs', async ({ baseURL = '' } = {}, thunkAPI) => {
+  try {
+    const { data, status } = await globalClustersService.getGlobalAccessLogs(baseURL)
+    if (status !== 200) {
+      throw new Error(data)
+    }
+    return { data, status }
+  } catch (error) {
+    return handleError(error, thunkAPI)
+  }
+})
+
 export const getGlobalAlerts = createGuardedAsyncThunk('globalClusters/getGlobalAlerts', async ({ baseURL = '' } = {}, thunkAPI) => {
   try {
     const { data, status } = await globalClustersService.getGlobalAlerts(baseURL)
@@ -633,7 +659,16 @@ export const globalClustersSlice = createSlice({
         state.error = action.error
       })
       .addCase(getGlobalLogs.fulfilled, (state, action) => {
-        state.globalLogs = action.payload.data ?? { general: { buffer: [], len: 0, line: 0 } }
+        state.globalLogs = {
+          ...state.globalLogs,
+          general: action.payload.data?.general ?? { buffer: [], len: 0, line: 0 }
+        }
+      })
+      .addCase(getGlobalSecurityLogs.fulfilled, (state, action) => {
+        state.globalLogs = { ...state.globalLogs, security: action.payload.data?.general ?? { buffer: [], len: 0 } }
+      })
+      .addCase(getGlobalAccessLogs.fulfilled, (state, action) => {
+        state.globalLogs = { ...state.globalLogs, access: action.payload.data?.general ?? { buffer: [], len: 0 } }
       })
       .addCase(getGlobalLogs.rejected, (state, action) => {
         state.error = action.error

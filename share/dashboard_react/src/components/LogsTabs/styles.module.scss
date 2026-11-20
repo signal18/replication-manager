@@ -1,0 +1,23 @@
+.fullWidthTabs {
+  width: 100%;
+  [role='tabpanel'] {
+    width: 100%;
+  }
+}
+
+// the "?" next to a tab's name: a circle that explains the log in a tooltip; it takes the
+// tab's text colour, so it stays readable on the selected tab
+.help {
+  cursor: help;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: rem(14);
+  height: rem(14);
+  border-radius: 50%;
+  border: rem(1) solid currentColor;
+  font-size: rem(10);
+  line-height: 1;
+  font-weight: bold;
+  opacity: 0.7;
+}
