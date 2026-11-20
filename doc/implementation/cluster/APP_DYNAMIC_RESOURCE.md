@@ -23,8 +23,11 @@ change. Off by default; cluster setting `prov-app-dynamic-resource`, the app sib
 Applies of one app are serialized (`App.liveResizeMutex`) and coalesced
 (`App.liveResizePending`): one runs, one waits and reads the plan in force when it starts.
 The direction (grow or shrink, hence the order) is computed by the apply itself against the
-plan the previous apply put in place (`App.appliedMem` / `appliedCores`), so coalesced changes
-follow the order of their sum; the plan is read once, under the app lock (`planSnapshot`).
+cap the service runs under, read from its definition on the orchestrator (`appCapInForce`:
+`pg_mem_limit` / `pg_cpu_quota`, else the docker `--memory` / `--cpus` of run_args), not
+remembered: coalesced changes, a reprovision, a failed or partial resize and a restart of
+replication-manager all leave it right (F5). The caller's guess is used only when the
+definition cannot be read.
 
 Nodes (`appInstanceNodes`): every agent of a flex app; the running node of a failover app;
 all agents of a failover app whose node is not known yet, where one success is enough
@@ -59,9 +62,8 @@ a collector export, never hand-written).
 ## Failure
 
 A failed live resize leaves the plan stored but not in force: it arms the reprovision
-cookie (the plan applies there) and raises APPERR011. When the cap had already moved on a
-grow, the recorded plan is cleared, so the next apply takes its caller's direction instead
-of comparing with a state that is not known. An app whose service was written before its
+cookie (the plan applies there) and raises APPERR011. A later successful live resize clears
+the cookie it armed (not one armed by anything else) and the state. An app whose service was written before its
 template had a reload command has no `task#reload` yet: the reload is skipped with a warning
 until `update-opensvc-template` or a reprovision adds it.
 

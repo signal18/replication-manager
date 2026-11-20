@@ -9,6 +9,7 @@ package cluster
 import (
 	"errors"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -294,11 +295,84 @@ func (cluster *Cluster) openSVCAppHasSection(svc opensvc.Collector, app *App, se
 	return strings.Contains(string(raw), "["+section+"]")
 }
 
+// appCapInForce is the container cap the app's service runs under, as its definition on
+// the orchestrator says (F5: observed, not remembered): memory in MB and cpu in om3 quota
+// percent (pg_mem_limit / pg_cpu_quota of DEFAULT, or the docker --memory / --cpus of
+// container#app run_args). A reprovision, a failed or partial resize, a restart of
+// replication-manager all leave it right, since it is read, not tracked.
+func (cluster *Cluster) appCapInForce(app *App) (memMB int, cpuPct int, ok bool) {
+	if cluster.appCapOverride != nil {
+		return cluster.appCapOverride(app)
+	}
+	parts := strings.SplitN(app.ServiceName, "/", 3)
+	if cluster.GetOrchestrator() != config.ConstOrchestratorOpenSVC || cluster.Conf.ProvOpensvcUseCollectorAPI || len(parts) != 3 {
+		return 0, 0, false
+	}
+	svc := cluster.OpenSVCConnect()
+	if !svc.IsV3() {
+		return 0, 0, false
+	}
+	raw, err := svc.GetObjectConfigFileV3(parts[0], parts[1], parts[2])
+	if err != nil {
+		return 0, 0, false
+	}
+	return appCapFromDefinition(string(raw))
+}
+
+// appCapFromDefinition reads the cap of an app service definition (see appCapInForce).
+func appCapFromDefinition(raw string) (memMB int, cpuPct int, ok bool) {
+	if v := openSVCConfigValue(raw, "DEFAULT", "pg_mem_limit"); v != "" {
+		if b, err := strconv.ParseInt(v, 10, 64); err == nil {
+			memMB = int(b / (1024 * 1024))
+		}
+	}
+	if v := strings.TrimSuffix(openSVCConfigValue(raw, "DEFAULT", "pg_cpu_quota"), "%"); v != "" {
+		cpuPct, _ = strconv.Atoi(v)
+	}
+	if memMB == 0 || cpuPct == 0 {
+		runArgs := openSVCConfigValue(raw, "container#app", "run_args")
+		if memMB == 0 {
+			if m := regexp.MustCompile(`--memory=(\d+)m\b`).FindStringSubmatch(runArgs); m != nil {
+				memMB, _ = strconv.Atoi(m[1])
+			}
+		}
+		if cpuPct == 0 {
+			if m := regexp.MustCompile(`--cpus=([0-9.]+)`).FindStringSubmatch(runArgs); m != nil {
+				if f, err := strconv.ParseFloat(m[1], 64); err == nil {
+					cpuPct = int(f*100 + 0.5)
+				}
+			}
+		}
+	}
+	return memMB, cpuPct, memMB > 0
+}
+
+// appResizeGrows decides the order of a live resize from the cap in force and the plan's
+// keywords: the memory decides, the cpu when the memory is unchanged; ok=false when the
+// cap in force cannot be read (the caller's guess is used then).
+func (cluster *Cluster) appResizeGrows(app *App) (grow bool, ok bool) {
+	curMem, curPct, ok := cluster.appCapInForce(app)
+	if !ok {
+		return false, false
+	}
+	kv := cluster.appPGKeywords(app)
+	wantMem := 0
+	if b, err := strconv.ParseInt(kv["pg_mem_limit"], 10, 64); err == nil {
+		wantMem = int(b / (1024 * 1024))
+	}
+	wantPct, _ := strconv.Atoi(strings.TrimSuffix(kv["pg_cpu_quota"], "%"))
+	if wantMem != curMem {
+		return wantMem > curMem, true
+	}
+	return wantPct > curPct, true
+}
+
 // ResizeAppDynamicResources applies the app's current plan live (prov-app-dynamic-resource).
 // Applies are serialized per app and coalesced by the caller (App.onAppResize). The
-// direction is computed here, against the plan the last apply put in place: a coalesced
-// apply may carry several changes, and the anti-OOM order must follow their sum. grow is
-// the caller's guess, used only when nothing was applied live yet.
+// direction is computed here, against the cap the app's service runs under
+// (appCapInForce): a coalesced apply may carry several changes, and the anti-OOM order must
+// follow what is really in place. grow is the caller's guess, used when the cap cannot be
+// read.
 func (cluster *Cluster) ResizeAppDynamicResources(app *App, grow bool) error {
 	if !cluster.AppLiveResizeEnabled(app) {
 		return nil
@@ -307,11 +381,8 @@ func (cluster *Cluster) ResizeAppDynamicResources(app *App, grow bool) error {
 	defer app.liveResizeMutex.Unlock()
 	app.liveResizePending.Store(false) // this run reads the plan in force now
 	mem, cores := app.planSnapshot()
-	if app.appliedMem != "" || app.appliedCores != "" {
-		if mem == app.appliedMem && cores == app.appliedCores {
-			return nil // already in place
-		}
-		grow = appPlanGrows(app.appliedMem, mem, app.appliedCores, cores)
+	if observed, ok := cluster.appResizeGrows(app); ok {
+		grow = observed
 	}
 	dir := "shrink"
 	if grow {
@@ -321,7 +392,6 @@ func (cluster *Cluster) ResizeAppDynamicResources(app *App, grow bool) error {
 		"App %s: live resize (%s) to %sM / %s cores (prov-app-dynamic-resource)", app.Name, dir, mem, cores)
 
 	var err error
-	capMoved := false
 	if !grow {
 		// shrink: the smaller configuration first, the cap after
 		if err = cluster.reloadAppConfiguration(app); err == nil {
@@ -335,7 +405,6 @@ func (cluster *Cluster) ResizeAppDynamicResources(app *App, grow bool) error {
 		var applied bool
 		if applied, err = cluster.resourceResizer().ConfigResizeApp(app, grow); err == nil {
 			if applied {
-				capMoved = true
 				err = cluster.reloadAppConfiguration(app)
 			} else {
 				app.SetReprovCookie()
@@ -348,15 +417,17 @@ func (cluster *Cluster) ResizeAppDynamicResources(app *App, grow bool) error {
 		// the plan is stored but not in force: the reprovision applies it, APPERR011 says why
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn, "App %s: live resize (%s) failed, the plan applies at the reprovision: %s", app.Name, dir, err)
 		app.setLiveResizeError(err.Error())
-		app.SetReprovCookie()
-		if capMoved {
-			// the cap is at the new plan, the configuration is not: what is in place is
-			// unknown, so the next apply takes its caller's direction instead of comparing
-			app.appliedMem, app.appliedCores = "", ""
+		if !app.HasReprovCookie() {
+			app.SetReprovCookie()
+			app.liveResizeArmedReprov = true
 		}
 		return err
 	}
-	app.appliedMem, app.appliedCores = mem, cores
+	if app.liveResizeArmedReprov {
+		// the plan the failed apply left to the reprovision is in force now
+		app.DelReprovisionCookie()
+		app.liveResizeArmedReprov = false
+	}
 	app.setLiveResizeError("")
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlInfo, "App %s: live resize (%s) done", app.Name, dir)
 	return nil

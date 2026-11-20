@@ -99,26 +99,68 @@ func TestResizeAppDynamicResourcesOrder(t *testing.T) {
 	}
 }
 
-// The direction is computed against the plan the last apply put in place, not taken from
-// the change that queued the apply: a grow then a shrink coalesced into one apply runs the
-// shrink order. An apply of the plan already in place does nothing.
+// The direction is computed against the cap the service runs under (observed), not taken
+// from the change that queued the apply: a cap of 2G and a plan of 1G is a shrink, whatever
+// the caller guessed; the guess is used only when the cap cannot be read.
 func TestResizeAppDynamicResourcesDirection(t *testing.T) {
 	c, a := liveResizeTestApp(t)
 	var calls []string
 	c.resizerOverride = appResizer{calls: &calls, applied: true}
-	a.AppConfig.ProvAppMem = "2048"
-	if err := c.ResizeAppDynamicResources(a, true); err != nil || strings.Join(calls, ",") != "cap:2048:grow" {
-		t.Fatalf("first apply takes the caller's direction: %v %v", err, calls)
-	}
-	calls = nil
-	a.AppConfig.ProvAppMem = "1024" // queued as a grow, the plan in force is a shrink
+	c.appCapOverride = func(*App) (int, int, bool) { return 2048, 200, true }
+	a.AppConfig.ProvAppMem = "1024"
 	if err := c.ResizeAppDynamicResources(a, true); err != nil || strings.Join(calls, ",") != "cap:1024:shrink" {
-		t.Fatalf("shrink order expected: %v %v", err, calls)
+		t.Fatalf("observed cap 2G, plan 1G: shrink order expected: %v %v", err, calls)
 	}
 	calls = nil
-	if err := c.ResizeAppDynamicResources(a, true); err != nil || len(calls) != 0 {
-		t.Fatalf("plan already in place: %v %v", err, calls)
+	c.appCapOverride = func(*App) (int, int, bool) { return 1024, 100, true }
+	if err := c.ResizeAppDynamicResources(a, false); err != nil || strings.Join(calls, ",") != "cap:1024:grow" {
+		t.Fatalf("same memory, cpu 1 -> 2 cores: grow expected: %v %v", err, calls)
 	}
+	calls = nil
+	c.appCapOverride = func(*App) (int, int, bool) { return 0, 0, false }
+	if err := c.ResizeAppDynamicResources(a, true); err != nil || strings.Join(calls, ",") != "cap:1024:grow" {
+		t.Fatalf("cap unreadable: the caller's guess: %v %v", err, calls)
+	}
+}
+
+// The cap in force is read from the definition: the slice keywords, else the docker caps.
+func TestAppCapFromDefinition(t *testing.T) {
+	for raw, want := range map[string][3]int{
+		"[DEFAULT]\npg_mem_limit = 2147483648\npg_cpu_quota = 200%\n[container#app]\nrun_args = --sysctl x=1\n": {2048, 200, 1},
+		"[DEFAULT]\nnodes = n1\n[container#app]\nrun_args = --memory=1024m --memory-swap=1024m --cpus=1.0\n":    {1024, 100, 1},
+		"[DEFAULT]\nnodes = n1\n[container#app]\nrun_args = --sysctl x=1\n":                                     {0, 0, 0},
+	} {
+		m, p, ok := appCapFromDefinition(raw)
+		okInt := 0
+		if ok {
+			okInt = 1
+		}
+		if [3]int{m, p, okInt} != want {
+			t.Errorf("%q: %d %d %v, want %v", raw, m, p, ok, want)
+		}
+	}
+}
+
+// A failed apply arms the reprovision; the next good one clears what it armed.
+func TestResizeAppDynamicResourcesFailureReprov(t *testing.T) {
+	c, a := liveResizeTestApp(t)
+	var calls []string
+	c.appCapOverride = func(*App) (int, int, bool) { return 1024, 200, true }
+	c.resizerOverride = failingAppResizer{}
+	a.AppConfig.ProvAppMem = "2048"
+	if err := c.ResizeAppDynamicResources(a, true); err == nil || !a.HasReprovCookie() || a.getLiveResizeError() == "" {
+		t.Fatalf("failure: reprovision + APPERR011 expected: %v", err)
+	}
+	c.resizerOverride = appResizer{calls: &calls, applied: true}
+	if err := c.ResizeAppDynamicResources(a, true); err != nil || a.HasReprovCookie() || a.getLiveResizeError() != "" {
+		t.Fatalf("success clears what the failure armed: %v cookie=%v", err, a.HasReprovCookie())
+	}
+}
+
+type failingAppResizer struct{ appResizer }
+
+func (failingAppResizer) ConfigResizeApp(*App, bool) (bool, error) {
+	return false, errors.New("om3 unreachable")
 }
 
 // Nodes: every agent of a flex app; the running node of a failover app, or all its agents
