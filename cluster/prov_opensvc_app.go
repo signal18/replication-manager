@@ -1668,7 +1668,7 @@ func (cluster *Cluster) OpenSVCCreateAppVariableMaps(agent string, app *App) err
 	// PHP sizing (app_dynamic_config.go): the pool and ini files the first volume installs
 	// at start, and the script task#phpconfig runs on a resize.
 	if cluster.AppDynamicConfigEnabled(app) {
-		if _, _, err = cluster.openSVCPushAppDynamicConfigKeys(svc, app); err != nil {
+		if _, _, err = cluster.openSVCPushAppDynamicConfigKeys(svc, app, 0); err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to config: %s ", err)
 			addKeyErr(err)
 		}

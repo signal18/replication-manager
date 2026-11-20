@@ -297,16 +297,21 @@ func appMeasureMB(v string) int {
 	return mb
 }
 
-// AppPHPSizing is the PHP sizing of the app's current plan.
-func (cluster *Cluster) AppPHPSizing(app *App) appPHPSizing {
+// AppPHPSizing is the PHP sizing of the app's current plan, within capMB when the
+// container runs under a smaller memory cap than the plan (0: no cap to respect).
+func (cluster *Cluster) AppPHPSizing(app *App, capMB int) appPHPSizing {
 	memMB, _ := config.ParseUnitMeasurementToInt("M,bytes,required", cluster.GetAppMemory(app.AppConfig), true)
+	if capMB > 0 && capMB < memMB {
+		memMB = capMB
+	}
 	coresF, _ := strconv.ParseFloat(strings.TrimSpace(cluster.GetAppCores(app.AppConfig)), 64)
 	return computeAppPHPSizing(memMB, int(math.Ceil(coresF)), appMeasureMB(app.AppConfig.ProvAppPhpProcessMemory), appMeasureMB(app.AppConfig.ProvAppPhpReservedMemory))
 }
 
-// appPHPConfig returns the fragments and the base64 apply script of the app's plan.
-func (cluster *Cluster) appPHPConfig(app *App) (s appPHPSizing, poolFragment, iniFragment, script64 string) {
-	s = cluster.AppPHPSizing(app)
+// appPHPConfig returns the fragments and the base64 apply script of the app's plan
+// (within capMB, see AppPHPSizing).
+func (cluster *Cluster) appPHPConfig(app *App, capMB int) (s appPHPSizing, poolFragment, iniFragment, script64 string) {
+	s = cluster.AppPHPSizing(app, capMB)
 	poolFragment, iniFragment = renderAppPHPFragments(s, appPHPPool(app))
 	script := appPHPApplyScript(s, poolFragment, iniFragment, appPHPPoolDir(app), appPHPIniDir(app))
 	return s, poolFragment, iniFragment, base64.StdEncoding.EncodeToString([]byte(script))
@@ -372,15 +377,50 @@ func (cluster *Cluster) openSVCAddAppDynamicConfigSections(svcsection map[string
 }
 
 // openSVCPushAppDynamicConfigKeys writes the three keys of the PHP sizing into the app's
-// config object. Called with the other app keys at provision and by every resize.
-func (cluster *Cluster) openSVCPushAppDynamicConfigKeys(svc opensvc.Collector, app *App) (appPHPSizing, string, error) {
-	s, poolFragment, iniFragment, script64 := cluster.appPHPConfig(app)
+// config object. Called with the other app keys at provision (capMB 0: the definition
+// written next carries the cap of the same plan) and by every resize. OpenSVC installs a
+// rewritten key in the volume at once, so these files never size beyond capMB.
+func (cluster *Cluster) openSVCPushAppDynamicConfigKeys(svc opensvc.Collector, app *App, capMB int) (appPHPSizing, string, error) {
+	s, poolFragment, iniFragment, script64 := cluster.appPHPConfig(app, capMB)
 	for _, kv := range [][2]string{{appPHPPoolKey, poolFragment}, {appPHPIniKey, iniFragment}, {appPHPConfigKey, script64}} {
 		if err := svc.CreateConfigKeyValue(cluster.Name, app.Name, kv[0], kv[1]); err != nil {
 			return s, script64, fmt.Errorf("config key %q: %w", kv[0], err)
 		}
 	}
 	return s, script64, nil
+}
+
+// appMemoryCapRe reads the docker memory cap of an app container's run_args (--memory=1024m).
+var appMemoryCapRe = regexp.MustCompile(`--memory=(\d+)m\b`)
+
+// appRunArgsMemoryCapMB is the docker memory cap in MB of a run_args value, 0 without one.
+func appRunArgsMemoryCapMB(runArgs string) int {
+	m := appMemoryCapRe.FindStringSubmatch(runArgs)
+	if m == nil {
+		return 0
+	}
+	mb, _ := strconv.Atoi(m[1])
+	return mb
+}
+
+// openSVCAppMemoryCapMB is the memory cap container#app runs under, as its service
+// definition on the orchestrator says (F5: what runs, not what the plan wishes): the docker
+// --memory of run_args, set from the plan when the definition was written
+// (prov-db-docker-run-args-limit) and moved only by a reprovision or a template update.
+// 0 when the app carries no docker cap.
+func (cluster *Cluster) openSVCAppMemoryCapMB(svc opensvc.Collector, app *App) (int, error) {
+	if !cluster.Conf.ProvDBDockerRunArgsLimit || cluster.engineServerOfApp(app) != nil || !svc.IsV3() {
+		return 0, nil
+	}
+	parts := strings.SplitN(app.ServiceName, "/", 3)
+	if len(parts) != 3 {
+		return 0, fmt.Errorf("invalid service name %q", app.ServiceName)
+	}
+	raw, err := svc.GetObjectConfigFileV3(parts[0], parts[1], parts[2])
+	if err != nil {
+		return 0, err
+	}
+	return appRunArgsMemoryCapMB(openSVCConfigValue(string(raw), "container#app", "run_args")), nil
 }
 
 // appDynamicConfigNodes are the nodes where an instance of the app runs: every agent of a
@@ -409,7 +449,19 @@ func (cluster *Cluster) ApplyAppDynamicConfig(app *App) error {
 	app.dynamicConfigMutex.Lock()
 	defer app.dynamicConfigMutex.Unlock()
 	svc := cluster.OpenSVCConnect()
-	s, script64, err := cluster.openSVCPushAppDynamicConfigKeys(svc, app)
+	capMB, err := cluster.openSVCAppMemoryCapMB(svc, app)
+	if err != nil {
+		// a capped container whose cap cannot be read: writing the keys could size the
+		// files OpenSVC installs at once beyond it
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn,
+			"App %s: memory cap of the container not read, PHP sizing left as it is until the next provision: %s", app.Name, err)
+		return err
+	}
+	if planMB, _ := config.ParseUnitMeasurementToInt("M,bytes,required", cluster.GetAppMemory(app.AppConfig), true); capMB > 0 && capMB < planMB {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlInfo,
+			"App %s: plan of %dM above the container cap of %dM (docker run_args, moved by the reprovision): PHP sized for %dM until then", app.Name, planMB, capMB, capMB)
+	}
+	s, script64, err := cluster.openSVCPushAppDynamicConfigKeys(svc, app, capMB)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlErr, "App %s: PHP sizing not written: %s", app.Name, err)
 		return err

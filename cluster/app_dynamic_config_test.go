@@ -83,7 +83,7 @@ func TestRenderAppPHPFragments(t *testing.T) {
 func TestAppPHPApplyScript(t *testing.T) {
 	c, a := phpTestApp(&config.Volume{Name: "web1-data"})
 	a.AppConfig.ProvAppPhpFpmPoolDir = "/etc/php/8.4/fpm/pool.d/"
-	s, pool, ini, script64 := c.appPHPConfig(a)
+	s, pool, ini, script64 := c.appPHPConfig(a, 0)
 	b, err := base64.StdEncoding.DecodeString(script64)
 	if err != nil {
 		t.Fatal(err)
@@ -103,6 +103,32 @@ func TestAppPHPApplyScript(t *testing.T) {
 		cmd.Stdin = strings.NewReader(script)
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("sh -n: %s %s\n%s", err, out, script)
+		}
+	}
+}
+
+// The sizing never exceeds the docker cap the container runs under: a grow over it waits
+// for the reprovision that moves the cap.
+func TestAppPHPSizingWithinCap(t *testing.T) {
+	c, a := phpTestApp(&config.Volume{Name: "v"})
+	a.AppConfig.ProvAppMem = "2048"
+	if s := c.AppPHPSizing(a, 0); s.MemoryMB != 2048 || s.MaxChildren != 16 {
+		t.Fatalf("plan: %+v", s)
+	}
+	if s := c.AppPHPSizing(a, 1024); s.MemoryMB != 1024 || s.MaxChildren != 13 {
+		t.Fatalf("within the 1024M cap: %+v", s)
+	}
+	if s := c.AppPHPSizing(a, 4096); s.MemoryMB != 2048 {
+		t.Fatalf("a cap above the plan changes nothing: %+v", s)
+	}
+	for runArgs, want := range map[string]int{
+		" --memory=1024m --memory-swap=1024m --cpus=1.0": 1024,
+		"--cpus=2.0":         0,
+		"":                   0,
+		"--memory-swap=512m": 0,
+	} {
+		if got := appRunArgsMemoryCapMB(runArgs); got != want {
+			t.Errorf("run_args %q: cap %d, want %d", runArgs, got, want)
 		}
 	}
 }

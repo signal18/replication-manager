@@ -62,8 +62,17 @@ At start, php-fpm reads the files of the plan. A plan change through
 `App.onAppPlanChange`, which runs `ApplyAppDynamicConfig` in a goroutine (never on the
 monitoring loop, F2; serialized per app by `App.dynamicConfigMutex`):
 
-1. the three keys are rewritten (the next start of any instance gets the new sizing);
-2. `om <svc> instance run --rid task#phpconfig` on each node of the app (every agent of a
+1. the memory cap the container runs under is read from the service definition on the
+   orchestrator (`--memory` of `container#app` `run_args`, `openSVCAppMemoryCapMB`): a
+   docker-capped app (`prov-db-docker-run-args-limit`) gets that cap from the plan when its
+   definition is written, and keeps it until a reprovision or a template update. The sizing
+   is computed for `min(plan, cap)`: OpenSVC installs a rewritten key in the volume at once
+   (the container sees it through its mount), so the files never describe a pool larger
+   than the cap the container lives in. A grow above the cap is sized for the cap now and
+   for the plan by the reprovision (which writes the keys from the plan with the new cap).
+   When the definition cannot be read, nothing is written (warning);
+2. the three keys are rewritten;
+3. `om <svc> instance run --rid task#phpconfig` on each node of the app (every agent of a
    flex app, the current node of a failover one), with `REPMAN_PHP_CONFIG=<base64 script>`
    in the run environment. The script of this very resize wins over the key, which a node
    can see one write late (#1795).
@@ -73,11 +82,9 @@ The apply script (`appPHPApplyScript`):
 1. finds the php-fpm master in the PID namespace shared with `container#app`
    (`/proc/*/cmdline` starting with `php-fpm: master process`);
 2. reads the container's memory cap through `/proc/<master>/root/sys/fs/cgroup/memory.max`
-   and refuses (exit 2) a plan above it: a docker-capped app
-   (`prov-db-docker-run-args-limit`) gets its new cap at its reprovision only, so a grow is
-   applied by that restart from the keys, never live inside the old cap. A shrink, or an
-   uncapped container (`max`), applies live. When the cap cannot be read, only a smaller
-   pool is applied;
+   and refuses (exit 2) a sizing above it, a second guard on the observed cgroup (the
+   sizing it receives is already bounded by the cap of the definition). When the cap cannot
+   be read, only a smaller pool is applied;
 3. writes both files in place in the volume (`cat >`: same inode, which the single-file
    mounts of the container keep);
 4. checks the container reads the new pool file (exit 3 otherwise: applied at next start);
