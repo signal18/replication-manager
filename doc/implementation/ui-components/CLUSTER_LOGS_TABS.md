@@ -55,9 +55,9 @@ it is opened.
 The badge on a tab is the number of entries its in-memory buffer holds
 (`clusterLogs[key].buffer.length`, bounded by the server ring size), shown when it is
 above zero. It counts neither older history loaded with "Load older" nor the level or
-text filters; its tooltip says so. It is a `TagPill` (`tagpill` class), which the global span colour override
-in `styles/_global.scss` excludes. The tab label itself uses divs, not spans, so its
-text follows the selected tab's colour.
+text filters; its tooltip says so. It is a `TagPill` (`tagpill` class), which the global
+span colour override in `styles/_global.scss` excludes. The tab label itself uses divs,
+not spans, so its text follows the selected tab's colour.
 
 ## Remembered tab
 
