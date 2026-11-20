@@ -235,7 +235,7 @@ func (repman *ReplicationManager) apiAccessLogMiddleware(next http.Handler) http
 
 func (repman *ReplicationManager) recordAPIAccess(r *http.Request, status int, duration time.Duration) {
 	defer func() {
-		// GetUserFromRequest asserts claim types; a token without them must not cost the request
+		// nothing in the recording may cost the request
 		_ = recover()
 	}()
 	template := ""
@@ -244,7 +244,12 @@ func (repman *ReplicationManager) recordAPIAccess(r *http.Request, status int, d
 	}
 	user := ""
 	if r.Header.Get("Authorization") != "" {
-		user = repman.GetUserFromRequest(r)
+		// GetUserFromRequest asserts claim types: a malformed token loses only its user, the
+		// call (often the refusal worth keeping) is still recorded with user "-"
+		user = func() (u string) {
+			defer func() { _ = recover() }()
+			return repman.GetUserFromRequest(r)
+		}()
 	}
 	if user == "" {
 		user = "-"

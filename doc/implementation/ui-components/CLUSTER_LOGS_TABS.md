@@ -148,7 +148,9 @@ Server side (`server/server_instance_logs.go`):
   into it (F10). The user is read from the token only for a recorded call, and a panic in
   the recording is recovered: the access log never costs a request. A path that matches
   no route (a 404 before any handler) is not recorded: a mux middleware runs on matched
-  routes only. Off-switch:
+  routes only. A bounded display ring can be flooded: a client sending refused calls in a
+  loop pushes the older entries out; the security log file keeps the refused logins, and
+  the full history is in the log files. Off-switch:
   `log-api-access` (T14), a global setting, live.
 - Tests: `utils/s18log/httplog_ring_test.go` (bound, drop count, empty slots, resize),
   `server/server_instance_logs_test.go` (path redaction, middleware: no secret in an
