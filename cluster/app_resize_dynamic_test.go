@@ -1,6 +1,7 @@
 package cluster
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -19,7 +20,11 @@ func (f appResizer) CanConfigResize(*ServerMonitor, bool) (ResizeFeasibility, er
 func (f appResizer) ConfigResize(*ServerMonitor, bool) (bool, error) { return true, nil }
 func (f appResizer) ResizeDisk(*ServerMonitor, int) (bool, error)    { return true, nil }
 func (f appResizer) ConfigResizeApp(app *App, grow bool) (bool, error) {
-	*f.calls = append(*f.calls, "cap:"+app.AppConfig.ProvAppMem)
+	dir := "shrink"
+	if grow {
+		dir = "grow"
+	}
+	*f.calls = append(*f.calls, "cap:"+app.AppConfig.ProvAppMem+":"+dir)
 	return f.applied, nil
 }
 
@@ -81,6 +86,7 @@ func TestResizeAppDynamicResourcesOrder(t *testing.T) {
 		t.Fatalf("live grow: err=%v calls=%v reprov=%v", err, calls, a.HasReprovCookie())
 	}
 	c.resizerOverride = appResizer{calls: &calls, applied: false}
+	a.AppConfig.ProvAppMem = "2048"
 	if err := c.ResizeAppDynamicResources(a, true); err != nil || !a.HasReprovCookie() {
 		t.Fatalf("a grow without a live cap arms the reprovision: err=%v", err)
 	}
@@ -89,6 +95,54 @@ func TestResizeAppDynamicResourcesOrder(t *testing.T) {
 	calls = nil
 	if err := c.ResizeAppDynamicResources(a, false); err != nil || len(calls) != 0 {
 		t.Fatalf("off: %v %v", err, calls)
+	}
+}
+
+// The direction is computed against the plan the last apply put in place, not taken from
+// the change that queued the apply: a grow then a shrink coalesced into one apply runs the
+// shrink order. An apply of the plan already in place does nothing.
+func TestResizeAppDynamicResourcesDirection(t *testing.T) {
+	c, a := liveResizeTestApp(t)
+	var calls []string
+	c.resizerOverride = appResizer{calls: &calls, applied: true}
+	a.AppConfig.ProvAppMem = "2048"
+	if err := c.ResizeAppDynamicResources(a, true); err != nil || strings.Join(calls, ",") != "cap:2048:grow" {
+		t.Fatalf("first apply takes the caller's direction: %v %v", err, calls)
+	}
+	calls = nil
+	a.AppConfig.ProvAppMem = "1024" // queued as a grow, the plan in force is a shrink
+	if err := c.ResizeAppDynamicResources(a, true); err != nil || strings.Join(calls, ",") != "cap:1024:shrink" {
+		t.Fatalf("shrink order expected: %v %v", err, calls)
+	}
+	calls = nil
+	if err := c.ResizeAppDynamicResources(a, true); err != nil || len(calls) != 0 {
+		t.Fatalf("plan already in place: %v %v", err, calls)
+	}
+}
+
+// Nodes: every agent of a flex app; the running node of a failover app, or all its agents
+// with one success enough when it is not known.
+func TestAppInstanceNodes(t *testing.T) {
+	_, a := liveResizeTestApp(t)
+	if n, any := appInstanceNodes(a); strings.Join(n, ",") != "n1,n2" || any {
+		t.Fatalf("flex: %v %v", n, any)
+	}
+	a.AppConfig.ProvAppHATopology = "failover"
+	if n, any := appInstanceNodes(a); strings.Join(n, ",") != "n1,n2" || !any {
+		t.Fatalf("failover, node unknown: %v %v", n, any)
+	}
+	a.Agent = "n2"
+	if n, any := appInstanceNodes(a); strings.Join(n, ",") != "n2" || any {
+		t.Fatalf("failover on n2: %v %v", n, any)
+	}
+	fail := func(node string) error {
+		if node == "n1" {
+			return errors.New("down")
+		}
+		return nil
+	}
+	if appOnNodes([]string{"n1", "n2"}, true, fail) != nil || appOnNodes([]string{"n1", "n2"}, false, fail) == nil {
+		t.Fatal("anyNode: one success is enough; otherwise every node")
 	}
 }
 

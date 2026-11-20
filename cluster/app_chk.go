@@ -79,7 +79,7 @@ func (app *App) GetMonitoringStatus() string {
 	errStates := make(map[string]state.State)
 
 	// Live resize (prov-app-dynamic-resource): a failed one stays visible until one goes through.
-	if msg := app.LiveResizeError; msg != "" {
+	if msg := app.getLiveResizeError(); msg != "" {
 		errStates[ErrAppLiveResize] = state.State{ErrType: "WARN", ErrKey: ErrAppLiveResize, ErrDesc: fmt.Sprintf(config.ClusterError[ErrAppLiveResize], app.GetId(), msg), ServerUrl: app.Host}
 	}
 

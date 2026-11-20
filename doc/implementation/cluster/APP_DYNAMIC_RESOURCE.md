@@ -22,6 +22,14 @@ change. Off by default; cluster setting `prov-app-dynamic-resource`, the app sib
 
 Applies of one app are serialized (`App.liveResizeMutex`) and coalesced
 (`App.liveResizePending`): one runs, one waits and reads the plan in force when it starts.
+The direction (grow or shrink, hence the order) is computed by the apply itself against the
+plan the previous apply put in place (`App.appliedMem` / `appliedCores`), so coalesced changes
+follow the order of their sum; the plan is read once, under the app lock (`planSnapshot`).
+
+Nodes (`appInstanceNodes`): every agent of a flex app; the running node of a failover app;
+all agents of a failover app whose node is not known yet, where one success is enough
+(`appOnNodes`). The pg update after start is retried at most 5 times
+(`appPGCapMaxAttempts`), then APPERR011 says the cap is not on the slice.
 They run in a goroutine, never on the monitoring loop (F2).
 
 ## Reload hook (template-side)
@@ -33,6 +41,10 @@ of `container#app` (`pidns = container#app`), the app's keys as environment, com
 (cloud18-templates `php`): re-run `APP_CONFIGURATOR_SCRIPT` with its paths prefixed by
 `/proc/1/root` (the app container's root, seen through the shared PID namespace), then
 `USR2` to the php-fpm master (graceful: inherited socket, workers finish their request).
+
+`APP_RELOAD_COMMAND` is executed with `eval` in a container of the app's own image, in the
+app's PID namespace: it is template content, trusted like `prov-app-docker-cmd` (the start
+command of the same container), and a secret-typed variable is never used as one.
 
 ## PHP sizing tokens
 

@@ -200,14 +200,14 @@ func (r k8sResizer) ConfigResize(server *ServerMonitor, grow bool) (bool, error)
 	return cluster.k8sResizeWithClient(client, server, grow)
 }
 
-// ResizeDisk: PVC expansion is a later step (grow-only, storage-class dependent); until
-// then a disk change on Kubernetes schedules a reprovision.
 // ConfigResizeApp: the Pod resize targets a database server's Pod (k8sDatabaseMemoryMiB);
 // an app keeps its reprovision until its Pod carries the same resources pair.
 func (r k8sResizer) ConfigResizeApp(app *App, grow bool) (bool, error) {
 	return false, nil
 }
 
+// ResizeDisk: PVC expansion is a later step (grow-only, storage-class dependent); until
+// then a disk change on Kubernetes schedules a reprovision.
 func (r k8sResizer) ResizeDisk(server *ServerMonitor, gb int) (bool, error) {
 	r.cluster.LogModulePrintf(r.cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
 		"no live PVC expansion yet, scheduling reprovision on %s for the disk", server.URL)

@@ -31,9 +31,9 @@ const (
 	ErrAppTCPConnectFailed = "APPERR003"
 	ErrAppUnsupportedProto = "APPERR004"
 	ErrAppGatewayConflict  = "APPERR005"
-	ErrAppDbProvision      = "APPERR008"     // database auto-create refused or failed (#1870)
-	ErrAppPingFailed       = "APPERR009"     // app-monitor-mode ping: the ICMP echo to the app host failed (#1919)
-	ErrAppCertificate      = "APPERR010"     // app-monitor-mode https-cert: certificate invalid or expiring (#2209)
+	ErrAppDbProvision      = "APPERR008" // database auto-create refused or failed (#1870)
+	ErrAppPingFailed       = "APPERR009" // app-monitor-mode ping: the ICMP echo to the app host failed (#1919)
+	ErrAppCertificate      = "APPERR010" // app-monitor-mode https-cert: certificate invalid or expiring (#2209)
 	StateAppRunning        = stateAppRunning // exported for the MCP tools
 	appErrFailureThreshold = 3
 )
@@ -102,7 +102,12 @@ type App struct {
 	// liveResizePending coalesces the plan changes that arrive meanwhile into one more.
 	liveResizeMutex   sync.Mutex
 	liveResizePending atomic.Bool
-	pgCapInFlight     atomic.Bool // ApplyOpenSVCPGCapIfPending runs one at a time
+	pgCapInFlight     atomic.Bool  // ApplyOpenSVCPGCapIfPending runs one at a time
+	pgCapAttempts     atomic.Int32 // failed pg updates after start, bounded (appPGCapMaxAttempts)
+	// appliedMem / appliedCores: the plan the last live resize applied, under
+	// liveResizeMutex; the direction of the next one is computed against it.
+	appliedMem   string
+	appliedCores string
 
 	*sync.Mutex `json:"-"`
 }

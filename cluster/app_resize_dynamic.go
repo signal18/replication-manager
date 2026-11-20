@@ -91,8 +91,14 @@ func (app *App) ArmOpenSVCPGCap() {
 	app.createCookie(appCookiePGCapPending)
 }
 
-// ApplyOpenSVCPGCapIfPending runs the armed pg update on every node of the app, off the
-// refresh (one at a time), and keeps the cookie until all nodes took it.
+// appPGCapMaxAttempts bounds the retries of the pg update after start (F4: nothing is
+// retried to infinity): past it the cookie is dropped and APPERR011 says the cap is not on
+// the slice until the next start or resize.
+const appPGCapMaxAttempts = 5
+
+// ApplyOpenSVCPGCapIfPending runs the armed pg update on the nodes of the app, off the
+// refresh (one at a time), and keeps the cookie until they took it, at most
+// appPGCapMaxAttempts times.
 func (app *App) ApplyOpenSVCPGCapIfPending() {
 	if !app.hasCookie(appCookiePGCapPending) || !app.pgCapInFlight.CompareAndSwap(false, true) {
 		return
@@ -100,21 +106,29 @@ func (app *App) ApplyOpenSVCPGCapIfPending() {
 	cluster := app.ClusterGroup
 	go func() {
 		defer app.pgCapInFlight.Store(false)
+		defer func() {
+			if r := recover(); r != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlErr, "App %s: pg update after start panicked: %v", app.Name, r)
+			}
+		}()
 		svc := cluster.OpenSVCConnect()
 		if !svc.IsV3() {
 			app.delCookie(appCookiePGCapPending)
 			return
 		}
-		var errs []error
-		for _, node := range appInstanceNodes(app) {
-			if err := svc.PGUpdateInstanceV3(node, app.ServiceName, ""); err != nil {
-				errs = append(errs, fmt.Errorf("%s: %w", node, err))
+		nodes, anyNode := appInstanceNodes(app)
+		err := appOnNodes(nodes, anyNode, func(node string) error { return svc.PGUpdateInstanceV3(node, app.ServiceName, "") })
+		if err != nil {
+			if n := app.pgCapAttempts.Add(1); n >= appPGCapMaxAttempts {
+				app.pgCapAttempts.Store(0)
+				app.delCookie(appCookiePGCapPending)
+				app.setLiveResizeError(fmt.Sprintf("container cap not applied on the PG slice after start (%d attempts): %s", n, err))
+				return
 			}
-		}
-		if err := errors.Join(errs...); err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn, "App %s: pg update after start failed, retried next refresh: %s", app.Name, err)
 			return
 		}
+		app.pgCapAttempts.Store(0)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlInfo,
 			"App %s: container cap applied on the PG slice after start (om %s instance pg update)", app.Name, app.ServiceName)
 		app.delCookie(appCookiePGCapPending)
@@ -122,12 +136,30 @@ func (app *App) ApplyOpenSVCPGCapIfPending() {
 }
 
 // appInstanceNodes are the nodes an instance of the app runs on: every agent of a flex
-// app, the node a failover app was found on (all its agents when unknown).
-func appInstanceNodes(app *App) []string {
-	if app.AppConfig.ProvAppHATopology == "failover" && strings.TrimSpace(app.Agent) != "" {
-		return []string{strings.TrimSpace(app.Agent)}
+// app, the node a failover app was found on. A failover app whose node is not known yet
+// gets all its agents with anyNode set: the one that runs it is enough.
+func appInstanceNodes(app *App) (nodes []string, anyNode bool) {
+	if app.AppConfig.ProvAppHATopology == "failover" {
+		if agent := strings.TrimSpace(app.GetAgent()); agent != "" {
+			return []string{agent}, false
+		}
+		return app.GetAppAgents(), true
 	}
-	return app.GetAppAgents()
+	return app.GetAppAgents(), false
+}
+
+// appOnNodes runs fn on each node: every node must succeed, or at least one when anyNode.
+func appOnNodes(nodes []string, anyNode bool, fn func(node string) error) error {
+	var errs []error
+	for _, node := range nodes {
+		if err := fn(node); err != nil {
+			errs = append(errs, fmt.Errorf("%s: %w", node, err))
+		}
+	}
+	if anyNode && len(errs) < len(nodes) {
+		return nil
+	}
+	return errors.Join(errs...)
 }
 
 // appReloadCommand is the template's reload command (deployment variable
@@ -185,11 +217,23 @@ func (cluster *Cluster) openSVCResizeApp(app *App) (bool, error) {
 	if len(kv) == 0 {
 		return false, fmt.Errorf("no memory or cores in the plan of %s", app.Name)
 	}
-	nodes := appInstanceNodes(app)
+	nodes, anyNode := appInstanceNodes(app)
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlInfo,
 		"App %s: container cap pg_mem_limit=%s pg_cpu_quota=%s written to %s, applying with om %s instance pg update --node %s",
 		app.Name, kv["pg_mem_limit"], kv["pg_cpu_quota"], app.ServiceName, app.ServiceName, strings.Join(nodes, ","))
-	if err := cluster.openSVCApplyServicePGKeywords(app.ServiceName, nodes, kv); err != nil {
+	if !anyNode {
+		if err := cluster.openSVCApplyServicePGKeywords(app.ServiceName, nodes, kv); err != nil {
+			return false, err
+		}
+		return true, nil
+	}
+	// a failover app on an unknown node: the keywords once, the pg update where it runs
+	if _, _, _, err := cluster.openSVCWriteObjectKeywords(app.ServiceName, "DEFAULT", kv); err != nil {
+		return false, err
+	}
+	if err := appOnNodes(nodes, true, func(node string) error {
+		return cluster.openSVCApplyServicePGKeywords(app.ServiceName, []string{node}, kv)
+	}); err != nil {
 		return false, err
 	}
 	return true, nil
@@ -203,16 +247,16 @@ func (cluster *Cluster) reloadAppConfiguration(app *App) error {
 		return nil // nothing in the app follows its size
 	}
 	svc := cluster.OpenSVCConnect()
-	nodes := appInstanceNodes(app)
+	nodes, anyNode := appInstanceNodes(app)
 	if strings.TrimSpace(app.AppConfig.ProvAppConfigurator) != "" {
 		if err := cluster.OpenSVCPushAppVariableMaps(app); err != nil {
 			return fmt.Errorf("configuration not pushed: %w", err)
 		}
 		if svc.IsV3() {
-			for _, node := range nodes {
-				if err := svc.WaitObjectConfigSettledV3(node, cluster.Name, "cfg", app.Name, openSVCConfigSettleTimeout); err != nil {
-					return fmt.Errorf("configuration not loaded on %s: %w", node, err)
-				}
+			if err := appOnNodes(nodes, anyNode, func(node string) error {
+				return svc.WaitObjectConfigSettledV3(node, cluster.Name, "cfg", app.Name, openSVCConfigSettleTimeout)
+			}); err != nil {
+				return fmt.Errorf("configuration not loaded: %w", err)
 			}
 		}
 	}
@@ -221,19 +265,18 @@ func (cluster *Cluster) reloadAppConfiguration(app *App) error {
 			"App %s: no %s in its template, the new configuration applies at its next start", app.Name, appReloadCommandVariable)
 		return nil
 	}
-	var errs []error
-	for _, node := range nodes {
+	return appOnNodes(nodes, anyNode, func(node string) error {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlInfo,
 			"App %s: reloading with om %s instance run --rid %s --node %s", app.Name, app.ServiceName, appReloadTask, node)
-		if err := svc.RunTask(cluster.Name, app.ServiceName, node, appReloadTask, ""); err != nil {
-			errs = append(errs, fmt.Errorf("%s on %s: %w", appReloadTask, node, err))
-		}
-	}
-	return errors.Join(errs...)
+		return svc.RunTask(cluster.Name, app.ServiceName, node, appReloadTask, "")
+	})
 }
 
 // ResizeAppDynamicResources applies the app's current plan live (prov-app-dynamic-resource).
-// Applies are serialized per app and coalesced by the caller (App.onAppResize).
+// Applies are serialized per app and coalesced by the caller (App.onAppResize). The
+// direction is computed here, against the plan the last apply put in place: a coalesced
+// apply may carry several changes, and the anti-OOM order must follow their sum. grow is
+// the caller's guess, used only when nothing was applied live yet.
 func (cluster *Cluster) ResizeAppDynamicResources(app *App, grow bool) error {
 	if !cluster.AppLiveResizeEnabled(app) {
 		return nil
@@ -241,12 +284,19 @@ func (cluster *Cluster) ResizeAppDynamicResources(app *App, grow bool) error {
 	app.liveResizeMutex.Lock()
 	defer app.liveResizeMutex.Unlock()
 	app.liveResizePending.Store(false) // this run reads the plan in force now
+	mem, cores := app.planSnapshot()
+	if app.appliedMem != "" || app.appliedCores != "" {
+		if mem == app.appliedMem && cores == app.appliedCores {
+			return nil // already in place
+		}
+		grow = appPlanGrows(app.appliedMem, mem, app.appliedCores, cores)
+	}
 	dir := "shrink"
 	if grow {
 		dir = "grow"
 	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlInfo,
-		"App %s: live resize (%s) to %sM / %s cores (prov-app-dynamic-resource)", app.Name, dir, cluster.GetAppMemory(app.AppConfig), cluster.GetAppCores(app.AppConfig))
+		"App %s: live resize (%s) to %sM / %s cores (prov-app-dynamic-resource)", app.Name, dir, mem, cores)
 
 	var err error
 	if !grow {
@@ -275,9 +325,19 @@ func (cluster *Cluster) ResizeAppDynamicResources(app *App, grow bool) error {
 		app.setLiveResizeError(err.Error())
 		return err
 	}
+	app.appliedMem, app.appliedCores = mem, cores
 	app.setLiveResizeError("")
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlInfo, "App %s: live resize (%s) done", app.Name, dir)
 	return nil
+}
+
+// planSnapshot reads the app's memory and cores once, under the app lock.
+func (app *App) planSnapshot() (mem, cores string) {
+	if app.Mutex != nil {
+		app.Lock()
+		defer app.Unlock()
+	}
+	return app.AppConfig.ProvAppMem, app.AppConfig.ProvAppCpuCores
 }
 
 func (app *App) setLiveResizeError(msg string) {
@@ -286,6 +346,14 @@ func (app *App) setLiveResizeError(msg string) {
 		defer app.Unlock()
 	}
 	app.LiveResizeError = msg
+}
+
+func (app *App) getLiveResizeError() string {
+	if app.Mutex != nil {
+		app.Lock()
+		defer app.Unlock()
+	}
+	return app.LiveResizeError
 }
 
 // onAppResize is called by the setters of the app's plan once the new values are stored.
