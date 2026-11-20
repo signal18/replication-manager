@@ -176,6 +176,7 @@ func (cluster *Cluster) OpenSVCStartAppService(app *App, node string) error {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not start app:  %s ", err)
 			return err
 		}
+		app.ArmOpenSVCPGCap()
 		return nil
 	}
 	agent := app.GetAgent()
@@ -358,6 +359,7 @@ func (cluster *Cluster) OpenSVCRestartAppService(app *App, node string, rid stri
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not restart app %s on %s: %s", app.Name, node, err)
 				return err
 			}
+			app.ArmOpenSVCPGCap()
 			return nil
 		}
 		// every instance: the orchestrator restarts them one at a time, each after the
@@ -367,6 +369,7 @@ func (cluster *Cluster) OpenSVCRestartAppService(app *App, node string, rid stri
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not restart app:  %s ", err)
 			return err
 		}
+		app.ArmOpenSVCPGCap()
 		return nil
 	}
 	agent := app.GetAgent()
@@ -590,6 +593,7 @@ func (cluster *Cluster) OpenSVCProvisionAppService(app *App) error {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr,
 			"App %s service provisioned but route publication failed: %s — retry via update-routes when DNS and gateway are ready", app.GetId(), err)
 	}
+	app.ArmOpenSVCPGCap()
 	cluster.errorChan <- nil
 	return nil
 }

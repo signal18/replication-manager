@@ -102,6 +102,7 @@ type App struct {
 	// liveResizePending coalesces the plan changes that arrive meanwhile into one more.
 	liveResizeMutex   sync.Mutex
 	liveResizePending atomic.Bool
+	pgCapInFlight     atomic.Bool // ApplyOpenSVCPGCapIfPending runs one at a time
 
 	*sync.Mutex `json:"-"`
 }
@@ -385,6 +386,7 @@ func (app *App) Refresh() error {
 		app.SetState(stateAppRunning)
 		app.SetFailCount(0)
 		app.SetWarnCount(0)
+		app.ApplyOpenSVCPGCapIfPending()
 	case stateFailed:
 		if app.GetFailCount() >= cluster.Conf.MaxFail {
 			app.SetState(stateFailed)

@@ -76,6 +76,51 @@ func (cluster *Cluster) appPGKeywords(app *App) map[string]string {
 	return kv
 }
 
+// appCookiePGCapPending: the app was (re)started with its cap on the om3 slice, which om3
+// applies on a pg update only (project notes: nothing applies it at start); the next
+// refresh that sees the app running runs it, as ArmOpenSVCPGCap does for a database server.
+const appCookiePGCapPending = "pgcap"
+
+// ArmOpenSVCPGCap marks the app for a pg update once it runs (no-op when its cap is a
+// docker limit or outside OpenSVC v3).
+func (app *App) ArmOpenSVCPGCap() {
+	cluster := app.ClusterGroup
+	if cluster == nil || cluster.GetOrchestrator() != config.ConstOrchestratorOpenSVC || cluster.Conf.ProvOpensvcUseCollectorAPI || !cluster.appCapOnSlice(app) {
+		return
+	}
+	app.createCookie(appCookiePGCapPending)
+}
+
+// ApplyOpenSVCPGCapIfPending runs the armed pg update on every node of the app, off the
+// refresh (one at a time), and keeps the cookie until all nodes took it.
+func (app *App) ApplyOpenSVCPGCapIfPending() {
+	if !app.hasCookie(appCookiePGCapPending) || !app.pgCapInFlight.CompareAndSwap(false, true) {
+		return
+	}
+	cluster := app.ClusterGroup
+	go func() {
+		defer app.pgCapInFlight.Store(false)
+		svc := cluster.OpenSVCConnect()
+		if !svc.IsV3() {
+			app.delCookie(appCookiePGCapPending)
+			return
+		}
+		var errs []error
+		for _, node := range appInstanceNodes(app) {
+			if err := svc.PGUpdateInstanceV3(node, app.ServiceName, ""); err != nil {
+				errs = append(errs, fmt.Errorf("%s: %w", node, err))
+			}
+		}
+		if err := errors.Join(errs...); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn, "App %s: pg update after start failed, retried next refresh: %s", app.Name, err)
+			return
+		}
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlInfo,
+			"App %s: container cap applied on the PG slice after start (om %s instance pg update)", app.Name, app.ServiceName)
+		app.delCookie(appCookiePGCapPending)
+	}()
+}
+
 // appInstanceNodes are the nodes an instance of the app runs on: every agent of a flex
 // app, the node a failover app was found on (all its agents when unknown).
 func appInstanceNodes(app *App) []string {

@@ -13,6 +13,7 @@ change. Off by default; cluster setting `prov-app-dynamic-resource`, the app sib
 | Trigger | `SetDBMemorySize` / `SetDBCores` → `ResizeDynamicResources` | `App.SetSetting` (memory, cores, units) → `App.onAppResize` → `ResizeAppDynamicResources` |
 | Cap backend | `resourceResizer().ConfigResize` | `resourceResizer().ConfigResizeApp` (same interface, T7) |
 | OpenSVC v3 | `openSVCApplyPGKeywords`: `pg_mem_limit` / `pg_cpu_quota` in DEFAULT, wait settled, `pg update` | `openSVCApplyServicePGKeywords` (the same primitive, generalized to a service and its nodes): every node of a flex app |
+| After start | `ArmOpenSVCPGCap` / `ApplyOpenSVCPGCapIfPending` (om3 applies pg keywords on a pg update only) | `App.ArmOpenSVCPGCap` at provision, start and restart, `App.ApplyOpenSVCPGCapIfPending` from the refresh once the app runs, on each node |
 | Docker cap | `prov-db-docker-run-args-limit` on: `--memory/--cpus` in run_args bind | same flag: on, the app keeps its run_args cap and the resize arms the reprovision; off, the template renders the pg keywords in DEFAULT (`appCapOnSlice`) |
 | Configuration | configurator values + `SET GLOBAL` | app configurator (`prov-app-configurator`) renders `APP_CONFIGURATOR_SCRIPT` again from the new plan (`appConfiguratorSizing`), pushed by `OpenSVCPushAppVariableMaps`; waits for the `cfg` object to load on each node |
 | Apply | `SET GLOBAL` | `task#reload` on each node: the template's `APP_RELOAD_COMMAND` |
