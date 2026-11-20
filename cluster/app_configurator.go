@@ -88,6 +88,11 @@ func appConfiguratorSizing(memMB, cores, iops int) map[string]string {
 		}
 		return v
 	}
+	phpOpcache := clamp(memMB/16, 64, 256)
+	phpPool := max(0, memMB-128-phpOpcache)
+	phpChildren := clamp(phpPool/64, 2, 8*cores)
+	phpMinSpare := max(1, phpChildren/8)
+	phpMaxSpare := max(phpMinSpare, phpChildren/2)
 	s := strconv.Itoa
 	return map[string]string{
 		"%%ENV:SVC_CONF_ENV_MAX_CONNECTIONS%%":         s(connections),
@@ -102,6 +107,15 @@ func appConfiguratorSizing(memMB, cores, iops int) map[string]string {
 		"%%ENV:SVC_CONF_ENV_INNODB_PURGE_THREADS%%":    s(clamp(cores, 1, 5)),
 		"%%ENV:CHECKPOINTIOPS%%":                       s(iops),
 		"%%ENV:SVC_CONF_ENV_MAX_IOPS%%":                s(iops * 2),
+		// PHP (php ruleset): opcache memory/16 in [64,256] MB, workers of 64 MB in what
+		// is left after 128 MB for the web server and the master, 2 to 8 per core,
+		// memory_limit 4 workers in [128 MB, half the pool]
+		"%%ENV:SVC_CONF_ENV_PHP_OPCACHE_MEMORY%%":        s(phpOpcache),
+		"%%ENV:SVC_CONF_ENV_PHP_FPM_MAX_CHILDREN%%":      s(phpChildren),
+		"%%ENV:SVC_CONF_ENV_PHP_FPM_MIN_SPARE_SERVERS%%": s(phpMinSpare),
+		"%%ENV:SVC_CONF_ENV_PHP_FPM_MAX_SPARE_SERVERS%%": s(phpMaxSpare),
+		"%%ENV:SVC_CONF_ENV_PHP_FPM_START_SERVERS%%":     s(phpMinSpare + (phpMaxSpare-phpMinSpare)/2),
+		"%%ENV:SVC_CONF_ENV_PHP_MEMORY_LIMIT%%":          s(clamp(4*64, 128, max(128, phpPool/2))),
 	}
 }
 

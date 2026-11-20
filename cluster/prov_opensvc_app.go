@@ -611,6 +611,12 @@ func (cluster *Cluster) OpenSVCGetAppTemplateSectionMap(app *App) (map[string]ma
 		if q := OpenSVCCPUQuotaKeyword(cluster.cpuQuotaCoresOnNode(serverNode(cluster.engineServerOfApp(app)), cluster.GetDBContainerCPUCapCores())); q != "" {
 			svcsection["DEFAULT"]["pg_cpu_quota"] = q
 		}
+	} else if cluster.appCapOnSlice(app) {
+		// a live-resized app (prov-app-dynamic-resource) without a docker cap: its cap lives
+		// on the om3 PG slice like a database server's, moved live by openSVCResizeApp
+		for k, v := range cluster.appPGKeywords(app) {
+			svcsection["DEFAULT"][k] = v
+		}
 	}
 	svcsection["ip#01"] = cluster.OpenSVCGetNetSection()
 	svcsection, err := cluster.OpenSVCGetAppVolumeSections(svcsection, app)
@@ -652,6 +658,7 @@ func (cluster *Cluster) OpenSVCGetAppTemplateSectionMap(app *App) (map[string]ma
 
 	svcsection["container#app"] = cluster.OpenSVCGetAppContainerSection(app)
 	cluster.openSVCAddAppJobsSections(svcsection, app, &containernum)
+	cluster.openSVCAddAppReloadSection(svcsection, app) // the template's APP_RELOAD_COMMAND, run by a live resize
 	// APU (Compute) + internal network sensor sidecar, same gate as the proxy one (the
 	// monitoring-system-resources off-switch, T14). Needs the script key published in the
 	// namespace `env` object (openSVCPublishAppJobScript, done by the V3 provision).

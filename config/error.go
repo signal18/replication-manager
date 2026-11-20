@@ -21,6 +21,7 @@ var ClusterError = map[string]string{
 	"APPERR007": "App refresh for cluster %s has not completed in over %s (last success: %s)",
 	"APPERR009": "Application %s unreachable: ping %s failed: %s",
 	"APPERR010": "Application %s certificate: %s",
+	"APPERR011": "Application %s live resize failed, the app keeps its previous size or configuration on the nodes listed: %s",
 	"ERR00001":  "Monitor freeze while running critical section",
 	"ERR00002":  "Waiting for a user manual failover",
 	"ERR00004":  "Database %s access denied: %s",

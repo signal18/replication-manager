@@ -8,6 +8,7 @@ package cluster
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"math"
 	"strconv"
@@ -46,6 +47,11 @@ type ResourceResizer interface {
 	// reports whether the orchestrator took the request live; false with no error means
 	// the backend has no live path and a reprovision was scheduled instead.
 	ResizeDisk(server *ServerMonitor, gb int) (bool, error)
+	// ConfigResizeApp moves the container cap of an app (prov-app-memory and
+	// prov-app-cpu-cores) live, the app twin of ConfigResize (prov-app-dynamic-resource,
+	// app_resize_dynamic.go). False with no error: no live path on this backend, the
+	// caller keeps the reprovision.
+	ConfigResizeApp(app *App, grow bool) (bool, error)
 }
 
 // scriptResizer is the client-overridable backend (F7): used in every
@@ -72,6 +78,12 @@ func (r scriptResizer) ConfigResize(server *ServerMonitor, grow bool) (bool, err
 	return true, nil
 }
 
+// ConfigResizeApp: the change script resizes a database server (its arguments are a
+// server's host and port, its values the prov-db-* plan); an app keeps its reprovision.
+func (r scriptResizer) ConfigResizeApp(app *App, grow bool) (bool, error) {
+	return false, nil
+}
+
 func (r scriptResizer) ResizeDisk(server *ServerMonitor, gb int) (bool, error) {
 	r.cluster.LogModulePrintf(r.cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
 		"no live disk resize through the change script, scheduling reprovision on %s", server.URL)
@@ -89,6 +101,10 @@ func (r openSVCResizer) CanConfigResize(server *ServerMonitor, grow bool) (Resiz
 
 func (r openSVCResizer) ConfigResize(server *ServerMonitor, grow bool) (bool, error) {
 	return r.cluster.openSVCResize(server, grow)
+}
+
+func (r openSVCResizer) ConfigResizeApp(app *App, grow bool) (bool, error) {
+	return r.cluster.openSVCResizeApp(app)
 }
 
 func (r openSVCResizer) ResizeDisk(server *ServerMonitor, gb int) (bool, error) {
@@ -112,6 +128,10 @@ func (r restartResizer) ConfigResize(server *ServerMonitor, grow bool) (bool, er
 	r.cluster.LogModulePrintf(r.cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
 		"%s, scheduling restart on %s", r.reason, server.URL)
 	server.SetRestartCookie()
+	return false, nil
+}
+
+func (r restartResizer) ConfigResizeApp(app *App, grow bool) (bool, error) {
 	return false, nil
 }
 
@@ -180,31 +200,49 @@ func OpenSVCCPUQuotaKeyword(cores float64) string {
 // limits live via the om3 pg update action -- no restart. Shared by the memory and
 // cpu live resizes. v3 only (the caller checks IsV3).
 func (cluster *Cluster) openSVCApplyPGKeywords(server *ServerMonitor, kv map[string]string) error {
+	return cluster.openSVCApplyServicePGKeywords(server.ServiceName, []string{server.Agent}, kv)
+}
+
+// openSVCApplyServicePGKeywords is openSVCApplyPGKeywords for any service and the nodes
+// its instances run on: a database server has one, a flex app one per agent. Every node is
+// attempted; the errors come back together.
+func (cluster *Cluster) openSVCApplyServicePGKeywords(serviceName string, nodes []string, kv map[string]string) error {
 	svc := cluster.OpenSVCConnect()
 	// 1. Write the PG keywords into the service config.
-	ns, kind, svcname, err := cluster.openSVCWriteServiceKeywords(server, "DEFAULT", kv)
+	ns, kind, svcname, err := cluster.openSVCWriteObjectKeywords(serviceName, "DEFAULT", kv)
 	if err != nil {
 		return err
 	}
-
-	// 2. The pg update reads the node's LOADED config; fired right after the PUT it
-	// would re-apply the previous limits (#1792). Wait for the reload first.
-	if err := svc.WaitObjectConfigSettledV3(server.Agent, ns, kind, svcname, openSVCConfigSettleTimeout); err != nil {
-		return err
+	var errs []error
+	for _, node := range nodes {
+		// 2. The pg update reads the node's LOADED config; fired right after the PUT it
+		// would re-apply the previous limits (#1792). Wait for the reload first.
+		if err := svc.WaitObjectConfigSettledV3(node, ns, kind, svcname, openSVCConfigSettleTimeout); err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		// 3. Apply the new cgroup limits live on the running node.
+		if err := svc.PGUpdateInstanceV3(node, serviceName, ""); err != nil {
+			errs = append(errs, fmt.Errorf("pg update on %s: %w", node, err))
+		}
 	}
-
-	// 3. Apply the new cgroup limits live on the running node.
-	return svc.PGUpdateInstanceV3(server.Agent, server.ServiceName, "")
+	return errors.Join(errs...)
 }
 
 // openSVCWriteServiceKeywords rewrites keywords of one section of the server's service
 // config and PUTs it back (the om3 config is the source of truth; the daemon reloads it).
 // Returns the namespace, kind and name of the service for the caller's next action.
 func (cluster *Cluster) openSVCWriteServiceKeywords(server *ServerMonitor, section string, kv map[string]string) (ns, kind, svcname string, err error) {
+	return cluster.openSVCWriteObjectKeywords(server.ServiceName, section, kv)
+}
+
+// openSVCWriteObjectKeywords is openSVCWriteServiceKeywords for any object path
+// (<namespace>/<kind>/<name>): a database server's service, an app's.
+func (cluster *Cluster) openSVCWriteObjectKeywords(serviceName string, section string, kv map[string]string) (ns, kind, svcname string, err error) {
 	svc := cluster.OpenSVCConnect()
-	svcparts := strings.SplitN(server.ServiceName, "/", 3)
+	svcparts := strings.SplitN(serviceName, "/", 3)
 	if len(svcparts) != 3 {
-		return "", "", "", fmt.Errorf("invalid service name %q, expected namespace/kind/name", server.ServiceName)
+		return "", "", "", fmt.Errorf("invalid service name %q, expected namespace/kind/name", serviceName)
 	}
 	ns, kind, svcname = svcparts[0], svcparts[1], svcparts[2]
 	raw, err := svc.GetObjectConfigFileV3(ns, kind, svcname)
@@ -213,7 +251,7 @@ func (cluster *Cluster) openSVCWriteServiceKeywords(server *ServerMonitor, secti
 	}
 	cfg, err := ini.LoadSources(ini.LoadOptions{IgnoreInlineComment: true}, bytes.NewReader(raw))
 	if err != nil {
-		return ns, kind, svcname, fmt.Errorf("failed to parse service config for %s: %w", server.ServiceName, err)
+		return ns, kind, svcname, fmt.Errorf("failed to parse service config for %s: %w", serviceName, err)
 	}
 	for k, v := range kv {
 		cfg.Section(section).Key(k).SetValue(v)

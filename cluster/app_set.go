@@ -443,12 +443,20 @@ func (app *App) SetSetting(key, value string) error {
 		app.AppConfig.AppS3Provider = value == "true" || value == "1" || value == "on"
 		app.ClusterGroup.refreshAppS3Providers()
 	case "prov-app-cpu-cores":
+		old := app.AppConfig.ProvAppCpuCores
 		app.AppConfig.ProvAppCpuCores = value
+		if value != old && app.onAppResize(appPlanGrows("", "", old, value)) {
+			break // applied live (prov-app-dynamic-resource)
+		}
 		if app.effectiveSizingMode() == config.AppSizingModeManual {
 			app.SetReprovCookie()
 		}
 	case "prov-app-memory":
+		old := app.AppConfig.ProvAppMem
 		app.AppConfig.ProvAppMem = value
+		if value != old && app.onAppResize(appPlanGrows(old, value, "", "")) {
+			break // applied live (prov-app-dynamic-resource)
+		}
 		if app.effectiveSizingMode() == config.AppSizingModeManual {
 			app.SetReprovCookie()
 		}
@@ -538,9 +546,16 @@ func (app *App) applyUnitShape(units int) {
 		units = 1
 	}
 	unitCores, unitMemMB, unitDiskGB := app.unitRatioInts()
+	oldCores, oldMem, oldDisk := app.AppConfig.ProvAppCpuCores, app.AppConfig.ProvAppMem, app.AppConfig.ProvAppDisk
 	app.AppConfig.ProvAppCpuCores = strconv.Itoa(units * unitCores)
 	app.AppConfig.ProvAppMem = strconv.Itoa(units * unitMemMB)
 	app.AppConfig.ProvAppDisk = strconv.Itoa(units * unitDiskGB)
+	// memory and cores move live (prov-app-dynamic-resource); a disk change still needs
+	// the reprovision
+	if app.AppConfig.ProvAppDisk == oldDisk && (app.AppConfig.ProvAppMem != oldMem || app.AppConfig.ProvAppCpuCores != oldCores) &&
+		app.onAppResize(appPlanGrows(oldMem, app.AppConfig.ProvAppMem, oldCores, app.AppConfig.ProvAppCpuCores)) {
+		return
+	}
 	app.SetReprovCookie()
 }
 

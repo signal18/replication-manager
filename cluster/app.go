@@ -16,6 +16,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/signal18/replication-manager/config"
@@ -30,9 +31,9 @@ const (
 	ErrAppTCPConnectFailed = "APPERR003"
 	ErrAppUnsupportedProto = "APPERR004"
 	ErrAppGatewayConflict  = "APPERR005"
-	ErrAppDbProvision      = "APPERR008" // database auto-create refused or failed (#1870)
-	ErrAppPingFailed       = "APPERR009" // app-monitor-mode ping: the ICMP echo to the app host failed (#1919)
-	ErrAppCertificate      = "APPERR010" // app-monitor-mode https-cert: certificate invalid or expiring (#2209)
+	ErrAppDbProvision      = "APPERR008"     // database auto-create refused or failed (#1870)
+	ErrAppPingFailed       = "APPERR009"     // app-monitor-mode ping: the ICMP echo to the app host failed (#1919)
+	ErrAppCertificate      = "APPERR010"     // app-monitor-mode https-cert: certificate invalid or expiring (#2209)
 	StateAppRunning        = stateAppRunning // exported for the MCP tools
 	appErrFailureThreshold = 3
 )
@@ -78,6 +79,7 @@ type App struct {
 	LastRefreshEnd        time.Time `json:"lastRefreshEnd"`
 	LastRefreshDurationMs int64     `json:"lastRefreshDurationMs"`
 	LastRefreshError      string    `json:"lastRefreshError"`
+	LiveResizeError       string    `json:"liveResizeError"`  // last failed live resize (prov-app-dynamic-resource, APPERR011), "" once one goes through
 	DbProvisionError      string    `json:"dbProvisionError"` // last app database auto-create refusal (#1870), "" once one goes through
 	RefreshInProgress     bool      `json:"refreshInProgress"`
 	// Route-scoped debounce counters are the single source of truth.
@@ -95,6 +97,11 @@ type App struct {
 
 	// CheckResults: the last result of each check, by check, for its interval (#2362).
 	CheckResults map[string]appCheckResult `json:"-"`
+
+	// liveResizeMutex serializes the live resizes of the app (ResizeAppDynamicResources);
+	// liveResizePending coalesces the plan changes that arrive meanwhile into one more.
+	liveResizeMutex   sync.Mutex
+	liveResizePending atomic.Bool
 
 	*sync.Mutex `json:"-"`
 }
