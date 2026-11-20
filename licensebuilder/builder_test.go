@@ -2,6 +2,7 @@ package licensebuilder
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -31,7 +32,8 @@ func fakeTree(t *testing.T, dir string, wire string) {
 func TestProcess(t *testing.T) {
 	tmp := t.TempDir()
 	cfg := Config{SourceDir: filepath.Join(tmp, "src"), WorkDir: filepath.Join(tmp, "work"),
-		OutDir: filepath.Join(tmp, "out"), DataDir: filepath.Join(tmp, "data")}
+		OutDir: filepath.Join(tmp, "out"), DataDir: filepath.Join(tmp, "data"),
+		GitBaseURL: "https://gitlab.example.test", GitToken: "SECRETTOKEN"} // the delivery's git calls go through the run stub
 	fakeTree(t, cfg.SourceDir, "4")
 	release := filepath.Join(cfg.WorkDir, "replication-manager-v3.1.48")
 	fakeTree(t, release, "4")
@@ -120,18 +122,18 @@ func TestValidate(t *testing.T) {
 		{Company: "company", URI: "company.2026-12.1", AirGapped: true, Version: "v1"},
 		{Company: "other", URI: "company.202612.1", AirGapped: true, Version: "v1"},
 		{Company: "company", URI: "company.202612.1", AirGapped: true, Version: "../x"},
-		{Company: "company", URI: "company.202001.1", AirGapped: true, Version: "v1"},                               // born-expired: the guardrail must reject
-		{Company: "acme", URI: "acme.east.z1", AirGapped: false, Version: "v1"},                   // online, no expiry
-		{Company: "acme", URI: "acme.east.z1", AirGapped: false, Version: "v1", Expiry: "202001"}, // online, born-expired
-		{Company: "acme", URI: "acme.UP.fr1", AirGapped: false, Version: "v1", Expiry: "2099-12-31"},        // online, not lower-case dotted
-		{Company: "acme", URI: "company.202612.1", AirGapped: false, Version: "v1", Expiry: "2099-12-31"},       // online uri not of company
+		{Company: "company", URI: "company.202001.1", AirGapped: true, Version: "v1"},                     // born-expired: the guardrail must reject
+		{Company: "acme", URI: "acme.east.z1", AirGapped: false, Version: "v1"},                           // online, no expiry
+		{Company: "acme", URI: "acme.east.z1", AirGapped: false, Version: "v1", Expiry: "202001"},         // online, born-expired
+		{Company: "acme", URI: "acme.UP.fr1", AirGapped: false, Version: "v1", Expiry: "2099-12-31"},      // online, not lower-case dotted
+		{Company: "acme", URI: "company.202612.1", AirGapped: false, Version: "v1", Expiry: "2099-12-31"}, // online uri not of company
 	} {
 		if err := r.Validate(); err == nil {
 			t.Errorf("Validate(%+v) accepted", r)
 		}
 	}
 	for _, r := range []Request{
-		{Company: "company", URI: "company.202612.1", AirGapped: true, Version: "v1"},                                        // air-gapped seat
+		{Company: "company", URI: "company.202612.1", AirGapped: true, Version: "v1"},                      // air-gapped seat
 		{Company: "acme", URI: "acme.east.z1", AirGapped: false, Version: "v3.1.48", Expiry: "2099-12-31"}, // online, YYYY-MM-DD expiry
 		{Company: "acme", URI: "acme.east.z1", AirGapped: false, Version: "v3.1.48", Expiry: "209912"},     // online, YYYYMM expiry
 	} {
@@ -203,5 +205,68 @@ func TestDeliverToPullUnconfigured(t *testing.T) {
 	b := New(Config{}, nil) // no GitBaseURL/GitToken
 	if err := b.deliverToPull(Request{URI: "acme.east.z1"}, nil); err == nil {
 		t.Error("deliverToPull with no git config should fail")
+	}
+}
+
+// TestDeliverPackage pushes an air-gapped package into the client's licences repository with real
+// git, against a local bare repository standing for <GitBaseURL>/<company>/licences.git: the file
+// lands at the root as <uri>.tar.gz in one commit, the same package again is a no-op, and the token
+// never appears in the remote URL.
+func TestDeliverPackage(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not installed")
+	}
+	tmp := t.TempDir()
+	bare := filepath.Join(tmp, "remote", "acme", "licences.git")
+	gitT := func(dir string, args ...string) string {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(), "GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@t", "GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@t")
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v %s", args, err, out)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	os.MkdirAll(bare, 0o755)
+	gitT(bare, "init", "--bare", "-b", "main")
+	seed := filepath.Join(tmp, "seed")
+	gitT(tmp, "clone", bare, seed)
+	os.WriteFile(filepath.Join(seed, "README.md"), []byte("licences"), 0o644)
+	gitT(seed, "add", "README.md")
+	gitT(seed, "commit", "-m", "init")
+	gitT(seed, "push", "origin", "HEAD:main")
+
+	b := New(Config{GitBaseURL: "file://" + filepath.Join(tmp, "remote"), GitToken: "SECRETTOKEN"}, nil)
+	r := Request{Company: "acme", URI: "acme.202612.1", AirGapped: true}
+	if err := b.deliverPackage(r, "acme.202612.1.tar.gz", []byte("package")); err != nil {
+		t.Fatalf("deliverPackage: %v", err)
+	}
+	check := filepath.Join(tmp, "check")
+	gitT(tmp, "clone", bare, check)
+	got, err := os.ReadFile(filepath.Join(check, "acme.202612.1.tar.gz"))
+	if err != nil || string(got) != "package" {
+		t.Fatalf("package not delivered at the root: %v %q", err, got)
+	}
+	if n := gitT(check, "rev-list", "--count", "HEAD"); n != "2" {
+		t.Fatalf("%s commits, want 2 (init + the package)", n)
+	}
+	// the same package again: nothing to commit
+	if err := b.deliverPackage(r, "acme.202612.1.tar.gz", []byte("package")); err != nil {
+		t.Fatalf("deliverPackage again: %v", err)
+	}
+	gitT(check, "pull", "-q")
+	if n := gitT(check, "rev-list", "--count", "HEAD"); n != "2" {
+		t.Fatalf("%s commits after the same package, want 2", n)
+	}
+	if strings.Contains(gitT(check, "log", "--format=%B"), "SECRETTOKEN") {
+		t.Error("token leaked into a commit")
+	}
+}
+
+func TestDeliverPackageUnconfigured(t *testing.T) {
+	b := New(Config{}, nil)
+	if err := b.deliverPackage(Request{Company: "acme", URI: "acme.202612.1"}, "acme.202612.1.tar.gz", nil); err == nil {
+		t.Error("deliverPackage with no git config should fail")
 	}
 }
