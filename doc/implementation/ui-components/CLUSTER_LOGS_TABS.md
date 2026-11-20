@@ -120,7 +120,7 @@ checks it; the `/api/global/*` routes are not in the cluster ACL rule tables). S
 
 Server side (`server/server_instance_logs.go`):
 
-- **Rings.** Each log is an `s18log.HttpLog` ring: a hard max from TOML
+- **Rings.** Each log is an `s18log.HttpLog` ring: a hard max of entries from TOML
   (`log-security-length`, default 200; `log-api-access-length`, default 500; 0 = the
   default), drop-oldest in a fresh backing array, and the number of entries dropped since
   start counted (`HttpLog.AddReportDrop`) and returned as `dropped` (T18). The sizes are
@@ -134,13 +134,22 @@ Server side (`server/server_instance_logs.go`):
   adds the event to the ring: `[security] <event>: <message> (user "<u>", from <addr>)`,
   INFO for a `*_success` event, WARN otherwise.
 - **Access.** A router middleware (`apiAccessLogMiddleware`, on both the HTTP and the
-  HTTPS router) records each `/api/` call after it ran: method, path, status, duration,
-  user, remote address; level ERROR for a 5xx, WARN for a 4xx. The path is built from the
-  route template, never from the raw URL: no query string, and a variable whose name may
-  carry a secret (value, token, secret, pass, key, cred, code, route, peer) stays as its
-  placeholder (`.../set/db-servers-credential/{settingValue}`). No header, body or token
-  is ever read into it (F10). The reads of the access log itself are not recorded.
-  Off-switch: `log-api-access` (T14), a global setting, live.
+  HTTPS router) records the `/api/` calls that matter, after they ran: every call that
+  changes something (any method but GET, HEAD, OPTIONS) and every failed call (status
+  400 and above). A successful read is not recorded: the GUI polls dozens per refresh
+  and would push the refusals out of the ring within minutes. An entry: method, path,
+  status, duration, user, remote address; level ERROR for a 5xx, WARN for a 4xx. The path
+  is built from the route template, never from the raw URL: no query string, and only an
+  allowlist of variables is logged by value (names ending in `Name` or `Port`, and
+  `action`, `task`, `level`, `logType`, `topology`, `state`, `index`, `field`, `month`);
+  any other variable stays as its placeholder (`.../set/db-servers-credential/{settingValue}`,
+  `/api/tokens/{tokenID}`), so a new route carrying a secret is never logged in clear.
+  Control characters are dropped from every field. No header, body or token is ever read
+  into it (F10). The user is read from the token only for a recorded call, and a panic in
+  the recording is recovered: the access log never costs a request. A path that matches
+  no route (a 404 before any handler) is not recorded: a mux middleware runs on matched
+  routes only. Off-switch:
+  `log-api-access` (T14), a global setting, live.
 - Tests: `utils/s18log/httplog_ring_test.go` (bound, drop count, empty slots, resize),
   `server/server_instance_logs_test.go` (path redaction, middleware: no secret in an
   entry, bound and drops, off-switch, paths outside `/api/`; security ring).

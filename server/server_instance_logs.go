@@ -26,7 +26,7 @@ import (
 // The instance-level log rings of the Security Logs and Access Logs tabs of the instance
 // Dashboard (GUI: Pages/GlobalItems). See doc/implementation/ui-components/CLUSTER_LOGS_TABS.md.
 //
-// Each ring is an s18log.HttpLog: a hard max (log-security-length, log-api-access-length,
+// Each ring is an s18log.HttpLog: a hard max of entries (log-security-length, log-api-access-length,
 // a non-zero default when 0 or unset), drop-oldest in a fresh backing array, and the
 // number of entries dropped since start counted and returned with the entries (T18). A
 // display ring wraps all the time on a busy instance, so the drop count is not raised as a
@@ -82,8 +82,8 @@ func (r *instanceLogRing) snapshot() globalLogsSnapshot {
 	if r == nil {
 		return globalLogsSnapshot{Buffer: []s18log.HttpMessage{}}
 	}
-	entries := r.log.Entries()
-	return globalLogsSnapshot{Buffer: entries, Len: r.log.Len, Dropped: r.dropped.Load()}
+	entries, size := r.log.EntriesAndLen()
+	return globalLogsSnapshot{Buffer: entries, Len: size, Dropped: r.dropped.Load()}
 }
 
 // addSecurityEvent records one security event (logSecurityEvent): the same fields as the
@@ -97,16 +97,32 @@ func (r *instanceLogRing) addSecurityEvent(event, user, remoteAddr, msg string) 
 	r.add(level, config.ConstLogModGeneral, fmt.Sprintf("[security] %s: %s (user %q, from %s)", event, msg, user, remoteAddr))
 }
 
-// accessLogSecretVar tells the route variables whose value is never written to the access
-// log: a setting value, a token, a secret or a password can travel in an API path.
-func accessLogSecretVar(name string) bool {
-	lower := strings.ToLower(name)
-	for _, word := range []string{"value", "token", "secret", "pass", "key", "cred", "code", "route", "peer"} {
-		if strings.Contains(lower, word) {
-			return true
-		}
+// accessLogLoggedVars are the route variables whose value is written to the access log;
+// any other variable stays as its placeholder. An allowlist, so a new route carrying a
+// secret under a new name ({hash}, {otp}) is never logged in clear: names (cluster,
+// server, proxy, app, setting...), ports, and a few action words.
+var accessLogLoggedVars = map[string]bool{
+	"action": true, "task": true, "level": true, "logType": true, "topology": true,
+	"state": true, "index": true, "field": true, "month": true,
+}
+
+func accessLogVarLogged(name string) bool {
+	if accessLogLoggedVars[name] {
+		return true
 	}
-	return false
+	// clusterName, serverName, settingName, serverPort...; never a value, token or id
+	return strings.HasSuffix(name, "Name") || strings.HasSuffix(name, "Port")
+}
+
+// accessLogClean drops the control characters of a logged field (a URL-decoded path may
+// carry a %0a newline, a user name comes from token claims).
+func accessLogClean(s string) string {
+	return strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f {
+			return -1
+		}
+		return r
+	}, s)
 }
 
 // accessLogPath builds the logged path from the route template, never from the raw URL:
@@ -145,7 +161,7 @@ func accessLogPath(template string, vars map[string]string, rawPath string) stri
 		if colon := strings.Index(name, ":"); colon >= 0 {
 			name = name[:colon]
 		}
-		if value, ok := vars[name]; ok && !accessLogSecretVar(name) {
+		if value, ok := vars[name]; ok && accessLogVarLogged(name) {
 			out.WriteString(value)
 		} else {
 			out.WriteString("{" + name + "}")
@@ -189,27 +205,39 @@ func (w *accessStatusWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	return nil, nil, fmt.Errorf("access log: the response writer cannot be hijacked")
 }
 
-// apiAccessLogMiddleware records each API call in the Access Logs ring: method, path (see
-// accessLogPath), status, duration, user and remote address. Never the query string, a
-// header, a body or a token (F10). Off with log-api-access = false (T14). The calls that
-// read the access log itself are not recorded, or the tab would fill with its own polling.
+// apiAccessLogMiddleware records the API calls that matter in the Access Logs ring: every
+// call that changes something (any method but GET, HEAD, OPTIONS) and every failed call
+// (status 400 and above, refusals first). A successful read is not recorded: the GUI polls
+// dozens of them per refresh and would push everything else out of the ring within
+// minutes. An entry: method, path (see accessLogPath), status, duration, user and remote
+// address; never the query string, a header, a body or a token (F10). Off with
+// log-api-access = false (T14). Nothing here may break a request: a panic in the recording
+// is recovered and the entry is lost.
 func (repman *ReplicationManager) apiAccessLogMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !repman.Conf.LogAPIAccess || repman.APIAccessLogs == nil || !strings.HasPrefix(r.URL.Path, "/api/") || r.URL.Path == "/api/global/access-logs" {
+		if !repman.Conf.LogAPIAccess || repman.APIAccessLogs == nil || !strings.HasPrefix(r.URL.Path, "/api/") {
 			next.ServeHTTP(w, r)
 			return
 		}
 		start := time.Now()
 		sw := &accessStatusWriter{ResponseWriter: w}
 		next.ServeHTTP(sw, r)
-		repman.recordAPIAccess(r, sw.status, time.Since(start))
+		status := sw.status
+		if status == 0 {
+			status = http.StatusOK
+		}
+		if status < 400 && (r.Method == http.MethodGet || r.Method == http.MethodHead || r.Method == http.MethodOptions) {
+			return
+		}
+		repman.recordAPIAccess(r, status, time.Since(start))
 	})
 }
 
 func (repman *ReplicationManager) recordAPIAccess(r *http.Request, status int, duration time.Duration) {
-	if status == 0 {
-		status = http.StatusOK
-	}
+	defer func() {
+		// GetUserFromRequest asserts claim types; a token without them must not cost the request
+		_ = recover()
+	}()
 	template := ""
 	if route := mux.CurrentRoute(r); route != nil {
 		template, _ = route.GetPathTemplate()
@@ -229,5 +257,6 @@ func (repman *ReplicationManager) recordAPIAccess(r *http.Request, status int, d
 		level = config.LvlWarn
 	}
 	repman.APIAccessLogs.add(level, config.ConstLogModGeneral, fmt.Sprintf("[access] %s %s %d %dms user %s from %s",
-		r.Method, accessLogPath(template, mux.Vars(r), r.URL.Path), status, duration.Milliseconds(), user, r.RemoteAddr))
+		accessLogClean(r.Method), accessLogClean(accessLogPath(template, mux.Vars(r), r.URL.Path)), status, duration.Milliseconds(),
+		accessLogClean(user), accessLogClean(r.RemoteAddr)))
 }

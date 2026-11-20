@@ -303,7 +303,7 @@ const GLOBAL_LOG_TABS = [
   {
     key: 'access',
     title: 'Access Logs',
-    description: 'The API access log: method, path (no query, no secret value), status, duration, user and address of each API call. Kept in memory (log-api-access-length), off with log-api-access.',
+    description: 'The API access log: every call that changes something and every failed call (not the successful reads): method, path (no query, no secret value), status, duration, user and address. Kept in memory (log-api-access-length), off with log-api-access.',
     Component: GlobalAccessLogs,
     pill: () => ({ colorScheme: 'blue' })
   }

@@ -69,29 +69,40 @@ func (tl *HttpLog) Shift(e HttpMessage) {
 }
 
 // AddReportDrop adds s like Add and reports whether a real entry (one with a timestamp)
-// fell off the end of the ring to make room for it, so a caller can count its drops
-// (T18). Shift keeps Len entries of the previous buffer, so the entry that goes is the
-// one at index Len, when the buffer has one.
+// left the ring's Len entries to make room for it, so a caller can count its drops (T18).
+// Shift keeps one more slot than Len (index Len, the next to go); Entries never returns
+// it, so the entry that leaves is the one at index Len-1.
 func (tl *HttpLog) AddReportDrop(s HttpMessage) bool {
 	tl.L.Lock()
 	defer tl.L.Unlock()
-	dropped := len(tl.Buffer) > tl.Len && tl.Buffer[tl.Len].Timestamp != ""
+	dropped := tl.Len > 0 && len(tl.Buffer) >= tl.Len && tl.Buffer[tl.Len-1].Timestamp != ""
 	tl.Shift(s)
 	return dropped
 }
 
-// Entries returns a copy of the ring's real entries, newest first: the ring is
-// pre-filled with empty slots (no timestamp), which are left out.
+// Entries returns a copy of the ring's real entries, newest first, at most Len of them:
+// the ring is pre-filled with empty slots (no timestamp), which are left out.
 func (tl *HttpLog) Entries() []HttpMessage {
+	entries, _ := tl.EntriesAndLen()
+	return entries
+}
+
+// EntriesAndLen is Entries plus the ring's size, read in the same critical section (a
+// Resize may change it).
+func (tl *HttpLog) EntriesAndLen() ([]HttpMessage, int) {
 	tl.L.Lock()
 	defer tl.L.Unlock()
-	out := make([]HttpMessage, 0, len(tl.Buffer))
-	for _, m := range tl.Buffer {
+	limit := len(tl.Buffer)
+	if tl.Len < limit {
+		limit = tl.Len
+	}
+	out := make([]HttpMessage, 0, limit)
+	for _, m := range tl.Buffer[:limit] {
 		if m.Timestamp != "" {
 			out = append(out, m)
 		}
 	}
-	return out
+	return out, tl.Len
 }
 
 // Resize sets the ring's capacity to sz, keeping the newest entries that fit, in a fresh

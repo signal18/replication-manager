@@ -21,15 +21,14 @@ func TestHttpLogAddReportDropBoundsAndCounts(t *testing.T) {
 		}
 	}
 	entries := tl.Entries()
-	// Shift keeps Len previous entries plus the new one: Len+1 real entries at most
-	if len(entries) != 4 {
-		t.Fatalf("want 4 entries kept, got %d", len(entries))
+	if len(entries) != 3 {
+		t.Fatalf("want 3 entries kept (the hard max), got %d", len(entries))
 	}
-	if entries[0].Text != "m9" || entries[3].Text != "m6" {
-		t.Fatalf("want newest first m9..m6, got %s..%s", entries[0].Text, entries[3].Text)
+	if entries[0].Text != "m9" || entries[2].Text != "m7" {
+		t.Fatalf("want newest first m9..m7, got %s..%s", entries[0].Text, entries[2].Text)
 	}
-	if drops != 6 {
-		t.Fatalf("want 6 drops (10 added, 4 kept), got %d", drops)
+	if drops != 7 {
+		t.Fatalf("want 7 drops (10 added, 3 kept), got %d", drops)
 	}
 }
 

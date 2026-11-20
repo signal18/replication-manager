@@ -24,7 +24,9 @@ func TestAccessLogPathKeepsSecretsOut(t *testing.T) {
 		{"/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/secret-login",
 			map[string]string{"clusterName": "c", "serverName": "db1", "serverPort": "3306"},
 			"/api/clusters/c/servers/db1/3306/secret-login"},
-		{"/api/x/{n:[0-9]{1,3}}", map[string]string{"n": "42"}, "/api/x/42"},
+		{"/api/x/{clusterName:[a-z]{1,3}}/{n}", map[string]string{"clusterName": "abc", "n": "42"}, "/api/x/abc/{n}"},
+		// an allowlist: a variable not known to be safe is never logged by value
+		{"/api/reveal/{hash}/{otp}", map[string]string{"hash": "h4sh", "otp": "123456"}, "/api/reveal/{hash}/{otp}"},
 		{"", nil, "/api/raw"},
 	}
 	for _, c := range cases {
@@ -44,7 +46,7 @@ func TestAPIAccessLogMiddlewareRedactsAndIsBounded(t *testing.T) {
 	router.HandleFunc("/api/clusters/{clusterName}/settings/actions/set/{settingName}/{settingValue:.*}", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusForbidden)
 	})
-	router.HandleFunc("/api/global/access-logs", func(w http.ResponseWriter, r *http.Request) {})
+	router.HandleFunc("/api/clusters/{clusterName}/topology/servers", func(w http.ResponseWriter, r *http.Request) {})
 	router.HandleFunc("/static/x", func(w http.ResponseWriter, r *http.Request) {})
 
 	for i := 0; i < 5; i++ {
@@ -52,16 +54,16 @@ func TestAPIAccessLogMiddlewareRedactsAndIsBounded(t *testing.T) {
 		req.Header.Set("Authorization", "Bearer eyJhbGciOiJSUzI1NiJ9.bearer-secret.sig")
 		router.ServeHTTP(httptest.NewRecorder(), req)
 	}
-	// not recorded: the access log's own reads, and paths outside /api/
-	router.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "/api/global/access-logs", nil))
+	// not recorded: a successful read (the GUI's polling), and paths outside /api/
+	router.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "/api/clusters/dev3/topology/servers", nil))
 	router.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "/static/x", nil))
 
 	snap := repman.APIAccessLogs.snapshot()
-	if len(snap.Buffer) != 3 { // a ring of 2 keeps Len+1 entries (HttpLog.Shift)
-		t.Fatalf("want 3 entries kept, got %d", len(snap.Buffer))
+	if len(snap.Buffer) != 2 {
+		t.Fatalf("want 2 entries kept (the hard max), got %d", len(snap.Buffer))
 	}
-	if snap.Dropped != 2 {
-		t.Fatalf("want 2 dropped, got %d", snap.Dropped)
+	if snap.Dropped != 3 {
+		t.Fatalf("want 3 dropped, got %d", snap.Dropped)
 	}
 	for _, e := range snap.Buffer {
 		for _, secret := range []string{"s3cret", "qwerty", "bearer-secret", "Bearer", "token="} {
@@ -72,6 +74,17 @@ func TestAPIAccessLogMiddlewareRedactsAndIsBounded(t *testing.T) {
 		if !strings.Contains(e.Text, "GET /api/clusters/dev3/settings/actions/set/db-servers-credential/{settingValue} 403") || e.Level != "WARN" {
 			t.Fatalf("unexpected access entry %s %s", e.Level, e.Text)
 		}
+	}
+
+	// a successful write is recorded; a newline in a path never reaches the entry
+	router.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("POST", "/api/clusters/dev3/topology/servers", nil))
+	router.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("POST", "/api/clusters/forged%0aline/topology/servers", nil))
+	snap = repman.APIAccessLogs.snapshot()
+	if !strings.Contains(snap.Buffer[1].Text, "POST /api/clusters/dev3/topology/servers 200") || snap.Buffer[1].Level != "INFO" {
+		t.Fatalf("a successful write must be recorded, got %s %s", snap.Buffer[1].Level, snap.Buffer[1].Text)
+	}
+	if strings.ContainsAny(snap.Buffer[0].Text, "\n\r") || !strings.Contains(snap.Buffer[0].Text, "/api/clusters/forgedline/topology/servers 200") {
+		t.Fatalf("control characters must be dropped: %q", snap.Buffer[0].Text)
 	}
 
 	repman.Conf.LogAPIAccess = false
