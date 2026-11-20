@@ -44,10 +44,11 @@ type instanceLogRing struct {
 	dropped atomic.Uint64
 	// the collapse of identical consecutive entries (addCollapsing): the key and text of the
 	// newest entry and how many times it came in a row
-	mu       sync.Mutex
-	lastKey  string
-	lastText string
-	repeats  int
+	mu        sync.Mutex
+	lastKey   string
+	lastText  string
+	lastSince string
+	repeats   int
 }
 
 func newInstanceLogRing(size, defaultSize int) *instanceLogRing {
@@ -89,12 +90,12 @@ func (r *instanceLogRing) addCollapsing(key, level string, module int, text stri
 			Group:     s18log.GroupNone,
 			Level:     level,
 			Timestamp: now,
-			Text:      fmt.Sprintf("%s (repeated %d times)", r.lastText, r.repeats),
+			Text:      fmt.Sprintf("%s (repeated %d times since %s)", r.lastText, r.repeats, r.lastSince),
 			Module:    module,
 		})
 		return
 	}
-	r.lastKey, r.lastText, r.repeats = key, text, 1
+	r.lastKey, r.lastText, r.lastSince, r.repeats = key, text, now, 1
 	r.add(level, module, text)
 }
 
@@ -146,9 +147,16 @@ func accessLogVarLogged(name string) bool {
 	return strings.HasSuffix(name, "Name") || strings.HasSuffix(name, "Port")
 }
 
+// accessLogFieldMax bounds each logged field (T4): a long URL never fills the ring.
+const accessLogFieldMax = 300
+
 // accessLogClean drops the control characters of a logged field (a URL-decoded path may
-// carry a %0a newline, a user name comes from token claims).
+// carry a %0a newline, a user name comes from token claims) and cuts it at
+// accessLogFieldMax bytes.
 func accessLogClean(s string) string {
+	if len(s) > accessLogFieldMax {
+		s = s[:accessLogFieldMax] + "..."
+	}
 	return strings.Map(func(r rune) rune {
 		if r < 0x20 || r == 0x7f {
 			return -1
@@ -272,7 +280,9 @@ func (repman *ReplicationManager) apiAccessLogMiddleware(next http.Handler) http
 			return
 		}
 		if route := mux.CurrentRoute(r); route != nil {
-			if template, err := route.GetPathTemplate(); err == nil && accessLogProtocolRoutes[template] {
+			// only their "no" (500) and their successes: a refusal (401, 403) on them is recorded
+			// like any other
+			if template, err := route.GetPathTemplate(); err == nil && accessLogProtocolRoutes[template] && (status < 400 || status >= 500) {
 				if repman.Conf.IsEligibleForPrinting(config.ConstLogModTask, config.LvlDbg) {
 					repman.recordAPIAccessAt(r, status, time.Since(start), config.LvlDbg, config.ConstLogModTask)
 				}

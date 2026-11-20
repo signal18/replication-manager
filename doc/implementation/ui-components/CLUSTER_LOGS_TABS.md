@@ -153,9 +153,12 @@ Server side (`server/server_instance_logs.go`):
   compatibility contract of older dbjobs scripts), several times a second: they are
   recorded at DEBUG under the task module's verbosity only (`log-task-level` at debug,
   `IsEligibleForPrinting(ConstLogModTask, DEBUG)`), with the task name, and leave no trace
-  at the default level. Identical entries in a row (same method, path, status, user and
-  host, whatever the source port) collapse into one, "(repeated N times)" with the time
-  of the last, so a caller in a loop never floods the ring. A bounded display ring can still be flooded: a client sending refused calls in a
+  at the default level; a refusal (401, 403) on them is recorded like any other. Identical
+  entries in a row (same method, path, status, user and host, whatever the source port)
+  collapse into one, "(repeated N times since <first time>)" with the time of the last,
+  so a caller in a loop never floods the ring. Only strictly consecutive repeats collapse
+  (A, B, A, B stays four entries): it is not a general de-duplication. Each logged field
+  is cut at 300 bytes. A bounded display ring can still be flooded: a client sending refused calls in a
   loop pushes the older entries out; the security log file keeps the refused logins, and
   the full history is in the log files. Off-switch:
   `log-api-access` (T14), a global setting, live.

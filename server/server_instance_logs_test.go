@@ -155,10 +155,26 @@ func TestAPIAccessLogSkipsJobsProtocolAndCollapsesRepeats(t *testing.T) {
 	poll()
 	snap0 := repman.APIAccessLogs.snapshot()
 	if len(snap0.Buffer) != 1 || snap0.Buffer[0].Level != "DEBUG" ||
-		!strings.Contains(snap0.Buffer[0].Text, "/needs/mysqldump 500") || !strings.Contains(snap0.Buffer[0].Text, "(repeated 20 times)") {
+		!strings.Contains(snap0.Buffer[0].Text, "/needs/mysqldump 500") || !strings.Contains(snap0.Buffer[0].Text, "(repeated 20 times since ") {
 		t.Fatalf("want one collapsed DEBUG entry naming the task, got %+v", snap0.Buffer)
 	}
 	repman.APIAccessLogs = newInstanceLogRing(10, DefaultAPIAccessLogLength)
+
+	// a refusal on a polling route is recorded at the default level, like any refusal
+	repman.Conf.LogTaskLevel = 1
+	refused := mux.NewRouter()
+	refused.Use(repman.apiAccessLogMiddleware)
+	refused.HandleFunc("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/needs/{taskname}", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	})
+	refused.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("POST", "/api/clusters/dev3/servers/db1/3306/needs/mysqldump", nil))
+	if snapR := repman.APIAccessLogs.snapshot(); len(snapR.Buffer) != 1 || snapR.Buffer[0].Level != "WARN" || !strings.Contains(snapR.Buffer[0].Text, "/needs/mysqldump 401") {
+		t.Fatalf("a refusal on a polling route must be recorded, got %+v", snapR.Buffer)
+	}
+	repman.APIAccessLogs = newInstanceLogRing(10, DefaultAPIAccessLogLength)
+	if got := accessLogClean(strings.Repeat("a", 1000)); len(got) != accessLogFieldMax+3 {
+		t.Fatalf("a logged field must be cut at %d bytes, got %d", accessLogFieldMax, len(got))
+	}
 
 	// identical refusals in a row from one host (any source port) collapse into one entry
 	for i := 0; i < 5; i++ {
@@ -167,7 +183,7 @@ func TestAPIAccessLogSkipsJobsProtocolAndCollapsesRepeats(t *testing.T) {
 		router.ServeHTTP(httptest.NewRecorder(), req)
 	}
 	snap := repman.APIAccessLogs.snapshot()
-	if len(snap.Buffer) != 1 || !strings.Contains(snap.Buffer[0].Text, "(repeated 5 times)") {
+	if len(snap.Buffer) != 1 || !strings.Contains(snap.Buffer[0].Text, "(repeated 5 times since ") {
 		t.Fatalf("want one collapsed entry, got %+v", snap.Buffer)
 	}
 	other := httptest.NewRequest("POST", "/api/clusters/dev3/actions/stop", nil)
