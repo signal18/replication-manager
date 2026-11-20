@@ -55,8 +55,24 @@ it is opened.
 The badge on a tab is the number of entries its in-memory buffer holds
 (`clusterLogs[key].buffer.length`, bounded by the server ring size), shown when it is
 above zero. It counts neither older history loaded with "Load older" nor the level or
-text filters; its tooltip says so. It is a `TagPill` (`tagpill` class), which the global
-span colour override in `styles/_global.scss` excludes. The tab label itself uses divs,
+text filters; its tooltip says so.
+
+The badge is a `CountPill` (`components/AlertBadge`): the count bubble of the header's
+domain pills, same round shape, font and white text, in the colour of the pill of the
+log's domain. The colours live in one place, `utility/domainPills.js`, which the header
+(Navbar, `HealthAlertBadge`) and the security score modal use too:
+
+| Tab | Colour of | Colour |
+|-----|-----------|--------|
+| Cluster Logs | Cluster health pill | red on a blocker, orange on a warning, green |
+| Job Logs | running-backup pill | teal (jobs have no state machine) |
+| Security Logs | Security pill | the security grade's colour while states are open, gray |
+| Workload Logs | Workload pill | purple while states are open, gray |
+| DDL Change Logs, Schema Logs | Schema pill | red on an ERROR state, cyan, gray |
+| Variable Change Logs | Config pill | red on ERROR, yellow on WARNING, blue, gray |
+
+`alertCount` is one of the classes the global span colour override in
+`styles/_global.scss` excludes, so the white text holds. The tab label itself uses divs,
 not spans, so its text follows the selected tab's colour.
 
 ## Remembered tab

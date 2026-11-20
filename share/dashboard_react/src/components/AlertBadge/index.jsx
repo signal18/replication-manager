@@ -4,6 +4,7 @@ import { HiBan, HiExclamation, HiRefresh } from 'react-icons/hi'
 import { BiSupport } from "react-icons/bi";
 import styles from './styles.module.scss'
 import CustomIcon from '../Icons/CustomIcon'
+import { clusterHealthColor } from '../../utility/domainPills'
 
 function AlertBadge({
   isBlocking = false,
@@ -62,7 +63,7 @@ function AlertBadge({
 // side at the top-right — blockers (red bubble, blinking) left of the
 // warnings (orange bubble).
 export function HealthAlertBadge({ blockers = 0, warnings = 0, text = 'Health', onClick, showText }) {
-  const colorScheme = blockers > 0 ? 'red' : warnings > 0 ? 'orange' : 'green'
+  const colorScheme = clusterHealthColor(blockers, warnings)
   const icon = blockers > 0 ? HiBan : HiExclamation
   return (
     <Badge
@@ -112,6 +113,20 @@ export function NetworkBadge({ tick, stalled = false, heartbeatFailed = false, t
       <CustomIcon icon={HiRefresh} />
       {showText ? label : ''}
     </Badge>
+  )
+}
+
+// CountPill is the count bubble of the header pills, standing on its own (a log tab's
+// count): same round shape, font and white text, in the colour of its domain's pill.
+// shade follows the header bubble of that domain (500, or 600 for schema and config).
+export function CountPill({ count, colorScheme = 'gray', shade = 500, blink = false }) {
+  return (
+    <Box
+      as='span'
+      className={`alertCount ${styles.alertCount} ${styles.inlineCount} ${blink ? styles.blinking : ''}`}
+      style={{ background: `var(--chakra-colors-${colorScheme}-${shade})`, color: 'white' }}>
+      {count}
+    </Box>
   )
 }
 

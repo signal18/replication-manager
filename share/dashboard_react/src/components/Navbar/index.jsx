@@ -30,6 +30,7 @@ import styles from './styles.module.scss'
 import RMButton from '../RMButton'
 import RMIconButton from '../RMIconButton'
 import TagPill from '../TagPill'
+import { securityColor, workloadColor, schemaColor, configColor } from '../../utility/domainPills'
 import { useTheme } from '../../ThemeProvider'
 import AddUserModal from '../Modals/AddUserModal'
 import ApiTokensModal from '../Modals/ApiTokensModal'
@@ -340,7 +341,7 @@ function Navbar({ username, user }) {
               />
               {clusterData?.securityScore?.grade && (
                 <AlertBadge
-                  colorScheme={(clusterData?.securityStates || []).length > 0 ? (GRADE_COLOR[clusterData.securityScore.grade] || 'orange') : 'gray'}
+                  colorScheme={securityColor(clusterData)}
                   icon={MdSecurity}
                   text='Security'
                   count={(clusterData?.securityStates || []).length}
@@ -349,25 +350,19 @@ function Navbar({ username, user }) {
                 />
               )}
               <AlertBadge
-                colorScheme={(clusterData?.workloadStates || []).length > 0 ? 'purple' : 'gray'}
+                colorScheme={workloadColor(clusterData)}
                 icon={RiSpeedFill}
                 text='Workload'
                 count={(clusterData?.workloadStates || []).length}
                 bubbleStyle={{
-                  background: `var(--chakra-colors-${(clusterData?.workloadStates || []).length > 0 ? 'purple' : 'gray'}-500)`,
+                  background: `var(--chakra-colors-${workloadColor(clusterData)}-500)`,
                   color: 'white',
                 }}
                 onClick={() => setIsWorkloadModalOpen(true)}
                 showText={!isMobile}
               />
               <AlertBadge
-                colorScheme={
-                  (clusterData?.schemaStates || []).some((s) => s.ErrType === 'ERROR')
-                    ? 'red'
-                    : (clusterData?.schemaStates || []).length > 0
-                      ? 'cyan'
-                      : 'gray'
-                }
+                colorScheme={schemaColor(clusterData)}
                 icon={MdSchema}
                 text='Schema'
                 count={(clusterData?.schemaStates || []).length}
@@ -379,25 +374,13 @@ function Navbar({ username, user }) {
                 showText={!isMobile}
               />
               <AlertBadge
-                colorScheme={
-                  (clusterData?.configStates || []).some((s) => s.ErrType === 'ERROR')
-                    ? 'red'
-                    : (clusterData?.configStates || []).some((s) => s.ErrType === 'WARNING')
-                      ? 'yellow'
-                      : (clusterData?.configStates || []).length > 0
-                        ? 'blue'
-                        : 'gray'
-                }
+                colorScheme={configColor(clusterData)}
                 icon={MdSettings}
                 text='Config'
                 count={(clusterData?.configStates || []).length}
                 blink={(clusterData?.configStates || []).some((s) => s.ErrType === 'ERROR')}
                 bubbleStyle={{
-                  background: `var(--chakra-colors-${
-                    (clusterData?.configStates || []).some((s) => s.ErrType === 'ERROR') ? 'red'
-                      : (clusterData?.configStates || []).some((s) => s.ErrType === 'WARNING') ? 'yellow'
-                        : (clusterData?.configStates || []).length > 0 ? 'blue' : 'gray'
-                  }-600)`,
+                  background: `var(--chakra-colors-${configColor(clusterData)}-600)`,
                   color: 'white',
                 }}
                 onClick={() => setIsConfigModalOpen(true)}
@@ -715,7 +698,6 @@ function Navbar({ username, user }) {
   )
 }
 
-const GRADE_COLOR = { A: 'green', B: 'teal', C: 'yellow', D: 'orange', F: 'red' }
 
 export default Navbar
 

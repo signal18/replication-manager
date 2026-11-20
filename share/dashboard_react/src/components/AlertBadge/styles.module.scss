@@ -56,3 +56,16 @@
 .blinking {
   animation: blink 1s infinite;
 }
+
+// the count bubble outside a header pill (CountPill): in the flow instead of on the pill's
+// corner, as wide as its number, in the font of the header pills (Chakra Badge)
+.inlineCount {
+  position: static;
+  width: auto;
+  min-width: rem(24);
+  padding: 0 rem(6);
+  border-radius: rem(12);
+  font-size: var(--chakra-fontSizes-xs);
+  font-weight: var(--chakra-fontWeights-bold);
+  line-height: 1;
+}
