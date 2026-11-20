@@ -17,7 +17,7 @@ import RMButton from '../../components/RMButton'
 import { getTablePct } from '../../utility/common'
 import Gauge from '../../components/Gauge'
 import AccordionComponent from '../../components/AccordionComponent'
-import { GeneralLogs, TaskLogs } from '../Dashboard/components/Logs'
+import ClusterLogsTabs from '../Dashboard/components/ClusterLogsTabs'
 import ConfirmModal from '../../components/Modals/ConfirmModal'
 import EngineSwitchModal from '../../components/Modals/EngineSwitchModal'
 import ColumnstoreRebalanceModal from '../../components/Modals/ColumnstoreRebalanceModal'
@@ -825,18 +825,9 @@ function Shards({ selectedCluster, user, onOpenSchedulerSettings, onOpenLogsSett
         />
       )}
 
-      {/* ── Logs ─────────────────────────────────────────────────────────── */}
-      <AccordionComponent
-        className={styles.accordion}
-        heading="Cluster Logs"
-        headerActions={onOpenLogsSettings ? <RMIconButton icon={HiCog} tooltip='Log Settings' onClick={onOpenLogsSettings} size='xs' variant='ghost' /> : null}
-        body={<GeneralLogs />}
-      />
-      <AccordionComponent
-        className={styles.accordion}
-        heading="Job Logs"
-        headerActions={onOpenLogsSettings ? <RMIconButton icon={HiCog} tooltip='Log Settings' onClick={onOpenLogsSettings} size='xs' variant='ghost' /> : null}
-        body={<TaskLogs />}
+      {/* ── Logs: the same tabs as the Dashboard's Logs section ─────────── */}
+      <ClusterLogsTabs
+        openSettings={{ logs: onOpenLogsSettings, scheduler: onOpenSchedulerSettings, monitoring: onOpenMonitoringSettings }}
       />
 
       {/* ── Schema-cache confirm modal ────────────────────────────────────── */}
