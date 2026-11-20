@@ -3711,6 +3711,8 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		if err := mycluster.SwitchProvDBDynamicResource(); err != nil {
 			return err
 		}
+	case "prov-app-dynamic-resource":
+		mycluster.Conf.ProvAppDynamicResource = !mycluster.Conf.ProvAppDynamicResource
 	case "replication-use-ssl":
 		mycluster.Conf.ReplicationSSL = !mycluster.Conf.ReplicationSSL
 	case "prov-db-docker-run-args-limit":
@@ -4850,6 +4852,11 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.SetDBCores(value)
 	case "prov-db-memory":
 		mycluster.SetDBMemorySize(value)
+	case "prov-app-dynamic-resource":
+		if isactive == nil {
+			return fmt.Errorf("prov-app-dynamic-resource must be true or false")
+		}
+		mycluster.Conf.ProvAppDynamicResource = *isactive
 	case "prov-db-dynamic-resource":
 		if isactive == nil {
 			return fmt.Errorf("prov-db-dynamic-resource must be true or false")

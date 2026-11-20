@@ -77,6 +77,12 @@ function DynamicConfigSettings({ selectedCluster, user }) {
       value: (<RMSwitch confirmTitle={'Confirm switch settings for prov-db-dynamic-resource?'} onChange={() => dispatch(switchSetting({ clusterName, setting: 'prov-db-dynamic-resource' }))} isDisabled={disabled} isChecked={cfg.provDbDynamicResource} />)
     },
     {
+      clusterSetting: 'prov-app-dynamic-resource',
+      key: 'Apply App Resize Live',
+      help: h(`**App Live Resize**\n\nWhen on, an app memory/cores/units (APU) change is applied to the RUNNING app live instead of a reprovision: the container cgroup moves on the orchestrator (OpenSVC v3 pg update; the cap lives on the slice when prov-db-docker-run-args-limit is off, otherwise the resize waits for the reprovision), the app configurator re-renders its files from the new size and the app's reload task runs (APP_RELOAD_COMMAND of the template, e.g. php-fpm USR2).\n\nConfig: \`prov-app-dynamic-resource\``, 'App Live Resize'),
+      value: (<RMSwitch confirmTitle={'Confirm switch settings for prov-app-dynamic-resource?'} onChange={() => dispatch(switchSetting({ clusterName, setting: 'prov-app-dynamic-resource' }))} isDisabled={disabled} isChecked={cfg.provAppDynamicResource} />)
+    },
+    {
       clusterSetting: 'prov-orchestrator-deployment-upgrade-on-start',
       key: 'Reapply Deployment On Start',
       help: h(`**Reapply Deployment On Start**\n\nOn each node (re)start during a rolling restart/upgrade, re-render and push the full deployment (service config: the plan-driven container memory cap, image, run_args, env) to the orchestrator BEFORE start, so the recreated container comes up on the CURRENT config instead of the one written at the last provision. This is how a plan/cap change actually lands on restart. The IMAGE is never changed by a restart: the service keeps the image it runs, only the rolling upgrade moves it to prov-db-image. The live in-plan resize (pg_mem_limit + MySQL SET GLOBAL) is separate and unaffected; this only raises the outer ceiling. On by default.\n\nConfig: \`prov-orchestrator-deployment-upgrade-on-start\``, 'Reapply Deployment On Start'),

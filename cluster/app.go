@@ -16,6 +16,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/signal18/replication-manager/config"
@@ -78,6 +79,7 @@ type App struct {
 	LastRefreshEnd        time.Time `json:"lastRefreshEnd"`
 	LastRefreshDurationMs int64     `json:"lastRefreshDurationMs"`
 	LastRefreshError      string    `json:"lastRefreshError"`
+	LiveResizeError       string    `json:"liveResizeError"`  // last failed live resize (prov-app-dynamic-resource, APPERR011), "" once one goes through
 	DbProvisionError      string    `json:"dbProvisionError"` // last app database auto-create refusal (#1870), "" once one goes through
 	RefreshInProgress     bool      `json:"refreshInProgress"`
 	// Route-scoped debounce counters are the single source of truth.
@@ -95,6 +97,17 @@ type App struct {
 
 	// CheckResults: the last result of each check, by check, for its interval (#2362).
 	CheckResults map[string]appCheckResult `json:"-"`
+
+	// liveResizeMutex serializes the live resizes of the app (ResizeAppDynamicResources);
+	// liveResizePending coalesces the plan changes that arrive meanwhile into one more.
+	liveResizeMutex   sync.Mutex
+	liveResizePending atomic.Bool
+	pgCapInFlight     atomic.Bool  // ApplyOpenSVCPGCapIfPending runs one at a time
+	pgCapAttempts     atomic.Int32 // failed pg updates after start, bounded (appPGCapMaxAttempts)
+	// liveResizeArmedReprov: the reprovision cookie was armed by a failed live resize and by
+	// nothing else since, so a later successful one may clear it. Reset by every other arm
+	// (SetReprovCookie) and by every removal (DelReprovisionCookie).
+	liveResizeArmedReprov atomic.Bool
 
 	*sync.Mutex `json:"-"`
 }
@@ -378,6 +391,7 @@ func (app *App) Refresh() error {
 		app.SetState(stateAppRunning)
 		app.SetFailCount(0)
 		app.SetWarnCount(0)
+		app.ApplyOpenSVCPGCapIfPending()
 	case stateFailed:
 		if app.GetFailCount() >= cluster.Conf.MaxFail {
 			app.SetState(stateFailed)
@@ -401,6 +415,7 @@ func (app *App) Refresh() error {
 		// App (BackendsStateChange() calls Refresh() directly and is not
 		// covered by the async single-flight guarantee in
 		// maybeRefreshAppsAsync).
+		app.ApplyOpenSVCPGCapIfPending() // the container runs: a check (route, DNS) warns
 		warnThreshold := appErrorDebounceThreshold(cluster.Conf)
 		warnCount := app.IncWarnCount(warnThreshold)
 		if warnCount >= warnThreshold {
