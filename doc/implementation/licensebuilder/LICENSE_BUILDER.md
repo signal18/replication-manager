@@ -46,8 +46,8 @@ The modes differ in identity, expiry and delivery:
   commit per build; the same package again is a no-op), with the same git token and step as the
   online `-pull` delivery (`pushFiles`). The client's GitLab group members read it there and load it
   with `license-pull`. The project must exist: the builder's token only reads and writes repositories
-  (`read_repository`, `write_repository`), so the CRM creates `<company>/licences` when it queues the
-  builds. `GET /packages/<uri>.tar.gz` still serves the package to an admin.
+  (`read_repository`, `write_repository`), so the back office, which owns GitLab, creates
+  `<company>/licences` for each air-gapped support client. `GET /packages/<uri>.tar.gz` still serves the package to an admin.
 - **Online** (`airGapped:false`): URI is the instance's full `<domain>.<subdomain>.<zone>`, expiry
   passed separately (`LICENCE_EXPIRY`, the contract end). Only the `plugin-licence` is built (no
   release plugins, no `license-pull` self-test — that exercises the air-gapped install path); the
