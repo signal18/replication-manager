@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/opensvc"
 )
 
 // App live resize (prov-app-dynamic-resource): an app follows a change of its plan
@@ -228,11 +229,12 @@ func (cluster *Cluster) openSVCResizeApp(app *App) (bool, error) {
 		return true, nil
 	}
 	// a failover app on an unknown node: the keywords once, the pg update where it runs
-	if _, _, _, err := cluster.openSVCWriteObjectKeywords(app.ServiceName, "DEFAULT", kv); err != nil {
+	ns, kind, svcname, err := cluster.openSVCWriteObjectKeywords(app.ServiceName, "DEFAULT", kv)
+	if err != nil {
 		return false, err
 	}
 	if err := appOnNodes(nodes, true, func(node string) error {
-		return cluster.openSVCApplyServicePGKeywords(app.ServiceName, []string{node}, kv)
+		return cluster.openSVCSettleAndPGUpdate(svc, ns, kind, svcname, node)
 	}); err != nil {
 		return false, err
 	}
@@ -265,11 +267,31 @@ func (cluster *Cluster) reloadAppConfiguration(app *App) error {
 			"App %s: no %s in its template, the new configuration applies at its next start", app.Name, appReloadCommandVariable)
 		return nil
 	}
+	if !cluster.openSVCAppHasSection(svc, app, appReloadTask) {
+		// a service written before its template had a reload command
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn,
+			"App %s: its service has no %s yet (update-opensvc-template or a reprovision adds it): the new configuration applies at its next start", app.Name, appReloadTask)
+		return nil
+	}
 	return appOnNodes(nodes, anyNode, func(node string) error {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlInfo,
 			"App %s: reloading with om %s instance run --rid %s --node %s", app.Name, app.ServiceName, appReloadTask, node)
 		return svc.RunTask(cluster.Name, app.ServiceName, node, appReloadTask, "")
 	})
+}
+
+// openSVCAppHasSection tells whether the app's service definition on the orchestrator has
+// the section (an app provisioned before the section existed has not).
+func (cluster *Cluster) openSVCAppHasSection(svc opensvc.Collector, app *App, section string) bool {
+	parts := strings.SplitN(app.ServiceName, "/", 3)
+	if len(parts) != 3 || !svc.IsV3() {
+		return true // nothing to check: let the run say
+	}
+	raw, err := svc.GetObjectConfigFileV3(parts[0], parts[1], parts[2])
+	if err != nil {
+		return true
+	}
+	return strings.Contains(string(raw), "["+section+"]")
 }
 
 // ResizeAppDynamicResources applies the app's current plan live (prov-app-dynamic-resource).
@@ -299,6 +321,7 @@ func (cluster *Cluster) ResizeAppDynamicResources(app *App, grow bool) error {
 		"App %s: live resize (%s) to %sM / %s cores (prov-app-dynamic-resource)", app.Name, dir, mem, cores)
 
 	var err error
+	capMoved := false
 	if !grow {
 		// shrink: the smaller configuration first, the cap after
 		if err = cluster.reloadAppConfiguration(app); err == nil {
@@ -312,6 +335,7 @@ func (cluster *Cluster) ResizeAppDynamicResources(app *App, grow bool) error {
 		var applied bool
 		if applied, err = cluster.resourceResizer().ConfigResizeApp(app, grow); err == nil {
 			if applied {
+				capMoved = true
 				err = cluster.reloadAppConfiguration(app)
 			} else {
 				app.SetReprovCookie()
@@ -321,8 +345,15 @@ func (cluster *Cluster) ResizeAppDynamicResources(app *App, grow bool) error {
 		}
 	}
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn, "App %s: live resize (%s) failed: %s", app.Name, dir, err)
+		// the plan is stored but not in force: the reprovision applies it, APPERR011 says why
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn, "App %s: live resize (%s) failed, the plan applies at the reprovision: %s", app.Name, dir, err)
 		app.setLiveResizeError(err.Error())
+		app.SetReprovCookie()
+		if capMoved {
+			// the cap is at the new plan, the configuration is not: what is in place is
+			// unknown, so the next apply takes its caller's direction instead of comparing
+			app.appliedMem, app.appliedCores = "", ""
+		}
 		return err
 	}
 	app.appliedMem, app.appliedCores = mem, cores

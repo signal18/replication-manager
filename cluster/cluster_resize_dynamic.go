@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/opensvc"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/state"
 	logsql "github.com/sirupsen/logrus"
@@ -215,18 +216,24 @@ func (cluster *Cluster) openSVCApplyServicePGKeywords(serviceName string, nodes 
 	}
 	var errs []error
 	for _, node := range nodes {
-		// 2. The pg update reads the node's LOADED config; fired right after the PUT it
-		// would re-apply the previous limits (#1792). Wait for the reload first.
-		if err := svc.WaitObjectConfigSettledV3(node, ns, kind, svcname, openSVCConfigSettleTimeout); err != nil {
+		if err := cluster.openSVCSettleAndPGUpdate(svc, ns, kind, svcname, node); err != nil {
 			errs = append(errs, err)
-			continue
-		}
-		// 3. Apply the new cgroup limits live on the running node.
-		if err := svc.PGUpdateInstanceV3(node, serviceName, ""); err != nil {
-			errs = append(errs, fmt.Errorf("pg update on %s: %w", node, err))
 		}
 	}
 	return errors.Join(errs...)
+}
+
+// openSVCSettleAndPGUpdate applies the pg keywords already written to the object on one
+// node: the pg update reads the node's LOADED config; fired right after the PUT it would
+// re-apply the previous limits (#1792), so it waits for the reload first.
+func (cluster *Cluster) openSVCSettleAndPGUpdate(svc opensvc.Collector, ns, kind, svcname, node string) error {
+	if err := svc.WaitObjectConfigSettledV3(node, ns, kind, svcname, openSVCConfigSettleTimeout); err != nil {
+		return err
+	}
+	if err := svc.PGUpdateInstanceV3(node, ns+"/"+kind+"/"+svcname, ""); err != nil {
+		return fmt.Errorf("pg update on %s: %w", node, err)
+	}
+	return nil
 }
 
 // openSVCWriteServiceKeywords rewrites keywords of one section of the server's service

@@ -56,6 +56,15 @@ command of the same container), and a secret-typed variable is never used as one
 [128 MB, pool/2]). The files themselves are the ruleset's (`moduleset_php.svc.mrm.db.json`,
 a collector export, never hand-written).
 
+## Failure
+
+A failed live resize leaves the plan stored but not in force: it arms the reprovision
+cookie (the plan applies there) and raises APPERR011. When the cap had already moved on a
+grow, the recorded plan is cleared, so the next apply takes its caller's direction instead
+of comparing with a state that is not known. An app whose service was written before its
+template had a reload command has no `task#reload` yet: the reload is skipped with a warning
+until `update-opensvc-template` or a reprovision adds it.
+
 ## State and log
 
 A failed live resize sets `App.LiveResizeError`, raised as `APPERR011` (WARN, app level,

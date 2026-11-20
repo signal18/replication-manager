@@ -69,6 +69,7 @@ func TestAppPlanGrows(t *testing.T) {
 		{"", "", "1", "2", true},
 		{"", "", "2", "1", false},
 		{"2048", "1024", "1", "4", false}, // the memory decides the order
+		{"1024", "2048", "4", "1", true},  // memory up, cores down: a grow (the cap first)
 	} {
 		if got := appPlanGrows(tc.om, tc.nm, tc.oc, tc.nc); got != tc.grow {
 			t.Errorf("%+v: grow=%v", tc, got)
