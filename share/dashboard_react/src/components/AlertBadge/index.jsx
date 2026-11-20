@@ -119,6 +119,8 @@ export function NetworkBadge({ tick, stalled = false, heartbeatFailed = false, t
 // CountPill is the count bubble of the header pills, standing on its own (a log tab's
 // count): same round shape, font and white text, in the colour of its domain's pill.
 // shade follows the header bubble of that domain (500, or 600 for schema and config).
+// colorScheme must be a Chakra scheme with a shade scale (utility/domainPills returns only
+// those): another name gives an undefined CSS variable, so no background.
 export function CountPill({ count, colorScheme = 'gray', shade = 500, blink = false }) {
   return (
     <Box

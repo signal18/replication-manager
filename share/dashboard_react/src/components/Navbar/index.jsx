@@ -698,7 +698,6 @@ function Navbar({ username, user }) {
   )
 }
 
-
 export default Navbar
 
 export function TextLogo({ className, text = "REPLICATION MANAGER", height = "50px" }) {

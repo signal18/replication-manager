@@ -36,7 +36,6 @@ const CHECK_LABELS = {
   hasLastLTS:          'Running a supported LTS release',
 }
 
-
 function SecurityScoreModal({ isOpen, closeModal }) {
   const { theme } = useTheme()
   // Global CSS forces --text-color !important on badge text, so a 'subtle'

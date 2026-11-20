@@ -87,7 +87,8 @@ const CLUSTER_LOG_TABS = [
       'Runtime variable changes detected on any server (SET GLOBAL). Shows before/after values. Requires monitoring-variable-change = true.',
     settings: 'monitoring',
     settingsTooltip: 'Monitoring Settings',
-    pill: ({ clusterData }) => ({ colorScheme: configColor(clusterData), shade: 600 }),
+    // blinks on a config ERROR state, like the Config pill of the header
+    pill: ({ clusterData }) => ({ colorScheme: configColor(clusterData), shade: 600, blink: configColor(clusterData) === 'red' }),
     Component: VariableChangeLogs
   }
 ]
@@ -120,7 +121,7 @@ function LogTabLabel({ title, description, count, pill }) {
       {count > 0 && (
         <Tooltip label='Entries in the live buffer (not counting older history or filters)' placement='top' hasArrow>
           <Box>
-            <CountPill count={count} colorScheme={pill.colorScheme} shade={pill.shade} />
+            <CountPill count={count} colorScheme={pill.colorScheme} shade={pill.shade} blink={pill.blink} />
           </Box>
         </Tooltip>
       )}
@@ -184,7 +185,7 @@ LogTabLabel.propTypes = {
   title: PropTypes.string.isRequired,
   description: PropTypes.string,
   count: PropTypes.number,
-  pill: PropTypes.shape({ colorScheme: PropTypes.string, shade: PropTypes.number })
+  pill: PropTypes.shape({ colorScheme: PropTypes.string, shade: PropTypes.number, blink: PropTypes.bool })
 }
 
 ClusterLogsTabs.propTypes = {
