@@ -71,7 +71,7 @@ AppUnitSlider.propTypes = {
   onChange: PropTypes.func,
 }
 
-const GeneralSection = ({ clusterName, appId, appName, appHost, config, appConfig, dockerTemplates, substitution, user }) => {
+const GeneralSection = ({ clusterName, appId, appName, appHost, config, appConfig, dynamicConfigStatus = '', dockerTemplates, substitution, user }) => {
 
   const dispatch = useDispatch();
   const [isTemplatePreviewOpen, setIsTemplatePreviewOpen] = useState(false)
@@ -496,6 +496,7 @@ const GeneralSection = ({ clusterName, appId, appName, appHost, config, appConfi
           />
         )
       },
+      ...(provAppApplyDynamicConfig ? [{ key: 'PHP sizing applied', value: <Text>{dynamicConfigStatus || 'not resized since the start of the monitor'}</Text> }] : []),
       ...(provAppApplyDynamicConfig ? [
         ['PHP-FPM pool directory', 'prov-app-php-fpm-pool-dir', provAppPhpFpmPoolDir, '/usr/local/etc/php-fpm.d', 'Directory where the image reads its php-fpm pool files'],
         ['PHP ini directory', 'prov-app-php-ini-dir', provAppPhpIniDir, '/usr/local/etc/php/conf.d', 'Directory where the image reads its PHP ini files'],
@@ -654,7 +655,7 @@ const GeneralSection = ({ clusterName, appId, appName, appHost, config, appConfi
     appMonitorPath, appMonitorExpectStatus, onSaveMonitorPath, onSaveMonitorExpectStatus, appMonitorCertExpireDays, onSaveMonitorCertExpireDays, appMonitorInterval, onSaveMonitorInterval,
     appS3Provider, onS3ProviderChange, appStateful, onStatefulChange,
     provAppApplyDynamicConfig, onDynamicConfigChange, provAppPhpFpmPoolDir, provAppPhpIniDir, provAppPhpFpmPool,
-    provAppPhpProcessMemory, provAppPhpReservedMemory, onSavePhpSetting,
+    provAppPhpProcessMemory, provAppPhpReservedMemory, onSavePhpSetting, dynamicConfigStatus,
     isUnitMode, isManualMode, isLegacyMode,
     appSizingMode, clusterSizingMode, provAppSizingMode,
     isLegacyAppInUnitCluster, derivedUnitFromResources,

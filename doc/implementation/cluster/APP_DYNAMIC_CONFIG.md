@@ -60,7 +60,13 @@ The service definition gets, when the switch is on (`openSVCAddAppDynamicConfigS
 At start, php-fpm reads the files of the plan. A plan change through
 `prov-app-memory`, `prov-app-cpu-cores`, `prov-app-units` or a PHP key calls
 `App.onAppPlanChange`, which runs `ApplyAppDynamicConfig` in a goroutine (never on the
-monitoring loop, F2; serialized per app by `App.dynamicConfigMutex`):
+monitoring loop, F2). The applies of an app are serialized (`App.dynamicConfigMutex`) and
+coalesced (`App.dynamicConfigPending`): at most one runs and one waits, and the waiting one
+reads the plan in force when it starts, so a burst of changes never piles up goroutines.
+Each run request is bounded by the orchestrator client timeout; OpenSVC queues the run and
+answers, the script's wait happens on the node. The outcome (sizing, nodes the reload was
+sent to, or why nothing was written) is `App.DynamicConfigStatus`, in the app API and the app
+Overview ("PHP sizing applied"):
 
 1. the memory cap the container runs under is read from the service definition on the
    orchestrator (`--memory` of `container#app` `run_args`, `openSVCAppMemoryCapMB`): a
@@ -116,7 +122,9 @@ existing ACL), shown in the app Overview (GUI), and template keys (cloud18-templ
 - OpenSVC docker/podman only. Other orchestrators get the sizing in the keys only (log line).
 - The web server workers are not sized: the PHP templates' nginx uses `worker_processes auto`.
 - The run is asynchronous on the OpenSVC side: replication-manager knows the request was
-  accepted, the result is in the node's log. A tracked state of the applied sizing per node
-  (and a reconcile against `pm.status_path`) is the next step (F5/F7).
+  accepted (`DynamicConfigStatus`), the script's result is in the node's log. A state per node
+  read back from the container (`pm.status_path`) is the next step (F5/F7).
+- `pm.max_requests` (500), `process_control_timeout` (30 s) and the 8 workers per core are
+  constants for now.
 - Plain apps have no live cgroup resize yet (their memory change arms a reprovision); the
   live path pays off on uncapped apps and on every shrink.

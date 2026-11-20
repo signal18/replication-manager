@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/opensvc"
@@ -300,7 +301,11 @@ func appMeasureMB(v string) int {
 // AppPHPSizing is the PHP sizing of the app's current plan, within capMB when the
 // container runs under a smaller memory cap than the plan (0: no cap to respect).
 func (cluster *Cluster) AppPHPSizing(app *App, capMB int) appPHPSizing {
-	memMB, _ := config.ParseUnitMeasurementToInt("M,bytes,required", cluster.GetAppMemory(app.AppConfig), true)
+	memMB, err := config.ParseUnitMeasurementToInt("M,bytes,required", cluster.GetAppMemory(app.AppConfig), true)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn,
+			"App %s: memory %q not understood, PHP sized at the floor (2 workers): %s", app.Name, cluster.GetAppMemory(app.AppConfig), err)
+	}
 	if capMB > 0 && capMB < memMB {
 		memMB = capMB
 	}
@@ -390,17 +395,35 @@ func (cluster *Cluster) openSVCPushAppDynamicConfigKeys(svc opensvc.Collector, a
 	return s, script64, nil
 }
 
-// appMemoryCapRe reads the docker memory cap of an app container's run_args (--memory=1024m).
-var appMemoryCapRe = regexp.MustCompile(`--memory=(\d+)m\b`)
+// appMemoryCapRe reads the docker memory cap of an app container's run_args, in every form
+// docker takes: --memory=1024m, --memory 1g, -m 512m, -m512m, a size in bytes.
+var appMemoryCapRe = regexp.MustCompile(`(?:^|\s)(?:--memory[=\s]+|-m\s*=?\s*)(\d+)([bkmgBKMG]?)(?:\s|$)`)
 
-// appRunArgsMemoryCapMB is the docker memory cap in MB of a run_args value, 0 without one.
+// appRunArgsMemoryCapMB is the docker memory cap in MB of a run_args value, 0 without one
+// (the last one wins, as for docker).
 func appRunArgsMemoryCapMB(runArgs string) int {
-	m := appMemoryCapRe.FindStringSubmatch(runArgs)
-	if m == nil {
+	all := appMemoryCapRe.FindAllStringSubmatch(runArgs, -1)
+	if len(all) == 0 {
 		return 0
 	}
-	mb, _ := strconv.Atoi(m[1])
-	return mb
+	m := all[len(all)-1]
+	n, err := strconv.ParseInt(m[1], 10, 64)
+	if err != nil {
+		return 0
+	}
+	switch strings.ToLower(m[2]) {
+	case "g":
+		n *= 1024
+	case "m":
+	case "k":
+		n /= 1024
+	default: // bytes
+		n /= 1024 * 1024
+	}
+	if n < 1 {
+		n = 1 // a cap under 1 MB is still a cap
+	}
+	return int(n)
 }
 
 // openSVCAppMemoryCapMB is the memory cap container#app runs under, as its service
@@ -448,6 +471,8 @@ func (cluster *Cluster) ApplyAppDynamicConfig(app *App) error {
 	}
 	app.dynamicConfigMutex.Lock()
 	defer app.dynamicConfigMutex.Unlock()
+	// what arrived before this point is applied by this run, which reads the plan now
+	app.dynamicConfigPending.Store(false)
 	svc := cluster.OpenSVCConnect()
 	capMB, err := cluster.openSVCAppMemoryCapMB(svc, app)
 	if err != nil {
@@ -455,6 +480,7 @@ func (cluster *Cluster) ApplyAppDynamicConfig(app *App) error {
 		// files OpenSVC installs at once beyond it
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn,
 			"App %s: memory cap of the container not read, PHP sizing left as it is until the next provision: %s", app.Name, err)
+		app.setDynamicConfigStatus("not applied: memory cap of the container not read: " + err.Error())
 		return err
 	}
 	if planMB, _ := config.ParseUnitMeasurementToInt("M,bytes,required", cluster.GetAppMemory(app.AppConfig), true); capMB > 0 && capMB < planMB {
@@ -464,31 +490,67 @@ func (cluster *Cluster) ApplyAppDynamicConfig(app *App) error {
 	s, script64, err := cluster.openSVCPushAppDynamicConfigKeys(svc, app, capMB)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlErr, "App %s: PHP sizing not written: %s", app.Name, err)
+		app.setDynamicConfigStatus("not applied: " + err.Error())
 		return err
 	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlInfo,
 		"App %s: PHP sizing for %dM/%d cores: pm.max_children=%d start=%d spare=%d-%d memory_limit=%dM opcache=%dM (needs %dM); reloading php-fpm with om %s instance run --rid %s",
 		app.Name, s.MemoryMB, s.Cores, s.MaxChildren, s.StartServers, s.MinSpare, s.MaxSpare, s.MemoryLimitMB, s.OpcacheMB, s.RequiredMB, app.ServiceName, appPHPConfigTask)
-	var errs []string
+	// Each run request is bounded by the orchestrator client timeout; OpenSVC queues the
+	// run and answers, the script's own wait happens on the node.
+	var errs, sent []string
 	for _, node := range appDynamicConfigNodes(app) {
 		if err := svc.RunTask(cluster.Name, app.ServiceName, node, appPHPConfigTask, appPHPConfigRunEnv+"="+script64); err != nil {
 			errs = append(errs, node+": "+err.Error())
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn,
 				"App %s: %s not run on %s, the PHP sizing applies at its next start: %s", app.Name, appPHPConfigTask, node, err)
+		} else {
+			sent = append(sent, node)
 		}
 	}
+	status := fmt.Sprintf("%dM/%d cores: pm.max_children=%d memory_limit=%dM opcache=%dM; reload sent to %s (result in the node's OpenSVC log)",
+		s.MemoryMB, s.Cores, s.MaxChildren, s.MemoryLimitMB, s.OpcacheMB, strings.Join(sent, ", "))
+	if len(errs) > 0 {
+		status += "; not sent to " + strings.Join(errs, "; ")
+	}
+	app.setDynamicConfigStatus(status)
 	if len(errs) > 0 {
 		return fmt.Errorf("%s: %s", appPHPConfigTask, strings.Join(errs, "; "))
 	}
 	return nil
 }
 
+// setDynamicConfigStatus records the outcome of the last apply, stamped, under the app lock.
+func (app *App) setDynamicConfigStatus(status string) {
+	if app.Mutex == nil {
+		app.DynamicConfigStatus = time.Now().UTC().Format("2006-01-02 15:04 UTC") + ": " + status
+		return
+	}
+	app.Lock()
+	app.DynamicConfigStatus = time.Now().UTC().Format("2006-01-02 15:04 UTC") + ": " + status
+	app.Unlock()
+}
+
 // onAppPlanChange is called by the setters of the app's memory and cores: the app follows
-// its new plan off the API request.
+// its new plan off the API request. Changes that arrive while an apply waits are coalesced:
+// at most one apply runs and one waits, and the waiting one reads the plan in force when it
+// starts, so a burst of changes never piles up goroutines.
 func (app *App) onAppPlanChange() {
 	cluster := app.ClusterGroup
 	if cluster == nil || !cluster.AppDynamicConfigEnabled(app) {
 		return
 	}
-	go cluster.ApplyAppDynamicConfig(app)
+	if app.dynamicConfigPending.Swap(true) {
+		return // an apply is already waiting: it will read this plan
+	}
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlErr, "App %s: PHP sizing apply panicked: %v", app.Name, r)
+			}
+		}()
+		if err := cluster.ApplyAppDynamicConfig(app); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn, "App %s: PHP sizing: %s", app.Name, err)
+		}
+	}()
 }

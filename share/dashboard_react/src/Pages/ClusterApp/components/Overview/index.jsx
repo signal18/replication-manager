@@ -13,7 +13,7 @@ import PathSection from "./Paths";
 import Variables from "./Variables";
 import PropTypes from "prop-types";
 
-const Overview = ({ clusterName, config, appId, appName, appHost, appConfig, user, routeStatus }) => {
+const Overview = ({ clusterName, config, appId, appName, appHost, appConfig, dynamicConfigStatus, user, routeStatus }) => {
     const dispatch = useDispatch();
     const deployment = useSelector((state) => state.cluster?.app?.deployment);
     const substitution = useSelector((state) => state.cluster?.app?.substitution);
@@ -141,8 +141,8 @@ const Overview = ({ clusterName, config, appId, appName, appHost, appConfig, use
     }, [variables, substitution, agentList, actionProps, handleResolveVariables, user]);
 
     const GeneralSectionComponent = useMemo(() => {
-        return <GeneralSection clusterName={clusterName} appId={appId} appName={appName} appHost={appHost} config={config} appConfig={appConfig} dockerTemplates={dockerTemplates} substitution={substitution} user={user} />;
-    }, [clusterName, appId, appName, appHost, config, appConfig, dockerTemplates, substitution, user]);
+        return <GeneralSection clusterName={clusterName} appId={appId} appName={appName} appHost={appHost} config={config} appConfig={appConfig} dynamicConfigStatus={dynamicConfigStatus} dockerTemplates={dockerTemplates} substitution={substitution} user={user} />;
+    }, [clusterName, appId, appName, appHost, config, appConfig, dynamicConfigStatus, dockerTemplates, substitution, user]);
 
     if (!appConfig) {
         return (<Text>Waiting for config</Text>)

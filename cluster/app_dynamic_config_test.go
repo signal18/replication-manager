@@ -133,6 +133,26 @@ func TestAppPHPSizingWithinCap(t *testing.T) {
 	}
 }
 
+// A burst of plan changes queues at most one apply: the switch is off in the cluster under
+// test's orchestrator path only through AppDynamicConfigEnabled, so the coalescing flag is
+// checked directly.
+func TestAppDynamicConfigCoalesces(t *testing.T) {
+	_, a := phpTestApp(&config.Volume{Name: "v"})
+	a.dynamicConfigMutex.Lock() // an apply is running
+	a.dynamicConfigPending.Store(true)
+	for i := 0; i < 100; i++ {
+		a.onAppPlanChange() // must return at once: one apply already waits
+	}
+	if !a.dynamicConfigPending.Load() {
+		t.Fatal("the waiting apply is still pending")
+	}
+	a.dynamicConfigMutex.Unlock()
+	a.setDynamicConfigStatus("ok")
+	if !strings.HasSuffix(a.DynamicConfigStatus, " UTC: ok") {
+		t.Fatalf("status: %q", a.DynamicConfigStatus)
+	}
+}
+
 // The service gets the key files in the first volume, their mounts in container#app and
 // task#phpconfig in the PID namespace of container#app; nothing when off or without volume.
 func TestAppDynamicConfigSections(t *testing.T) {

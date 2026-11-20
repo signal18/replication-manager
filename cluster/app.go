@@ -16,6 +16,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/signal18/replication-manager/config"
@@ -30,9 +31,9 @@ const (
 	ErrAppTCPConnectFailed = "APPERR003"
 	ErrAppUnsupportedProto = "APPERR004"
 	ErrAppGatewayConflict  = "APPERR005"
-	ErrAppDbProvision      = "APPERR008" // database auto-create refused or failed (#1870)
-	ErrAppPingFailed       = "APPERR009" // app-monitor-mode ping: the ICMP echo to the app host failed (#1919)
-	ErrAppCertificate      = "APPERR010" // app-monitor-mode https-cert: certificate invalid or expiring (#2209)
+	ErrAppDbProvision      = "APPERR008"     // database auto-create refused or failed (#1870)
+	ErrAppPingFailed       = "APPERR009"     // app-monitor-mode ping: the ICMP echo to the app host failed (#1919)
+	ErrAppCertificate      = "APPERR010"     // app-monitor-mode https-cert: certificate invalid or expiring (#2209)
 	StateAppRunning        = stateAppRunning // exported for the MCP tools
 	appErrFailureThreshold = 3
 )
@@ -96,9 +97,16 @@ type App struct {
 	// CheckResults: the last result of each check, by check, for its interval (#2362).
 	CheckResults map[string]appCheckResult `json:"-"`
 
+	// DynamicConfigStatus: the last PHP sizing applied by prov-app-apply-dynamic-config
+	// (when, the sizing, the nodes the reload was sent to) or why it was not; shown in
+	// the app Overview. Written under the app lock (setDynamicConfigStatus).
+	DynamicConfigStatus string `json:"dynamicConfigStatus"`
+
 	// dynamicConfigMutex serializes the live PHP sizing applies of the app
-	// (ApplyAppDynamicConfig): each one renders the plan in force when it runs.
-	dynamicConfigMutex sync.Mutex
+	// (ApplyAppDynamicConfig); dynamicConfigPending coalesces the plan changes that
+	// arrive while one runs into one more apply, which reads the plan in force then.
+	dynamicConfigMutex   sync.Mutex
+	dynamicConfigPending atomic.Bool
 
 	*sync.Mutex `json:"-"`
 }

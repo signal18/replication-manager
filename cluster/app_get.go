@@ -141,6 +141,7 @@ type AppAPIView struct {
 	LastRefreshEnd        time.Time            `json:"lastRefreshEnd"`
 	LastRefreshDurationMs int64                `json:"lastRefreshDurationMs"`
 	LastRefreshError      string               `json:"lastRefreshError"`
+	DynamicConfigStatus   string               `json:"dynamicConfigStatus"`
 	RefreshInProgress     bool                 `json:"refreshInProgress"`
 	Process               *os.Process          `json:"process" swaggerignore:"true"`
 	RouteStatus           []config.RouteStatus `json:"routeStatus"`
@@ -185,6 +186,7 @@ func (app *App) GetAppAPIView() *AppAPIView {
 		LastRefreshEnd:        app.LastRefreshEnd,
 		LastRefreshDurationMs: app.LastRefreshDurationMs,
 		LastRefreshError:      app.LastRefreshError,
+		DynamicConfigStatus:   app.DynamicConfigStatus,
 		RefreshInProgress:     app.RefreshInProgress,
 		Process:               app.Process,
 		TemplateMD5Prov:       app.TemplateMD5Prov,
