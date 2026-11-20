@@ -253,6 +253,8 @@ func (repman *ReplicationManager) apiserver() {
 	// 301 to "/tmp" without its leading slash. A doubled slash or a ".." is now
 	// matched as typed (404 when nothing matches) instead of redirected.
 	router.SkipClean(true)
+	// every API call goes to the Access Logs ring (off with log-api-access = false)
+	router.Use(repman.apiAccessLogMiddleware)
 
 	router.Use(repman.RecoveryMiddleware)
 	router.Use(repman.cloud18TokenMiddleware)
@@ -475,6 +477,15 @@ func (repman *ReplicationManager) apiserver() {
 	router.Handle("/api/global/http-logs", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxGlobalLogs)),
+	))
+	// the instance Security Logs and Access Logs tabs (server/server_instance_logs.go)
+	router.Handle("/api/global/security-logs", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxGlobalSecurityLogs)),
+	))
+	router.Handle("/api/global/access-logs", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxGlobalAccessLogs)),
 	))
 	repman.apiMeetProtectedHandler(router)
 	repman.apiDatabaseUnprotectedHandler(router)

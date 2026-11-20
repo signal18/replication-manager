@@ -1,7 +1,11 @@
 # Cluster logs in tabs
 
 A cluster's logs are shown in one **Logs** section, one tab per log, instead of one
-collapsible section per log. Component: `share/dashboard_react/src/Pages/Dashboard/components/ClusterLogsTabs/index.jsx`.
+collapsible section per log. The instance's logs are shown the same way (see "Instance
+logs" below). Shared component: `share/dashboard_react/src/components/LogsTabs/index.jsx`
+(tabs, badges, remembered tab, gear); the cluster's tabs:
+`share/dashboard_react/src/Pages/Dashboard/components/ClusterLogsTabs/index.jsx`; the
+instance's: `GlobalLogsTabs` in `share/dashboard_react/src/Pages/GlobalItems/index.jsx`.
 
 ## Where it renders
 
@@ -94,3 +98,49 @@ stays on Clusters Local, and `Pages/ClusterList` shows "No local cluster on this
 instance". When the user has the Peer or For Sale tab (cloud18 on, the tab not
 disabled), a link under the message opens the first of them (`emptyLink`, built by
 Home); no link otherwise. A search that matches nothing still says "No cluster found!".
+
+## Instance logs
+
+The instance view (Clusters Local and the instance Dashboard) shows its logs as tabs of
+one Logs section (`GlobalLogsTabs`, remembered as `globalLogsTab`), Global Logs first and
+the default:
+
+| Tab | API | Badge colour |
+|-----|-----|--------------|
+| Global Logs | `GET /api/global/http-logs` (unchanged) | the monitor health pill: red on a blocker, orange on a warning, green |
+| Security Logs | `GET /api/global/security-logs` | orange (no header pill of its own) |
+| Access Logs | `GET /api/global/access-logs` | blue |
+
+The three are fetched by the instance tick of `Pages/Home` (next to `getGlobalLogs`) into
+`state.globalClusters.globalLogs.{general,security,access}`. The two new endpoints answer
+in the shape of `/api/global/http-logs` (`{ general: { buffer, len, dropped } }`) to the
+users with the `global-admin-show` grant, as `/api/global/http-logs` does (the handler
+checks it; the `/api/global/*` routes are not in the cluster ACL rule tables). Swagger:
+`docs/swagger.{json,yaml}`.
+
+Server side (`server/server_instance_logs.go`):
+
+- **Rings.** Each log is an `s18log.HttpLog` ring: a hard max from TOML
+  (`log-security-length`, default 200; `log-api-access-length`, default 500; 0 = the
+  default), drop-oldest in a fresh backing array, and the number of entries dropped since
+  start counted (`HttpLog.AddReportDrop`) and returned as `dropped` (T18). The sizes are
+  server-scope global settings, changed live (the ring is resized, keeping its newest
+  entries). The drop count is not raised as a state: a display ring wraps all the time on
+  a busy instance (the access ring at the GUI's polling rate), a state would stay open for
+  good and say nothing; the full history is in the log files. Nothing is written to the
+  config repo (T17).
+- **Security.** `logSecurityEvent` (API logins, refused logins and tokens, lockouts,
+  refused global settings, terminal refusals), the writer of the security log file, also
+  adds the event to the ring: `[security] <event>: <message> (user "<u>", from <addr>)`,
+  INFO for a `*_success` event, WARN otherwise.
+- **Access.** A router middleware (`apiAccessLogMiddleware`, on both the HTTP and the
+  HTTPS router) records each `/api/` call after it ran: method, path, status, duration,
+  user, remote address; level ERROR for a 5xx, WARN for a 4xx. The path is built from the
+  route template, never from the raw URL: no query string, and a variable whose name may
+  carry a secret (value, token, secret, pass, key, cred, code, route, peer) stays as its
+  placeholder (`.../set/db-servers-credential/{settingValue}`). No header, body or token
+  is ever read into it (F10). The reads of the access log itself are not recorded.
+  Off-switch: `log-api-access` (T14), a global setting, live.
+- Tests: `utils/s18log/httplog_ring_test.go` (bound, drop count, empty slots, resize),
+  `server/server_instance_logs_test.go` (path redaction, middleware: no secret in an
+  entry, bound and drops, off-switch, paths outside `/api/`; security ring).

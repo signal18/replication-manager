@@ -30,7 +30,7 @@ import {
   getBackups,
   getResticCurrentTask
 } from '../../redux/clusterSlice'
-import { getClusters, getMonitoredData, getClusterPeers, getClusterForSale, getGlobalAlerts, getGlobalMetrics, getGlobalLogs, getGlobalJobs } from '../../redux/globalClustersSlice'
+import { getClusters, getMonitoredData, getClusterPeers, getClusterForSale, getGlobalAlerts, getGlobalMetrics, getGlobalLogs, getGlobalSecurityLogs, getGlobalAccessLogs, getGlobalJobs } from '../../redux/globalClustersSlice'
 import { AppSettings } from '../../AppSettings'
 import { isAutoReloadPaused } from '../../utility/autoReloadPause'
 import styles from './styles.module.scss'
@@ -48,9 +48,8 @@ import Top from '../Top'
 import Shards from '../Shards'
 import PeerClusterList from '../PeerClusterList'
 import ClustersGlobalSettings from '../ClustersGlobalSettings'
-import GlobalItems, { GlobalLogs } from '../GlobalItems'
+import GlobalItems, { GlobalLogsTabs } from '../GlobalItems'
 import ResourceManager from '../ResourceManager'
-import AccordionComponent from '../../components/AccordionComponent'
 import TagPill from '../../components/TagPill'
 import Billing from '../Billing'
 import NewClusterModal from '../../components/Modals/NewClusterModal'
@@ -228,6 +227,8 @@ function Home() {
           }
           dispatch(getClusters({}))
           dispatch(getGlobalLogs({}))
+          dispatch(getGlobalSecurityLogs({}))
+          dispatch(getGlobalAccessLogs({}))
           dispatch(getGlobalAlerts({}))
         }
       }
@@ -250,6 +251,8 @@ function Home() {
           dispatch(getGlobalAlerts({}))
           dispatch(getGlobalMetrics({}))
           dispatch(getGlobalLogs({}))
+          dispatch(getGlobalSecurityLogs({}))
+          dispatch(getGlobalAccessLogs({}))
           dispatch(getGlobalJobs({}))
         }
       }
@@ -419,7 +422,7 @@ function Home() {
                 onClick={setDashboardTab}
                 emptyLink={sharedClustersTab ? { text: `Open ${sharedClustersTab}`, onClick: openSharedClusters } : null}
               />
-              {!isClusterOpenRef.current && <AccordionComponent heading={'Global Logs'} body={<GlobalLogs />} />}
+              {!isClusterOpenRef.current && <GlobalLogsTabs />}
             </Flex>,
             ...(isClusterOpenRef.current
               ? [

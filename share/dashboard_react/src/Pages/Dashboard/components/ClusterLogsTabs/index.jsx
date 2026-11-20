@@ -1,21 +1,14 @@
-import { useState } from 'react'
 import PropTypes from 'prop-types'
 import { useSelector } from 'react-redux'
-import { HStack, Tooltip, Box } from '@chakra-ui/react'
-import { HiCog } from 'react-icons/hi'
-import AccordionComponent from '../../../../components/AccordionComponent/index.jsx'
-import TabItems from '../../../../components/TabItems'
-import { CountPill } from '../../../../components/AlertBadge'
+import LogsTabs from '../../../../components/LogsTabs'
 import { clusterHealthColor, securityColor, workloadColor, schemaColor, configColor, JOBS_COLOR } from '../../../../utility/domainPills'
-import RMIconButton from '../../../../components/RMIconButton'
 import { GeneralLogs, TaskLogs, SecurityLogs, WorkloadLogs, DDLLogs, SchemaLogs, VariableChangeLogs } from '../Logs'
-import styles from './styles.module.scss'
 
 // The cluster's logs in one place: one tab per domain log, with the titles and in the
 // order of the sections they replace, Cluster Logs (the HA log) first and the default.
 // Each tab reuses the component that rendered its log as a separate section, fed by the
 // one call the cluster tick already makes (getClusterLogs, /topology/http-logs), so no
-// tab adds a request; TabItems mounts only the open tab. See
+// tab adds a request; the shared LogsTabs mounts only the open tab. See
 // doc/implementation/ui-components/CLUSTER_LOGS_TABS.md.
 // key: the log type in state.cluster.clusterLogs (the API's logType); settings: the
 // openSettings entry its gear opens; pill: the colour of the count badge, the one of the
@@ -93,99 +86,20 @@ const CLUSTER_LOG_TABS = [
   }
 ]
 
-const STORAGE_KEY = 'clusterLogsTab'
-
-// the entries a log buffer really holds: the server ring is pre-filled with empty slots,
-// so its length is always the ring size; count the entries with a timestamp, the rule the
-// Logs component itself uses to skip the empty slots
-function countEntries(log) {
-  return (log?.buffer || []).filter((entry) => entry?.timestamp).length
-}
-
-function readStoredTab() {
-  try {
-    const index = CLUSTER_LOG_TABS.findIndex((tab) => tab.key === localStorage.getItem(STORAGE_KEY))
-    return index >= 0 ? index : 0
-  } catch {
-    return 0
-  }
-}
-
-// a tab label: the log's name, a "?" tooltip explaining its content, and the number of
-// entries its buffer holds when it has any. Divs, not spans: the global stylesheet forces
-// every span to --text-color, which would not follow the selected tab's colour.
-function LogTabLabel({ title, description, count, pill }) {
-  return (
-    <HStack spacing={2}>
-      <Box>{title}</Box>
-      {count > 0 && (
-        <Tooltip label='Entries in the live buffer (not counting older history or filters)' placement='top' hasArrow>
-          <Box>
-            <CountPill count={count} colorScheme={pill.colorScheme} shade={pill.shade} blink={pill.blink} />
-          </Box>
-        </Tooltip>
-      )}
-      <Tooltip label={description} placement='top' hasArrow>
-        <Box className={styles.help}>?</Box>
-      </Tooltip>
-    </HStack>
-  )
-}
-
 function ClusterLogsTabs({ openSettings = {}, className }) {
   const clusterLogs = useSelector((state) => state.cluster.clusterLogs)
   const clusterData = useSelector((state) => state.cluster.clusterData)
   const clusterAlerts = useSelector((state) => state.cluster.clusterAlerts)
-  const [selectedTab, setSelectedTabState] = useState(readStoredTab)
-  const setSelectedTab = (index) => {
-    setSelectedTabState(index)
-    try {
-      localStorage.setItem(STORAGE_KEY, CLUSTER_LOG_TABS[index].key)
-    } catch {
-      // the tab is only not remembered
-    }
-  }
-
-  const current = CLUSTER_LOG_TABS[selectedTab]
-  const onOpenSettings = openSettings[current.settings]
-
   return (
-    <AccordionComponent
+    <LogsTabs
+      tabs={CLUSTER_LOG_TABS}
+      logs={clusterLogs}
+      pillContext={{ clusterData, clusterAlerts }}
+      storageKey='clusterLogsTab'
+      openSettings={openSettings}
       className={className}
-      heading={'Logs'}
-      headerActions={
-        onOpenSettings ? (
-          <RMIconButton icon={HiCog} tooltip={current.settingsTooltip} onClick={onOpenSettings} size='xs' variant='ghost' />
-        ) : null
-      }
-      body={
-        <TabItems
-          className={styles.fullWidthTabs}
-          options={CLUSTER_LOG_TABS.map((tab) => (
-            <LogTabLabel
-              key={tab.key}
-              title={tab.title}
-              description={tab.description}
-              count={countEntries(clusterLogs?.[tab.key])}
-              pill={tab.pill({ clusterData, clusterAlerts })}
-            />
-          ))}
-          tabIndex={selectedTab}
-          onChange={setSelectedTab}
-          tabContents={CLUSTER_LOG_TABS.map(({ key, Component }) => (
-            <Component key={key} />
-          ))}
-        />
-      }
     />
   )
-}
-
-LogTabLabel.propTypes = {
-  title: PropTypes.string.isRequired,
-  description: PropTypes.string,
-  count: PropTypes.number,
-  pill: PropTypes.shape({ colorScheme: PropTypes.string, shade: PropTypes.number, blink: PropTypes.bool })
 }
 
 ClusterLogsTabs.propTypes = {
