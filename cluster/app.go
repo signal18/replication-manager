@@ -410,6 +410,7 @@ func (app *App) Refresh() error {
 		// App (BackendsStateChange() calls Refresh() directly and is not
 		// covered by the async single-flight guarantee in
 		// maybeRefreshAppsAsync).
+		app.ApplyOpenSVCPGCapIfPending() // the container runs: a check (route, DNS) warns
 		warnThreshold := appErrorDebounceThreshold(cluster.Conf)
 		warnCount := app.IncWarnCount(warnThreshold)
 		if warnCount >= warnThreshold {
