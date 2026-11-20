@@ -52,9 +52,11 @@ in `state.cluster.clusterLogs`). The tabs add no request. `TabItems` renders onl
 selected tab's content, so a tab's component mounts (and filters its buffer) only when
 it is opened.
 
-The badge on a tab is the number of entries its in-memory buffer holds
-(`clusterLogs[key].buffer.length`, bounded by the server ring size), shown when it is
-above zero. It counts neither older history loaded with "Load older" nor the level or
+The badge on a tab is the number of entries its in-memory buffer holds, bounded by the
+server ring size, shown when it is above zero. The server ring comes pre-filled with
+empty slots (its `buffer` always has the ring's length), so the count is the entries with
+a timestamp, the rule the `Logs` component uses to skip the empty slots; never
+`buffer.length`. It counts neither older history loaded with "Load older" nor the level or
 text filters; its tooltip says so.
 
 The badge is a `CountPill` (`components/AlertBadge`): the count bubble of the header's

@@ -94,6 +94,13 @@ const CLUSTER_LOG_TABS = [
 
 const STORAGE_KEY = 'clusterLogsTab'
 
+// the entries a log buffer really holds: the server ring is pre-filled with empty slots,
+// so its length is always the ring size; count the entries with a timestamp, the rule the
+// Logs component itself uses to skip the empty slots
+function countEntries(log) {
+  return (log?.buffer || []).filter((entry) => entry?.timestamp).length
+}
+
 function readStoredTab() {
   try {
     const index = CLUSTER_LOG_TABS.findIndex((tab) => tab.key === localStorage.getItem(STORAGE_KEY))
@@ -158,7 +165,7 @@ function ClusterLogsTabs({ openSettings = {}, className }) {
               key={tab.key}
               title={tab.title}
               description={tab.description}
-              count={clusterLogs?.[tab.key]?.buffer?.length || 0}
+              count={countEntries(clusterLogs?.[tab.key])}
               pill={tab.pill({ clusterData, clusterAlerts })}
             />
           ))}
