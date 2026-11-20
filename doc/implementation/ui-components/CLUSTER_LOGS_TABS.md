@@ -83,3 +83,14 @@ The selected tab is stored by key in `localStorage` (`clusterLogsTab`), like the
 Maintenance sub-tab (`maintenanceTab`): a refresh, or coming back to the Dashboard,
 reopens it. The Dashboard and Monitoring > Schema share it. An unknown or missing value
 falls back to Cluster Logs.
+
+## Empty local cluster list
+
+Same GUI pass (client request). A user who sees no local cluster on the instance (a
+Cloud18 SSO user on a monitor where none of its clusters live: `/api/clusters` returns
+`[]`) used to be moved by `Pages/Home` from Clusters Local to Clusters Peer, then to
+Clusters For Sale when the peers were empty too. That automatic jump is gone: the user
+stays on Clusters Local, and `Pages/ClusterList` shows "No local cluster on this
+instance". When the user has the Peer or For Sale tab (cloud18 on, the tab not
+disabled), a link under the message opens the first of them (`emptyLink`, built by
+Home); no link otherwise. A search that matches nothing still says "No cluster found!".

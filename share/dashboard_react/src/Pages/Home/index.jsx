@@ -89,9 +89,6 @@ function Home() {
   const refreshInterval = useSelector((state) => state.cluster.refreshInterval)
   const clusterData = useSelector((state) => state.cluster.clusterData)
   const monitor = useSelector((state) => state.globalClusters.monitor)
-  const clusters = useSelector((state) => state.globalClusters.clusters)
-  const clusterPeers = useSelector((state) => state.globalClusters.clusterPeers)
-  const clustersLoading = useSelector((state) => state.globalClusters.loading)
 
   const isSSOUser = !!loggedUser?.profile
 
@@ -130,36 +127,9 @@ function Home() {
     }
   }, [monitor?.config?.cloud18, monitor?.config?.cloud18DisablePeers, monitor?.config?.cloud18DisableForSale, monitor?.config?.cloud18SubscriptionPlan, loggedUser?.User, isSSOUser])
 
-  // For SSO users: if local clusters are empty after loading, advance to Peer,
-  // then to For Sale if Peer is also empty.
-  useEffect(() => {
-    if (
-      isClusterOpenRef.current ||     // a cluster is already open — leave it alone
-      !isSSOUser ||                   // non-SSO users stay on local
-      !monitor?.config?.cloud18 ||    // peer/for-sale tabs only exist when cloud18 is on
-      clustersLoading                 // wait until getClusters has finished
-    ) return
-
-    const currentTab = globalTabsRef.current[selectedTabRef.current]
-
-    if (currentTab === 'Clusters Local' && clusters.length === 0) {
-      // Local empty → try Peer
-      const peerIdx = globalTabsRef.current.indexOf('Clusters Peer')
-      if (peerIdx >= 0) {
-        selectedTabRef.current = peerIdx
-        setSelectedTab(peerIdx)
-        dispatch(getClusterPeers({}))
-      }
-    } else if (currentTab === 'Clusters Peer' && clusterPeers !== null && clusterPeers.length === 0) {
-      // Peer empty → try For Sale
-      const forSaleIdx = globalTabsRef.current.indexOf('Clusters For Sale')
-      if (forSaleIdx >= 0) {
-        selectedTabRef.current = forSaleIdx
-        setSelectedTab(forSaleIdx)
-        dispatch(getClusterForSale({}))
-      }
-    }
-  }, [clusters, clusterPeers, clustersLoading, isSSOUser, monitor?.config?.cloud18])
+  // A user with no local cluster stays on Clusters Local: the list says so and, when the
+  // user has the Peer or For Sale tab, links to it; no automatic jump to another tab.
+  // See doc/implementation/ui-components/CLUSTER_LOGS_TABS.md (Empty local cluster list).
 
   useEffect(() => {
     if (clusterData) {
@@ -392,6 +362,15 @@ function Home() {
   const openPluginsSettings = () => openSettingsSection(['isPluginsOpen'])
   const openGraphsSettings = () => openSettingsSection(['isGraphsOpen'])
   const openFailoverSettings = () => openSettingsSection(['isRepFailOverOpen'])
+  // the link of an empty Clusters Local list: the first of Peer and For Sale this user has
+  const sharedClustersTab = ['Clusters Peer', 'Clusters For Sale'].find((name) => globalTabsRef.current.includes(name))
+  const openSharedClusters = () => {
+    const tabIndex = globalTabsRef.current.indexOf(sharedClustersTab)
+    if (tabIndex < 0) return
+    selectedTabRef.current = tabIndex
+    setSelectedTab(tabIndex)
+    dispatch(sharedClustersTab === 'Clusters Peer' ? getClusterPeers({}) : getClusterForSale({}))
+  }
   const openNewClusterModal = (e) => {
     e.stopPropagation()
     setIsNewClusterModalOpen(true)
@@ -436,7 +415,10 @@ function Home() {
           tabSuffix={[...(selectedClusterNameRef.current == '' && localStorage.getItem('username') == "admin" ? [<div onClick={openTerminalPage} className={styles.tabNormal}>Terminal</div>] : [])]}
           tabContents={[
             <Flex direction='column' gap='8px'>
-              <ClusterList onClick={setDashboardTab} />
+              <ClusterList
+                onClick={setDashboardTab}
+                emptyLink={sharedClustersTab ? { text: `Open ${sharedClustersTab}`, onClick: openSharedClusters } : null}
+              />
               {!isClusterOpenRef.current && <AccordionComponent heading={'Global Logs'} body={<GlobalLogs />} />}
             </Flex>,
             ...(isClusterOpenRef.current
