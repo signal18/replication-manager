@@ -619,8 +619,11 @@ func (cluster *Cluster) openSVCCurrentDatabaseImage(server *ServerMonitor) strin
 }
 
 // openSVCConfigValue reads key under [section] of an om3 config file (INI, "key = value").
+// The keys above the first section header are DEFAULT's: om3 writes its DEFAULT section
+// without a header once it rewrote the file (a pg keyword set, a config update), so
+// "DEFAULT" matches both that leading block and an explicit [DEFAULT].
 func openSVCConfigValue(raw, section, key string) string {
-	in := false
+	in := section == "DEFAULT"
 	for _, line := range strings.Split(raw, "\n") {
 		line = strings.TrimSpace(line)
 		if strings.HasPrefix(line, "[") {
