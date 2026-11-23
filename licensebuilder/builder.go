@@ -186,12 +186,13 @@ func (b *Builder) Run() {
 	for r := range b.queue {
 		res := Result{Request: r, State: "building", Started: time.Now()}
 		b.setCurrent(&res)
+		b.log("license-builder: %s building (version %s, airGapped %v)", r.URI, r.Version, r.AirGapped)
 		if err := b.process(&res); err != nil {
 			res.State, res.Error = "failed", err.Error()
-			b.log("license-builder: %s failed: %v", r.URI, err)
+			b.log("license-builder: %s state failed: %v", r.URI, err)
 		} else {
 			res.State = "done"
-			b.log("license-builder: %s done, package %s, plugins loaded %v", r.URI, res.Package, res.Loaded)
+			b.log("license-builder: %s state done, package %s, plugins loaded %v", r.URI, res.Package, res.Loaded)
 		}
 		res.Finished = time.Now()
 		b.setCurrent(nil)
