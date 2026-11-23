@@ -246,6 +246,8 @@ func (cluster *Cluster) openSVCResizeApp(app *App) (bool, error) {
 // rendered again and pushed with the app's keys, then task#reload on each node once the
 // node loaded the new keys.
 func (cluster *Cluster) reloadAppConfiguration(app *App) error {
+	// any configurator, not only a database engine (isDatabaseEngineApp): a php app's
+	// files follow its plan too
 	if strings.TrimSpace(app.AppConfig.ProvAppConfigurator) == "" && appReloadCommand(app) == "" {
 		return nil // nothing in the app follows its size
 	}
