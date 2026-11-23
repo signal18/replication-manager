@@ -3464,6 +3464,10 @@ definitions:
         type: integer
       kubeConfig:
         type: string
+      logApiAccess:
+        type: boolean
+      logApiAccessLength:
+        type: integer
       logAppLevel:
         type: integer
       logArbitration:
@@ -3541,6 +3545,8 @@ definitions:
       logRotateMaxBackup:
         type: integer
       logRotateMaxSize:
+        type: integer
+      logSecurityLength:
         type: integer
       logSqlInMonitoring:
         type: boolean
@@ -5908,6 +5914,11 @@ definitions:
         items:
           $ref: '#/definitions/s18log.HttpMessage'
         type: array
+      dropped:
+        description: |-
+          Dropped is the number of entries an instance log ring (security, access) dropped
+          since start to stay within its size (server/server_instance_logs.go).
+        type: integer
       len:
         type: integer
       line:
@@ -23359,6 +23370,37 @@ paths:
       summary: Send Email
       tags:
       - AlertMailer
+  /api/global/access-logs:
+    get:
+      description: Returns the newest API calls (method, path without query or secret
+        values, status, duration, user, remote address) from a bounded in-memory ring
+        (log-api-access-length, off with log-api-access=false), with the number of
+        entries dropped since start.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/server.globalLogsResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            type: string
+        "403":
+          description: Forbidden
+          schema:
+            type: string
+      summary: Get the instance API access log
+      tags:
+      - Global
   /api/global/alerts:
     get:
       description: Returns server-level errors and warnings from the ReplicationManager
@@ -23564,6 +23606,36 @@ paths:
           schema:
             $ref: '#/definitions/server.globalResourcesResponse'
       summary: Global ResourceManager view
+      tags:
+      - Global
+  /api/global/security-logs:
+    get:
+      description: Returns the newest instance security events (API logins, refusals,
+        lockouts) from a bounded in-memory ring (log-security-length), with the number
+        of entries dropped since start.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/server.globalLogsResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            type: string
+        "403":
+          description: Forbidden
+          schema:
+            type: string
+      summary: Get the instance security log
       tags:
       - Global
   /api/health:

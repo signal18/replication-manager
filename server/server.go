@@ -167,9 +167,14 @@ type ReplicationManager struct {
 	// ReadOnlyCommand: the configuration load only reads (the decrypt command): InitConfig creates no
 	// key, no directory and removes no legacy file. The command itself then removes the old *.reveal
 	// output files (config.RemoveRevealFiles), on purpose.
-	ReadOnlyCommand             bool                        `json:"-"`
-	Logs                        s18log.HttpLog              `json:"logs"`
-	GlobalLogs                  s18log.HttpLog              `json:"globalLogs"`
+	ReadOnlyCommand bool           `json:"-"`
+	Logs            s18log.HttpLog `json:"logs"`
+	GlobalLogs      s18log.HttpLog `json:"globalLogs"`
+	// SecurityLogs and APIAccessLogs are the bounded in-memory rings of the instance's
+	// Security Logs and Access Logs tabs (server/server_instance_logs.go); never encoded
+	// with the monitor, read through /api/global/security-logs and /api/global/access-logs.
+	SecurityLogs                *instanceLogRing            `json:"-"`
+	APIAccessLogs               *instanceLogRing            `json:"-"`
 	MonitorType                 map[string]string           `json:"monitorType"`
 	ServicePlans                []config.ServicePlan        `json:"servicePlans"`
 	ServiceOrchestrators        []config.ConfigVariableType `json:"serviceOrchestrators"`
@@ -604,6 +609,9 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.MonitorBinlogEvents, "monitoring-binlog-events", false, "Enable incremental binlog QUERY event scanning (feeds binlog security plugins: cleartext-password, credit-card-leak)")
 	flags.BoolVar(&conf.MonitoringLogAPILogin, "monitoring-log-api-login", true, "Log successful API logins to the global server log and security log")
 	flags.StringVar(&conf.MonitoringLogAPILoginSilentUsers, "monitoring-log-api-login-silent-users", "system", "Comma-separated list of usernames excluded from API login logging (default: system, used by dbjobs polling)")
+	flags.IntVar(&conf.LogSecurityLength, "log-security-length", DefaultSecurityLogLength, "Number of security log entries (API logins, refusals, lockouts) kept in memory for the Security Logs tab (0 = default)")
+	flags.BoolVar(&conf.LogAPIAccess, "log-api-access", true, "Keep the API access log (method, path, status, duration, user, address) in memory for the Access Logs tab")
+	flags.IntVar(&conf.LogAPIAccessLength, "log-api-access-length", DefaultAPIAccessLogLength, "Number of API access log entries kept in memory for the Access Logs tab (0 = default)")
 	flags.IntVar(&conf.LogPluginLevel, "log-level-plugin", 2, "Log verbosity level for log-tailer plugins (1=error,2=warn,3=info,4=debug)")
 
 	// DB Credentials
@@ -2939,6 +2947,8 @@ func (repman *ReplicationManager) Run() error {
 	repman.tlog = s18log.NewTermLog(loglen)
 	repman.Logs = s18log.NewHttpLog(200)
 	repman.GlobalLogs = s18log.NewHttpLog(200)
+	repman.SecurityLogs = newInstanceLogRing(repman.Conf.LogSecurityLength, DefaultSecurityLogLength)
+	repman.APIAccessLogs = newInstanceLogRing(repman.Conf.LogAPIAccessLength, DefaultAPIAccessLogLength)
 	repman.Terms = make([]byte, 0)
 	repman.TermsDT = time.Now()
 	repman.InitServicePlans()
@@ -4777,6 +4787,7 @@ func (repman *ReplicationManager) logSecurityEvent(event, user, remoteAddr, msg 
 	if repman.SecurityLogrus != nil {
 		repman.SecurityLogrus.WithFields(fields).Warn(msg)
 	}
+	repman.SecurityLogs.addSecurityEvent(event, user, remoteAddr, msg)
 }
 
 // securityLogPath derives the security log file path from the main log file path
