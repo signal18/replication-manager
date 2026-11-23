@@ -75,8 +75,13 @@ func buildLocalCheckKey(appHost string, route config.Route) string {
 func (app *App) GetMonitoringStatus() string {
 	cluster := app.ClusterGroup
 	routes := app.GetAppConfig().Deployment.Routes
-	appErrKeys := []string{ErrAppConnectFailed, ErrAppUnexpectedStatus, ErrAppTCPConnectFailed, ErrAppUnsupportedProto, ErrAppGatewayConflict, ErrAppDbProvision, ErrAppPingFailed, ErrAppCertificate}
+	appErrKeys := []string{ErrAppConnectFailed, ErrAppUnexpectedStatus, ErrAppTCPConnectFailed, ErrAppUnsupportedProto, ErrAppGatewayConflict, ErrAppDbProvision, ErrAppPingFailed, ErrAppCertificate, ErrAppLiveResize}
 	errStates := make(map[string]state.State)
+
+	// Live resize (prov-app-dynamic-resource): a failed one stays visible until one goes through.
+	if msg := app.getLiveResizeError(); msg != "" {
+		errStates[ErrAppLiveResize] = state.State{ErrType: "WARN", ErrKey: ErrAppLiveResize, ErrDesc: fmt.Sprintf(config.ClusterError[ErrAppLiveResize], app.GetId(), msg), ServerUrl: app.Host}
+	}
 
 	// Database auto-create (#1870): a refused provision stays visible until one goes through.
 	if msg := app.DbProvisionError; msg != "" {

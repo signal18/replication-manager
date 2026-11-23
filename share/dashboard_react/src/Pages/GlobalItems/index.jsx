@@ -1,4 +1,6 @@
 import { useState, useCallback } from 'react'
+import LogsTabs from '../../components/LogsTabs'
+import { clusterHealthColor } from '../../utility/domainPills'
 import { useSelector } from 'react-redux'
 import { Box, Flex, Text, Divider, Spinner, Button } from '@chakra-ui/react'
 import Card from '../../components/Card'
@@ -264,6 +266,55 @@ export function GlobalLogs() {
   )
 }
 
+// the instance Security Logs and Access Logs: bounded in-memory rings of the monitor
+// (server/server_instance_logs.go), fetched each tick next to the global log
+function InstanceRingLogs({ logKey }) {
+  const log = useSelector((state) => state.globalClusters.globalLogs?.[logKey])
+  return (
+    <Box className={styles.logContainer}>
+      <Logs key={logKey} logs={log?.buffer} searchable={true} isScrollable={true} />
+    </Box>
+  )
+}
+
+const GlobalSecurityLogs = () => <InstanceRingLogs logKey='security' />
+const GlobalAccessLogs = () => <InstanceRingLogs logKey='access' />
+
+// the instance's logs as tabs, Global Logs first and the default (components/LogsTabs,
+// the same tabs and badges as the cluster Logs section). Badges: Global Logs takes the
+// colour of the monitor's health pill (blockers red, warnings orange); the Security and
+// Access logs have no header pill of their own: orange like the Security pill without a
+// grade, and blue.
+const GLOBAL_LOG_TABS = [
+  {
+    key: 'general',
+    title: 'Global Logs',
+    description: 'The monitor log: the instance events outside any cluster (configuration, git, mail, Cloud18).',
+    Component: GlobalLogs,
+    pill: ({ globalAlerts }) => ({ colorScheme: clusterHealthColor(globalAlerts?.errors?.length || 0, globalAlerts?.warnings?.length || 0) })
+  },
+  {
+    key: 'security',
+    title: 'Security Logs',
+    description: 'The instance security log: API logins, refused logins and tokens, account lockouts, refused global settings. Kept in memory (log-security-length); the full history is in the security log file.',
+    Component: GlobalSecurityLogs,
+    pill: () => ({ colorScheme: 'orange' })
+  },
+  {
+    key: 'access',
+    title: 'Access Logs',
+    description: 'The API access log: every call that changes something and every failed call (not the successful reads): method, path (no query, no secret value), status, duration, user and address. Kept in memory (log-api-access-length), off with log-api-access.',
+    Component: GlobalAccessLogs,
+    pill: () => ({ colorScheme: 'blue' })
+  }
+]
+
+export function GlobalLogsTabs() {
+  const globalLogs = useSelector((state) => state.globalClusters.globalLogs)
+  const globalAlerts = useSelector((state) => state.globalClusters.globalAlerts)
+  return <LogsTabs tabs={GLOBAL_LOG_TABS} logs={globalLogs} pillContext={{ globalAlerts }} storageKey='globalLogsTab' />
+}
+
 function AlertSection({ title, items, colorScheme, onOpenModal }) {
   const { theme } = useTheme()
   const isLight = theme === 'light'
@@ -364,7 +415,7 @@ function GlobalItems() {
         heading='Global Alerts'
         body={<GlobalAlertsBody globalAlerts={globalAlerts} onOpenModal={setGlobalAlertModalType} />}
       />
-      <AccordionComponent heading='Global Logs' body={<GlobalLogs />} />
+      <GlobalLogsTabs />
       <AccordionComponent heading='Global Jobs' body={<GlobalJobsBody />} />
       <AlertModal
         type={globalAlertModalType}

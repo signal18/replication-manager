@@ -668,6 +668,9 @@ type Cluster struct {
 	// backupArchiving holds the registered backups ArchiveBackup archives (#2108): backup id,
 	// from the request to the end of the push, its test restore first included.
 	backupArchiving sync.Map `json:"-"`
+
+	// appCapOverride (tests): the cap in force of an app in place of appCapInForce
+	appCapOverride func(app *App) (memMB int, cpuPct int, ok bool)
 }
 
 // PluginRegistry returns the per-cluster plugin registry, which contains both
@@ -1569,6 +1572,7 @@ func (cluster *Cluster) tickBody() {
 		cluster.CheckJobStreamRefused()
 		cluster.CheckJobLoginRefused()
 		cluster.CheckJobsSilent(time.Now())
+		cluster.CheckJobsCli()
 		// the credential store entries: full passes, stores behind, queue drops (#2227)
 		cluster.CheckSecretKvStores()
 		// a skipped scheduled password rotation (#2269)

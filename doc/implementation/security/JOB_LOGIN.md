@@ -1,7 +1,9 @@
 # Job login: the one-time job body
 
 The database jobs script (`share/scripts/dbjobs_new.sh`, served by replication-manager to each
-database server) talks to the API in two ways:
+database server) talks to the API through `replication-manager-cli job` and `stream --job`, which
+implement the protocol below with `utils/jobapi` (the script has no crypto of its own since #2405,
+see `doc/implementation/share/scripts/DBJOBS_CLI.md`). Two kinds of calls:
 
 - **Job bodies:** `secret-login`, job state, tasks, config receiver, jobs upgrade, `write-log`.
   The body is `{"data": <base64>, "iv": <hex>, "key": "jobs"|"db"}`: a JSON object encrypted
@@ -28,10 +30,20 @@ replication-manager's persistent key (`monitoring-key-path`), never stored.
   volume `{name}-sec` (`/credentials/JOBS_API_KEY`, mode 600, user 99) next to the database
   password. A file read at use time, not an environment variable (frozen at container start,
   shown by `docker inspect`).
+- **Delivery, Kubernetes:** the key is the `JOBS_API_KEY` entry of the cluster's Secret
+  (`<cluster>-secret`, next to `MYSQL_ROOT_PASSWORD`). It is written at provisioning, before the
+  Deployment is rendered (`k8sPublishJobsKey`: an unchanged value is not written again, a changed one
+  keeps `JOBS_API_KEY_OLD`), and repaired by the monitor with the other init credentials
+  (`initCredentials`). The Deployment maps it only with a persistent key: a Secret volume `jobs-key`
+  that projects that one entry (mode 0400, see "The key file on Kubernetes"), mounted read-only, as a directory so that the kubelet
+  refreshes it, at `/credentials` in the database init container and the dbjobs sidecar and in no
+  other container. The jobs read the file (`jobapi.JobsKeyFromEnv`) and keep `MYSQL_ROOT_PASSWORD`
+  for the database connection only.
 - **Delivery, on-premise (ssh):** exported in the ssh environment (`GetSshEnv`,
   `JOBS_API_KEY`) that precedes the script at each run; nothing is written on the host.
-- **Script:** `jobs_key` reads `$JOBS_API_KEY`, else `/credentials/JOBS_API_KEY`. With a key,
-  the bodies carry no `secret` (`job_secret`) and `secret-login` accepts them without it: the
+- **Jobs side:** the CLI reads `$JOBS_API_KEY`, else `/credentials/JOBS_API_KEY`
+  (`jobapi.JobsKeyFromEnv`). With a key, the bodies carry no `secret` and `secret-login` accepts
+  them without it: the
   database password never travels, and rotating it does not touch the login. Without a key
   (no persistent key, or a service not refreshed yet), the bodies use the database password and
   carry it (`"key": "db"`).
@@ -46,7 +58,7 @@ replication-manager's persistent key (`monitoring-key-path`), never stored.
 | Part | Value |
 |---|---|
 | IV | random, 16 bytes, sent in clear as `iv` (32 hex) |
-| Clear object | the request's JSON, stamped by the script with `"ts"` (unix seconds) and `"nonce"` (16 random bytes, hex) |
+| Clear object | the request's JSON, stamped by the CLI with `"ts"` (unix seconds) and `"nonce"` (16 random bytes, hex) |
 
 `OpenJobBody` accepts a one-time body once:
 
@@ -61,10 +73,10 @@ A replay is refused with 401 and logged. A body cannot be forged without the pas
 not decrypt to a JSON object.
 
 `secret-login` with a one-time body returns a token valid `api-secret-login-token-timeout`
-minutes (default 15). The script keeps it in `<jobs dir>/.job_token` (0600) so its background
-tasks share it, and logs in again once it is older than 10 minutes (`job_token`), so a long task
-(a backup) always posts with a valid token. Each run starts with a fresh login
-(`job_token refresh`); a failed login stops the run.
+minutes (default 15). The CLI logs in for each call that needs a token (`job usage`,
+`job config`, `job config-receiver`, `job config-dummy`) and keeps nothing: no token is stored in
+the jobs directory, and a long task never holds an expired one. The other calls carry their own
+one-time body and need no token.
 
 ## The jobs token: the jobs grants, its own server
 
@@ -135,7 +147,8 @@ first start of the new release.
 
 ## Streams between replication-manager and the jobs
 
-The data does not go through the API: it goes over raw TCP (socat on the database side).
+The data does not go through the API: it goes over raw TCP (`replication-manager-cli stream` on
+the database side).
 - **To the database:** replication-manager sends to the jobs listener (`SST_RECEIVER_PORT`)
   a backup to restore (reseed, flashback, PostgreSQL restore), the jobs script (jobs upgrade)
   and a config.
@@ -147,8 +160,7 @@ was restored, installed and run as the new jobs script, or stored as a backup. T
 password is not in the config, so neither side had a secret to check the stream with. The
 jobs key is that secret.
 
-Every stream now starts with a header line (`utils/jobapi/stream.go`; `job_stream_mac` in the
-script):
+Every stream now starts with a header line (`utils/jobapi/stream.go`, on both sides):
 
     MRMSTREAM1 <ts> <nonce> <hex HMAC-SHA256(SHA256(secret), "<direction>:<server>:<ts>:<nonce>")>
 
@@ -158,14 +170,14 @@ script):
 - **Direction:** `to-db` or `to-repman`, so a header sent one way cannot be replayed the other.
 - **To the database:**
   - The four senders of `cluster_sst.go` write the header before any data.
-  - `job_stream_open` sits between socat and the consumer. It copies the rest only when the
-    MAC matches, the timestamp is within 300 seconds (`JOB_STREAM_WINDOW`) and the nonce is
-    new (`<jobs dir>/.stream_nonces`, twice the window: bounded).
-  - Otherwise nothing is written: the restore aborts before unpacking, the new script is not
-    installed, the config is not extracted, and the job logs why.
-  - The PostgreSQL sidecar does the same with `replication-manager-cli stream --listen --job`.
+  - The listener is the CLI (`stream --listen --job`, `job upgrade`, `job config-dummy`:
+    `Client.CheckStream`). It copies the rest only when the MAC matches, the timestamp is within
+    300 seconds (`jobapi.StreamWindow`) and the nonce is new (a file in the temporary directory,
+    twice the window: bounded).
+  - Otherwise nothing is written and the CLI exits 3: the restore aborts before unpacking, the
+    new script is not installed, the config is not extracted, and the job logs why.
 - **To replication-manager:**
-  - The script signs with `job_stream_signed`; the PostgreSQL sidecar with `stream --to --job`.
+  - The jobs (the script and the PostgreSQL sidecar) sign with `stream --to --job`.
   - The receivers (`tcp_con_handle_to_file`, `_to_gzip`) check it with `acceptJobStream`:
     MAC, window, and the nonce in the job body store.
   - A refused connection is closed, and the receiver waits for the next one until its
@@ -204,7 +216,11 @@ With the cluster's jobs key, the init container logs in like the jobs:
   config.tar.gz`. Without one it falls back to the admin login, as before.
 - **CLI** (`job config`, `jobapi.Client.Config`): asks `need-config-fetch`, logs in with the
   one-time body (`secret-login`), downloads `<server>/<port>/config` with the jobs token, at most
-  64 MB. Exit 0 written, 1 not wanted, 2 error.
+  64 MB. Exit 0 written, 1 not wanted, 2 error. `--force` does not ask `need-config-fetch`: the
+  Kubernetes init container passes it on a `service-dirs-v1` volume that has no usable `my.cnf`
+  yet, whose first install must happen whatever the route answers (the no-config-fetch cookie, an
+  ignored server; `doc/implementation/cluster/KUBERNETES_PROVISIONING.md`, "PVC layout"); a
+  refresh asks.
 - **Server** (`handlerMuxServersPortConfig`, `jobsTokenForServer`): the config download accepts a
   jobs token minted for the very server the URL names, GET only. No ACL rule is added: the
   matcher falls back to shorter patterns, so `db-jobs` on `/config` would also open `config-gen`
@@ -224,9 +240,71 @@ With the cluster's jobs key, the init container logs in like the jobs:
   disk: the embedded copy, 404 when there is none, with a log line naming where it looked. The
   binary (about 150 MB) is never added to the embed.
 
+## The Kubernetes init container
+
+The database init container (`k8sDatabaseDeployment`, `cluster/prov_k8s_jobs_key.go`) follows the
+same model as OpenSVC's bootstrap. With a persistent key:
+
+- it mounts the jobs key (above) and gets no `REPMAN_AUTH_HEADER`: no admin login, so an admin
+  password change no longer touches the database start;
+- it downloads the CLI from the public `/static` route first (it must run, `version`; a failed
+  download uses the copy a previous start left in `/docker-entrypoint-initdb.d`), then fetches the
+  config with `replication-manager-cli job config` (`REPLICATION_MANAGER_URL` is the
+  replication-manager that answered `/api/version`, and the cluster, server and port are plain
+  environment values), then applies the archive as before. The CLI's own messages reach the
+  container log; they carry no key;
+- the CLI is copied into `/docker-entrypoint-initdb.d` for the dbjobs sidecar.
+
+Without a persistent key, and for a Deployment created before this change (only provisioning renders
+one), the init container keeps the admin login and the jobs sign with the database password, as
+before. The proxies keep the admin login. Existing volumes and the PVC layout are not touched.
+
+### The key file on Kubernetes
+
+- **Mode 0400, owned by root: restricted access comparable to OpenSVC's, not identical.** OpenSVC's jobs
+  volume is owned by uid 99 with mode 600 and directory mode 700. A Kubernetes Secret file cannot belong
+  to uid 99, so the file is root-owned 0400 (the directory can be traversed, the file name is visible). It
+  is readable by root in the two containers that mount it. A process with uid 99 reads it on OpenSVC and
+  not on Kubernetes. The volume projects `JOBS_API_KEY` only, not the database password or the admin
+  login of the same Secret, and it is not mounted in the database container, as on OpenSVC.
+- **The jobs container runs as root only when the identity is managed** (`prov-db-run-as-uid`,
+  `prov-db-volume-uid`, or an image whose name contains `percona`: `dbIdentityManaged`), the same rule as
+  OpenSVC's; otherwise it runs as the image's own `USER`. The `mariadb` and `mysql` images run as root,
+  `percona/percona-server` as `mysql`; a Percona image renamed without `percona`, or a custom image with a
+  non-root `USER`, leaves the jobs non-root.
+- **Not every configuration authenticates with the key, and the fallback is not claimed to be identical
+  on both orchestrators.** A jobs container that cannot read the file (an unmanaged non-root image user)
+  has no key: `jobapi.JobsKeyFromEnv` ignores a read error, the shared CLI then signs with the database
+  password (`MYSQL_ROOT_PASSWORD`, carried in the encrypted body) without a message, and the server
+  accepts it. By the source OpenSVC falls back the same way for a jobs process that cannot read its key
+  file (not tested at runtime), but which users can read the file differs (uid 99, above). The fallback
+  is not fail-closed and is not changed here. Measured on Kubernetes: a root jobs container authenticates
+  with the key although the database password it holds is wrong; a non-root user (uid 1001, 999) cannot
+  read the file and authenticates only with the right database password. To have the jobs use the key in
+  such a configuration, set an explicit identity so that they run as root. No Pod-level `fsGroup` is used
+  (it would also own the data volume) and the jobs container is not forced to root.
+- **A shared process namespace: the mode does not give OpenSVC's cross-container isolation.** With
+  `monitoring-system-resources` the Pod shares its process namespace so that the sidecar can read the
+  database container's cgroup (`doc/implementation/cluster/DBU_RESOURCE_SENSOR.md`); OpenSVC binds the
+  service's cgroup slice and shares only the network namespace. The sharing predates the jobs key, but
+  the key is one more credential that can become reachable through it: when the namespace is shared,
+  neither the file mode nor "not mounted in the database container" isolates the key from processes of
+  the other container that run with the same identity (in practice root). Full OpenSVC-equivalent
+  isolation is not established. The analysis is kept for maintainer review, and whether this boundary is
+  accepted is a decision to take before the change is marked ready.
+- **Not established.** A complete DBJobs workflow (backup, reseed) with a custom non-root image has not
+  been run.
+
+The warning about the admin's `db-config-flag` grant (`api-credentials-secure-config`) concerns the
+admin login only. At provisioning it is given for the Deployment that stands, read from the one Create
+returned or, when it already exists, from the existing one (`k8sAdminGrantWarning`): a Deployment whose
+init container logs in with the jobs key does not need the grant and gets no warning, a legacy one, or one
+rendered without a persistent key, keeps it. The cluster's persistent key does not tell which one an
+existing Deployment is.
+
 ## Not covered here
 
-- **Certificate check.** The script talks TLS to `api-port` with `verify=0`: without
+- **Certificate check.** The CLI talks TLS to `api-port` without checking the certificate: without
   `monitoring-ssl-cert`, replication-manager serves a self-signed certificate generated at each
   start, which a database server cannot verify. A man in the middle can still read a live token
   (15 minutes) or a body before it is used; it can no longer replay a body, and a token it

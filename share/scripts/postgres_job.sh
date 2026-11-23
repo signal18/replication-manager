@@ -185,7 +185,11 @@ run_task() {
         log "$task: listening on :$port"
         "$CLI" stream --job --secret-env POSTGRES_PASSWORD --listen ":$port" --accept-timeout 900 > "$file" 2>"$ERR" &
         pid=$!
-        sleep 1
+        # waiting only once the listener is bound: a sender dialing earlier is refused
+        n=0
+        while [ $n -lt 150 ] && ! grep -q "listening on" "$ERR" 2>/dev/null && kill -0 "$pid" 2>/dev/null; do
+            sleep 0.1; n=$((n + 1))
+        done
         job state "$task" waiting || log "$task: cannot report waiting"
         if ! wait "$pid" || [ ! -s "$file" ]; then
             log "$task: receive failed: $(tail -c 300 "$ERR")"

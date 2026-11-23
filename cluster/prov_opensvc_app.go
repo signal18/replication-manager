@@ -176,6 +176,7 @@ func (cluster *Cluster) OpenSVCStartAppService(app *App, node string) error {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not start app:  %s ", err)
 			return err
 		}
+		app.ArmOpenSVCPGCap()
 		return nil
 	}
 	agent := app.GetAgent()
@@ -358,6 +359,7 @@ func (cluster *Cluster) OpenSVCRestartAppService(app *App, node string, rid stri
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not restart app %s on %s: %s", app.Name, node, err)
 				return err
 			}
+			app.ArmOpenSVCPGCap()
 			return nil
 		}
 		// every instance: the orchestrator restarts them one at a time, each after the
@@ -367,6 +369,7 @@ func (cluster *Cluster) OpenSVCRestartAppService(app *App, node string, rid stri
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not restart app:  %s ", err)
 			return err
 		}
+		app.ArmOpenSVCPGCap()
 		return nil
 	}
 	agent := app.GetAgent()
@@ -546,6 +549,9 @@ func (cluster *Cluster) OpenSVCProvisionAppService(app *App) error {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr,
 				"App %s service provisioned but route publication failed: %s — retry via update-routes when DNS and gateway are ready", app.GetId(), err)
 		}
+		// om3 applies the pg keywords on a pg update only: armed here like after a start,
+		// or a new app runs uncapped until its first restart
+		app.ArmOpenSVCPGCap()
 		cluster.errorChan <- nil
 		return nil
 	}
@@ -590,6 +596,7 @@ func (cluster *Cluster) OpenSVCProvisionAppService(app *App) error {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr,
 			"App %s service provisioned but route publication failed: %s — retry via update-routes when DNS and gateway are ready", app.GetId(), err)
 	}
+	app.ArmOpenSVCPGCap()
 	cluster.errorChan <- nil
 	return nil
 }
@@ -610,6 +617,12 @@ func (cluster *Cluster) OpenSVCGetAppTemplateSectionMap(app *App) (map[string]ma
 		svcsection["DEFAULT"]["pg_mem_limit"] = strconv.FormatInt(int64(cluster.GetDBContainerMemoryCapMB())*1024*1024, 10)
 		if q := OpenSVCCPUQuotaKeyword(cluster.cpuQuotaCoresOnNode(serverNode(cluster.engineServerOfApp(app)), cluster.GetDBContainerCPUCapCores())); q != "" {
 			svcsection["DEFAULT"]["pg_cpu_quota"] = q
+		}
+	} else if cluster.appCapOnSlice(app) {
+		// a live-resized app (prov-app-dynamic-resource) without a docker cap: its cap lives
+		// on the om3 PG slice like a database server's, moved live by openSVCResizeApp
+		for k, v := range cluster.appPGKeywords(app) {
+			svcsection["DEFAULT"][k] = v
 		}
 	}
 	svcsection["ip#01"] = cluster.OpenSVCGetNetSection()
@@ -652,6 +665,7 @@ func (cluster *Cluster) OpenSVCGetAppTemplateSectionMap(app *App) (map[string]ma
 
 	svcsection["container#app"] = cluster.OpenSVCGetAppContainerSection(app)
 	cluster.openSVCAddAppJobsSections(svcsection, app, &containernum)
+	cluster.openSVCAddAppReloadSection(svcsection, app) // the template's APP_RELOAD_COMMAND, run by a live resize
 	// APU (Compute) + internal network sensor sidecar, same gate as the proxy one (the
 	// monitoring-system-resources off-switch, T14). Needs the script key published in the
 	// namespace `env` object (openSVCPublishAppJobScript, done by the V3 provision).
@@ -1157,7 +1171,7 @@ func (cluster *Cluster) OpenSVCGetAppDefaultSection(app *App) map[string]string 
 	svcdefault["orchestrate"] = "ha"
 	svcdefault["app"] = cluster.Conf.ProvCodeApp
 	svcdefault["priority"] = openSVCPriorityApp
-	if strings.TrimSpace(appcnf.ProvAppConfigurator) != "" {
+	if isDatabaseEngineApp(appcnf) {
 		svcdefault["priority"] = openSVCPriorityDatabase // an engine server is a database
 	}
 	return svcdefault
@@ -1649,7 +1663,9 @@ func (cluster *Cluster) OpenSVCCreateAppVariableMaps(agent string, app *App) err
 
 	// App configurator (app_configurator.go): the engine's moduleset files, rendered from
 	// the database plan (initialized from the app plan the first time), travel as one config
-	// key the container start command writes out.
+	// key the container start command writes out. Any configurator, not only a database
+	// engine (isDatabaseEngineApp): initDBSizingFromEngineApp is a no-op for an app that is
+	// not a server, and a php app renders from its own plan.
 	if app.AppConfig.ProvAppConfigurator != "" {
 		cluster.initDBSizingFromEngineApp(app)
 		script, err := cluster.AppConfiguratorScript(app)

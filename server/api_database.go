@@ -27,6 +27,7 @@ import (
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/backupmgr"
+	"github.com/signal18/replication-manager/utils/jobapi"
 	"github.com/signal18/replication-manager/utils/state"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
@@ -611,8 +612,8 @@ func (repman *ReplicationManager) handlerMuxServer(w http.ResponseWriter, r *htt
 
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		uname := repman.GetUserFromRequest(r)
-		if _, ok := mycluster.GetAPIUsers()[uname]; !ok {
+		// the request's identity on this cluster: a scoped login or an API token only within its scope
+		if _, ok := repman.requestACLUser(r, mycluster); !ok {
 			http.Error(w, "No Valid ACL", 500)
 			return
 		}
@@ -674,8 +675,8 @@ func (repman *ReplicationManager) handlerMuxServerAttribute(w http.ResponseWrite
 
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		uname := repman.GetUserFromRequest(r)
-		if _, ok := mycluster.GetAPIUsers()[uname]; !ok {
+		// the request's identity on this cluster: a scoped login or an API token only within its scope
+		if _, ok := repman.requestACLUser(r, mycluster); !ok {
 			http.Error(w, "No Valid ACL", 500)
 			return
 		}
@@ -5349,6 +5350,19 @@ func (repman *ReplicationManager) handlerMuxServerNeeds(w http.ResponseWriter, r
 	if mycluster != nil {
 		node := mycluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
 		if node != nil && !node.IsDown() {
+			// the CLI the jobs call with (none for an older script or CLI): the current
+			// dbjobs_new.sh runs only with a CLI that names its version, which a script
+			// upgrade does not bring; its upgrade then waits for the service restart
+			if cli := jobapi.VersionFromUserAgent(r.UserAgent()); cli != "" {
+				node.JobsCliCalled(cli)
+			} else if checktype == string(config.ConstTaskJobsUpgrade) && !node.IsPostgreSQLHost() {
+				node.DeferJobsUpgrade("")
+				// 500 and "false" on purpose: it is how this route says "not needed", and what
+				// every older script (check_task_needs) and CLI (job needs, exit 1) read as no
+				w.WriteHeader(http.StatusInternalServerError)
+				w.Write([]byte("false"))
+				return
+			}
 			if ok, err := node.CheckTaskNeeded(checktype); err == nil {
 				if ok {
 					w.WriteHeader(http.StatusOK)
@@ -5402,6 +5416,10 @@ func (repman *ReplicationManager) handlerMuxServerJobsCheckReceiver(w http.Respo
 		}
 
 		if node != nil {
+			// the CLI the jobs run with (an older script without it names none)
+			if cli := jobapi.VersionFromUserAgent(r.UserAgent()); cli != "" {
+				node.JobsCliCalled(cli)
+			}
 			rcv_port, err := mycluster.SSTRunJobsCheckReceiver(node, filepath.Join(node.Datadir, "dbjobs_new.current"))
 			if err != nil {
 				http.Error(w, "Error opening receiver ports: "+err.Error(), 500)
@@ -5775,6 +5793,9 @@ func (repman *ReplicationManager) handlerMuxServerJobsUpgradeSender(w http.Respo
 		}
 
 		if node != nil {
+			if cli := jobapi.VersionFromUserAgent(r.UserAgent()); cli != "" {
+				node.JobsCliCalled(cli)
+			}
 			mycluster.SetJobsUpgradeSender(node)
 			w.WriteHeader(200)
 			w.Write([]byte("Sending dbjobs_new file"))

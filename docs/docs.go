@@ -21783,7 +21783,7 @@ const docTemplate = `{
         },
         "/api/clusters/{clusterName}/settings/actions/set/{settingName}/{settingValue}": {
             "post": {
-                "description": "This endpoint sets the settings for the specified cluster.",
+                "description": "This endpoint sets the settings for the specified cluster.\nA credential setting is user:password, with a user and a password: in clear for db-servers-credential, replication-credential, proxysql-servers-credential, maxscale-servers-credential and shardproxy-servers-credential; encoded in base64 for backup-verification-credential, cloud18-dba-user-credentials and cloud18-sponsor-user-credentials (an empty value clears the verification and sponsor credentials). Any other value is refused with 400, the value never echoed.",
                 "consumes": [
                     "application/json"
                 ],
@@ -21832,8 +21832,20 @@ const docTemplate = `{
                             "type": "string"
                         }
                     },
+                    "400": {
+                        "description": "A credential setting that is not user:password",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
                     "403": {
                         "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "409": {
+                        "description": "A credential change refused (no store keeps versions)",
                         "schema": {
                             "type": "string"
                         }
@@ -24412,6 +24424,48 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/global/access-logs": {
+            "get": {
+                "description": "Returns the newest API calls (method, path without query or secret values, status, duration, user, remote address) from a bounded in-memory ring (log-api-access-length, off with log-api-access=false), with the number of entries dropped since start.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Global"
+                ],
+                "summary": "Get the instance API access log",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/server.globalLogsResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/global/alerts": {
             "get": {
                 "description": "Returns server-level errors and warnings from the ReplicationManager state machine.",
@@ -24702,6 +24756,48 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/server.globalResourcesResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/global/security-logs": {
+            "get": {
+                "description": "Returns the newest instance security events (API logins, refusals, lockouts) from a bounded in-memory ring (log-security-length), with the number of entries dropped since start.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Global"
+                ],
+                "summary": "Get the instance security log",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/server.globalLogsResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "string"
                         }
                     }
                 }
@@ -31687,6 +31783,12 @@ const docTemplate = `{
                 "kubeConfig": {
                     "type": "string"
                 },
+                "logApiAccess": {
+                    "type": "boolean"
+                },
+                "logApiAccessLength": {
+                    "type": "integer"
+                },
                 "logAppLevel": {
                     "type": "integer"
                 },
@@ -31802,6 +31904,9 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "logRotateMaxSize": {
+                    "type": "integer"
+                },
+                "logSecurityLength": {
                     "type": "integer"
                 },
                 "logSqlInMonitoring": {
@@ -32715,6 +32820,10 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "provKubeProxyStorageClass": {
+                    "type": "string"
+                },
+                "provKubePvcLayout": {
+                    "description": "layout of a database PVC created from now on: service-dirs-v1 (default) or legacy (#2395)",
                     "type": "string"
                 },
                 "provKubeStorageClass": {
@@ -35206,6 +35315,10 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/s18log.HttpMessage"
                     }
+                },
+                "dropped": {
+                    "description": "Dropped is the number of entries an instance log ring (security, access) dropped\nsince start to stay within its size (server/server_instance_logs.go).",
+                    "type": "integer"
                 },
                 "len": {
                     "type": "integer"

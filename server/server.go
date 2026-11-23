@@ -167,9 +167,14 @@ type ReplicationManager struct {
 	// ReadOnlyCommand: the configuration load only reads (the decrypt command): InitConfig creates no
 	// key, no directory and removes no legacy file. The command itself then removes the old *.reveal
 	// output files (config.RemoveRevealFiles), on purpose.
-	ReadOnlyCommand             bool                        `json:"-"`
-	Logs                        s18log.HttpLog              `json:"logs"`
-	GlobalLogs                  s18log.HttpLog              `json:"globalLogs"`
+	ReadOnlyCommand bool           `json:"-"`
+	Logs            s18log.HttpLog `json:"logs"`
+	GlobalLogs      s18log.HttpLog `json:"globalLogs"`
+	// SecurityLogs and APIAccessLogs are the bounded in-memory rings of the instance's
+	// Security Logs and Access Logs tabs (server/server_instance_logs.go); never encoded
+	// with the monitor, read through /api/global/security-logs and /api/global/access-logs.
+	SecurityLogs                *instanceLogRing            `json:"-"`
+	APIAccessLogs               *instanceLogRing            `json:"-"`
 	MonitorType                 map[string]string           `json:"monitorType"`
 	ServicePlans                []config.ServicePlan        `json:"servicePlans"`
 	ServiceOrchestrators        []config.ConfigVariableType `json:"serviceOrchestrators"`
@@ -198,6 +203,8 @@ type ReplicationManager struct {
 	Cloud18LoginState           string                      `json:"cloud18LoginState"` // the Cloud18 login (#2159): none, registered, connected, refused; "" Cloud18 off
 	UserAuthTry                 sync.Map                    `json:"-"`
 	apiTokens                   apiTokenStoreState          // user-issued API tokens store (api_token.go)
+	clusterDeletedAt            sync.Map                    // cluster name -> deletion time, for the scoped sessions (api_session_scope.go), pruned past a session's lifetime
+	apiTokenOwnerRefusedLogged  sync.Map                    // token ids whose refusal was logged once (api_token_owner.go), bounded by the token store
 	ViperConfig                 *viper.Viper                `json:"-"`
 	tlog                        s18log.TermLog
 	termlength                  int
@@ -604,6 +611,9 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.MonitorBinlogEvents, "monitoring-binlog-events", false, "Enable incremental binlog QUERY event scanning (feeds binlog security plugins: cleartext-password, credit-card-leak)")
 	flags.BoolVar(&conf.MonitoringLogAPILogin, "monitoring-log-api-login", true, "Log successful API logins to the global server log and security log")
 	flags.StringVar(&conf.MonitoringLogAPILoginSilentUsers, "monitoring-log-api-login-silent-users", "system", "Comma-separated list of usernames excluded from API login logging (default: system, used by dbjobs polling)")
+	flags.IntVar(&conf.LogSecurityLength, "log-security-length", DefaultSecurityLogLength, "Number of security log entries (API logins, refusals, lockouts) kept in memory for the Security Logs tab (0 = default)")
+	flags.BoolVar(&conf.LogAPIAccess, "log-api-access", true, "Keep the API access log (method, path, status, duration, user, address) in memory for the Access Logs tab")
+	flags.IntVar(&conf.LogAPIAccessLength, "log-api-access-length", DefaultAPIAccessLogLength, "Number of API access log entries kept in memory for the Access Logs tab (0 = default)")
 	flags.IntVar(&conf.LogPluginLevel, "log-level-plugin", 2, "Log verbosity level for log-tailer plugins (1=error,2=warn,3=info,4=debug)")
 
 	// DB Credentials
@@ -1185,6 +1195,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.ProvDbUpgradeMajorReprov, "prov-db-upgrade-major-reprov", false, "Rolling upgrade across a major release: provision each node again from scratch on the new release and reseed it from the master (rolling reprov) instead of restarting it on its data directory with mariadb-upgrade. A downgrade across a major always reprovisions (#1862)")
 	flags.BoolVar(&conf.ProvOrchestratorDeploymentUpgradeOnStart, "prov-orchestrator-deployment-upgrade-on-start", true, "On each node (re)start during a rolling restart/upgrade, re-render and push the full deployment (service config: image, resources/cgroup cap, run_args, env) to the orchestrator BEFORE start, so the recreated container/pod comes up on the current config instead of the last-provisioned one. Covers the resource cap; also lets an unpinned image tag roll forward on restart (intended). On by default; set false to keep rolling restart deployment-neutral.")
 	flags.BoolVar(&conf.ProvDBApplyDynamicConfig, "prov-db-apply-dynamic-config", false, "Dynamic database config change")
+	flags.BoolVar(&conf.ProvAppDynamicResource, "prov-app-dynamic-resource", false, "Apply an app resize (prov-app-memory/cpu-cores/units) live instead of a reprovision: the container cgroup moves on the orchestrator (OpenSVC v3 pg update, cap on the slice when prov-db-docker-run-args-limit is off), the app configurator re-renders and the app's reload task runs; off by default")
 	flags.BoolVar(&conf.ProvDBDynamicResource, "prov-db-dynamic-resource", false, "Apply system-resource resizes (prov-db-memory/cpu/io) live via SET GLOBAL instead of a restart, for the dynamically-settable variables (buffer pool, max_session_mem_used, io capacity, ...); off by default")
 	flags.StringVar(&conf.ProvDBResourceAlign, "prov-db-resource-align", "plan", "Align the DB container memory CAP (cgroup --memory) to the DBU tier, ABOVE the MySQL config memory (prov-db-memory drives my.cnf) so mariadbd has headroom and is not OOM-killed. 'plan' (default): cap from prov-service-plan-dbu; 'up': cap from the max-axis DBU (coherence/debug); 'off': cap = prov-db-memory (legacy). prov-db-memory itself is never changed.")
 	flags.StringVar(&conf.ProvDBDynamicResizePolicy, "prov-db-dynamic-resize-policy", "scale-speed", "WHEN a live memory resize (prov-db-dynamic-resource) is applied: 'scale-speed' (default) applies as saturation dictates, throttled by the prov-db-scale-*-speed timeframe; 'daily-time' defers the live memory resize to the fixed daily clock time prov-db-dynamic-resize-daily-time, so any InnoDB buffer-pool-resize stall is contained to an off-peak hour. CPU/IO tuning is unaffected (no stall).")
@@ -1463,6 +1474,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 		flags.BoolVar(&conf.ProvKubeImageForcePull, "prov-kube-image-force-pull", false, "Kubernetes only: force ImagePullPolicy=Always on the database container instead of the default IfNotPresent")
 		flags.StringVar(&conf.ProvKubeStorageClass, "prov-kube-storage-class", "", "Kubernetes only: StorageClass for the database PVC (empty uses the cluster's default StorageClass). Only applies to a server's PVC that doesn't exist yet -- an existing PVC keeps its original StorageClass across reprovisions, since StorageClassName is immutable and the PVC is never auto-deleted")
 		flags.StringVar(&conf.ProvKubeProxyStorageClass, "prov-kube-proxy-storage-class", "", "Kubernetes only: StorageClass for the proxy PVC (empty uses the cluster's default StorageClass). Only applies to a proxy's PVC that doesn't exist yet -- an existing PVC keeps its original StorageClass across reprovisions, since StorageClassName is immutable and the PVC is never auto-deleted")
+		flags.StringVar(&conf.ProvKubePVCLayout, "prov-kube-pvc-layout", "service-dirs-v1", "Kubernetes only: layout of a database PVC that does not exist yet, service-dirs-v1 (OpenSVC's service directory: data, etc/mysql, init) or legacy (the datadir at the PVC root, conf.d only); an existing PVC keeps the layout its annotation says")
 		flags.StringVar(&conf.ProvNetDockerRunArgs, "prov-net-docker-run-args", "--sysctl net.ipv4.tcp_tw_reuse=1 --sysctl net.core.somaxconn=1024  --sysctl net.ipv4.tcp_fin_timeout=10", "Additional docker run arguments for netns container")
 		flags.BoolVar(&conf.ProvDockerDaemonPrivate, "prov-docker-daemon-private", true, "Use global or private registry per service")
 		flags.StringVar(&conf.ProvDBCompliance, "prov-db-compliance", "", "Path of compliance file for DB configuration")
@@ -2938,6 +2950,8 @@ func (repman *ReplicationManager) Run() error {
 	repman.tlog = s18log.NewTermLog(loglen)
 	repman.Logs = s18log.NewHttpLog(200)
 	repman.GlobalLogs = s18log.NewHttpLog(200)
+	repman.SecurityLogs = newInstanceLogRing(repman.Conf.LogSecurityLength, DefaultSecurityLogLength)
+	repman.APIAccessLogs = newInstanceLogRing(repman.Conf.LogAPIAccessLength, DefaultAPIAccessLogLength)
 	repman.Terms = make([]byte, 0)
 	repman.TermsDT = time.Now()
 	repman.InitServicePlans()
@@ -3173,6 +3187,8 @@ func (repman *ReplicationManager) Run() error {
 	// The ACL users load in phase 1 (initCluster); the flag is raised once every cluster is
 	// initialised (phases 1-4 done). Before, loginHandler answers 503 "starting".
 	repman.clustersReady.Store(true)
+	// tokens bound to a cluster gone from the configuration while repman was stopped
+	repman.revokeTokensOfVanishedClusters()
 
 	// Send initial email
 	repman.SendClustersInitMail()
@@ -3786,7 +3802,7 @@ func (repman *ReplicationManager) initCluster(clusterName string) (*cluster.Clus
 	// Reload Users
 	repman.currentCluster.LoadAPIUsers()
 	repman.currentCluster.SaveAcls()
-	// the marketplace's vault offers, off until the sponsor turns them on (#2227): here for
+	// the marketplace's vault offers, on when the cluster has no other credential store on (#2227): here for
 	// the clusters of the startup too, whose catalogue was read before they existed
 	repman.currentCluster.EnsureMarketplaceVaults(repman.MarketplaceCatalogue().Vaults)
 	repman.ConfigManager.UpdateLoggerConfig(clusterName, repman.currentCluster.Conf)
@@ -4776,6 +4792,7 @@ func (repman *ReplicationManager) logSecurityEvent(event, user, remoteAddr, msg 
 	if repman.SecurityLogrus != nil {
 		repman.SecurityLogrus.WithFields(fields).Warn(msg)
 	}
+	repman.SecurityLogs.addSecurityEvent(event, user, remoteAddr, msg)
 }
 
 // securityLogPath derives the security log file path from the main log file path

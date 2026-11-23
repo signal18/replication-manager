@@ -166,7 +166,7 @@ func (repman *ReplicationManager) issueJWTFor(userInfo interface{}, gitlabToken 
 // least one cluster, identifying it as an administrative account that should
 // authenticate via local credentials only (no SSO path).
 func (repman *ReplicationManager) isAdminUser(username string) bool {
-	for _, cl := range repman.Clusters {
+	for _, cl := range repman.clustersSnapshot() {
 		if u, ok := cl.GetAPIUsers()[username]; ok {
 			if u.Grants[config.GrantGlobalAdminShow] {
 				return true
@@ -253,6 +253,8 @@ func (repman *ReplicationManager) apiserver() {
 	// 301 to "/tmp" without its leading slash. A doubled slash or a ".." is now
 	// matched as typed (404 when nothing matches) instead of redirected.
 	router.SkipClean(true)
+	// every API call goes to the Access Logs ring (off with log-api-access = false)
+	router.Use(repman.apiAccessLogMiddleware)
 
 	router.Use(repman.RecoveryMiddleware)
 	router.Use(repman.cloud18TokenMiddleware)
@@ -476,6 +478,15 @@ func (repman *ReplicationManager) apiserver() {
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxGlobalLogs)),
 	))
+	// the instance Security Logs and Access Logs tabs (server/server_instance_logs.go)
+	router.Handle("/api/global/security-logs", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxGlobalSecurityLogs)),
+	))
+	router.Handle("/api/global/access-logs", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxGlobalAccessLogs)),
+	))
 	repman.apiMeetProtectedHandler(router)
 	repman.apiDatabaseUnprotectedHandler(router)
 	repman.apiDatabaseProtectedHandler(router)
@@ -648,6 +659,11 @@ func (repman *ReplicationManager) IsValidClusterACL(r *http.Request, cluster *cl
 	if mycutinfo, ok := jwtUserInfo(r); ok {
 		meuser := mycutinfo["Name"].(string)
 		mepwd, _ := mycutinfo["Password"].(string)
+		// a local login authenticated its account on the clusters of its scope only
+		// (api_session_scope.go): the same name may hold another password elsewhere
+		if !repman.sessionScope(mycutinfo).Covers(cluster.Name) {
+			return false, meuser
+		}
 		_, ok := mycutinfo["profile"]
 
 		if ok {
@@ -741,6 +757,12 @@ func (repman *ReplicationManager) GetUserInfoMap(token *jwt.Token) (map[string]s
 	}
 	UserInfoMap["User"] = mycutinfo["Name"].(string)
 	UserInfoMap["AuthType"] = "Local"
+	if s := repman.sessionScope(mycutinfo); s.Scoped {
+		UserInfoMap["SessionScope"] = sessionScopeClusters
+		UserInfoMap["SessionClusters"] = strings.Join(s.Clusters, ",")
+	} else if len(s.Excluded) > 0 {
+		UserInfoMap["SessionExcluded"] = strings.Join(s.Excluded, ",")
+	}
 	return UserInfoMap, nil
 }
 
@@ -914,19 +936,27 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 	}
 
 	// tryLocalAuth validates credentials against cluster ACLs and returns
-	// the matching userInfo struct, or (nil, false) on failure.
+	// the matching userInfo struct, or (nil, false) on failure. The password authenticates
+	// the account on the clusters where it is the account's password, and only there: the
+	// session carries them (scope "clusters", api_session_scope.go), unless the account and
+	// password are the instance's (api-credentials of the server configuration).
+	var sessionScope sessionScopeClaims
 	tryLocalAuth := func() (interface{}, bool) {
-		for _, cl := range repman.Clusters {
+		// the instance's Cloud18 identity signs in with Cloud18 only (cluster.IsCloud18Identity)
+		if repman.Conf.Cloud18GitUser != "" && user.Username == repman.Conf.Cloud18GitUser {
+			return nil, false
+		}
+		var matched []string
+		for _, cl := range repman.clustersSnapshot() {
 			if cl.IsValidACL(user.Username, user.Password, r.URL.Path, cluster.AuthMethodSubmittedPassword) {
-				ui := struct {
-					Name     string
-					Role     string
-					Password string
-				}{user.Username, "Member", repman.Conf.GetEncryptedString(user.Password)}
-				return ui, true
+				matched = append(matched, cl.Name)
 			}
 		}
-		return nil, false
+		if len(matched) == 0 {
+			return nil, false
+		}
+		sessionScope = repman.localSessionScope(user.Username, user.Password, matched)
+		return localSessionInfo{user.Username, "Member", repman.Conf.GetEncryptedString(user.Password), sessionScope}, true
 	}
 
 	sendToken := func(tokenString string, upgradeID string) {
@@ -989,13 +1019,18 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 			return
 		}
 		resetAuthTry()
-		meetUserID := repman.instanceMeetUser()
+		// the instance's meet account is the instance's: never for a login scoped to some clusters
+		meetUserID := ""
+		if sessionScope.Scope == "" {
+			meetUserID = repman.instanceMeetUser()
+		}
 		finalInfo := struct {
 			Name       string
 			Role       string
 			Password   string
 			MeetUserID string `json:"meet_user_id"`
-		}{user.Username, "Member", repman.Conf.GetEncryptedString(user.Password), meetUserID}
+			sessionScopeClaims
+		}{user.Username, "Member", repman.Conf.GetEncryptedString(user.Password), meetUserID, sessionScope}
 		_ = userInfo // replaced by finalInfo with MeetUserID
 		tokenString, err := repman.issueJWT(finalInfo, "")
 		if err != nil {
@@ -1094,8 +1129,19 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "Meet token is retrieved")
 	}
 
+	// An SSO login without an email is no SSO identity: its session would be a Local one named
+	// after the account, instance-wide (api_session_scope.go). The Cloud18 login is by email: the
+	// address the realm just authenticated is the identity when GitLab gave none; else refused.
+	if email == "" {
+		email = ssoLoginEmail(user.Username)
+	}
+	if email == "" {
+		repman.logSecurityEvent("api_auth_failure", user.Username, r.RemoteAddr, "API login refused: the SSO login gave no email, no SSO session can be issued")
+		http.Error(w, invalid, http.StatusUnauthorized)
+		return
+	}
 	var ssoUserInfo interface{}
-	if email != "" {
+	{
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "Switch from gitlab user to email: %s", email)
 		ssoUserInfo = struct {
 			Name        string
@@ -1107,14 +1153,6 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 			MeetUserID  string `json:"meet_user_id"`
 			Cloud18     string `json:"cloud18,omitempty"`
 		}{user.Username, displayName, "Member", repman.Conf.GetEncryptedString(user.Password), email, repman.Conf.OAuthProvider, meetUserID, sso.cloud18Claim(repman.Conf)}
-	} else {
-		ssoUserInfo = struct {
-			Name        string
-			DisplayName string `json:"display_name"`
-			Role        string
-			Password    string
-			MeetUserID  string `json:"meet_user_id"`
-		}{user.Username, displayName, "Member", repman.Conf.GetEncryptedString(user.Password), meetUserID}
 	}
 
 	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlDbg, "LoginHandler: meet userID %s", meetUserID)
@@ -1159,13 +1197,14 @@ func (repman *ReplicationManager) autologinHandler(w http.ResponseWriter, r *htt
 
 	// Resolve plaintext password from cluster APIUsers (already decrypted there).
 	// The JWT must carry the encrypted password so IsValidClusterACL can authenticate it.
+	// the instance's Cloud18 identity signs in with Cloud18 only: never a session without login
+	if repman.Conf.Cloud18GitUser != "" && username == repman.Conf.Cloud18GitUser {
+		repman.logSecurityEvent("api_autologin_denied", username, r.RemoteAddr, "session without login refused: the configured user is the instance's Cloud18 identity")
+		http.Error(w, "The configured user signs in with Cloud18 only", http.StatusForbidden)
+		return
+	}
 	password := repman.resolveUserPassword(username)
-
-	userInfo := struct {
-		Name     string
-		Role     string
-		Password string
-	}{username, "Member", repman.Conf.GetEncryptedString(password)}
+	userInfo := repman.passwordSessionInfo(username, password)
 
 	jti, err := newUpgradeID()
 	if err != nil {
@@ -1235,13 +1274,14 @@ func (repman *ReplicationManager) dashboardTokenHandler(w http.ResponseWriter, r
 
 	// Resolve plaintext password from cluster APIUsers (already decrypted there).
 	// The JWT must carry the encrypted password so IsValidClusterACL can authenticate it.
+	// the instance's Cloud18 identity signs in with Cloud18 only: never a session without login
+	if repman.Conf.Cloud18GitUser != "" && username == repman.Conf.Cloud18GitUser {
+		repman.logSecurityEvent("api_autologin_denied", username, r.RemoteAddr, "session without login refused: the configured user is the instance's Cloud18 identity")
+		http.Error(w, "The configured user signs in with Cloud18 only", http.StatusForbidden)
+		return
+	}
 	password := repman.resolveUserPassword(username)
-
-	userInfo := struct {
-		Name     string
-		Role     string
-		Password string
-	}{username, "Member", repman.Conf.GetEncryptedString(password)}
+	userInfo := repman.passwordSessionInfo(username, password)
 
 	dashJTI, err := newUpgradeID()
 	if err != nil {
@@ -1407,6 +1447,15 @@ func (repman *ReplicationManager) handlerMuxWhoAmI(w http.ResponseWriter, r *htt
 		username = user["Name"]
 	}
 	clusterGrants, clusterRoles := repman.resolveUserClusterGrantsAndRoles(username)
+	// a scoped login (or a token created from one) is nobody outside its clusters
+	if scope := repman.requestLoginScope(r); scope.Limited() {
+		for name := range clusterGrants {
+			if !scope.Covers(name) {
+				delete(clusterGrants, name)
+				delete(clusterRoles, name)
+			}
+		}
+	}
 	if clusterGrants != nil {
 		if res, err = sjson.SetBytes(res, "grants", clusterGrants); err != nil {
 			log.Errorf("handlerMuxWhoAmI sjson grants error: %v", err)
@@ -1710,7 +1759,9 @@ func (repman *ReplicationManager) handlerMuxPeerClusters(w http.ResponseWriter, 
 		return
 	}
 
-	if repman.Conf.Cloud18DisablePeers {
+	// the peers' clusters are listed for a login covering the instance only: a login scoped to
+	// some clusters (api_session_scope.go) never speaks for the account on other instances
+	if repman.Conf.Cloud18DisablePeers || !repman.requestUnrestricted(r) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte("[]"))
 		return
@@ -2149,11 +2200,15 @@ func (repman *ReplicationManager) handlerMuxClusterRename(w http.ResponseWriter,
 		return
 	}
 
+	oldName := mycluster.Name
 	err := mycluster.RenameCluster(vars["newClusterName"])
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	// the old name no longer names this cluster: the logins and tokens bound to it let go
+	// (api_session_scope.go)
+	repman.markClusterDeleted(oldName)
 
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("Cluster renamed successfully"))
@@ -2428,7 +2483,7 @@ func (repman *ReplicationManager) DynamicPeerHandler(w http.ResponseWriter, r *h
 			w.WriteHeader(status)
 			w.Write(body)
 			return
-		} else if repman.isAdminUser(uinfomap["User"]) && repman.Conf.Cloud18GitUser != "" {
+		} else if repman.mayLoginPeersAsInstance(r, uinfomap) {
 			// Local admin on a registered instance: peers don't know our local 'admin'
 			// identity, so authenticate AS the registered user (Cloud18GitUser): with its
 			// realm token (#2327), which a peer verifies by itself, the password only for a
@@ -2602,7 +2657,7 @@ func (repman *ReplicationManager) handlerTerminal(w http.ResponseWriter, r *http
 
 	if vars["clusterName"] == "" {
 		// the shell on the repman host: the local admin account only
-		if uinfomap["User"] != "admin" || uinfomap["AuthType"] != "Local" {
+		if uinfomap["User"] != "admin" || uinfomap["AuthType"] != "Local" || uinfomap["SessionScope"] != "" {
 			session.SafeWriteMessage(websocket.TextMessage, []byte("No valid ACL\n"))
 			return
 		}
@@ -2620,7 +2675,8 @@ func (repman *ReplicationManager) handlerTerminal(w http.ResponseWriter, r *http
 			method = "oidc"
 		}
 
-		if !mycluster.IsValidACL(uinfomap["User"], uinfomap["Password"], path, method) {
+		if !userInfoMapScope(uinfomap).Covers(mycluster.Name) ||
+			!mycluster.IsValidACL(uinfomap["User"], uinfomap["Password"], path, method) {
 			session.SafeWriteMessage(websocket.TextMessage, []byte("No valid ACL\n"))
 			return
 		}
@@ -2846,7 +2902,7 @@ func (repman *ReplicationManager) handlerMuxSendEmail(w http.ResponseWriter, r *
 			return
 		}
 
-		if !mycluster.IsValidACL(uinfomap["User"], uinfomap["Password"], r.URL.Path, "oidc") {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
 			http.Error(w, "No valid ACL", http.StatusInternalServerError)
 			return
 		}
@@ -2861,6 +2917,9 @@ func (repman *ReplicationManager) handlerMuxSendEmail(w http.ResponseWriter, r *
 	} else {
 		if uinfomap["User"] != "admin" && uinfomap["User"] != repman.Conf.Cloud18GitUser {
 			http.Error(w, "No valid ACL", http.StatusInternalServerError)
+			return
+		}
+		if !repman.requireUnrestricted(w, r, "the instance's mail test") {
 			return
 		}
 

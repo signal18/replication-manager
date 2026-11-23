@@ -13,6 +13,8 @@ export const globalClustersService = {
   getMyUnits,
   getGlobalLogs,
   getGlobalLogHistory,
+  getGlobalSecurityLogs,
+  getGlobalAccessLogs,
   getGlobalJobs,
   switchGlobalSetting,
   setGlobalSetting,
@@ -78,6 +80,16 @@ function getGlobalLogs(baseURL) {
 // module, text, limit }.
 function getGlobalLogHistory(params, baseURL) {
   return getApi(baseURL).get('global/http-logs', params)
+}
+
+// the instance Security Logs and Access Logs tabs: bounded in-memory rings, in the shape
+// of global/http-logs ({ general: { buffer, len, dropped } })
+function getGlobalSecurityLogs(baseURL) {
+  return getApi(baseURL).get('global/security-logs')
+}
+
+function getGlobalAccessLogs(baseURL) {
+  return getApi(baseURL).get('global/access-logs')
 }
 
 function getGlobalJobs(baseURL) {

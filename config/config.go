@@ -222,6 +222,9 @@ type Config struct {
 	MonitorBinlogEvents                      bool                         `mapstructure:"monitoring-binlog-events" toml:"monitoring-binlog-events" json:"monitoringBinlogEvents"`
 	MonitoringLogAPILogin                    bool                         `scope:"server" mapstructure:"monitoring-log-api-login" toml:"monitoring-log-api-login" json:"monitoringLogApiLogin"`
 	MonitoringLogAPILoginSilentUsers         string                       `scope:"server" mapstructure:"monitoring-log-api-login-silent-users" toml:"monitoring-log-api-login-silent-users" json:"monitoringLogApiLoginSilentUsers"`
+	LogSecurityLength                        int                          `scope:"server" mapstructure:"log-security-length" toml:"log-security-length" json:"logSecurityLength"`
+	LogAPIAccess                             bool                         `scope:"server" mapstructure:"log-api-access" toml:"log-api-access" json:"logApiAccess"`
+	LogAPIAccessLength                       int                          `scope:"server" mapstructure:"log-api-access-length" toml:"log-api-access-length" json:"logApiAccessLength"`
 	LogPluginLevel                           int                          `mapstructure:"log-level-plugin" toml:"log-level-plugin" json:"logPluginLevel"`
 	PluginConfig                             map[string]map[string]string `mapstructure:"plugin-config" toml:"plugin-config" json:"pluginConfig"`
 	User                                     string                       `secret:"true" mapstructure:"db-servers-credential" toml:"db-servers-credential" json:"dbServersCredential"`
@@ -621,6 +624,7 @@ type Config struct {
 	ProvOrchestratorDeploymentUpgradeOnStart bool                         `mapstructure:"prov-orchestrator-deployment-upgrade-on-start" toml:"prov-orchestrator-deployment-upgrade-on-start" json:"provOrchestratorDeploymentUpgradeOnStart"`
 	ProvDBApplyDynamicConfig                 bool                         `mapstructure:"prov-db-apply-dynamic-config" toml:"prov-db-apply-dynamic-config" json:"provDBApplyDynamicConfig"`
 	ProvDBDynamicResource                    bool                         `mapstructure:"prov-db-dynamic-resource" toml:"prov-db-dynamic-resource" json:"provDbDynamicResource"`
+	ProvAppDynamicResource                   bool                         `mapstructure:"prov-app-dynamic-resource" toml:"prov-app-dynamic-resource" json:"provAppDynamicResource"`                       // apps follow a memory/cores (APU) change live: cgroup, configurator, reload (app_resize_dynamic.go)
 	ProvDBResourceAlign                      string                       `mapstructure:"prov-db-resource-align" toml:"prov-db-resource-align" json:"provDbResourceAlign"`                                // container memory cap alignment to the DBU tier: "plan" (default) / "up" / "off"
 	ProvDBDynamicResizePolicy                string                       `mapstructure:"prov-db-dynamic-resize-policy" toml:"prov-db-dynamic-resize-policy" json:"provDBDynamicResizePolicy"`            // WHEN a live memory resize applies: "scale-speed" (default) / "daily-time"
 	ProvDBDynamicResizeDailyTime             string                       `mapstructure:"prov-db-dynamic-resize-daily-time" toml:"prov-db-dynamic-resize-daily-time" json:"provDBDynamicResizeDailyTime"` // HH:MM daily window when policy = daily-time
@@ -745,6 +749,7 @@ type Config struct {
 	ProvKubeImageForcePull                    bool              `mapstructure:"prov-kube-image-force-pull" toml:"prov-kube-image-force-pull" json:"provKubeImageForcePull"`
 	ProvKubeStorageClass                      string            `mapstructure:"prov-kube-storage-class" toml:"prov-kube-storage-class" json:"provKubeStorageClass"`
 	ProvKubeProxyStorageClass                 string            `mapstructure:"prov-kube-proxy-storage-class" toml:"prov-kube-proxy-storage-class" json:"provKubeProxyStorageClass"`
+	ProvKubePVCLayout                         string            `mapstructure:"prov-kube-pvc-layout" toml:"prov-kube-pvc-layout" json:"provKubePvcLayout"` // layout of a database PVC created from now on: service-dirs-v1 (default) or legacy (#2395)
 	ProvNetDockerRunArgs                      string            `mapstructure:"prov-net-docker-run-args" toml:"prov-net-docker-run-args" json:"provNetDockerRunArgs"`
 	ProvDockerDaemonPrivate                   bool              `mapstructure:"prov-docker-daemon-private" toml:"prov-docker-daemon-private" json:"provDockerDaemonPrivate"`
 	ProvServicePlan                           string            `mapstructure:"prov-service-plan" toml:"prov-service-plan" json:"provServicePlan"`

@@ -619,8 +619,11 @@ func (cluster *Cluster) openSVCCurrentDatabaseImage(server *ServerMonitor) strin
 }
 
 // openSVCConfigValue reads key under [section] of an om3 config file (INI, "key = value").
+// The keys above the first section header are DEFAULT's: om3 writes its DEFAULT section
+// without a header once it rewrote the file (a pg keyword set, a config update), so
+// "DEFAULT" matches both that leading block and an explicit [DEFAULT].
 func openSVCConfigValue(raw, section, key string) string {
-	in := false
+	in := section == "DEFAULT"
 	for _, line := range strings.Split(raw, "\n") {
 		line = strings.TrimSpace(line)
 		if strings.HasPrefix(line, "[") {
@@ -1564,13 +1567,21 @@ func (cluster *Cluster) logInvalidDBIdentityOnce(setting, value string, err erro
 // compared: the owner permission bits decide for a process running as the owner, whatever
 // the group of the files is.
 func (cluster *Cluster) dbRunAsVolumeMismatch() string {
+	return cluster.dbRunAsVolumeMismatchFor(false)
+}
+
+// dbRunAsVolumeMismatchFor is dbRunAsVolumeMismatch with the one Kubernetes difference made explicit:
+// ownerFollowsContract is true for a volume that Kubernetes gives to dbVolumeOwner() even when the owner
+// is not managed, as OpenSVC does (the service-dirs-v1 layout). The "owner the storage gives it" case
+// then does not apply and the OpenSVC rule does: only a run-as UID that differs from the owner is reported.
+func (cluster *Cluster) dbRunAsVolumeMismatchFor(ownerFollowsContract bool) string {
 	runUID, _, set := cluster.dbRunAs()
 	if !set || runUID == 0 {
 		return ""
 	}
 	ownerUID, ownerGID, managed := cluster.dbVolumeOwner()
 	switch {
-	case !managed && cluster.GetOrchestrator() == config.ConstOrchestratorKubernetes:
+	case !managed && !ownerFollowsContract && cluster.GetOrchestrator() == config.ConstOrchestratorKubernetes:
 		return fmt.Sprintf("prov-db-run-as-uid runs the database as UID %d but prov-db-volume-uid is not set: the data volume keeps the owner the storage gives it and mysqld may not be able to write its datadir; set prov-db-volume-uid to %d", runUID, runUID)
 	case ownerUID != runUID:
 		return fmt.Sprintf("prov-db-run-as-uid runs the database as UID %d but the data volume is owned by %d:%d: mysqld may not be able to write its datadir; set prov-db-volume-uid to %d", runUID, ownerUID, ownerGID, runUID)
@@ -1580,7 +1591,12 @@ func (cluster *Cluster) dbRunAsVolumeMismatch() string {
 
 // warnDBRunAsVolumeMismatch logs dbRunAsVolumeMismatch once per provisioning.
 func (cluster *Cluster) warnDBRunAsVolumeMismatch() {
-	if msg := cluster.dbRunAsVolumeMismatch(); msg != "" {
+	cluster.warnDBRunAsVolumeMismatchFor(false)
+}
+
+// warnDBRunAsVolumeMismatchFor logs dbRunAsVolumeMismatchFor once per provisioning.
+func (cluster *Cluster) warnDBRunAsVolumeMismatchFor(ownerFollowsContract bool) {
+	if msg := cluster.dbRunAsVolumeMismatchFor(ownerFollowsContract); msg != "" {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "%s", msg)
 	}
 }

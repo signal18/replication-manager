@@ -1,0 +1,89 @@
+{
+	"modulesets": [
+		{
+			"modules": [], 
+			"rulesets": [
+				"php.svc.mrm.db.cnf"
+			], 
+			"modset_name": "php.svc.mrm.db.cnf", 
+			"modulesets": [], 
+			"publications": [
+				"replication-manager"
+			], 
+			"id": 365, 
+			"responsibles": [
+				"replication-manager"
+			]
+		}, 
+		{
+			"modules": [], 
+			"rulesets": [
+				"php.svc.mrm.db.cnf"
+			], 
+			"modset_name": "php.svc.mrm.db", 
+			"modulesets": [
+				"php.svc.mrm.db.cnf"
+			], 
+			"publications": [
+				"replication-manager"
+			], 
+			"id": 366, 
+			"responsibles": [
+				"replication-manager"
+			]
+		}
+	], 
+	"filtersets": [], 
+	"rulesets": [
+		{
+			"fset_name": null, 
+			"ruleset_name": "php.svc.mrm.db.cnf.generic", 
+			"variables": [
+				{
+					"var_author": "admin Manager", 
+					"var_class": "file", 
+					"var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/php/8.4/fpm/pool.d/zzz-cloud18-sizing.conf\",\"fmt\":\"; sized from the app plan by replication-manager\\n[global]\\nprocess_control_timeout = 30s\\n\\n[www]\\npm = dynamic\\npm.max_children = %%ENV:SVC_CONF_ENV_PHP_FPM_MAX_CHILDREN%%\\npm.start_servers = %%ENV:SVC_CONF_ENV_PHP_FPM_START_SERVERS%%\\npm.min_spare_servers = %%ENV:SVC_CONF_ENV_PHP_FPM_MIN_SPARE_SERVERS%%\\npm.max_spare_servers = %%ENV:SVC_CONF_ENV_PHP_FPM_MAX_SPARE_SERVERS%%\\npm.max_requests = 500\\n\"}", 
+					"var_updated": "2026-11-23 13:30:01", 
+					"var_name": "php_fpm_pool_sizing", 
+					"id": 6381
+				}, 
+				{
+					"var_author": "admin Manager", 
+					"var_class": "file", 
+					"var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/php/8.4/fpm/conf.d/zzz-cloud18-sizing.ini\",\"fmt\":\"; sized from the app plan by replication-manager\\nmemory_limit = %%ENV:SVC_CONF_ENV_PHP_MEMORY_LIMIT%%M\\nopcache.memory_consumption = %%ENV:SVC_CONF_ENV_PHP_OPCACHE_MEMORY%%\\n\"}", 
+					"var_updated": "2026-11-23 13:30:02", 
+					"var_name": "php_ini_sizing", 
+					"id": 6382
+				}
+			], 
+			"ruleset_public": false, 
+			"ruleset_type": "explicit", 
+			"rulesets": [], 
+			"publications": [
+				"replication-manager"
+			], 
+			"id": 1189, 
+			"responsibles": [
+				"replication-manager"
+			]
+		}, 
+		{
+			"fset_name": null, 
+			"ruleset_name": "php.svc.mrm.db.cnf", 
+			"variables": [], 
+			"ruleset_public": false, 
+			"ruleset_type": "explicit", 
+			"rulesets": [
+				"php.svc.mrm.db.cnf.generic"
+			], 
+			"publications": [
+				"replication-manager"
+			], 
+			"id": 1190, 
+			"responsibles": [
+				"replication-manager"
+			]
+		}
+	]
+}
+

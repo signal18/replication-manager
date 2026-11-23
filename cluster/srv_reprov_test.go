@@ -137,6 +137,7 @@ func (f *reprovDiskResizer) CanConfigResize(*ServerMonitor, bool) (ResizeFeasibi
 	return ResizeYes, nil
 }
 func (f *reprovDiskResizer) ConfigResize(*ServerMonitor, bool) (bool, error) { return true, nil }
+func (f *reprovDiskResizer) ConfigResizeApp(*App, bool) (bool, error)        { return false, nil }
 func (f *reprovDiskResizer) ResizeDisk(s *ServerMonitor, gb int) (bool, error) {
 	f.asked[s.URL] = gb
 	if f.onResize != nil {

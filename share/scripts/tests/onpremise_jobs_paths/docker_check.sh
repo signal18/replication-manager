@@ -8,7 +8,8 @@
 # db_server_binary, create_dummy_config_file, send_mariadb_defaults, print_defaults_for_fetch) as a non-root user
 # with no passwd entry, PATH=/usr/local/bin:/usr/bin:/bin, and TMP_DIR set to a jobs directory that user owns, as
 # replication-manager sets it (<datadir>/.system/jobs). What the API does is stubbed: the config fetch writes one
-# conf.d file, the receiver is a file instead of the socat to replication-manager, the API log lines go to stdout.
+# conf.d file, the receiver is a file instead of the stream to replication-manager (stream_cli; socat in older
+# scripts), the API log lines go to stdout.
 # It asserts that:
 #   1. print-defaults exits 0 and the server binary it ran is the one in /usr/sbin;
 #   2. what it sends holds the variable of the fetched configuration, as the server printed it;
@@ -41,8 +42,11 @@ grep -q '^print_defaults_for_fetch() {' "$WORK/new.sh" || { echo "FAIL: print_de
 cat >"$WORK/run.sh" <<'EOF'
 LVL_DEBUG=DEBUG; LVL_INFO=INFO; LVL_WARN=WARN; LVL_ERROR=ERROR
 send_lines_to_api() { echo "api[$3]: $1"; }
-job_token() { echo token; }
+API_LOG_FILE=/dev/null
+add_ipv6_brackets() { echo "$1"; }
 db_owner() { echo "$1"; }
+stream_cli() { cat >"$TMP_DIR/received"; }
+job_token() { echo token; }        # the script before replication-manager-cli
 job_stream_signed() { cat; }
 socat() { cat >"$TMP_DIR/received"; }
 fetch_and_extract_config() {

@@ -58,17 +58,10 @@ func (server *ServerMonitor) GetSshEnv() string {
 		adminpassword = user.Password
 	}
 
-	// shellEsc escapes single quotes for safe embedding in shell single-quoted strings.
-	// Using single quotes avoids issues with double quotes, backslashes, and dollar signs
-	// in passwords and other values.
-	shellEsc := func(s string) string {
-		return strings.ReplaceAll(s, "'", "'\"'\"'")
-	}
-
 	// Build shell exports using single-quoted values to prevent injection from
 	// passwords containing double quotes, backslashes, or dollar signs.
 	shellExport := func(name, value string) string {
-		return "export " + name + "='" + shellEsc(value) + "'"
+		return "export " + name + "=" + shellSingleQuote(value)
 	}
 
 	env := shellExport("REPLICATION_MANAGER_HOST_USER", server.User) +
@@ -1226,13 +1219,25 @@ func (server *ServerMonitor) monitorConnect(driver string) (*sqlx.DB, error) {
 
 // connectBounded is sqlx.Connect within seconds (db-servers-connect-timeout; its default
 // when unset): the drivers give up the dial, the handshake and the ping at the deadline.
+// On error it returns no pool: sqlx.ConnectContext, unlike sqlx.Connect, returns the pool
+// still open when its ping fails, and every caller drops the connection of a failed
+// connect. The monitor connects to each server at every tick: a server that did not
+// answer leaked one pool and its connectionOpener goroutine per tick, until the monitor
+// ran out of memory.
 func connectBounded(driver, dsn string, seconds int) (*sqlx.DB, error) {
 	if seconds <= 0 {
 		seconds = 5
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(seconds)*time.Second)
 	defer cancel()
-	return sqlx.ConnectContext(ctx, driver, dsn)
+	db, err := sqlx.ConnectContext(ctx, driver, dsn)
+	if err != nil {
+		if db != nil {
+			db.Close()
+		}
+		return nil, err
+	}
+	return db, nil
 }
 
 // connectMonitorDSN opens a connection on server.DSN, the monitoring port: the TLS
@@ -1275,27 +1280,29 @@ func (server *ServerMonitor) connectMonitorDSN() (*sqlx.DB, error) {
 		// Possible can't connect because of SSL key rotation try old key until server rebooted or key reloaded
 		server.TLSConfigUsed = ConstTLSOldConfig
 		server.SetDSN()
-		conn, err := server.monitorConnect("mysql")
+		// Assigned, not shadowed: the connection opened with the old key is the one
+		// returned. A shadowed conn returned the failed first one instead (a nil pool
+		// before connectBounded, an open dead pool after it) and dropped the working one.
+		conn, err = server.monitorConnect("mysql")
 		if err == nil {
 			server.LastTLSConfig = server.TLSConfigUsed // Track last working TLS config
 			server.ClusterGroup.SetState("ERR00080", state.State{ErrType: config.LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00080"], server.URL), ServerUrl: server.URL, ErrFrom: "MON"})
-		} else {
-			server.TLSConfigUsed = ConstTLSNoConfig
-			server.SetDSN()
-			conn, err := server.monitorConnect("mysql")
-			if err == nil {
-				server.LastTLSConfig = server.TLSConfigUsed // Track last working TLS config
-
-				// if not –require_secure_transport can still connect with no certificate MDEV-13362
-				//server.ClusterGroup.SetState("ERR00081", state.State{ErrType: config.LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00081"], server.URL), ServerUrl: server.URL, ErrFrom: "MON"})
-			}
+			//reset DNS in case the server is restarted
 			server.TLSConfigUsed = ConstTLSCurrentConfig
+			conn.SetConnMaxLifetime(3595 * time.Second)
 			server.SetDSN()
-			return conn, err
+			return conn, nil
 		}
-		//reset DNS in case the server is restarted
+		server.TLSConfigUsed = ConstTLSNoConfig
+		server.SetDSN()
+		conn, err = server.monitorConnect("mysql")
+		if err == nil {
+			server.LastTLSConfig = server.TLSConfigUsed // Track last working TLS config
+
+			// if not –require_secure_transport can still connect with no certificate MDEV-13362
+			//server.ClusterGroup.SetState("ERR00081", state.State{ErrType: config.LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00081"], server.URL), ServerUrl: server.URL, ErrFrom: "MON"})
+		}
 		server.TLSConfigUsed = ConstTLSCurrentConfig
-		conn.SetConnMaxLifetime(3595 * time.Second)
 		server.SetDSN()
 		return conn, err
 	}
@@ -1914,4 +1921,10 @@ func (server *ServerMonitor) ApplyPFSJoinLinksToSchema(tablemap map[string]*dbhe
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
 		"PFS join links: enriched table graph from %d explain records on %s", len(records), server.URL)
+}
+
+// shellSingleQuote quotes s for a POSIX shell: single quotes, each single quote inside closed,
+// escaped and reopened. Nothing in it is expanded (dollar signs, backslashes, double quotes).
+func shellSingleQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", "'\"'\"'") + "'"
 }

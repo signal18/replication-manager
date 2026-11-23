@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { getClusters } from '../../redux/globalClustersSlice'
 import { setCluster } from '../../redux/clusterSlice'
-import { Box, Flex, HStack, Text, Wrap } from '@chakra-ui/react'
+import { Box, Button, Flex, HStack, Text, VStack, Wrap } from '@chakra-ui/react'
 import NotFound from '../../components/NotFound'
 import { AiOutlineCluster } from 'react-icons/ai'
 import { HiCloudDownload, HiCreditCard, HiExclamation, HiTable, HiViewGrid } from 'react-icons/hi'
@@ -24,7 +24,9 @@ import { isCloud18PlanEligible } from '../../utils/cloud18'
 
 const columnHelper = createColumnHelper()
 
-function ClusterList({ onClick }) {
+// emptyLink: { text, onClick } shown under the empty message when the instance has no
+// local cluster for this user (Home passes the Peer or For Sale tab when the user has one)
+function ClusterList({ onClick, emptyLink }) {
   const dispatch = useDispatch()
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false)
   const [isGitImportModalOpen, setIsGitImportModalOpen] = useState(false)
@@ -222,7 +224,22 @@ function ClusterList({ onClick }) {
           </HStack>
         }
         body={!loading && clusterList?.length === 0 ? (
-          <NotFound text={'No cluster found!'} />
+          (clusters || []).length === 0 ? (
+            <NotFound
+              text={
+                <VStack spacing={1}>
+                  <Box>No local cluster on this instance</Box>
+                  {emptyLink && (
+                    <Button variant='link' size='sm' colorScheme='blue' onClick={emptyLink.onClick}>
+                      {emptyLink.text}
+                    </Button>
+                  )}
+                </VStack>
+              }
+            />
+          ) : (
+            <NotFound text={'No cluster found!'} />
+          )
         ) : viewType === 'table' ? (
           <DataTable data={clusterList} columns={columns} />
         ) : (

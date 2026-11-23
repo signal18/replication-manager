@@ -1528,8 +1528,8 @@ func (repman *ReplicationManager) handlerMuxSlaveIndex(w http.ResponseWriter, r 
 		return
 	}
 
-	uname := repman.GetUserFromRequest(r)
-	if _, ok := mycluster.GetAPIUsers()[uname]; !ok {
+	// the request's identity on this cluster: a scoped login or an API token only within its scope
+	if _, ok := repman.requestACLUser(r, mycluster); !ok {
 		http.Error(w, "Forbidden", http.StatusForbidden)
 		return
 	}
@@ -1588,8 +1588,8 @@ func (repman *ReplicationManager) handlerMuxSlaveAttributeByIndex(w http.Respons
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		uname := repman.GetUserFromRequest(r)
-		if _, ok := mycluster.GetAPIUsers()[uname]; !ok {
+		// the request's identity on this cluster: a scoped login or an API token only within its scope
+		if _, ok := repman.requestACLUser(r, mycluster); !ok {
 			http.Error(w, "No Valid ACL", http.StatusInternalServerError)
 			return
 		}
@@ -3711,6 +3711,8 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		if err := mycluster.SwitchProvDBDynamicResource(); err != nil {
 			return err
 		}
+	case "prov-app-dynamic-resource":
+		mycluster.Conf.ProvAppDynamicResource = !mycluster.Conf.ProvAppDynamicResource
 	case "replication-use-ssl":
 		mycluster.Conf.ReplicationSSL = !mycluster.Conf.ReplicationSSL
 	case "prov-db-docker-run-args-limit":
@@ -3971,6 +3973,7 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 // handlerMuxSetSettings handles the setting of settings for a given cluster.
 // @Summary Set settings for a specific cluster
 // @Description This endpoint sets the settings for the specified cluster.
+// @Description A credential setting is user:password, with a user and a password: in clear for db-servers-credential, replication-credential, proxysql-servers-credential, maxscale-servers-credential and shardproxy-servers-credential; encoded in base64 for backup-verification-credential, cloud18-dba-user-credentials and cloud18-sponsor-user-credentials (an empty value clears the verification and sponsor credentials). Any other value is refused with 400, the value never echoed.
 // @Tags ClusterSettings
 // @Accept json
 // @Produce json
@@ -3979,7 +3982,9 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 // @Param settingName path string true "Setting Name"
 // @Param settingValue path string true "Setting Value"
 // @Success 200 {string} string "Successfully set setting"
+// @Failure 400 {string} string "A credential setting that is not user:password"
 // @Failure 403 {string} string "No valid ACL"
+// @Failure 409 {string} string "A credential change refused (no store keeps versions)"
 // @Failure 500 {string} string "No cluster"
 // @Router /api/clusters/{clusterName}/settings/actions/set/{settingName}/{settingValue} [post]
 func (repman *ReplicationManager) handlerMuxSetSettings(w http.ResponseWriter, r *http.Request) {
@@ -4024,15 +4029,7 @@ func (repman *ReplicationManager) handlerMuxSetSettings(w http.ResponseWriter, r
 		if valid {
 			err := repman.setClusterSetting(mycluster, setting, value)
 			if err != nil {
-				errCode := 500
-				if err.Error() == "Setting not found" {
-					errCode = 501
-				}
-				if errors.Is(err, cluster.ErrCredentialChangeRefused) {
-					errCode = http.StatusConflict
-				}
-
-				http.Error(w, "Failed to set cluster setting: "+err.Error(), errCode)
+				http.Error(w, "Failed to set cluster setting: "+err.Error(), setSettingErrorCode(err))
 				return
 			}
 
@@ -4347,7 +4344,74 @@ func decodeBase64LogValue(value string) (string, bool) {
 	return decodedValue, true
 }
 
+// ErrInvalidCredentialFormat is the refusal of a user:password setting whose value is not one
+// (HTTP 400). Its text never carries the value.
+var ErrInvalidCredentialFormat = errors.New("invalid credential format")
+
+// credentialSettings are the user:password settings of the settings API, each as the GUI sends
+// it (SetCredentialsModal): base64 for the three keys decoded by their setter, the value in
+// clear for the others. clearable: an empty value clears the credential (the Cloud18 sponsor
+// user is cleared that way, the verification server is optional).
+var credentialSettings = map[string]struct{ base64, clearable bool }{
+	"db-servers-credential":            {},
+	"replication-credential":           {},
+	"proxysql-servers-credential":      {},
+	"maxscale-servers-credential":      {},
+	"shardproxy-servers-credential":    {},
+	"backup-verification-credential":   {base64: true, clearable: true},
+	"cloud18-dba-user-credentials":     {base64: true},
+	"cloud18-sponsor-user-credentials": {base64: true, clearable: true},
+}
+
+// checkCredentialSetting refuses a credential setting that is not user:password with a user
+// and a password, once decoded the way its key is sent. A value in another encoding (a base64
+// value where the clear one is expected) has no colon and is refused: stored as is, the whole
+// value would become the user, the password empty, and the database would echo that user in
+// its access denied errors (F10).
+func checkCredentialSetting(name, value string) error {
+	spec, ok := credentialSettings[name]
+	if !ok {
+		return nil
+	}
+	pair := value
+	if spec.base64 {
+		decoded, err := base64.StdEncoding.DecodeString(value)
+		if err != nil {
+			return fmt.Errorf("%w: %s must be user:password encoded in base64", ErrInvalidCredentialFormat, name)
+		}
+		pair = string(decoded)
+	}
+	if pair == "" && spec.clearable {
+		return nil
+	}
+	user, password, found := strings.Cut(pair, ":")
+	if !found || user == "" || password == "" {
+		encoding := "in clear"
+		if spec.base64 {
+			encoding = "encoded in base64"
+		}
+		return fmt.Errorf("%w: %s must be user:password %s, with a user and a password", ErrInvalidCredentialFormat, name, encoding)
+	}
+	return nil
+}
+
+// setSettingErrorCode is the HTTP status of a refused cluster setting.
+func setSettingErrorCode(err error) int {
+	switch {
+	case errors.Is(err, ErrInvalidCredentialFormat):
+		return http.StatusBadRequest
+	case errors.Is(err, cluster.ErrCredentialChangeRefused):
+		return http.StatusConflict
+	case err.Error() == "Setting not found":
+		return http.StatusNotImplemented
+	}
+	return http.StatusInternalServerError
+}
+
 func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, name string, value string) error {
+	if err := checkCredentialSetting(name, value); err != nil {
+		return err
+	}
 	var isactive = setIsActive(value)
 	var err error
 	trackedSecretsBefore := mycluster.TrackedSecretCompareSnapshot()
@@ -4778,12 +4842,21 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.SetProvKubeStorageClass(value)
 	case "prov-kube-proxy-storage-class":
 		mycluster.SetProvKubeProxyStorageClass(value)
+	case "prov-kube-pvc-layout":
+		if err := mycluster.SetProvKubePVCLayout(value); err != nil {
+			return err
+		}
 	case "prov-db-disk-size":
 		mycluster.SetDBDiskSize(value)
 	case "prov-db-cpu-cores":
 		mycluster.SetDBCores(value)
 	case "prov-db-memory":
 		mycluster.SetDBMemorySize(value)
+	case "prov-app-dynamic-resource":
+		if isactive == nil {
+			return fmt.Errorf("prov-app-dynamic-resource must be true or false")
+		}
+		mycluster.Conf.ProvAppDynamicResource = *isactive
 	case "prov-db-dynamic-resource":
 		if isactive == nil {
 			return fmt.Errorf("prov-db-dynamic-resource must be true or false")
@@ -12241,6 +12314,9 @@ func (repman *ReplicationManager) handlerMuxSetServerActiveStatus(w http.Respons
 		http.Error(w, "No valid ACL", http.StatusForbidden)
 		return
 	}
+	if !repman.requireUnrestricted(w, r, "the active/standby switch") {
+		return
+	}
 	if err := repman.toggleServerActiveStatus(); err != nil {
 		http.Error(w, err.Error(), http.StatusConflict)
 		return
@@ -12272,9 +12348,13 @@ func (repman *ReplicationManager) handlerMuxFetchDynamicClustersFromGit(w http.R
 		return
 	}
 
+	// the instance's admin in an interactive login covering the instance: never an API token
 	claims, err := repman.GetJWTClaims(r)
-	if err != nil || claims["User"] != "admin" {
+	if err != nil || claims["User"] != "admin" || claims["AuthType"] != "Local" {
 		http.Error(w, `{"error":"administrator access required"}`, http.StatusForbidden)
+		return
+	}
+	if !repman.requireUnrestricted(w, r, "the cluster import from git") {
 		return
 	}
 

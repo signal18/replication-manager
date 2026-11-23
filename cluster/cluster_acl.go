@@ -207,8 +207,9 @@ func (cluster *Cluster) isValidACL(strUser string, strPassword string, URL strin
 	}
 
 	// Local password auth: passwordless accounts are SSO-only, and a blank
-	// submitted password never authenticates.
-	if user.Password == "" || strPassword == "" {
+	// submitted password never authenticates. The instance's Cloud18 identity signs in
+	// with Cloud18 only, whatever password a list may still hold for it.
+	if user.Password == "" || strPassword == "" || cluster.IsCloud18Identity(strUser) {
 		return false
 	}
 	// A session JWT carries the password encrypted ("password"); a password a client typed
@@ -224,11 +225,17 @@ func (cluster *Cluster) isValidACL(strUser string, strPassword string, URL strin
 	return false
 }
 
+// IsCloud18Identity reports whether strUser is the instance's Cloud18 identity
+// (cloud18-gitlab-user): an SSO account in every cluster, never a local password.
+func (cluster *Cluster) IsCloud18Identity(strUser string) bool {
+	return strUser != "" && cluster.Conf != nil && strUser == cluster.Conf.Cloud18GitUser
+}
+
 func (cluster *Cluster) GetAPIUser(strUser string, strPassword string) (APIUser, error) {
 	if user, ok := cluster.GetAPIUsers()[strUser]; ok {
 		// A passwordless (SSO-provisioned) account must never authenticate by a
 		// blank local password (blank-password bypass).
-		if user.Password == "" || strPassword == "" {
+		if user.Password == "" || strPassword == "" || cluster.IsCloud18Identity(strUser) {
 			return APIUser{}, fmt.Errorf("incorrect password")
 		}
 		if subtle.ConstantTimeCompare([]byte(user.Password), []byte(strPassword)) == 1 {
@@ -377,6 +384,12 @@ func (cluster *Cluster) LoadAPIUsers() error {
 		}
 
 		newapiuser.Password = cluster.Conf.GetDecryptedPassword("api-credentials", newapiuser.Password)
+		if cluster.IsCloud18Identity(newapiuser.User) {
+			// the instance's Cloud18 identity is passwordless (SSO only): a password an older
+			// release generated for it is dropped here, and from the stored list at its next
+			// rewrite (stripCloud18IdentityPassword)
+			newapiuser.Password = ""
+		}
 		newapiuser.Grants = make(map[string]bool)
 		newapiuser.Roles = make(map[string]bool)
 

@@ -215,7 +215,7 @@ type OrchestratorInfo interface {
 	Traits() OrchestratorTraits
 	Layout(server *ServerMonitor) ServiceLayout
 	ProxyLayout(prx DatabaseProxy) ServiceLayout
-	Check() error            // reachability and credentials, for the state WARN0325 (2.4)
+	Check() error            // reachability and credentials, for the state WARN0326 (2.4)
 }
 
 // OrchestratorTraits replaces the "== OpenSVC || == Kubernetes" capability checks (1.5).
@@ -399,8 +399,8 @@ backend logs today. New states, numbered after the last ones (WARN0324, ERR00121
 | State | Level | Severity | When | Clears |
 |---|---|---|---|---|
 | ERR00122 | server | ERROR | an orchestrator operation the monitor or the user asked for failed on this server (provision, start, refresh): the service cannot do its job until someone acts. Text: `Orchestrator %s: %s of %s failed: %s` | the next successful operation of the same kind on the server |
-| WARN0325 | cluster | WARNING | `Check()` of a configured orchestrator fails (unreachable, bad credentials, script missing or not executable): every provisioning action of the cluster will fail. Text: `Orchestrator %s (%s) unreachable: %s` | the next successful check |
-| WARN0326 | cluster | WARNING | a configuration names an orchestrator that does not exist, or a server names one of another type than the cluster's and the operation needs the cluster's (3.3). Text: `Server %s names orchestrator %s: %s` | the configuration is fixed |
+| WARN0326 | cluster | WARNING | `Check()` of a configured orchestrator fails (unreachable, bad credentials, script missing or not executable): every provisioning action of the cluster will fail. Text: `Orchestrator %s (%s) unreachable: %s` | the next successful check |
+| WARN0327 | cluster | WARNING | a configuration names an orchestrator that does not exist, or a server names one of another type than the cluster's and the operation needs the cluster's (3.3). Text: `Server %s names orchestrator %s: %s` | the configuration is fixed |
 | WARN0327 | server | WARNING | the server is frozen for a rolling operation on a backend without a freeze of its own (the frozen flag, 2.5): the monitor rejoins, restarts and reprovisions nothing on it. Text: `Server %s frozen for a rolling operation: no rejoin, restart or reprovision until unfrozen` | `UnfreezeDatabaseService` |
 | WARN0328 | server (the proxy) | WARNING | the proxy's runtime differs from its configuration (12.2): a materialization failed, a runtime change was refused for want of a hook, or the drift check found a difference. Text: `Proxy %s: runtime differs from configuration (%s): %s` | the materialization succeeds, or runtime and configuration agree |
 
@@ -479,7 +479,7 @@ once the steps have landed):
 
 | Method | Backends | Why | What a dependent caller does |
 |---|---|---|---|
-| `HostOrchestrator` (`StopHost`, `StartHost`, `RebootHost`, `HostStatus`) | OpenSVC, Kubernetes, on-premise, localhost, SlapOS | the backend does not own the machine under the server; only a hypervisor backend (Proxmox, 10.4) or the client's script does | the rolling upgrade with `prov-db-rolling-upgrade-host` on such a backend opens WARN0326 naming the server and skips the host step |
+| `HostOrchestrator` (`StopHost`, `StartHost`, `RebootHost`, `HostStatus`) | OpenSVC, Kubernetes, on-premise, localhost, SlapOS | the backend does not own the machine under the server; only a hypervisor backend (Proxmox, 10.4) or the client's script does | the rolling upgrade with `prov-db-rolling-upgrade-host` on such a backend opens WARN0327 naming the server and skips the host step |
 | `AbortDatabaseService`, `AbortProxyService`, `AbortAppService`, `Clear*InstanceState` | OpenSVC through the collector API (v2) | the v2 API has no abort and no instance-state clear; v2 is not developed further | the API action answers 501 with the reason; no state, the user asked |
 | `secret-check`, `secret-remove` answering exit 3 | script | the client's tooling keeps no copy of the secret to check or remove | the drift check records WARN0275 as unverifiable and does not rewrite; the unprovision logs the absence |
 
@@ -505,8 +505,8 @@ set of codes for all backends, in the existing numbering, the existing ones reus
 | failed | ERR00122 (ERROR) | the target | the backend returned an error: `Orchestrator %s: %s of %s failed: %s`, the backend's error text | the next successful operation of the same kind on the target |
 | refused, not supported | WARN0331 (WARNING) | the target | a caller depended on an operation the backend answers `ErrOrchestratorNotSupported` to (2.3, pattern 3): `Orchestrator %s: %s not supported on %s, %s` (what the caller did instead) | the caller no longer needs it, or the configuration changes |
 | slow | WARN0330 (WARNING) | the target | an operation runs past its threshold (`prov-orchestrator-slow-threshold`, seconds, default 300, T16): `Orchestrator %s: %s of %s running for %s, threshold %s` | the operation returns |
-| unreachable | WARN0325 (WARNING) | cluster | `Check()` fails (2.4) | `Check()` succeeds |
-| misnamed | WARN0326 (WARNING) | cluster | the configuration names an orchestrator wrongly (2.4, 3.3) | the configuration is fixed |
+| unreachable | WARN0326 (WARNING) | cluster | `Check()` fails (2.4) | `Check()` succeeds |
+| misnamed | WARN0327 (WARNING) | cluster | the configuration names an orchestrator wrongly (2.4, 3.3) | the configuration is fixed |
 | frozen | WARN0327 (WARNING) | server | the frozen flag (2.5) | unfreeze |
 | secret drift | WARN0275 (WARNING) | cluster | the shared secret differs from the reference (11.1) | the rewrite succeeds |
 | proxy drift | WARN0328 (WARNING) | proxy | the proxy's runtime differs from its configuration (12.2) | they agree |
@@ -638,7 +638,7 @@ major's steps of section 5 (decision 2, section 8).
 when the other servers of its cluster reach it at a private address: replication, the
 proxies' backends and the monitor's connection use that address, and nothing else. The
 rule is checked at load for each `host=name` pair (the server's host is an address of a
-private range, or resolves to one) and refused with WARN0326 otherwise. It is a rule on
+private range, or resolves to one) and refused with WARN0327 otherwise. It is a rule on
 the addresses, not on the types: two OpenSVC sites, or an OpenSVC and a Kubernetes site,
 are both allowed when the rule holds. The cluster-level facets (`Nodes`, `SecretStore`,
 `InitCredentials`, `UnprovisionSecret`) run on every distinct orchestrator of the cluster
@@ -665,7 +665,7 @@ v2: an IPsec (strongSwan) tunnel between the two gateways' internal addresses, r
 side's private network to the other. It exists only on OpenSVC **om3 rc64 or later**. An
 instance whose OpenSVC agents are older than om3 rc64 cannot use the per-server map: at load
 the check reads the agents' version (`GetOrchestratorVersion`, the version the daemon reports)
-and, below om3 rc64, refuses each `host=name` pair with WARN0326, the state text saying why
+and, below om3 rc64, refuses each `host=name` pair with WARN0327, the state text saying why
 (`Server %s names orchestrator %s: the cross-orchestrator private path needs the OpenSVC
 strongswan template, om3 rc64 or later, the agents run %s`). Deploying the template and the
 tunnel stays out of replication-manager's scope: the infrastructure's operators instantiate
@@ -680,7 +680,7 @@ expressed as the localhost orchestrator).
 ### 3.4 Load-time validation
 
 The registry (`cluster.newOrchestratorList()`, built in `cluster.Init` beside
-`newProxyList()`) refuses at load, with a WARN0326 state and the cluster held in the
+`newProxyList()`) refuses at load, with a WARN0327 state and the cluster held in the
 "configuration invalid" condition it already has for a bad topology: an unknown type, an
 unknown name, a name equal to a type, a per-server override whose server has no private
 address (the rule of 3.3), a script path that is not an executable file. It never calls `log.Fatalln` (`cluster/cluster.go:1116` does
@@ -868,7 +868,7 @@ with the same behaviour on every operation that works today. The changes:
   type for its show/hide logic.
 - An unknown `prov-orchestrator` value no longer falls back to `onpremise` with a log line
   (`SetProvOrchestrator`) nor kills the process (`initOrchetratorNodes`): the cluster loads
-  with WARN0326 and no provisioning action (3.4).
+  with WARN0327 and no provisioning action (3.4).
 - Operations that were silent no-ops on a backend (1.1 to 1.7) either work (the **write**
   cells of 2.5) or answer "not supported" explicitly: an API caller sees HTTP 501 where it
   saw 200 with nothing done. The localhost stop calls the localhost stop.
@@ -942,13 +942,13 @@ allowed list equal to today's inventory. It references #333 (T9).
 | File | Content |
 |---|---|
 | `cluster/orchestrator.go` | rewritten: the seven interfaces of 2.1, `OrchestratorTraits`, `ServiceLayout`, `Storage`, `NodeStats`, `TerminalTarget`, `TerminalRequest`, `TerminalCommand`, `ErrOrchestratorNotSupported`, `notSupported(op string, orch OrchestratorInfo) error` (the wrap helper). The 2021 `Orchetrator` struct, `DatabaseOrchetrator` and `orchestratorList` are deleted. |
-| `cluster/orchestrator_registry.go` | `newOrchestratorList()` called from `cluster.Init` beside `newProxyList()`; `cluster.Orchestrators map[string]Orchestrator` (the synthesized one under its type name) and its `orchestratorsMutex`; `cluster.Orchestrator() Orchestrator` (the cluster's, built on the spot when `prov-orchestrator` changed since `Init`, a `nullOrchestrator` for an unknown type: never nil); `cluster.orchestrator(server *ServerMonitor) Orchestrator` (returns the cluster's until 3.3 exists); `orchestratorConfig` and `synthesizedOrchestratorConfig` (the flat keys as a block, test only); `unsupportedOrchestrator`, the base every adapter embeds: a method an adapter does not declare falls through to it and answers the sentinel, so "not supported" is the absence of a method, visible in the file; `notSupportedStore`; `awaitProvisioning`; `databaseLayout`, `proxyLayout` (today's getters). The load-time refusal of an unknown type with WARN0326 instead of `log.Fatalln` is NOT in this step (it is a behaviour change: step 5). |
+| `cluster/orchestrator_registry.go` | `newOrchestratorList()` called from `cluster.Init` beside `newProxyList()`; `cluster.Orchestrators map[string]Orchestrator` (the synthesized one under its type name) and its `orchestratorsMutex`; `cluster.Orchestrator() Orchestrator` (the cluster's, built on the spot when `prov-orchestrator` changed since `Init`, a `nullOrchestrator` for an unknown type: never nil); `cluster.orchestrator(server *ServerMonitor) Orchestrator` (returns the cluster's until 3.3 exists); `orchestratorConfig` and `synthesizedOrchestratorConfig` (the flat keys as a block, test only); `unsupportedOrchestrator`, the base every adapter embeds: a method an adapter does not declare falls through to it and answers the sentinel, so "not supported" is the absence of a method, visible in the file; `notSupportedStore`; `awaitProvisioning`; `databaseLayout`, `proxyLayout` (today's getters). The load-time refusal of an unknown type with WARN0327 instead of `log.Fatalln` is NOT in this step (it is a behaviour change: step 5). |
 | `cluster/orchestrator_opensvc.go` | `type openSVCOrchestrator struct{ unsupportedOrchestrator; cluster *Cluster; name string }`; every method calls the existing `OpenSVC*` method or the existing helper (`openSVCStore`, `openSVCCurrentDatabaseImage`, `GetDatabaseServiceConfig`, `OpenSVCGetPoolInfoList`, `GetGottyServer`); `Freeze`/`Unfreeze` call `FreezeDatabaseService`/`UnfreezeDatabaseService` (the v2 nil kept, documented); `RefreshDatabaseServiceDefinition` is the v3 `OpenSVCUpdateDatabaseTemplate` with the `keepImage` rule, `notSupported` on v2; `RestartDatabaseService` with an empty `rid` returns `notSupported` (the caller's stop-wait-start stays in prov.go); `UpgradeDatabaseService` and `RefreshProxyServiceDefinition` are not declared (2.5). The methods that today report on `errorChan` (the database, proxy and app provision and unprovision) go through `awaitProvisioning`: `go run(); return <-cluster.errorChan`, received on the cluster's channel under the caller's `provisioningMutex` exactly as the switch statements receive it today (a private channel is not possible while the sends are inside the backends); the adapter is synchronous and today's code is untouched until step 2 removes the sends and deletes the helper. |
 | `cluster/orchestrator_k8s.go` | `type k8sOrchestrator struct{ cluster *Cluster }`; the `K8S*` methods; `Storages` from `K8SGetStorageClasses`; `DatabaseServiceDefinition` from `K8SGetDatabaseManifests`; `Freeze`, `Unfreeze`, `NodeStats`, `DatabaseServiceImage`, `DatabaseWorkingNode`, `UnprovisionSecret`, the app methods, `Abort`/`Clear`, `TerminalCommand` return `notSupported` (the **write** cells of 2.5 are not written here). |
 | `cluster/orchestrator_onpremise.go` | `type onPremiseOrchestrator struct{ cluster *Cluster }`; `OnPremise*` methods, `UpgradeDatabaseService` from `OnPremiseUpgradeDatabaseService`, `TerminalCommand` from `OnPremiseGetSSHKey` and the SSH command of `server_tty.go` (moved as a helper, the handler still builds its own in this step); the rest `notSupported`. |
 | `cluster/orchestrator_localhost.go` | `type localhostOrchestrator struct{ cluster *Cluster }`; `Localhost*` methods; `StopDatabaseService` calls `LocalhostStopDatabaseService` (the adapter is correct; the switch keeps calling the on-premise stop until step 2, so no behaviour changes in this step: the discrepancy is a row of the matrix test marked `legacyDiffers`). |
 | `cluster/orchestrator_slapos.go` | `type slapOSOrchestrator struct{ ... }`; the `SlapOS*` database methods and the proxy start and stop; the proxy provision and unprovision are not declared: today's methods are empty and never report (2.5). |
-| `config/error.go` | ERR00122, WARN0325, WARN0326 texts (2.4). Not raised by anything in this step. |
+| `config/error.go` | ERR00122, WARN0326, WARN0327 texts (2.4). Not raised by anything in this step. |
 | `cluster/cluster.go` | the `Orchestrators` field and its mutex; the `newOrchestratorList()` call in `Init` beside `newProxyList()`. |
 | `server/server_tty.go` | its three `terminalTarget*` constants read `cluster.TerminalTarget*` (the one cross-package move). |
 | `cluster/orchestrator_matrix_test.go` | `TestOrchestratorMatrix`, `TestOrchestratorNullAnswersEveryMethod` (9.3). |
@@ -1297,7 +1297,7 @@ storages of the node, `n/a` otherwise as on-premise.
 | `proxmox-api-url` | the API endpoint |
 | `proxmox-api-token` | the token (`user@realm!tokenid=secret`), a secret: encrypted in the file (F9), never logged (F10) |
 | `proxmox-api-insecure` | accept the API's certificate without verification (a lab); default `false` |
-| `prov-db-host-vmids` | `host=node/vmid` pairs, comma separated (`db1=pve1/101,db2=pve2/102`), the VM under each database server; a server without one has no host step (WARN0326 names it when the host step is on) |
+| `prov-db-host-vmids` | `host=node/vmid` pairs, comma separated (`db1=pve1/101,db2=pve2/102`), the VM under each database server; a server without one has no host step (WARN0327 names it when the host step is on) |
 | `prov-db-rolling-upgrade-host` | the host step in the rolling upgrade (above); default `false` |
 | `prov-db-host-upgrade-script` | the client's host upgrade hook, run inside the guest step above; empty: no upgrade, a reboot only |
 | `prov-db-host-reboot-timeout` | seconds for the VM to be `running` again and the guest to answer; default 600 |
@@ -1343,7 +1343,7 @@ whatever the backend:
   the superseded value kept as `<KEY>_OLD` (as `openSVCStore` and `k8sStore` do);
 - a drift between that place and replication-manager's reference is a state (WARN0275),
   rewritten at every tick until it clears; a failed write, a failed removal, a failed read is
-  a state (ERR00122 on the server, WARN0325 on the orchestrator), never a log line alone
+  a state (ERR00122 on the server, WARN0326 on the orchestrator), never a log line alone
   (F7, T5);
 - an unprovision removes it.
 
@@ -1402,7 +1402,7 @@ does the init container for its login. The on-premise backend gives the host the
   (`the credentials directory of <host>`) instead of the OpenSVC object. The check runs in the
   background, never on the tick, bounded by `storeTimeout`, as today.
 - **Unprovision:** `UnprovisionSecret` removes the directory over SSH; a host it cannot reach
-  leaves WARN0325 and the directory, named, for the operator.
+  leaves WARN0326 and the directory, named, for the operator.
 - **What does not change:** the database itself (no SQL beyond the rotation's own), the client's
   scripts (`prov-db-*-script` keep running around each step), the immutable keys in `/etc`.
   Nothing of the host is read but the directory.

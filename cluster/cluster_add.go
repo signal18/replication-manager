@@ -446,6 +446,10 @@ func (cluster *Cluster) addUser(userform UserForm, delegator string, reloadACL b
 	// Backward-compatible: callers that leave Password empty still get a random password,
 	// unless the caller asked for a passwordless (SSO-only) account.
 	pass := userform.Password
+	if cluster.IsCloud18Identity(user) {
+		// the instance's Cloud18 identity signs in with Cloud18 only: never a local password
+		pass, generatePassword = "", false
+	}
 	if pass == "" && generatePassword {
 		pass, _ = cluster.GeneratePassword()
 	}
@@ -467,7 +471,7 @@ func (cluster *Cluster) addUser(userform UserForm, delegator string, reloadACL b
 		// cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "User %s already exist ", user)
 	} else {
 		external := user + ":" + pass
-		if current := cluster.Conf.GetDecryptedValue("api-credentials-external"); current != "" {
+		if current := cluster.stripCloud18IdentityPassword(cluster.Conf.GetDecryptedValue("api-credentials-external")); current != "" {
 			external = current + "," + external
 		}
 		if err := cluster.CredentialChain().Set("api-credentials-external", external); err != nil {
@@ -514,6 +518,22 @@ func (cluster *Cluster) addUser(userform UserForm, delegator string, reloadACL b
 	}
 
 	return nil
+}
+
+// stripCloud18IdentityPassword returns the credential list (user:password,...) with the
+// password of the instance's Cloud18 identity removed (user: kept, passwordless): an older
+// release generated one for it at every cluster add.
+func (cluster *Cluster) stripCloud18IdentityPassword(list string) string {
+	if cluster.Conf == nil || cluster.Conf.Cloud18GitUser == "" || list == "" {
+		return list
+	}
+	entries := strings.Split(list, ",")
+	for i, e := range entries {
+		if u, _, ok := strings.Cut(strings.TrimSpace(e), ":"); ok && cluster.IsCloud18Identity(u) {
+			entries[i] = u + ":"
+		}
+	}
+	return strings.Join(entries, ",")
 }
 
 func (cluster *Cluster) UpdateUser(userform UserForm, delegator string, reloadACL bool) error {
@@ -625,7 +645,7 @@ func (cluster *Cluster) DropUser(userform UserForm, reloadACL bool) error {
 			}
 			auser, _ := misc.SplitPair(cred)
 			if auser != user {
-				new_cred = append(new_cred, cred)
+				new_cred = append(new_cred, cluster.stripCloud18IdentityPassword(cred))
 			}
 		}
 		if err := cluster.CredentialChain().Set("api-credentials-external", strings.Join(new_cred, ",")); err != nil {

@@ -6,11 +6,11 @@ package server
 
 import (
 	"bytes"
+	"encoding/json"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -28,25 +28,20 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// jobsScriptBody builds a job body with the jobs script's own functions, as a database server's
-// dbjobs posts it (the jobs key, no database password).
+// jobsScriptBody builds a job body as a database server's jobs post it through
+// replication-manager-cli (jobapi): the jobs key, no database password.
 func jobsScriptBody(t *testing.T, payload, jobsKey string) []byte {
 	t.Helper()
-	for _, bin := range []string{"bash", "openssl", "sha256sum"} {
-		if _, err := exec.LookPath(bin); err != nil {
-			t.Skipf("%s not found", bin)
-		}
+	var p struct{ Server string }
+	if err := json.Unmarshal([]byte(payload), &p); err != nil {
+		t.Fatalf("payload %s: %v", payload, err)
 	}
-	fns := `src=../share/scripts/dbjobs_new.sh
-eval "$(sed -n '/^pad_pkcs7() {/,/^}/p; /^derive_key() {/,/^}/p; /^jobs_key() {/,/^}/p; /^job_body() {/,/^}/p' "$src")"
-job_body "$1" ""`
-	cmd := exec.Command("bash", "-c", fns, "job_body", payload)
-	cmd.Env = append(cmd.Environ(), "JOBS_API_KEY="+jobsKey)
-	out, err := cmd.Output()
+	host, port, _ := strings.Cut(p.Server, ":")
+	body, err := (&jobapi.Client{Server: host, Port: port, JobsKey: jobsKey}).Body(time.Now())
 	if err != nil {
-		t.Fatalf("job_body: %v", err)
+		t.Fatal(err)
 	}
-	return bytes.TrimSpace(out)
+	return body
 }
 
 func receiveTaskStatus(t *testing.T, repman *ReplicationManager, cl *cluster.Cluster, task string) (int, string) {
@@ -152,7 +147,7 @@ func TestReceiveTaskMariabackupAPIMode(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// the jobs script signs its stream once its login named the key (job_stream_signed)
+	// the jobs sign their stream once their login named the key (stream --job --to)
 	header, err := jobapi.StreamHeader(cl.GetJobsKey(), jobapi.StreamToMonitor, "127.0.0.1:3306", time.Now())
 	if err != nil {
 		t.Fatal(err)

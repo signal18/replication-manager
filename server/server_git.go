@@ -1418,7 +1418,7 @@ func (repman *ReplicationManager) LoadMarketplaceCatalogue() {
 		repman.marketplaceCatalogue.Store(&next)
 	}
 	if vaultsRead {
-		// the vault offers become entries of the registered clusters, off (#2227)
+		// the vault offers become entries of the registered clusters, on when alone (#2227)
 		for _, cl := range repman.Clusters {
 			if cl != nil {
 				cl.EnsureMarketplaceVaults(next.Vaults)

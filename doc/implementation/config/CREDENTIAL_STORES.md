@@ -197,6 +197,34 @@ settings (secrets encrypted, F9), on/off, forms drawn from the manifest.
 15. **Never a value in a log** (F10); the log line names the store, path and key.
 16. **Accepted race**: an API change made while a newer remote value is being applied may
     skip its vault writes; the next full pass repairs it.
+17. **A credential is user:password, checked at the settings API** (`checkCredentialSetting`,
+    `server/api_cluster.go`), before the chain is asked. Each key is decoded the way the GUI
+    sends it (`SetCredentialsModal`): in clear for `db-servers-credential`,
+    `replication-credential` and the three proxy credentials; base64 for
+    `backup-verification-credential` and the two Cloud18 user credentials. Anything else, a user
+    or a password missing, or a value in the other encoding, is refused with 400
+    (`ErrInvalidCredentialFormat`); the refusal names the key and the expected format, never the
+    value. An empty value clears the verification and the Cloud18 sponsor credentials only.
+    Before this check, a base64 value sent for `db-servers-credential` was stored as is: no
+    colon, so the whole value became the user and the password was empty. The next provision
+    seeded an empty root password, and the database echoed that "user" in its access denied.
+18. **Logs and states name the credential, not its user.** A database's access denied
+    (`'user'@'host'`) and a replication IO error (`'user@host:port'`) quote the user of the
+    credential: the monitoring states (WARN0171, ERR00004), the privilege checks (ERR00005,
+    ERR00015), the replication IO error (WARN0269, the failover's IO thread check) and the
+    ProxySQL user conflict (WARN0233) show `<db-servers-credential user>` or
+    `<replication-credential user>` instead (`cluster/credential_log.go`). The user of a
+    credential set in a config file without its colon is the whole value; it never reaches a
+    log. The Credentials settings page still shows each user.
+    - **Best effort:** an exact replace of those two quoted forms in the messages listed. A
+      user containing `'` or `@` may also replace an unrelated quoted text (harmless). Other
+      paths that print a raw connection error (proxy, backup, verification connections) are
+      not covered yet.
+    - **Not checked:** a value read from a config file or a vault. Only the API checks the
+      format. A start-time state for a stored value without its colon is a follow-up.
+    - **Empty password:** `user:` is refused through the API for every credential key,
+      including the proxy credentials (a behaviour change: an empty password could be set
+      before). A proxy whose admin password is empty keeps it from its config file.
 
 ### Regtest (T13)
 
@@ -213,6 +241,13 @@ container) in `regtest/test_credential_versions_rotation.go`. A repman restart i
 in-process as `testCredentialPersistTagReload` does: the config the server builds from the
 files on disk, and the chain a start builds over it with the local file
 (`Cluster.ChainAtStart`). A credential set in a config file is rotated as well (rule 9).
+
+`testCredentialPersistTagReload` also checks rule 17 and the T16 credential exception through
+the API. A verification credential without user:password is refused with 400, its value
+unchanged; that key reaches no monitored server, so a wrongly accepted value never reaches a
+database. A database or replication credential pinned in a config file is sent in clear, as the
+GUI sends it, only when no store keeps versions, and must be refused with 409. With a store
+keeping versions, it is settable as a version (rule 9) and the test sends nothing.
 
 The app secret versions (#2306) are covered by `testAppSecretVersions` (in the default list,
 `monitoring-secret-versioning` on) and `testAppSecretVersionsVault` (run by name on a cluster
@@ -317,8 +352,15 @@ test counts from what the file holds when it starts.
   name, three folders `<domain>/<sub-domain>/<zone>` (`InstanceStoreName`; `<sub-domain>-<zone>`
   is not unique: `a-b`+`c` and `a`+`b-c` are one folder). With no valid name and no
   `pathPrefix`, the offer is not given (a WARN says so). Each Cloud18-registered cluster gets
-  `cloud18-<name>`, sign-in `jwt`, **off**: the sponsor turns it on; a new catalogue updates
-  its address, mount, role and prefix, never its switch. The entry records its origin
+  `cloud18-<name>`, sign-in `jwt`, **on** when no other credential store of the cluster is on
+  (any plugin, another offer's entry included; the vault is the central place of a registered
+  cluster's credentials), off next to one that is. Only the creation chooses the switch: from
+  then on it is the sponsor's (enable and disable stay open, T14), and a new catalogue updates
+  its address, mount, role and prefix, never its switch. An entry an earlier release created
+  off stays off until someone switches it on (a sponsor, or a one-time migration). The creation
+  is logged (vault module), naming the entry and whether it came on. Its first write is a full
+  pass of the cluster's store runner, off the monitor loop: bounded queue, write timeout, a
+  vault out of reach only puts the entry behind (WARN0271). The entry records its origin
   (`offer = "<name>"` in the saved config); the list API gives `offer` (name, title, partner
   from the catalogue; null for the user's own entries); its edit and remove are refused (409:
   the back-office manages its settings), only enable and disable remain; a user's own entry
@@ -765,7 +807,8 @@ is treated the same; only the path a level maps to differs per store.
 On a Cloud18-registered instance the marketplace catalogue offers a `secret_kv-vault` entry
 for the Cloud18 vault, as it offers Cloud18 storages for archives: its address comes with
 the registration, it signs in with the instance's Cloud18 identity (`jwt`, #2159), no
-setting to type. The sponsor turns it on per cluster.
+setting to type. It comes on for a cluster with no other credential store on; the sponsor can switch it
+off (or on) per cluster, and the catalogue never changes that switch again.
 
 ## Packaging: the `secret_kv` plugin family
 

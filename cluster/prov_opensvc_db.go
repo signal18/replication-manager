@@ -188,6 +188,7 @@ func (cluster *Cluster) OpenSVCUpdateDatabaseTemplate(s *ServerMonitor) error {
 				return fmt.Errorf("config key %s of %s: %w", appStartScriptKey, app.Name, err)
 			}
 		}
+		// any configurator, not only a database engine (isDatabaseEngineApp)
 		if app.AppConfig != nil && app.AppConfig.ProvAppConfigurator != "" {
 			script, err := cluster.AppConfiguratorScript(app)
 			if err != nil {

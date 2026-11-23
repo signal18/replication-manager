@@ -1964,6 +1964,19 @@ func (cluster *Cluster) SetProvKubeProxyStorageClass(value string) error {
 	return nil
 }
 
+// SetProvKubePVCLayout sets the layout of the database PVCs created from now on (prov-kube-pvc-layout,
+// #2395): service-dirs-v1, or legacy as the off-switch. A value k8sConfiguredPVCLayout does not know is
+// refused and the setting is unchanged. No reprovision cookie: like the StorageClass, the layout is a
+// property of the PVC fixed when it is created, and a reprovision of an existing server reuses its PVC
+// with the layout its annotation says, so a reprovision would change nothing.
+func (cluster *Cluster) SetProvKubePVCLayout(value string) error {
+	if _, err := k8sConfiguredPVCLayout(value); err != nil {
+		return err
+	}
+	cluster.Conf.ProvKubePVCLayout = value
+	return nil
+}
+
 func (cluster *Cluster) SetProvDbAgents(value string) error {
 	cluster.Conf.ProvAgents = value
 	return nil

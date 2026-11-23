@@ -102,6 +102,23 @@ type ServerMonitor struct {
 	SemiSyncMasterStatus        bool                     `json:"semiSyncMasterStatus"`
 	SemiSyncSlaveStatus         bool                     `json:"semiSyncSlaveStatus"`
 	HaveSSHError                bool                     `json:"HaveSshError"`
+
+	// JobsCliError: why the on-premise jobs cannot run on the host (no replication-manager-cli
+	// there and none could be copied: another OS or architecture, permissions, space, noexec), ""
+	// when they can (ensureJobsCliViaSSH). JobsCliVersion: the CLI version the jobs last called with.
+	JobsCliError   string `json:"jobsCliError"`
+	JobsCliVersion string `json:"jobsCliVersion"`
+	jobsCliMu      sync.Mutex
+	// written by the API handlers and the SSH job runner, copied to the two fields above by
+	// the tick (CheckJobsCli), which alone writes them
+	jobsCliVersion atomic.Pointer[string]
+	jobsCliError   atomic.Pointer[string]
+	jobsCliErr     error
+	jobsCliErrAt   time.Time
+	// jobsUpgradeDeferred: the CLI version ("none" without one) the jobs asked for their script
+	// upgrade with, when it was deferred (DeferJobsUpgrade); nil when not deferred
+	jobsUpgradeDeferred atomic.Pointer[string]
+
 	HaveHealthyReplica          bool                     `json:"HaveHealthyReplica"`
 	HaveEventScheduler          bool                     `json:"eventScheduler"`
 	HaveSemiSync                bool                     `json:"haveSemiSync"`
@@ -856,6 +873,12 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 		}
 		err = errors.New("split-brain simulation: server link down")
 	}
+	// A failed connect keeps no pool: every return of the failure branch below drops
+	// conn, so a pool handed back with an error would stay open, one per server per tick.
+	if err != nil && conn != nil {
+		conn.Close()
+		conn = nil
+	}
 
 	// Make sure we always have the updated config path status
 	server.HasConfigPathChanged = server.HasConfigPathCookie()
@@ -868,7 +891,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 		if server.State != stateFailed {
 			cluster.StateMachine.CopyOldStateFromUnknowServer(server.URL)
 		}
-		cluster.SetState("WARN0171", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0171"], server.URL, err), ErrFrom: "MON", ServerUrl: server.URL})
+		cluster.SetState("WARN0171", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0171"], server.URL, cluster.redactCredentialError(err, server.User)), ErrFrom: "MON", ServerUrl: server.URL})
 
 		if driverErr, ok := err.(*mysql.MySQLError); ok {
 			//	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlDbg, "Driver Error %s %d ", server.URL, driverErr.Number)
@@ -876,7 +899,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 			// access denied
 			if driverErr.Number == 1045 {
 				server.SetState(stateErrorAuth)
-				cluster.SetState("ERR00004", state.State{ErrType: config.LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00004"], server.URL, err.Error()), ErrFrom: "SRV"})
+				cluster.SetState("ERR00004", state.State{ErrType: config.LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00004"], server.URL, cluster.redactCredentialError(err, server.User)), ErrFrom: "SRV"})
 				//if vault and credential change, then repare
 				server.CheckMonitoringCredentialsRotation()
 				return

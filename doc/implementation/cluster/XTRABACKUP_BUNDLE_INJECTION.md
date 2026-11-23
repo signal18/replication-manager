@@ -181,8 +181,12 @@ is on the node); the init container exits 0 even when the copy failed, as above.
 ## The tools on the PATH of the container
 
 The injection is **Docker level**: it is complete when the service is started or provisioned, and nothing in it depends
-on `dbjobs_new.sh`. That script cannot run without `socat` (it reaches repman, dispatches its jobs and receives its own
-upgrade through it), so a jobs container whose tools are only found by the script could never get that script.
+on `dbjobs_new.sh`. A script older than #2405 cannot run without `socat` (it reaches repman, dispatches its jobs and
+receives its own upgrade through it), so a jobs container whose tools are only found by the script could never get that
+script. The current script reaches repman through `replication-manager-cli` and needs only `xtrabackup` and `xbstream`
+from the bundle; `socat` stays in the bundle for one release, for a container still running an older script (a failed
+config fetch keeps the script it had), and leaves it once no older script can run (see
+`doc/implementation/share/scripts/DBJOBS_CLI.md`).
 
 The PATH of the **jobs container itself** gets the bundle, rendered by repman (`xtrabackupBundlePath`), the same way on
 OpenSVC and Kubernetes:

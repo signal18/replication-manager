@@ -169,7 +169,7 @@ kubeconfig's user needs the same permissions in each target database namespace.
 | `apps/deployments` | `get`, `create`, `patch`, `delete` | provision (`create`; `get` before creating one and to refuse one that is being deleted), start, stop, restart, force re-pull and upgrade (`patch`; `get` for the current spec and, on start, the replica count), unprovision (`delete`, then `get` until `NotFound`) |
 | `pods` | `list` | the PVC-consumer guard before a scale-up or the creation of a Deployment (detects Pods that still use the database PVC), the Manifest View, the resource sensor and native resize Pod lookup |
 | `services` | `create`, `delete` (`get` for the Manifest View) | provision, unprovision |
-| `persistentvolumeclaims` | `create` (`get` for the Manifest View) | provision |
+| `persistentvolumeclaims` | `create`, `get` | provision (`create`; `get` of one that already exists, to read its layout annotation, see "PVC layout"), the Manifest View (`get`) |
 | `secrets` | `create`, `patch` (`get`, `list` as documented before) | the server credentials Secret |
 
 Cluster scope: `list` on `nodes` (node placement) and on
@@ -221,6 +221,104 @@ The config archive itself is served by `handlerMuxServersPortConfig`
 recursive). The init container also pre-creates
 `.system/{tmp,logs,repl,innodb/undo,innodb/redo,aria}` under the datadir,
 mirroring OpenSVC's moduleset directory resources.
+
+### PVC layout (#2395)
+
+A database volume has one of two layouts. The layout is a property of the PVC, recorded when
+replication-manager creates it (the annotation `replication-manager.signal18.io/pvc-layout`);
+nothing is inferred from what a volume contains.
+
+| | `service-dirs-v1` (annotation present) | legacy (no annotation) |
+| --- | --- | --- |
+| Created for | every PVC replication-manager creates, unless `prov-kube-pvc-layout = legacy` | every PVC that existed before the annotation, and every PVC created under `prov-kube-pvc-layout = legacy` |
+| `/var/lib/mysql` | subPath `data` | the PVC root |
+| `/etc/mysql` | subPath `etc/mysql`, whole, in the init, database and dbjobs containers | `/etc/mysql/conf.d` only (subPath `.system/conf.d`), init and database containers |
+| `/docker-entrypoint-initdb.d` | subPath `init` | subPath `.system/init` |
+| Init installer | OpenSVC's: clears `replication-manager.d/*` and `conf.d/*`, copies the archive's whole `etc/mysql` | the `conf.d/*.cnf` fragments only |
+| `need-config-fetch` gate | asked for a refresh only: a volume with no usable `my.cnf` yet is always installed | asked at every start, as before |
+| First install fails | the init container exits 1: no database starts without a usable `/etc/mysql` | exit 0, the database starts on what is there (unchanged) |
+| Data ownership | the init container hands `/var/lib/mysql` (the `data` subPath, `.system` included) to `dbVolumeOwner()` at every start, as OpenSVC's bootstrap does after a successful configuration fetch, also when the owner is not managed | only when the owner is managed (`prov-db-volume-uid`, or a Percona Server image), as before |
+
+`service-dirs-v1` is OpenSVC's service directory (`{name}/data`, `{name}/etc/mysql`, `{name}/init`
+mounted whole into the containers, `OpenSVCGetDBContainerSection`); the `.system/` runtime directories
+stay inside `data/`, where the generated configuration puts them. The archive is the one the generator
+always produced (`etc/`, `init/`, `data/`), installed by the same init container logic.
+
+**Fail closed on the first install.** `/etc/mysql` is a volume directory that hides the image's own
+configuration, so a first start whose fetch failed (repman unreachable, HTTP 403, a truncated archive) is
+not harmless: the server would start on compiled defaults and create new system files next to the
+existing ones. After its best-effort fetch the init container therefore requires a non-empty
+`/etc/mysql/my.cnf` and a `conf.d` with entries, and exits 1 otherwise; the pod stays in `Init` and
+Kubernetes retries it. A later refresh that fails still finds the last installed tree and passes, so the
+database starts on the last valid configuration.
+
+**The first install does not ask `need-config-fetch`.** The route answers 500 for a server that carries the
+no-config-fetch cookie (`prov-db-start-fetch-config = false`) or is ignored. On a legacy volume that only
+skips the refresh; on `service-dirs-v1` it would skip the install of a volume that has no configuration yet,
+and the guard would then hold the pod in `Init` with no state saying why. Nothing else populates `etc/mysql`
+on Kubernetes (OpenSVC's service directory is populated by its own bootstrap), so the init container fetches
+unconditionally while `/etc/mysql/my.cnf` is missing or empty, and asks the route only once a usable tree is
+on the volume (`{ [ ! -s /etc/mysql/my.cnf ] || wget .../need-config-fetch; }`). With the cluster's jobs key
+(`doc/implementation/security/JOB_LOGIN.md`) the gate tests the CLI instead and `replication-manager-cli job
+config` asks the route itself, so the init container passes it `--force` while `my.cnf` is missing or empty
+(`k8sJobsKeyInit`); a refresh asks. The legacy layout keeps the plain `job config`.
+
+**Data ownership.** After a successful configuration fetch (which `prov-db-start-fetch-config`, true by default, makes every
+start) OpenSVC's bootstrap runs `chown -R <owner> /bootstrap/data` (the owner is `dbVolumeOwner()`: `prov-db-volume-uid`,
+1001:1001 for a Percona Server image, else the legacy 999:999), and the archive's `data/.system/*` directories reach the
+volume owned by that call. On `service-dirs-v1` the init container does the same for `/var/lib/mysql`, which is the
+`data` subPath, at every start whether or not a fetch ran: the existing selective `find ... -exec chown -h` (only entries that
+differ are touched), now also when the owner is not managed, whatever the process identity (`prov-db-run-as-uid` is
+independent: run-as `1234` alone leaves the data to the legacy 999:999, as on OpenSVC, and the mismatch is reported). It
+runs before the guard, and a failure is a warning in the init container log, not an exit. Without it,
+a non-root `prov-db-run-as-uid` (no root phase in the image entrypoint) found `.system/*` created by the init container,
+root-owned, and `mysqld` aborted with `Could not open file '/var/lib/mysql/.system/logs/error.log' for error logging:
+Permission denied`. The step touches nothing else: not `/etc/mysql` (which OpenSVC does not chown either: it keeps the
+archive's owner and is read through its world-readable modes), not `/docker-entrypoint-initdb.d`, not the TLS files. A
+legacy volume is unchanged. On a datadir with many entries the pass costs one `lstat` per entry at each start (about
+2 s per million entries with warm caches, about 0.6 times the cost of OpenSVC's `chown -R` per start); the official
+MariaDB and MySQL entrypoints scan the datadir in the same way when they start as root.
+
+**Existing volumes.** A PVC that exists when a database is provisioned is read, never modified
+(`k8sEnsureDatabasePVC`): no annotation means legacy and the Deployment is rendered exactly as it was
+before; an annotation value this code does not know is an error. A legacy volume is not migrated and is
+never reinterpreted as the new layout; moving one is an explicit operation that does not exist yet. The
+Deployments already running are not touched either: only provisioning renders a Deployment, and the
+update paths patch image, pull policy, resources and strategy.
+
+**Off-switch: `prov-kube-pvc-layout`.** A cluster setting (`config.Config.ProvKubePVCLayout`, flag
+`prov-kube-pvc-layout`, settings API `prov-kube-pvc-layout`, GUI "Kubernetes Database PVC Layout (new
+volumes)" in the orchestrator settings), with the values `service-dirs-v1` (the default; an empty value, a
+cluster configuration that predates the key, is the default too) and `legacy`. It decides the layout of a
+database PVC that does not exist yet: under `legacy` the new PVC is created without the annotation, exactly
+like one created before the layout existed, the Deployment is rendered for the legacy layout and the
+volume is read as legacy at every later provisioning (`k8sConfiguredPVCLayout`, `k8sDatabasePVC`;
+`k8sEnsureDatabasePVC` returns the layout read back from the created claim). An existing PVC keeps the
+layout its annotation says whatever the setting, so changing it migrates nothing and sets no reprovision
+cookie. Any other value is a configuration error: the setter (`SetProvKubePVCLayout`) refuses it and leaves
+the setting, and provisioning refuses it before anything is created (log and `errorChan`). It is the
+fallback for an operator hit by a defect of the new layout, short of downgrading replication-manager.
+
+**An existing Deployment must match the volume.** When the Deployment `Create` reports `AlreadyExists`,
+provisioning reads the existing Deployment and derives the layout it was rendered for from the
+`/var/lib/mysql` mount of its database container (`k8sDeploymentLayoutOf`: subPath `data` is
+`service-dirs-v1`, no subPath is legacy, anything else is an error). A layout that differs from the PVC's
+is refused (`k8sExistingDeploymentMatchesPVCLayout`): the error names the Deployment, the PVC and both
+layouts, and says what to do (unprovision the server so the Deployment is rendered again for this volume,
+or restore the volume the Deployment was rendered for). Nothing is changed. Without this check a PVC deleted
+and recreated under a kept legacy Deployment gets the `service-dirs-v1` annotation while the Pod writes the
+datadir at the PVC root, and the next reprovision would render `data/` and initialise a new datadir beside
+the real one.
+
+The database container mounts `data` and `etc/mysql` but not `init` (it never mounted it, in either layout; the
+init and dbjobs containers do). OpenSVC mounts `init` in the database container, where the image entrypoint runs
+the `*.sql` and `*.sh` files of `/docker-entrypoint-initdb.d` once, when the data directory is created. The
+shared configurator generates `init/galera_sst_account.sql` (the Galera SST account on MariaDB) for a cluster
+with the `wsrep` tag. On Kubernetes that file is installed in the volume but is not run by the database
+container. The monitor's `CheckGaleraSSTAccount` may create the account on a suitable running node (a Synced one
+first), which does not establish that every Kubernetes Galera initialization or state transfer succeeds. Galera on
+Kubernetes is not covered by the tests, and that fallback has not been validated there. This is unchanged by the
+service-directory layout.
 
 ### Secrets, image pull policy, storage class
 
@@ -1276,6 +1374,7 @@ automatically, and they do not replace the Docker multi-product matrix.
 | `testK8SProvisionSchedulerVolumeBinding` | yes | unprovision/reprovision of a database on a real scheduler; the replacement Deployment uses `Recreate`, the data claim keeps its UID |
 | `testK8SStopStartDatabaseService` | yes | Stop/Start of the database Deployment. It stops and restarts the database, is part of ALL, and does not detect two database processes overlapping |
 | `testK8SSingleWriterLifecycle` | no, by name only | the single-writer guarantees of #2389/#2390 for stop, start, restart, force re-pull and the migration patch (below). It does not reprovision |
+| `testK8SDatabaseConfigParity` | no, by name only | the `service-dirs-v1` layout of #2395: annotation, mounts, the installed `/etc/mysql` tree (hash of every generated file), a curated set of settings the running server reports with their origin, GTID and binary logging, and their persistence across a guarded Stop and Start (below). It is not complete coverage of every setting the server loads |
 
 The two regtests are independent coverage and are run separately. The reprovision (unprovision, provision, the
 `Recreate` strategy and the retention of the data claim by its UID) is proven only by
@@ -1407,6 +1506,84 @@ The effective database configuration is logged but not asserted: Percona configu
 separate issue. This regtest is a single-server Kubernetes check; it is not the Docker multi-product
 matrix required by T13. On MySQL and Percona the global GTID-tag gate of the runner applies before the test:
 the preflight must use a cluster that legitimately declares the `mysqlgtid` tag, and a SKIP is never a PASS.
+
+### `testK8SDatabaseConfigParity` (#2395)
+
+The real-cluster regression test of the `service-dirs-v1` layout and of the installation of the generated
+`/etc/mysql` tree (see "PVC layout (#2395)"). It compares with the archive replication-manager generates and
+serves to the init container, produced by the same configurator that serves OpenSVC; it does not run OpenSVC and
+does not compare with an OpenSVC instance. It stops and restarts its database once, so it is never part of ALL and has no
+declared targets:
+
+```
+POST /api/clusters/<cluster>/tests/actions/run/testK8SDatabaseConfigParity
+```
+
+It is SKIP, with a reason and before anything is changed, unless the cluster uses `prov-orchestrator = kube`,
+has exactly one database server, the namespace carries `regtest.replication-manager/disposable=true`, **the data
+claim carries `replication-manager.signal18.io/pvc-layout=service-dirs-v1`** (an unannotated, legacy claim is a
+SKIP, never a PASS; any other value is a FAIL) and, on MySQL and Percona, the cluster declares the `mysqlgtid`
+tag. A required check that did not run is not a PASS: the summary line
+`SUMMARY testK8SDatabaseConfigParity result=... engine=... checks=...` lists what passed, and a failure carries
+its class (`PRODUCT`, `HARNESS`, `RESOURCE`, `INCONCLUSIVE`). A missing permission, a container that is not
+available and a failed Kubernetes call are never `PRODUCT`.
+
+**What is and is not covered.**
+- **Effective settings:** a curated set, the settings listed in the C3 row (the ones with a reliable equivalent as
+  a server variable). The other settings of the generated tree (between 100 and 130 options, by engine) are
+  verified to be installed, not to be loaded with the right value, and a setting that the server does not expose
+  as a variable is not asserted at all. This is not complete configuration-semantic coverage.
+- **Generated files:** the content hash is compared only where the observation can produce it. It lists two
+  levels below `/etc/mysql` and `/docker-entrypoint-initdb.d` and hashes files up to 1 MiB. A generated file
+  that is larger, deeper, or outside those directories is not observed: C5 or C6 is then `INCONCLUSIVE` (never
+  `PASS`, never `PRODUCT`) and names the files. The archive's `data/` and its two checksum files are not
+  copied by the Kubernetes installer (the init container creates the `.system` directories itself, and nothing
+  in the repository reads the checksum files), and they are not treated as gaps. The step log says how many files were hash-compared and
+  how many were present with the content not compared.
+- **Links and volatile files:** symbolic links are resolved for the content comparison. The identity of a link
+  (a link replaced by a copy of the same content) is not asserted. `custom.d` and the files that differ between
+  two generations are checked for presence, not for content.
+- **Not verified at runtime:** file ownership, modes, stale extra files, and the preservation of operator files.
+  The installer unit tests (`cluster/prov_k8s_pvc_layout_test.go`, run under `sh` and `busybox sh`) cover some of
+  these: link targets, modes, operator files, and the removal of a `conf.d` entry the generator dropped.
+- **Engines:** one server of MariaDB, MySQL or Percona. Galera is not covered.
+- **Annotation:** a data claim without the annotation is a legacy claim and the test is `SKIP`. An annotation that
+  is present but empty, or has any value other than `service-dirs-v1`, is a `FAIL`, as the product refuses to
+  provision on a layout it does not know.
+
+Each observation comes from the one source that can make it:
+
+| Check | Source | What is asserted |
+|---|---|---|
+| C1, C8 | Kubernetes API | claim annotation and UID; Deployment strategy `Recreate`; the init and dbjobs containers mount `data`, `etc/mysql` and `init` of the claim at `/var/lib/mysql`, `/etc/mysql` and `/docker-entrypoint-initdb.d`, the database container `data` and `etc/mysql` (like OpenSVC); no `.system` subPath and no separate `conf.d` mount; the running Pod uses the claim. C8 repeats them after the lifecycle |
+| C2 | lifecycle functions | guarded `StopDatabaseService` then `StartDatabaseService`; the replacement Pod mounts the same claim |
+| C3 | SQL (`dbhelper.GetVariableOrigins`) | for a **curated set** of settings, `server_id`, `max_connections`, `log_bin` (the prefix, which is not the default one, and ON: both are derived variables with no option-file origin), `innodb_data_home_dir`, `innodb_log_group_home_dir`, and when the generated tree carries them `innodb_undo_directory`, `binlog_format`, on MariaDB `gtid_strict_mode`, on MySQL/Percona `gtid_mode` and `enforce_gtid_consistency` (required with the `mysqlgtid` tag): the value the server reports is the value of the generated configuration, **and** the server says it got it from an option file under `/etc/mysql` (MariaDB `GLOBAL_VALUE_ORIGIN = CONFIG`, MySQL/Percona `VARIABLE_SOURCE = GLOBAL` with the file in `VARIABLE_PATH`). A matching value from the command line or a default is not a pass |
+| C4 | SQL | `log_bin` ON; MySQL/Percona `gtid_mode` and `enforce_gtid_consistency` ON and the server UUID in `gtid_executed`; MariaDB a binlog GTID position written by this `server_id` |
+| C5, C6 | `pods/exec` | what the **running** database and dbjobs containers see: the contract paths are mount points (`/var/lib/mysql`, `/etc/mysql`, and `/docker-entrypoint-initdb.d` for dbjobs) and `/etc/mysql/conf.d` is not a mount of its own, a non-empty `my.cnf`, a `conf.d` with entries, no dangling link, every generated file of `etc/mysql` (and of `init` in dbjobs) present, with its content hash compared where the observation can produce it (see "What is and is not covered"); `custom.d` is checked for presence only (preserved and delta settings change at runtime). Which directory of the claim each mount comes from is the subPath contract of C1/C8; the roots a storage driver reports in `/proc/self/mountinfo` differ between drivers and are only logged |
+| C7 | SQL | fixture digest, claim UID and a write intact; `server_id` (and `server_uuid`) unchanged; the GTID position did not go back (`GTID_SUBSET` on MySQL/Percona, per-domain sequence on MariaDB: a containment check, because the test's own writes advance it); every followed setting has the same value, origin and option file (a change of a data or identity setting is `PRODUCT`; a change of another one, which a configuration change between the two starts can explain, is `INCONCLUSIVE`) |
+
+The expected values are not written in the test: they are read from the archive replication-manager serves to
+the init container (`GetDatabaseConfig`, the same call as the `/config` endpoint), parsed the way the server
+parses it (`my.cnf` includes in order, the option groups the engine and version read, `loose_`, last value
+wins). The generation is run twice: a file that differs between the two (apart from the `# Generated by` stamp
+line) is checked for presence only. The layout contract itself (the three directories and their mount paths) is
+written out in the test, as an oracle independent of the product's constants. The content of a file is never
+read or logged, only names, sizes and hashes.
+
+`pods/exec` is used through `utils/k8sexec`, a Go helper with no HTTP route: one argument vector in one named
+container, no stdin, no TTY, a timeout (30 s default, 5 min at most) and a bound on the bytes returned per
+stream (64 KiB default, 1 MiB at most). It classifies failures (`DENIED`, `NOT_FOUND`, `UNAVAILABLE`, `TIMEOUT`,
+`CANCELED`, `EXIT`, `INFRA`). **The permission is needed by this test only and is not part of the product's
+Role**: create on `pods/exec` in the cluster namespace, in addition to the permissions of the lifecycle test.
+Without it the test fails with class `HARNESS` and says which permission to grant. The test runs `sh`, `grep`,
+`cut`, `wc`, `ls` and `sha256sum` in the container; an image without one of them fails with `HARNESS`, not
+`PRODUCT`.
+
+Files: `regtest/test_k8s_database_config_parity.go` (the steps),
+`regtest/test_k8s_database_config_parity_evidence.go` (the decisions that need no cluster) and
+`regtest/test_k8s_database_config_parity_helper_test.go` (their unit tests, including the observation script run
+for real in a local shell). A unit test is not the T13 gate: the gate is the run against a real cluster on each
+engine, and the Docker multi-product matrix.
 
 ## Known limitations
 

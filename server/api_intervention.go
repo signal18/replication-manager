@@ -76,6 +76,9 @@ func (repman *ReplicationManager) handlerMuxGlobalInterventionStart(w http.Respo
 		http.Error(w, "No valid ACL", http.StatusForbidden)
 		return
 	}
+	if !repman.requireUnrestricted(w, r, "a global intervention") {
+		return
+	}
 
 	var body struct {
 		Reason  string `json:"reason"`
@@ -155,6 +158,9 @@ func (repman *ReplicationManager) handlerMuxGlobalInterventionEnd(w http.Respons
 
 	if valid, _ := repman.IsValidClusterACL(r, repman.currentCluster); !valid {
 		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+	if !repman.requireUnrestricted(w, r, "a global intervention") {
 		return
 	}
 

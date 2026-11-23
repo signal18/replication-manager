@@ -83,8 +83,8 @@ func (repman *ReplicationManager) handlerMuxProxy(w http.ResponseWriter, r *http
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		uname := repman.GetUserFromRequest(r)
-		if _, ok := mycluster.GetAPIUsers()[uname]; !ok {
+		// the request's identity on this cluster: a scoped login or an API token only within its scope
+		if _, ok := repman.requestACLUser(r, mycluster); !ok {
 			http.Error(w, "No Valid ACL", 500)
 			return
 		}

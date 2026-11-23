@@ -45,11 +45,8 @@ func (repman *ReplicationManager) regtestAPIToken(cl *cluster.Cluster, grants ..
 		if !hasAll {
 			continue
 		}
-		return repman.issueJWT(struct {
-			Name     string
-			Role     string
-			Password string
-		}{u.User, "Member", repman.Conf.GetEncryptedString(u.Password)}, "")
+		// scoped like a login (api_session_scope.go)
+		return repman.issueJWT(repman.passwordSessionInfo(u.User, u.Password), "")
 	}
 	return "", errors.New("no local API user holds the grants the test needs")
 }
