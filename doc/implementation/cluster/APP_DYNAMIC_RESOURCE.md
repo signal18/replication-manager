@@ -58,7 +58,12 @@ command of the same container), and a secret-typed variable is never used as one
 `..._MIN_SPARE_SERVERS` (children/8, at least 1), `..._MAX_SPARE_SERVERS` (children/2),
 `..._START_SERVERS` (half way), `SVC_CONF_ENV_PHP_MEMORY_LIMIT` (256 MB within
 [128 MB, pool/2]). The files themselves are the ruleset's (`moduleset_php.svc.mrm.db.json`,
-a collector export, never hand-written).
+a collector export, never hand-written). The moduleset is read at each render, like the
+database configurator reads its own: the copy the back office pushes through the pull repo
+(`ShareDir/plugins/data/moduleset_<engine>.svc.mrm.db.json`, synced by
+`syncPluginDataFromPull`) wins when it parses and has rulesets, so a ruleset changed on the
+collector reaches the apps at their next render without a new binary; otherwise the export
+embedded in the binary (`share/opensvc/`, listed in `share/embed.go`) is used.
 
 ## Failure
 

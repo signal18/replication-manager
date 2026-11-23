@@ -9,7 +9,9 @@ package cluster
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"path"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
@@ -44,12 +46,27 @@ type appConfiguratorFile struct {
 	Content string
 }
 
-// loadAppConfiguratorModule reads the embedded moduleset of an engine.
-func loadAppConfiguratorModule(engine string) (*config.Compliance, error) {
+// loadAppConfiguratorModule reads the moduleset of an engine. Like the database
+// configurator (Configurator.ReloadComplianceFromDataDir), it prefers the copy the back
+// office pushes through the pull repo (pluginDataDir/moduleset_<engine>.svc.mrm.db.json,
+// synced by syncPluginDataFromPull) when it parses and carries rulesets, so a ruleset
+// changed on the collector reaches the apps without a new binary; otherwise it reads the
+// embedded export. pluginDataDir empty = embedded only. Read at each render, no cache: a
+// refreshed copy applies to the next render.
+func loadAppConfiguratorModule(pluginDataDir, engine string) (*config.Compliance, error) {
 	if !appConfiguratorEngineRe.MatchString(engine) {
 		return nil, fmt.Errorf("prov-app-configurator %q: an engine name such as postgres is expected", engine)
 	}
-	file := "opensvc/moduleset_" + engine + ".svc.mrm.db.json"
+	name := "moduleset_" + engine + ".svc.mrm.db.json"
+	if pluginDataDir != "" {
+		if b, err := os.ReadFile(filepath.Join(pluginDataDir, name)); err == nil {
+			module := &config.Compliance{}
+			if json.Unmarshal(b, module) == nil && len(module.Rulesets) > 0 {
+				return module, nil
+			}
+		}
+	}
+	file := "opensvc/" + name
 	b, err := share.EmbededDbModuleFS.ReadFile(file)
 	if err != nil {
 		return nil, fmt.Errorf("prov-app-configurator %q: no moduleset %s", engine, file)
@@ -59,6 +76,15 @@ func loadAppConfiguratorModule(engine string) (*config.Compliance, error) {
 		return nil, fmt.Errorf("prov-app-configurator %q: %s does not parse: %w", engine, file, err)
 	}
 	return module, nil
+}
+
+// appConfiguratorPluginDataDir is where the back office's moduleset copies land
+// (ShareDir/plugins/data), the directory the database configurator reloads from.
+func (cluster *Cluster) appConfiguratorPluginDataDir() string {
+	if cluster == nil || cluster.Conf == nil || cluster.Conf.ShareDir == "" {
+		return ""
+	}
+	return filepath.Join(cluster.Conf.ShareDir, "plugins", "data")
 }
 
 // appConfiguratorSizing derives the sizing tokens from an app plan. The token names are
@@ -216,7 +242,7 @@ func (cluster *Cluster) engineServerOfApp(app *App) *ServerMonitor {
 // is not a server (an application's own store) renders from its app plan.
 func (cluster *Cluster) AppConfiguratorScript(app *App) (string, error) {
 	engine := strings.TrimSpace(app.AppConfig.ProvAppConfigurator)
-	module, err := loadAppConfiguratorModule(engine)
+	module, err := loadAppConfiguratorModule(cluster.appConfiguratorPluginDataDir(), engine)
 	if err != nil {
 		return "", err
 	}

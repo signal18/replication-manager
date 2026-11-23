@@ -257,7 +257,7 @@ func (app *App) SetSetting(key, value string) error {
 		app.AppConfig.ProvAppStartTimeout = value
 	case "prov-app-configurator":
 		if value != "" {
-			if _, err := loadAppConfiguratorModule(value); err != nil {
+			if _, err := loadAppConfiguratorModule(app.ClusterGroup.appConfiguratorPluginDataDir(), value); err != nil {
 				return err
 			}
 		}
