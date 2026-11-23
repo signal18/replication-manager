@@ -31,7 +31,7 @@ func (repman *ReplicationManager) apiTokenOwnerOK(t *APIToken, r *http.Request) 
 		repman.logAPITokenOwnerRefusal(t, r, "issued before logins carried their cluster scope, by an account whose password differs between clusters: log in with the credentials of the cluster and create a new token")
 		return false
 	}
-	if t.OwnerAuthType == "SSO" && !repman.apiTokenSSOOwnerIsActive(t.User) {
+	if repman.apiTokenOwnerIsSSO(t) && !repman.apiTokenSSOOwnerIsActive(t.User) {
 		repman.logAPITokenOwnerRefusal(t, r, "its SSO owner is no longer active")
 		return false
 	}
@@ -51,13 +51,41 @@ func (repman *ReplicationManager) apiTokenOwnerOK(t *APIToken, r *http.Request) 
 // A local owner holding different passwords on different clusters (a shared account with a
 // password per cluster) is refused: its token may come from a login valid on one cluster only.
 func (repman *ReplicationManager) apiTokenLegacyOwnerOK(t *APIToken) bool {
-	if t.OwnerAuthType == "SSO" {
+	if repman.apiTokenOwnerIsSSO(t) {
 		return true
 	}
 	if strings.HasPrefix(t.CreatedFrom, "app ") {
 		return true
 	}
 	return repman.ownerPasswordUniform(t.User)
+}
+
+// apiTokenOwnerIsSSO reports whether a token's owner is an SSO identity: recorded so
+// (OwnerAuthType "SSO"), or, for a token issued before OwnerScope existed, an owner without a
+// local password on every cluster it exists on. Releases of late September 2026 issued tokens
+// without OwnerAuthType; a passwordless account can only have logged in through SSO.
+func (repman *ReplicationManager) apiTokenOwnerIsSSO(t *APIToken) bool {
+	if t.OwnerAuthType == "SSO" {
+		return true
+	}
+	return t.OwnerScope == "" && t.OwnerAuthType == "" && repman.ownerPasswordless(t.User)
+}
+
+// ownerPasswordless reports whether user exists on at least one cluster and has no local
+// password on any.
+func (repman *ReplicationManager) ownerPasswordless(user string) bool {
+	found := false
+	for _, cl := range repman.clustersSnapshot() {
+		u, ok := cl.GetAPIUsers()[user]
+		if !ok {
+			continue
+		}
+		if u.Password != "" {
+			return false
+		}
+		found = true
+	}
+	return found
 }
 
 // ownerPasswordUniform reports whether user has one and the same non-empty password on every
@@ -93,7 +121,8 @@ func (repman *ReplicationManager) apiTokenSSOOwnerIsActive(owner string) bool {
 }
 
 // logAPITokenOwnerRefusal writes the refusal of a token to the security log once per token
-// (a client retrying would flood it); the set is bounded by the token store.
+// (a client retrying would flood it). The set holds ids of the token store and is pruned with
+// it (saveAPITokenStoreLocked): F4.
 func (repman *ReplicationManager) logAPITokenOwnerRefusal(t *APIToken, r *http.Request, why string) {
 	if _, seen := repman.apiTokenOwnerRefusedLogged.LoadOrStore(t.ID, true); seen {
 		return

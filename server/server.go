@@ -199,6 +199,7 @@ type ReplicationManager struct {
 	UserAuthTry                 sync.Map                    `json:"-"`
 	apiTokens                   apiTokenStoreState          // user-issued API tokens store (api_token.go)
 	apiTokenSSOOwnerActive      func(owner string) bool     // whether an SSO token owner is still active upstream; nil = no way to know (api_token_owner.go)
+	clusterDeletedAt            sync.Map                    // cluster name -> deletion time, for the scoped sessions (api_session_scope.go), pruned past a session's lifetime
 	apiTokenOwnerRefusedLogged  sync.Map                    // token ids whose refusal was logged once (api_token_owner.go), bounded by the token store
 	ssoOwners                   ssoOwnerCache               // Cloud18 account state of the SSO token owners, refreshed off the request path (api_token_owner_upstream.go)
 	ViperConfig                 *viper.Viper                `json:"-"`

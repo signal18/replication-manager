@@ -7,8 +7,10 @@ package server
 import (
 	"crypto/subtle"
 	"net/http"
+	"net/mail"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/signal18/replication-manager/config"
 )
@@ -49,11 +51,22 @@ func (repman *ReplicationManager) isInstanceCredential(user, password string) bo
 }
 
 // localSessionScope returns the scope claims of a local login: none (instance-wide) for an
-// account of the instance's list with that list's password, else the clusters the password
+// account of the instance's list with that list's password, when that password is also the
+// account's password on every cluster where the account exists (matched covers them all: a
+// cluster section may set another password for it); else the clusters the password
 // authenticated (sorted).
 func (repman *ReplicationManager) localSessionScope(user, password string, matched []string) (string, []string) {
 	if repman.isInstanceCredential(user, password) {
-		return "", nil
+		everywhere := true
+		for _, cl := range repman.clustersSnapshot() {
+			if _, ok := cl.GetAPIUsers()[user]; ok && !slices.Contains(matched, cl.Name) {
+				everywhere = false
+				break
+			}
+		}
+		if everywhere {
+			return "", nil
+		}
 	}
 	out := slices.Clone(matched)
 	slices.Sort(out)
@@ -62,39 +75,126 @@ func (repman *ReplicationManager) localSessionScope(user, password string, match
 
 // sessionClusters reads the cluster restriction of a session's CustomUserInfo: the clusters and
 // true for a restricted session, (nil, false) for an instance-wide one. A restricted session
-// with an unreadable list is restricted to no cluster.
-func sessionClusters(info map[string]interface{}) ([]string, bool) {
+// with an unreadable list is restricted to no cluster. A cluster deleted after the login
+// (clusterDeletedSince) is dropped from the list: a cluster created again under the same name
+// is another cluster, which the login never authenticated.
+func (repman *ReplicationManager) sessionClusters(info map[string]interface{}) ([]string, bool) {
 	if s, _ := info["scope"].(string); s != sessionScopeClusters {
 		return nil, false
 	}
+	var at int64
+	switch v := info["scope_at"].(type) {
+	case float64:
+		at = int64(v)
+	case int64:
+		at = v
+	}
 	out := []string{}
+	add := func(s string) {
+		if s != "" && !repman.clusterDeletedSince(s, at) {
+			out = append(out, s)
+		}
+	}
 	switch v := info["clusters"].(type) {
 	case []interface{}:
 		for _, c := range v {
-			if s, ok := c.(string); ok && s != "" {
-				out = append(out, s)
+			if s, ok := c.(string); ok {
+				add(s)
 			}
 		}
 	case []string:
-		out = append(out, v...)
+		for _, s := range v {
+			add(s)
+		}
 	}
 	return out, true
 }
 
 // sessionAllowsCluster reports whether a session's CustomUserInfo covers the cluster.
-func sessionAllowsCluster(info map[string]interface{}, clusterName string) bool {
-	clusters, restricted := sessionClusters(info)
+func (repman *ReplicationManager) sessionAllowsCluster(info map[string]interface{}, clusterName string) bool {
+	clusters, restricted := repman.sessionClusters(info)
 	return !restricted || slices.Contains(clusters, clusterName)
 }
 
 // requestSessionClusters is sessionClusters of the request's session JWT: (nil, false) for an
 // instance-wide session, an API token or no session.
-func requestSessionClusters(r *http.Request) ([]string, bool) {
+func (repman *ReplicationManager) requestSessionClusters(r *http.Request) ([]string, bool) {
 	info, ok := jwtUserInfo(r)
 	if !ok {
 		return nil, false
 	}
-	return sessionClusters(info)
+	return repman.sessionClusters(info)
+}
+
+// requestOwnerScope is the cluster restriction of the request's credential: a scoped session's
+// clusters, or the login clusters of an API token created from a scoped session
+// (OwnerScope "clusters", already bound by parseVerifiedAPIToken). (nil, false): unrestricted.
+func (repman *ReplicationManager) requestOwnerScope(r *http.Request) ([]string, bool) {
+	if t, ok := repman.parseAPITokenFromRequest(r); ok {
+		if t.OwnerScope == apiTokenOwnerClusters {
+			return slices.Clone(t.OwnerClusters), true
+		}
+		return nil, false
+	}
+	return repman.requestSessionClusters(r)
+}
+
+// requestUnrestricted reports whether the request's credential covers the instance: what an
+// instance-wide action (global settings, cluster import, peers, interventions, the
+// active/standby switch, rotating an account of the instance's list) requires, whatever grant
+// the account holds on the clusters of a scoped login.
+func (repman *ReplicationManager) requestUnrestricted(r *http.Request) bool {
+	_, scoped := repman.requestOwnerScope(r)
+	return !scoped
+}
+
+// tokenVisibleToScope reports whether a scoped caller may see, display or revoke token t as its
+// owner: only a token created from a login restricted to clusters all within the caller's.
+// An unrestricted caller sees every token of its own.
+func tokenVisibleToScope(t APIToken, clusters []string, scoped bool) bool {
+	if !scoped {
+		return true
+	}
+	if t.OwnerScope != apiTokenOwnerClusters || len(t.OwnerClusters) == 0 {
+		return false
+	}
+	for _, c := range t.OwnerClusters {
+		if !slices.Contains(clusters, c) {
+			return false
+		}
+	}
+	return true
+}
+
+// clusterDeletedSince reports whether a cluster of this name was deleted at or after the unix
+// time in milliseconds at, the scope_at claim (DeleteCluster records it, markClusterDeleted).
+func (repman *ReplicationManager) clusterDeletedSince(name string, at int64) bool {
+	v, ok := repman.clusterDeletedAt.Load(name)
+	if !ok {
+		return false
+	}
+	return v.(time.Time).UnixMilli() >= at
+}
+
+// markClusterDeleted records the deletion of a cluster for the scoped sessions
+// (clusterDeletedSince) and revokes the API tokens bound to a login on it
+// (OwnerClusters). Records older than a session's lifetime are pruned: no session issued
+// before them is still valid (F4).
+func (repman *ReplicationManager) markClusterDeleted(name string) {
+	now := time.Now()
+	horizon := now.Add(-time.Hour * time.Duration(repman.Conf.TokenTimeout+1))
+	repman.clusterDeletedAt.Range(func(k, v interface{}) bool {
+		if v.(time.Time).Before(horizon) {
+			repman.clusterDeletedAt.Delete(k)
+		}
+		return true
+	})
+	repman.clusterDeletedAt.Store(name, now)
+	if n, err := repman.revokeAPITokensBoundTo(name, "deletion of cluster "+name); err != nil {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Revoke the API tokens bound to deleted cluster %s: %s", name, err)
+	} else if n > 0 {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Revoked %d API token(s) bound to deleted cluster %s", n, name)
+	}
 }
 
 // userInfoMapSessionClusters is the restriction GetUserInfoMap exposes (SessionScope,
@@ -122,4 +222,40 @@ func (repman *ReplicationManager) isAdminUserOn(username string, clusters []stri
 		}
 	}
 	return false
+}
+
+// ssoLoginEmail is the login name of an SSO password login when it is an email address (the
+// Cloud18 login is by email, and the realm authenticated it), "" otherwise.
+func ssoLoginEmail(login string) string {
+	if a, err := mail.ParseAddress(login); err == nil && a.Address == login {
+		return login
+	}
+	return ""
+}
+
+// passwordSessionInfo is the CustomUserInfo of a session opened for user with password without
+// a login form (autologin, dashboard): scoped like a login (localSessionScope) to the clusters
+// where that password is the user's password.
+func (repman *ReplicationManager) passwordSessionInfo(user, password string) interface{} {
+	var matched []string
+	if password != "" {
+		for _, cl := range repman.clustersSnapshot() {
+			if u, ok := cl.GetAPIUsers()[user]; ok && u.Password != "" && subtle.ConstantTimeCompare([]byte(u.Password), []byte(password)) == 1 {
+				matched = append(matched, cl.Name)
+			}
+		}
+	}
+	scope, clusters := repman.localSessionScope(user, password, matched)
+	var at int64
+	if scope != "" {
+		at = time.Now().UnixMilli()
+	}
+	return struct {
+		Name     string
+		Role     string
+		Password string
+		Scope    string   `json:"scope,omitempty"`
+		Clusters []string `json:"clusters,omitempty"`
+		ScopeAt  int64    `json:"scope_at,omitempty"`
+	}{user, "Member", repman.Conf.GetEncryptedString(password), scope, clusters, at}
 }

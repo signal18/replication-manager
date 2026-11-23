@@ -1528,8 +1528,8 @@ func (repman *ReplicationManager) handlerMuxSlaveIndex(w http.ResponseWriter, r 
 		return
 	}
 
-	uname := repman.GetUserFromRequest(r)
-	if _, ok := mycluster.GetAPIUsers()[uname]; !ok {
+	// the request's identity on this cluster: a scoped login or an API token only within its scope
+	if _, ok := repman.requestACLUser(r, mycluster); !ok {
 		http.Error(w, "Forbidden", http.StatusForbidden)
 		return
 	}
@@ -1588,8 +1588,8 @@ func (repman *ReplicationManager) handlerMuxSlaveAttributeByIndex(w http.Respons
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		uname := repman.GetUserFromRequest(r)
-		if _, ok := mycluster.GetAPIUsers()[uname]; !ok {
+		// the request's identity on this cluster: a scoped login or an API token only within its scope
+		if _, ok := repman.requestACLUser(r, mycluster); !ok {
 			http.Error(w, "No Valid ACL", http.StatusInternalServerError)
 			return
 		}
@@ -12303,7 +12303,7 @@ func (repman *ReplicationManager) handlerMuxSetActiveStatus(w http.ResponseWrite
 // @Router /api/actions/set-active-status [get]
 func (repman *ReplicationManager) handlerMuxSetServerActiveStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	if valid, _ := repman.IsValidClusterACL(r, repman.currentCluster); !valid {
+	if valid, _ := repman.IsValidClusterACL(r, repman.currentCluster); !valid || !repman.requestUnrestricted(r) { // an instance-wide action: a login covering the instance (api_session_scope.go)
 		http.Error(w, "No valid ACL", http.StatusForbidden)
 		return
 	}
@@ -12339,7 +12339,7 @@ func (repman *ReplicationManager) handlerMuxFetchDynamicClustersFromGit(w http.R
 	}
 
 	claims, err := repman.GetJWTClaims(r)
-	if err != nil || claims["User"] != "admin" {
+	if err != nil || claims["User"] != "admin" || claims["SessionScope"] != "" {
 		http.Error(w, `{"error":"administrator access required"}`, http.StatusForbidden)
 		return
 	}

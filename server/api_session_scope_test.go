@@ -136,7 +136,7 @@ func TestInstanceCredentialSessionIsInstanceWide(t *testing.T) {
 			t.Fatalf("the instance's account must pass on %s", cl.Name)
 		}
 	}
-	if _, restricted := requestSessionClusters(bearerRequest(session, "/api/clusters/c1")); restricted {
+	if _, restricted := repman.requestSessionClusters(bearerRequest(session, "/api/clusters/c1")); restricted {
 		t.Fatal("an instance credential's session carries no cluster scope")
 	}
 	p := &repmanmcp.Principal{}
@@ -275,5 +275,19 @@ func TestLoginRefusesLocalPasswordOfCloud18Identity(t *testing.T) {
 	repman.loginHandler(w, req)
 	if w.Code != http.StatusUnauthorized {
 		t.Fatalf("a local password under the Cloud18 identity must be refused 401, got %d", w.Code)
+	}
+
+	// the cluster level alone refuses it too: the clusters know the identity, the instance's
+	// configuration does not name it here, and the stored password is still in memory
+	repman2, c1, c2 := newScopeTestManager(t)
+	c1.Conf.Cloud18GitUser, c2.Conf.Cloud18GitUser = "shared", "shared"
+	if repman2.Conf.Cloud18GitUser != "" {
+		t.Fatal("fixture: the instance's configuration must not name the identity")
+	}
+	req = httptest.NewRequest(http.MethodPost, "/api/login", bytes.NewReader(body))
+	w = httptest.NewRecorder()
+	repman2.loginHandler(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("the clusters' IsCloud18Identity must refuse the local password, got %d", w.Code)
 	}
 }

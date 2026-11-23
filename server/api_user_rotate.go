@@ -90,6 +90,15 @@ func (repman *ReplicationManager) handlerMuxUserRotatePassword(w http.ResponseWr
 		return
 	}
 	user := strings.TrimSpace(form.Username)
+	// an account of the instance's list is the instance's: a login scoped to some clusters
+	// (api_session_scope.go) never rotates it, not even its own name's (the per-cluster password
+	// it logged in with is not that account's instance password)
+	if mycluster.APIUserScope(user) == cluster.APIUserScopeInstance && !repman.requestUnrestricted(r) {
+		repman.logSecurityEvent("api_user_password_rotation_refused", user, r.RemoteAddr,
+			fmt.Sprintf("Password rotation of %s by %s refused: a login scoped to some clusters does not rotate an account of the instance's list", user, delegator))
+		http.Error(w, errNoServerCredentials.Error()+": log in with credentials covering the instance", http.StatusForbidden)
+		return
+	}
 	res, err := repman.rotateAPIUserPassword(mycluster, user, delegator)
 	if err != nil {
 		repman.logSecurityEvent("api_user_password_rotation_refused", user, r.RemoteAddr,

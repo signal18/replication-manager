@@ -521,25 +521,32 @@ func (repman *ReplicationManager) runAsyncSSOUpgrade(
 	// TODO(deferred): The encrypted password is still embedded in JWT claims
 	// because several routes extract it for peer-login and ACL checks. Removing
 	// it from the token is a separate JWT claim-contract migration (own PR).
-	var userInfo interface{}
-	if email != "" {
-		userInfo = struct {
-			Name       string
-			Role       string
-			Password   string
-			Email      string `json:"email"`
-			Profile    string `json:"profile"`
-			MeetUserID string `json:"meet_user_id"`
-			Cloud18    string `json:"cloud18,omitempty"`
-		}{username, "Member", repman.Conf.GetEncryptedString(password), email, repman.Conf.OAuthProvider, meetUserID, sso.cloud18Claim(repman.Conf)}
-	} else {
-		userInfo = struct {
-			Name       string
-			Role       string
-			Password   string
-			MeetUserID string `json:"meet_user_id"`
-		}{username, "Member", repman.Conf.GetEncryptedString(password), meetUserID}
+	// An SSO login without an email is no SSO identity: its session would be a Local one named
+	// after the account, instance-wide, replacing a local session scoped to some clusters
+	// (api_session_scope.go). No upgrade then: the local session stays as it is.
+	if email == "" {
+		email = ssoLoginEmail(username)
 	}
+	if email == "" {
+		repman.logSecurityEvent("api_login_sso_upgrade_claim_mismatch", username, remoteAddr,
+			"SSO upgrade did not complete: the SSO login gave no email")
+		job.mu.Lock()
+		job.Status = upgradeStatusFailed
+		job.Reason = "claim_mismatch"
+		job.TerminalAt = time.Now()
+		job.Error = "the SSO login gave no email"
+		job.mu.Unlock()
+		return
+	}
+	var userInfo interface{} = struct {
+		Name       string
+		Role       string
+		Password   string
+		Email      string `json:"email"`
+		Profile    string `json:"profile"`
+		MeetUserID string `json:"meet_user_id"`
+		Cloud18    string `json:"cloud18,omitempty"`
+	}{username, "Member", repman.Conf.GetEncryptedString(password), email, repman.Conf.OAuthProvider, meetUserID, sso.cloud18Claim(repman.Conf)}
 
 	newJWT, err := repman.issueCloud18Session(userInfo, ssoToken, sso.cloud18Refresh())
 	if err != nil {
