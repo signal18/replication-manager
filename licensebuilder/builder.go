@@ -405,11 +405,16 @@ func (b *Builder) deliverToPull(r Request, plugins []Plugin, extra map[string][]
 	}
 	files := map[string]gitFile{}
 	for _, p := range plugins {
-		files[filepath.Join("plugins", p.Name)] = gitFile{p.Data, 0o755}
-		files[filepath.Join("plugins", p.Name+".sig")] = gitFile{p.Sig, 0o644}
+		files[filepath.Join("plugins", p.Name)] = gitFile{data: p.Data, mode: 0o755}
+		files[filepath.Join("plugins", p.Name+".sig")] = gitFile{data: p.Sig, mode: 0o644}
 	}
 	for path, data := range extra {
-		files[path] = gitFile{data, 0o644}
+		f := gitFile{data: data, mode: 0o644}
+		if strings.HasSuffix(path, ".tar.gz") {
+			// a rebuild of the same seat differs only by its build time: never a new blob for it (F3)
+			f.same = func(existing []byte) bool { return samePackage(existing, data) }
+		}
+		files[path] = f
 	}
 	return b.pushFiles(fmt.Sprintf("%s/%s-%s-pull", parts[0], parts[1], parts[2]), files, "plugins for "+r.URI)
 }
@@ -421,8 +426,8 @@ func (b *Builder) deliverToPull(r Request, plugins []Plugin, extra map[string][]
 // Cloud18 account) and never deletes anything. Needs a GitLab token with the api scope and
 // Maintainer (or more) on the group; a registered instance's project needs neither (repman created it).
 func (b *Builder) ensurePullProject(r Request) error {
-	if b.cfg.GitToken == "" {
-		return fmt.Errorf("git delivery not configured (git-token)")
+	if b.cfg.GitBaseURL == "" || b.cfg.GitToken == "" {
+		return fmt.Errorf("git delivery not configured (git-base-url / git-token)")
 	}
 	parts := strings.Split(r.URI, ".")
 	if len(parts) != 3 {
@@ -446,10 +451,12 @@ func (b *Builder) ensurePullProject(r Request) error {
 	return nil
 }
 
-// gitFile is one file pushFiles writes: its content and mode.
+// gitFile is one file pushFiles writes: its content and mode. same, when set, tells whether the
+// file already in the repository is equivalent: then it is left as is (nothing staged for it).
 type gitFile struct {
 	data []byte
 	mode os.FileMode
+	same func(existing []byte) bool
 }
 
 // pushFiles writes files (paths relative to the repository root) into <GitBaseURL>/<repoPath>.git
@@ -482,6 +489,11 @@ func (b *Builder) pushFiles(repoPath string, files map[string]gitFile, message s
 	paths := make([]string, 0, len(files))
 	for rel, f := range files {
 		full := filepath.Join(dir, rel)
+		if f.same != nil {
+			if existing, err := os.ReadFile(full); err == nil && f.same(existing) {
+				continue
+			}
+		}
 		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
 			return err
 		}

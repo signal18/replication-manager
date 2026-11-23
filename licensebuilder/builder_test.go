@@ -292,8 +292,42 @@ func TestDeliverToPullAirGapped(t *testing.T) {
 	if n := gitT(check, "rev-list", "--count", "HEAD"); n != "1" {
 		t.Fatalf("%s commits after the same plugins, want 1", n)
 	}
+	// a rebuilt package of the same seat (only its build time differs) is not staged again (F3)
+	first, err := WritePackage("acme", "acme.202612.1", 4, "linux/amd64", time.Unix(1000, 0), plugins)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rebuilt, _ := WritePackage("acme", "acme.202612.1", 4, "linux/amd64", time.Unix(2000, 0), plugins)
+	if err := b.deliverToPull(r, plugins, map[string][]byte{"packages/acme.202612.1.tar.gz": first}); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.deliverToPull(r, plugins, map[string][]byte{"packages/acme.202612.1.tar.gz": rebuilt}); err != nil {
+		t.Fatal(err)
+	}
+	gitT(check, "pull", "-q")
+	if n := gitT(check, "rev-list", "--count", "HEAD"); n != "2" {
+		t.Fatalf("%s commits after a package and its rebuild, want 2 (the rebuild is not a new blob)", n)
+	}
 	if strings.Contains(gitT(check, "log", "--format=%B"), "SECRETTOKEN") {
 		t.Error("token leaked into a commit")
+	}
+}
+
+// TestSamePackage: two builds of one seat differing only by their build time are the same package;
+// another plugin content, expiry or an unreadable package is not.
+func TestSamePackage(t *testing.T) {
+	plugins := []Plugin{{Name: "plugin-licence", Data: []byte("bin"), Sig: []byte("sig")}}
+	a, _ := WritePackage("acme", "acme.202612.1", 4, "linux/amd64", time.Unix(1000, 0), plugins)
+	b, _ := WritePackage("acme", "acme.202612.1", 4, "linux/amd64", time.Unix(2000, 0), plugins)
+	if !samePackage(a, b) {
+		t.Error("a rebuild (only Built differs) should be the same package")
+	}
+	changed, _ := WritePackage("acme", "acme.202612.1", 4, "linux/amd64", time.Unix(1000, 0), []Plugin{{Name: "plugin-licence", Data: []byte("bin2"), Sig: []byte("sig")}})
+	other, _ := WritePackage("acme", "acme.202712.1", 4, "linux/amd64", time.Unix(1000, 0), plugins)
+	for name, pkg := range map[string][]byte{"plugin content": changed, "expiry": other, "unreadable": []byte("x")} {
+		if samePackage(a, pkg) {
+			t.Errorf("%s changed, yet the same package", name)
+		}
 	}
 }
 
@@ -364,8 +398,11 @@ func newFakeGitLabAPI(t *testing.T) *fakeGitLabAPI {
 // existing group, once (the second build finds it), and a missing group fails without creating it.
 func TestEnsurePullProject(t *testing.T) {
 	f := newFakeGitLabAPI(t)
-	b := New(Config{GitToken: "SECRETTOKEN"}, nil)
+	b := New(Config{GitBaseURL: githelper.GitLabURL, GitToken: "SECRETTOKEN"}, nil)
 	r := Request{Company: "acme", URI: "acme.202612.1", AirGapped: true}
+	if err := New(Config{GitToken: "SECRETTOKEN"}, nil).ensurePullProject(r); err == nil || !strings.Contains(err.Error(), "git-base-url") {
+		t.Fatalf("no git base URL: %v", err)
+	}
 	if err := b.ensurePullProject(r); err != nil {
 		t.Fatalf("ensurePullProject: %v", err)
 	}

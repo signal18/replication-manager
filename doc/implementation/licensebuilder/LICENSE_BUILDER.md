@@ -55,6 +55,9 @@ The modes differ in identity, expiry and delivery:
     Settings → Load licence package). This is how an air-gapped instance installs its licence.
   - every plugin of the package (binary + `.sig`) under `plugins/`, the same layout as online.
 
+  A rebuild of the same seat stages nothing new: the package already in the repo is kept when its
+  files and manifest match the new one apart from the build time (`samePackage`), so the `-pull`
+  history does not grow with each rebuild (F3); the plugins are compared byte for byte by git.
   The first push into the empty project sets its default branch (`git push origin HEAD`). The
   package also stays in the packages dir (`GET /packages/<uri>.tar.gz`) as an admin's copy.
 
