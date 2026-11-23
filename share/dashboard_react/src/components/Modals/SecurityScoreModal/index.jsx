@@ -10,6 +10,7 @@ import { createColumnHelper } from '@tanstack/react-table'
 import parentStyles from '../styles.module.scss'
 import { useTheme } from '../../../ThemeProvider'
 import { clusterService } from '../../../services/clusterService'
+import { GRADE_COLOR } from '../../../utility/domainPills'
 import { showSuccessToast, showErrorToast } from '../../../redux/toastSlice'
 
 // Label map for security check tags — order controls display order in the grid.
@@ -34,8 +35,6 @@ const CHECK_LABELS = {
   noClearPwdBinlogs:   'No clear-text passwords in binary logs',
   hasLastLTS:          'Running a supported LTS release',
 }
-
-const GRADE_COLOR = { A: 'green', B: 'teal', C: 'yellow', D: 'orange', F: 'red' }
 
 function SecurityScoreModal({ isOpen, closeModal }) {
   const { theme } = useTheme()

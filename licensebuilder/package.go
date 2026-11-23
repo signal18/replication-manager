@@ -15,6 +15,7 @@ import (
 	"compress/gzip"
 	"encoding/json"
 	"fmt"
+	"io"
 	"sort"
 	"time"
 
@@ -81,4 +82,60 @@ func WritePackage(company, uri string, wire int, platform string, built time.Tim
 		return nil, err
 	}
 	return buf.Bytes(), nil
+}
+
+// samePackage tells whether two packages carry the same files and the same manifest apart from its
+// build time (Built): a rebuild of the same seat, plugins and expiry. Any unreadable package is
+// different.
+func samePackage(a, b []byte) bool {
+	fa, err := packageFiles(a)
+	if err != nil {
+		return false
+	}
+	fb, err := packageFiles(b)
+	if err != nil || len(fa) != len(fb) {
+		return false
+	}
+	for name, data := range fa {
+		if other, ok := fb[name]; !ok || !bytes.Equal(data, other) {
+			return false
+		}
+	}
+	return true
+}
+
+// packageFiles reads a package into name -> content, the manifest re-encoded without Built.
+func packageFiles(pkg []byte) (map[string][]byte, error) {
+	gz, err := gzip.NewReader(bytes.NewReader(pkg))
+	if err != nil {
+		return nil, err
+	}
+	defer gz.Close()
+	tr := tar.NewReader(gz)
+	files := map[string][]byte{}
+	for {
+		h, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+		data, err := io.ReadAll(io.LimitReader(tr, 256<<20))
+		if err != nil {
+			return nil, err
+		}
+		if h.Name == "manifest.json" {
+			var man logplugin.PackageManifest
+			if err := json.Unmarshal(data, &man); err != nil {
+				return nil, err
+			}
+			man.Built = ""
+			if data, err = json.Marshal(man); err != nil {
+				return nil, err
+			}
+		}
+		files[h.Name] = data
+	}
+	return files, nil
 }

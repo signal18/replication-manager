@@ -41,8 +41,31 @@ One request at a time; queue bounded to 64, history to the last 50 results (F4).
 The modes differ in identity, expiry and delivery:
 
 - **Air-gapped** (`airGapped:true`): URI `<company>.<YYYYMM>.<seat>`, expiry in the URI. Steps 1–5
-  above build the full `<uri>.tar.gz` (release plugins + licence plugin), test it with `license-pull`,
-  and `GET /packages/<uri>.tar.gz` hands it to the admin to install by hand.
+  above build the full `<uri>.tar.gz` (release plugins + licence plugin) and test it with
+  `license-pull`. The seat URI reads like any URI (domain = company, subdomain = `YYYYMM`, zone =
+  seat), so its repo is `<company>/<YYYYMM>-<seat>-pull`: one rule for every client, a URI names a
+  `-pull` repo and the builder pushes there. A seat has no replication-manager that registers, so
+  the builder creates that project first (`ensurePullProject`): in the client's existing GitLab
+  group `<company>` (looked up by path, never created; a missing group fails the build), private
+  and empty, with the settings of a registration (`githelper.GitLabCreateProjectIn`); an existing
+  project is used as is; nothing is ever deleted. Then one commit (`deliverToPull`, the online
+  step) carries:
+  - `packages/<uri>.tar.gz`, the tested package: the client downloads it, copies it into the
+    replication-manager data directory and loads it with `license-pull` (Global Settings → Cloud
+    Settings → Load licence package). This is how an air-gapped instance installs its licence.
+  - every plugin of the package (binary + `.sig`) under `plugins/`, the same layout as online.
+
+  A rebuild of the same seat stages nothing new: the package already in the repo is kept when its
+  files and manifest match the new one apart from the build time (`samePackage`), so the `-pull`
+  history does not grow with each rebuild (F3); the plugins are compared byte for byte by git.
+  The first push into the empty project sets its default branch (`git push origin HEAD`). The
+  package also stays in the packages dir (`GET /packages/<uri>.tar.gz`) as an admin's copy.
+
+  **Token requirement:** creating the project needs the builder's GitLab token
+  (`LICENSE_BUILDER_GIT_TOKEN`) with the **`api`** scope and its account **Maintainer** (or more) of
+  the client's group. `read_repository` / `write_repository` alone serve registered instances
+  only (their project exists: replication-manager created it at registration); with them an
+  air-gapped build fails at the project step, with that requirement in its error.
 - **Online** (`airGapped:false`): URI is the instance's full `<domain>.<subdomain>.<zone>`, expiry
   passed separately (`LICENCE_EXPIRY`, the contract end). Only the `plugin-licence` is built (no
   release plugins, no `license-pull` self-test — that exercises the air-gapped install path); the
@@ -64,7 +87,8 @@ default `cloud18-crm`) of a signal18-admin (`groups` `/signal18-admins` or realm
   or the queue is full.
 - `GET /queue`: `{pending, current, results}`, each result with its state (`queued`, `building`,
   `testing`, `done`, `failed`), error, package and the plugins loaded.
-- `GET /packages/<uri>.tar.gz`: the built package, for the admin to hand to the client.
+- `GET /packages/<uri>.tar.gz`: the built air-gapped package, an admin's copy (the client takes
+  it from `packages/<uri>.tar.gz` in the seat's `-pull` repo).
 
 ## Environment
 
@@ -79,7 +103,7 @@ default `cloud18-crm`) of a signal18-admin (`groups` `/signal18-admins` or realm
 | `LICENSE_BUILDER_MONITOR_USER` / `_PASSWORD` | `admin` / required |
 | `PLUGIN_SIGNER_USER` / `PLUGIN_SIGNER_TOKEN` | required |
 | `LICENSE_BUILDER_GIT_BASE_URL` | `https://gitlab.signal18.io` (the `-pull` repos' GitLab) |
-| `LICENSE_BUILDER_GIT_USER` / `_GIT_TOKEN` | `oauth2` / required for online `-pull` delivery |
+| `LICENSE_BUILDER_GIT_USER` / `_GIT_TOKEN` | `oauth2` / required for `-pull` delivery; `api` scope + Maintainer of the client's group for an air-gapped seat (project creation) |
 | `LICENSE_BUILDER_ISSUER_URL` | the Cloud18 realm |
 | `LICENSE_BUILDER_ALLOWED_CLIENTS` | `cloud18-crm` |
 

@@ -89,6 +89,8 @@ func loopbackOnly(h http.Handler) http.Handler {
 func (repman *ReplicationManager) httpserver() {
 	//PUBLIC ENDPOINTS
 	router := mux.NewRouter()
+	// every API call goes to the Access Logs ring (off with log-api-access = false)
+	router.Use(repman.apiAccessLogMiddleware)
 	// Same as the API router: no path cleaning, a setting value in the path may start
 	// with a slash (this router serves the API too when the dashboard port is used).
 	router.SkipClean(true)
@@ -423,6 +425,15 @@ func (repman *ReplicationManager) httpserver() {
 		router.Handle("/api/global/http-logs", negroni.New(
 			negroni.HandlerFunc(repman.validateTokenMiddleware),
 			negroni.Wrap(http.HandlerFunc(repman.handlerMuxGlobalLogs)),
+		))
+		// the instance Security Logs and Access Logs tabs (server/server_instance_logs.go)
+		router.Handle("/api/global/security-logs", negroni.New(
+			negroni.HandlerFunc(repman.validateTokenMiddleware),
+			negroni.Wrap(http.HandlerFunc(repman.handlerMuxGlobalSecurityLogs)),
+		))
+		router.Handle("/api/global/access-logs", negroni.New(
+			negroni.HandlerFunc(repman.validateTokenMiddleware),
+			negroni.Wrap(http.HandlerFunc(repman.handlerMuxGlobalAccessLogs)),
 		))
 		router.Handle("/api/global/jobs", negroni.New(
 			negroni.HandlerFunc(repman.validateTokenMiddleware),

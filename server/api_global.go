@@ -43,6 +43,59 @@ type globalLogsSnapshot struct {
 	Line   int                  `json:"line"`
 	// Truncated is only ever true for a history response (see HttpLog.Truncated).
 	Truncated bool `json:"truncated,omitempty"`
+	// Dropped is the number of entries an instance log ring (security, access) dropped
+	// since start to stay within its size (server/server_instance_logs.go).
+	Dropped uint64 `json:"dropped,omitempty"`
+}
+
+// writeInstanceLogRing answers an instance log ring read in the shape of
+// /api/global/http-logs, to the users who may read the global logs (global-admin-show).
+func (repman *ReplicationManager) writeInstanceLogRing(w http.ResponseWriter, r *http.Request, ring *instanceLogRing) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	if !repman.UserHasGlobalGrant(r, config.GrantGlobalAdminShow) {
+		http.Error(w, "Forbidden: requires "+config.GrantGlobalAdminShow+" grant", http.StatusForbidden)
+		return
+	}
+	out, err := json.Marshal(globalLogsResponse{General: ring.snapshot()})
+	if err != nil {
+		http.Error(w, "Error encoding response", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(out)
+}
+
+// handlerMuxGlobalSecurityLogs returns the instance security log ring: API logins,
+// refusals and lockouts (logSecurityEvent), the entries of the security log file.
+//
+// @Summary Get the instance security log
+// @Description Returns the newest instance security events (API logins, refusals, lockouts) from a bounded in-memory ring (log-security-length), with the number of entries dropped since start.
+// @Tags Global
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Success 200 {object} globalLogsResponse
+// @Failure 401 {string} string "Unauthorized"
+// @Failure 403 {string} string "Forbidden"
+// @Router /api/global/security-logs [get]
+func (repman *ReplicationManager) handlerMuxGlobalSecurityLogs(w http.ResponseWriter, r *http.Request) {
+	repman.writeInstanceLogRing(w, r, repman.SecurityLogs)
+}
+
+// handlerMuxGlobalAccessLogs returns the instance API access log ring: method, path
+// (secret-carrying variables kept as placeholders, never the query), status, duration,
+// user and remote address of each API call. Empty when log-api-access is off.
+//
+// @Summary Get the instance API access log
+// @Description Returns the newest API calls (method, path without query or secret values, status, duration, user, remote address) from a bounded in-memory ring (log-api-access-length, off with log-api-access=false), with the number of entries dropped since start.
+// @Tags Global
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Success 200 {object} globalLogsResponse
+// @Failure 401 {string} string "Unauthorized"
+// @Failure 403 {string} string "Forbidden"
+// @Router /api/global/access-logs [get]
+func (repman *ReplicationManager) handlerMuxGlobalAccessLogs(w http.ResponseWriter, r *http.Request) {
+	repman.writeInstanceLogRing(w, r, repman.APIAccessLogs)
 }
 
 // globalLogsResponse is the JSON payload for GET /api/global/http-logs.
@@ -114,17 +167,7 @@ func (repman *ReplicationManager) handlerMuxGlobalLogs(w http.ResponseWriter, r 
 		bufLen = len(msgs)
 		bufLine = 0
 	} else {
-		repman.GlobalLogs.L.Lock()
-		raw := make([]s18log.HttpMessage, len(repman.GlobalLogs.Buffer))
-		copy(raw, repman.GlobalLogs.Buffer)
-		repman.GlobalLogs.L.Unlock()
-
-		buf = make([]s18log.HttpMessage, 0, len(raw))
-		for _, msg := range raw {
-			if msg.Timestamp != "" {
-				buf = append(buf, msg)
-			}
-		}
+		buf = repman.GlobalLogs.Entries()
 	}
 
 	resp := globalLogsResponse{

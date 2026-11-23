@@ -127,7 +127,8 @@ func GitLabEnsureDomainGroup(oauthToken, domain string, userID int) (int, error)
 	var g struct {
 		ID int `json:"id"`
 	}
-	err := gitlabCall(http.MethodGet, "/groups/"+url.PathEscape(domain), oauthToken, true, nil, &g)
+	var err error
+	g.ID, err = GitLabGroupID(oauthToken, domain)
 	if GitLabStatus(err) == http.StatusNotFound {
 		err = gitlabCall(http.MethodPost, "/groups", oauthToken, true, map[string]string{"name": domain, "path": domain, "visibility": "private"}, &g)
 		if err != nil {
@@ -150,6 +151,21 @@ func GitLabEnsureDomainGroup(oauthToken, domain string, userID int) (int, error)
 	}
 	if m.AccessLevel < MaintainerAccess {
 		return 0, ErrNotDomainMaintainer
+	}
+	return g.ID, nil
+}
+
+// GitLabGroupID returns the id of the group at path, never creating it: a missing group is a
+// GitLabError with status 404 (GitLabStatus).
+func GitLabGroupID(token, path string) (int, error) {
+	var g struct {
+		ID int `json:"id"`
+	}
+	if err := gitlabCall(http.MethodGet, "/groups/"+url.PathEscape(path), token, true, nil, &g); err != nil {
+		return 0, err
+	}
+	if g.ID <= 0 {
+		return 0, fmt.Errorf("GitLab gave no id for group %s", path)
 	}
 	return g.ID, nil
 }
