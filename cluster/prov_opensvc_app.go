@@ -549,6 +549,9 @@ func (cluster *Cluster) OpenSVCProvisionAppService(app *App) error {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr,
 				"App %s service provisioned but route publication failed: %s — retry via update-routes when DNS and gateway are ready", app.GetId(), err)
 		}
+		// om3 applies the pg keywords on a pg update only: armed here like after a start,
+		// or a new app runs uncapped until its first restart
+		app.ArmOpenSVCPGCap()
 		cluster.errorChan <- nil
 		return nil
 	}
