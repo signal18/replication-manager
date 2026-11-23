@@ -17,7 +17,7 @@ import RMButton from '../../components/RMButton'
 import { getTablePct } from '../../utility/common'
 import Gauge from '../../components/Gauge'
 import AccordionComponent from '../../components/AccordionComponent'
-import { GeneralLogs, TaskLogs } from '../Dashboard/components/Logs'
+import ClusterLogsTabs from '../Dashboard/components/ClusterLogsTabs'
 import ConfirmModal from '../../components/Modals/ConfirmModal'
 import EngineSwitchModal from '../../components/Modals/EngineSwitchModal'
 import ColumnstoreRebalanceModal from '../../components/Modals/ColumnstoreRebalanceModal'
@@ -163,7 +163,7 @@ function ViewToggleBtn({ active, onClick, children }) {
 }
 
 // ─── Main Shards page ─────────────────────────────────────────────────────────
-function Shards({ selectedCluster, user, onOpenSchedulerSettings, onOpenLogsSettings, onOpenMonitoringSettings }) {
+function Shards({ selectedCluster, user, onOpenSchedulerSettings, onOpenLogsSettings, onOpenMonitoringSettings, onOpenPluginsSettings }) {
   const dispatch = useDispatch()
 
   // ── Redux selectors ────────────────────────────────────────────────────────
@@ -825,18 +825,10 @@ function Shards({ selectedCluster, user, onOpenSchedulerSettings, onOpenLogsSett
         />
       )}
 
-      {/* ── Logs ─────────────────────────────────────────────────────────── */}
-      <AccordionComponent
+      {/* ── Logs: the same tabs as the Dashboard's Logs section ─────────── */}
+      <ClusterLogsTabs
         className={styles.accordion}
-        heading="Cluster Logs"
-        headerActions={onOpenLogsSettings ? <RMIconButton icon={HiCog} tooltip='Log Settings' onClick={onOpenLogsSettings} size='xs' variant='ghost' /> : null}
-        body={<GeneralLogs />}
-      />
-      <AccordionComponent
-        className={styles.accordion}
-        heading="Job Logs"
-        headerActions={onOpenLogsSettings ? <RMIconButton icon={HiCog} tooltip='Log Settings' onClick={onOpenLogsSettings} size='xs' variant='ghost' /> : null}
-        body={<TaskLogs />}
+        openSettings={{ logs: onOpenLogsSettings, scheduler: onOpenSchedulerSettings, monitoring: onOpenMonitoringSettings, plugins: onOpenPluginsSettings }}
       />
 
       {/* ── Schema-cache confirm modal ────────────────────────────────────── */}

@@ -65,6 +65,9 @@ function GlobalSettings({ config, cards }) {
   const hSecretReveal = `**Mail Passwords as One-time Links**\n\nA password reaches a person by mail as a one-time link (\`<api-public-url>/reveal\`), never in the mail: the new password of a rotated user whose login is an email (who rotated it then does not see it), and the credentials mails (sponsor, DBA, sysadmin). The page shows it once after a click, then the link is gone; the secrets wait encrypted with the instance's key. Off: a rotated password is shown once to who rotated it, and the credentials mails are not sent. The link is built on API Public URL: it must be the address the recipients reach.\n\nConfig: \`api-secret-reveal\``
   const hSecretRevealExpire = `**One-time Link Expiry in Hours**\n\nHours a one-time password link works when nobody opens it. Default 24.\n\nConfig: \`api-secret-reveal-expire-hours\``
   const hSwagger = `**Enable API Swagger**\n\nServes the interactive API explorer at \`/api-docs/\`.\n\nConfig: \`api-swagger-enabled\``
+  const hLogApiAccess = `**Log API Access**\n\nKeeps the API calls that change something and the failed calls (method, path, status, duration, user, address) in memory for the Access Logs tab of the instance Dashboard; successful reads, the GUI's polling, are not kept. Never the query string, a header, a token or a secret value from the path. On by default.\n\nConfig: \`log-api-access\``
+  const hLogSecurityLength = `**Security Log Length**\n\nNumber of security events (API logins, refusals, lockouts) kept in memory for the Security Logs tab. 0 = the default (200). The full history stays in the security log file.\n\nConfig: \`log-security-length\``
+  const hLogApiAccessLength = `**API Access Log Length**\n\nNumber of API calls kept in memory for the Access Logs tab. 0 = the default (500).\n\nConfig: \`log-api-access-length\``
   const hLogApiLogin = `**Log API Login**\n\nRecords every successful API login (user, source address) in the security log. On by default. Failed logins are always recorded. API tokens never log in, so token calls add nothing.\n\nConfig: \`monitoring-log-api-login\``
   const hLogApiSilent = `**Log API Login Silent Users**\n\nComma-separated users whose logins are not recorded (health probes, internal accounts).\n\nConfig: \`monitoring-log-api-login-silent-users\``
   const hMcpServer = `**MCP Server**\n\nExpose the clusters to AI assistants through the Model Context Protocol. With the default transport the endpoints live on this API at \`/api/mcp/sse\` and \`/api/mcp/message\`, HTTP and HTTPS alike. Every tool, reads and actions alike, runs under the caller's own ACL (login JWT or API token): read-only or read-write is a property of the account or token, not of the server. Applied live.\n\nConfig: \`mcp-server\``
@@ -475,6 +478,48 @@ function GlobalSettings({ config, cards }) {
       )
     },
     {
+      globalSetting: 'log-api-access',
+      key: 'Log API Access',
+      help: h(hLogApiAccess, 'Log API Access'),
+      value: (
+        <RMSwitch
+          confirmTitle={'Confirm switch global settings for Log API Access?'}
+          onChange={(_v, setRefresh) => dispatch(switchGlobalSetting({ setting: 'log-api-access', setRefresh }))}
+          isChecked={config?.logApiAccess}
+        />
+      )
+    },
+    {
+      globalSetting: 'log-api-access-length',
+      key: 'API Access Log Length',
+      help: h(hLogApiAccessLength, 'API Access Log Length'),
+      value: (
+        <NumberInput
+          min={0}
+          value={config?.logApiAccessLength ?? 500}
+          showEditButton={true}
+          showConfirmModal={true}
+          confirmTitle={`Confirm change 'log-api-access-length' to: `}
+          onConfirm={(value) => dispatch(setGlobalSetting({ setting: 'log-api-access-length', value: value }))}
+        />
+      )
+    },
+    {
+      globalSetting: 'log-security-length',
+      key: 'Security Log Length',
+      help: h(hLogSecurityLength, 'Security Log Length'),
+      value: (
+        <NumberInput
+          min={0}
+          value={config?.logSecurityLength ?? 200}
+          showEditButton={true}
+          showConfirmModal={true}
+          confirmTitle={`Confirm change 'log-security-length' to: `}
+          onConfirm={(value) => dispatch(setGlobalSetting({ setting: 'log-security-length', value: value }))}
+        />
+      )
+    },
+    {
       globalSetting: 'monitoring-log-api-login-silent-users',
       key: 'Log API Login Silent Users',
       help: h(hLogApiSilent, 'Log API Login Silent Users'),
@@ -598,7 +643,7 @@ function GlobalSettings({ config, cards }) {
 
   // the global Setup tabs (#2268): the monitor's own units of work, then the HTTP server and its API
   const MONITORING_UNITS_ROWS = ['Save Config', 'Concurrent Backup Slots', 'Global Intervention']
-  const API_LOG_ROWS = ['Log API Login', 'Log API Login Silent Users']
+  const API_LOG_ROWS = ['Log API Login', 'Log API Login Silent Users', 'Log API Access', 'API Access Log Length', 'Security Log Length']
   const monitoringUnitsData = generalData.filter((row) => MONITORING_UNITS_ROWS.includes(row.key))
   const httpApiData = [
     ...generalData.filter((row) => !MONITORING_UNITS_ROWS.includes(row.key)),

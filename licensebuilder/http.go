@@ -46,15 +46,17 @@ func (b *Builder) Handler() http.Handler {
 		case http.MethodPost:
 			var req Request
 			if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<16)).Decode(&req); err != nil {
+				b.log("license-builder: POST /queue by %s refused: decode body: %v", who, err)
 				http.Error(w, "decode body: "+err.Error(), http.StatusBadRequest)
 				return
 			}
 			req.RequestedBy = who
 			if err := b.Enqueue(req); err != nil {
+				b.log("license-builder: POST /queue by %s refused: %s (uri %s, version %s, airGapped %v)", who, err, req.URI, req.Version, req.AirGapped)
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
-			b.log("license-builder: %s queued by %s (%s %s)", req.URI, who, req.Version, req.Platform)
+			b.log("license-builder: %s queued by %s (version %s, platform %s, airGapped %v)", req.URI, who, req.Version, req.Platform, req.AirGapped)
 			writeJSON(w, http.StatusAccepted, map[string]string{"queued": req.URI})
 		default:
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -76,19 +78,24 @@ func (b *Builder) Handler() http.Handler {
 }
 
 // admin verifies the bearer: a realm token (signature, issuer, expiry), from an allowed client,
-// of a signal18-admin. It answers 401/403 itself and returns the caller's email.
+// of a signal18-admin. It answers 401/403 itself and returns the caller's email. Every request
+// leaves one log line: accepted, or refused with the reason (the token itself is never logged).
 func (b *Builder) admin(w http.ResponseWriter, r *http.Request, verifier *oidc.IDTokenVerifier) (string, bool) {
+	who := "unknown caller"
+	refuse := func(code int, reason string) (string, bool) {
+		b.log("license-builder: %s %s by %s refused (%d): %s", r.Method, r.URL.Path, who, code, reason)
+		http.Error(w, reason, code)
+		return "", false
+	}
 	raw, found := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
 	if !found || raw == "" {
-		http.Error(w, "Authorization: Bearer <Cloud18 token> required", http.StatusUnauthorized)
-		return "", false
+		return refuse(http.StatusUnauthorized, "Authorization: Bearer <Cloud18 token> required")
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 	tok, err := verifier.Verify(ctx, raw)
 	if err != nil {
-		http.Error(w, "token refused: "+err.Error(), http.StatusUnauthorized)
-		return "", false
+		return refuse(http.StatusUnauthorized, "token refused: "+strings.ReplaceAll(err.Error(), raw, "[token]"))
 	}
 	var c struct {
 		Email       string   `json:"email"`
@@ -99,19 +106,21 @@ func (b *Builder) admin(w http.ResponseWriter, r *http.Request, verifier *oidc.I
 		} `json:"realm_access"`
 	}
 	if err := tok.Claims(&c); err != nil {
-		http.Error(w, "token claims: "+err.Error(), http.StatusUnauthorized)
-		return "", false
+		return refuse(http.StatusUnauthorized, "token claims: "+err.Error())
+	}
+	if c.Email != "" {
+		who = c.Email
 	}
 	if !slices.Contains(b.cfg.AllowedClients, c.Azp) {
-		http.Error(w, fmt.Sprintf("token of client %q not allowed", c.Azp), http.StatusForbidden)
-		return "", false
+		return refuse(http.StatusForbidden, fmt.Sprintf("token of client %q not allowed", c.Azp))
 	}
 	isAdmin := slices.ContainsFunc(c.Groups, func(g string) bool { return slices.Contains(adminGroups, g) }) ||
 		slices.ContainsFunc(c.RealmAccess.Roles, func(r string) bool { return slices.Contains(adminRoles, r) })
 	if !isAdmin {
-		http.Error(w, "signal18-admin required", http.StatusForbidden)
-		return "", false
+		b.log("license-builder: %s %s by %s: groups %v, roles %v", r.Method, r.URL.Path, who, c.Groups, c.RealmAccess.Roles)
+		return refuse(http.StatusForbidden, "signal18-admin required")
 	}
+	b.log("license-builder: %s %s by %s accepted", r.Method, r.URL.Path, who)
 	return c.Email, true
 }
 
