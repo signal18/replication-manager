@@ -220,10 +220,22 @@ func (cluster *Cluster) appConfiguratorEnv(app *App) map[string]string {
 	return env
 }
 
+// appConfiguratorDatabaseEngines are the configurator engines that are databases: an app
+// naming one is a database ENGINE SERVER of the cluster (a monitored server, its agents in
+// prov-db-agents, the database plan, the database priority). Any other engine (php)
+// configures an application runtime: the app stays an app, sized by its own APU plan.
+var appConfiguratorDatabaseEngines = map[string]bool{"postgres": true, "mariadb": true, "mysql": true}
+
+// isDatabaseEngineApp tells whether an app's configurator names a database engine, the
+// one rule every "engine server" decision goes through.
+func isDatabaseEngineApp(appcnf *config.AppConfig) bool {
+	return appcnf != nil && appConfiguratorDatabaseEngines[strings.TrimSpace(appcnf.ProvAppConfigurator)]
+}
+
 // engineServerOfApp returns the monitored server an engine app runs, nil when the app is
 // not a server of the cluster (a PostgreSQL that is an application's own store).
 func (cluster *Cluster) engineServerOfApp(app *App) *ServerMonitor {
-	if app == nil || app.AppConfig == nil || strings.TrimSpace(app.AppConfig.ProvAppConfigurator) == "" {
+	if app == nil || !isDatabaseEngineApp(app.AppConfig) {
 		return nil
 	}
 	for _, s := range cluster.Servers {

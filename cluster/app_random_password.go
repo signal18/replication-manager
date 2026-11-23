@@ -86,7 +86,7 @@ func (cluster *Cluster) appIsMonitoredServer(app *App) bool {
 // engineAppOfServer returns the engine app a monitored server runs, nil when none.
 func (cluster *Cluster) engineAppOfServer(s *ServerMonitor) *App {
 	for _, a := range cluster.Apps {
-		if a != nil && a.AppConfig != nil && strings.TrimSpace(a.AppConfig.ProvAppConfigurator) != "" &&
+		if a != nil && isDatabaseEngineApp(a.AppConfig) &&
 			a.Port == s.Port && (a.Host == s.Host || a.Name == s.Name) {
 			return a
 		}
@@ -97,7 +97,7 @@ func (cluster *Cluster) engineAppOfServer(s *ServerMonitor) *App {
 // appIsEngineServer tells whether a monitored server is a database engine app of the cluster.
 func (cluster *Cluster) appIsEngineServer(s *ServerMonitor) bool {
 	for _, a := range cluster.Apps {
-		if a != nil && a.AppConfig != nil && strings.TrimSpace(a.AppConfig.ProvAppConfigurator) != "" &&
+		if a != nil && isDatabaseEngineApp(a.AppConfig) &&
 			a.Port == s.Port && (a.Host == s.Host || a.Name == s.Name) {
 			return true
 		}

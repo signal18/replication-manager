@@ -144,3 +144,47 @@ func TestAppConfiguratorPrefersPluginDataCopy(t *testing.T) {
 		t.Fatalf("plugin data dir %q", got)
 	}
 }
+
+// A php configurator configures an application runtime: the app is never a database engine
+// server, so it renders from its own APU plan (the php tokens), even next to a monitored
+// server on its host and port, takes no database placement and no database priority.
+// postgres stays an engine server.
+func TestAppConfiguratorPhpIsNotAnEngineServer(t *testing.T) {
+	for engine, want := range map[string]bool{"postgres": true, "mariadb": true, "mysql": true, "php": false, "": false} {
+		if got := isDatabaseEngineApp(&config.AppConfig{ProvAppConfigurator: engine}); got != want {
+			t.Fatalf("isDatabaseEngineApp(%q) = %v", engine, got)
+		}
+	}
+	cl := &Cluster{Conf: &config.Config{MasterSlavePgStream: true, ProvAgents: "n1,n2,n3"}}
+	cl.Name = "c1"
+	php := &config.AppConfig{AppHost: "php1", AppPort: "80", ProvAppConfigurator: "php", ProvAppMem: "2048", ProvAppCpuCores: "2", ProvAppAgents: "n1,n2,n3"}
+	app := &App{Name: "php1", Host: "php1", Port: "80", AppConfig: php}
+	cl.Apps = append(cl.Apps, app)
+	// what an earlier build registered: a server on the app's host and port
+	server := &ServerMonitor{Name: "php1", Host: "php1", Port: "80"}
+	cl.Servers = append(cl.Servers, server)
+	if cl.engineServerOfApp(app) != nil || cl.engineAppOfServer(server) != nil || cl.appIsEngineServer(server) {
+		t.Fatal("a php app is matched as an engine server")
+	}
+	cl.placeReplicatedEngineMember(php)
+	if php.ProvAppAgents != "n1,n2,n3" {
+		t.Fatalf("a php app takes a replicated member placement: %q", php.ProvAppAgents)
+	}
+	if prio := cl.OpenSVCGetAppDefaultSection(app)["priority"]; prio == openSVCPriorityDatabase {
+		t.Fatal("a php app takes the database priority")
+	}
+	script, err := cl.AppConfiguratorScript(app)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sizing := appConfiguratorSizing(2048, 2, 0)
+	for _, want := range []string{
+		"/etc/php/8.4/fpm/pool.d/zzz-cloud18-sizing.conf",
+		"pm.max_children = " + sizing["%%ENV:SVC_CONF_ENV_PHP_FPM_MAX_CHILDREN%%"],
+		"opcache.memory_consumption = " + sizing["%%ENV:SVC_CONF_ENV_PHP_OPCACHE_MEMORY%%"],
+	} {
+		if !strings.Contains(script, want) {
+			t.Fatalf("php render misses %q:\n%s", want, script)
+		}
+	}
+}

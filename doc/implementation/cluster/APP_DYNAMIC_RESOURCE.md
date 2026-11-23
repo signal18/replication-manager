@@ -65,6 +65,14 @@ database configurator reads its own: the copy the back office pushes through the
 collector reaches the apps at their next render without a new binary; otherwise the export
 embedded in the binary (`share/opensvc/`, listed in `share/embed.go`) is used.
 
+A configurator is not always a database. `prov-app-configurator` first served PostgreSQL,
+where the app IS a database engine server of the cluster (a monitored server, its agents in
+`prov-db-agents`, the database plan and priority, rendered from `server.GetEnv()`). Those
+decisions now go through one rule, `isDatabaseEngineApp` (postgres, mariadb, mysql): a `php`
+configurator configures an application runtime, so the app stays an app, sized and rendered
+from its own APU plan. Before this rule, adding a `php` app registered it as a database
+server and its render failed on the missing PHP tokens.
+
 ## Failure
 
 A failed live resize leaves the plan stored but not in force: it arms the reprovision
