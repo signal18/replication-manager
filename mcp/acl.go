@@ -50,6 +50,26 @@ type Principal struct {
 	// infrastructure instead of the password. Never logged.
 	Cloud18Token string
 	Cloud18Login string
+	// SessionScoped marks a local login whose password authenticated the account on
+	// SessionClusters only: it is nobody on the other clusters (server/api_session_scope.go).
+	SessionScoped   bool
+	SessionClusters []string
+}
+
+// AllowsCluster reports whether the principal's login covers clusterName.
+func (p *Principal) AllowsCluster(clusterName string) bool {
+	if p == nil {
+		return false
+	}
+	if !p.SessionScoped {
+		return true
+	}
+	for _, c := range p.SessionClusters {
+		if c == clusterName {
+			return true
+		}
+	}
+	return false
 }
 
 // String renders the principal for logs.

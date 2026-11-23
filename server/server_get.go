@@ -252,6 +252,7 @@ func (repman *ReplicationManager) AuthenticateMCP(r *http.Request) (*repmanmcp.P
 		return nil, fmt.Errorf("JWT carries no user name")
 	}
 	p := &repmanmcp.Principal{User: user, AuthMethod: method, Remote: r.RemoteAddr, Auth: password, Bearer: bearerOf(r)}
+	p.SessionClusters, p.SessionScoped = sessionClusters(info)
 	if method == "oidc" {
 		// the session's Cloud18 login (#2182), for the other Cloud18 instances
 		p.Cloud18Login, _ = info["cloud18"].(string)
@@ -279,6 +280,10 @@ func (repman *ReplicationManager) AuthorizeMCP(p *repmanmcp.Principal, clusterNa
 		return false
 	}
 	ok := false
+	if !p.AllowsCluster(cl.Name) {
+		repman.logSecurityEvent("mcp_denied", p.User, p.Remote, fmt.Sprintf("MCP %s denied on %s: its login does not cover cluster %s", p.String(), url, cl.Name))
+		return false
+	}
 	switch p.AuthMethod {
 	case "token":
 		t, isToken := p.Auth.(*APIToken)

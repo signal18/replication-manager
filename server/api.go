@@ -648,6 +648,11 @@ func (repman *ReplicationManager) IsValidClusterACL(r *http.Request, cluster *cl
 	if mycutinfo, ok := jwtUserInfo(r); ok {
 		meuser := mycutinfo["Name"].(string)
 		mepwd, _ := mycutinfo["Password"].(string)
+		// a local login authenticated its account on the clusters of its scope only
+		// (api_session_scope.go): the same name may hold another password elsewhere
+		if !sessionAllowsCluster(mycutinfo, cluster.Name) {
+			return false, meuser
+		}
 		_, ok := mycutinfo["profile"]
 
 		if ok {
@@ -741,6 +746,10 @@ func (repman *ReplicationManager) GetUserInfoMap(token *jwt.Token) (map[string]s
 	}
 	UserInfoMap["User"] = mycutinfo["Name"].(string)
 	UserInfoMap["AuthType"] = "Local"
+	if clusters, restricted := sessionClusters(mycutinfo); restricted {
+		UserInfoMap["SessionScope"] = sessionScopeClusters
+		UserInfoMap["SessionClusters"] = strings.Join(clusters, ",")
+	}
 	return UserInfoMap, nil
 }
 
@@ -914,19 +923,31 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 	}
 
 	// tryLocalAuth validates credentials against cluster ACLs and returns
-	// the matching userInfo struct, or (nil, false) on failure.
+	// the matching userInfo struct, or (nil, false) on failure. The password authenticates
+	// the account on the clusters where it is the account's password, and only there: the
+	// session carries them (scope "clusters", api_session_scope.go), unless the account and
+	// password are the instance's (api-credentials of the server configuration).
+	var sessionScope string
+	var sessionScopeList []string
 	tryLocalAuth := func() (interface{}, bool) {
+		var matched []string
 		for _, cl := range repman.Clusters {
 			if cl.IsValidACL(user.Username, user.Password, r.URL.Path, cluster.AuthMethodSubmittedPassword) {
-				ui := struct {
-					Name     string
-					Role     string
-					Password string
-				}{user.Username, "Member", repman.Conf.GetEncryptedString(user.Password)}
-				return ui, true
+				matched = append(matched, cl.Name)
 			}
 		}
-		return nil, false
+		if len(matched) == 0 {
+			return nil, false
+		}
+		sessionScope, sessionScopeList = repman.localSessionScope(user.Username, user.Password, matched)
+		ui := struct {
+			Name     string
+			Role     string
+			Password string
+			Scope    string   `json:"scope,omitempty"`
+			Clusters []string `json:"clusters,omitempty"`
+		}{user.Username, "Member", repman.Conf.GetEncryptedString(user.Password), sessionScope, sessionScopeList}
+		return ui, true
 	}
 
 	sendToken := func(tokenString string, upgradeID string) {
@@ -994,8 +1015,10 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 			Name       string
 			Role       string
 			Password   string
-			MeetUserID string `json:"meet_user_id"`
-		}{user.Username, "Member", repman.Conf.GetEncryptedString(user.Password), meetUserID}
+			MeetUserID string   `json:"meet_user_id"`
+			Scope      string   `json:"scope,omitempty"`
+			Clusters   []string `json:"clusters,omitempty"`
+		}{user.Username, "Member", repman.Conf.GetEncryptedString(user.Password), meetUserID, sessionScope, sessionScopeList}
 		_ = userInfo // replaced by finalInfo with MeetUserID
 		tokenString, err := repman.issueJWT(finalInfo, "")
 		if err != nil {
@@ -2428,7 +2451,7 @@ func (repman *ReplicationManager) DynamicPeerHandler(w http.ResponseWriter, r *h
 			w.WriteHeader(status)
 			w.Write(body)
 			return
-		} else if repman.isAdminUser(uinfomap["User"]) && repman.Conf.Cloud18GitUser != "" {
+		} else if sc, restricted := userInfoMapSessionClusters(uinfomap); repman.isAdminUserOn(uinfomap["User"], sc, restricted) && repman.Conf.Cloud18GitUser != "" {
 			// Local admin on a registered instance: peers don't know our local 'admin'
 			// identity, so authenticate AS the registered user (Cloud18GitUser): with its
 			// realm token (#2327), which a peer verifies by itself, the password only for a
@@ -2602,7 +2625,7 @@ func (repman *ReplicationManager) handlerTerminal(w http.ResponseWriter, r *http
 
 	if vars["clusterName"] == "" {
 		// the shell on the repman host: the local admin account only
-		if uinfomap["User"] != "admin" || uinfomap["AuthType"] != "Local" {
+		if uinfomap["User"] != "admin" || uinfomap["AuthType"] != "Local" || uinfomap["SessionScope"] != "" {
 			session.SafeWriteMessage(websocket.TextMessage, []byte("No valid ACL\n"))
 			return
 		}
@@ -2620,7 +2643,8 @@ func (repman *ReplicationManager) handlerTerminal(w http.ResponseWriter, r *http
 			method = "oidc"
 		}
 
-		if !mycluster.IsValidACL(uinfomap["User"], uinfomap["Password"], path, method) {
+		if sc, restricted := userInfoMapSessionClusters(uinfomap); (restricted && !slices.Contains(sc, mycluster.Name)) ||
+			!mycluster.IsValidACL(uinfomap["User"], uinfomap["Password"], path, method) {
 			session.SafeWriteMessage(websocket.TextMessage, []byte("No valid ACL\n"))
 			return
 		}

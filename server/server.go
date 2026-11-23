@@ -198,6 +198,8 @@ type ReplicationManager struct {
 	Cloud18LoginState           string                      `json:"cloud18LoginState"` // the Cloud18 login (#2159): none, registered, connected, refused; "" Cloud18 off
 	UserAuthTry                 sync.Map                    `json:"-"`
 	apiTokens                   apiTokenStoreState          // user-issued API tokens store (api_token.go)
+	apiTokenSSOOwnerActive      func(owner string) bool     // whether an SSO token owner is still active upstream; nil = no way to know (api_token_owner.go)
+	apiTokenOwnerRefusedLogged  sync.Map                    // token ids whose refusal was logged once (api_token_owner.go), bounded by the token store
 	ViperConfig                 *viper.Viper                `json:"-"`
 	tlog                        s18log.TermLog
 	termlength                  int
