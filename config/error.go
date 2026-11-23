@@ -442,7 +442,6 @@ var GlobalError = map[string]string{
 	"GWARN019": "Arbitration peer %s answers on %s only: set arbitration-peer-hosts to %s",
 	"GWARN020": "The arbitration peer has the same arbitration-external-unique-id %d: when both instances are Standby neither claims Active, give each instance its own id",
 	"GWARN023": "license-pull refused: %s",
-	"GWARN026": "The Cloud18 account state of API token owners is not current: %s -- a blocked or disabled account keeps the last answer the CRM gave (an owner never answered keeps its tokens) until the CRM answers again",
 	"GWARN025": "The configuration file under /etc still holds the old value of %s: %s -- a rotation wrote the new value to the versioned store, which wins at the start, but the file keeps the banned password; fix the cause and rotate again, or edit the file",
 	"GWARN024": "Server credential store %s is behind (%s) -- the server secrets (api-credentials, SMTP, GitLab...) it holds are not the current ones; written again every secret-kv-retry-interval, check the entry's address and sign-in, and that the instance is named",
 	"GWARN022": "Action required: register this replication-manager again through Cloud18 (Cloud18 settings, Register, same URI: it reconnects to its repositories): %s",

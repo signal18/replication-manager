@@ -2685,7 +2685,7 @@ func (cluster *Cluster) GetEncryptedValueFromMemory(key string) string {
 	case "vault-token":
 		return cluster.Conf.GetStableEncryptedValue("vault-token", cluster.Conf.GetDecryptedValue("vault-token"))
 	case "monitoring-tunnel-credential", "registry-consul-credential", "registry-consul-token", "mysqlrouter-pass",
-		"cloud18-domain-secret", "cloud18-settlement-secret", "prov-app-template-repo-password", "prov-docker-registry-credentials":
+		"cloud18-domain-secret", "prov-app-template-repo-password", "prov-docker-registry-credentials":
 		return cluster.Conf.GetStableEncryptedValue(key, cluster.Conf.GetDecryptedValue(key))
 	case "proxysql-user":
 		// the user goes with proxysql-password: a Vault path is kept as it is, like the password's
