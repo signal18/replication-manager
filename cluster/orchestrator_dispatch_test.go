@@ -38,10 +38,12 @@ var orchestratorDispatchAllowed = map[string]int{
 	"cluster/orchestrator_registry.go":  5,
 	"cluster/orchestrator_slapos.go":    8,
 	// the backends themselves, until they move behind the adapters
+	"cluster/app_resize_dynamic.go":      7, // develop at the 2026-11-23 merge (app live resize, #2417)
 	"cluster/cluster_resize_k8s.go":      10,
 	"cluster/prov_image.go":              1,
 	"cluster/prov_k8s.go":                2,
-	"cluster/prov_k8s_db.go":             57,
+	"cluster/prov_k8s_db.go":             64, // develop at the 2026-11-23 merge (Kubernetes work landed after step 1)
+	"cluster/prov_k8s_jobs_key.go":       3,  // develop at the 2026-11-23 merge
 	"cluster/prov_k8s_manifest.go":       2,
 	"cluster/prov_k8s_prx.go":            18,
 	"cluster/prov_localhost_db.go":       4,
