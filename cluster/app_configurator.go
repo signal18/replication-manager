@@ -9,7 +9,9 @@ package cluster
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"path"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
@@ -44,12 +46,27 @@ type appConfiguratorFile struct {
 	Content string
 }
 
-// loadAppConfiguratorModule reads the embedded moduleset of an engine.
-func loadAppConfiguratorModule(engine string) (*config.Compliance, error) {
+// loadAppConfiguratorModule reads the moduleset of an engine. Like the database
+// configurator (Configurator.ReloadComplianceFromDataDir), it prefers the copy the back
+// office pushes through the pull repo (pluginDataDir/moduleset_<engine>.svc.mrm.db.json,
+// synced by syncPluginDataFromPull) when it parses and carries rulesets, so a ruleset
+// changed on the collector reaches the apps without a new binary; otherwise it reads the
+// embedded export. pluginDataDir empty = embedded only. Read at each render, no cache: a
+// refreshed copy applies to the next render.
+func loadAppConfiguratorModule(pluginDataDir, engine string) (*config.Compliance, error) {
 	if !appConfiguratorEngineRe.MatchString(engine) {
 		return nil, fmt.Errorf("prov-app-configurator %q: an engine name such as postgres is expected", engine)
 	}
-	file := "opensvc/moduleset_" + engine + ".svc.mrm.db.json"
+	name := "moduleset_" + engine + ".svc.mrm.db.json"
+	if pluginDataDir != "" {
+		if b, err := os.ReadFile(filepath.Join(pluginDataDir, name)); err == nil {
+			module := &config.Compliance{}
+			if json.Unmarshal(b, module) == nil && len(module.Rulesets) > 0 {
+				return module, nil
+			}
+		}
+	}
+	file := "opensvc/" + name
 	b, err := share.EmbededDbModuleFS.ReadFile(file)
 	if err != nil {
 		return nil, fmt.Errorf("prov-app-configurator %q: no moduleset %s", engine, file)
@@ -59,6 +76,15 @@ func loadAppConfiguratorModule(engine string) (*config.Compliance, error) {
 		return nil, fmt.Errorf("prov-app-configurator %q: %s does not parse: %w", engine, file, err)
 	}
 	return module, nil
+}
+
+// appConfiguratorPluginDataDir is where the back office's moduleset copies land
+// (ShareDir/plugins/data), the directory the database configurator reloads from.
+func (cluster *Cluster) appConfiguratorPluginDataDir() string {
+	if cluster == nil || cluster.Conf == nil || cluster.Conf.ShareDir == "" {
+		return ""
+	}
+	return filepath.Join(cluster.Conf.ShareDir, "plugins", "data")
 }
 
 // appConfiguratorSizing derives the sizing tokens from an app plan. The token names are
@@ -88,6 +114,11 @@ func appConfiguratorSizing(memMB, cores, iops int) map[string]string {
 		}
 		return v
 	}
+	phpOpcache := clamp(memMB/16, 64, 256)
+	phpPool := max(0, memMB-128-phpOpcache)
+	phpChildren := clamp(phpPool/64, 2, 8*cores)
+	phpMinSpare := max(1, phpChildren/8)
+	phpMaxSpare := max(phpMinSpare, phpChildren/2)
 	s := strconv.Itoa
 	return map[string]string{
 		"%%ENV:SVC_CONF_ENV_MAX_CONNECTIONS%%":         s(connections),
@@ -102,6 +133,15 @@ func appConfiguratorSizing(memMB, cores, iops int) map[string]string {
 		"%%ENV:SVC_CONF_ENV_INNODB_PURGE_THREADS%%":    s(clamp(cores, 1, 5)),
 		"%%ENV:CHECKPOINTIOPS%%":                       s(iops),
 		"%%ENV:SVC_CONF_ENV_MAX_IOPS%%":                s(iops * 2),
+		// PHP (php ruleset): opcache memory/16 in [64,256] MB, workers of 64 MB in what
+		// is left after 128 MB for the web server and the master, 2 to 8 per core,
+		// memory_limit 4 workers in [128 MB, half the pool]
+		"%%ENV:SVC_CONF_ENV_PHP_OPCACHE_MEMORY%%":        s(phpOpcache),
+		"%%ENV:SVC_CONF_ENV_PHP_FPM_MAX_CHILDREN%%":      s(phpChildren),
+		"%%ENV:SVC_CONF_ENV_PHP_FPM_MIN_SPARE_SERVERS%%": s(phpMinSpare),
+		"%%ENV:SVC_CONF_ENV_PHP_FPM_MAX_SPARE_SERVERS%%": s(phpMaxSpare),
+		"%%ENV:SVC_CONF_ENV_PHP_FPM_START_SERVERS%%":     s(phpMinSpare + (phpMaxSpare-phpMinSpare)/2),
+		"%%ENV:SVC_CONF_ENV_PHP_MEMORY_LIMIT%%":          s(clamp(4*64, 128, max(128, phpPool/2))),
 	}
 }
 
@@ -180,10 +220,22 @@ func (cluster *Cluster) appConfiguratorEnv(app *App) map[string]string {
 	return env
 }
 
+// appConfiguratorDatabaseEngines are the configurator engines that are databases: an app
+// naming one is a database ENGINE SERVER of the cluster (a monitored server, its agents in
+// prov-db-agents, the database plan, the database priority). Any other engine (php)
+// configures an application runtime: the app stays an app, sized by its own APU plan.
+var appConfiguratorDatabaseEngines = map[string]bool{"postgres": true, "mariadb": true, "mysql": true}
+
+// isDatabaseEngineApp tells whether an app's configurator names a database engine, the
+// one rule every "engine server" decision goes through.
+func isDatabaseEngineApp(appcnf *config.AppConfig) bool {
+	return appcnf != nil && appConfiguratorDatabaseEngines[strings.TrimSpace(appcnf.ProvAppConfigurator)]
+}
+
 // engineServerOfApp returns the monitored server an engine app runs, nil when the app is
 // not a server of the cluster (a PostgreSQL that is an application's own store).
 func (cluster *Cluster) engineServerOfApp(app *App) *ServerMonitor {
-	if app == nil || app.AppConfig == nil || strings.TrimSpace(app.AppConfig.ProvAppConfigurator) == "" {
+	if app == nil || !isDatabaseEngineApp(app.AppConfig) {
 		return nil
 	}
 	for _, s := range cluster.Servers {
@@ -202,7 +254,7 @@ func (cluster *Cluster) engineServerOfApp(app *App) *ServerMonitor {
 // is not a server (an application's own store) renders from its app plan.
 func (cluster *Cluster) AppConfiguratorScript(app *App) (string, error) {
 	engine := strings.TrimSpace(app.AppConfig.ProvAppConfigurator)
-	module, err := loadAppConfiguratorModule(engine)
+	module, err := loadAppConfiguratorModule(cluster.appConfiguratorPluginDataDir(), engine)
 	if err != nil {
 		return "", err
 	}

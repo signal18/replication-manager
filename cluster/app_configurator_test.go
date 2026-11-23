@@ -1,11 +1,14 @@
 package cluster
 
 import (
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/signal18/replication-manager/config"
 )
 
 func TestAppConfiguratorSizing(t *testing.T) {
@@ -31,7 +34,7 @@ func TestAppConfiguratorSizing(t *testing.T) {
 // The embedded PostgreSQL moduleset renders for an app: every token it uses is provided,
 // the files land on absolute paths, and the script writes them byte for byte.
 func TestAppConfiguratorPostgresModuleset(t *testing.T) {
-	module, err := loadAppConfiguratorModule("postgres")
+	module, err := loadAppConfiguratorModule("", "postgres")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,14 +84,107 @@ func TestAppConfiguratorPostgresModuleset(t *testing.T) {
 }
 
 func TestAppConfiguratorRefusals(t *testing.T) {
-	if _, err := loadAppConfiguratorModule("../etc"); err == nil {
+	if _, err := loadAppConfiguratorModule("", "../etc"); err == nil {
 		t.Fatal("an engine name is a plain word")
 	}
-	if _, err := loadAppConfiguratorModule("nosuchengine"); err == nil {
+	if _, err := loadAppConfiguratorModule("", "nosuchengine"); err == nil {
 		t.Fatal("an engine without a moduleset is refused")
 	}
-	module, _ := loadAppConfiguratorModule("postgres")
+	module, _ := loadAppConfiguratorModule("", "postgres")
 	if _, err := renderAppConfiguratorFiles(module, "postgres", map[string]string{}); err == nil || !strings.Contains(err.Error(), "SVC_CONF_ENV_MAX_CONNECTIONS") {
 		t.Fatalf("a token the app does not provide refuses the render, naming it: %v", err)
+	}
+}
+
+// The copy the back office pushes into ShareDir/plugins/data wins over the embedded
+// export when it parses and has rulesets, like the database configurator; a broken or
+// empty copy falls back to the embedded one.
+func TestAppConfiguratorPrefersPluginDataCopy(t *testing.T) {
+	dir := t.TempDir()
+	embedded, err := loadAppConfiguratorModule(dir, "php")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(embedded.Rulesets) == 0 {
+		t.Fatal("embedded php moduleset has no ruleset")
+	}
+	b, _ := json.Marshal(embedded)
+	refreshed := strings.Replace(string(b), "pm.max_requests = 500", "pm.max_requests = 777", 1)
+	if refreshed == string(b) {
+		t.Fatal("embedded php moduleset no longer carries pm.max_requests = 500")
+	}
+	file := filepath.Join(dir, "moduleset_php.svc.mrm.db.json")
+	if err := os.WriteFile(file, []byte(refreshed), 0644); err != nil {
+		t.Fatal(err)
+	}
+	module, err := loadAppConfiguratorModule(dir, "php")
+	if err != nil {
+		t.Fatal(err)
+	}
+	files, err := renderAppConfiguratorFiles(module, "php", appConfiguratorSizing(1024, 1, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := ""
+	for _, f := range files {
+		joined += f.Content
+	}
+	if !strings.Contains(joined, "pm.max_requests = 777") {
+		t.Fatalf("the plugins/data copy was not used:\n%s", joined)
+	}
+	for _, broken := range []string{"{not json", `{"rulesets":[]}`} {
+		os.WriteFile(file, []byte(broken), 0644)
+		module, err := loadAppConfiguratorModule(dir, "php")
+		if err != nil || len(module.Rulesets) != len(embedded.Rulesets) {
+			t.Fatalf("%q: no fallback to the embedded export: %v", broken, err)
+		}
+	}
+	cluster := &Cluster{Conf: &config.Config{ShareDir: "/share"}}
+	if got := cluster.appConfiguratorPluginDataDir(); got != "/share/plugins/data" {
+		t.Fatalf("plugin data dir %q", got)
+	}
+}
+
+// A php configurator configures an application runtime: the app is never a database engine
+// server, so it renders from its own APU plan (the php tokens), even next to a monitored
+// server on its host and port, takes no database placement and no database priority.
+// postgres stays an engine server.
+func TestAppConfiguratorPhpIsNotAnEngineServer(t *testing.T) {
+	for engine, want := range map[string]bool{"postgres": true, "mariadb": true, "mysql": true, "php": false, "": false} {
+		if got := isDatabaseEngineApp(&config.AppConfig{ProvAppConfigurator: engine}); got != want {
+			t.Fatalf("isDatabaseEngineApp(%q) = %v", engine, got)
+		}
+	}
+	cl := &Cluster{Conf: &config.Config{MasterSlavePgStream: true, ProvAgents: "n1,n2,n3"}}
+	cl.Name = "c1"
+	php := &config.AppConfig{AppHost: "php1", AppPort: "80", ProvAppConfigurator: "php", ProvAppMem: "2048", ProvAppCpuCores: "2", ProvAppAgents: "n1,n2,n3"}
+	app := &App{Name: "php1", Host: "php1", Port: "80", AppConfig: php}
+	cl.Apps = append(cl.Apps, app)
+	// what an earlier build registered: a server on the app's host and port
+	server := &ServerMonitor{Name: "php1", Host: "php1", Port: "80"}
+	cl.Servers = append(cl.Servers, server)
+	if cl.engineServerOfApp(app) != nil || cl.engineAppOfServer(server) != nil || cl.appIsEngineServer(server) {
+		t.Fatal("a php app is matched as an engine server")
+	}
+	cl.placeReplicatedEngineMember(php)
+	if php.ProvAppAgents != "n1,n2,n3" {
+		t.Fatalf("a php app takes a replicated member placement: %q", php.ProvAppAgents)
+	}
+	if prio := cl.OpenSVCGetAppDefaultSection(app)["priority"]; prio == openSVCPriorityDatabase {
+		t.Fatal("a php app takes the database priority")
+	}
+	script, err := cl.AppConfiguratorScript(app)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sizing := appConfiguratorSizing(2048, 2, 0)
+	for _, want := range []string{
+		"/etc/php/8.4/fpm/pool.d/zzz-cloud18-sizing.conf",
+		"pm.max_children = " + sizing["%%ENV:SVC_CONF_ENV_PHP_FPM_MAX_CHILDREN%%"],
+		"opcache.memory_consumption = " + sizing["%%ENV:SVC_CONF_ENV_PHP_OPCACHE_MEMORY%%"],
+	} {
+		if !strings.Contains(script, want) {
+			t.Fatalf("php render misses %q:\n%s", want, script)
+		}
 	}
 }

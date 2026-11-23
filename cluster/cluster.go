@@ -664,6 +664,9 @@ type Cluster struct {
 	// backupArchiving holds the registered backups ArchiveBackup archives (#2108): backup id,
 	// from the request to the end of the push, its test restore first included.
 	backupArchiving sync.Map `json:"-"`
+
+	// appCapOverride (tests): the cap in force of an app in place of appCapInForce
+	appCapOverride func(app *App) (memMB int, cpuPct int, ok bool)
 }
 
 // PluginRegistry returns the per-cluster plugin registry, which contains both

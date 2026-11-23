@@ -1123,10 +1123,10 @@ func (cluster *Cluster) appPlanIncreaseAllowed(appcnf *config.AppConfig, app *Ap
 // server of the cluster, never only an app: one monitor, the database plan, the server
 // actions. PostgreSQL servers are declared host:port/database.
 func (cluster *Cluster) registerEngineAppAsServer(appcnf *config.AppConfig) {
-	engine := strings.TrimSpace(appcnf.ProvAppConfigurator)
-	if engine == "" {
-		return
+	if !isDatabaseEngineApp(appcnf) {
+		return // no configurator, or one of an application runtime (php): an app, not a server
 	}
+	engine := strings.TrimSpace(appcnf.ProvAppConfigurator)
 	host := appcnf.AppHost + ":" + appcnf.AppPort
 	if engine == "postgres" {
 		host += "/postgres"

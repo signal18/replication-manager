@@ -28,7 +28,7 @@ func (cluster *Cluster) isReplicatedEngineCluster() bool {
 
 // isReplicatedEngineMember: the app is an engine server of a replicated cluster.
 func (cluster *Cluster) isReplicatedEngineMember(appcnf *config.AppConfig) bool {
-	return appcnf != nil && strings.TrimSpace(appcnf.ProvAppConfigurator) != "" && cluster.isReplicatedEngineCluster()
+	return isDatabaseEngineApp(appcnf) && cluster.isReplicatedEngineCluster()
 }
 
 // engineMemberAgent picks ONE agent for a new replicated member: the least loaded of the
@@ -47,7 +47,7 @@ func (cluster *Cluster) engineMemberAgent(placing *config.AppConfig) string {
 	}
 	load := map[string]int{}
 	for _, a := range cluster.appsSnapshot() {
-		if a == nil || a.AppConfig == nil || a.AppConfig == placing || strings.TrimSpace(a.AppConfig.ProvAppConfigurator) == "" {
+		if a == nil || a.AppConfig == nil || a.AppConfig == placing || !isDatabaseEngineApp(a.AppConfig) {
 			continue
 		}
 		held := splitAgents(a.AppConfig.ProvAppAgents)
