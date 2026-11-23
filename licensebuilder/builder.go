@@ -16,6 +16,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/signal18/replication-manager/utils/githelper"
 )
 
 // Request is one seat to build, queued by the CRM after the HTTP layer verified the caller's
@@ -44,31 +46,34 @@ type Result struct {
 
 // Config is the builder's setup, read from the environment by the license-builder command.
 type Config struct {
-	RepoURL         string   // replication-manager source to clone per version (public)
-	SourceDir       string   // the builder's own source checkout: builds plugin-licence
-	WorkDir         string   // version clones
-	OutDir          string   // packages kept for download
-	DataDir         string   // the monitor's datadir, where license-pull reads the package
-	MonitorURL      string   // the monitor's API, e.g. https://127.0.0.1:10005
-	MonitorUser     string   // an API user of the monitor with the global settings grant
-	MonitorPassword string   //
-	SignerUser      string   // signer repo credentials: make plugin-keys fetches the Signal18 key
-	SignerToken     string   //
-	GitBaseURL      string   // Cloud18 GitLab base (e.g. https://gitlab.signal18.io) for -pull delivery
-	GitUser         string   // Cloud18 git identity (defaults to oauth2) used to push the -pull repos
-	GitToken        string   // its token; carried in an Authorization header, never in the remote URL
-	IssuerURL       string   // the Cloud18 realm that signs the callers' tokens
-	AllowedClients  []string // the clients a caller's token may come from (azp), e.g. cloud18-crm
-	Addr            string   // HTTP listen address
+	RepoURL         string // replication-manager source to clone per version (public)
+	SourceDir       string // the builder's own source checkout: builds plugin-licence
+	WorkDir         string // version clones
+	OutDir          string // packages kept for download
+	DataDir         string // the monitor's datadir, where license-pull reads the package
+	MonitorURL      string // the monitor's API, e.g. https://127.0.0.1:10005
+	MonitorUser     string // an API user of the monitor with the global settings grant
+	MonitorPassword string //
+	SignerUser      string // signer repo credentials: make plugin-keys fetches the Signal18 key
+	SignerToken     string //
+	GitBaseURL      string // Cloud18 GitLab base (e.g. https://gitlab.signal18.io) for -pull delivery
+	GitUser         string // Cloud18 git identity (defaults to oauth2) used to push the -pull repos
+	GitToken        string // its token; carried in an Authorization header, never in the remote URL. The api
+	//                          scope (and Maintainer on the client's group) lets it create an air-gapped
+	//                          seat's -pull project; read/write_repository alone serves registered instances
+	IssuerURL      string   // the Cloud18 realm that signs the callers' tokens
+	AllowedClients []string // the clients a caller's token may come from (azp), e.g. cloud18-crm
+	Addr           string   // HTTP listen address
 }
 
 // Builder runs the queued requests one at a time.
 type Builder struct {
-	cfg   Config
-	queue chan Request
-	log   func(format string, a ...interface{})
-	run   func(dir string, env []string, name string, args ...string) error // exec seam (tests)
-	test  func(pkg string) ([]string, error)                                // license-pull seam (tests)
+	cfg    Config
+	queue  chan Request
+	log    func(format string, a ...interface{})
+	run    func(dir string, env []string, name string, args ...string) error // exec seam (tests)
+	test   func(pkg string) ([]string, error)                                // license-pull seam (tests)
+	ensure func(r Request) error                                             // -pull project creation seam (tests)
 
 	mu      sync.Mutex
 	current *Result
@@ -94,6 +99,7 @@ func New(cfg Config, logf func(string, ...interface{})) *Builder {
 	b := &Builder{cfg: cfg, queue: make(chan Request, queueMax), log: logf}
 	b.run = b.exec
 	b.test = b.licensePull
+	b.ensure = b.ensurePullProject
 	return b
 }
 
@@ -279,7 +285,7 @@ func (b *Builder) process(res *Result) error {
 		}
 		res.Package = name
 		res.Loaded = pluginNames(licence)
-		if err := b.deliverToPull(r, licence); err != nil {
+		if err := b.deliverToPull(r, licence, nil); err != nil {
 			return fmt.Errorf("deliver to -pull: %w", err)
 		}
 		return nil
@@ -337,8 +343,13 @@ func (b *Builder) process(res *Result) error {
 	if len(loaded) != len(plugins) {
 		return fmt.Errorf("license-pull loaded %d of the %d plugins", len(loaded), len(plugins))
 	}
-	// 6. deliver: the tested plugins into the seat's -pull repo, as for a registered instance
-	if err := b.deliverToPull(r, plugins); err != nil {
+	// 6. deliver: the tested plugins into the seat's -pull repo, as for a registered instance, with the
+	//    package itself (packages/<uri>.tar.gz) for an instance that loads it with license-pull. The
+	//    seat has no repman that registers, so the builder creates its project first.
+	if err := b.ensure(r); err != nil {
+		return fmt.Errorf("the -pull project: %w", err)
+	}
+	if err := b.deliverToPull(r, plugins, map[string][]byte{"packages/" + name: pkg}); err != nil {
 		return fmt.Errorf("deliver to -pull: %w", err)
 	}
 	return nil
@@ -378,15 +389,16 @@ func pluginNames(plugins []Plugin) []string {
 }
 
 // deliverToPull pushes signed plugins into the URI's -pull repo, into the same plugins/ directory
-// the enterprise plugins live in (inject_plugins' layout: binary + .sig). On its next git pull repman
+// the enterprise plugins live in (inject_plugins' layout: binary + .sig), and extra files (path
+// relative to the repository root, e.g. an air-gapped seat's packages/<uri>.tar.gz). On its next git pull repman
 // syncs and verifies them against the embedded public key, exactly as for the other plugins. The
 // repo is <GitBaseURL>/<domain>/<subdomain>-<zone>-pull for any three-part URI: a registered
 // instance's domain.subdomain.zone (its plugin-licence), or an air-gapped seat's
 // <company>.<YYYYMM>.<seat> read the same way, <company>/<YYYYMM>-<seat>-pull (the release plugins
-// and the plugin-licence). The project must exist: the builder's token only reads and writes
-// repositories; repman creates a registered instance's at registration, the back office an
-// air-gapped seat's. Unchanged content (same wire/expiry already there) is a no-op.
-func (b *Builder) deliverToPull(r Request, plugins []Plugin) error {
+// and the plugin-licence). The project must exist: repman creates a registered instance's at
+// registration, the builder an air-gapped seat's (ensurePullProject). Unchanged content (same
+// wire/expiry already there) is a no-op.
+func (b *Builder) deliverToPull(r Request, plugins []Plugin, extra map[string][]byte) error {
 	parts := strings.Split(r.URI, ".")
 	if len(parts) != 3 {
 		return fmt.Errorf("uri %q is not domain.subdomain.zone", r.URI)
@@ -396,7 +408,42 @@ func (b *Builder) deliverToPull(r Request, plugins []Plugin) error {
 		files[filepath.Join("plugins", p.Name)] = gitFile{p.Data, 0o755}
 		files[filepath.Join("plugins", p.Name+".sig")] = gitFile{p.Sig, 0o644}
 	}
+	for path, data := range extra {
+		files[path] = gitFile{data, 0o644}
+	}
 	return b.pushFiles(fmt.Sprintf("%s/%s-%s-pull", parts[0], parts[1], parts[2]), files, "plugins for "+r.URI)
+}
+
+// ensurePullProject makes sure an air-gapped seat's -pull project <domain>/<subdomain>-<zone>-pull
+// exists, in the client's existing GitLab group <domain>: created private and empty, with the
+// settings of a registration (githelper.GitLabCreateProjectIn); an existing project is used as is.
+// It never creates the group (a missing group fails the build: the client's group comes with its
+// Cloud18 account) and never deletes anything. Needs a GitLab token with the api scope and
+// Maintainer (or more) on the group; a registered instance's project needs neither (repman created it).
+func (b *Builder) ensurePullProject(r Request) error {
+	if b.cfg.GitToken == "" {
+		return fmt.Errorf("git delivery not configured (git-token)")
+	}
+	parts := strings.Split(r.URI, ".")
+	if len(parts) != 3 {
+		return fmt.Errorf("uri %q is not domain.subdomain.zone", r.URI)
+	}
+	name := parts[1] + "-" + parts[2] + "-pull"
+	groupID, err := githelper.GitLabGroupID(b.cfg.GitToken, parts[0])
+	if githelper.GitLabStatus(err) == http.StatusNotFound {
+		return fmt.Errorf("no GitLab group %s: the builder never creates a client's group", parts[0])
+	}
+	if err != nil {
+		return fmt.Errorf("group %s: %w (the builder's token needs the api scope)", parts[0], err)
+	}
+	_, taken, err := githelper.GitLabCreateProjectIn(b.cfg.GitToken, groupID, parts[0], name)
+	if err != nil {
+		return fmt.Errorf("%w (the builder's token needs the api scope and Maintainer on group %s)", err, parts[0])
+	}
+	if !taken {
+		b.log("license-builder: created the -pull project %s/%s", parts[0], name)
+	}
+	return nil
 }
 
 // gitFile is one file pushFiles writes: its content and mode.

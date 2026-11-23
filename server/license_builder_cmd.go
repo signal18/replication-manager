@@ -14,6 +14,7 @@ import (
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/licensebuilder"
+	"github.com/signal18/replication-manager/utils/githelper"
 	"github.com/spf13/cobra"
 )
 
@@ -51,6 +52,8 @@ var licenseBuilderCmd = &cobra.Command{
 		if cfg.MonitorPassword == "" || cfg.SignerUser == "" || cfg.SignerToken == "" {
 			return fmt.Errorf("LICENSE_BUILDER_MONITOR_PASSWORD, PLUGIN_SIGNER_USER and PLUGIN_SIGNER_TOKEN are required")
 		}
+		// the -pull project of an air-gapped seat is created through the GitLab API of that same GitLab
+		githelper.GitLabURL = strings.TrimSuffix(cfg.GitBaseURL, "/")
 		b := licensebuilder.New(cfg, log.Printf)
 		go b.Run()
 		log.Printf("license-builder: listening on %s, monitor %s", cfg.Addr, cfg.MonitorURL)
