@@ -930,6 +930,10 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 	var sessionScope string
 	var sessionScopeList []string
 	tryLocalAuth := func() (interface{}, bool) {
+		// the instance's Cloud18 identity signs in with Cloud18 only (cluster.IsCloud18Identity)
+		if repman.Conf.Cloud18GitUser != "" && user.Username == repman.Conf.Cloud18GitUser {
+			return nil, false
+		}
 		var matched []string
 		for _, cl := range repman.Clusters {
 			if cl.IsValidACL(user.Username, user.Password, r.URL.Path, cluster.AuthMethodSubmittedPassword) {

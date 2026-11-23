@@ -264,3 +264,16 @@ func TestSSOTokenOwnerInactiveIsRefused(t *testing.T) {
 		t.Fatal("a local owner's token is not judged by the SSO hook")
 	}
 }
+
+// The instance's Cloud18 identity never logs in with a local password, whatever a list holds.
+func TestLoginRefusesLocalPasswordOfCloud18Identity(t *testing.T) {
+	repman, _, _ := newScopeTestManager(t)
+	repman.Conf.Cloud18GitUser = "shared"
+	body, _ := json.Marshal(map[string]string{"username": "shared", "password": "pw-of-c1"})
+	req := httptest.NewRequest(http.MethodPost, "/api/login", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+	repman.loginHandler(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("a local password under the Cloud18 identity must be refused 401, got %d", w.Code)
+	}
+}
