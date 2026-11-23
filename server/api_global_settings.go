@@ -64,8 +64,10 @@ const adminRequiredHeader = "X-Repman-Admin-Required"
 // and goes to the security log.
 func (repman *ReplicationManager) isGlobalSettingsAdmin(w http.ResponseWriter, r *http.Request, setting string) bool {
 	claims, err := repman.GetJWTClaims(r)
+	// the instance's admin: a session covering the instance, never one scoped to the clusters
+	// where a per-cluster `admin` password matched (api_session_scope.go)
 	if err == nil && claims["User"] == "admin" && claims["AuthType"] == "Local" {
-		return true
+		return repman.requireUnrestricted(w, r, "a global setting")
 	}
 	repman.logSecurityEvent("global_setting_denied", claims["User"], r.RemoteAddr, "Global setting "+setting+" refused: only the local admin account changes global settings")
 	// the GUI's admin mode asks the local admin login and sends the request again (adminMode.js)

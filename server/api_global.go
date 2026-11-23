@@ -138,6 +138,10 @@ func (repman *ReplicationManager) handlerMuxGlobalLogs(w http.ResponseWriter, r 
 		http.Error(w, "Forbidden: requires "+config.GrantGlobalAdminShow+" grant", http.StatusForbidden)
 		return
 	}
+	// the instance's own state: a login covering the instance only (api_session_scope.go)
+	if !repman.requireUnrestricted(w, r, "an instance-wide view or action") {
+		return
+	}
 
 	var buf []s18log.HttpMessage
 	var truncated bool
@@ -350,6 +354,10 @@ func (repman *ReplicationManager) handlerMuxGlobalAlerts(w http.ResponseWriter, 
 		http.Error(w, "Forbidden: requires "+config.GrantGlobalAdminShow+" grant", http.StatusForbidden)
 		return
 	}
+	// the instance's own state: a login covering the instance only (api_session_scope.go)
+	if !repman.requireUnrestricted(w, r, "an instance-wide view or action") {
+		return
+	}
 
 	resp := globalAlertsResponse{
 		Errors:   []state.StateHttp{},
@@ -500,6 +508,10 @@ func (repman *ReplicationManager) handlerMuxGlobalResources(w http.ResponseWrite
 		http.Error(w, "Forbidden: requires "+config.GrantGlobalAdminShow+" grant", http.StatusForbidden)
 		return
 	}
+	// the instance's own state: a login covering the instance only (api_session_scope.go)
+	if !repman.requireUnrestricted(w, r, "an instance-wide view or action") {
+		return
+	}
 	rm := repman.resourceManager
 	if rm == nil {
 		http.Error(w, "ResourceManager not ready", http.StatusServiceUnavailable)
@@ -628,6 +640,10 @@ func (repman *ReplicationManager) handlerMuxGlobalMetrics(w http.ResponseWriter,
 		http.Error(w, "Forbidden: requires "+config.GrantGlobalAdminShow+" grant", http.StatusForbidden)
 		return
 	}
+	// the instance's own state: a login covering the instance only (api_session_scope.go)
+	if !repman.requireUnrestricted(w, r, "an instance-wide view or action") {
+		return
+	}
 
 	resp := globalMetricsResponse{}
 
@@ -707,6 +723,10 @@ func (repman *ReplicationManager) handlerMuxForgetArbitration(w http.ResponseWri
 
 	if !repman.UserHasGlobalGrant(r, config.GrantGlobalAdminShow) {
 		http.Error(w, "Forbidden: requires "+config.GrantGlobalAdminShow+" grant", http.StatusForbidden)
+		return
+	}
+	// the instance's own state: a login covering the instance only (api_session_scope.go)
+	if !repman.requireUnrestricted(w, r, "an instance-wide view or action") {
 		return
 	}
 
@@ -878,6 +898,10 @@ func (repman *ReplicationManager) handlerMuxGlobalJobs(w http.ResponseWriter, r 
 		http.Error(w, "Forbidden: requires "+config.GrantGlobalAdminShow+" grant", http.StatusForbidden)
 		return
 	}
+	// the instance's own state: a login covering the instance only (api_session_scope.go)
+	if !repman.requireUnrestricted(w, r, "an instance-wide view or action") {
+		return
+	}
 
 	resp := globalJobsResponse{
 		RunningJobs:         []globalJobEntry{},
@@ -1022,6 +1046,10 @@ func (repman *ReplicationManager) handlerMuxGlobalPrice(w http.ResponseWriter, r
 		http.Error(w, "Forbidden: requires "+config.GrantGlobalAdminShow+" grant", http.StatusForbidden)
 		return
 	}
+	// the instance's own state: a login covering the instance only (api_session_scope.go)
+	if !repman.requireUnrestricted(w, r, "an instance-wide view or action") {
+		return
+	}
 	if repman.resourceManager == nil {
 		http.Error(w, "ResourceManager not ready", http.StatusServiceUnavailable)
 		return
@@ -1091,6 +1119,7 @@ type UserUnitsTotal struct {
 func (repman *ReplicationManager) handlerMuxMyUnits(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	user := repman.GetUserFromRequest(r)
+	scope := repman.requestLoginScope(r)
 	st, err := repman.resourceManager.Statement("", time.Now())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -1114,6 +1143,10 @@ func (repman *ReplicationManager) handlerMuxMyUnits(w http.ResponseWriter, r *ht
 			if strings.EqualFold(s, user) {
 				sponsor = true
 			}
+		}
+		// the clusters the login covers only (api_session_scope.go)
+		if !scope.Covers(name) {
+			continue
 		}
 		access := false
 		if cl := repman.getClusterByName(name); cl != nil {

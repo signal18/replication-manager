@@ -203,6 +203,8 @@ type ReplicationManager struct {
 	Cloud18LoginState           string                      `json:"cloud18LoginState"` // the Cloud18 login (#2159): none, registered, connected, refused; "" Cloud18 off
 	UserAuthTry                 sync.Map                    `json:"-"`
 	apiTokens                   apiTokenStoreState          // user-issued API tokens store (api_token.go)
+	clusterDeletedAt            sync.Map                    // cluster name -> deletion time, for the scoped sessions (api_session_scope.go), pruned past a session's lifetime
+	apiTokenOwnerRefusedLogged  sync.Map                    // token ids whose refusal was logged once (api_token_owner.go), bounded by the token store
 	ViperConfig                 *viper.Viper                `json:"-"`
 	tlog                        s18log.TermLog
 	termlength                  int
@@ -3184,6 +3186,8 @@ func (repman *ReplicationManager) Run() error {
 	// The ACL users load in phase 1 (initCluster); the flag is raised once every cluster is
 	// initialised (phases 1-4 done). Before, loginHandler answers 503 "starting".
 	repman.clustersReady.Store(true)
+	// tokens bound to a cluster gone from the configuration while repman was stopped
+	repman.revokeTokensOfVanishedClusters()
 
 	// Send initial email
 	repman.SendClustersInitMail()

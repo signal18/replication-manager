@@ -1528,8 +1528,8 @@ func (repman *ReplicationManager) handlerMuxSlaveIndex(w http.ResponseWriter, r 
 		return
 	}
 
-	uname := repman.GetUserFromRequest(r)
-	if _, ok := mycluster.GetAPIUsers()[uname]; !ok {
+	// the request's identity on this cluster: a scoped login or an API token only within its scope
+	if _, ok := repman.requestACLUser(r, mycluster); !ok {
 		http.Error(w, "Forbidden", http.StatusForbidden)
 		return
 	}
@@ -1588,8 +1588,8 @@ func (repman *ReplicationManager) handlerMuxSlaveAttributeByIndex(w http.Respons
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		uname := repman.GetUserFromRequest(r)
-		if _, ok := mycluster.GetAPIUsers()[uname]; !ok {
+		// the request's identity on this cluster: a scoped login or an API token only within its scope
+		if _, ok := repman.requestACLUser(r, mycluster); !ok {
 			http.Error(w, "No Valid ACL", http.StatusInternalServerError)
 			return
 		}
@@ -12307,6 +12307,9 @@ func (repman *ReplicationManager) handlerMuxSetServerActiveStatus(w http.Respons
 		http.Error(w, "No valid ACL", http.StatusForbidden)
 		return
 	}
+	if !repman.requireUnrestricted(w, r, "the active/standby switch") {
+		return
+	}
 	if err := repman.toggleServerActiveStatus(); err != nil {
 		http.Error(w, err.Error(), http.StatusConflict)
 		return
@@ -12338,9 +12341,13 @@ func (repman *ReplicationManager) handlerMuxFetchDynamicClustersFromGit(w http.R
 		return
 	}
 
+	// the instance's admin in an interactive login covering the instance: never an API token
 	claims, err := repman.GetJWTClaims(r)
-	if err != nil || claims["User"] != "admin" {
+	if err != nil || claims["User"] != "admin" || claims["AuthType"] != "Local" {
 		http.Error(w, `{"error":"administrator access required"}`, http.StatusForbidden)
+		return
+	}
+	if !repman.requireUnrestricted(w, r, "the cluster import from git") {
 		return
 	}
 

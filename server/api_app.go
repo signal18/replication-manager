@@ -611,8 +611,8 @@ func (repman *ReplicationManager) handlerMuxApp(w http.ResponseWriter, r *http.R
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		uname := repman.GetUserFromRequest(r)
-		if _, ok := mycluster.GetAPIUsers()[uname]; !ok {
+		// the request's identity on this cluster: a scoped login or an API token only within its scope
+		if _, ok := repman.requestACLUser(r, mycluster); !ok {
 			http.Error(w, "No Valid ACL", http.StatusInternalServerError)
 			return
 		}
@@ -1291,8 +1291,8 @@ func (repman *ReplicationManager) handlerMuxAppDeployments(w http.ResponseWriter
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		uname := repman.GetUserFromRequest(r)
-		if _, ok := mycluster.GetAPIUsers()[uname]; !ok {
+		// the request's identity on this cluster: a scoped login or an API token only within its scope
+		if _, ok := repman.requestACLUser(r, mycluster); !ok {
 			http.Error(w, "No Valid ACL", http.StatusInternalServerError)
 			return
 		}

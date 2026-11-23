@@ -53,6 +53,10 @@ func (repman *ReplicationManager) DeleteCluster(clusterName string) error {
 		cl.Stop()
 	}
 
+	// a login scoped to this cluster does not cover a cluster created again under its name,
+	// and the tokens bound to such a login are revoked (api_session_scope.go)
+	repman.markClusterDeleted(clusterName)
+
 	repman.refreshAllPeers()
 	// RecomputeGatewayConflicts early-returns when the cluster is already gone
 	// from the map, so call the inner function directly with the captured gateway
