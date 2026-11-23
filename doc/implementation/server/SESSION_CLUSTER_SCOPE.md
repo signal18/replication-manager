@@ -27,38 +27,55 @@ password. The session's `CustomUserInfo` then carries:
 | `scope_at` | when the scope was decided (unix ms)    |
 
 except when the account and password are an entry of the instance's list (`api-credentials` of
-the server configuration, `isInstanceCredential`) **and** that password is the account's password
-on every cluster where the account exists: that session carries no scope and covers every cluster,
-as before. A cluster section that sets another password for an instance account makes its login
-scoped to the clusters the password does open.
+the server configuration, `isInstanceCredential`): that session covers the instance, instance-wide
+actions included, but for the clusters whose section sets another password for the account. Those
+are listed in the claim `excluded`, refused like a cluster outside a scope, and logged at the login
+("clusters ... excluded from the session"). A login with a cluster's own password for that name
+(not the instance's) is scoped to the clusters that password opens.
+
+The scope is read as one value everywhere (`loginScope`: `Scoped` + `Clusters`, or `Excluded`;
+`Covers`, `Limited`), from a session (`sessionScope`), from the login an API token was created
+from (`tokenLoginScope`), or from either (`requestLoginScope`). A refusal of a scoped caller on
+an instance-wide action says what the login is limited to: "this login is limited to clusters X"
+(`requireUnrestricted`).
 
 Autologin and the dashboard session (no login form) are scoped the same way
 (`passwordSessionInfo`), and neither opens a session as the instance's Cloud18 identity.
 
-An SSO password login whose GitLab profile gives no email takes the login name as its identity
-when it is an email address (the realm just authenticated it, `ssoLoginEmail`); otherwise the
-login is refused, and the background SSO upgrade of a local session fails (the local session,
-scoped or not, stays as it is). An SSO login never yields a Local session named after the
-account: that session would be instance-wide.
+An SSO password login (GitLab or Cloud18) whose GitLab profile gives no email takes the login
+name as its identity when it is an email address (the realm just authenticated it,
+`ssoLoginEmail`); otherwise the login is **refused** (401, `api_auth_failure` in the security log:
+"the SSO login gave no email"), and the background SSO upgrade of a local session fails with
+`claim_mismatch` (the local session, scoped or not, stays as it is). An SSO login never yields a
+Local session named after the account: that session would be instance-wide. Before, such a login
+got a Local session.
+
+The instance's meet account is not given to a scoped admin login. The regtest's API sessions are
+scoped like a login (`passwordSessionInfo`).
 
 A session without `scope` is instance-wide. This is safe because the RSA key that signs sessions
 is generated at each start: every session a running instance accepts was issued by this code, and
 the issuers that set no scope are the instance-wide ones (SSO, the instance's list, the service,
 autologin and dashboard logins).
 
-Enforcement, all through `sessionClusters` / `sessionAllowsCluster`:
+Enforcement, all through `loginScope.Covers`:
 
 - `IsValidClusterACL`: refused on a cluster outside the scope, before any other check;
 - `loginACLUser` (so `requestACLUser`, `requestACLUserOnCluster`, `UserHasGlobalGrant`);
-- MCP: `Principal.SessionScoped` / `SessionClusters`, checked by `AuthorizeMCP`,
-  `AuthorizeMCPGlobal` and the peer identity (`isAdminUserOn`);
-- the peer login proxy acting as the instance (`isAdminUserOn`);
+- MCP: `Principal.SessionScoped` / `SessionClusters` / `SessionExcluded`, checked by
+  `AuthorizeMCP`, `AuthorizeMCPGlobal`;
+- acting on the other Cloud18 instances **as this instance's registered identity** (the peer
+  login proxy `/peer/.../api/login`, `mayLoginPeersAsInstance`; the MCP peer sessions,
+  `mcpMayActAsInstance`): an interactive local password login covering the instance only, never
+  an API token, never a scoped login;
 - the terminal: a cluster terminal needs the cluster in the scope; the host shell needs an
   instance-wide session;
 - `GetUserInfoMap` exposes `SessionScope` / `SessionClusters` for handlers reading the claims map;
 - the endpoints that checked the account name on the cluster go through `requestACLUser`
   (server, server attribute, proxy, app, replica by index);
-- `whoami` lists the grants and roles of the scope's clusters only.
+- `whoami` lists the grants and roles of the scope's clusters only, `/api/me/units` the units of
+  the clusters the login covers;
+- the cluster mail test goes through `IsValidClusterACL`.
 
 ### Instance-wide actions
 
@@ -67,8 +84,13 @@ an API token created from a scoped login), whatever grant the account holds on t
 scoped login:
 
 - the global settings (`isGlobalSettingsAdmin`, also when routed through a cluster's settings);
-- the import of clusters from git, the global mail test, the peers' cluster list (empty);
+- the import of clusters from git (an interactive admin login, never an API token), the global
+  mail test, the peers' cluster list (empty);
 - the global intervention start and end, the server active/standby switch;
+- the instance's views and actions behind `global-admin-show` (global logs, alerts, resources,
+  metrics, jobs, price statement, forget arbitration): they show or change the instance's own
+  state, which no scope can filter;
+- the Cloud18 registration, confirmation, subscription and unregistration (`isCloud18Admin`);
 - the rotation of an account of the instance's list (its own name included: the per-cluster
   password it logged in with is not that account's instance password).
 
@@ -77,9 +99,9 @@ scoped login:
 A grant checked "on at least one cluster" (`UserHasGlobalGrant`: `global-admin-show`,
 `cluster-create`, `prov-cluster`) is read on the scope's clusters only. A scoped login holding such
 a grant on one of its clusters still exercises it with its global effect (an instance-wide view
-behind `global-admin-show`, a cluster creation): that is the grant its cluster gives it. Give a
-global grant only to an account whose every cluster password is trusted, or to an instance
-account.
+behind `global-admin-show` is refused to a scoped login, see above; a cluster creation with
+`cluster-create` or `prov-cluster` is not): that is the grant its cluster gives it. Give a global
+grant only to an account whose every cluster password is trusted, or to an instance account.
 
 ### Clusters created or deleted after the login
 
@@ -88,7 +110,10 @@ is not in it: log in again. A deleted cluster leaves the scope of every session 
 its deletion (`markClusterDeleted`, `clusterDeletedSince` against `scope_at`), so a cluster
 created again under the same name is not reached by those sessions; the record of deletions is
 pruned past a session's lifetime (F4). The API tokens bound to a login on the deleted cluster
-(`ownerClusters`) are revoked at the deletion (`revokeAPITokensBoundTo`).
+(`ownerClusters`) are revoked at the deletion (`revokeAPITokensBoundTo`). A rename does the same
+for the old name, and at start, once the clusters are loaded, the tokens bound to a cluster gone
+from the configuration while repman was stopped are revoked (`revokeTokensOfVanishedClusters`).
+None of this touches a `*` token.
 
 ## API tokens
 
@@ -96,7 +121,10 @@ The token record (and its HS256 claims) gains:
 
 - `ownerScope`: `instance` (login covering the instance, SSO, or repman itself for app tokens) or
   `clusters`;
-- `ownerClusters`: for `clusters`, the session's clusters.
+- `ownerClusters`: for `clusters`, the session's clusters;
+- `ownerExcluded`: for `instance`, the clusters the session did not cover (`excluded`). The token
+  never acts there (`APIToken.InScope`, `cluster.TokenPrincipal.Excluded`), and a `*` token keeps
+  covering the clusters added later.
 
 A scoped caller lists, displays and revokes as owner only the tokens created from a login
 restricted to clusters all within its own (`tokenVisibleToScope`): never an instance token, a
@@ -120,8 +148,13 @@ issued them necessarily covered all those clusters:
   exists on: releases of late September 2026 stored no `ownerAuthType`, and a passwordless
   account can only have logged in through SSO (`apiTokenOwnerIsSSO`);
 - an app token repman issued itself (`createdFrom` "app ...");
+- never a token of the instance's Cloud18 identity not recorded as SSO: that identity had a
+  generated local password on every cluster, and is passwordless now;
 - a local owner whose password is the same on every cluster it exists on. An account of the
   instance's list is one, unless a cluster section sets another password for it.
+
+The owner checks read the clusters through `clustersSnapshot` (the manager's lock), never under
+the token store's lock.
 
 A local owner holding different passwords on different clusters is refused, logged once per
 token in the security log (the set of logged ids is pruned with the token store at each save,

@@ -12303,8 +12303,11 @@ func (repman *ReplicationManager) handlerMuxSetActiveStatus(w http.ResponseWrite
 // @Router /api/actions/set-active-status [get]
 func (repman *ReplicationManager) handlerMuxSetServerActiveStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	if valid, _ := repman.IsValidClusterACL(r, repman.currentCluster); !valid || !repman.requestUnrestricted(r) { // an instance-wide action: a login covering the instance (api_session_scope.go)
+	if valid, _ := repman.IsValidClusterACL(r, repman.currentCluster); !valid {
 		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+	if !repman.requireUnrestricted(w, r, "the active/standby switch") {
 		return
 	}
 	if err := repman.toggleServerActiveStatus(); err != nil {
@@ -12338,9 +12341,13 @@ func (repman *ReplicationManager) handlerMuxFetchDynamicClustersFromGit(w http.R
 		return
 	}
 
+	// the instance's admin in an interactive login covering the instance: never an API token
 	claims, err := repman.GetJWTClaims(r)
-	if err != nil || claims["User"] != "admin" || claims["SessionScope"] != "" {
+	if err != nil || claims["User"] != "admin" || claims["AuthType"] != "Local" {
 		http.Error(w, `{"error":"administrator access required"}`, http.StatusForbidden)
+		return
+	}
+	if !repman.requireUnrestricted(w, r, "the cluster import from git") {
 		return
 	}
 

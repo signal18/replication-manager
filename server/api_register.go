@@ -1646,6 +1646,10 @@ func (repman *ReplicationManager) handlerBillingProfile(w http.ResponseWriter, r
 // user name "admin", which a narrowed token of admin passed). The literal admin
 // login is still accepted for instances with no cluster loaded yet.
 func (repman *ReplicationManager) isCloud18Admin(r *http.Request) bool {
+	// the instance's registration and subscription: a login covering the instance only
+	if !repman.requestUnrestricted(r) {
+		return false
+	}
 	if repman.UserHasGlobalGrant(r, config.GrantGlobalAdminShow) {
 		return true
 	}

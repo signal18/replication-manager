@@ -252,7 +252,8 @@ func (repman *ReplicationManager) AuthenticateMCP(r *http.Request) (*repmanmcp.P
 		return nil, fmt.Errorf("JWT carries no user name")
 	}
 	p := &repmanmcp.Principal{User: user, AuthMethod: method, Remote: r.RemoteAddr, Auth: password, Bearer: bearerOf(r)}
-	p.SessionClusters, p.SessionScoped = repman.sessionClusters(info)
+	s := repman.sessionScope(info)
+	p.SessionScoped, p.SessionClusters, p.SessionExcluded = s.Scoped, s.Clusters, s.Excluded
 	if method == "oidc" {
 		// the session's Cloud18 login (#2182), for the other Cloud18 instances
 		p.Cloud18Login, _ = info["cloud18"].(string)

@@ -54,6 +54,9 @@ type Principal struct {
 	// SessionClusters only: it is nobody on the other clusters (server/api_session_scope.go).
 	SessionScoped   bool
 	SessionClusters []string
+	// SessionExcluded: a login covering the instance but these clusters (an instance account
+	// whose password a cluster section overrides).
+	SessionExcluded []string
 }
 
 // AllowsCluster reports whether the principal's login covers clusterName.
@@ -62,6 +65,11 @@ func (p *Principal) AllowsCluster(clusterName string) bool {
 		return false
 	}
 	if !p.SessionScoped {
+		for _, c := range p.SessionExcluded {
+			if c == clusterName {
+				return false
+			}
+		}
 		return true
 	}
 	for _, c := range p.SessionClusters {

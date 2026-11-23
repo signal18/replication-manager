@@ -14,6 +14,7 @@ import (
 	"github.com/gorilla/mux"
 
 	"github.com/signal18/replication-manager/cluster"
+	repmanmcp "github.com/signal18/replication-manager/mcp"
 )
 
 // scopeCreateToken creates a token through the API with a session.
@@ -107,49 +108,193 @@ func TestNameOnlyReadsHonourTheSessionScope(t *testing.T) {
 	}
 }
 
-// Review 3 and 4: an instance account whose password a cluster overrides gets a scoped session,
-// which reaches no instance-wide action.
+// Review 3, 4 and 5 (first and second review): the instance's admin with the instance's
+// password covers the instance except the clusters overriding its password; a login scoped to
+// some clusters, or an API token, reaches no instance-wide action.
 func TestInstanceActionsNeedAnUnrestrictedLogin(t *testing.T) {
-	repman, _, c2 := newScopeTestManager(t)
+	repman, c1, c2 := newScopeTestManager(t)
 	u := c2.APIUsers["admin"]
 	u.Password = "c2-own-admin-pw"
 	c2.APIUsers["admin"] = u
+	repman.Conf.Cloud18GitUser = "owner@x.io"
 
-	scoped := scopeLogin(t, repman, "admin", "admin-pw")
-	clusters, restricted := repman.requestSessionClusters(bearerRequest(scoped, "/api/clusters/c1"))
-	if !restricted || len(clusters) != 1 || clusters[0] != "c1" {
-		t.Fatalf("an instance password that a cluster overrides opens the other clusters only, got %v %v", clusters, restricted)
+	// the instance's password: instance-wide, c2 excluded
+	inst := scopeLogin(t, repman, "admin", "admin-pw")
+	s := repman.requestSessionScope(bearerRequest(inst, "/api/clusters/c1"))
+	if s.Scoped || len(s.Excluded) != 1 || s.Excluded[0] != "c2" {
+		t.Fatalf("the instance password that c2 overrides excludes c2 only, got %+v", s)
 	}
-	if repman.requestUnrestricted(bearerRequest(scoped, "/api/x")) {
-		t.Fatal("a scoped session is not unrestricted")
+	if !repman.requestUnrestricted(bearerRequest(inst, "/api/x")) {
+		t.Fatal("the instance's admin stays instance-wide for the instance actions")
+	}
+	if ok, _ := repman.IsValidClusterACL(bearerRequest(inst, "/api/clusters/c2"), c2); ok {
+		t.Fatal("the excluded cluster is refused")
+	}
+	if ok, _ := repman.IsValidClusterACL(bearerRequest(inst, "/api/clusters/c1"), c1); !ok {
+		t.Fatal("the other clusters pass")
 	}
 	w := httptest.NewRecorder()
+	if !repman.isGlobalSettingsAdmin(w, bearerRequest(inst, "/api/clusters/settings/actions/set/x/y"), "x") {
+		t.Fatal("the instance's admin changes global settings")
+	}
+	claims, _ := repman.GetJWTClaims(bearerRequest(inst, "/api/x"))
+	if !repman.mayLoginPeersAsInstance(bearerRequest(inst, "/api/x"), claims) {
+		t.Fatal("the instance's admin logs in to the peers as the instance")
+	}
+	// a "*" token of that session never acts on the excluded cluster
+	instTok := scopeCreateToken(t, repman, inst, APITokenForm{Label: "inst", Clusters: []string{"*"}})
+	if len(instTok.OwnerExcluded) != 1 || instTok.OwnerExcluded[0] != "c2" {
+		t.Fatalf("the token records the excluded cluster, got %v", instTok.OwnerExcluded)
+	}
+	if ok, _ := repman.IsValidClusterACL(bearerRequest(instTok.Token, "/api/clusters/c2"), c2); ok {
+		t.Fatal("a token of that session never acts on the excluded cluster")
+	}
+	if ok, _ := repman.IsValidClusterACL(bearerRequest(instTok.Token, "/api/clusters/c1"), c1); !ok {
+		t.Fatal("a token of that session acts on the other clusters")
+	}
+
+	// the admin name logged in with c2's own password: scoped to c2
+	scoped := scopeLogin(t, repman, "admin", "c2-own-admin-pw")
+	if s := repman.requestSessionScope(bearerRequest(scoped, "/api/x")); !s.Scoped || len(s.Clusters) != 1 || s.Clusters[0] != "c2" {
+		t.Fatalf("a cluster's own admin password opens that cluster only, got %+v", s)
+	}
+	w = httptest.NewRecorder()
 	if repman.isGlobalSettingsAdmin(w, bearerRequest(scoped, "/api/clusters/settings/actions/set/x/y"), "x") {
 		t.Fatal("a scoped admin session must not change global settings")
 	}
-	req := bearerRequest(scoped, "/api/clusters/peers")
-	w = httptest.NewRecorder()
-	repman.handlerMuxPeerClusters(w, req)
-	if w.Code != http.StatusOK || w.Body.String() != "[]" {
-		t.Fatalf("a scoped session lists no peer cluster, got %d %s", w.Code, w.Body.String())
-	}
-
-	// the instance account with its password everywhere: unrestricted
-	c2.APIUsers["admin"] = cluster.APIUser{User: "admin", Password: "admin-pw", Roles: u.Roles, Grants: u.Grants}
-	full := scopeLogin(t, repman, "admin", "admin-pw")
-	if !repman.requestUnrestricted(bearerRequest(full, "/api/x")) {
-		t.Fatal("the instance account with its password on every cluster is unrestricted")
+	if w.Code != http.StatusForbidden || !bytes.Contains(w.Body.Bytes(), []byte("this login is limited to clusters c2")) {
+		t.Fatalf("the refusal says what the login is limited to, got %d %s", w.Code, w.Body.String())
 	}
 	w = httptest.NewRecorder()
-	if !repman.isGlobalSettingsAdmin(w, bearerRequest(full, "/api/clusters/settings/actions/set/x/y"), "x") {
-		t.Fatal("the instance's admin changes global settings")
+	repman.handlerMuxPeerClusters(w, bearerRequest(scoped, "/api/clusters/peers"))
+	if w.Body.String() != "[]" {
+		t.Fatalf("a scoped session lists no peer cluster, got %s", w.Body.String())
+	}
+	claims, _ = repman.GetJWTClaims(bearerRequest(scoped, "/api/x"))
+	if repman.mayLoginPeersAsInstance(bearerRequest(scoped, "/api/x"), claims) {
+		t.Fatal("a scoped admin session never logs in to the peers as the instance")
 	}
 
-	// a token created from a scoped session is restricted too
+	gitImport := func(bearer string) int {
+		req := httptest.NewRequest(http.MethodPost, "/api/clusters/actions/fetch-from-git", nil)
+		req.Header.Set("Authorization", "Bearer "+bearer)
+		w := httptest.NewRecorder()
+		repman.handlerMuxFetchDynamicClustersFromGit(w, req)
+		return w.Code
+	}
+	globalMail := func(bearer string) int {
+		req := httptest.NewRequest(http.MethodPost, "/api/mail", bytes.NewReader([]byte(`{}`)))
+		req.Header.Set("Authorization", "Bearer "+bearer)
+		w := httptest.NewRecorder()
+		repman.handlerMuxSendEmail(w, req)
+		return w.Code
+	}
+	if code := gitImport(scoped); code != http.StatusForbidden {
+		t.Fatalf("git import from a scoped admin session: want 403, got %d", code)
+	}
+	if code := globalMail(scoped); code != http.StatusForbidden {
+		t.Fatalf("global mail from a scoped admin session: want 403, got %d", code)
+	}
+
+	// API tokens: an admin token reaches neither the git import nor the instance's peer login;
+	// a token of the scoped session reaches no instance-wide action
+	if code := gitImport(instTok.Token); code != http.StatusForbidden {
+		t.Fatalf("git import refuses API tokens, got %d", code)
+	}
+	tclaims, _ := repman.GetJWTClaims(bearerRequest(instTok.Token, "/api/x"))
+	if repman.mayLoginPeersAsInstance(bearerRequest(instTok.Token, "/api/x"), tclaims) {
+		t.Fatal("an API token never logs in to the peers as the instance")
+	}
+	scopedTok := scopeCreateToken(t, repman, scoped, APITokenForm{Label: "scoped"})
+	if repman.requestUnrestricted(bearerRequest(scopedTok.Token, "/api/x")) {
+		t.Fatal("a token of a scoped login is not unrestricted")
+	}
+	if code := globalMail(scopedTok.Token); code != http.StatusForbidden {
+		t.Fatalf("global mail from a token of a scoped login: want 403, got %d", code)
+	}
+	if repman.isCloud18Admin(bearerRequest(scopedTok.Token, "/api/register")) || repman.isCloud18Admin(bearerRequest(scoped, "/api/register")) {
+		t.Fatal("the Cloud18 registration needs a login covering the instance")
+	}
+
+	// MCP: only a password login covering the instance acts as the instance
+	if repman.mcpMayActAsInstance(&repmanmcp.Principal{User: "admin", AuthMethod: "token"}) {
+		t.Fatal("an MCP token never acts as the instance")
+	}
+	if repman.mcpMayActAsInstance(&repmanmcp.Principal{User: "admin", AuthMethod: "password", SessionScoped: true, SessionClusters: []string{"c2"}}) {
+		t.Fatal("a scoped MCP login never acts as the instance")
+	}
+	if !repman.mcpMayActAsInstance(&repmanmcp.Principal{User: "admin", AuthMethod: "password", SessionExcluded: []string{"c2"}}) {
+		t.Fatal("the instance's admin over MCP acts as the instance")
+	}
+
+	// the cluster mail test goes through the cluster ACL with the session's scope
+	req := httptest.NewRequest(http.MethodPost, "/api/clusters/c1/mail", bytes.NewReader([]byte(`{}`)))
+	req.Header.Set("Authorization", "Bearer "+scoped)
+	req = mux.SetURLVars(req, map[string]string{"clusterName": "c1"})
+	w = httptest.NewRecorder()
+	repman.handlerMuxSendEmail(w, req)
+	if w.Code != http.StatusInternalServerError || !bytes.Contains(w.Body.Bytes(), []byte("No valid ACL")) {
+		t.Fatalf("the cluster mail test refuses a login not covering the cluster, got %d %s", w.Code, w.Body.String())
+	}
+}
+
+// Second review 3: a legacy token of the instance's Cloud18 identity, not recorded as SSO, is
+// refused although the identity is passwordless now.
+func TestLegacyTokenOfCloud18IdentityRefused(t *testing.T) {
+	repman, c1, c2 := newScopeTestManager(t)
+	for _, cl := range []*cluster.Cluster{c1, c2} {
+		id := cluster.APIUser{User: "owner@x.io", Roles: map[string]bool{}}
+		cl.SetUserGrants(&id, "db cluster token")
+		cl.APIUsers["owner@x.io"] = id
+	}
+	repman.Conf.Cloud18GitUser = "owner@x.io"
+	legacy := func(authType string) *APIToken {
+		tok, err := repman.createAPITokenAs("owner@x.io", authType, APITokenForm{Label: "old"}, "10.0.0.1:1")
+		if err != nil {
+			t.Fatal(err)
+		}
+		st := &repman.apiTokens
+		st.Lock()
+		st.tokens[tok.ID].OwnerScope = ""
+		st.Unlock()
+		return tok
+	}
+	local := legacy("")
+	if ok, _ := repman.IsValidClusterACL(bearerRequest(local.Token, "/api/clusters/c1"), c1); ok {
+		t.Fatal("a legacy token of the Cloud18 identity not recorded as SSO must be refused")
+	}
+	if _, logged := repman.apiTokenOwnerRefusedLogged.Load(local.ID); !logged {
+		t.Fatal("the refusal is logged once")
+	}
+	sso := legacy("SSO")
+	if ok, _ := repman.IsValidClusterACL(bearerRequest(sso.Token, "/api/clusters/c1"), c1); !ok {
+		t.Fatal("a legacy token of the Cloud18 identity recorded as SSO keeps working")
+	}
+}
+
+// Second review 9: a renamed cluster, or one gone from the configuration at a restart, lets go
+// of the tokens bound to its old name.
+func TestTokensOfVanishedClustersRevoked(t *testing.T) {
+	repman, _, _ := newScopeTestManager(t)
 	pA := scopeLogin(t, repman, "shared", "pw-of-c1")
 	tok := scopeCreateToken(t, repman, pA, APITokenForm{Label: "a"})
-	if repman.requestUnrestricted(bearerRequest(tok.Token, "/api/clusters/c1")) {
-		t.Fatal("a token of a scoped login is not unrestricted")
+	inst, err := repman.createAPITokenAs("admin", "Local", APITokenForm{Label: "all"}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	repman.Lock()
+	delete(repman.Clusters, "c1")
+	repman.Unlock()
+	repman.revokeTokensOfVanishedClusters()
+	st := &repman.apiTokens
+	st.Lock()
+	revoked, instRevoked := st.tokens[tok.ID].IsRevoked(), st.tokens[inst.ID].IsRevoked()
+	st.Unlock()
+	if !revoked {
+		t.Fatal("a token bound to a cluster gone from the configuration is revoked")
+	}
+	if instRevoked {
+		t.Fatal("a \"*\" token is never revoked for a vanished cluster")
 	}
 }
 
@@ -178,9 +323,8 @@ func TestPasswordlessSessionsAreScopedAndRefuseTheCloud18Identity(t *testing.T) 
 	raw, _ := json.Marshal(info)
 	var m map[string]interface{}
 	_ = json.Unmarshal(raw, &m)
-	clusters, restricted := repman.sessionClusters(m)
-	if !restricted || len(clusters) != 1 || clusters[0] != "c1" {
-		t.Fatalf("a session without login form is scoped like a login, got %v %v", clusters, restricted)
+	if sc := repman.sessionScope(m); !sc.Scoped || len(sc.Clusters) != 1 || sc.Clusters[0] != "c1" {
+		t.Fatalf("a session without login form is scoped like a login, got %+v", sc)
 	}
 }
 

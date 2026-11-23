@@ -35,10 +35,16 @@ type TokenPrincipal struct {
 	User     string
 	Grants   map[string]bool // expanded grant map the token carries
 	Clusters []string        // cluster scope; "*" means every cluster
+	Excluded []string        // clusters the owner's login did not cover: never in scope
 }
 
 // InScope reports whether the token may act on clusterName.
 func (p TokenPrincipal) InScope(clusterName string) bool {
+	for _, c := range p.Excluded {
+		if c == clusterName {
+			return false
+		}
+	}
 	for _, c := range p.Clusters {
 		if c == "*" || c == clusterName {
 			return true

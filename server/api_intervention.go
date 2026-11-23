@@ -72,8 +72,11 @@ func (repman *ReplicationManager) RefreshGlobalInterventionState() {
 func (repman *ReplicationManager) handlerMuxGlobalInterventionStart(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
-	if valid, _ := repman.IsValidClusterACL(r, repman.currentCluster); !valid || !repman.requestUnrestricted(r) { // an instance-wide action: a login covering the instance (api_session_scope.go)
+	if valid, _ := repman.IsValidClusterACL(r, repman.currentCluster); !valid {
 		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+	if !repman.requireUnrestricted(w, r, "a global intervention") {
 		return
 	}
 
@@ -153,8 +156,11 @@ func (repman *ReplicationManager) handlerMuxGlobalInterventionStart(w http.Respo
 func (repman *ReplicationManager) handlerMuxGlobalInterventionEnd(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
-	if valid, _ := repman.IsValidClusterACL(r, repman.currentCluster); !valid || !repman.requestUnrestricted(r) { // an instance-wide action: a login covering the instance (api_session_scope.go)
+	if valid, _ := repman.IsValidClusterACL(r, repman.currentCluster); !valid {
 		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+	if !repman.requireUnrestricted(w, r, "a global intervention") {
 		return
 	}
 

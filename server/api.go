@@ -166,7 +166,7 @@ func (repman *ReplicationManager) issueJWTFor(userInfo interface{}, gitlabToken 
 // least one cluster, identifying it as an administrative account that should
 // authenticate via local credentials only (no SSO path).
 func (repman *ReplicationManager) isAdminUser(username string) bool {
-	for _, cl := range repman.Clusters {
+	for _, cl := range repman.clustersSnapshot() {
 		if u, ok := cl.GetAPIUsers()[username]; ok {
 			if u.Grants[config.GrantGlobalAdminShow] {
 				return true
@@ -650,7 +650,7 @@ func (repman *ReplicationManager) IsValidClusterACL(r *http.Request, cluster *cl
 		mepwd, _ := mycutinfo["Password"].(string)
 		// a local login authenticated its account on the clusters of its scope only
 		// (api_session_scope.go): the same name may hold another password elsewhere
-		if !repman.sessionAllowsCluster(mycutinfo, cluster.Name) {
+		if !repman.sessionScope(mycutinfo).Covers(cluster.Name) {
 			return false, meuser
 		}
 		_, ok := mycutinfo["profile"]
@@ -746,9 +746,11 @@ func (repman *ReplicationManager) GetUserInfoMap(token *jwt.Token) (map[string]s
 	}
 	UserInfoMap["User"] = mycutinfo["Name"].(string)
 	UserInfoMap["AuthType"] = "Local"
-	if clusters, restricted := repman.sessionClusters(mycutinfo); restricted {
+	if s := repman.sessionScope(mycutinfo); s.Scoped {
 		UserInfoMap["SessionScope"] = sessionScopeClusters
-		UserInfoMap["SessionClusters"] = strings.Join(clusters, ",")
+		UserInfoMap["SessionClusters"] = strings.Join(s.Clusters, ",")
+	} else if len(s.Excluded) > 0 {
+		UserInfoMap["SessionExcluded"] = strings.Join(s.Excluded, ",")
 	}
 	return UserInfoMap, nil
 }
@@ -927,16 +929,14 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 	// the account on the clusters where it is the account's password, and only there: the
 	// session carries them (scope "clusters", api_session_scope.go), unless the account and
 	// password are the instance's (api-credentials of the server configuration).
-	var sessionScope string
-	var sessionScopeList []string
-	var sessionScopeAt int64 // when the scope was decided (unix ms): a cluster deleted since is out of it
+	var sessionScope sessionScopeClaims
 	tryLocalAuth := func() (interface{}, bool) {
 		// the instance's Cloud18 identity signs in with Cloud18 only (cluster.IsCloud18Identity)
 		if repman.Conf.Cloud18GitUser != "" && user.Username == repman.Conf.Cloud18GitUser {
 			return nil, false
 		}
 		var matched []string
-		for _, cl := range repman.Clusters {
+		for _, cl := range repman.clustersSnapshot() {
 			if cl.IsValidACL(user.Username, user.Password, r.URL.Path, cluster.AuthMethodSubmittedPassword) {
 				matched = append(matched, cl.Name)
 			}
@@ -944,19 +944,8 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 		if len(matched) == 0 {
 			return nil, false
 		}
-		sessionScope, sessionScopeList = repman.localSessionScope(user.Username, user.Password, matched)
-		if sessionScope != "" {
-			sessionScopeAt = time.Now().UnixMilli()
-		}
-		ui := struct {
-			Name     string
-			Role     string
-			Password string
-			Scope    string   `json:"scope,omitempty"`
-			Clusters []string `json:"clusters,omitempty"`
-			ScopeAt  int64    `json:"scope_at,omitempty"`
-		}{user.Username, "Member", repman.Conf.GetEncryptedString(user.Password), sessionScope, sessionScopeList, sessionScopeAt}
-		return ui, true
+		sessionScope = repman.localSessionScope(user.Username, user.Password, matched)
+		return localSessionInfo{user.Username, "Member", repman.Conf.GetEncryptedString(user.Password), sessionScope}, true
 	}
 
 	sendToken := func(tokenString string, upgradeID string) {
@@ -1019,16 +1008,18 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 			return
 		}
 		resetAuthTry()
-		meetUserID := repman.instanceMeetUser()
+		// the instance's meet account is the instance's: never for a login scoped to some clusters
+		meetUserID := ""
+		if sessionScope.Scope == "" {
+			meetUserID = repman.instanceMeetUser()
+		}
 		finalInfo := struct {
 			Name       string
 			Role       string
 			Password   string
-			MeetUserID string   `json:"meet_user_id"`
-			Scope      string   `json:"scope,omitempty"`
-			Clusters   []string `json:"clusters,omitempty"`
-			ScopeAt    int64    `json:"scope_at,omitempty"`
-		}{user.Username, "Member", repman.Conf.GetEncryptedString(user.Password), meetUserID, sessionScope, sessionScopeList, sessionScopeAt}
+			MeetUserID string `json:"meet_user_id"`
+			sessionScopeClaims
+		}{user.Username, "Member", repman.Conf.GetEncryptedString(user.Password), meetUserID, sessionScope}
 		_ = userInfo // replaced by finalInfo with MeetUserID
 		tokenString, err := repman.issueJWT(finalInfo, "")
 		if err != nil {
@@ -1446,9 +1437,9 @@ func (repman *ReplicationManager) handlerMuxWhoAmI(w http.ResponseWriter, r *htt
 	}
 	clusterGrants, clusterRoles := repman.resolveUserClusterGrantsAndRoles(username)
 	// a scoped login (or a token created from one) is nobody outside its clusters
-	if scope, scoped := repman.requestOwnerScope(r); scoped {
+	if scope := repman.requestLoginScope(r); scope.Limited() {
 		for name := range clusterGrants {
-			if !slices.Contains(scope, name) {
+			if !scope.Covers(name) {
 				delete(clusterGrants, name)
 				delete(clusterRoles, name)
 			}
@@ -2198,11 +2189,15 @@ func (repman *ReplicationManager) handlerMuxClusterRename(w http.ResponseWriter,
 		return
 	}
 
+	oldName := mycluster.Name
 	err := mycluster.RenameCluster(vars["newClusterName"])
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	// the old name no longer names this cluster: the logins and tokens bound to it let go
+	// (api_session_scope.go)
+	repman.markClusterDeleted(oldName)
 
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("Cluster renamed successfully"))
@@ -2477,7 +2472,7 @@ func (repman *ReplicationManager) DynamicPeerHandler(w http.ResponseWriter, r *h
 			w.WriteHeader(status)
 			w.Write(body)
 			return
-		} else if sc, restricted := userInfoMapSessionClusters(uinfomap); repman.isAdminUserOn(uinfomap["User"], sc, restricted) && repman.Conf.Cloud18GitUser != "" {
+		} else if repman.mayLoginPeersAsInstance(r, uinfomap) {
 			// Local admin on a registered instance: peers don't know our local 'admin'
 			// identity, so authenticate AS the registered user (Cloud18GitUser): with its
 			// realm token (#2327), which a peer verifies by itself, the password only for a
@@ -2669,7 +2664,7 @@ func (repman *ReplicationManager) handlerTerminal(w http.ResponseWriter, r *http
 			method = "oidc"
 		}
 
-		if sc, restricted := userInfoMapSessionClusters(uinfomap); (restricted && !slices.Contains(sc, mycluster.Name)) ||
+		if !userInfoMapScope(uinfomap).Covers(mycluster.Name) ||
 			!mycluster.IsValidACL(uinfomap["User"], uinfomap["Password"], path, method) {
 			session.SafeWriteMessage(websocket.TextMessage, []byte("No valid ACL\n"))
 			return
@@ -2896,7 +2891,7 @@ func (repman *ReplicationManager) handlerMuxSendEmail(w http.ResponseWriter, r *
 			return
 		}
 
-		if !mycluster.IsValidACL(uinfomap["User"], uinfomap["Password"], r.URL.Path, "oidc") {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
 			http.Error(w, "No valid ACL", http.StatusInternalServerError)
 			return
 		}
@@ -2909,8 +2904,11 @@ func (repman *ReplicationManager) handlerMuxSendEmail(w http.ResponseWriter, r *
 		}
 
 	} else {
-		if (uinfomap["User"] != "admin" && uinfomap["User"] != repman.Conf.Cloud18GitUser) || uinfomap["SessionScope"] != "" {
+		if uinfomap["User"] != "admin" && uinfomap["User"] != repman.Conf.Cloud18GitUser {
 			http.Error(w, "No valid ACL", http.StatusInternalServerError)
+			return
+		}
+		if !repman.requireUnrestricted(w, r, "the instance's mail test") {
 			return
 		}
 

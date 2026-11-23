@@ -699,7 +699,7 @@ func (repman *ReplicationManager) peerLoginAs(p *repmanmcp.Principal, infra stri
 		cloud18 = repman.cloud18TokenFor(p.Cloud18Token, p.Cloud18Login)
 	}
 	id := peerIdentityFor(p, func(v string) string { return repman.Conf.GetDecryptedPassword("peer-login", v) }, cloud18,
-		p != nil && repman.isAdminUserOn(p.User, p.SessionClusters, p.SessionScoped), repman.Conf.Cloud18GitUser,
+		repman.mcpMayActAsInstance(p), repman.Conf.Cloud18GitUser,
 		repman.Conf.GetDecryptedPassword("git-password", repman.Conf.Secrets.Get("cloud18-gitlab-password").Value))
 	if id.mode == "refused" {
 		return nil, "", errors.New(id.reason)

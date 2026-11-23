@@ -82,8 +82,11 @@ type APIToken struct {
 	// for a local login whose password authenticated the owner on OwnerClusters only. The
 	// token never acts outside OwnerClusters, whatever its Clusters say. Empty: a token issued
 	// before the field existed, judged by apiTokenLegacyOwnerOK.
-	OwnerScope    string    `json:"ownerScope,omitempty"`
-	OwnerClusters []string  `json:"ownerClusters,omitempty"`
+	OwnerScope    string   `json:"ownerScope,omitempty"`
+	OwnerClusters []string `json:"ownerClusters,omitempty"`
+	// OwnerExcluded: for OwnerScope instance, the clusters the issuing login did not cover (an
+	// instance account whose password a cluster section overrides): the token never acts there.
+	OwnerExcluded []string  `json:"ownerExcluded,omitempty"`
 	ExpiresAt     time.Time `json:"expiresAt,omitempty"`
 	LastUsedAt    time.Time `json:"lastUsedAt,omitempty"`
 	LastUsedFrom  string    `json:"lastUsedFrom,omitempty"`
@@ -140,8 +143,12 @@ func (t APIToken) IsGlobal() bool {
 	return false
 }
 
-// InScope reports whether the token covers clusterName.
+// InScope reports whether the token covers clusterName (never a cluster its owner's login
+// did not cover, OwnerExcluded).
 func (t APIToken) InScope(clusterName string) bool {
+	if slices.Contains(t.OwnerExcluded, clusterName) {
+		return false
+	}
 	for _, c := range t.Clusters {
 		if c == "*" || c == clusterName {
 			return true
@@ -297,6 +304,9 @@ func (repman *ReplicationManager) mintAPIToken(t APIToken) (string, error) {
 	if t.OwnerScope == apiTokenOwnerClusters {
 		claims["ownerClusters"] = t.OwnerClusters
 	}
+	if len(t.OwnerExcluded) > 0 {
+		claims["ownerExcluded"] = t.OwnerExcluded
+	}
 	return jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString(repman.Conf.SecretKey)
 }
 
@@ -333,8 +343,9 @@ func (repman *ReplicationManager) parseVerifiedAPIToken(r *http.Request) (*APITo
 	if !ok {
 		return nil, false
 	}
-	// outside the store lock: the owner checks read the clusters and may call the SSO hook
-	if !repman.apiTokenOwnerOK(t, r) {
+	// outside the store lock: the owner checks read the clusters (under the manager's lock,
+	// never taken under the store's)
+	if !repman.userExists(t.User) || !repman.apiTokenOwnerOK(t, r) {
 		return nil, false
 	}
 	bound := t.boundToOwnerClusters()
@@ -378,10 +389,6 @@ func (repman *ReplicationManager) lookupVerifiedAPIToken(r *http.Request) (*APIT
 	if !ok || t.User != sub || t.IsRevoked() || t.IsExpired() {
 		return nil, false
 	}
-	// Owner must still exist somewhere.
-	if !repman.userExists(t.User) {
-		return nil, false
-	}
 	t.LastUsedAt = time.Now()
 	t.LastUsedFrom = r.RemoteAddr
 	if last, ok := st.lastFlush[id]; !ok || time.Since(last) > apiTokenLastUsedFlush {
@@ -394,25 +401,12 @@ func (repman *ReplicationManager) lookupVerifiedAPIToken(r *http.Request) (*APIT
 	return &cp, true
 }
 
-// userHasGrantOn is userHasGrantAnywhere on the given clusters only (restricted), or on every
-// cluster.
-func (repman *ReplicationManager) userHasGrantOn(username, grant string, clusters []string, restricted bool) bool {
-	if !restricted {
-		return repman.userHasGrantAnywhere(username, grant)
-	}
-	for _, name := range clusters {
-		if cl := repman.getClusterByName(name); cl != nil {
-			if u, ok := cl.GetAPIUsers()[username]; ok && u.Grants[grant] {
-				return true
-			}
+// userHasGrantOn is userHasGrantAnywhere on the clusters the login covers.
+func (repman *ReplicationManager) userHasGrantOn(username, grant string, s loginScope) bool {
+	for _, cl := range repman.clustersSnapshot() {
+		if !s.Covers(cl.Name) {
+			continue
 		}
-	}
-	return false
-}
-
-// userHasGrantAnywhere reports whether the user holds a grant in at least one cluster.
-func (repman *ReplicationManager) userHasGrantAnywhere(username string, grant string) bool {
-	for _, cl := range repman.Clusters {
 		if u, ok := cl.GetAPIUsers()[username]; ok && u.Grants[grant] {
 			return true
 		}
@@ -420,8 +414,15 @@ func (repman *ReplicationManager) userHasGrantAnywhere(username string, grant st
 	return false
 }
 
+// userHasGrantAnywhere reports whether the user holds a grant in at least one cluster.
+func (repman *ReplicationManager) userHasGrantAnywhere(username string, grant string) bool {
+	return repman.userHasGrantOn(username, grant, loginScope{})
+}
+
+// userExists reports whether the user is on at least one cluster. Never called under the token
+// store's lock (clustersSnapshot takes the manager's).
 func (repman *ReplicationManager) userExists(username string) bool {
-	for _, cl := range repman.Clusters {
+	for _, cl := range repman.clustersSnapshot() {
 		if _, ok := cl.GetAPIUsers()[username]; ok {
 			return true
 		}
@@ -442,6 +443,7 @@ func (repman *ReplicationManager) tokenPrincipalFor(t *APIToken, cl *cluster.Clu
 		User:     t.User,
 		Grants:   tmp.Grants,
 		Clusters: t.Clusters,
+		Excluded: t.OwnerExcluded,
 	})
 	return cluster.TokenPrincipalName(t.ID, t.User)
 }
@@ -451,7 +453,7 @@ func (repman *ReplicationManager) tokenPrincipalFor(t *APIToken, cl *cluster.Clu
 // else (global settings, peers, cluster add) needs the "*" scope.
 func tokenURLInScope(t *APIToken, cl *cluster.Cluster, URL string) bool {
 	if t.IsGlobal() {
-		return true
+		return t.InScope(cl.Name) // never a cluster its owner's login did not cover
 	}
 	if !t.InScope(cl.Name) {
 		return false
@@ -520,8 +522,8 @@ func (repman *ReplicationManager) handlerMuxAPITokens(w http.ResponseWriter, r *
 		return
 	}
 	// a login restricted to some clusters (api_session_scope.go) creates tokens for them only
-	sessionClusters, sessionRestricted := repman.requestSessionClusters(r)
-	if r.Method == http.MethodPost && !repman.userHasGrantOn(username, config.GrantTokenCreate, sessionClusters, sessionRestricted) {
+	sessionScope := repman.requestSessionScope(r)
+	if r.Method == http.MethodPost && !repman.userHasGrantOn(username, config.GrantTokenCreate, sessionScope) {
 		repman.logSecurityEvent("api_token_denied", username, r.RemoteAddr, "API token creation refused: no token-create grant")
 		http.Error(w, "No token-create grant", http.StatusForbidden)
 		return
@@ -530,9 +532,9 @@ func (repman *ReplicationManager) handlerMuxAPITokens(w http.ResponseWriter, r *
 	case http.MethodGet:
 		// a scoped caller lists the tokens created from a login within its clusters only
 		// (tokenVisibleToScope): never a wider sibling, and never its string
-		scopeClusters, scoped := repman.requestOwnerScope(r)
+		callerScope := repman.requestLoginScope(r)
 		repman.jsonResponse(repman.listAPITokensVisible(username, "", !viaToken, func(t APIToken) bool {
-			return tokenVisibleToScope(t, scopeClusters, scoped)
+			return tokenVisibleToScope(t, callerScope)
 		}), w)
 	case http.MethodPost:
 		var form APITokenForm
@@ -546,7 +548,7 @@ func (repman *ReplicationManager) handlerMuxAPITokens(w http.ResponseWriter, r *
 		if claims, err := repman.GetJWTClaims(r); err == nil {
 			ownerAuthType = claims["AuthType"]
 		}
-		t, err := repman.createAPITokenScoped(username, ownerAuthType, sessionClusters, sessionRestricted, form, r.RemoteAddr)
+		t, err := repman.createAPITokenScoped(username, ownerAuthType, sessionScope, form, r.RemoteAddr)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
@@ -668,19 +670,23 @@ func (repman *ReplicationManager) createAPIToken(owner string, form APITokenForm
 // "Local" or "" when unknown) by a login covering the instance: the type travels with the
 // token so an SSO owner's token is still an SSO identity for self-service.
 func (repman *ReplicationManager) createAPITokenAs(owner, ownerAuthType string, form APITokenForm, from string) (*APIToken, error) {
-	return repman.createAPITokenScoped(owner, ownerAuthType, nil, false, form, from)
+	return repman.createAPITokenScoped(owner, ownerAuthType, loginScope{}, form, from)
 }
 
-// createAPITokenScoped is createAPITokenAs for a login restricted to ownerClusters
-// (restricted, api_session_scope.go): the token's scope stays within them, "*" or no
-// cluster meaning all of them, and the record keeps them (OwnerScope, OwnerClusters).
-func (repman *ReplicationManager) createAPITokenScoped(owner, ownerAuthType string, ownerClusters []string, restricted bool, form APITokenForm, from string) (*APIToken, error) {
+// createAPITokenScoped is createAPITokenAs for a login of scope s (api_session_scope.go). A
+// login restricted to some clusters: the token's scope stays within them, "*" or no cluster
+// meaning all of them, and the record keeps them (OwnerScope, OwnerClusters). A login covering
+// the instance but some clusters: "*" stays "*", and the record keeps the clusters it does not
+// cover (OwnerExcluded), so the token covers the clusters added later but never those.
+func (repman *ReplicationManager) createAPITokenScoped(owner, ownerAuthType string, s loginScope, form APITokenForm, from string) (*APIToken, error) {
+	restricted := s.Scoped
+	ownerClusters := s.Clusters
 	// The system service account is a machine identity with a derived key: it
 	// never mints bearer credentials, whatever grants a config may hand it.
 	if owner == "system" {
 		return nil, errors.New("the system service account cannot issue API tokens")
 	}
-	if !repman.userHasGrantOn(owner, config.GrantTokenCreate, ownerClusters, restricted) {
+	if !repman.userHasGrantOn(owner, config.GrantTokenCreate, s) {
 		return nil, fmt.Errorf("%s has no token-create grant", owner)
 	}
 	label := strings.TrimSpace(form.Label)
@@ -702,8 +708,8 @@ func (repman *ReplicationManager) createAPITokenScoped(owner, ownerAuthType stri
 		if c == "" {
 			continue
 		}
-		if restricted && !slices.Contains(ownerClusters, c) {
-			return nil, fmt.Errorf("your login does not cover cluster %s: log in with that cluster's credentials", c)
+		if !s.Covers(c) {
+			return nil, fmt.Errorf("%s, not cluster %s: log in with that cluster's credentials", s, c)
 		}
 		cl := repman.getClusterByName(c)
 		if cl == nil {
@@ -728,8 +734,8 @@ func (repman *ReplicationManager) createAPITokenScoped(owner, ownerAuthType stri
 		}
 	} else if global {
 		scope = []string{"*"}
-		for _, cl := range repman.Clusters {
-			if _, ok := cl.GetAPIUsers()[owner]; ok {
+		for _, cl := range repman.clustersSnapshot() {
+			if _, ok := cl.GetAPIUsers()[owner]; ok && s.Covers(cl.Name) {
 				targets = append(targets, cl)
 			}
 		}
@@ -808,6 +814,9 @@ func (repman *ReplicationManager) createAPITokenScoped(owner, ownerAuthType stri
 		t.OwnerScope = apiTokenOwnerClusters
 		t.OwnerClusters = slices.Clone(ownerClusters)
 		slices.Sort(t.OwnerClusters)
+	} else if len(s.Excluded) > 0 {
+		t.OwnerExcluded = slices.Clone(s.Excluded)
+		slices.Sort(t.OwnerExcluded)
 	}
 	t.Token, err = repman.mintAPIToken(t)
 	if err != nil {
@@ -863,6 +872,31 @@ func (repman *ReplicationManager) revokeUserAPITokens(owner, by string) (int, er
 		}
 	}
 	return len(ids), nil
+}
+
+// apiTokenOwnerClusterNames lists the clusters live tokens are bound to (OwnerClusters).
+func (repman *ReplicationManager) apiTokenOwnerClusterNames() []string {
+	st := &repman.apiTokens
+	st.Lock()
+	defer st.Unlock()
+	if err := repman.loadAPITokenStoreLocked(); err != nil {
+		return nil
+	}
+	seen := map[string]bool{}
+	var out []string
+	for _, t := range st.tokens {
+		if t.IsRevoked() || t.OwnerScope != apiTokenOwnerClusters {
+			continue
+		}
+		for _, c := range t.OwnerClusters {
+			if !seen[c] {
+				seen[c] = true
+				out = append(out, c)
+			}
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 // revokeAPITokensBoundTo revokes every live token whose owner's login was scoped to the
@@ -922,7 +956,7 @@ func (repman *ReplicationManager) revokeAPIToken(id string, by string, r *http.R
 	st.Unlock()
 	if r != nil && snapshot.User == by {
 		// the owner's own token, from a scoped login: only a token created within its clusters
-		if scopeClusters, scoped := repman.requestOwnerScope(r); !tokenVisibleToScope(snapshot, scopeClusters, scoped) {
+		if !tokenVisibleToScope(snapshot, repman.requestLoginScope(r)) {
 			return nil, errors.New("this token was not created from a login covering only your login's clusters: log in with credentials covering its clusters to revoke it")
 		}
 	}
@@ -994,7 +1028,7 @@ func (repman *ReplicationManager) loginACLUser(r *http.Request, cl *cluster.Clus
 	if username == "" {
 		return cluster.APIUser{}, false
 	}
-	if clusters, restricted := repman.requestSessionClusters(r); restricted && !slices.Contains(clusters, cl.Name) {
+	if !repman.requestSessionScope(r).Covers(cl.Name) {
 		return cluster.APIUser{}, false
 	}
 	return cl.GetACLUser(username)

@@ -3176,6 +3176,8 @@ func (repman *ReplicationManager) Run() error {
 	// The ACL users load in phase 1 (initCluster); the flag is raised once every cluster is
 	// initialised (phases 1-4 done). Before, loginHandler answers 503 "starting".
 	repman.clustersReady.Store(true)
+	// tokens bound to a cluster gone from the configuration while repman was stopped
+	repman.revokeTokensOfVanishedClusters()
 
 	// Send initial email
 	repman.SendClustersInitMail()

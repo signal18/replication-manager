@@ -101,10 +101,10 @@ func TestLocalLoginSessionIsScopedToTheClustersOfItsPassword(t *testing.T) {
 	if err != nil || claims["SessionScope"] != sessionScopeClusters || claims["SessionClusters"] != "c1" {
 		t.Fatalf("the claims map must expose the scope, got %v %v", claims, err)
 	}
-	if repman.isAdminUserOn("shared", []string{"c3"}, true) {
+	if repman.isAdminUserOn("shared", loginScope{Scoped: true, Clusters: []string{"c3"}}) {
 		t.Fatal("the scoped admin check reads the session's clusters only")
 	}
-	if !repman.isAdminUserOn("shared", []string{"c1"}, true) {
+	if !repman.isAdminUserOn("shared", loginScope{Scoped: true, Clusters: []string{"c1"}}) {
 		t.Fatal("the scoped admin check sees the grant on the session's cluster")
 	}
 
@@ -136,7 +136,7 @@ func TestInstanceCredentialSessionIsInstanceWide(t *testing.T) {
 			t.Fatalf("the instance's account must pass on %s", cl.Name)
 		}
 	}
-	if _, restricted := repman.requestSessionClusters(bearerRequest(session, "/api/clusters/c1")); restricted {
+	if repman.requestSessionScope(bearerRequest(session, "/api/clusters/c1")).Limited() {
 		t.Fatal("an instance credential's session carries no cluster scope")
 	}
 	p := &repmanmcp.Principal{}
@@ -270,7 +270,7 @@ func TestGlobalTokensCoverClustersAddedLater(t *testing.T) {
 		t.Fatal(err)
 	}
 	adminSession := scopeLogin(t, repman, "admin", "admin-pw")
-	if _, scoped := repman.requestSessionClusters(bearerRequest(adminSession, "/api/clusters/c1")); scoped {
+	if repman.requestSessionScope(bearerRequest(adminSession, "/api/clusters/c1")).Limited() {
 		t.Fatal("fixture: the instance account's session is instance-wide")
 	}
 	adminTok := scopeCreateToken(t, repman, adminSession, APITokenForm{Label: "admin", Clusters: []string{"*"}})

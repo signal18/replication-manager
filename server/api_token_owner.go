@@ -47,6 +47,11 @@ func (repman *ReplicationManager) apiTokenOwnerOK(t *APIToken, r *http.Request) 
 // A local owner holding different passwords on different clusters (a shared account with a
 // password per cluster) is refused: its token may come from a login valid on one cluster only.
 func (repman *ReplicationManager) apiTokenLegacyOwnerOK(t *APIToken) bool {
+	// the instance's Cloud18 identity had a generated local password on every cluster: a token
+	// of it not recorded as SSO may come from a login with one cluster's copy
+	if repman.Conf.Cloud18GitUser != "" && t.User == repman.Conf.Cloud18GitUser && t.OwnerAuthType != "SSO" {
+		return false
+	}
 	if repman.apiTokenOwnerIsSSO(t) {
 		return true
 	}
@@ -89,7 +94,7 @@ func (repman *ReplicationManager) ownerPasswordless(user string) bool {
 // cluster it exists on.
 func (repman *ReplicationManager) ownerPasswordUniform(user string) bool {
 	password := ""
-	for _, cl := range repman.Clusters {
+	for _, cl := range repman.clustersSnapshot() {
 		u, ok := cl.GetAPIUsers()[user]
 		if !ok {
 			continue
