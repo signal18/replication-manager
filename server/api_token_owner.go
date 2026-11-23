@@ -82,16 +82,9 @@ func (repman *ReplicationManager) ownerPasswordUniform(user string) bool {
 }
 
 // apiTokenSSOOwnerIsActive asks whether an SSO token owner is still active upstream (not
-// blocked, not disabled in the identity provider).
-//
-// TODO(security): no upstream check exists in the code yet. The Cloud18 realm is only asked
-// with a person's own credentials (password, refresh token, realm token), and an API token
-// carries none of them, so a blocked or disabled Cloud18 account keeps its repman tokens until
-// it is removed from the clusters' user lists (the owner then no longer exists and its tokens
-// fail, parseVerifiedAPIToken) or its tokens are revoked. Wire apiTokenSSOOwnerActive to a
-// check that answers from a cache refreshed off the request path (F2: never a network call
-// per request), for example a realm admin lookup of the account's `enabled` flag, or the
-// back-office's list of blocked accounts. Until then the answer is "active".
+// disabled in the Cloud18 realm). apiTokenSSOOwnerActive is wired at start to a cache the
+// CRM refreshes off the request path (api_token_owner_upstream.go); nil (tests, or before
+// start) means active.
 func (repman *ReplicationManager) apiTokenSSOOwnerIsActive(owner string) bool {
 	if repman.apiTokenSSOOwnerActive == nil {
 		return true

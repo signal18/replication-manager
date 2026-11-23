@@ -200,6 +200,7 @@ type ReplicationManager struct {
 	apiTokens                   apiTokenStoreState          // user-issued API tokens store (api_token.go)
 	apiTokenSSOOwnerActive      func(owner string) bool     // whether an SSO token owner is still active upstream; nil = no way to know (api_token_owner.go)
 	apiTokenOwnerRefusedLogged  sync.Map                    // token ids whose refusal was logged once (api_token_owner.go), bounded by the token store
+	ssoOwners                   ssoOwnerCache               // Cloud18 account state of the SSO token owners, refreshed off the request path (api_token_owner_upstream.go)
 	ViperConfig                 *viper.Viper                `json:"-"`
 	tlog                        s18log.TermLog
 	termlength                  int
@@ -412,6 +413,9 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.IntVar(&conf.APISecretRevealExpireHours, "api-secret-reveal-expire-hours", 24, "Hours a one-time password link stays valid when not opened")
 	flags.BoolVar(&conf.APIUserTokens, "api-user-tokens", true, "Let users issue API tokens for themselves (bearer tokens narrowed to a subset of their grants and a cluster scope, stored encrypted in monitoring-datadir/api-tokens.json)")
 	flags.IntVar(&conf.APIUserTokensDefaultExpireDays, "api-user-tokens-default-expire-days", 120, "Default lifetime in days of a user-issued API token (0 = never expires)")
+	flags.BoolVar(&conf.APITokenSSOOwnerCheck, "api-token-sso-owner-check", true, "On a Cloud18 instance holding its settlement credential (cloud18-settlement-key-id, cloud18-settlement-secret), refuse the API tokens of an SSO owner whose Cloud18 account is disabled, as the CRM reads it from the realm. Answered from a cache refreshed in the background; a CRM failure keeps the last answer, an owner never answered is active")
+	flags.IntVar(&conf.APITokenSSOOwnerCheckInterval, "api-token-sso-owner-check-interval", 300, "Seconds between two refreshes of the Cloud18 account state of the SSO owners of API tokens (minimum 30)")
+	flags.IntVar(&conf.APITokenSSOOwnerCheckMaxOwners, "api-token-sso-owner-check-max-owners", 200, "Most SSO token owners whose Cloud18 account state is kept and refreshed, most recently used tokens first; the others are not checked (active) and open GWARN026")
 	// 0 = never expires; issueAppAPIToken passes it to the token form as -1 (the form reads 0 as the user default)
 	flags.IntVar(&conf.AppAPITokenExpireDays, "app-api-token-expire-days", 1825, "Lifetime in days of the API token minted for an app whose template references {{app.api.token}}, renewed at provision when under 90 days remain, 0 = never")
 
@@ -1376,6 +1380,8 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.Cloud18SubscriptionPlan, "cloud18-subscription-plan", "free", "Cloud18 subscription plan code (validated by CRM)")
 	flags.StringVar(&conf.Cloud18LicenseFile, "cloud18-license-file", "", "Path to a signed offline license (license.json; detached signature license.sig alongside). When set, the instance sources its Cloud18 plan from this file instead of the CRM — for air-gapped/PCI instances. Verified with plugin-signing-public-key. Empty = normal online CRM path")
 	flags.StringVar(&conf.Cloud18CrmApiUrl, "cloud18-crm-api-url", "https://api.crm.ovh-fr-2.signal18.cloud18.io", "Cloud18 CRM API base URL used for cluster registration")
+	flags.StringVar(&conf.Cloud18SettlementKeyID, "cloud18-settlement-key-id", "", "Key id of this instance's Cloud18 settlement credential (issued at its registration), sent to the CRM as X-Settlement-Key-Id")
+	flags.StringVar(&conf.Cloud18SettlementSecret, "cloud18-settlement-secret", "", "Secret of this instance's Cloud18 settlement credential, encrypted with the instance key")
 	flags.StringVar(&conf.Cloud18DomainAddScript, "cloud18-domain-add-script", "/usr/share/replication-manager/scripts/prov_domain_add_script.sh", "Script to add DNS CNAME entry to cloud18-gateway-domain-name")
 	flags.StringVar(&conf.Cloud18DomainDropScript, "cloud18-domain-drop-script", "", "Script to drop DNS CNAME entry to cloud18-gateway-domain-name")
 	flags.StringVar(&conf.Cloud18DomainUser, "cloud18-domain-user", "", "First parameter to pass prov-domain-?-script")
@@ -3077,6 +3083,9 @@ func (repman *ReplicationManager) Run() error {
 		repman.Logrus.Infof("Cloud18 logins of the previous run kept: %d", n)
 	}
 
+	// before the API listens: apiTokenSSOOwnerActive is set once, then only read
+	repman.initAPITokenSSOOwnerCheck()
+
 	//	repman.currentCluster.SetCfgGroupDisplay(strClusters)
 	if repman.Conf.MCPServ {
 		repman.startMCPServer()
@@ -3422,6 +3431,7 @@ func (repman *ReplicationManager) Run() error {
 		repman.ProduceClusterAggregateStates()
 		repman.ProduceContractedCapacityState()
 		repman.ProduceLicensePullState()
+		repman.ProduceAPITokenSSOOwnerCheckState()
 		if counter%60 == 0 {
 			repman.ProduceCloud18ConnectivityStates()
 		} else {
@@ -4882,7 +4892,7 @@ func (repman *ReplicationManager) GetEncryptedValueFromMemory(key string) string
 	case "vault-token":
 		return repman.Conf.GetStableEncryptedValue("vault-token", repman.Conf.GetDecryptedValue("vault-token"))
 	case "monitoring-tunnel-credential", "registry-consul-credential", "registry-consul-token", "mysqlrouter-pass",
-		"cloud18-domain-secret":
+		"cloud18-domain-secret", "cloud18-settlement-secret":
 		return repman.Conf.GetStableEncryptedValue(key, repman.Conf.GetDecryptedValue(key))
 	default:
 		return ""

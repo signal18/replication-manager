@@ -86,9 +86,32 @@ A removed owner already loses its tokens (`userExists`, `GetACLUser`). A Cloud18
 or disabled at the identity provider but still listed in the clusters keeps them: repman asks
 the realm only with a person's own credentials, and a token carries none. The hook
 `ReplicationManager.apiTokenSSOOwnerActive` (nil: active) is called for SSO owners at every
-token authentication, outside the token store lock. It must answer from a cache refreshed off
-the request path (F2), for example from a realm admin lookup of the account's `enabled` flag or
-from the back-office's list of blocked accounts. Not wired yet.
+token authentication, outside the token store lock. It is wired at start
+(`server/api_token_owner_upstream.go`) to a cache, never to a network call (F2):
+
+- **Source.** The CRM reads the realm with its admin client: `GET /api/identity/active?email=`
+  answers `exists` (a realm account has this email) and `active` (it exists and is enabled). The
+  instance authenticates with its settlement credential (`Authorization: Bearer <secret>`,
+  `X-Settlement-Key-Id`), the machine credential the CRM already uses for the instance's
+  settlement events: `cloud18-settlement-key-id`, `cloud18-settlement-secret` (encrypted with the
+  instance key). Without them, or with `cloud18` off, the check does not run.
+- **Refusal.** A token is refused when its owner exists in the realm and is disabled. An email the
+  realm does not know is not refused: an SSO owner may come from another OAuth provider or be a
+  GitLab account linked before the realm.
+- **Cache (T18).** A background loop asks the CRM every `api-token-sso-owner-check-interval`
+  seconds (default 300, minimum 30) about the SSO owners of the live tokens of the store, most
+  recently used first, at most `api-token-sso-owner-check-max-owners` (default 200). An owner no
+  longer owning a live token leaves the cache at the next refresh. A token issued since the last
+  refresh asks for one at once (refreshes at least 10 s apart).
+- **Failure (F2, fail-open).** A CRM failure keeps the owner's last answer; an owner never answered
+  is active, as before the check. Either opens `GWARN026` until the CRM answers for every owner kept;
+  owners above the limit keep it open too. A newly disabled account is written once to the security
+  log (`api_token_owner_inactive`), each refused token once (`api_token_denied`).
+- **Off-switch (T14).** `api-token-sso-owner-check = false`.
+
+Fail-open follows the code base: the hook was nil (active) before, and a refusal on a CRM outage
+would cut every Cloud18 operator off their automation at once. The delay to a refusal is one
+interval.
 
 ## The instance's Cloud18 identity
 

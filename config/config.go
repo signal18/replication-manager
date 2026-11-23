@@ -1071,6 +1071,8 @@ type Config struct {
 	Cloud18GatewayDomainName         string  `scope:"server" mapstructure:"cloud18-gateway-domain-name" toml:"cloud18-gateway-domain-name"  json:"cloud18GatewayDomainName"`
 	Cloud18GatewayService            string  `scope:"server" mapstructure:"cloud18-gateway-service" toml:"Cloud18-gateway-service" json:"cloud18GatewayService"`
 	Cloud18CrmApiUrl                 string  `scope:"server" mapstructure:"cloud18-crm-api-url" toml:"cloud18-crm-api-url" json:"cloud18CrmApiUrl"`
+	Cloud18SettlementKeyID           string  `scope:"server" mapstructure:"cloud18-settlement-key-id" toml:"cloud18-settlement-key-id" json:"cloud18SettlementKeyId"`
+	Cloud18SettlementSecret          string  `secret:"true" scope:"server" mapstructure:"cloud18-settlement-secret" toml:"cloud18-settlement-secret" json:"-"`
 	Cloud18DomainAddScript           string  `scope:"server" mapstructure:"cloud18-domain-add-script" toml:"cloud18-domain-add-script" json:"cloud18DomainAddScript"`
 	Cloud18DomainDropScript          string  `scope:"server" mapstructure:"cloud18-domain-drop-script" toml:"cloud18-domain-drop-script" json:"cloud18DomainDropScript"`
 	Cloud18DomainUser                string  `scope:"server" mapstructure:"cloud18-domain-user" toml:"cloud18-domain-user" json:"cloud18DomainUser"`
@@ -1173,6 +1175,9 @@ type Config struct {
 	APIUserTokens                          bool                   `scope:"server" mapstructure:"api-user-tokens" toml:"api-user-tokens" json:"apiUserTokens"`
 	APIUserTokensDefaultExpireDays         int                    `scope:"server" mapstructure:"api-user-tokens-default-expire-days" toml:"api-user-tokens-default-expire-days" json:"apiUserTokensDefaultExpireDays"`
 	AppAPITokenExpireDays                  int                    `scope:"server" mapstructure:"app-api-token-expire-days" toml:"app-api-token-expire-days" json:"appApiTokenExpireDays"`
+	APITokenSSOOwnerCheck                  bool                   `scope:"server" mapstructure:"api-token-sso-owner-check" toml:"api-token-sso-owner-check" json:"apiTokenSsoOwnerCheck"`
+	APITokenSSOOwnerCheckInterval          int                    `scope:"server" mapstructure:"api-token-sso-owner-check-interval" toml:"api-token-sso-owner-check-interval" json:"apiTokenSsoOwnerCheckInterval"`
+	APITokenSSOOwnerCheckMaxOwners         int                    `scope:"server" mapstructure:"api-token-sso-owner-check-max-owners" toml:"api-token-sso-owner-check-max-owners" json:"apiTokenSsoOwnerCheckMaxOwners"`
 	ApiSwaggerEnabled                      bool                   `scope:"server" mapstructure:"api-swagger-enabled" toml:"api-swagger-enabled" json:"apiSwaggerEnabled"`
 	TerminalSessionEnabled                 bool                   `scope:"server" mapstructure:"terminal-session-enabled" toml:"terminal-session-enabled" json:"terminalSessionEnabled"`
 	TerminalSessionResume                  bool                   `scope:"server" mapstructure:"terminal-session-resume" toml:"terminal-session-resume" json:"terminalSessionResume"`
