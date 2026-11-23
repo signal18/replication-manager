@@ -43,7 +43,12 @@ func TestProcess(t *testing.T) {
 
 	b := New(cfg, nil)
 	var licenceURI string
+	var gitCalls []string
 	b.run = func(dir string, env []string, name string, args ...string) error {
+		if name == "git" {
+			gitCalls = append(gitCalls, strings.Join(args, " "))
+			return nil // the -pull delivery: nothing staged, a no-op
+		}
 		built := []string{"plugin-a", "plugin-b"}
 		if len(args) > 0 && args[0] == "plugin-licence" {
 			built = []string{"plugin-licence"}
@@ -100,6 +105,10 @@ func TestProcess(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(cfg.DataDir, res.Package)); err != nil {
 		t.Errorf("package not placed in the monitor's datadir: %v", err)
+	}
+	// delivered into the seat's -pull repo, as an online instance's: <company>/<YYYYMM>-<seat>-pull
+	if len(gitCalls) == 0 || !strings.Contains(gitCalls[0], "clone") || !strings.Contains(gitCalls[0], "/company/"+exp+"-1-pull.git") {
+		t.Errorf("delivery git calls %v, want a clone of company/%s-1-pull", gitCalls, exp)
 	}
 }
 
@@ -208,16 +217,16 @@ func TestDeliverToPullUnconfigured(t *testing.T) {
 	}
 }
 
-// TestDeliverPackage pushes an air-gapped package into the client's licences repository with real
-// git, against a local bare repository standing for <GitBaseURL>/<company>/licences.git: the file
-// lands at the root as <uri>.tar.gz in one commit, the same package again is a no-op, and the token
-// never appears in the remote URL.
-func TestDeliverPackage(t *testing.T) {
+// TestDeliverToPullAirGapped pushes an air-gapped seat's plugins with real git into the seat's
+// -pull repository, a local bare repository standing for <GitBaseURL>/<company>/<YYYYMM>-<seat>-pull.git
+// and EMPTY, as the back office creates it: every plugin and its .sig land under plugins/ in one
+// commit, the same plugins again are a no-op, and the token never appears in a commit.
+func TestDeliverToPullAirGapped(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not installed")
 	}
 	tmp := t.TempDir()
-	bare := filepath.Join(tmp, "remote", "acme", "licences.git")
+	bare := filepath.Join(tmp, "remote", "acme", "202612-1-pull.git")
 	gitT := func(dir string, args ...string) string {
 		cmd := exec.Command("git", args...)
 		cmd.Dir = dir
@@ -229,44 +238,38 @@ func TestDeliverPackage(t *testing.T) {
 		return strings.TrimSpace(string(out))
 	}
 	os.MkdirAll(bare, 0o755)
-	gitT(bare, "init", "--bare", "-b", "main")
-	seed := filepath.Join(tmp, "seed")
-	gitT(tmp, "clone", bare, seed)
-	os.WriteFile(filepath.Join(seed, "README.md"), []byte("licences"), 0o644)
-	gitT(seed, "add", "README.md")
-	gitT(seed, "commit", "-m", "init")
-	gitT(seed, "push", "origin", "HEAD:main")
+	gitT(bare, "init", "--bare")
 
 	b := New(Config{GitBaseURL: "file://" + filepath.Join(tmp, "remote"), GitToken: "SECRETTOKEN"}, nil)
 	r := Request{Company: "acme", URI: "acme.202612.1", AirGapped: true}
-	if err := b.deliverPackage(r, "acme.202612.1.tar.gz", []byte("package")); err != nil {
-		t.Fatalf("deliverPackage: %v", err)
+	plugins := []Plugin{{Name: "plugin-a", Data: []byte("bin a"), Sig: []byte("sig a")},
+		{Name: "plugin-licence", Data: []byte("bin licence"), Sig: []byte("sig licence")}}
+	if err := b.deliverToPull(r, plugins); err != nil {
+		t.Fatalf("deliverToPull: %v", err)
 	}
 	check := filepath.Join(tmp, "check")
 	gitT(tmp, "clone", bare, check)
-	got, err := os.ReadFile(filepath.Join(check, "acme.202612.1.tar.gz"))
-	if err != nil || string(got) != "package" {
-		t.Fatalf("package not delivered at the root: %v %q", err, got)
+	for _, p := range plugins {
+		got, err := os.ReadFile(filepath.Join(check, "plugins", p.Name))
+		if err != nil || string(got) != string(p.Data) {
+			t.Fatalf("%s not delivered under plugins/: %v %q", p.Name, err, got)
+		}
+		if sig, err := os.ReadFile(filepath.Join(check, "plugins", p.Name+".sig")); err != nil || string(sig) != string(p.Sig) {
+			t.Fatalf("%s.sig not delivered: %v %q", p.Name, err, sig)
+		}
 	}
-	if n := gitT(check, "rev-list", "--count", "HEAD"); n != "2" {
-		t.Fatalf("%s commits, want 2 (init + the package)", n)
+	if n := gitT(check, "rev-list", "--count", "HEAD"); n != "1" {
+		t.Fatalf("%s commits, want 1", n)
 	}
-	// the same package again: nothing to commit
-	if err := b.deliverPackage(r, "acme.202612.1.tar.gz", []byte("package")); err != nil {
-		t.Fatalf("deliverPackage again: %v", err)
+	// the same plugins again: nothing to commit
+	if err := b.deliverToPull(r, plugins); err != nil {
+		t.Fatalf("deliverToPull again: %v", err)
 	}
 	gitT(check, "pull", "-q")
-	if n := gitT(check, "rev-list", "--count", "HEAD"); n != "2" {
-		t.Fatalf("%s commits after the same package, want 2", n)
+	if n := gitT(check, "rev-list", "--count", "HEAD"); n != "1" {
+		t.Fatalf("%s commits after the same plugins, want 1", n)
 	}
 	if strings.Contains(gitT(check, "log", "--format=%B"), "SECRETTOKEN") {
 		t.Error("token leaked into a commit")
-	}
-}
-
-func TestDeliverPackageUnconfigured(t *testing.T) {
-	b := New(Config{}, nil)
-	if err := b.deliverPackage(Request{Company: "acme", URI: "acme.202612.1"}, "acme.202612.1.tar.gz", nil); err == nil {
-		t.Error("deliverPackage with no git config should fail")
 	}
 }

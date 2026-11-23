@@ -41,13 +41,16 @@ One request at a time; queue bounded to 64, history to the last 50 results (F4).
 The modes differ in identity, expiry and delivery:
 
 - **Air-gapped** (`airGapped:true`): URI `<company>.<YYYYMM>.<seat>`, expiry in the URI. Steps 1–5
-  above build the full `<uri>.tar.gz` (release plugins + licence plugin), test it with `license-pull`,
-  then push it into the client's licences repository `<company>/licences` (root, `<uri>.tar.gz`, one
-  commit per build; the same package again is a no-op), with the same git token and step as the
-  online `-pull` delivery (`pushFiles`). The client's GitLab group members read it there and load it
-  with `license-pull`. The project must exist: the builder's token only reads and writes repositories
-  (`read_repository`, `write_repository`), so the back office, which owns GitLab, creates
-  `<company>/licences` for each air-gapped support client. `GET /packages/<uri>.tar.gz` still serves the package to an admin.
+  above build the full `<uri>.tar.gz` (release plugins + licence plugin) and test it with
+  `license-pull`; then every plugin of the package (binary + `.sig`) is pushed into the seat's `-pull`
+  repo under `plugins/`, with the same step as the online delivery (`deliverToPull`). The seat URI
+  reads like any URI (domain = company, subdomain = `YYYYMM`, zone = seat), so its repo is
+  `<company>/<YYYYMM>-<seat>-pull`: one rule for every client, a URI names a `-pull` repo and the
+  plugins are pushed there. The client's GitLab group members read it and carry it into their
+  network. The project must exist: the builder's token only reads and writes repositories
+  (`read_repository`, `write_repository`), so the back office, which owns GitLab, creates it for
+  each seat of an air-gapped support client (empty; the first push sets its default branch, hence
+  `git push origin HEAD`). The tested `<uri>.tar.gz` stays in the packages dir as an admin's copy.
 - **Online** (`airGapped:false`): URI is the instance's full `<domain>.<subdomain>.<zone>`, expiry
   passed separately (`LICENCE_EXPIRY`, the contract end). Only the `plugin-licence` is built (no
   release plugins, no `license-pull` self-test — that exercises the air-gapped install path); the
@@ -69,8 +72,8 @@ default `cloud18-crm`) of a signal18-admin (`groups` `/signal18-admins` or realm
   or the queue is full.
 - `GET /queue`: `{pending, current, results}`, each result with its state (`queued`, `building`,
   `testing`, `done`, `failed`), error, package and the plugins loaded.
-- `GET /packages/<uri>.tar.gz`: the built package (an admin's copy; the client fetches it in its
-  licences repository).
+- `GET /packages/<uri>.tar.gz`: the built air-gapped package, an admin's copy (the client receives
+  the same plugins in the seat's `-pull` repo).
 
 ## Environment
 

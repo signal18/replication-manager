@@ -25,7 +25,7 @@ type Request struct {
 	URI         string `json:"uri"`       // <company>.<expiry YYYYMM>.<seat>
 	Seat        int    `json:"seat"`      // 1..N
 	Expiry      string `json:"expiry"`    // YYYYMM
-	AirGapped   bool   `json:"airGapped"` // delivered as a download (license-pull), not a -pull push
+	AirGapped   bool   `json:"airGapped"` // no registered instance: the release plugins ride the -pull with the licence
 	Version     string `json:"version"`   // the replication-manager release to build the plugins of
 	Platform    string `json:"platform"`  // GOOS/GOARCH, default linux/amd64
 	RequestedBy string `json:"requestedBy"`
@@ -228,9 +228,10 @@ func (b *Builder) record(r Result) {
 	}
 }
 
-// process builds one seat/instance's licence plugin, then either packages it for an air-gapped
-// download (with the release's other plugins, tested via license-pull) or stores the signed
-// plugin-licence alone, for delivery into a registered instance's -pull repo (#2309).
+// process builds one seat/instance's licence plugin and pushes it into the URI's -pull repo, the one
+// delivery path of every client (#2309, #2418). A registered instance gets the signed plugin-licence
+// alone (its other plugins already ride its -pull); an air-gapped seat gets the release's plugins with
+// it, packaged and tested via license-pull first (the package stays under OutDir as an admin's copy).
 func (b *Builder) process(res *Result) error {
 	r := res.Request
 	goos, goarch, _ := strings.Cut(r.Platform, "/")
@@ -336,9 +337,9 @@ func (b *Builder) process(res *Result) error {
 	if len(loaded) != len(plugins) {
 		return fmt.Errorf("license-pull loaded %d of the %d plugins", len(loaded), len(plugins))
 	}
-	// 6. deliver: the tested package into the client's licences repository, where it fetches it
-	if err := b.deliverPackage(r, name, pkg); err != nil {
-		return fmt.Errorf("deliver to the licences repository: %w", err)
+	// 6. deliver: the tested plugins into the seat's -pull repo, as for a registered instance
+	if err := b.deliverToPull(r, plugins); err != nil {
+		return fmt.Errorf("deliver to -pull: %w", err)
 	}
 	return nil
 }
@@ -376,35 +377,26 @@ func pluginNames(plugins []Plugin) []string {
 	return names
 }
 
-// deliverToPull pushes a registered instance's licence plugin into its -pull repo, into the same
-// plugins/ directory the enterprise plugins live in (inject_plugins' layout: binary + .sig). On its
-// next git pull repman syncs and verifies it against the embedded public key, exactly as for the
-// other plugins. The repo is <GitBaseURL>/<domain>/<subdomain>-<zone>-pull, derived from the full
-// URI domain.subdomain.zone. Unchanged content (same wire/expiry already there) is a no-op.
-func (b *Builder) deliverToPull(r Request, licence []Plugin) error {
+// deliverToPull pushes signed plugins into the URI's -pull repo, into the same plugins/ directory
+// the enterprise plugins live in (inject_plugins' layout: binary + .sig). On its next git pull repman
+// syncs and verifies them against the embedded public key, exactly as for the other plugins. The
+// repo is <GitBaseURL>/<domain>/<subdomain>-<zone>-pull for any three-part URI: a registered
+// instance's domain.subdomain.zone (its plugin-licence), or an air-gapped seat's
+// <company>.<YYYYMM>.<seat> read the same way, <company>/<YYYYMM>-<seat>-pull (the release plugins
+// and the plugin-licence). The project must exist: the builder's token only reads and writes
+// repositories; repman creates a registered instance's at registration, the back office an
+// air-gapped seat's. Unchanged content (same wire/expiry already there) is a no-op.
+func (b *Builder) deliverToPull(r Request, plugins []Plugin) error {
 	parts := strings.Split(r.URI, ".")
 	if len(parts) != 3 {
 		return fmt.Errorf("uri %q is not domain.subdomain.zone", r.URI)
 	}
 	files := map[string]gitFile{}
-	for _, p := range licence {
+	for _, p := range plugins {
 		files[filepath.Join("plugins", p.Name)] = gitFile{p.Data, 0o755}
 		files[filepath.Join("plugins", p.Name+".sig")] = gitFile{p.Sig, 0o644}
 	}
-	return b.pushFiles(fmt.Sprintf("%s/%s-%s-pull", parts[0], parts[1], parts[2]), files, "licence plugin for "+r.URI)
-}
-
-// deliverPackage pushes an air-gapped seat's tested package into the client's licences repository,
-// <GitBaseURL>/<company>/licences, as <uri>.tar.gz at its root (one commit per build): the client
-// fetches it there (its GitLab group's members read the project) and loads it with license-pull.
-// The project must exist: the builder's token only reads and writes repositories, the back office
-// (which owns GitLab) creates it. The same package already there is a no-op.
-func (b *Builder) deliverPackage(r Request, name string, pkg []byte) error {
-	company := r.Company
-	if company == "" {
-		company = strings.SplitN(r.URI, ".", 2)[0]
-	}
-	return b.pushFiles(company+"/licences", map[string]gitFile{name: {pkg, 0o644}}, "licence package "+name)
+	return b.pushFiles(fmt.Sprintf("%s/%s-%s-pull", parts[0], parts[1], parts[2]), files, "plugins for "+r.URI)
 }
 
 // gitFile is one file pushFiles writes: its content and mode.
@@ -463,7 +455,8 @@ func (b *Builder) pushFiles(repoPath string, files map[string]gitFile, message s
 	if err := b.run(dir, ident, "git", "commit", "-m", message); err != nil {
 		return err
 	}
-	if err := b.run(dir, nil, "git", "-c", authHdr, "push"); err != nil {
+	// origin HEAD: a project the back office has just created is empty, its clone has no upstream yet
+	if err := b.run(dir, nil, "git", "-c", authHdr, "push", "origin", "HEAD"); err != nil {
 		return fmt.Errorf("push %s: %w", repoPath, err)
 	}
 	return nil
