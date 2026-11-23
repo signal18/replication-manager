@@ -142,3 +142,23 @@ each attempt.
 `addserver` with the `postgresql` type declares `host:port/postgres` (default port 5432),
 the form the PostgreSQL app uses (`registerEngineAppAsServer`): in a topology other than
 pg-stream or pg-logical, the suffix is what makes a server PostgreSQL.
+
+### A failed connect returns no pool
+
+`sqlx.Connect` closes the pool when its ping fails; `sqlx.ConnectContext` (sqlx v1.4.0) does
+not: it returns the pool, still open, with the error. Every caller of a monitor connect
+drops the connection when the connect failed, so from v3.1.47 (the switch to
+`connectBounded`) each failed connect left one `database/sql` pool and its
+`connectionOpener` goroutine behind: one per failing server per tick, millions after a few
+days, until the monitor ran out of memory. `connectBounded` closes the pool and returns nil
+on error, the contract of `sqlx.Connect`; `Ping` also closes any connection handed back
+with an error before its failure branch, whose returns (the access denied early return
+among them) never keep it.
+
+`connectMonitorDSN`'s TLS retry with the old certificate assigns the connection it opens
+instead of shadowing it, so the working connection is returned, not the failed first one.
+
+Guards: `TestFailedMonitorConnectClosesItsPool` and `TestPingOnFailingServersLeavesNoPool`
+(`cluster/srv_monitor_pool_leak_test.go`) run many connects and monitor ticks on a server
+that refuses, one that closes during the handshake and one that answers access denied
+(1045), and count the open pools (their `connectionOpener` goroutines) before and after.

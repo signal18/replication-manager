@@ -873,6 +873,12 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 		}
 		err = errors.New("split-brain simulation: server link down")
 	}
+	// A failed connect keeps no pool: every return of the failure branch below drops
+	// conn, so a pool handed back with an error would stay open, one per server per tick.
+	if err != nil && conn != nil {
+		conn.Close()
+		conn = nil
+	}
 
 	// Make sure we always have the updated config path status
 	server.HasConfigPathChanged = server.HasConfigPathCookie()
