@@ -22,17 +22,13 @@ import (
 //   - no OwnerScope: a token issued before the field existed. Nothing tells which password
 //     its login used, so it is kept only when that cannot matter (apiTokenLegacyOwnerOK).
 //
-// An SSO owner is then asked to the upstream identity check (apiTokenSSOOwnerActive), when
-// one is wired.
+// A removed owner loses its tokens (the owner no longer exists: parseVerifiedAPIToken,
+// cluster.GetACLUser). repman asks no external service about an owner's account state.
 
 // apiTokenOwnerOK reports whether the owner of a verified token may still use it.
 func (repman *ReplicationManager) apiTokenOwnerOK(t *APIToken, r *http.Request) bool {
 	if t.OwnerScope == "" && !repman.apiTokenLegacyOwnerOK(t) {
 		repman.logAPITokenOwnerRefusal(t, r, "issued before logins carried their cluster scope, by an account whose password differs between clusters: log in with the credentials of the cluster and create a new token")
-		return false
-	}
-	if repman.apiTokenOwnerIsSSO(t) && !repman.apiTokenSSOOwnerIsActive(t.User) {
-		repman.logAPITokenOwnerRefusal(t, r, "its SSO owner is no longer active")
 		return false
 	}
 	return true
@@ -63,7 +59,8 @@ func (repman *ReplicationManager) apiTokenLegacyOwnerOK(t *APIToken) bool {
 // apiTokenOwnerIsSSO reports whether a token's owner is an SSO identity: recorded so
 // (OwnerAuthType "SSO"), or, for a token issued before OwnerScope existed, an owner without a
 // local password on every cluster it exists on. Releases of late September 2026 issued tokens
-// without OwnerAuthType; a passwordless account can only have logged in through SSO.
+// without OwnerAuthType; a passwordless account can only have logged in through SSO, so its
+// token keeps working (apiTokenLegacyOwnerOK).
 func (repman *ReplicationManager) apiTokenOwnerIsSSO(t *APIToken) bool {
 	if t.OwnerAuthType == "SSO" {
 		return true
@@ -107,24 +104,6 @@ func (repman *ReplicationManager) ownerPasswordUniform(user string) bool {
 		}
 	}
 	return password != ""
-}
-
-// apiTokenSSOOwnerIsActive asks whether an SSO token owner is still active upstream (not
-// blocked, not disabled in the identity provider).
-//
-// TODO(security): no upstream check exists in the code yet. The Cloud18 realm is only asked
-// with a person's own credentials (password, refresh token, realm token), and an API token
-// carries none of them, so a blocked or disabled Cloud18 account keeps its repman tokens until
-// it is removed from the clusters' user lists (the owner then no longer exists and its tokens
-// fail, parseVerifiedAPIToken) or its tokens are revoked. Wire apiTokenSSOOwnerActive to a
-// check that answers from a cache refreshed off the request path (F2: never a network call
-// per request), for example a realm admin lookup of the account's `enabled` flag, or the
-// back-office's list of blocked accounts. Until then the answer is "active".
-func (repman *ReplicationManager) apiTokenSSOOwnerIsActive(owner string) bool {
-	if repman.apiTokenSSOOwnerActive == nil {
-		return true
-	}
-	return repman.apiTokenSSOOwnerActive(owner)
 }
 
 // logAPITokenOwnerRefusal writes the refusal of a token to the security log once per token

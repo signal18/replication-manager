@@ -253,21 +253,28 @@ func TestWhoAmIScopeLegacyPasswordlessAndRefusalPruning(t *testing.T) {
 	if ok, _ := repman.IsValidClusterACL(bearerRequest(old.Token, "/api/clusters/c2"), c2); !ok {
 		t.Fatal("a legacy token of a passwordless owner keeps working as an SSO token")
 	}
-	repman.apiTokenSSOOwnerActive = func(string) bool { return false }
-	if ok, _ := repman.IsValidClusterACL(bearerRequest(old.Token, "/api/clusters/c2"), c2); ok {
-		t.Fatal("the SSO owner check applies to a legacy token of a passwordless owner")
+	// a legacy token of an owner with a password per cluster is refused, the refusal logged once
+	refused, err := repman.createAPITokenAs("shared", "", APITokenForm{Label: "old-shared"}, "10.0.0.1:1")
+	if err != nil {
+		t.Fatal(err)
 	}
-	if _, logged := repman.apiTokenOwnerRefusedLogged.Load(old.ID); !logged {
+	st.Lock()
+	st.tokens[refused.ID].OwnerScope = ""
+	st.Unlock()
+	if ok, _ := repman.IsValidClusterACL(bearerRequest(refused.Token, "/api/clusters/c1"), c1); ok {
+		t.Fatal("a legacy token of an owner with a password per cluster is refused")
+	}
+	if _, logged := repman.apiTokenOwnerRefusedLogged.Load(refused.ID); !logged {
 		t.Fatal("the refusal is logged once")
 	}
 	st.Lock()
-	delete(st.tokens, old.ID)
+	delete(st.tokens, refused.ID)
 	err = repman.saveAPITokenStoreLocked()
 	st.Unlock()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, logged := repman.apiTokenOwnerRefusedLogged.Load(old.ID); logged {
+	if _, logged := repman.apiTokenOwnerRefusedLogged.Load(refused.ID); logged {
 		t.Fatal("a refusal record follows its token out of the store")
 	}
 }

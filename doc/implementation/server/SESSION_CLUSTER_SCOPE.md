@@ -118,8 +118,7 @@ issued them necessarily covered all those clusters:
 
 - an SSO owner (`ownerAuthType` SSO), or an owner with no local password on any cluster it
   exists on: releases of late September 2026 stored no `ownerAuthType`, and a passwordless
-  account can only have logged in through SSO. Such an owner is an SSO owner for the upstream
-  check too (`apiTokenOwnerIsSSO`);
+  account can only have logged in through SSO (`apiTokenOwnerIsSSO`);
 - an app token repman issued itself (`createdFrom` "app ...");
 - a local owner whose password is the same on every cluster it exists on. An account of the
   instance's list is one, unless a cluster section sets another password for it.
@@ -134,15 +133,22 @@ The legacy rule is wider than "instance's list or SSO": it also keeps a local ac
 single password on all its clusters, since any login of it was valid on each of them. A password
 rotated since the token was created is not visible to this check.
 
-## SSO owners no longer active upstream
+### Clusters added after a token
 
-A removed owner already loses its tokens (`userExists`, `GetACLUser`). A Cloud18 account blocked
-or disabled at the identity provider but still listed in the clusters keeps them: repman asks
-the realm only with a person's own credentials, and a token carries none. The hook
-`ReplicationManager.apiTokenSSOOwnerActive` (nil: active) is called for SSO owners at every
-token authentication, outside the token store lock. It must answer from a cache refreshed off
-the request path (F2), for example from a realm admin lookup of the account's `enabled` flag or
-from the back-office's list of blocked accounts. Not wired yet.
+A token whose owner's login covered the instance (`ownerScope` `instance`: an SSO session, an
+instance-account session, repman itself) with the `*` scope covers every cluster where its owner
+exists, including clusters added after the token was created: nobody recreates a token when a
+cluster is added. Only a token of a password-scoped session stays bound to the clusters of its
+login. A cluster deletion revokes only the tokens bound to that cluster (`ownerClusters`), never
+a `*` token.
+
+### Owners removed or blocked
+
+A removed owner loses its tokens (`userExists`, `GetACLUser`): the user lists decide. repman asks
+no external service about an owner's account state, and the token lifetime is not capped for it:
+the cause (a login covering clusters its password does not open, a local password for the Cloud18
+identity) is what this change fixes. A ban is a removal from the lists or the password rotation,
+which revokes the owner's tokens (`revokeUserAPITokens`).
 
 ## The instance's Cloud18 identity
 

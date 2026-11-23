@@ -235,8 +235,8 @@ func TestLegacyTokenOwnerRules(t *testing.T) {
 	}
 }
 
-// Fix 3: an SSO owner reported inactive by the hook loses its tokens.
-func TestSSOTokenOwnerInactiveIsRefused(t *testing.T) {
+// A removed owner loses its tokens: repman asks no external service, the user lists decide.
+func TestRemovedOwnerLosesItsTokens(t *testing.T) {
 	repman, c1, _ := newScopeTestManager(t)
 	sso := cluster.APIUser{User: "u@x.io", Roles: map[string]bool{}}
 	c1.SetUserGrants(&sso, "db cluster token")
@@ -246,22 +246,70 @@ func TestSSOTokenOwnerInactiveIsRefused(t *testing.T) {
 		t.Fatal(err)
 	}
 	if ok, _ := repman.IsValidClusterACL(bearerRequest(tok.Token, "/api/clusters/c1"), c1); !ok {
-		t.Fatal("no hook wired: the token works")
+		t.Fatal("the token works while its owner is listed")
 	}
-	active := true
-	repman.apiTokenSSOOwnerActive = func(owner string) bool { return owner != "u@x.io" || active }
-	active = false
+	delete(c1.APIUsers, "u@x.io")
 	if ok, _ := repman.IsValidClusterACL(bearerRequest(tok.Token, "/api/clusters/c1"), c1); ok {
-		t.Fatal("an SSO owner no longer active upstream must lose its tokens")
+		t.Fatal("an owner removed from the lists loses its tokens")
 	}
-	// a local owner's token never asks the SSO hook
-	local, err := repman.createAPITokenAs("admin", "Local", APITokenForm{Label: "ci", Clusters: []string{"c1"}}, "")
+}
+
+// Maintainer requirement: a "*" token of an SSO session or of an instance-account session
+// covers a cluster added after it was created; only a token of a password-scoped session stays
+// bound to the clusters of its login.
+func TestGlobalTokensCoverClustersAddedLater(t *testing.T) {
+	repman, c1, c2 := newScopeTestManager(t)
+	// an SSO identity on both clusters
+	for _, cl := range []*cluster.Cluster{c1, c2} {
+		sso := cluster.APIUser{User: "u@x.io", Roles: map[string]bool{}}
+		cl.SetUserGrants(&sso, "db cluster proxy token")
+		cl.APIUsers["u@x.io"] = sso
+	}
+	ssoTok, err := repman.createAPITokenAs("u@x.io", "SSO", APITokenForm{Label: "sso", Clusters: []string{"*"}}, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	repman.apiTokenSSOOwnerActive = func(string) bool { return false }
-	if ok, _ := repman.IsValidClusterACL(bearerRequest(local.Token, "/api/clusters/c1"), c1); !ok {
-		t.Fatal("a local owner's token is not judged by the SSO hook")
+	adminSession := scopeLogin(t, repman, "admin", "admin-pw")
+	if _, scoped := repman.requestSessionClusters(bearerRequest(adminSession, "/api/clusters/c1")); scoped {
+		t.Fatal("fixture: the instance account's session is instance-wide")
+	}
+	adminTok := scopeCreateToken(t, repman, adminSession, APITokenForm{Label: "admin", Clusters: []string{"*"}})
+	scopedSession := scopeLogin(t, repman, "shared", "pw-of-c1")
+	scopedTok := scopeCreateToken(t, repman, scopedSession, APITokenForm{Label: "scoped", Clusters: []string{"*"}})
+
+	// a cluster added after the tokens, holding the same accounts
+	c3 := &cluster.Cluster{
+		Name:           "c3",
+		Conf:           c1.Conf,
+		APIUsers:       map[string]cluster.APIUser{},
+		Grants:         c1.Grants,
+		Roles:          c1.Roles,
+		SecurityLogrus: c1.SecurityLogrus,
+	}
+	for _, name := range []string{"admin", "shared", "u@x.io"} {
+		c3.APIUsers[name] = c1.APIUsers[name]
+	}
+	repman.Lock()
+	repman.Clusters["c3"] = c3
+	repman.ClusterList = append(repman.ClusterList, "c3")
+	repman.Unlock()
+
+	if ok, _ := repman.IsValidClusterACL(bearerRequest(ssoTok.Token, "/api/clusters/c3"), c3); !ok {
+		t.Fatal("a \"*\" token of an SSO session covers a cluster added later")
+	}
+	if ok, _ := repman.IsValidClusterACL(bearerRequest(adminTok.Token, "/api/clusters/c3"), c3); !ok {
+		t.Fatal("a \"*\" token of an instance-account session covers a cluster added later")
+	}
+	if ok, _ := repman.IsValidClusterACL(bearerRequest(scopedTok.Token, "/api/clusters/c3"), c3); ok {
+		t.Fatal("a token of a password-scoped session stays bound to its login's clusters")
+	}
+
+	// deleting another cluster changes nothing for the "*" tokens
+	repman.markClusterDeleted("c2")
+	for _, tok := range []string{ssoTok.Token, adminTok.Token} {
+		if ok, _ := repman.IsValidClusterACL(bearerRequest(tok, "/api/clusters/c3"), c3); !ok {
+			t.Fatal("a cluster deletion never revokes a \"*\" token")
+		}
 	}
 }
 
