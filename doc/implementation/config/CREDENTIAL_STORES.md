@@ -303,6 +303,22 @@ test counts from what the file holds when it starts.
   cluster's version store (the save writes the file), offline the file as before.
   `secret-store-copy` is unchanged (an export copy). An app secret's versions
   (`apps/<app>/<key>`) are history: `--all` leaves them out, an explicit app key is refused.
+- **Prune the history of one secret** (`Cluster.PruneSecretHistory`, API
+  `POST /api/clusters/{cluster}/secret-kv-actions/prune-history/{key}[?dry-run=true]`, grant
+  `cluster-server-credentials`, GUI: Settings, credential stores, "Version history"): a value
+  that leaked is removed from the version store of the running monitor, the save writes the
+  file (T25). `secret-store-prune` cannot do it: it prunes every key (the root password
+  history that decrypts old backups goes with it), keeps the last N whatever they are, and
+  run offline next to a live monitor it is undone by the next save, which writes the file from
+  memory. Rule per key: a key the version store holds keeps its latest version and the last
+  `from_config_file` one (`--keep-last 1`); any other secret (the file is only its history,
+  the config is the value: `api-credentials-external`, the API accounts) keeps its latest
+  version only when it decrypts to the current value, else none (the next reconcile records the
+  current value again). Values are compared in memory, never logged or returned (F10). A
+  monitor pair prunes on both monitors: the standby merges the active monitor's versions
+  (rule 11) and would bring a pruned version back after a failover. Copies elsewhere (a vault
+  entry, the config repo's git history, `cluster.d/<cluster>_secret_store.json` exports) are
+  not touched.
 - **Orchestrator and app writers** (rule 7): `reportOrchestratorSecret` after each
   successful OpenSVC `CreateSecretKeyValue*` and `k8sPatchSecretValues` (the root password
   under every database server, the shard proxy password under every shard proxy, an app's

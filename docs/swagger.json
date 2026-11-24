@@ -12794,6 +12794,74 @@
                 }
             }
         },
+        "/api/clusters/{clusterName}/secret-kv-actions/prune-history/{secretKey}": {
+            "post": {
+                "description": "Removes the past versions of one secret from the cluster's version store (secret_store.json, written by the next save and pushed with the config): a value that leaked is gone from it. A credential the version store holds keeps its latest version (and the last one a config file held); any other secret (api-credentials-external...) keeps its latest version only when it is the current value. Values are never returned. A monitor pair keeps its own copy: prune on both. What a vault entry holds is not touched.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterCredentials"
+                ],
+                "summary": "Prune the history of a secret",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Secret key, e.g. api-credentials-external",
+                        "name": "secretKey",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Count only, change nothing",
+                        "name": "dry-run",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/cluster.SecretHistoryPruneSummary"
+                        }
+                    },
+                    "400": {
+                        "description": "Not a secret",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/secret-kv-actions/remove/{entryName}": {
             "post": {
                 "description": "Takes the entry out of the list. repman never deletes a secret: what the vault holds stays.",
@@ -29315,6 +29383,23 @@
                 }
             }
         },
+        "cluster.SecretHistoryPruneSummary": {
+            "type": "object",
+            "properties": {
+                "dryRun": {
+                    "type": "boolean"
+                },
+                "key": {
+                    "type": "string"
+                },
+                "versionsKept": {
+                    "type": "integer"
+                },
+                "versionsRemoved": {
+                    "type": "integer"
+                }
+            }
+        },
         "cluster.SecretKvListResult": {
             "type": "object",
             "properties": {
@@ -29335,6 +29420,13 @@
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/config.SecretKvConfig"
+                    }
+                },
+                "history": {
+                    "description": "versions per secret in the local file, never a value",
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "integer"
                     }
                 },
                 "pinned": {
@@ -35191,6 +35283,10 @@
         "server.ServerSecretKvState": {
             "type": "object",
             "properties": {
+                "aliasPath": {
+                    "description": "AliasPath is the second key of the user list in an orchestrator store, the one named\nafter the API host (\u003capi host\u003e_api-credentials, kept equal to the one under Path)",
+                    "type": "string"
+                },
                 "behind": {
                     "type": "string"
                 },

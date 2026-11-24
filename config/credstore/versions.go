@@ -432,6 +432,18 @@ func (s *VersionStore) Take(held func(string) bool) map[string][]FileVersion {
 	return out
 }
 
+// Replace sets the versions of key, none removing the key; the next save writes the file.
+func (s *VersionStore) Replace(key string, versions []FileVersion) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(versions) == 0 {
+		delete(s.versions, key)
+	} else {
+		s.versions[key] = append([]FileVersion(nil), versions...)
+	}
+	s.dirty = true
+}
+
 // MarkDirty asks the next save to write the file.
 func (s *VersionStore) MarkDirty() {
 	s.mu.Lock()
@@ -493,6 +505,17 @@ func (s *VersionStore) Empty() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return len(s.versions) == 0
+}
+
+// Counts is the number of versions of each key, never a value.
+func (s *VersionStore) Counts() map[string]int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make(map[string]int, len(s.versions))
+	for k, vs := range s.versions {
+		out[k] = len(vs)
+	}
+	return out
 }
 
 // Count is how many versions key has.
