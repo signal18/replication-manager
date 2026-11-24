@@ -684,6 +684,27 @@ is treated the same; only the path a level maps to differs per store.
   (`StoreItem.Alias`) that is never taken as the entry's place. With no public host (none, or
   `localhost`, a loopback or unspecified address, as the default `https://127.0.0.1:10005`) the
   alias is not written, with a WARN: every such instance would share the same key.
+  So `system/sec/repman` holds two prefixes for the instance, by design: `<prefix>_<key>` for
+  every server secret, and `<api host>_api-credentials` for the user list, both written from the
+  same version in the same pass (equal, each with its `_OLD`). The server list's location says
+  both (`ServerSecretKvState.Path`). The host written is saved with the entry
+  (`SecretKvConfig.AliasWrittenAs`, `alias-written-as`): when `api-public-url` names another
+  host, the old host's key is never deleted; it keeps the value it had, is no longer updated,
+  and gets `<old host>_moved-to` = the new key's name, with a WARN and a security event
+  (`server_secret_kv_alias_moved`) saying so: delete it in the orchestrator once nothing reads
+  it (`recordServerKvAlias`).
+  **The start (fixed 2026-11-24).** The server credentials are taken from `/etc` and the pass is
+  asked in `InitConfig`, before any cluster is initialised. The worker used to start there: an
+  orchestrator store's carrier was not listed yet, the write failed with "cluster X, which
+  carries this store, is not monitored here", the store was behind (`GWARN024`, `WARN0320` on
+  every cluster) and the worker slept a whole `secret-kv-retry-interval` before the next try.
+  At every start, every cluster showed the store behind for about a minute, and an `/etc` edit
+  reached the store that minute late (seen on a marketplace instance: `/etc` edited, restart,
+  new version taken at once, store written 61 s later; the store did hold the current value
+  after that, and was rightly not rewritten at the next restart, its value being unchanged). Now
+  the worker starts only once every cluster is initialised (`startServerKvWorker`,
+  `clustersReady`): what is queued or due before waits for the first tick, which comes after.
+  A carrier that is still missing then is a real reason, and the store is behind with it.
   **Upgrade:** this applies on-prem too. The first tick after the upgrade of an instance with a
   cluster on OpenSVC or Kubernetes adds `cloud18-opensvc` or `cloud18-kubernetes` and writes the
   server secrets there. **Orchestrator unreachable** (agent down, certificate not loaded, a

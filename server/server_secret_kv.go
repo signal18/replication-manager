@@ -176,6 +176,18 @@ func (repman *ReplicationManager) queueServerVersion(key string) {
 		return
 	}
 	repman.serverKvQueue().Push(items...)
+	repman.startServerKvWorker()
+}
+
+// startServerKvWorker starts the server stores' worker once every cluster is initialised
+// (clustersReady). Before, an orchestrator store's carrier is not listed yet: the write failed
+// with "not monitored here", the store was behind (GWARN024, WARN0320 on every cluster) and the
+// worker waited a whole secret-kv-retry-interval before the next try, at every start. What is
+// queued or due meanwhile waits for the first tick, which comes after the clusters are ready.
+func (repman *ReplicationManager) startServerKvWorker() {
+	if !repman.clustersReady.Load() {
+		return
+	}
 	repman.serverKvRunner().Start()
 }
 
@@ -225,7 +237,7 @@ func (repman *ReplicationManager) startServerKvPass() {
 	}
 	repman.serverKvQueue()
 	repman.serverSecretKv.passDue.Store(true)
-	repman.serverKvRunner().Start()
+	repman.startServerKvWorker()
 }
 
 // ServerKvBehind is why each server entry is behind, for the states of every level.
@@ -261,7 +273,7 @@ func (repman *ReplicationManager) checkServerSecretKvStores() {
 		repman.startServerKvPass()
 	}
 	if q := repman.serverKvQueue(); q.Len() > 0 || repman.serverSecretKv.passDue.Load() {
-		repman.serverKvRunner().Start()
+		repman.startServerKvWorker()
 	}
 	repman.ensureServerMarketplaceVaults()
 	repman.ensureServerOrchestratorStores()
@@ -515,6 +527,12 @@ func (repman *ReplicationManager) serverSecretKvList() ServerSecretKvListResult 
 		st := ServerSecretKvState{LastWrite: k.lastWritten[e.Name], Behind: behind[e.Name], Mandatory: mandatory[e.Name]}
 		if named {
 			st.Path = repman.Conf.ServerSecretKvLocation(e, name)
+			if e.Offer == config.ConstSecretKvOrchestratorOffer {
+				// the second key of the same secret: two prefixes in the object, said here
+				if host, why := aliasHost(repman.Conf.APIPublicURL); why == "" {
+					st.Path += ", and the user list also under " + host + "_" + apiCredentialsKey + " (the API host's key, kept equal)"
+				}
+			}
 		}
 		res.States[e.Name] = st
 	}
