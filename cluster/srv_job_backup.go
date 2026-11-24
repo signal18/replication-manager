@@ -8077,17 +8077,37 @@ func (server *ServerMonitor) ProcessReseedLogical(task string) error {
 		server.markReseedStoppedLinks([]string{cluster.Conf.MasterConn}, "restore of "+backupfile)
 
 		// positioned on its source only: a link pointing elsewhere is not moved (law T27)
+		var pointLogs string
+		var pointErr error
 		if ok, why := server.reseedLinkPointsToPrimary(); !ok {
 			linkOnSource = false
 			server.markReseedStoppedLinks([]string{cluster.Conf.MasterConn}, why+": the reseed does not move a link, rejoin the server")
 		} else if server.DBVersion.IsMySQLOrPercona() {
 			if server.HasMySQLGTID() {
-				cluster.pointSlaveToMasterWithMode(server, "MASTER_AUTO_POSITION")
+				pointLogs, pointErr = cluster.pointSlaveToMasterWithMode(server, "MASTER_AUTO_POSITION")
 			} else {
-				cluster.pointSlaveToMasterPositional(server)
+				pointLogs, pointErr = cluster.pointSlaveToMasterPositional(server)
 			}
 		} else {
-			cluster.pointSlaveToMasterWithMode(server, "SLAVE_POS")
+			pointLogs, pointErr = cluster.pointSlaveToMasterWithMode(server, "SLAVE_POS")
+		}
+		if pointErr != nil {
+			cluster.LogSQL(pointLogs, pointErr, server.URL, "Rejoin", config.LvlErr, "Failed to point %s to the primary before the restore: %s", server.URL, pointErr)
+			// Error 3079, a MySQL/Percona replica with several channels and the managed one not
+			// named: the statement did nothing and the relay log of the link stays in place. The
+			// restore that follows would put the data back to the backup and the replica would
+			// resume past the transactions it applied before, replication started, data short.
+			// The reseed ends here, before anything is loaded; the link stays stopped and WARN0252
+			// says so (law T27). Any other positioning error is logged above and the reseed goes on
+			// as it always did: some failed states, a restore that stopped half-way, are repaired by
+			// the next restore.
+			if server.DBVersion.IsMySQLOrPercona() && isReplicaMultipleChannelsError(pointErr) {
+				err := fmt.Errorf("reseed %s cancelled before the restore: positioning on the primary failed: %w", server.URL, pointErr)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error reseed %s on %s: %s", backupType, server.URL, err.Error())
+				server.MarkReseedFailed(err)
+				server.JobsUpdateStateRuntimeOnly(task, err.Error(), 5, 1)
+				return err
+			}
 		}
 	}
 
