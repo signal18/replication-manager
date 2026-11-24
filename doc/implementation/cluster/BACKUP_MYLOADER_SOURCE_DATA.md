@@ -13,9 +13,10 @@ and sent `CHANGE REPLICATION SOURCE TO SOURCE_PORT=…, SOURCE_LOG_FILE=…, SOU
 on its own:
 
 - MariaDB (every version tested: 10.6, 10.11, 11.8, 12.2) has no such statement: error 1064.
-  From mydumper 0.20.1 myloader exits 1 after the data is fully loaded, so
-  `jobReseedMyLoader` returned an error and `applyMyLoaderReplicaPosition` never ran.
-  Before 0.20.1 the error was only a warning in the myloader output.
+  With myloader 1.0.1 it exits 1 after the data is fully loaded, so `jobReseedMyLoader`
+  returned an error and `applyMyLoaderReplicaPosition` never ran. With myloader 0.18.1 the
+  error is logged and the restore completes (both measured; the versions in between were
+  not tested).
 - MySQL/Percona: on a node without a channel the statement is accepted and leaves no
   replication configuration behind. On a replica that already has a channel with
   SOURCE_AUTO_POSITION active (a reseed, a flashback rejoin) the server refuses it with

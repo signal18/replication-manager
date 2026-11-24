@@ -81,8 +81,8 @@ func (cluster *Cluster) GetMyLoaderCompatibleOptions() []string {
 // loads. The mydumper backups of this tool are taken with --source-data=2 to record the binary log
 // file, position and GTID set in their metadata, which also marks them
 // "myloader_exec_change_source = 1": myloader then sends CHANGE REPLICATION SOURCE TO on its own.
-// MariaDB has no such statement (error 1064; from mydumper 0.20.1 myloader then exits 1 after the
-// data is loaded and the restore fails), and on MySQL/Percona the source of a replica is the
+// MariaDB has no such statement (error 1064; myloader 1.0.1 then exits 1 after the data is loaded
+// and the restore fails, myloader 0.18.1 only logs the error and completes), and on MySQL/Percona the source of a replica is the
 // business of the replication manager, which positions it after the load
 // (applyMyLoaderReplicaPosition). --source-data=0 on myloader overrides the metadata and leaves the
 // recorded position in place. The backups already taken carry the mark, so this is done on the

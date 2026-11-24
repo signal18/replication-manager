@@ -8,10 +8,10 @@ import (
 )
 
 // The backups of this tool carry "myloader_exec_change_source = 1" (taken with --source-data=2):
-// myloader then sends CHANGE REPLICATION SOURCE TO, which MariaDB refuses (1064) and, from
-// mydumper 0.20.1, ends with exit 1 after the data is loaded. Run against MariaDB 10.5 to 12.2
-// with myloader 1.0.1 and 1.0.11: --source-data=0 on myloader sends nothing, the data and the
-// metadata position are intact, and the restore exits 0.
+// myloader then sends CHANGE REPLICATION SOURCE TO, which MariaDB refuses (1064): myloader 1.0.1
+// ends with exit 1 after the data is loaded, myloader 0.18.1 logs the error and completes. Run on
+// MariaDB 10.6, 10.11, 11.8 and 12.2 with myloader 1.0.1 (1.0.11 on MariaDB 12.2): --source-data=0
+// on myloader sends nothing, the data and the metadata position are intact, and the restore exits 0.
 //
 // myloader 0.17.1 rejects the option (option parsing failure) and 0.18.1 accepts it.
 func TestMyLoaderNoSourceChangeArgsVersions(t *testing.T) {
