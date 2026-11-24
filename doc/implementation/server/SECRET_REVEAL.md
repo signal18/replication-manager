@@ -31,6 +31,12 @@ forwarded, indexed and kept in mailboxes for years; a link that works once and e
   mail-to address (the cluster's external users left out), the Vault address and the token behind
   a link of its own. It was mailed in clear before (`SendVaultTokenByMail`, removed).
 
+- **The admin login** (`POST /api/clusters/settings/actions/admin-login-reveal/send`): a session
+  link (kind `admin-login`), see `ADMIN_LOGIN_REVEAL.md`. The store keeps no secret for it: the
+  value is read when it is opened, by its person only, in a Cloud18 session, through its own route.
+  The public route refuses a link of a kind without burning it (403, header
+  `X-Repman-Reveal-Session`): the page then opens it in the browser's session.
+
 ## How it works
 
 - `newSecretReveal(for, cluster, title, items)`: 32 random bytes, base64url, as the code. The store

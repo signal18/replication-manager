@@ -31,6 +31,8 @@ export const globalClustersService = {
   putServerSecretKv,
   switchServerSecretKv,
   removeServerSecretKv,
+  sendAdminLoginReveal,
+  openAdminLoginReveal,
   licensePull,
   refreshAppTemplateRepo,
   getAppTemplateStructureGuide,
@@ -172,6 +174,17 @@ function switchServerSecretKv(entryName, enabled) {
 
 function removeServerSecretKv(entryName) {
   return getApi().post(`clusters/settings/actions/server-secret-kv/remove/${encodeURIComponent(entryName)}`)
+}
+
+// the admin login by one-time link: the instance's sysops and extsysops signed in with Cloud18;
+// the link goes to the email of the session, the answer never carries the value
+function sendAdminLoginReveal() {
+  return getApi().post(`clusters/settings/actions/admin-login-reveal/send`)
+}
+
+// opens a one-time admin login link in the signed-in session of the person it was mailed to
+function openAdminLoginReveal(code) {
+  return getApi().post(`clusters/settings/actions/admin-login-reveal/open`, { code })
 }
 
 // license-pull (#2309): load from a package file in the datadir what a git pull of the -pull

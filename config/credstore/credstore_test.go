@@ -676,3 +676,32 @@ func TestMarkConfigFileValue(t *testing.T) {
 		t.Fatal("a real edit after it was missed")
 	}
 }
+
+// Prune filters under the store's lock: a Record that starts while the filter runs waits for the
+// prune and lands after it, never lost between the read and the write; a dry run changes nothing.
+func TestVersionStorePruneKeepsAConcurrentRecord(t *testing.T) {
+	conf := testConf()
+	key := "replication-credential"
+	vs := NewVersionStore(func() *config.Config { return conf }, func(k string) bool { return k == key }, nil, nil)
+	for _, v := range []string{"r:1", "r:2", "r:3"} {
+		vs.Record(key, conf.EncryptSecretValue(v), v)
+	}
+	if before, after := vs.Prune(key, true, func(v []FileVersion) []FileVersion { return v[len(v)-1:] }); before != 3 || after != 1 || vs.Count(key) != 3 {
+		t.Fatalf("dry run %d %d, count %d", before, after, vs.Count(key))
+	}
+	done := make(chan struct{})
+	before, after := vs.Prune(key, false, func(v []FileVersion) []FileVersion {
+		go func() {
+			vs.Record(key, conf.EncryptSecretValue("r:4"), "r:4")
+			close(done)
+		}()
+		return v[len(v)-1:]
+	})
+	<-done
+	if before != 3 || after != 1 || vs.Count(key) != 2 {
+		t.Fatalf("prune %d %d, count %d: the concurrent version was lost", before, after, vs.Count(key))
+	}
+	if v := vs.Versions(key); conf.DecryptSecretValue(key, v[len(v)-1].HashValue) != "r:4" {
+		t.Fatal("the concurrent version is not the latest")
+	}
+}

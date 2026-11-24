@@ -271,6 +271,10 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSecretKvRemove)),
 	))
+	router.Handle("/api/clusters/{clusterName}/secret-kv-actions/prune-history/{secretKey}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSecretKvPruneHistory)),
+	)).Methods(http.MethodPost) // irreversible: never from a GET (a link, a prefetch, a retry)
 
 	// archive list (#2091)
 	router.Handle("/api/clusters/{clusterName}/archive-list", negroni.New(
@@ -503,6 +507,16 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 			negroni.Wrap(h),
 		)).Methods(http.MethodPost)
 	}
+	// the admin login by one-time link, for the instance's sysops and extsysops signed in with
+	// Cloud18 (ADMIN_LOGIN_REVEAL.md)
+	router.Handle("/api/clusters/settings/actions/admin-login-reveal/send", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAdminLoginRevealSend)),
+	)).Methods(http.MethodPost)
+	router.Handle("/api/clusters/settings/actions/admin-login-reveal/open", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAdminLoginRevealOpen)),
+	)).Methods(http.MethodPost)
 	router.Handle("/api/clusters/settings/actions/license-pull", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxLicensePull)),

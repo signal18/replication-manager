@@ -683,6 +683,132 @@
                 }
             }
         },
+        "/api/clusters/settings/actions/admin-login-reveal/open": {
+            "post": {
+                "description": "Shows the local admin login (user, password) once, as the login decides on it at this moment, to the person the link was mailed to: the same Cloud18 session email, still holding the server credentials grant on every cluster. The link is deleted at this open. Another person, a local login or an API token is refused and the link kept; an expired, used or unknown link gets 404. Nothing is rotated.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "User"
+                ],
+                "summary": "Open a one-time admin login link",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "The code from the link (after #)",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/server.SecretRevealForm"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The admin login, shown once",
+                        "schema": {
+                            "$ref": "#/definitions/server.SecretRevealResult"
+                        }
+                    },
+                    "400": {
+                        "description": "No code",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "Not a Cloud18 session, the server credentials grant missing, or a link of another person (kept)",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "Already opened, expired or unknown",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "409": {
+                        "description": "No admin password in the instance's list, or not in force yet (kept)",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "503": {
+                        "description": "Off (api-secret-reveal-admin-login, api-secret-reveal) or no encryption key",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/settings/actions/admin-login-reveal/send": {
+            "post": {
+                "description": "Mails a one-time link to the local admin login (user and password of the admin zone) to the email of the caller's own Cloud18 session, never to an address from the request. The instance's sysops and extsysops signed in with Cloud18 only: the server credentials grant on every cluster; a local login or an API token is refused. The link expires after api-secret-reveal-admin-login-expire-minutes (15), opens once, and only in the same person's signed-in session. The answer never carries the value nor the link: the masked address and the expiry. Nothing is rotated. At most api-secret-reveal-admin-login-max-per-hour links (5) per person.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "User"
+                ],
+                "summary": "Send me the admin login",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Where the link went (masked) and its expiry",
+                        "schema": {
+                            "$ref": "#/definitions/server.AdminLoginRevealSent"
+                        }
+                    },
+                    "403": {
+                        "description": "Not a Cloud18 session, or the server credentials grant missing on a cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "409": {
+                        "description": "No admin password in the instance's list, or not in force yet",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "429": {
+                        "description": "Too many links asked for in the last hour",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "503": {
+                        "description": "Off (api-secret-reveal-admin-login, api-secret-reveal), no encryption key, no mail server or no api-public-url",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/settings/actions/calibrate-iops": {
             "post": {
                 "description": "Runs the embedded sysbench fileio (2G of files, 16 KiB random read/write, direct IO, 16 threads, 20 s) in the working directory at the lowest CPU priority, then removes the files. Answers the host IOPS and that figure times the agents and, with apply=true, writes the latter to resource-manager-infra-iops. Representative when every node has the same storage.",
@@ -955,7 +1081,7 @@
         },
         "/api/clusters/settings/actions/server-secret-kv": {
             "get": {
-                "description": "The entries of the server level, which hold the server secrets (api-credentials, SMTP, GitLab...): a vault under \u003cpath-prefix\u003e/system/repman/\u003cinstance name\u003e, the OpenSVC secret system/sec/repman or a Kubernetes Secret repman-system under the keys \u003cinstance name\u003e_\u003ckey\u003e: secrets never returned, only the names of those set; each one's state (last write, behind: GWARN024, WARN0320 on every cluster) and folder, the instance's name (empty while not complete), the server secrets' names, the plugins' manifests and whether a config file sets the list. The instance's sysops and extsysops only: the server credentials grant on every cluster.",
+                "description": "The entries of the server level, which hold the server secrets (api-credentials, SMTP, GitLab...): a vault under \u003cpath-prefix\u003e/system/repman/\u003cinstance name\u003e, the OpenSVC secret system/sec/repman or a Kubernetes Secret repman-system under the keys \u003cinstance name\u003e_\u003ckey\u003e (an orchestrator store also keeps the user list under \u003capi host\u003e_api-credentials): secrets never returned, only the names of those set; each one's state (last write, behind: GWARN024, WARN0320 on every cluster) and folder, the instance's name (empty while not complete), the server secrets' names, the plugins' manifests and whether a config file sets the list. The instance's sysops and extsysops only: the server credentials grant on every cluster.",
                 "produces": [
                     "application/json"
                 ],
@@ -12661,6 +12787,74 @@
                     },
                     "409": {
                         "description": "The list is set by a config file",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/secret-kv-actions/prune-history/{secretKey}": {
+            "post": {
+                "description": "Removes the past versions of one secret from the cluster's version store (secret_store.json, written by the next save and pushed with the config): a value that leaked is gone from it. A credential the version store holds keeps its latest version (and the last one a config file held); any other secret (api-credentials-external...) keeps its latest version only when it is the current value. Values are never returned. A monitor pair keeps its own copy: prune on both. What a vault entry holds is not touched.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterCredentials"
+                ],
+                "summary": "Prune the history of a secret",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Secret key, e.g. api-credentials-external",
+                        "name": "secretKey",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Count only, change nothing",
+                        "name": "dry-run",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/cluster.SecretHistoryPruneSummary"
+                        }
+                    },
+                    "400": {
+                        "description": "Not a secret",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster",
                         "schema": {
                             "type": "string"
                         }
@@ -25143,6 +25337,12 @@
                             "type": "string"
                         }
                     },
+                    "403": {
+                        "description": "A link that opens only in its person's signed-in session (header X-Repman-Reveal-Session): not burned",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
                     "404": {
                         "description": "Already opened, expired or unknown",
                         "schema": {
@@ -29186,6 +29386,23 @@
                 }
             }
         },
+        "cluster.SecretHistoryPruneSummary": {
+            "type": "object",
+            "properties": {
+                "dryRun": {
+                    "type": "boolean"
+                },
+                "key": {
+                    "type": "string"
+                },
+                "versionsKept": {
+                    "type": "integer"
+                },
+                "versionsRemoved": {
+                    "type": "integer"
+                }
+            }
+        },
         "cluster.SecretKvListResult": {
             "type": "object",
             "properties": {
@@ -29206,6 +29423,13 @@
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/config.SecretKvConfig"
+                    }
+                },
+                "history": {
+                    "description": "versions per secret in the local file, never a value",
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "integer"
                     }
                 },
                 "pinned": {
@@ -30472,6 +30696,15 @@
                 },
                 "apiSecretReveal": {
                     "type": "boolean"
+                },
+                "apiSecretRevealAdminLogin": {
+                    "type": "boolean"
+                },
+                "apiSecretRevealAdminLoginExpireMinutes": {
+                    "type": "integer"
+                },
+                "apiSecretRevealAdminLoginMaxPerHour": {
+                    "type": "integer"
                 },
                 "apiSecretRevealExpireHours": {
                     "type": "integer"
@@ -34211,6 +34444,17 @@
                 }
             }
         },
+        "server.AdminLoginRevealSent": {
+            "type": "object",
+            "properties": {
+                "expires": {
+                    "type": "string"
+                },
+                "mailedTo": {
+                    "type": "string"
+                }
+            }
+        },
         "server.ApiResponse": {
             "type": "object",
             "properties": {
@@ -35042,6 +35286,10 @@
         "server.ServerSecretKvState": {
             "type": "object",
             "properties": {
+                "aliasPath": {
+                    "description": "AliasPath is the second key of the user list in an orchestrator store, the one named\nafter the API host (\u003capi host\u003e_api-credentials, kept equal to the one under Path)",
+                    "type": "string"
+                },
                 "behind": {
                     "type": "string"
                 },

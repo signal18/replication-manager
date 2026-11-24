@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/config/credstore"
 	"github.com/signal18/replication-manager/config/credstore/vaultfake"
 	"github.com/signal18/replication-manager/utils/state"
 )
@@ -411,6 +412,65 @@ func TestPruneSecretVersionsThroughSave(t *testing.T) {
 	}
 	if vs, _ := cl.SecretVersionsInFile("replication-credential"); len(vs) != 2 || vs[1] != "r:4" {
 		t.Fatalf("file after append %v", vs)
+	}
+}
+
+// a leaked value goes from the history: a key the store only keeps the history of
+// (api-credentials-external) keeps its latest version when it is the current value, none when
+// the config moved on; a key the store holds keeps its latest version; the save writes the file
+func TestPruneSecretHistory(t *testing.T) {
+	cl := secretKvTestCluster(t)
+	cl.Conf.MonitoringSecretVersioning = true
+	if err := os.MkdirAll(filepath.Join(cl.Conf.WorkingDir, cl.Name), 0700); err != nil {
+		t.Fatal(err)
+	}
+	ext := "api-credentials-external"
+	vs := cl.versionStore()
+	for _, v := range []string{"u:old", "u:"} {
+		vs.Record(ext, cl.Conf.EncryptSecretValue(v), v)
+	}
+	cl.Conf.SetDynamicFlag(ext, cl.Conf.EncryptSecretValue("u:"))
+	cl.CredentialChain().Refresh()
+	if s, err := cl.PruneSecretHistory(ext, true, "tester"); err != nil || s.VersionsRemoved != 1 || vs.Count(ext) != 2 {
+		t.Fatalf("dry run %+v %v count %d", s, err, vs.Count(ext))
+	}
+	if s, err := cl.PruneSecretHistory(ext, false, "tester"); err != nil || s.VersionsRemoved != 1 || s.VersionsKept != 1 {
+		t.Fatalf("summary %+v %v", s, err)
+	}
+	cl.ReconcileSecretVersionStore()
+	if got, _ := cl.SecretVersionsInFile(ext); len(got) != 1 || got[0] != "u:" {
+		t.Fatalf("file %v", got)
+	}
+	// the history holds only a value the config no longer has (the DR's case): all goes
+	vs.Replace(ext, nil)
+	vs.Record(ext, cl.Conf.EncryptSecretValue("u:old"), "u:old")
+	if s, _ := cl.PruneSecretHistory(ext, false, "tester"); s.VersionsRemoved != 1 || s.VersionsKept != 0 || vs.Count(ext) != 0 {
+		t.Fatalf("summary %+v count %d", s, vs.Count(ext))
+	}
+	// a credential the store holds keeps its head
+	for _, v := range []string{"r:1", "r:2", "r:3"} {
+		if err := cl.CredentialChain().Set("replication-credential", v); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if s, _ := cl.PruneSecretHistory("replication-credential", false, "tester"); s.VersionsRemoved != 2 {
+		t.Fatalf("held %+v", s)
+	}
+	if got := cl.Conf.GetDecryptedValue("replication-credential"); got != "r:3" {
+		t.Fatalf("current %q", got)
+	}
+	// rule 9: the last version a config file held stays with the head
+	enc := cl.Conf.EncryptSecretValue
+	vs.Replace("replication-credential", []credstore.FileVersion{
+		{HashValue: enc("r:cfg"), FromConfigFile: true}, {HashValue: enc("r:x")}, {HashValue: enc("r:3")}})
+	if s, _ := cl.PruneSecretHistory("replication-credential", false, "tester"); s.VersionsRemoved != 1 || s.VersionsKept != 2 {
+		t.Fatalf("held with a config file version %+v", s)
+	}
+	if got := cl.Conf.GetDecryptedValue("replication-credential"); got != "r:3" {
+		t.Fatalf("current after rule 9 %q", got)
+	}
+	if _, err := cl.PruneSecretHistory("not-a-secret", false, "tester"); err == nil {
+		t.Fatal("a non-secret key was accepted")
 	}
 }
 

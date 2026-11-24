@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -1032,6 +1033,57 @@ func (cluster *Cluster) PruneSecretVersions(keepLast int, dryRun bool) SecretVer
 	return summary
 }
 
+// SecretHistoryPruneSummary is what PruneSecretHistory removed from one secret's versions.
+type SecretHistoryPruneSummary struct {
+	Key             string `json:"key"`
+	VersionsRemoved int    `json:"versionsRemoved"`
+	VersionsKept    int    `json:"versionsKept"`
+	DryRun          bool   `json:"dryRun"`
+}
+
+// PruneSecretHistory removes the past versions of one secret of a loaded cluster: a value that
+// leaked stays in the version store, and in the file pushed with the config, until then.
+//   - a key the version store holds (the chain's head, isVersionedKey): its latest version stays,
+//     with the last one a config file held (#2227 rule 9), as secret-store-prune --keep-last 1;
+//   - any other key (api-credentials-external...): the file is its history only, the config
+//     is the value; its latest version stays when it is the current value, every other goes.
+//
+// The values are compared in memory and never logged (F10). The file is written by the next
+// save (T25). A monitor pair keeps its own copy: prune on both (rule 11 merges the versions).
+// by is the API user who asked, written in the log line with the counts.
+func (cluster *Cluster) PruneSecretHistory(key string, dryRun bool, by string) (SecretHistoryPruneSummary, error) {
+	summary := SecretHistoryPruneSummary{Key: key, DryRun: dryRun}
+	if !slices.Contains(config.SecretKeys, key) {
+		return summary, fmt.Errorf("%s is not a secret", key)
+	}
+	vs := cluster.versionStore()
+	// read before the store's lock (the chain may read the store): the filter below only
+	// compares, under the lock, so a version recorded meanwhile is never lost (Prune)
+	held, current := vs.Holds(key), cluster.Conf.GetDecryptedValue(key)
+	before, after := vs.Prune(key, dryRun, func(versions []credstore.FileVersion) []credstore.FileVersion {
+		if held {
+			pruned, _, _ := credstore.PruneVersions(map[string][]credstore.FileVersion{key: versions}, 1)
+			return pruned[key]
+		}
+		// versions is oldest first: last is the latest. A latest version that does not decrypt
+		// to the current value (or does not decrypt at all) is not kept: the history fails
+		// closed, the next reconcile records the current value again.
+		if last := versions[len(versions)-1]; cluster.Conf.DecryptSecretValue(key, last.HashValue) == current {
+			return []credstore.FileVersion{last}
+		}
+		return nil
+	})
+	summary.VersionsKept = after
+	summary.VersionsRemoved = before - after
+	if dryRun || summary.VersionsRemoved == 0 {
+		return summary, nil
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+		"Secret history of %s pruned by %s: %d version(s) removed, %d kept", key, by, summary.VersionsRemoved, summary.VersionsKept)
+	cluster.Save()
+	return summary, nil
+}
+
 // orchestratorSecretKind is the place, in the stores' layout, of a key the orchestrator layer
 // sets in the cluster's shared secret object ("env": the OpenSVC sec object, the Kubernetes
 // Secret): the database root password under every database server, the shard proxy password
@@ -1339,6 +1391,7 @@ type SecretKvListResult struct {
 	DropsPending bool                            `json:"dropsPending"` // WARN0272
 	Settings     map[string]int                  `json:"settings"`
 	Credentials  []CredentialInfo                `json:"credentials"`
+	History      map[string]int                  `json:"history"` // versions per secret in the local file, never a value
 }
 
 // SecretKvList is the vault entry list for the API.
@@ -1350,6 +1403,7 @@ func (cluster *Cluster) SecretKvList() SecretKvListResult {
 		States:  map[string]SecretKvState{},
 		Plugins: config.SecretKvPlugins(),
 		Pinned:  cluster.SecretKvsPinned(),
+		History: cluster.versionStore().Counts(),
 		Queued:  q.Len(),
 		Dropped: q.Dropped(),
 		Settings: map[string]int{

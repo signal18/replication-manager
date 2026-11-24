@@ -2329,3 +2329,18 @@ func TestBuildClusterAPIPayload_APIUsersFromGetter(t *testing.T) {
 		t.Fatal("a password reached the payload")
 	}
 }
+
+// the history prune is irreversible: POST only, a GET (a link, a prefetch) never reaches it
+func TestSecretKvPruneHistoryRoute_PostOnly(t *testing.T) {
+	repman := &ReplicationManager{Conf: &config.Config{}}
+	router := mux.NewRouter()
+	repman.apiClusterProtectedHandler(router)
+	for method, want := range map[string]int{http.MethodGet: http.StatusMethodNotAllowed, http.MethodPost: http.StatusUnauthorized} {
+		req := httptest.NewRequest(method, "/api/clusters/c1/secret-kv-actions/prune-history/api-credentials-external?dry-run=true", nil)
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		if w.Code != want {
+			t.Fatalf("%s: got %d, want %d", method, w.Code, want)
+		}
+	}
+}

@@ -18,3 +18,15 @@ func TestAPIUserListWithPassword(t *testing.T) {
 		t.Fatal("APIUserListHas")
 	}
 }
+
+func TestAPIUserListPassword(t *testing.T) {
+	if p, ok := APIUserListPassword(" admin:a:b, ops:c,dev:", "admin"); !ok || p != "a:b" {
+		t.Fatalf("admin: %q %v", p, ok)
+	}
+	if p, ok := APIUserListPassword("admin:a,dev:", "dev"); !ok || p != "" {
+		t.Fatalf("dev: %q %v", p, ok)
+	}
+	if _, ok := APIUserListPassword("admin:a", "adm"); ok {
+		t.Fatal("an absent user was found")
+	}
+}
