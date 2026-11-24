@@ -55,11 +55,22 @@ the open shows the new password. **A reveal never rotates anything.**
 - Single use, `api-secret-reveal-admin-login-expire-minutes` (15), the store's bound (256 reveals,
   expired ones dropped at every write).
 - Rate limit: `api-secret-reveal-admin-login-max-per-hour` (5) links per person in a sliding hour,
-  in memory; the requests older than an hour are dropped at every call and the map holds at most
-  1024 people (F4, T18).
+  in memory, keyed on the email without case; a request whose mail was not sent (no mail server,
+  store error) is given back. The requests older than an hour are dropped at every call and the map
+  holds at most 1024 people (F4, T18): beyond, another person's count restarts (only the instance's
+  sysops and extsysops reach it, far fewer).
+- The open reads the value before taking the reveal store's lock; the check under the lock only
+  compares (no other reveal waits on the credential chain or the clusters).
 - Security log (`logSecurityEvent`): `admin_login_reveal_requested`, `_mailed`, `_opened`,
   `_refused` (with why), and the aggregated `secret_reveal_refused` for unknown, expired or used
   codes. Never the value, never the code (F10). `Cache-Control: no-store` on both answers.
+
+## Trade-off
+
+A Cloud18 sysops or extsysops can now reach the local admin password: a compromised Cloud18 account
+together with its mailbox gives the admin login. Both are needed (the link opens only in the
+person's own Cloud18 session, not by the mail alone); the switch turns the path off for an
+instance that does not want it, and the user doc says so.
 
 ## Settings (server scope, global settings)
 

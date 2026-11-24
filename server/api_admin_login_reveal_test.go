@@ -329,8 +329,27 @@ func TestAdminLoginRevealSwitchAndRate(t *testing.T) {
 	if w := adminRevealCall(repman, repman.handlerMuxAdminLoginRevealSend, adminRevealSend, ssoToken(t, repman, "ext@acme.example"), nil); w.Code != http.StatusOK {
 		t.Fatalf("other person: %d", w.Code)
 	}
+	if repman.adminLoginRevealAllow("SYS@acme.example", time.Now()) {
+		t.Fatal("the limit depends on the case of the email")
+	}
 	if !repman.adminLoginRevealAllow("sys@acme.example", time.Now().Add(61*time.Minute)) {
 		t.Fatal("the limit does not end after an hour")
+	}
+}
+
+// A link that could not be mailed does not count: a missing mail server never uses up the hour.
+func TestAdminLoginRevealFailedMailNotCounted(t *testing.T) {
+	repman, _, sent := adminRevealManager(t)
+	sys := ssoToken(t, repman, "sys@acme.example")
+	repman.Conf.MailSMTPAddr = ""
+	for i := 0; i < 7; i++ {
+		if w := adminRevealCall(repman, repman.handlerMuxAdminLoginRevealSend, adminRevealSend, sys, nil); w.Code != http.StatusServiceUnavailable {
+			t.Fatalf("no mail server, try %d: %d", i+1, w.Code)
+		}
+	}
+	repman.Conf.MailSMTPAddr = "smtp.example:25"
+	if w := adminRevealCall(repman, repman.handlerMuxAdminLoginRevealSend, adminRevealSend, sys, nil); w.Code != http.StatusOK || len(*sent) != 1 {
+		t.Fatalf("after the failures: %d", w.Code)
 	}
 }
 

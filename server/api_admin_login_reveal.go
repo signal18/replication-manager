@@ -57,10 +57,13 @@ var adminLoginRevealRequests struct {
 }
 
 // adminLoginRevealAllow records a request of who at now and answers whether it is within
-// api-secret-reveal-admin-login-max-per-hour (5 when not positive). Requests older than an hour
-// are dropped at every call, and the map is bounded (adminLoginRevealRequestersMax): beyond it,
-// the people with no request in the last hour go first, then any.
+// api-secret-reveal-admin-login-max-per-hour (5 when not positive). who is compared without case,
+// as the open compares the link's person. Requests older than an hour are dropped at every call,
+// and the map is bounded (adminLoginRevealRequestersMax): beyond it, the people with no request in
+// the last hour go first, then any other (whose count restarts: only the instance's sysops and
+// extsysops reach this, far fewer than the bound).
 func (repman *ReplicationManager) adminLoginRevealAllow(who string, now time.Time) bool {
+	who = strings.ToLower(who)
 	limit := repman.Conf.APISecretRevealAdminLoginMaxPerHour
 	if limit <= 0 {
 		limit = 5
@@ -97,6 +100,25 @@ func (repman *ReplicationManager) adminLoginRevealAllow(who string, now time.Tim
 	}
 	l.at[who] = append(l.at[who], now)
 	return true
+}
+
+// adminLoginRevealRelease gives back the request of who at at: no link was mailed (no mail
+// server, store error), so a misconfiguration never uses up the person's hour.
+func adminLoginRevealRelease(who string, at time.Time) {
+	who = strings.ToLower(who)
+	l := &adminLoginRevealRequests
+	l.Lock()
+	defer l.Unlock()
+	ts := l.at[who]
+	for i, t := range ts {
+		if t.Equal(at) {
+			l.at[who] = append(ts[:i:i], ts[i+1:]...)
+			break
+		}
+	}
+	if len(l.at[who]) == 0 {
+		delete(l.at, who)
+	}
 }
 
 // adminLoginRevealEnabled: the switch, and the one-time links it is built on.
@@ -192,7 +214,8 @@ func (repman *ReplicationManager) handlerMuxAdminLoginRevealSend(w http.Response
 		refuse(http.StatusConflict, err.Error())
 		return
 	}
-	if !repman.adminLoginRevealAllow(email, time.Now()) {
+	asked := time.Now()
+	if !repman.adminLoginRevealAllow(email, asked) {
 		refuse(http.StatusTooManyRequests, "too many admin login links asked for in the last hour: use the last one mailed, or try again later")
 		return
 	}
@@ -201,6 +224,7 @@ func (repman *ReplicationManager) handlerMuxAdminLoginRevealSend(w http.Response
 		"You asked for the admin login of this replication-manager (its admin zone: global settings). The link opens only in your own Cloud18 session ("+email+"): sign in with Cloud18 in the browser where you open it. Nothing was changed: the login stays as it is.",
 		repman.adminLoginRevealExpiry())
 	if err != nil {
+		adminLoginRevealRelease(email, asked)
 		refuse(http.StatusServiceUnavailable, "admin login link not mailed: "+err.Error())
 		return
 	}
@@ -241,7 +265,9 @@ func (repman *ReplicationManager) handlerMuxAdminLoginRevealOpen(w http.Response
 		http.Error(w, "Invalid request: the code of the link is needed", http.StatusBadRequest)
 		return
 	}
-	var pass string
+	// read before the store's lock: the check under it only compares, no other reveal waits on
+	// the credential chain or the clusters
+	pass, passErr := repman.instanceAdminLogin()
 	_, err := repman.openSecretRevealIf(strings.TrimSpace(form.Code), func(rev *secretReveal) error {
 		if rev.Kind != secretRevealKindAdminLogin {
 			return errSecretRevealGone // another kind of link is never opened here
@@ -249,9 +275,7 @@ func (repman *ReplicationManager) handlerMuxAdminLoginRevealOpen(w http.Response
 		if !strings.EqualFold(rev.For, email) {
 			return errAdminLoginRevealOther
 		}
-		var verr error
-		pass, verr = repman.instanceAdminLogin()
-		return verr
+		return passErr
 	})
 	switch {
 	case err == nil:
