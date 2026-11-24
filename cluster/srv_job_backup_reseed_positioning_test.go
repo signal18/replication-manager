@@ -154,8 +154,8 @@ func TestProcessReseedLogical_MydumperPositioningFailureStopsBeforeRestore(t *te
 			env := newReseedPositioningEnv(t, tc.flavor, tc.major, tc.minor)
 			defer env.closeDB()
 			env.cl.Conf.ForceSlaveNoGtid = tc.forceNoGtid
-			// the statement the server answers 3079 to, as read in the lab (the text is formatted into
-			// the error with %s, not wrapped: the test reads the message)
+			// the error the server answers to the statement: a typed *mysql.MySQLError, which
+			// dbhelper.ChangeMaster wraps with %w, so the number is read with errors.As
 			failure := &mysql.MySQLError{Number: 3079, Message: "Multiple channels exist on the replica. Please provide channel name as an argument."}
 			env.mock.MatchExpectationsInOrder(true)
 			env.mock.ExpectExec("STOP (SLAVE|REPLICA)").WillReturnResult(sqlmock.NewResult(0, 0))
