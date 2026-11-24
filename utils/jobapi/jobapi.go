@@ -478,8 +478,11 @@ func (c *Client) NeedConfigRefresh() (bool, error) {
 	switch {
 	case code == http.StatusOK:
 		return true, nil
+	case code == http.StatusNoContent:
+		// "not needed"
+		return false, nil
 	case strings.Contains(body, "No config refresh needed"):
-		// the route answers "not needed" with a 500 and this text
+		// "not needed" from a replication-manager up to v3.1.52: a 500 with this text
 		return false, nil
 	}
 	return false, fmt.Errorf("config refresh: http %d %s", code, body)
