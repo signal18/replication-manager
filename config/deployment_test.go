@@ -413,3 +413,18 @@ func TestDeployment_NormalizeVolumeSizes_LoadPath(t *testing.T) {
 		})
 	}
 }
+
+// The clone script prefixes https:// itself: the repository reaches its environment
+// without a scheme, whether it was stored with https://, http:// or none.
+func TestGitCloneRepositoryEnvWithoutScheme(t *testing.T) {
+	for stored, want := range map[string]string{
+		"github.com/a/b.git":         "github.com/a/b.git",
+		"https://github.com/a/b.git": "github.com/a/b.git",
+		"http://git.example.com/a/b": "git.example.com/a/b",
+	} {
+		gc := &GitClone{Name: "src", GitRepo: stored}
+		if got := gc.GetEnvVariables()[GitVarSuffixRepo]; got != want {
+			t.Errorf("%q: env value %q, want %q", stored, got, want)
+		}
+	}
+}

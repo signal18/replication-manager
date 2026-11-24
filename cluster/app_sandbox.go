@@ -127,7 +127,7 @@ func ValidateGitBranch(name, branch string) error {
 // without https:// (http:// is cloned over https too). The clone runs over https: another
 // scheme (ssh://, git@host:path, file://, ext::) is refused, it would not clone anyway.
 func ValidateGitRepository(name, repo string) error {
-	r := strings.TrimPrefix(strings.TrimPrefix(repo, "https://"), "http://")
+	r := config.GitRepositoryWithoutScheme(repo)
 	if !gitRepoRe.MatchString(r) || strings.Contains(r, "://") || strings.Contains(r, "..") {
 		return fmt.Errorf("git clone %s repository %q: an https repository such as github.com/team/repo.git is expected (ssh and other schemes are not cloned)", name, repo)
 	}

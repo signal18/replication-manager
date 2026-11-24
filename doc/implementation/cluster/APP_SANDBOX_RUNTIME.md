@@ -97,6 +97,13 @@ agent's user. The command therefore checks where it runs before it evaluates any
 - any other runtime: the container files docker (`/.dockerenv`, present under
   `runsc-hostnet` too) or podman (`/run/.containerenv`) create, which a node does not have.
 
+Residual: on the non-`runsc` form the guard only proves "inside some container". An agent
+that itself runs in a docker container has `/.dockerenv` at its root, so an agent that
+ignored the `container` keyword *and* runs containerized would pass it, with a non-gVisor
+runtime only. The `runsc*` form has no such gap (the gVisor kernel is not the agent's).
+Accepted: om3 agents are installed on the nodes, not in containers, and the agent that
+ignores the keyword is an older om3, which also only warns.
+
 Outside, it prints `reload refused: not in the app sandbox` and exits 1: the task fails, the
 live resize reports it (APPERR011), nothing ran on the node. The text is fixed (the runtime
 name only picks one of the two forms) and carries no ` ;` nor ` #`, which om3's INI reader
@@ -161,7 +168,8 @@ with an error naming the value:
   a section and the prefix of its environment keys), whose branch is not a git ref name on a
   strict character set (`ValidateGitBranch`: no `..`, `//`, trailing `/`, `.` or `.lock`),
   whose repository is not an https host and path (`ValidateGitRepository`: with or without
-  `https://`; ssh, `git@host:path`, `file://` and `ext::` are refused, the clone runs over
+  `https://` or `http://`, stripped from the environment value by
+  `config.GitRepositoryWithoutScheme` since the script adds `https://` itself; ssh, `git@host:path`, `file://` and `ext::` are refused, the clone runs over
   https and would not clone them), whose volume is not a volume or whose directory is not a
   plain path;
 - an S3 mount whose name is not an identifier, whose uid/gid is not numeric, or whose
@@ -206,6 +214,14 @@ service keeps its previous definition). The refusal is:
   nothing was sent to the orchestrator: <the value and why>", shown with the app's other
   states until a rendering succeeds (`App.ServiceDefinitionError`);
 - an error line in the app log, and the error returned to the API call or job that asked.
+
+Every rendering goes through `OpenSVCGetAppTemplateSectionMap`, which sets or clears the
+state: the provisioning (v2 and v3), the v3 definition refresh (`OpenSVCUpdateAppTemplate`),
+the v2 environment refresh (`openSVCUpdateAppEnvironmentV2`, which renders the whole
+definition and takes `container#app` from it) and the template preview of the API. The state
+is read from the app each monitoring tick (`App.GetMonitoringStatus`), so a deleted app takes
+it with it. A value fixed without a new rendering keeps the state until the next provisioning
+or refresh, which is what the message asks for.
 
 The operator fixes the value named (app settings or the template) and provisions again.
 What can be met in stored apps:

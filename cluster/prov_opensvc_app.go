@@ -1089,11 +1089,13 @@ func (cluster *Cluster) openSVCUpdateAppEnvironmentV2(svc opensvc.Collector, app
 	for _, h := range hosts {
 		nodes = append(nodes, h.Node_name)
 	}
-	appContainer, err := cluster.OpenSVCGetAppContainerSection(app)
+	// the whole definition is rendered through OpenSVCGetAppTemplateSectionMap, as on v3:
+	// a refused value raises APPERR012 and a good one clears it on this path too
+	svcsection, err := cluster.OpenSVCGetAppTemplateSectionMap(app)
 	if err != nil {
 		return fmt.Errorf("config/secret maps updated, service definition not refreshed: %w", err)
 	}
-	set, unset := appEnvironmentKeywordsV2(appContainer, nodes)
+	set, unset := appEnvironmentKeywordsV2(svcsection["container#app"], nodes)
 	if len(set) == 0 {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Environment keywords of %s left as they are: none rendered for prov-db-service-type %q", app.ServiceName, cluster.Conf.ProvType)
 		return nil

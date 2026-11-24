@@ -1383,9 +1383,17 @@ func GetGitSecretKeys() []string {
 	}
 }
 
+// GitRepositoryWithoutScheme returns a git clone repository without its leading https://
+// or http://. The clone script always prefixes https:// itself, so a repository stored
+// with its scheme would otherwise clone https://https://... The validator
+// (cluster.ValidateGitRepository) checks the same form.
+func GitRepositoryWithoutScheme(repo string) string {
+	return strings.TrimPrefix(strings.TrimPrefix(repo, "https://"), "http://")
+}
+
 func (gc *GitClone) GetEnvVariables() map[string]string {
 	envVars := make(map[string]string)
-	envVars[GitVarSuffixRepo] = gc.GitRepo
+	envVars[GitVarSuffixRepo] = GitRepositoryWithoutScheme(gc.GitRepo)
 	envVars[GitVarSuffixBranch] = gc.GitBranch
 	envVars[GitVarSuffixUser] = gc.GitUser
 	return envVars
