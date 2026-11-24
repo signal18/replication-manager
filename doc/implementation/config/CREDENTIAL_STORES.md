@@ -686,13 +686,24 @@ is treated the same; only the path a level maps to differs per store.
   alias is not written, with a WARN: every such instance would share the same key.
   So `system/sec/repman` holds two prefixes for the instance, by design: `<prefix>_<key>` for
   every server secret, and `<api host>_api-credentials` for the user list, both written from the
-  same version in the same pass (equal, each with its `_OLD`). The server list's location says
-  both (`ServerSecretKvState.Path`). The host written is saved with the entry
+  same version in the same pass (equal, each with its `_OLD`). The server list gives both
+  (`ServerSecretKvState.Path` for the folder, `AliasPath` for the host's key, two fields: a
+  location stays a location for an API client). The host written is saved with the entry
   (`SecretKvConfig.AliasWrittenAs`, `alias-written-as`): when `api-public-url` names another
-  host, the old host's key is never deleted; it keeps the value it had, is no longer updated,
-  and gets `<old host>_moved-to` = the new key's name, with a WARN and a security event
-  (`server_secret_kv_alias_moved`) saying so: delete it in the orchestrator once nothing reads
-  it (`recordServerKvAlias`).
+  host, the old host's key is never deleted; it keeps the value it had, **passwords included,
+  and is never rotated again**: an admin password changed later is not in it, the one it had
+  stays readable there until an operator deletes the key. Two `moved-to` markers say where the
+  list is now, both naming the new key: `<old host>_moved-to` and `<new host>_moved-to` (a
+  marker naming its own host's key says that key is the current one, so a move back A to B to A
+  leaves no marker at A still pointing at B). A WARN and a security event
+  (`server_secret_kv_alias_moved`) say it once, at the move: delete the old key in the
+  orchestrator once nothing reads it (`recordServerKvAlias`). The markers are queued before the
+  host is saved: a stop in between loses the queue (memory) but not the move, the next write
+  queues them again; a failed marker write is requeued by the runner like any item. Limits: an
+  instance upgraded from a release that wrote the alias but did not record the host has an empty
+  `alias-written-as`; its first write records the host and leaves no marker, so an alias key
+  left under an older host before the upgrade is not marked. `alias-written-as` is written by
+  the active monitor's worker only, without the compare-and-set `written-as` has.
   **The start (fixed 2026-11-24).** The server credentials are taken from `/etc` and the pass is
   asked in `InitConfig`, before any cluster is initialised. The worker used to start there: an
   orchestrator store's carrier was not listed yet, the write failed with "cluster X, which
@@ -703,7 +714,8 @@ is treated the same; only the path a level maps to differs per store.
   new version taken at once, store written 61 s later; the store did hold the current value
   after that, and was rightly not rewritten at the next restart, its value being unchanged). Now
   the worker starts only once every cluster is initialised (`startServerKvWorker`,
-  `clustersReady`): what is queued or due before waits for the first tick, which comes after.
+  `clustersReady`): what is queued or due before is written once the flag is raised
+  (`startServerKvWorker` right after `clustersReady.Store(true)`), the tick only retries.
   A carrier that is still missing then is a real reason, and the store is behind with it.
   **Upgrade:** this applies on-prem too. The first tick after the upgrade of an instance with a
   cluster on OpenSVC or Kubernetes adds `cloud18-opensvc` or `cloud18-kubernetes` and writes the

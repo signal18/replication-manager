@@ -161,8 +161,8 @@ func TestServerKvAliasKeyFollowsTheHost(t *testing.T) {
 	if strings.Join(paths, ",") != "acme_repman1_paris,repman-a.example.com" {
 		t.Fatalf("keys %v", paths)
 	}
-	if loc := repman.serverSecretKvList().States[name].Path; !strings.Contains(loc, "acme_repman1_paris_<key>") || !strings.Contains(loc, "repman-a.example.com_api-credentials") {
-		t.Fatalf("the list does not say both keys: %q", loc)
+	if st := repman.serverSecretKvList().States[name]; !strings.Contains(st.Path, "acme_repman1_paris_<key>") || strings.Contains(st.Path, "api-credentials") || st.AliasPath != "repman-a.example.com_api-credentials" {
+		t.Fatalf("the list does not say both keys, each in its field: %+v", st)
 	}
 
 	// the first write records the host, no marker
@@ -179,8 +179,15 @@ func TestServerKvAliasKeyFollowsTheHost(t *testing.T) {
 	c.APIPublicURL = "https://repman-b.example.com"
 	repman.recordServerKvWrittenAs(name, repman.serverKvItems(name, apiCredentialsKey, v, false))
 	queued := repman.serverKvQueue().Take()
-	if len(queued) != 1 || queued[0].Path != "repman-a.example.com" || queued[0].Key != ConstServerKvMovedTo || queued[0].Version.Value != "repman-b.example.com_api-credentials" {
-		t.Fatalf("marker %+v", queued)
+	markers := map[string]string{}
+	for _, it := range queued {
+		if it.Key != ConstServerKvMovedTo {
+			t.Fatalf("not a marker: %+v", it)
+		}
+		markers[it.Path] = it.Version.Value
+	}
+	if len(markers) != 2 || markers["repman-a.example.com"] != "repman-b.example.com_api-credentials" || markers["repman-b.example.com"] != "repman-b.example.com_api-credentials" {
+		t.Fatalf("markers %+v", queued)
 	}
 	// the marker's own write changes nothing
 	repman.recordServerKvWrittenAs(name, queued)
@@ -191,5 +198,17 @@ func TestServerKvAliasKeyFollowsTheHost(t *testing.T) {
 	out, err := c.SecretKvsTomlAt(config.SecretKvLevelServer, "saved-default")
 	if err != nil || !strings.Contains(out, `alias-written-as = "repman-b.example.com"`) {
 		t.Fatalf("not saved:\n%s", out)
+	}
+
+	// back to the first host (A to B to A): A's marker names A's key again, so it does not
+	// keep saying the list moved to B; B's says the list is under A
+	c.APIPublicURL = "https://repman-a.example.com"
+	repman.recordServerKvWrittenAs(name, repman.serverKvItems(name, apiCredentialsKey, v, false))
+	markers = map[string]string{}
+	for _, it := range repman.serverKvQueue().Take() {
+		markers[it.Path] = it.Version.Value
+	}
+	if markers["repman-a.example.com"] != "repman-a.example.com_api-credentials" || markers["repman-b.example.com"] != "repman-a.example.com_api-credentials" {
+		t.Fatalf("flip-back markers %+v", markers)
 	}
 }

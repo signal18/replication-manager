@@ -281,6 +281,7 @@ function SecretKvEntries({ clusterName, user, level = 'cluster' }) {
             <Badge colorScheme='purple' variant={badgeVariant}>{target(e)}</Badge>
             <Text as='span' fontSize='sm' color={mutedColor}>
               {folder(e, state)}
+              {isServer && state?.aliasPath ? `, and the user list also under ${state.aliasPath} (the API host's key, kept equal)` : ''}
               {e.settings?.mode === 'database_engine' ? ' (database engine)' : ''}
               {state?.lastWrite && !state.lastWrite.startsWith('0001') ? ` · last write ${new Date(state.lastWrite).toLocaleString()}` : ''}
             </Text>

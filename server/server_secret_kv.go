@@ -482,6 +482,9 @@ type ServerSecretKvState struct {
 	Behind    string    `json:"behind,omitempty"`
 	// Path is the entry's folder for this instance, empty while the instance is not named
 	Path string `json:"path,omitempty"`
+	// AliasPath is the second key of the user list in an orchestrator store, the one named
+	// after the API host (<api host>_api-credentials, kept equal to the one under Path)
+	AliasPath string `json:"aliasPath,omitempty"`
 	// Mandatory: the entry cannot be switched off (serverStoreMandatory); the GUI shows it locked
 	Mandatory bool `json:"mandatory,omitempty"`
 }
@@ -530,7 +533,7 @@ func (repman *ReplicationManager) serverSecretKvList() ServerSecretKvListResult 
 			if e.Offer == config.ConstSecretKvOrchestratorOffer {
 				// the second key of the same secret: two prefixes in the object, said here
 				if host, why := aliasHost(repman.Conf.APIPublicURL); why == "" {
-					st.Path += ", and the user list also under " + host + "_" + apiCredentialsKey + " (the API host's key, kept equal)"
+					st.AliasPath = credstore.StoreItem{Path: host, Key: apiCredentialsKey}.PrefixedKey()
 				}
 			}
 		}
