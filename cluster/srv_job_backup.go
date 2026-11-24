@@ -3670,7 +3670,7 @@ func (server *ServerMonitor) jobReseedMyLoader(backupdir string, restoreUser boo
 	fresh := server.CheckFreshNode()
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Logical restore (myloader) strategy for %s: fresh %t (%s)", server.URL, fresh.Fresh, fresh.Reason)
 
-	myargs := cluster.GetMyLoaderCompatibleOptions()
+	myargs := myLoaderNoSourceChangeArgs(cluster.GetMyLoaderCompatibleOptions(), cluster.myLoaderVersion())
 	if server.URL == master.URL {
 		myargs = append(myargs, "--enable-binlog")
 	}
