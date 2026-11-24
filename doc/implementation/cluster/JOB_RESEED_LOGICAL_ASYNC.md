@@ -111,6 +111,14 @@ If `cluster.Conf.BackupLoadScript` is set:
 
 ### Mydumper restore
 
+- Before the restore, unless PITR, the managed channel is pointed at the primary
+  (`pointSlaveToMasterWithMode`, `pointSlaveToMasterPositional`). A positioning that fails with
+  error 3079 on a MySQL/Percona replica (several channels, the managed one not named: the
+  statement is refused and the channel's relay log stays in place) ends the reseed before
+  anything is loaded: the job is failed, the reseed state cleared, the link stays stopped with
+  `WARN0252`, data, binary logs and GTID history are untouched (#2422). Any other positioning
+  error is logged and the reseed goes on: a restore that stopped half-way can leave the replica's
+  replication metadata missing (error 1146), and the next restore repairs it.
 - Run `JobReseedMyLoader`.
 - If successful and not PITR, parse mydumper metadata to apply MariaDB GTID and restart replication
   (`applyMyLoaderReplicaPosition`). With GTID, the replica's binary logs are reset first (MariaDB
