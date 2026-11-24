@@ -503,6 +503,16 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 			negroni.Wrap(h),
 		)).Methods(http.MethodPost)
 	}
+	// the admin login by one-time link, for the instance's sysops and extsysops signed in with
+	// Cloud18 (ADMIN_LOGIN_REVEAL.md)
+	router.Handle("/api/clusters/settings/actions/admin-login-reveal/send", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAdminLoginRevealSend)),
+	)).Methods(http.MethodPost)
+	router.Handle("/api/clusters/settings/actions/admin-login-reveal/open", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAdminLoginRevealOpen)),
+	)).Methods(http.MethodPost)
 	router.Handle("/api/clusters/settings/actions/license-pull", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxLicensePull)),

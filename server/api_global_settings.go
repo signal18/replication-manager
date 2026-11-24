@@ -273,6 +273,12 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 	case "api-secret-reveal-expire-hours":
 		val, _ := strconv.Atoi(value)
 		repman.Conf.APISecretRevealExpireHours = val
+	case "api-secret-reveal-admin-login-expire-minutes":
+		val, _ := strconv.Atoi(value)
+		repman.Conf.APISecretRevealAdminLoginExpireMinutes = val
+	case "api-secret-reveal-admin-login-max-per-hour":
+		val, _ := strconv.Atoi(value)
+		repman.Conf.APISecretRevealAdminLoginMaxPerHour = val
 	case "cloud18":
 		if value == "true" {
 			// Set Cloud18=true optimistically so the UI sees the state change immediately.
@@ -673,6 +679,8 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 		repman.Conf.ApiSwaggerEnabled = isactive
 	case "api-secret-reveal":
 		repman.Conf.APISecretReveal = isactive
+	case "api-secret-reveal-admin-login":
+		repman.Conf.APISecretRevealAdminLogin = isactive
 	case "mcp-server":
 		repman.Conf.MCPServ = isactive
 		repman.restartMCPServer()
@@ -875,6 +883,8 @@ func (repman *ReplicationManager) switchRepmanSetting(name string) error {
 		repman.Conf.ApiSwaggerEnabled = !repman.Conf.ApiSwaggerEnabled
 	case "api-secret-reveal":
 		repman.Conf.APISecretReveal = !repman.Conf.APISecretReveal
+	case "api-secret-reveal-admin-login":
+		repman.Conf.APISecretRevealAdminLogin = !repman.Conf.APISecretRevealAdminLogin
 	case "mcp-server":
 		repman.Conf.MCPServ = !repman.Conf.MCPServ
 		repman.restartMCPServer()

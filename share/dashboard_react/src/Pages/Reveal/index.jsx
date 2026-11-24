@@ -3,11 +3,25 @@ import { Box, Code, Container, Flex, Heading, Stack, Text } from '@chakra-ui/rea
 import PageContainer from '../PageContainer'
 import RMButton from '../../components/RMButton'
 import { authService } from '../../services/authService'
+import { globalClustersService } from '../../services/globalClustersService'
 
 // A one-time secret link (/reveal#<code>), mailed by replication-manager: a rotated password or
 // credentials. No login. The code stays in the URL fragment (never sent to the server or a proxy)
 // and is taken out of the address bar at once; the secret is fetched only on the click, so a mail
 // scanner opening the link shows nothing and does not burn it. The server deletes it at the first open.
+// A session link (the admin login, asked for by a sysops signed in with Cloud18) is refused by the
+// public route without being burned (header X-Repman-Reveal-Session): the page then opens it in the
+// signed-in session of this browser, which must be the Cloud18 session of the person who asked.
+const REVEAL_SESSION_HEADER = 'X-Repman-Reveal-Session'
+
+function signedIn() {
+  try {
+    return !!localStorage.getItem('user_token')
+  } catch (e) {
+    return false
+  }
+}
+
 function readCode() {
   const code = window.location.hash.replace(/^#/, '').trim()
   if (code) {
@@ -26,7 +40,14 @@ function Reveal() {
   const open = async () => {
     setState('opening')
     try {
-      const res = await authService.openSecretReveal(code)
+      let res = await authService.openSecretReveal(code)
+      if (res.status === 403 && res.headers?.get(REVEAL_SESSION_HEADER)) {
+        if (!signedIn()) {
+          setState('signin')
+          return
+        }
+        res = await globalClustersService.openAdminLoginReveal(code)
+      }
       if (res.status === 200 && res.data?.items) {
         setReveal(res.data)
         setState('shown')
@@ -99,6 +120,12 @@ function Reveal() {
             </Text>
           )}
           {state === 'error' && <Text>{error}</Text>}
+          {state === 'signin' && (
+            <Text>
+              This link opens only in your own signed-in session. Sign in with Cloud18 in this browser, as the person who
+              asked for it, then open the link from your mail again: it still works until it is opened or expires.
+            </Text>
+          )}
         </Stack>
       </Container>
     </PageContainer>

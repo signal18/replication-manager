@@ -7,7 +7,7 @@ import React, { useEffect, useState } from 'react'
 import { globalClustersService } from '../../../services/globalClustersService'
 import { HiMoon, HiSun } from 'react-icons/hi'
 import { FaUserPlus } from 'react-icons/fa'
-import { TbKey, TbShieldLock } from 'react-icons/tb'
+import { TbKey, TbMailForward, TbShieldLock } from 'react-icons/tb'
 import RMButton from '../../RMButton'
 import { useTheme } from '../../../ThemeProvider'
 import parentStyles from '../styles.module.scss'
@@ -102,6 +102,30 @@ function UserInfoPanel({ isOpen, closeModal, user, onLogout, canAddUser = false,
     : holdsServerCredentials(user) ? 'admin'
     : user?.AuthType === 'SSO' ? null : user?.User
 
+  // The admin login by one-time link: the instance's sysops and extsysops signed in with Cloud18
+  // (the server credentials grant on every cluster), who cannot enter the admin zone without it.
+  // The link goes to the email of this session; the answer never carries the value.
+  const canAskAdminLogin = user?.AuthType === 'SSO' && holdsServerCredentials(user)
+  const [adminLoginSending, setAdminLoginSending] = useState(false)
+  const [adminLoginMessage, setAdminLoginMessage] = useState(null)
+  const sendAdminLogin = async () => {
+    setAdminLoginSending(true)
+    setAdminLoginMessage(null)
+    try {
+      const res = await globalClustersService.sendAdminLoginReveal()
+      if (res.status === 200 && res.data?.mailedTo) {
+        const until = res.data.expires ? new Date(res.data.expires).toLocaleTimeString() : ''
+        setAdminLoginMessage({ ok: true, text: `Link sent to ${res.data.mailedTo}${until ? `, valid until ${until}` : ''}. Open it in this browser, signed in with Cloud18.` })
+      } else {
+        setAdminLoginMessage({ ok: false, text: typeof res.data === 'string' && res.data ? res.data : 'The link could not be sent.' })
+      }
+    } catch (e) {
+      setAdminLoginMessage({ ok: false, text: 'The server could not be reached.' })
+    } finally {
+      setAdminLoginSending(false)
+    }
+  }
+
   const stickyBg = theme === 'light' ? 'white' : 'gray.800'
 
   return (
@@ -169,6 +193,14 @@ function UserInfoPanel({ isOpen, closeModal, user, onLogout, canAddUser = false,
                     </HStack>
                   </RMButton>
                 )}
+                {canAskAdminLogin && (
+                  <RMButton variant='outline' onClick={sendAdminLogin} isLoading={adminLoginSending}>
+                    <HStack spacing={1}>
+                      <TbMailForward />
+                      <Text fontSize='sm'>Send me the admin login</Text>
+                    </HStack>
+                  </RMButton>
+                )}
                 {user?.AuthType === 'SSO' && (
                   <RMButton variant='outline' onClick={() => {
                     // The admin zone is a re-login as the local admin, so end the current (Cloud18)
@@ -188,6 +220,10 @@ function UserInfoPanel({ isOpen, closeModal, user, onLogout, canAddUser = false,
                 </RMButton>
               </HStack>
             </HStack>
+
+            {adminLoginMessage && (
+              <Text fontSize='sm' color={adminLoginMessage.ok ? undefined : 'red.400'}>{adminLoginMessage.text}</Text>
+            )}
 
             {clusterNames.length > 0 && roleList.length > 0 && (
               <>

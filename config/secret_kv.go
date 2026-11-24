@@ -1212,6 +1212,17 @@ func APIUserListHas(list, user string) bool {
 	return false
 }
 
+// APIUserListPassword is user's password in list (user:password,...), its first entry, as the
+// list holds it; false when user is not in it. Never logged (F10).
+func APIUserListPassword(list, user string) (string, bool) {
+	for _, e := range strings.Split(list, ",") {
+		if u, p, _ := strings.Cut(strings.TrimSpace(e), ":"); u == user {
+			return p, true
+		}
+	}
+	return "", false
+}
+
 // DecryptedAPIUserList is the instance's list (api-credentials) with every password in clear.
 // Never logged (F10).
 func (conf *Config) DecryptedAPIUserList() string {

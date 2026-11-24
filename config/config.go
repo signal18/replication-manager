@@ -1174,6 +1174,9 @@ type Config struct {
 	APISecretLoginWindow                   int                    `scope:"server" mapstructure:"api-secret-login-window" toml:"api-secret-login-window" json:"apiSecretLoginWindow"`
 	APISecretReveal                        bool                   `scope:"server" mapstructure:"api-secret-reveal" toml:"api-secret-reveal" json:"apiSecretReveal"`
 	APISecretRevealExpireHours             int                    `scope:"server" mapstructure:"api-secret-reveal-expire-hours" toml:"api-secret-reveal-expire-hours" json:"apiSecretRevealExpireHours"`
+	APISecretRevealAdminLogin              bool                   `scope:"server" mapstructure:"api-secret-reveal-admin-login" toml:"api-secret-reveal-admin-login" json:"apiSecretRevealAdminLogin"`
+	APISecretRevealAdminLoginExpireMinutes int                    `scope:"server" mapstructure:"api-secret-reveal-admin-login-expire-minutes" toml:"api-secret-reveal-admin-login-expire-minutes" json:"apiSecretRevealAdminLoginExpireMinutes"`
+	APISecretRevealAdminLoginMaxPerHour    int                    `scope:"server" mapstructure:"api-secret-reveal-admin-login-max-per-hour" toml:"api-secret-reveal-admin-login-max-per-hour" json:"apiSecretRevealAdminLoginMaxPerHour"`
 	JobLogBatchSize                        int                    `mapstructure:"job-log-batch-size" toml:"job-log-batch-size" json:"jobLogBatchSize"`
 	APIUserTokens                          bool                   `scope:"server" mapstructure:"api-user-tokens" toml:"api-user-tokens" json:"apiUserTokens"`
 	APIUserTokensDefaultExpireDays         int                    `scope:"server" mapstructure:"api-user-tokens-default-expire-days" toml:"api-user-tokens-default-expire-days" json:"apiUserTokensDefaultExpireDays"`

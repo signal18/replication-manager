@@ -694,6 +694,132 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/settings/actions/admin-login-reveal/open": {
+            "post": {
+                "description": "Shows the local admin login (user, password) once, as the login decides on it at this moment, to the person the link was mailed to: the same Cloud18 session email, still holding the server credentials grant on every cluster. The link is deleted at this open. Another person, a local login or an API token is refused and the link kept; an expired, used or unknown link gets 404. Nothing is rotated.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "User"
+                ],
+                "summary": "Open a one-time admin login link",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "The code from the link (after #)",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/server.SecretRevealForm"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The admin login, shown once",
+                        "schema": {
+                            "$ref": "#/definitions/server.SecretRevealResult"
+                        }
+                    },
+                    "400": {
+                        "description": "No code",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "Not a Cloud18 session, the server credentials grant missing, or a link of another person (kept)",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "Already opened, expired or unknown",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "409": {
+                        "description": "No admin password in the instance's list, or not in force yet (kept)",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "503": {
+                        "description": "Off (api-secret-reveal-admin-login, api-secret-reveal) or no encryption key",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/settings/actions/admin-login-reveal/send": {
+            "post": {
+                "description": "Mails a one-time link to the local admin login (user and password of the admin zone) to the email of the caller's own Cloud18 session, never to an address from the request. The instance's sysops and extsysops signed in with Cloud18 only: the server credentials grant on every cluster; a local login or an API token is refused. The link expires after api-secret-reveal-admin-login-expire-minutes (15), opens once, and only in the same person's signed-in session. The answer never carries the value nor the link: the masked address and the expiry. Nothing is rotated. At most api-secret-reveal-admin-login-max-per-hour links (5) per person.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "User"
+                ],
+                "summary": "Send me the admin login",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Where the link went (masked) and its expiry",
+                        "schema": {
+                            "$ref": "#/definitions/server.AdminLoginRevealSent"
+                        }
+                    },
+                    "403": {
+                        "description": "Not a Cloud18 session, or the server credentials grant missing on a cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "409": {
+                        "description": "No admin password in the instance's list, or not in force yet",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "429": {
+                        "description": "Too many links asked for in the last hour",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "503": {
+                        "description": "Off (api-secret-reveal-admin-login, api-secret-reveal), no encryption key, no mail server or no api-public-url",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/settings/actions/calibrate-iops": {
             "post": {
                 "description": "Runs the embedded sysbench fileio (2G of files, 16 KiB random read/write, direct IO, 16 threads, 20 s) in the working directory at the lowest CPU priority, then removes the files. Answers the host IOPS and that figure times the agents and, with apply=true, writes the latter to resource-manager-infra-iops. Representative when every node has the same storage.",
@@ -25151,6 +25277,12 @@ const docTemplate = `{
                             "type": "string"
                         }
                     },
+                    "403": {
+                        "description": "A link that opens only in its person's signed-in session (header X-Repman-Reveal-Session): not burned",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
                     "404": {
                         "description": "Already opened, expired or unknown",
                         "schema": {
@@ -30481,6 +30613,15 @@ const docTemplate = `{
                 "apiSecretReveal": {
                     "type": "boolean"
                 },
+                "apiSecretRevealAdminLogin": {
+                    "type": "boolean"
+                },
+                "apiSecretRevealAdminLoginExpireMinutes": {
+                    "type": "integer"
+                },
+                "apiSecretRevealAdminLoginMaxPerHour": {
+                    "type": "integer"
+                },
                 "apiSecretRevealExpireHours": {
                     "type": "integer"
                 },
@@ -34215,6 +34356,17 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "user": {
+                    "type": "string"
+                }
+            }
+        },
+        "server.AdminLoginRevealSent": {
+            "type": "object",
+            "properties": {
+                "expires": {
+                    "type": "string"
+                },
+                "mailedTo": {
                     "type": "string"
                 }
             }

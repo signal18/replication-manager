@@ -52,7 +52,14 @@ var (
 	errSecretRevealOff = errors.New("one-time reveal links are off (api-secret-reveal) or the instance has no encryption key")
 	// errSecretRevealGone: no such code, already opened or expired (one answer for the three)
 	errSecretRevealGone = errors.New("this link was already opened, has expired or does not exist")
+	// errSecretRevealSession: a session link (Kind set) opens only in its person's signed-in
+	// session, never on the public route: refused there without being burned
+	errSecretRevealSession = errors.New("this link opens only in the signed-in session of the person who asked for it")
 )
+
+// secretRevealSessionHeader marks the public route's refusal of a session link: the page then
+// opens it through the signed-in route of its kind.
+const secretRevealSessionHeader = "X-Repman-Reveal-Session"
 
 // SecretRevealItem is one secret shown by a reveal page: a label and its value.
 type SecretRevealItem struct {
@@ -62,13 +69,17 @@ type SecretRevealItem struct {
 
 // secretReveal is a stored reveal.
 type secretReveal struct {
-	CodeHash string             `json:"codeHash"`
-	For      string             `json:"for"`
-	Cluster  string             `json:"cluster,omitempty"`
-	Title    string             `json:"title"`
-	Items    []SecretRevealItem `json:"items"`
-	Created  time.Time          `json:"created"`
-	Expires  time.Time          `json:"expires"`
+	CodeHash string `json:"codeHash"`
+	// Kind: "" for a reveal carrying its Items, opened by its code alone; otherwise a session link
+	// (secretRevealKindAdminLogin): no secret stored, the value is read when it is opened, by its
+	// person only, in a signed-in session, through the route of its kind
+	Kind    string             `json:"kind,omitempty"`
+	For     string             `json:"for"`
+	Cluster string             `json:"cluster,omitempty"`
+	Title   string             `json:"title"`
+	Items   []SecretRevealItem `json:"items"`
+	Created time.Time          `json:"created"`
+	Expires time.Time          `json:"expires"`
 }
 
 type secretRevealFile struct {
@@ -229,6 +240,12 @@ func (repman *ReplicationManager) saveSecretRevealsLocked(reveals []secretReveal
 
 // newSecretReveal keeps items for the person forWho and returns the one-time link and its expiry.
 func (repman *ReplicationManager) newSecretReveal(forWho, clusterName, title string, items []SecretRevealItem) (string, time.Time, error) {
+	return repman.newSecretRevealOf(secretReveal{For: forWho, Cluster: clusterName, Title: title, Items: items}, repman.secretRevealExpiry())
+}
+
+// newSecretRevealOf stores r (its code, creation and expiry set here) for ttl and returns the
+// one-time link and its expiry.
+func (repman *ReplicationManager) newSecretRevealOf(r secretReveal, ttl time.Duration) (string, time.Time, error) {
 	if !repman.secretRevealEnabled() {
 		return "", time.Time{}, errSecretRevealOff
 	}
@@ -242,8 +259,7 @@ func (repman *ReplicationManager) newSecretReveal(forWho, clusterName, title str
 	}
 	code := base64.RawURLEncoding.EncodeToString(b)
 	now := time.Now()
-	r := secretReveal{CodeHash: secretRevealHash(code), For: forWho, Cluster: clusterName, Title: title,
-		Items: items, Created: now, Expires: now.Add(repman.secretRevealExpiry())}
+	r.CodeHash, r.Created, r.Expires = secretRevealHash(code), now, now.Add(ttl)
 	secretReveals.Lock()
 	defer secretReveals.Unlock()
 	reveals, err := repman.loadSecretRevealsLocked()
@@ -274,8 +290,21 @@ func (repman *ReplicationManager) dropSecretReveal(code string) error {
 	return repman.saveSecretRevealsLocked(rest)
 }
 
-// openSecretReveal returns the reveal of code and deletes it: a second open finds nothing.
+// openSecretReveal returns the reveal of code and deletes it: a second open finds nothing. A
+// session link (Kind set) is refused, errSecretRevealSession, and kept: its own route opens it.
 func (repman *ReplicationManager) openSecretReveal(code string) (*secretReveal, error) {
+	return repman.openSecretRevealIf(code, func(r *secretReveal) error {
+		if r.Kind != "" {
+			return errSecretRevealSession
+		}
+		return nil
+	})
+}
+
+// openSecretRevealIf returns the reveal of code and deletes it when check accepts it. A reveal
+// check refuses is not deleted (its error is returned): a refused open burns nothing. An expired
+// reveal is deleted and gone whatever check says.
+func (repman *ReplicationManager) openSecretRevealIf(code string, check func(*secretReveal) error) (*secretReveal, error) {
 	if !repman.secretRevealEnabled() {
 		return nil, errSecretRevealOff
 	}
@@ -297,11 +326,17 @@ func (repman *ReplicationManager) openSecretReveal(code string) (*secretReveal, 
 		if r.CodeHash != h {
 			continue
 		}
+		expired := !time.Now().Before(r.Expires)
+		if !expired {
+			if err := check(&r); err != nil {
+				return nil, err // kept: its person may still open it
+			}
+		}
 		rest := append(append([]secretReveal(nil), reveals[:i]...), reveals[i+1:]...)
 		if err := repman.saveSecretRevealsLocked(rest); err != nil {
 			return nil, err // not deleted: not shown either, the secret is shown once at most
 		}
-		if !time.Now().Before(r.Expires) {
+		if expired {
 			return nil, errSecretRevealGone
 		}
 		found := r
@@ -313,13 +348,19 @@ func (repman *ReplicationManager) openSecretReveal(code string) (*secretReveal, 
 // mailSecretReveal mails forWho a one-time link to items. The mail carries the link only, never
 // a secret. An error says why no link was mailed; the caller decides what to do without it.
 func (repman *ReplicationManager) mailSecretReveal(forWho, clusterName, title, intro string, items []SecretRevealItem) (time.Time, error) {
+	return repman.mailSecretRevealOf(secretReveal{For: forWho, Cluster: clusterName, Title: title, Items: items}, intro, repman.secretRevealExpiry())
+}
+
+// mailSecretRevealOf stores r for ttl and mails its person (r.For) the one-time link.
+func (repman *ReplicationManager) mailSecretRevealOf(r secretReveal, intro string, ttl time.Duration) (time.Time, error) {
+	forWho, title := r.For, r.Title
 	if !strings.Contains(forWho, "@") {
 		return time.Time{}, fmt.Errorf("%s is not an email address", forWho)
 	}
 	if missing := repman.mailerConfigMissing(); len(missing) > 0 {
 		return time.Time{}, fmt.Errorf("no mail server: missing %s", strings.Join(missing, ", "))
 	}
-	link, expires, err := repman.newSecretReveal(forWho, clusterName, title, items)
+	link, expires, err := repman.newSecretRevealOf(r, ttl)
 	if err != nil {
 		return time.Time{}, err
 	}
@@ -383,6 +424,7 @@ type SecretRevealResult struct {
 // @Param body body SecretRevealForm true "The code from the link (after #)"
 // @Success 200 {object} SecretRevealResult "The secrets, shown once"
 // @Failure 400 {string} string "No code"
+// @Failure 403 {string} string "A link that opens only in its person's signed-in session (header X-Repman-Reveal-Session): not burned"
 // @Failure 404 {string} string "Already opened, expired or unknown"
 // @Failure 503 {string} string "One-time links are off on this instance"
 // @Router /api/secret-reveal [post]
@@ -408,6 +450,11 @@ func (repman *ReplicationManager) handlerSecretReveal(w http.ResponseWriter, r *
 	case errors.Is(err, errSecretRevealGone):
 		repman.noteSecretRevealRefused(r.RemoteAddr)
 		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	case errors.Is(err, errSecretRevealSession):
+		// not burned, not an attack: the page opens it next through the signed-in route
+		w.Header().Set(secretRevealSessionHeader, "true")
+		http.Error(w, err.Error(), http.StatusForbidden)
 		return
 	case err != nil:
 		repman.Logrus.Warnf("One-time secret link: %s", err)
