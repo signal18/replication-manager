@@ -1050,7 +1050,8 @@ type SecretHistoryPruneSummary struct {
 //
 // The values are compared in memory and never logged (F10). The file is written by the next
 // save (T25). A monitor pair keeps its own copy: prune on both (rule 11 merges the versions).
-func (cluster *Cluster) PruneSecretHistory(key string, dryRun bool) (SecretHistoryPruneSummary, error) {
+// by is the API user who asked, written in the log line with the counts.
+func (cluster *Cluster) PruneSecretHistory(key string, dryRun bool, by string) (SecretHistoryPruneSummary, error) {
 	summary := SecretHistoryPruneSummary{Key: key, DryRun: dryRun}
 	if !slices.Contains(config.SecretKeys, key) {
 		return summary, fmt.Errorf("%s is not a secret", key)
@@ -1065,6 +1066,9 @@ func (cluster *Cluster) PruneSecretHistory(key string, dryRun bool) (SecretHisto
 		pruned, _, _ := credstore.PruneVersions(map[string][]credstore.FileVersion{key: versions}, 1)
 		kept = pruned[key]
 	} else if last := versions[len(versions)-1]; cluster.Conf.DecryptSecretValue(key, last.HashValue) == cluster.Conf.GetDecryptedValue(key) {
+		// Versions is oldest first: last is the latest. A latest version that does not decrypt
+		// to the current value (or does not decrypt at all) is not kept: the history fails
+		// closed, the next reconcile records the current value again.
 		kept = []credstore.FileVersion{last}
 	}
 	summary.VersionsKept = len(kept)
@@ -1074,7 +1078,7 @@ func (cluster *Cluster) PruneSecretHistory(key string, dryRun bool) (SecretHisto
 	}
 	vs.Replace(key, kept)
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
-		"Secret history of %s pruned: %d version(s) removed, %d kept", key, summary.VersionsRemoved, summary.VersionsKept)
+		"Secret history of %s pruned by %s: %d version(s) removed, %d kept", key, by, summary.VersionsRemoved, summary.VersionsKept)
 	cluster.Save()
 	return summary, nil
 }

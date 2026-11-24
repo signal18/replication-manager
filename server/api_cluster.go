@@ -274,7 +274,7 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 	router.Handle("/api/clusters/{clusterName}/secret-kv-actions/prune-history/{secretKey}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSecretKvPruneHistory)),
-	))
+	)).Methods(http.MethodPost) // irreversible: never from a GET (a link, a prefetch, a retry)
 
 	// archive list (#2091)
 	router.Handle("/api/clusters/{clusterName}/archive-list", negroni.New(

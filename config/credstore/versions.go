@@ -507,7 +507,6 @@ func (s *VersionStore) Empty() bool {
 	return len(s.versions) == 0
 }
 
-// Count is how many versions key has.
 // Counts is the number of versions of each key, never a value.
 func (s *VersionStore) Counts() map[string]int {
 	s.mu.Lock()
@@ -519,6 +518,7 @@ func (s *VersionStore) Counts() map[string]int {
 	return out
 }
 
+// Count is how many versions key has.
 func (s *VersionStore) Count(key string) int {
 	s.mu.Lock()
 	defer s.mu.Unlock()

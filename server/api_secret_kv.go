@@ -197,7 +197,7 @@ func (repman *ReplicationManager) handlerMuxSecretKvRemove(w http.ResponseWriter
 // @Router /api/clusters/{clusterName}/secret-kv-actions/prune-history/{secretKey} [post]
 func (repman *ReplicationManager) handlerMuxSecretKvPruneHistory(w http.ResponseWriter, r *http.Request) {
 	repman.withResticCluster(w, r, false, func(mycluster *cluster.Cluster, vars map[string]string) {
-		summary, err := mycluster.PruneSecretHistory(vars["secretKey"], r.URL.Query().Get("dry-run") == "true")
+		summary, err := mycluster.PruneSecretHistory(vars["secretKey"], r.URL.Query().Get("dry-run") == "true", repman.GetUserFromRequest(r))
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
