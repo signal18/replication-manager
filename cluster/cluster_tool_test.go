@@ -3,8 +3,11 @@ package cluster
 import (
 	"os"
 	"slices"
+	"strconv"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 )
 
 // The backups of this tool carry "myloader_exec_change_source = 1" (taken with --source-data=2):
@@ -138,5 +141,109 @@ func TestMyLoaderVersionOfTheBinaryThatRuns(t *testing.T) {
 	cl.Conf.BackupMyLoaderPath = write("not a version")
 	if got := myLoaderNoSourceChangeArgs([]string{"--verbose=3"}, cl.myLoaderVersion()); slices.Contains(got, "--source-data=0") {
 		t.Errorf("no version in the output: option added: %v", got)
+	}
+}
+
+// gone waits for a process to be killed and reaped (signal 0 fails with ESRCH).
+func gone(pid int) bool {
+	for i := 0; i < 40; i++ {
+		if err := syscall.Kill(pid, 0); err == syscall.ESRCH {
+			return true
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	return false
+}
+
+func readPid(t *testing.T, file string) int {
+	t.Helper()
+	for i := 0; i < 100; i++ {
+		if b, err := os.ReadFile(file); err == nil {
+			if pid, err := strconv.Atoi(strings.TrimSpace(string(b))); err == nil {
+				return pid
+			}
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatalf("no pid in %s", file)
+	return 0
+}
+
+// A myloader that never answers is cut at the deadline: no version (nothing is added to the
+// arguments), the probe returns in bounded time and the process does not outlive it.
+func TestReadMyLoaderVersionTimesOut(t *testing.T) {
+	dir := t.TempDir()
+	pidFile := dir + "/pid"
+	bin := dir + "/myloader"
+	// exec: the shell becomes the sleeper, so the kill at the deadline reaches it
+	if err := os.WriteFile(bin, []byte("#!/bin/sh\necho $$ > "+pidFile+"\nexec sleep 60\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	start := time.Now()
+	v, err := readMyLoaderVersion(bin, 300*time.Millisecond)
+	if v != nil || err == nil || !strings.Contains(err.Error(), "no answer within") {
+		t.Fatalf("hung binary: version %v, error %v", v, err)
+	}
+	if d := time.Since(start); d > 2*time.Second {
+		t.Errorf("probe took %s, want about the 300ms deadline", d)
+	}
+	pid := readPid(t, pidFile)
+	if !gone(pid) {
+		_ = syscall.Kill(pid, syscall.SIGKILL)
+		t.Errorf("process %d still running after the probe returned", pid)
+	}
+	if got := myLoaderNoSourceChangeArgs([]string{"--verbose=3"}, v); slices.Contains(got, "--source-data=0") {
+		t.Errorf("no version: option added: %v", got)
+	}
+}
+
+// A child that inherited the output pipes must not hold the probe past the deadline plus
+// myLoaderVersionWaitDelay.
+func TestReadMyLoaderVersionChildHoldsThePipe(t *testing.T) {
+	dir := t.TempDir()
+	childFile := dir + "/child"
+	bin := dir + "/myloader"
+	if err := os.WriteFile(bin, []byte("#!/bin/sh\nsleep 60 &\necho $! > "+childFile+"\nwait\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { // no orphan left by the test
+		if b, err := os.ReadFile(childFile); err == nil {
+			if pid, err := strconv.Atoi(strings.TrimSpace(string(b))); err == nil {
+				_ = syscall.Kill(pid, syscall.SIGKILL)
+			}
+		}
+	})
+	start := time.Now()
+	v, err := readMyLoaderVersion(bin, 300*time.Millisecond)
+	if v != nil || err == nil {
+		t.Fatalf("version %v, error %v", v, err)
+	}
+	if d := time.Since(start); d > 300*time.Millisecond+myLoaderVersionWaitDelay+2*time.Second {
+		t.Errorf("probe took %s, want at most the deadline plus the wait delay", d)
+	}
+}
+
+// The reasons a version is not read, and the fast path.
+func TestReadMyLoaderVersionFailuresAndSuccess(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, body string) string {
+		p := dir + "/" + name
+		if err := os.WriteFile(p, []byte(body), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	if v, err := readMyLoaderVersion(dir+"/missing", time.Second); v != nil || err == nil {
+		t.Errorf("missing binary: %v %v", v, err)
+	}
+	if v, err := readMyLoaderVersion(write("exit1", "#!/bin/sh\nexit 1\n"), time.Second); v != nil || err == nil {
+		t.Errorf("exit 1: %v %v", v, err)
+	}
+	if v, err := readMyLoaderVersion(write("noversion", "#!/bin/sh\necho 'not a version'\n"), time.Second); v != nil || err == nil || !strings.Contains(err.Error(), "no version") {
+		t.Errorf("no version in the output: %v %v", v, err)
+	}
+	v, err := readMyLoaderVersion(write("ok", "#!/bin/sh\necho 'myloader v1.0.1-1, built against MySQL 8.4.9 with SSL support'\n"), time.Second)
+	if err != nil || v == nil || !v.GreaterEqual("0.18.1") {
+		t.Errorf("1.0.1: %v %v", v, err)
 	}
 }

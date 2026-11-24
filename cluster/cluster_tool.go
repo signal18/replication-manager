@@ -1,8 +1,12 @@
 package cluster
 
 import (
+	"context"
+	"errors"
+	"fmt"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/version"
@@ -105,16 +109,45 @@ func myLoaderNoSourceChangeArgs(args []string, tool *version.Version) []string {
 	return append(args, "--source-data=0")
 }
 
-// myLoaderVersion reads the version of the myloader the restore runs (GetMyLoaderPath), parsed as
-// the mydumper version is (RefreshMyDumperVersion). nil when it can not be read: nothing is then
-// added to its arguments.
-func (cluster *Cluster) myLoaderVersion() *version.Version {
-	out, err := exec.Command(cluster.GetMyLoaderPath(), "--version").Output()
+const (
+	// myLoaderVersionTimeout bounds the "myloader --version" probe: a hung or unresponsive binary
+	// at backup-myloader-path must not hold the reseed job.
+	myLoaderVersionTimeout = 5 * time.Second
+	// myLoaderVersionWaitDelay bounds the wait for the output pipes once the deadline has killed
+	// the process: a child that inherited them would otherwise keep cmd.Output() blocked.
+	myLoaderVersionWaitDelay = 2 * time.Second
+)
+
+// readMyLoaderVersion runs "<path> --version" for at most timeout (plus myLoaderVersionWaitDelay for
+// the output pipes) and parses the version as the mydumper version is (RefreshMyDumperVersion).
+// The error says why no version was read: not runnable, timed out, or no version in the output.
+func readMyLoaderVersion(path string, timeout time.Duration) (*version.Version, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, path, "--version")
+	cmd.WaitDelay = myLoaderVersionWaitDelay
+	out, err := cmd.Output()
+	if ctx.Err() != nil || errors.Is(err, exec.ErrWaitDelay) {
+		return nil, fmt.Errorf("no answer within %s", timeout)
+	}
 	if err != nil {
-		return nil
+		return nil, err
 	}
 	v, parsed := version.NewVersionFromString("mydumper", version.ExtractVersionFromOutput(string(out)))
 	if parsed == 0 {
+		return nil, errors.New("no version in the output")
+	}
+	return v, nil
+}
+
+// myLoaderVersion reads the version of the myloader the restore runs (GetMyLoaderPath). nil when it
+// can not be read, in time: nothing is then added to its arguments, and the reason is logged since
+// the restore then goes on without --source-data=0.
+func (cluster *Cluster) myLoaderVersion() *version.Version {
+	path := cluster.GetMyLoaderPath()
+	v, err := readMyLoaderVersion(path, myLoaderVersionTimeout)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Version of myloader %s not read (%s): --source-data=0 not added to the restore", path, err)
 		return nil
 	}
 	return v
