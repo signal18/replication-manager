@@ -245,8 +245,19 @@ func (app *App) deriveUnitFromStoredResources() int {
 func (app *App) SetSetting(key, value string) error {
 	switch key {
 	case "prov-app-docker-img":
+		// any image of the client's choice, as one image reference (never a run option);
+		// the provisioning checks it again, whatever wrote it (a template, a file)
+		if value = strings.TrimSpace(value); value != "" {
+			if err := ValidateDockerImage("prov-app-docker-img", value); err != nil {
+				return err
+			}
+		}
 		app.AppConfig.ProvAppDockerImg = value
 	case "prov-app-docker-cmd":
+		// any command: it is the container's arguments, after the image
+		if strings.ContainsAny(value, "\r\n") {
+			return errors.New("prov-app-docker-cmd: one line, no line break")
+		}
 		app.AppConfig.ProvAppDockerCmd = value
 	case "prov-app-start-timeout":
 		if value != "" {
@@ -444,6 +455,13 @@ func (app *App) SetSetting(key, value string) error {
 		app.AppConfig.AppS3Provider = value == "true" || value == "1" || value == "on"
 		app.ClusterGroup.refreshAppS3Providers()
 	case "prov-app-cpu-cores":
+		// a number of cores (2, 1.5): it is written into the container's run options (--cpus)
+		value = strings.TrimSpace(value)
+		if value != "" {
+			if _, err := validateAppCores(value); err != nil {
+				return err
+			}
+		}
 		old := app.AppConfig.ProvAppCpuCores
 		app.AppConfig.ProvAppCpuCores = value
 		if value != old && app.onAppResize(appPlanGrows("", "", old, value)) {

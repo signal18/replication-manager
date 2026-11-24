@@ -26,16 +26,17 @@ import (
 )
 
 const (
-	ErrAppConnectFailed    = "APPERR001"
-	ErrAppUnexpectedStatus = "APPERR002"
-	ErrAppTCPConnectFailed = "APPERR003"
-	ErrAppUnsupportedProto = "APPERR004"
-	ErrAppGatewayConflict  = "APPERR005"
-	ErrAppDbProvision      = "APPERR008" // database auto-create refused or failed (#1870)
-	ErrAppPingFailed       = "APPERR009" // app-monitor-mode ping: the ICMP echo to the app host failed (#1919)
-	ErrAppCertificate      = "APPERR010" // app-monitor-mode https-cert: certificate invalid or expiring (#2209)
-	StateAppRunning        = stateAppRunning // exported for the MCP tools
-	appErrFailureThreshold = 3
+	ErrAppConnectFailed     = "APPERR001"
+	ErrAppUnexpectedStatus  = "APPERR002"
+	ErrAppTCPConnectFailed  = "APPERR003"
+	ErrAppUnsupportedProto  = "APPERR004"
+	ErrAppGatewayConflict   = "APPERR005"
+	ErrAppDbProvision       = "APPERR008"     // database auto-create refused or failed (#1870)
+	ErrAppPingFailed        = "APPERR009"     // app-monitor-mode ping: the ICMP echo to the app host failed (#1919)
+	ErrAppCertificate       = "APPERR010"     // app-monitor-mode https-cert: certificate invalid or expiring (#2209)
+	ErrAppServiceDefinition = "APPERR012"     // the service definition was not rendered (a refused value): no provisioning nor refresh until fixed
+	StateAppRunning         = stateAppRunning // exported for the MCP tools
+	appErrFailureThreshold  = 3
 )
 
 // App defines a app
@@ -75,13 +76,14 @@ type App struct {
 	// directly: these are read from a different goroutine than the one
 	// that writes them (maybeRefreshAppsAsync's worker vs. any status/API
 	// reader).
-	LastRefreshStart      time.Time `json:"lastRefreshStart"`
-	LastRefreshEnd        time.Time `json:"lastRefreshEnd"`
-	LastRefreshDurationMs int64     `json:"lastRefreshDurationMs"`
-	LastRefreshError      string    `json:"lastRefreshError"`
-	LiveResizeError       string    `json:"liveResizeError"`  // last failed live resize (prov-app-dynamic-resource, APPERR011), "" once one goes through
-	DbProvisionError      string    `json:"dbProvisionError"` // last app database auto-create refusal (#1870), "" once one goes through
-	RefreshInProgress     bool      `json:"refreshInProgress"`
+	LastRefreshStart       time.Time `json:"lastRefreshStart"`
+	LastRefreshEnd         time.Time `json:"lastRefreshEnd"`
+	LastRefreshDurationMs  int64     `json:"lastRefreshDurationMs"`
+	LastRefreshError       string    `json:"lastRefreshError"`
+	LiveResizeError        string    `json:"liveResizeError"`        // last failed live resize (prov-app-dynamic-resource, APPERR011), "" once one goes through
+	DbProvisionError       string    `json:"dbProvisionError"`       // last app database auto-create refusal (#1870), "" once one goes through
+	ServiceDefinitionError string    `json:"serviceDefinitionError"` // last refused rendering of the service definition (APPERR012), "" once one renders
+	RefreshInProgress      bool      `json:"refreshInProgress"`
 	// Route-scoped debounce counters are the single source of truth.
 	AppErrConsecutiveMap map[string]int         `json:"-"`
 	ErrState             map[string]state.State `json:"-"`

@@ -1537,6 +1537,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.ProvAppTemplateRepoPassword, "prov-app-template-repo-password", "", "Git repository password for application templates (cluster-scoped)")
 	flags.IntVar(&conf.ProvAppTemplateRepoTimeout, "prov-app-template-repo-timeout", 30, "Git repository timeout for application templates (cluster-scoped)")
 	flags.BoolVar(&conf.ProvAppTemplateRepoAllowOverride, "prov-app-template-repo-allow-override", true, "Allow clusters to override inherited prov-app-template-repo* defaults")
+	flags.StringVar(&conf.ProvAppDockerRuntime, "prov-app-docker-runtime", config.ConstAppDockerRuntimeAuto, "Docker runtime of the containers that run a client app image (the app, its jobs sidecar, its reload task): auto (runsc-hostnet, the gVisor sandbox, on a Cloud18 instance; none otherwise), none or empty (the node's default runtime), or the name of a runtime registered in the docker daemon of every node that runs apps. Global, admin only")
 	flags.BoolVar(&conf.TerminalSessionResume, "terminal-session-resume", false, "Enable terminal session resume")
 	flags.StringVar(&conf.TerminalSessionManager, "terminal-session-manager", "tmux", "Terminal session manager: tmux|screen")
 	flags.BoolVar(&conf.TerminalSessionEnabled, "terminal-session-enabled", false, "Enable terminal session")

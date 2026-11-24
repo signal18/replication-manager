@@ -75,12 +75,18 @@ func buildLocalCheckKey(appHost string, route config.Route) string {
 func (app *App) GetMonitoringStatus() string {
 	cluster := app.ClusterGroup
 	routes := app.GetAppConfig().Deployment.Routes
-	appErrKeys := []string{ErrAppConnectFailed, ErrAppUnexpectedStatus, ErrAppTCPConnectFailed, ErrAppUnsupportedProto, ErrAppGatewayConflict, ErrAppDbProvision, ErrAppPingFailed, ErrAppCertificate, ErrAppLiveResize}
+	appErrKeys := []string{ErrAppConnectFailed, ErrAppUnexpectedStatus, ErrAppTCPConnectFailed, ErrAppUnsupportedProto, ErrAppGatewayConflict, ErrAppDbProvision, ErrAppPingFailed, ErrAppCertificate, ErrAppLiveResize, ErrAppServiceDefinition}
 	errStates := make(map[string]state.State)
 
 	// Live resize (prov-app-dynamic-resource): a failed one stays visible until one goes through.
 	if msg := app.getLiveResizeError(); msg != "" {
 		errStates[ErrAppLiveResize] = state.State{ErrType: "WARN", ErrKey: ErrAppLiveResize, ErrDesc: fmt.Sprintf(config.ClusterError[ErrAppLiveResize], app.GetId(), msg), ServerUrl: app.Host}
+	}
+
+	// Service definition refused (a client value the rendering does not take): visible until
+	// one renders, the provisioning and the definition refresh cannot run before.
+	if msg := app.getServiceDefinitionError(); msg != "" {
+		errStates[ErrAppServiceDefinition] = state.State{ErrType: "ERROR", ErrKey: ErrAppServiceDefinition, ErrDesc: fmt.Sprintf(config.ClusterError[ErrAppServiceDefinition], app.GetId(), msg), ServerUrl: app.Host}
 	}
 
 	// Database auto-create (#1870): a refused provision stays visible until one goes through.

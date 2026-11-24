@@ -33,7 +33,7 @@ func TestOpenSVCGetAppContainerSectionUsesWildcardEnvironmentReferences(t *testi
 		},
 	}
 
-	section := cluster.OpenSVCGetAppContainerSection(app)
+	section := mustAppContainerSection(t, cluster, app)
 
 	if got := section["secrets_environment"]; got != "app1/*" {
 		t.Fatalf("expected wildcard secrets_environment, got %q", got)
@@ -59,18 +59,19 @@ func TestOpenSVCGetAppGitInitContainerSectionUsesWildcardEnvironmentReferences(t
 	}
 }
 
-func TestOpenSVCGetAppS3MountContainerSectionUsesWildcardEnvironmentReferences(t *testing.T) {
+// The S3 mount sidecar is privileged: it gets its own mount's keys under the names its
+// entrypoint reads, never the app's whole environment (app sandbox runtime review).
+func TestOpenSVCGetAppS3MountContainerSectionUsesOwnMountKeys(t *testing.T) {
 	cluster := &Cluster{Conf: &config.Config{ProvType: "docker"}}
 	app := &App{Name: "app1", ClusterGroup: cluster}
 
 	section := cluster.OpenSVCGetAppS3MountContainerSection(app, &config.S3Mount{Name: "bucket"})
 
-	if got := section["secrets_environment"]; got != "app1/*" {
-		t.Fatalf("expected wildcard secrets_environment, got %q", got)
+	if got := section["secrets_environment"]; got != "AWS_SECRET_KEY=app1/BUCKET_AWS_SECRET_KEY" {
+		t.Fatalf("secrets_environment: %q", got)
 	}
-
-	if got := section["configs_environment"]; got != "app1/*" {
-		t.Fatalf("expected wildcard configs_environment, got %q", got)
+	if got := section["configs_environment"]; strings.Contains(got, "app1/*") || !strings.Contains(got, "ENDPOINT=app1/BUCKET_ENDPOINT") {
+		t.Fatalf("configs_environment: %q", got)
 	}
 }
 
@@ -128,7 +129,7 @@ func conditionalTestApp(vars config.VariableMaps, dbCreds bool) (*Cluster, *App)
 
 func TestOpenSVCGetAppContainerSectionNoConditionalNoScopedKeyword(t *testing.T) {
 	cluster, app := conditionalTestApp(config.VariableMaps{{Name: "X", Value: "x", Type: config.VariableTypeEnv}}, false)
-	for k := range cluster.OpenSVCGetAppContainerSection(app) {
+	for k := range mustAppContainerSection(t, cluster, app) {
 		if strings.Contains(k, "@") {
 			t.Fatalf("unexpected scoped keyword %q without per-agent values", k)
 		}
@@ -140,7 +141,7 @@ func TestOpenSVCGetAppContainerSectionScopesEnvConditional(t *testing.T) {
 		{Name: "DB_HOST", Value: "prx0", Type: config.VariableTypeEnv, Conditional: config.AVSlice{{Agent: "n1", Value: "prx1"}, {Agent: "n2", Value: "prx2"}}},
 		{Name: "PORT", Value: "3306", Type: config.VariableTypeEnv, Conditional: config.AVSlice{{Agent: "n1", Value: "3307"}}},
 	}, false)
-	section := cluster.OpenSVCGetAppContainerSection(app)
+	section := mustAppContainerSection(t, cluster, app)
 
 	want := map[string]string{
 		"configs_environment":    "app1/*",
@@ -164,7 +165,7 @@ func TestOpenSVCGetAppContainerSectionScopesSecretConditional(t *testing.T) {
 	cluster, app := conditionalTestApp(config.VariableMaps{
 		{Name: "PASS", Value: "p", Type: config.VariableTypeSecret, Conditional: config.AVSlice{{Agent: "n1", Value: "p1"}}},
 	}, true)
-	section := cluster.OpenSVCGetAppContainerSection(app)
+	section := mustAppContainerSection(t, cluster, app)
 
 	if got, want := section["secrets_environment@n1"], "app1/* env/MYSQL_ROOT_PASSWORD PASS=app1/PASS@n1"; got != want {
 		t.Fatalf("secrets_environment@n1: expected %q, got %q", want, got)
@@ -179,7 +180,7 @@ func TestOpenSVCGetAppContainerSectionSkipsUnmappableConditional(t *testing.T) {
 		{Name: "X", Type: config.VariableTypeEnv, Conditional: config.AVSlice{{Agent: "", Value: "a"}, {Agent: "bad node", Value: "b"}}},
 		{Name: "BAD NAME", Type: config.VariableTypeEnv, Conditional: config.AVSlice{{Agent: "n1", Value: "c"}}},
 	}, false)
-	for k := range cluster.OpenSVCGetAppContainerSection(app) {
+	for k := range mustAppContainerSection(t, cluster, app) {
 		if strings.Contains(k, "@") {
 			t.Fatalf("unexpected scoped keyword %q for an unmappable name or agent", k)
 		}
@@ -239,7 +240,7 @@ func TestAppEnvironmentKeywordsV2NotRendered(t *testing.T) {
 		cl := &Cluster{Conf: &config.Config{ProvType: pt}}
 		app := &App{Name: "app1", ClusterGroup: cl, AppConfig: &config.AppConfig{Deployment: config.NewDeploymentConfig()}}
 		app.AppConfig.Deployment.Variables = config.VariableMaps{{Name: "X", Type: config.VariableTypeEnv, Value: "d", Conditional: config.AVSlice{{Agent: "n1", Value: "v1"}}}}
-		set, unset := appEnvironmentKeywordsV2(cl.OpenSVCGetAppContainerSection(app), []string{"n1", "n2"})
+		set, unset := appEnvironmentKeywordsV2(mustAppContainerSection(t, cl, app), []string{"n1", "n2"})
 		if pt == "docker" {
 			if len(set) == 0 || len(unset) == 0 {
 				t.Fatalf("docker: expected keywords to set and unset, got set=%q unset=%q", set, unset)
@@ -250,4 +251,14 @@ func TestAppEnvironmentKeywordsV2NotRendered(t *testing.T) {
 			t.Fatalf("%s: expected nothing to set or unset, got set=%q unset=%q", pt, set, unset)
 		}
 	}
+}
+
+// mustAppContainerSection renders container#app, failing the test on an error.
+func mustAppContainerSection(t *testing.T, c *Cluster, app *App) map[string]string {
+	t.Helper()
+	section, err := c.OpenSVCGetAppContainerSection(app)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return section
 }
