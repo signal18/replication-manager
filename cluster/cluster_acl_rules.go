@@ -220,6 +220,8 @@ var clusterACLRules = []ACLRule{
 	{"/secret-kv-actions/remove/", nil, []string{config.GrantClusterSettings}},
 	{"/secret-kv-actions/enable/", nil, []string{config.GrantClusterSettings, config.GrantDBConfigFlag}},
 	{"/secret-kv-actions/disable/", nil, []string{config.GrantClusterSettings, config.GrantDBConfigFlag}},
+	// the past versions of a secret (a leaked value): the instance's sysops only
+	{"/secret-kv-actions/prune-history/", nil, []string{config.GrantClusterServerCredentials}},
 	{"/archive-list", nil, []string{config.GrantClusterShowBackups}},
 	{"/archive-offers", nil, []string{config.GrantClusterShowBackups}},
 	{"/archive-actions/add", nil, []string{config.GrantClusterSettings}},

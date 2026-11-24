@@ -180,3 +180,28 @@ func (repman *ReplicationManager) handlerMuxSecretKvRemove(w http.ResponseWriter
 		w.Write([]byte("Credential store removed"))
 	})
 }
+
+// handlerMuxSecretKvPruneHistory removes the past versions of one secret.
+// @Summary Prune the history of a secret
+// @Description Removes the past versions of one secret from the cluster's version store (secret_store.json, written by the next save and pushed with the config): a value that leaked is gone from it. A credential the version store holds keeps its latest version (and the last one a config file held); any other secret (api-credentials-external...) keeps its latest version only when it is the current value. Values are never returned. A monitor pair keeps its own copy: prune on both. What a vault entry holds is not touched.
+// @Tags ClusterCredentials
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param secretKey path string true "Secret key, e.g. api-credentials-external"
+// @Param dry-run query bool false "Count only, change nothing"
+// @Success 200 {object} cluster.SecretHistoryPruneSummary
+// @Failure 400 {string} string "Not a secret"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster"
+// @Router /api/clusters/{clusterName}/secret-kv-actions/prune-history/{secretKey} [post]
+func (repman *ReplicationManager) handlerMuxSecretKvPruneHistory(w http.ResponseWriter, r *http.Request) {
+	repman.withResticCluster(w, r, false, func(mycluster *cluster.Cluster, vars map[string]string) {
+		summary, err := mycluster.PruneSecretHistory(vars["secretKey"], r.URL.Query().Get("dry-run") == "true")
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeArchiveJSON(w, summary)
+	})
+}

@@ -40,7 +40,8 @@ const API = {
     list: () => clusterService.getSecretKvList(clusterName),
     put: (spec, isEdit) => clusterService.putSecretKv(clusterName, spec, isEdit),
     switch: (name, enabled) => clusterService.switchSecretKv(clusterName, name, enabled),
-    remove: (name) => clusterService.removeSecretKv(clusterName, name)
+    remove: (name) => clusterService.removeSecretKv(clusterName, name),
+    pruneHistory: (key) => clusterService.pruneSecretHistory(clusterName, key)
   }),
   server: () => ({
     list: () => globalClustersService.getServerSecretKvList(),
@@ -169,13 +170,17 @@ function SecretKvEntries({ clusterName, user, level = 'cluster' }) {
   const { theme } = useTheme()
   const badgeVariant = theme === 'dark' ? 'solid' : 'subtle'
   const mutedColor = theme === 'dark' ? 'gray.400' : 'gray.500'
-  const [list, setList] = useState({ entries: [], states: {}, plugins: [], pinned: false, dropsPending: false, dropped: 0, instanceName: '' })
+  const [list, setList] = useState({ entries: [], states: {}, plugins: [], pinned: false, dropsPending: false, dropped: 0, instanceName: '', history: {} })
   // the server level answers 403 to anyone without the server credentials grant on every cluster
   const [forbidden, setForbidden] = useState(false)
   const [error, setError] = useState('')
   const [editing, setEditing] = useState(null) // the entry edited, {} to add one
   const [removeName, setRemoveName] = useState('')
+  const [pruneKey, setPruneKey] = useState('')
   const g = user?.grants || {}
+  // the past versions of a secret (a leaked value): the instance's sysops only
+  const canPrune = !isServer && !!g['cluster-server-credentials']
+  const historyKeys = Object.keys(list.history || {}).sort()
   // the server level: the list loads for its owners only, who may do everything
   const canManage = isServer || g['cluster-settings'] !== false
   const canSwitch = canManage || !!g['db-config-flag']
@@ -189,7 +194,7 @@ function SecretKvEntries({ clusterName, user, level = 'cluster' }) {
         return
       }
       if (status >= 200 && status < 300 && data) {
-        setList({ entries: data.entries || [], states: data.states || {}, plugins: data.plugins || [], pinned: !!data.pinned, dropsPending: !!data.dropsPending, dropped: data.dropped || 0, instanceName: data.instanceName || '' })
+        setList({ entries: data.entries || [], states: data.states || {}, plugins: data.plugins || [], pinned: !!data.pinned, dropsPending: !!data.dropsPending, dropped: data.dropped || 0, instanceName: data.instanceName || '', history: data.history || {} })
       } else {
         setError(typeof data === 'string' ? data : `Failed to list the vaults (status ${status})`)
       }
@@ -302,7 +307,24 @@ function SecretKvEntries({ clusterName, user, level = 'cluster' }) {
         ))}
         {list.pinned && <Text as='span' fontSize='sm' color={mutedColor}>set by a config file ({isServer ? 'server-secret-kv' : 'secret-kv'}): change them there</Text>}
       </Flex>
+      {canPrune && historyKeys.length > 0 && (
+        <Stack spacing='1'>
+          <Text as='span' fontSize='sm' fontWeight='semibold'>Version history (local file)</Text>
+          {historyKeys.map((k) => (
+            <Flex key={k} align='center' gap='3' wrap='wrap'>
+              <Text as='span' fontSize='sm'>{k}</Text>
+              <Badge colorScheme='gray' variant={badgeVariant}>{list.history[k]} version(s)</Badge>
+              <RMButton size='sm' variant='outline' onClick={() => setPruneKey(k)}>Prune history</RMButton>
+            </Flex>
+          ))}
+        </Stack>
+      )}
       {error && <Text color={theme === 'dark' ? 'red.300' : 'red.500'} fontSize='sm'>{error}</Text>}
+      {pruneKey && (
+        <ConfirmModal isOpen={!!pruneKey} closeModal={() => setPruneKey('')}
+          title={`Remove the past versions of ${pruneKey}? The current value stays; a restore to an older version is no longer possible. What a vault holds stays.`}
+          onConfirmClick={() => { call(() => api.pruneHistory(pruneKey)); setPruneKey('') }} />
+      )}
       {editing && (
         <SecretKvFormModal isOpen={!!editing} closeModal={() => setEditing(null)} manifest={manifestOf(editing.plugin)}
           entry={editing.name ? editing : null} onSave={save} level={level} />

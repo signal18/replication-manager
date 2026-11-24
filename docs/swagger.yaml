@@ -730,6 +730,10 @@ definitions:
           that writes them (maybeRefreshAppsAsync's worker vs. any status/API
           reader).
         type: string
+      liveResizeError:
+        description: last failed live resize (prov-app-dynamic-resource, APPERR011),
+          "" once one goes through
+        type: string
       name:
         type: string
       port:
@@ -1647,6 +1651,17 @@ definitions:
           type: string
         type: array
     type: object
+  cluster.SecretHistoryPruneSummary:
+    properties:
+      dryRun:
+        type: boolean
+      key:
+        type: string
+      versionsKept:
+        type: integer
+      versionsRemoved:
+        type: integer
+    type: object
   cluster.SecretKvListResult:
     properties:
       credentials:
@@ -1662,6 +1677,11 @@ definitions:
         items:
           $ref: '#/definitions/config.SecretKvConfig'
         type: array
+      history:
+        additionalProperties:
+          type: integer
+        description: versions per secret in the local file, never a value
+        type: object
       pinned:
         description: 'a config file sets the list: change it there'
         type: boolean
@@ -3958,6 +3978,10 @@ definitions:
         type: string
       provAppDiskSize:
         type: string
+      provAppDynamicResource:
+        description: 'apps follow a memory/cores (APU) change live: cgroup, configurator,
+          reload (app_resize_dynamic.go)'
+        type: boolean
       provAppHaTopology:
         type: string
       provAppMemory:
@@ -5101,6 +5125,26 @@ definitions:
           OwnerAuthType is how the owner was authenticated when the token was issued
           ("SSO" or "Local"): a token issued by a Cloud18 identity keeps that identity
           for the self-service rules, which need an SSO caller.
+        type: string
+      ownerClusters:
+        items:
+          type: string
+        type: array
+      ownerExcluded:
+        description: |-
+          OwnerExcluded: for OwnerScope instance, the clusters the issuing login did not cover (an
+          instance account whose password a cluster section overrides): the token never acts there.
+        items:
+          type: string
+        type: array
+      ownerScope:
+        description: |-
+          OwnerScope is the cluster scope of the login that issued the token
+          (api_session_scope.go): apiTokenOwnerInstance for a login covering the instance (an
+          account of the instance's list, an SSO identity, repman itself), apiTokenOwnerClusters
+          for a local login whose password authenticated the owner on OwnerClusters only. The
+          token never acts outside OwnerClusters, whatever its Clusters say. Empty: a token issued
+          before the field existed, judged by apiTokenLegacyOwnerOK.
         type: string
       revoked:
         type: boolean
@@ -14403,6 +14447,58 @@ paths:
           schema:
             type: string
       summary: Turn a credential store entry on
+      tags:
+      - ClusterCredentials
+  /api/clusters/{clusterName}/secret-kv-actions/prune-history/{secretKey}:
+    post:
+      description: 'Removes the past versions of one secret from the cluster''s version
+        store (secret_store.json, written by the next save and pushed with the config):
+        a value that leaked is gone from it. A credential the version store holds
+        keeps its latest version (and the last one a config file held); any other
+        secret (api-credentials-external...) keeps its latest version only when it
+        is the current value. Values are never returned. A monitor pair keeps its
+        own copy: prune on both. What a vault entry holds is not touched.'
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Secret key, e.g. api-credentials-external
+        in: path
+        name: secretKey
+        required: true
+        type: string
+      - description: Count only, change nothing
+        in: query
+        name: dry-run
+        type: boolean
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/cluster.SecretHistoryPruneSummary'
+        "400":
+          description: Not a secret
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Prune the history of a secret
       tags:
       - ClusterCredentials
   /api/clusters/{clusterName}/secret-kv-actions/remove/{entryName}:

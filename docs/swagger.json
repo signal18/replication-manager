@@ -12668,6 +12668,74 @@
                 }
             }
         },
+        "/api/clusters/{clusterName}/secret-kv-actions/prune-history/{secretKey}": {
+            "post": {
+                "description": "Removes the past versions of one secret from the cluster's version store (secret_store.json, written by the next save and pushed with the config): a value that leaked is gone from it. A credential the version store holds keeps its latest version (and the last one a config file held); any other secret (api-credentials-external...) keeps its latest version only when it is the current value. Values are never returned. A monitor pair keeps its own copy: prune on both. What a vault entry holds is not touched.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterCredentials"
+                ],
+                "summary": "Prune the history of a secret",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Secret key, e.g. api-credentials-external",
+                        "name": "secretKey",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Count only, change nothing",
+                        "name": "dry-run",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/cluster.SecretHistoryPruneSummary"
+                        }
+                    },
+                    "400": {
+                        "description": "Not a secret",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/secret-kv-actions/remove/{entryName}": {
             "post": {
                 "description": "Takes the entry out of the list. repman never deletes a secret: what the vault holds stays.",
@@ -27881,6 +27949,10 @@
                     "description": "Per-app refresh freshness (cluster-level AppRefreshLast* on Cluster\nonly shows batch-wide timing, not which app is actually slow). Set\nvia SetRefreshInProgress/SetRefreshResult under app.Mutex -- read\nthem the same way (App.Lock()/Unlock(), or GetAppAPIView) rather than\ndirectly: these are read from a different goroutine than the one\nthat writes them (maybeRefreshAppsAsync's worker vs. any status/API\nreader).",
                     "type": "string"
                 },
+                "liveResizeError": {
+                    "description": "last failed live resize (prov-app-dynamic-resource, APPERR011), \"\" once one goes through",
+                    "type": "string"
+                },
                 "name": {
                     "type": "string"
                 },
@@ -29175,6 +29247,23 @@
                 }
             }
         },
+        "cluster.SecretHistoryPruneSummary": {
+            "type": "object",
+            "properties": {
+                "dryRun": {
+                    "type": "boolean"
+                },
+                "key": {
+                    "type": "string"
+                },
+                "versionsKept": {
+                    "type": "integer"
+                },
+                "versionsRemoved": {
+                    "type": "integer"
+                }
+            }
+        },
         "cluster.SecretKvListResult": {
             "type": "object",
             "properties": {
@@ -29195,6 +29284,13 @@
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/config.SecretKvConfig"
+                    }
+                },
+                "history": {
+                    "description": "versions per secret in the local file, never a value",
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "integer"
                     }
                 },
                 "pinned": {
@@ -32512,6 +32608,10 @@
                 "provAppDiskSize": {
                     "type": "string"
                 },
+                "provAppDynamicResource": {
+                    "description": "apps follow a memory/cores (APU) change live: cgroup, configurator, reload (app_resize_dynamic.go)",
+                    "type": "boolean"
+                },
                 "provAppHaTopology": {
                     "type": "string"
                 },
@@ -34156,6 +34256,23 @@
                 },
                 "ownerAuthType": {
                     "description": "OwnerAuthType is how the owner was authenticated when the token was issued\n(\"SSO\" or \"Local\"): a token issued by a Cloud18 identity keeps that identity\nfor the self-service rules, which need an SSO caller.",
+                    "type": "string"
+                },
+                "ownerClusters": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "ownerExcluded": {
+                    "description": "OwnerExcluded: for OwnerScope instance, the clusters the issuing login did not cover (an\ninstance account whose password a cluster section overrides): the token never acts there.",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "ownerScope": {
+                    "description": "OwnerScope is the cluster scope of the login that issued the token\n(api_session_scope.go): apiTokenOwnerInstance for a login covering the instance (an\naccount of the instance's list, an SSO identity, repman itself), apiTokenOwnerClusters\nfor a local login whose password authenticated the owner on OwnerClusters only. The\ntoken never acts outside OwnerClusters, whatever its Clusters say. Empty: a token issued\nbefore the field existed, judged by apiTokenLegacyOwnerOK.",
                     "type": "string"
                 },
                 "revoked": {
