@@ -47,6 +47,9 @@ type serverSecretKv struct {
 	behind      map[string]string    // entry -> why it is behind (never a value)
 	lastWritten map[string]time.Time // entry -> its last successful write
 	moves       map[string]*serverKvMove
+	// aliasPending: entry -> the API host its user list moved to, until the old host's moved-to
+	// marker is written (recordServerKvAlias); in memory, a restart finds the move again
+	aliasPending map[string]string
 }
 
 // errServerKvNotNamed: the instance's name is not complete, its folder in a shared store is

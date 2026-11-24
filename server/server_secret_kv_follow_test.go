@@ -189,7 +189,26 @@ func TestServerKvAliasKeyFollowsTheHost(t *testing.T) {
 	if len(markers) != 2 || markers["repman-a.example.com"] != "repman-b.example.com_api-credentials" || markers["repman-b.example.com"] != "repman-b.example.com_api-credentials" {
 		t.Fatalf("markers %+v", queued)
 	}
-	// the marker's own write changes nothing
+	// the new host is not saved before the old host's marker is written
+	if e, _ := c.SecretKvEntryAt(config.SecretKvLevelServer, name); e.AliasWrittenAs != "repman-a.example.com" {
+		t.Fatalf("saved before the marker was written: %q", e.AliasWrittenAs)
+	}
+	// a second write while the marker waits queues nothing more (one WARN per move)
+	itemsB := repman.serverKvItems(name, apiCredentialsKey, v, false)
+	repman.recordServerKvWrittenAs(name, itemsB)
+	if repman.serverKvQueue().Len() != 0 {
+		t.Fatal("the markers queued twice")
+	}
+	// a restart before the marker is written: the queue and the waiting move are lost (memory),
+	// the saved host is still the old one, so the next write queues the markers again
+	repman.serverSecretKv.mu.Lock()
+	repman.serverSecretKv.aliasPending = nil
+	repman.serverSecretKv.mu.Unlock()
+	repman.recordServerKvWrittenAs(name, itemsB)
+	if queued = repman.serverKvQueue().Take(); len(queued) != 2 {
+		t.Fatalf("markers after a restart %+v", queued)
+	}
+	// the old host's marker written: the new host is saved
 	repman.recordServerKvWrittenAs(name, queued)
 	e, _ := c.SecretKvEntryAt(config.SecretKvLevelServer, name)
 	if e.AliasWrittenAs != "repman-b.example.com" {
@@ -205,10 +224,15 @@ func TestServerKvAliasKeyFollowsTheHost(t *testing.T) {
 	c.APIPublicURL = "https://repman-a.example.com"
 	repman.recordServerKvWrittenAs(name, repman.serverKvItems(name, apiCredentialsKey, v, false))
 	markers = map[string]string{}
-	for _, it := range repman.serverKvQueue().Take() {
+	queued = repman.serverKvQueue().Take()
+	for _, it := range queued {
 		markers[it.Path] = it.Version.Value
 	}
 	if markers["repman-a.example.com"] != "repman-a.example.com_api-credentials" || markers["repman-b.example.com"] != "repman-a.example.com_api-credentials" {
 		t.Fatalf("flip-back markers %+v", markers)
+	}
+	repman.recordServerKvWrittenAs(name, queued)
+	if e, _ := c.SecretKvEntryAt(config.SecretKvLevelServer, name); e.AliasWrittenAs != "repman-a.example.com" {
+		t.Fatalf("flip-back saved %q", e.AliasWrittenAs)
 	}
 }

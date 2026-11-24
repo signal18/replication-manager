@@ -1057,26 +1057,27 @@ func (cluster *Cluster) PruneSecretHistory(key string, dryRun bool, by string) (
 		return summary, fmt.Errorf("%s is not a secret", key)
 	}
 	vs := cluster.versionStore()
-	versions := vs.Versions(key)
-	if len(versions) == 0 {
-		return summary, nil
-	}
-	var kept []credstore.FileVersion
-	if vs.Holds(key) {
-		pruned, _, _ := credstore.PruneVersions(map[string][]credstore.FileVersion{key: versions}, 1)
-		kept = pruned[key]
-	} else if last := versions[len(versions)-1]; cluster.Conf.DecryptSecretValue(key, last.HashValue) == cluster.Conf.GetDecryptedValue(key) {
-		// Versions is oldest first: last is the latest. A latest version that does not decrypt
+	// read before the store's lock (the chain may read the store): the filter below only
+	// compares, under the lock, so a version recorded meanwhile is never lost (Prune)
+	held, current := vs.Holds(key), cluster.Conf.GetDecryptedValue(key)
+	before, after := vs.Prune(key, dryRun, func(versions []credstore.FileVersion) []credstore.FileVersion {
+		if held {
+			pruned, _, _ := credstore.PruneVersions(map[string][]credstore.FileVersion{key: versions}, 1)
+			return pruned[key]
+		}
+		// versions is oldest first: last is the latest. A latest version that does not decrypt
 		// to the current value (or does not decrypt at all) is not kept: the history fails
 		// closed, the next reconcile records the current value again.
-		kept = []credstore.FileVersion{last}
-	}
-	summary.VersionsKept = len(kept)
-	summary.VersionsRemoved = len(versions) - len(kept)
+		if last := versions[len(versions)-1]; cluster.Conf.DecryptSecretValue(key, last.HashValue) == current {
+			return []credstore.FileVersion{last}
+		}
+		return nil
+	})
+	summary.VersionsKept = after
+	summary.VersionsRemoved = before - after
 	if dryRun || summary.VersionsRemoved == 0 {
 		return summary, nil
 	}
-	vs.Replace(key, kept)
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
 		"Secret history of %s pruned by %s: %d version(s) removed, %d kept", key, by, summary.VersionsRemoved, summary.VersionsKept)
 	cluster.Save()

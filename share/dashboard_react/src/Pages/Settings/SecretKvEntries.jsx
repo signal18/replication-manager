@@ -323,7 +323,7 @@ function SecretKvEntries({ clusterName, user, level = 'cluster' }) {
       {error && <Text color={theme === 'dark' ? 'red.300' : 'red.500'} fontSize='sm'>{error}</Text>}
       {pruneKey && (
         <ConfirmModal isOpen={!!pruneKey} closeModal={() => setPruneKey('')}
-          title={`Remove the past versions of ${pruneKey}? The current value stays; a restore to an older version is no longer possible. What a vault holds stays.`}
+          title={`Remove the past versions of ${pruneKey}? The current value stays; a restore to an older version is no longer possible${/root|db-servers|backup/.test(pruneKey) ? ', and older backups encrypted or taken with a past value may no longer be restorable' : ''}. What a vault holds stays. On a monitor pair, prune on the other monitor too.`}
           onConfirmClick={() => { call(() => api.pruneHistory(pruneKey)); setPruneKey('') }} />
       )}
       {editing && (

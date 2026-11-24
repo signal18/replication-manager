@@ -314,7 +314,13 @@ test counts from what the file holds when it starts.
   `from_config_file` one (`--keep-last 1`); any other secret (the file is only its history,
   the config is the value: `api-credentials-external`, the API accounts) keeps its latest
   version only when it decrypts to the current value, else none (the next reconcile records the
-  current value again). Values are compared in memory, never logged or returned (F10). A
+  current value again). The filter runs under the version store's lock (`VersionStore.Prune`):
+  a version recorded during the prune (a rotation, a reconcile) waits for it and lands after,
+  never lost between the read and the write; the current value is read before the lock (the
+  chain may read the store). Pruning the database passwords' history (`db-servers-credential`
+  and the root passwords) means an older backup taken with a past value may no longer be
+  restored with repman's help: the GUI confirmation says so for those keys. Values are compared
+  in memory, never logged or returned (F10). A
   monitor pair prunes on both monitors: the standby merges the active monitor's versions
   (rule 11) and would bring a pruned version back after a failover. Copies elsewhere (a vault
   entry, the config repo's git history, `cluster.d/<cluster>_secret_store.json` exports) are
@@ -715,7 +721,11 @@ is treated the same; only the path a level maps to differs per store.
   (`server_secret_kv_alias_moved`) say it once, at the move: delete the old key in the
   orchestrator once nothing reads it (`recordServerKvAlias`). The markers are queued before the
   host is saved: a stop in between loses the queue (memory) but not the move, the next write
-  queues them again; a failed marker write is requeued by the runner like any item. Limits: an
+  queues them again. The new host is saved only once the old host's marker is written (its
+  write comes back to `recordServerKvAlias`): a restart before that finds the move again at the
+  next write and queues the markers again; the move waiting for its marker is kept in memory
+  (`aliasPending`), so the WARN is said once per run. A failed marker write is requeued by the
+  runner like any item. Limits: an
   instance upgraded from a release that wrote the alias but did not record the host has an empty
   `alias-written-as`; its first write records the host and leaves no marker, so an alias key
   left under an older host before the upgrade is not marked. `alias-written-as` is written by
