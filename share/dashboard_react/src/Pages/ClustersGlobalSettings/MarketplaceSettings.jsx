@@ -19,6 +19,16 @@ import ConfirmModal from '../../components/Modals/ConfirmModal'
 // the gateway units, over/under-commit, the plans) or 'gateway' (the platform description, the
 // gateway and the domain); none shows every row
 const GATEWAY_ROWS = ['Platform Description', 'Gateway Domain Name', 'Gateway Service', 'Gateway Bandwidth (Mb/s)', 'Domain Add Script', 'Domain Drop Script', 'Domain User', 'Domain Secret']
+// part 'apps': the client app containers, shown on every instance (Cloud18 or not)
+const APP_ROWS = ['App Sandbox Runtime']
+
+// prov-app-docker-runtime: the choices offered; a runtime set in the configuration file is
+// shown as it is
+const APP_RUNTIME_OPTIONS = [
+  { value: 'auto', label: 'auto (runsc-hostnet on a Cloud18 instance)' },
+  { value: 'runsc-hostnet', label: 'runsc-hostnet (gVisor sandbox)' },
+  { value: 'none', label: 'none (the node default runtime)' }
+]
 
 function MarketplaceSettings({ config, part }) {
   const dispatch = useDispatch()
@@ -52,6 +62,11 @@ function MarketplaceSettings({ config, part }) {
   const hDomainAdd = `**Domain Add Script**\n\nShell script executed when a new marketplace subscription is activated.\nTypically creates DNS records and routing rules for the new tenant's domain.\n\nConfig: \`cloud18-domain-add-script\``
   const hDomainDrop = `**Domain Drop Script**\n\nShell script executed when a marketplace subscription is cancelled.\nShould remove the DNS entries and routing rules created by the Domain Add Script.\n\nConfig: \`cloud18-domain-drop-script\``
   const hDomainUser = `**Domain User**\n\nUsername for the domain management API (DNS provider, load balancer, etc.) called by the add/drop scripts to automate tenant routing.\n\nConfig: \`cloud18-domain-user\``
+  const hAppRuntime = `**App Sandbox Runtime**\n\nThe docker runtime of the containers that run a client application image: the application, its jobs sidecar and its reload task. Clients choose their image and command freely; the isolation from the node comes from this runtime, which only the administrator of this instance sets.\n\n- **auto** (default): \`runsc-hostnet\` (the gVisor sandbox) when this instance is connected to Cloud18, the node default runtime otherwise.\n- **runsc-hostnet**: the gVisor sandbox, registered on every node that runs applications as the \`runsc\` binary with \`--network=host\`. Plain \`runsc\` does not work with the orchestrator's network model.\n- **none**: the node default runtime (off).\n\nA runtime missing on a node makes the application fail to start there. Applied at the next provisioning of each application.\n\nConfig: \`prov-app-docker-runtime\``
+  const appRuntime = config?.provAppDockerRuntime === undefined ? 'auto' : (config?.provAppDockerRuntime || 'none')
+  const appRuntimeOptions = APP_RUNTIME_OPTIONS.some((o) => o.value === appRuntime)
+    ? APP_RUNTIME_OPTIONS
+    : [...APP_RUNTIME_OPTIONS, { value: appRuntime, label: appRuntime }]
   const hDomainSecret = `**Domain Secret**\n\nAPI key or password for domain management authentication.\nStored encrypted in the replication-manager configuration.\n\nConfig: \`cloud18-domain-secret\``
   const hReloadPlans = `**Reload Plans**\n\nDownload and reapply marketplace service plans from the Cloud18 GitLab repository.\nPlans define available database topologies, resource profiles, and OpenSVC provisioning templates.\nUse the info button to reload plan metadata only without reprovisioning.`
   const hPricingMode = `**Marketplace Pricing Mode**\n\nHow clusters are priced in the Cloud18 marketplace:\n\n- **csv-service-plan** (default): each cluster is priced from a per-cluster service plan downloaded as CSV.\n- **global-unit-pricing**: all clusters are priced from a single global EUR price per Database Unit and per Application Unit — no per-cluster plan.\n\nConfig: \`cloud18-marketplace-pricing-mode\``
@@ -323,6 +338,19 @@ function MarketplaceSettings({ config, part }) {
         />
       )
     },
+    {
+      globalSetting: 'prov-app-docker-runtime',
+      key: 'App Sandbox Runtime',
+      help: h(hAppRuntime, 'App Sandbox Runtime'),
+      value: (
+        <Dropdown
+          options={appRuntimeOptions}
+          selectedValue={appRuntime}
+          confirmTitle='Confirm the runtime of the client app containers: '
+          onChange={(value) => dispatch(setGlobalSetting({ setting: 'prov-app-docker-runtime', value }))}
+        />
+      )
+    },
     ...(!isUnitPricing ? [{
       key: 'Reload Plans',
       help: h(hReloadPlans, 'Reload Plans'),
@@ -357,7 +385,11 @@ function MarketplaceSettings({ config, part }) {
     <>
       <Flex justify='space-between' gap='0'>
         <TableType2
-          dataArray={!part ? dataObject : dataObject.filter((row) => (part === 'gateway') === GATEWAY_ROWS.includes(row.key))}
+          dataArray={!part
+            ? dataObject
+            : part === 'apps'
+              ? dataObject.filter((row) => APP_ROWS.includes(row.key))
+              : dataObject.filter((row) => !APP_ROWS.includes(row.key) && (part === 'gateway') === GATEWAY_ROWS.includes(row.key))}
           className={styles.tableWithHelp}
           helpColumn
         />

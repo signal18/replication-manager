@@ -1415,10 +1415,20 @@ func (cluster *Cluster) UnfreezeDatabaseService(server *ServerMonitor) error {
 	return svc.UnfreezeInstanceV3(server.placementNode(), server.ServiceName)
 }
 
-// xtrabackupImageRe is the character set of a docker image reference (registry, path,
+// dockerImageRe is the character set of a docker image reference (registry, path,
 // tag, digest). The value is written into an OpenSVC configuration and a Kubernetes
-// image field, so anything else (spaces, quotes, shell or INI metacharacters) is refused.
-var xtrabackupImageRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._/:@+-]*$`)
+// image field, so anything else (spaces, quotes, shell or INI metacharacters) is refused,
+// and so is a leading '-': the image is the argument after the run options, one starting
+// with '-' would be read as an option.
+var dockerImageRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._/:@+-]*$`)
+
+// ValidateDockerImage validates a docker image reference: what names it (field) is in the error.
+func ValidateDockerImage(field, value string) error {
+	if len(value) > 255 || !dockerImageRe.MatchString(value) {
+		return fmt.Errorf("%s must be a docker image reference such as nginx:1.27 or registry.example.com/team/app@sha256:..., got %q", field, value)
+	}
+	return nil
+}
 
 // ValidateXtrabackupImage validates prov-db-docker-xtrabackup-img: empty (injection off),
 // "auto" (derived from the database image when the bundle is rendered) or an image
@@ -1427,7 +1437,7 @@ func ValidateXtrabackupImage(value string) error {
 	if value == "" || value == xtrabackupImageAuto {
 		return nil
 	}
-	if len(value) > 255 || !xtrabackupImageRe.MatchString(value) {
+	if len(value) > 255 || !dockerImageRe.MatchString(value) {
 		return fmt.Errorf("prov-db-docker-xtrabackup-img must be empty, auto, or a docker image reference such as percona/percona-xtrabackup:8.4, got %q", value)
 	}
 	return nil

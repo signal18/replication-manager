@@ -4102,7 +4102,7 @@ func (repman *ReplicationManager) handlerMuxChangePlanUnits(w http.ResponseWrite
 // @Param settingName path string true "Setting Name"
 // @Param settingValue path string true "Setting Value"
 // @Success 200 {string} string "Successfully set cron job"
-// @Failure 400 {string} string "Bad or refused cron pattern"
+// @Failure 400 {string} string "Bad or refused cron pattern, or not a cluster cron setting (*-cron)"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "No cluster"
 // @Router /api/clusters/{clusterName}/settings/actions/set-cron/{settingName}/{settingValue} [post]
@@ -4114,6 +4114,12 @@ func (repman *ReplicationManager) handlerMuxSetCron(w http.ResponseWriter, r *ht
 		setting := vars["settingName"]
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
 			http.Error(w, "No valid ACL", http.StatusForbidden)
+			return
+		}
+		if !isCronSetting(setting) {
+			// this route sets a schedule; any other key goes through the settings routes and
+			// their scope and ACL checks (a global key is the admin's)
+			http.Error(w, "Not a cron setting: "+setting, http.StatusBadRequest)
 			return
 		}
 		cronValue, err := url.QueryUnescape(vars["settingValue"])
@@ -4130,6 +4136,12 @@ func (repman *ReplicationManager) handlerMuxSetCron(w http.ResponseWriter, r *ht
 		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
+}
+
+// isCronSetting: a cluster schedule key (every one is named *-cron), the only keys the
+// set-cron route takes; never a global (scope server) key.
+func isCronSetting(name string) bool {
+	return strings.HasSuffix(name, "-cron") && !config.IsScope(name, "server")
 }
 
 func setIsActive(value string) *bool {
@@ -4832,6 +4844,14 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 			return fmt.Errorf("db-servers-monitor-extra-port must be a port between 1 and 65535, or 0 for the db-servers-hosts port, got %q", value)
 		}
 		mycluster.SetMonitorExtraPort(val)
+	case "prov-app-docker-runtime":
+		// scope server: reached from the global settings fan-out (setServerSetting), the
+		// cluster routes hand it to the global handler, the MCP refuses it
+		value = strings.TrimSpace(value)
+		if err := config.ValidateAppDockerRuntime(value); err != nil {
+			return err
+		}
+		mycluster.Conf.ProvAppDockerRuntime = value
 	case "prov-service-plan":
 		mycluster.SetServicePlan(value)
 	case "prov-net-cni-cluster":

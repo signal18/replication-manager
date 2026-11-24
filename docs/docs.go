@@ -21693,7 +21693,7 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Bad or refused cron pattern",
+                        "description": "Bad or refused cron pattern, or not a cluster cron setting (*-cron)",
                         "schema": {
                             "type": "string"
                         }
@@ -27892,6 +27892,10 @@ const docTemplate = `{
                     "description": "Per-app refresh freshness (cluster-level AppRefreshLast* on Cluster\nonly shows batch-wide timing, not which app is actually slow). Set\nvia SetRefreshInProgress/SetRefreshResult under app.Mutex -- read\nthem the same way (App.Lock()/Unlock(), or GetAppAPIView) rather than\ndirectly: these are read from a different goroutine than the one\nthat writes them (maybeRefreshAppsAsync's worker vs. any status/API\nreader).",
                     "type": "string"
                 },
+                "liveResizeError": {
+                    "description": "last failed live resize (prov-app-dynamic-resource, APPERR011), \"\" once one goes through",
+                    "type": "string"
+                },
                 "name": {
                     "type": "string"
                 },
@@ -32523,6 +32527,14 @@ const docTemplate = `{
                 "provAppDiskSize": {
                     "type": "string"
                 },
+                "provAppDockerRuntime": {
+                    "description": "docker runtime of the containers that run a client app image: auto (runsc-hostnet on a Cloud18 instance, none otherwise), none or empty (off), or a runtime name registered on the nodes",
+                    "type": "string"
+                },
+                "provAppDynamicResource": {
+                    "description": "apps follow a memory/cores (APU) change live: cgroup, configurator, reload (app_resize_dynamic.go)",
+                    "type": "boolean"
+                },
                 "provAppHaTopology": {
                     "type": "string"
                 },
@@ -34167,6 +34179,23 @@ const docTemplate = `{
                 },
                 "ownerAuthType": {
                     "description": "OwnerAuthType is how the owner was authenticated when the token was issued\n(\"SSO\" or \"Local\"): a token issued by a Cloud18 identity keeps that identity\nfor the self-service rules, which need an SSO caller.",
+                    "type": "string"
+                },
+                "ownerClusters": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "ownerExcluded": {
+                    "description": "OwnerExcluded: for OwnerScope instance, the clusters the issuing login did not cover (an\ninstance account whose password a cluster section overrides): the token never acts there.",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "ownerScope": {
+                    "description": "OwnerScope is the cluster scope of the login that issued the token\n(api_session_scope.go): apiTokenOwnerInstance for a login covering the instance (an\naccount of the instance's list, an SSO identity, repman itself), apiTokenOwnerClusters\nfor a local login whose password authenticated the owner on OwnerClusters only. The\ntoken never acts outside OwnerClusters, whatever its Clusters say. Empty: a token issued\nbefore the field existed, judged by apiTokenLegacyOwnerOK.",
                     "type": "string"
                 },
                 "revoked": {

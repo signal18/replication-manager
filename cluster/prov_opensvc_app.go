@@ -605,6 +605,9 @@ func (cluster *Cluster) OpenSVCGetAppTemplateSectionMap(app *App) (map[string]ma
 	if app.AppConfig.ProvAppDockerImg == "" {
 		return nil, errors.New("App image is not defined in app config")
 	}
+	if err := cluster.validateAppDeploymentForService(app); err != nil {
+		return nil, fmt.Errorf("app %s: %w", app.Name, err)
+	}
 
 	deployment := app.AppConfig.Deployment
 
@@ -675,6 +678,13 @@ func (cluster *Cluster) OpenSVCGetAppTemplateSectionMap(app *App) (map[string]ma
 		svcsection["container#sensor"] = cluster.OpenSVCGetAppSensorContainerSection(app, appJobScriptKey())
 	}
 	svcsection["env"] = cluster.OpenSVCGetAppEnvSection(app)
+	// the sandbox runtime on every container of the client's image (prov-app-docker-runtime)
+	if err := cluster.applyAppDockerRuntime(svcsection); err != nil {
+		return nil, fmt.Errorf("app %s: %w", app.Name, err)
+	}
+	if err := validateAppServiceSections(svcsection); err != nil {
+		return nil, fmt.Errorf("app %s: %w", app.Name, err)
+	}
 
 	return svcsection, nil
 }
@@ -1205,7 +1215,12 @@ func (cluster *Cluster) OpenSVCGetAppContainerSection(app *App) map[string]strin
 			// at 1 CPU / 1 GB under a 4 GB configuration with the app plan's docker cap)
 			appMemMB, _ := config.ParseUnitMeasurementToInt("M,bytes,required", cluster.GetAppMemory(app.AppConfig), true)
 			appMemStr := strconv.Itoa(appMemMB) + "m"
-			svccontainer["run_args"] = svccontainer["run_args"] + " --memory=" + appMemStr + " --memory-swap=" + appMemStr + " --cpus=" + cluster.GetAppCores(app.AppConfig) + ".0"
+			svccontainer["run_args"] = svccontainer["run_args"] + " --memory=" + appMemStr + " --memory-swap=" + appMemStr
+			// the cores are a client setting: only a number reaches run_args
+			// (validateAppDeploymentForService refuses the service otherwise)
+			if cores, err := cluster.appCoresForRunArgs(app); err == nil {
+				svccontainer["run_args"] += " --cpus=" + strconv.Itoa(cores) + ".0"
+			}
 		}
 
 		svccontainer["volume_mounts"] = strings.TrimSpace(cluster.GetOpenSVCDeploymentPathMapping(app) + " " + postgresWalArchiveMount(app))
@@ -1338,7 +1353,10 @@ func (cluster *Cluster) OpenSVCGetAppGitInitContainerSection(app *App, gc *confi
 			}
 		}
 
-		svccontainer["command"] = "-c 'rm -rf " + dirname + ";mkdir " + dirname + ";git clone -b " + branchKey + " https://" + urlString + " " + dirname + "'"
+		// the branch and the repository are client values read from the environment: quoted,
+		// so a space in them never adds an argument to git; the directory and the volume are
+		// validated (validateAppDeploymentForService)
+		svccontainer["command"] = "-c 'rm -rf " + dirname + ";mkdir " + dirname + ";git clone -b \"" + branchKey + "\" \"https://" + urlString + "\" " + dirname + "'"
 	}
 
 	return svccontainer

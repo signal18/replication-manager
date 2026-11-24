@@ -812,6 +812,7 @@ type Config struct {
 	ProvAppTemplateRepoPassword               string            `secret:"true" mapstructure:"prov-app-template-repo-password" toml:"prov-app-template-repo-password" json:"provAppTemplateRepoPassword" groups:"apps"`
 	ProvAppTemplateRepoTimeout                int               `mapstructure:"prov-app-template-repo-timeout" toml:"prov-app-template-repo-timeout" json:"provAppTemplateRepoTimeout" groups:"apps"`
 	ProvAppTemplateRepoAllowOverride          bool              `scope:"server" mapstructure:"prov-app-template-repo-allow-override" toml:"prov-app-template-repo-allow-override" json:"provAppTemplateRepoAllowOverride"`
+	ProvAppDockerRuntime                      string            `scope:"server" mapstructure:"prov-app-docker-runtime" toml:"prov-app-docker-runtime" json:"provAppDockerRuntime"` // docker runtime of the containers that run a client app image: auto (runsc-hostnet on a Cloud18 instance, none otherwise), none or empty (off), or a runtime name registered on the nodes
 	TemplateVariableMaxDepth                  int               `mapstructure:"template-var-max-depth" toml:"template-var-max-depth" json:"templateVarMaxDepth"`
 	TemplateStrict                            bool              `mapstructure:"template-strict" toml:"template-strict" json:"templateStrict"`
 	APIUsers                                  string            `secret:"true" scope:"server" mapstructure:"api-credentials" toml:"api-credentials" json:"apiCredentials"`

@@ -530,6 +530,14 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 			return fmt.Errorf("invalid boolean value for %s: %q", name, value)
 		}
 		repman.Conf.ProvAppTemplateRepoAllowOverride = parsed
+	case "prov-app-docker-runtime":
+		// the sandbox of the client app containers: the instance admin's, never a cluster's
+		// (scope server); applied at the next provisioning of each app
+		value = strings.TrimSpace(value)
+		if err := config.ValidateAppDockerRuntime(value); err != nil {
+			return err
+		}
+		repman.Conf.ProvAppDockerRuntime = value
 	case "sysbench-binary-path":
 		_, storeValue, err := resolveExecutablePath(value, "sysbench-binary-path")
 		if err != nil {
