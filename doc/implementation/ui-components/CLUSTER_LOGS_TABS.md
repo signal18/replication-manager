@@ -153,7 +153,10 @@ Server side (`server/server_instance_logs.go`):
   compatibility contract of older dbjobs scripts), several times a second: they are
   recorded at DEBUG under the task module's verbosity only (`log-task-level` at debug,
   `IsEligibleForPrinting(ConstLogModTask, DEBUG)`), with the task name, and leave no trace
-  at the default level; a refusal (401, 403) on them is recorded like any other. Identical
+  at the default level; a refusal (401, 403) on them is recorded like any other.
+  `need-config-refresh` is polled by the same containers but answers "nothing to do" with a
+  204 and no body (a 500 "No config refresh needed!" up to v3.1.52): a successful GET, it is
+  never recorded; its 500 is kept for a real error (no cluster, no server). Identical
   entries in a row (same method, path, status, user and host, whatever the source port)
   collapse into one, "(repeated N times since <first time>)" with the time of the last,
   so a caller in a loop never floods the ring. Only strictly consecutive repeats collapse

@@ -100,6 +100,13 @@ How the calls behave:
 - **Retries:** `--retries N` repeats a state or log call 2 seconds apart, each time with a new
   one-time body. A state report gets 3 attempts, or 5 for `done` and `error`, as before.
 - **CLI errors:** they go to `$LOG_DIR/api_calls.log`, which is rotated at 1 MB.
+- **`job config-refresh`:** exit 0 on a 200 (refresh), 1 on a 204 (nothing to do, after
+  v3.1.52) or on the 500 "No config refresh needed!" of an older replication-manager, 2 on
+  any other answer. Every caller takes only a 200 as "refresh": the script's
+  `if need_refresh_config`, the legacy CLI's `needRefreshConfig` (any non-200 is "no") and the
+  OpenSVC moduleset's `[[ "$http_code" == "200" ]]`. A v3.1.52 CLI talking to a newer
+  replication-manager reads the 204 as an error: exit 2, still "no refresh" for the script,
+  one line in `api_calls.log` per run until the CLI is upgraded with the service.
 - **Log text:** `job log` encodes it as JSON itself, so the script no longer escapes lines. A
   quote in a log line used to break the body.
 - **Listeners opened first:** `job upgrade` and `job config-dummy` open the listener before they

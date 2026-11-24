@@ -19974,8 +19974,11 @@ const docTemplate = `{
                             "type": "string"
                         }
                     },
+                    "204": {
+                        "description": "No config refresh needed (no body)"
+                    },
                     "500": {
-                        "description": "500 -No config refresh needed!\" or \"500 -No valid server!\" or \"500 -No cluster!",
+                        "description": "500 -No valid server!\" or \"500 -No cluster!",
                         "schema": {
                             "type": "string"
                         }
