@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/state"
 )
 
 // Sandbox runtime of the client app containers (prov-app-docker-runtime). The client
@@ -265,4 +266,30 @@ func validateAppServiceSections(svcsection map[string]map[string]string) error {
 		}
 	}
 	return nil
+}
+
+// CheckAppSandboxRuntime opens WARN0328 in the security domain (T3, WARNING), at each tick,
+// while the instance is a Cloud18 one, the cluster has client apps and prov-app-docker-runtime
+// resolves to the node's default runtime (none or empty): turning the sandbox off is then
+// visible to the operator instead of silent. It only reports: the setting itself stays the
+// off-switch (T14). An invalid value is not reported here, its provisioning already stops
+// with the error (APPERR012).
+func (cluster *Cluster) CheckAppSandboxRuntime() {
+	if cluster.SecurityStateMachine == nil || !cluster.Conf.Cloud18 {
+		return
+	}
+	runtime, err := cluster.Conf.GetAppDockerRuntime()
+	if err != nil || runtime != "" {
+		return
+	}
+	// cluster.Apps is reassigned wholesale under cluster.Lock() (newAppList)
+	cluster.Lock()
+	apps := len(cluster.Apps)
+	cluster.Unlock()
+	if apps == 0 {
+		return
+	}
+	value := strings.TrimSpace(cluster.Conf.ProvAppDockerRuntime)
+	cluster.SecurityStateMachine.AddState("WARN0328", state.State{ErrType: "WARNING", ErrFrom: "SECURITY",
+		ErrDesc: fmt.Sprintf(clusterError["WARN0328"], apps, value)})
 }

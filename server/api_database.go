@@ -3348,6 +3348,10 @@ func (repman *ReplicationManager) handlerMuxServerNeedConfigFetch(w http.Respons
 }
 
 // handlerMuxServerNeedConfigRefresh handles the HTTP request to check if a server needs a config refresh.
+// "Nothing to do", the answer of almost every poll, is a 204 with no body: a 500 there filled
+// the access log with errors. Every caller takes only a 200 as "refresh" (the jobs CLI
+// `job config-refresh`, the legacy CLI's needRefreshConfig, the OpenSVC moduleset script);
+// a 500 stays for a real error (no cluster, no server).
 // @Summary Check if a server needs a config refresh
 // @Description Checks if a specified server within a cluster needs a config refresh.
 // @Tags Database
@@ -3356,7 +3360,8 @@ func (repman *ReplicationManager) handlerMuxServerNeedConfigFetch(w http.Respons
 // @Param serverName path string true "Server Name"
 // @Param serverPort path string true "Server Port"
 // @Success 200 {string} string "200 -Need config refresh!"
-// @Failure 500 {string} string "500 -No config refresh needed!" or "500 -No valid server!" or "500 -No cluster!"
+// @Success 204 "No config refresh needed (no body)"
+// @Failure 500 {string} string "500 -No valid server!" or "500 -No cluster!"
 // @Router /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/need-config-refresh [get]
 func (repman *ReplicationManager) handlerMuxServerNeedConfigRefresh(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -3371,8 +3376,7 @@ func (repman *ReplicationManager) handlerMuxServerNeedConfigRefresh(w http.Respo
 				node.DelConfigRefreshCookie()
 				return
 			}
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte("500 -No config refresh needed!"))
+			w.WriteHeader(http.StatusNoContent)
 
 		} else if proxy != nil && !proxy.IsDown() {
 			if proxy.HasConfigRefreshCookie() {
@@ -3380,9 +3384,7 @@ func (repman *ReplicationManager) handlerMuxServerNeedConfigRefresh(w http.Respo
 				proxy.DelConfigRefreshCookie()
 				return
 			}
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte("500 -No config refresh needed!"))
-			//http.Error(w, "No start needed", 501)
+			w.WriteHeader(http.StatusNoContent)
 		} else {
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte("500 -No valid server!"))

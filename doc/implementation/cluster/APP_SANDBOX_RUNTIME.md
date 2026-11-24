@@ -34,6 +34,20 @@ now takes `*-cron` keys that are not server scope only.
 A change applies at the next provisioning (or definition refresh) of each app: the running
 containers keep their runtime until then.
 
+## The sandbox turned off: WARN0328 (security domain)
+
+On a Cloud18 instance (`cloud18 = true`) the sandbox is the norm. When the setting resolves
+to the node's default runtime there (`none` or empty) and the cluster has client apps,
+`CheckAppSandboxRuntime` (each tick, `cluster/app_sandbox.go`) opens **WARN0328** in the
+cluster's `SecurityStateMachine` (WARNING, `ErrFrom` SECURITY): "the client apps of this
+cluster run without the sandbox". Turning the sandbox off stays possible (T14: the setting is
+the off-switch), but it is no longer silent: the state is in the security pill and the
+security log, and alerts like any state. It closes on the next tick after the setting is
+back to `auto` or a runtime name. Nothing is reported off Cloud18 (the node's runtime is the
+norm there), on a cluster without apps, or for an invalid value (the provisioning already
+stops with APPERR012). The state says what the setting is, not what each running container
+runs: a change applies at the next provisioning of each app (see above).
+
 ## Where it goes
 
 `OpenSVCGetAppTemplateSectionMap` renders the whole service, then `applyAppDockerRuntime`
@@ -259,6 +273,9 @@ stay accepted, the git clone values refused (`$(id)`, backticks, `"`, `;`, a lin
 `--upload-pack=`, other schemes) and the clone command run by a real shell with hostile
 values (git gets them as literal arguments, nothing else runs), the S3 sidecar's own keys,
 and APPERR012 set on a refusal and cleared by the next rendering.
+`cluster/app_sandbox_state_test.go`: WARN0328 open on a Cloud18 instance with apps and
+`none` or empty, closed for `auto`, the sandbox or another runtime, without apps, off Cloud18,
+and for an invalid value.
 
 On a node (dev instance, om3 v3.0.0-rc56, three nodes with `runsc-hostnet`): a PHP app
 provisioned under the sandbox on three nodes, a live resize reload inside the sandbox, two
