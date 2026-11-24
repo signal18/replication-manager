@@ -746,6 +746,10 @@ definitions:
         items:
           $ref: '#/definitions/config.RouteStatus'
         type: array
+      serviceDefinitionError:
+        description: last refused rendering of the service definition (APPERR012),
+          "" once one renders
+        type: string
       serviceName:
         type: string
       slaposDatadir:

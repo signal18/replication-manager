@@ -1,6 +1,8 @@
 package cluster
 
 import (
+	"os"
+	"os/exec"
 	"strings"
 	"testing"
 
@@ -63,7 +65,7 @@ func TestAppDockerRuntimeOnClientImageSectionsOnly(t *testing.T) {
 	// the reload cannot join the sandbox's PID namespace from another container: it runs IN
 	// container#app (host task, `container` keyword), never on the node nor in a runc container
 	if r := s["task#reload"]; r["type"] != "host" || r["container"] != "container#app" || r["image"] != "" || r["pidns"] != "" ||
-		r["run_args"] != "" || r["command"] != `/bin/sh -c 'eval "$APP_RELOAD_COMMAND"'` || r["configs_environment"] != "web/*" {
+		r["run_args"] != "" || r["command"] != appReloadSandboxCommand("runsc-hostnet") || r["configs_environment"] != "web/*" || r["shared"] != "" {
 		t.Fatalf("task#reload under the sandbox: %v", r)
 	}
 	if got := s["container#01"]["run_args"]; strings.Contains(got, "--runtime") {
@@ -145,10 +147,19 @@ func TestAppClientValuesCannotOverrideSandbox(t *testing.T) {
 		"s3 uid option": func(a *App) {
 			a.AppConfig.Deployment.Storages.S3Mounts = config.S3Mounts{{Name: "s3", VolumeName: "v1", Uid: "33 -o x"}}
 		},
-		"s3 loader variable": func(a *App) {
-			a.AppConfig.Deployment.Storages.S3Mounts = config.S3Mounts{{Name: "s3", VolumeName: "v1"}}
-			a.AppConfig.Deployment.Variables = config.VariableMaps{{Name: "LD_PRELOAD", Type: config.VariableTypeEnv, Value: "/mnt/x.so"}}
+		"s3 endpoint words": func(a *App) {
+			a.AppConfig.Deployment.Storages.S3Mounts = config.S3Mounts{{Name: "s3", VolumeName: "v1", Endpoint: "h:9000 -o allow_root"}}
 		},
+		"s3 bucket option": func(a *App) {
+			a.AppConfig.Deployment.Storages.S3Mounts = config.S3Mounts{{Name: "s3", VolumeName: "v1", Bucket: "--debug_fuse"}}
+		},
+		"s3 name section": func(a *App) {
+			a.AppConfig.Deployment.Storages.S3Mounts = config.S3Mounts{{Name: "s3]\n[x", VolumeName: "v1"}}
+		},
+		"memory not a size": func(a *App) { a.AppConfig.ProvAppMem = "1g --privileged" },
+		"cores zero":        func(a *App) { a.AppConfig.ProvAppCpuCores = "0" },
+		"cores exponent":    func(a *App) { a.AppConfig.ProvAppCpuCores = "1e3" },
+		"cores negative":    func(a *App) { a.AppConfig.ProvAppCpuCores = "-1" },
 	}
 	for name, mutate := range refused {
 		c, a := sandboxTestApp("runsc-hostnet", true)
@@ -215,5 +226,206 @@ func TestSafeDockerMappingRefusesInjection(t *testing.T) {
 		if got, err := p.SafeDockerMapping("v1"); err == nil {
 			t.Errorf("SafeDockerMapping(%q, %q) = %q, want refused", p.DockerPath, p.SourcePath, got)
 		}
+	}
+}
+
+// Decimal cores are taken as docker --cpus takes them; a whole number keeps its N.0 form.
+func TestAppCoresDecimal(t *testing.T) {
+	for raw, want := range map[string]string{"2": "--cpus=2.0", "0.5": "--cpus=0.5", "1.5": "--cpus=1.5", " 4 ": "--cpus=4.0"} {
+		c, a := sandboxTestApp("none", false)
+		a.AppConfig.ProvAppCpuCores = raw
+		s, err := c.OpenSVCGetAppTemplateSectionMap(a)
+		if err != nil {
+			t.Fatalf("cores %q: %v", raw, err)
+		}
+		if got := s["container#app"]["run_args"]; !strings.HasSuffix(got, want) || !strings.Contains(got, "--memory=1024m --memory-swap=1024m ") {
+			t.Errorf("cores %q: run_args %q, want suffix %q", raw, got, want)
+		}
+		if err := a.SetSetting("prov-app-cpu-cores", raw); err != nil {
+			t.Errorf("SetSetting(prov-app-cpu-cores, %q): %v", raw, err)
+		}
+	}
+	// the container section itself fails on a bad value: never rendered uncapped
+	c, a := sandboxTestApp("none", false)
+	a.AppConfig.ProvAppCpuCores = "two"
+	if _, err := c.OpenSVCGetAppContainerSection(a); err == nil {
+		t.Fatal("container#app rendered with cores \"two\"")
+	}
+}
+
+func gitCloneTestApp(gc *config.GitClone) (*Cluster, *App) {
+	c, a := sandboxTestApp("runsc-hostnet", true)
+	a.AppConfig.Deployment.Storages.Volumes = config.Volumes{{Name: "v1", VolumeDir: "data"}}
+	if gc.VolumeName == "" {
+		gc.VolumeName = "v1"
+	}
+	a.AppConfig.Deployment.Storages.GitClones = config.GitClones{gc}
+	return c, a
+}
+
+// A git clone name, branch or repository that is not one is refused before anything is
+// rendered: shell syntax, a quote, a line break, a git option, another scheme.
+func TestGitCloneValuesRefused(t *testing.T) {
+	for name, gc := range map[string]*config.GitClone{
+		"name shell":         {Name: "x;id;", GitRepo: "github.com/a/b.git"},
+		"name expansion":     {Name: "x$(id)", GitRepo: "github.com/a/b.git"},
+		"name space":         {Name: "x y", GitRepo: "github.com/a/b.git"},
+		"branch subshell":    {Name: "src", GitBranch: "$(id)", GitRepo: "github.com/a/b.git"},
+		"branch backtick":    {Name: "src", GitBranch: "`id`", GitRepo: "github.com/a/b.git"},
+		"branch quote":       {Name: "src", GitBranch: `x"; id; "`, GitRepo: "github.com/a/b.git"},
+		"branch semicolon":   {Name: "src", GitBranch: "main;id", GitRepo: "github.com/a/b.git"},
+		"branch newline":     {Name: "src", GitBranch: "main\nid", GitRepo: "github.com/a/b.git"},
+		"branch option":      {Name: "src", GitBranch: "--upload-pack=touch /tmp/x", GitRepo: "github.com/a/b.git"},
+		"branch dotdot":      {Name: "src", GitBranch: "a..b", GitRepo: "github.com/a/b.git"},
+		"branch lock":        {Name: "src", GitBranch: "main.lock", GitRepo: "github.com/a/b.git"},
+		"repo option":        {Name: "src", GitRepo: "--upload-pack=touch /tmp/x"},
+		"repo subshell":      {Name: "src", GitRepo: "github.com/$(id)"},
+		"repo backtick":      {Name: "src", GitRepo: "github.com/`id`"},
+		"repo quote":         {Name: "src", GitRepo: `github.com/a" "b`},
+		"repo space":         {Name: "src", GitRepo: "github.com/a b"},
+		"repo newline":       {Name: "src", GitRepo: "github.com/a\nb"},
+		"repo ext transport": {Name: "src", GitRepo: "ext::sh -c id"},
+		"repo file":          {Name: "src", GitRepo: "file:///etc"},
+		"repo ssh":           {Name: "src", GitRepo: "ssh://git@github.com/a/b.git"},
+		"repo scp form":      {Name: "src", GitRepo: "git@github.com:a/b.git"},
+		"repo empty":         {Name: "src"},
+	} {
+		c, a := gitCloneTestApp(gc)
+		if err := c.validateAppDeploymentForService(a); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
+		if _, err := c.OpenSVCGetAppTemplateSectionMap(a); err == nil {
+			t.Errorf("%s: rendered", name)
+		}
+	}
+	for _, gc := range []*config.GitClone{
+		{Name: "cloud18-git-sample-data", GitBranch: "main", GitRepo: "github.com/signal18/cloud18-template-code.git"},
+		{Name: "src", GitBranch: "release/v1.2+build", GitRepo: "https://gitlab.example.com:8443/team/app.git"},
+		{Name: "src.v2", GitRepo: "http://git.example.com/~team/app"},
+	} {
+		c, a := gitCloneTestApp(gc)
+		if err := c.validateAppDeploymentForService(a); err != nil {
+			t.Errorf("%+v: %v", gc, err)
+		}
+	}
+}
+
+// The clone command is a fixed script: run by a real shell (tokenized as OpenSVC's shlex
+// does), with hostile values in the environment it reads, git receives each value as one
+// literal argument and nothing else runs.
+func TestGitCloneCommandNeverEvaluatesValues(t *testing.T) {
+	gc := &config.GitClone{Name: "src-code", GitRepo: "github.com/a/b.git", VolumeDir: "www"}
+	c, a := gitCloneTestApp(gc)
+	if err := c.validateAppDeploymentForService(a); err != nil {
+		t.Fatal(err)
+	}
+	// the section itself (the whole service would ask the orchestrator for the volume's pool)
+	cmd := c.OpenSVCGetAppGitInitContainerSection(a, gc)["command"]
+	if cmd == "" || strings.Contains(cmd, "github.com") {
+		t.Fatalf("clone command %q: no client value in its text", cmd)
+	}
+	dir := t.TempDir()
+	marker := dir + "/pwned"
+	if err := os.WriteFile(dir+"/git", []byte("#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$GIT_ARGS\"\n"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	// the directory argument is /bootstrap/www in the container: rewritten to the temp dir
+	cmd = strings.Replace(cmd, "/bootstrap/www", dir+"/www", 1)
+	branch := `x"; touch ` + marker + `; "$(touch ` + marker + ")`" + "touch " + marker + "`"
+	repo := "github.com/a$(touch " + marker + ")\";touch " + marker + ";\"`touch " + marker + "`"
+	sh := exec.Command("/bin/sh", "-c", "/bin/sh "+cmd)
+	sh.Env = []string{"PATH=" + dir + ":/usr/bin:/bin", "GIT_ARGS=" + dir + "/args", "GIT_SRC_CODE_BRANCH=" + branch, "GIT_SRC_CODE_REPO=" + repo}
+	if out, err := sh.CombinedOutput(); err != nil {
+		t.Fatalf("%v: %s", err, out)
+	}
+	if _, err := os.Stat(marker); err == nil {
+		t.Fatal("a value was evaluated by the shell")
+	}
+	args, err := os.ReadFile(dir + "/args")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := strings.Join([]string{"clone", "-b", branch, "--", "https://" + repo, dir + "/www"}, "\n") + "\n"
+	if string(args) != want {
+		t.Fatalf("git args:\n%s\nwant:\n%s", args, want)
+	}
+}
+
+// The privileged S3 mount sidecar gets the keys of its own mount, under the names its
+// entrypoint reads, never the app's environment.
+func TestS3MountSidecarEnvironment(t *testing.T) {
+	c, a := sandboxTestApp("runsc-hostnet", true)
+	a.AppConfig.Deployment.Storages.Volumes = config.Volumes{{Name: "v1", VolumeDir: "data"}}
+	a.AppConfig.Deployment.Storages.S3Mounts = config.S3Mounts{{Name: "s3-pics", VolumeName: "v1", Endpoint: "minio.example.com:9000", Bucket: "pics"}}
+	a.AppConfig.Deployment.Variables = config.VariableMaps{{Name: "LD_PRELOAD", Type: config.VariableTypeEnv, Value: "/mnt/x.so"}}
+	if err := c.validateAppDeploymentForService(a); err != nil {
+		t.Fatal(err)
+	}
+	side := c.OpenSVCGetAppS3MountContainerSection(a, a.AppConfig.Deployment.Storages.S3Mounts[0])
+	if side == nil || side["privileged"] != "true" {
+		t.Fatalf("S3 sidecar: %v", side)
+	}
+	if got, want := side["configs_environment"], "BUCKET=web/S3_PICS_BUCKET REGION=web/S3_PICS_REGION AWS_ACCESS_KEY=web/S3_PICS_AWS_ACCESS_KEY MOUNT_DIR=web/S3_PICS_MOUNT_DIR ENDPOINT=web/S3_PICS_ENDPOINT"; got != want {
+		t.Fatalf("configs_environment %q, want %q", got, want)
+	}
+	if got := side["secrets_environment"]; got != "AWS_SECRET_KEY=web/S3_PICS_AWS_SECRET_KEY" {
+		t.Fatalf("secrets_environment %q", got)
+	}
+}
+
+// A refused definition is a state of the app (APPERR012) until one renders.
+func TestServiceDefinitionErrorState(t *testing.T) {
+	c, a := sandboxTestApp("runsc-hostnet", true)
+	a.AppConfig.ProvAppDockerImg = "--privileged"
+	if _, err := c.OpenSVCGetAppTemplateSectionMap(a); err == nil {
+		t.Fatal("rendered")
+	}
+	if msg := a.getServiceDefinitionError(); !strings.Contains(msg, "prov-app-docker-img") {
+		t.Fatalf("ServiceDefinitionError %q", msg)
+	}
+	a.AppConfig.ProvAppDockerImg = "nginx:1.27"
+	if _, err := c.OpenSVCGetAppTemplateSectionMap(a); err != nil {
+		t.Fatal(err)
+	}
+	if msg := a.getServiceDefinitionError(); msg != "" {
+		t.Fatalf("cleared after a rendering, got %q", msg)
+	}
+}
+
+// The reload under a sandbox: shared on a failover app; refused by the command itself
+// anywhere but inside the sandbox (here, the test host: not gVisor, no container files),
+// so an agent that ignored the `container` keyword runs nothing on the node.
+func TestAppReloadSandboxTask(t *testing.T) {
+	c, a := sandboxTestApp("runsc-hostnet", true)
+	a.AppConfig.ProvAppHATopology = "failover"
+	a.AppConfig.Deployment.Variables = config.VariableMaps{{Name: "APP_RELOAD_COMMAND", Type: config.VariableTypeEnv, Value: "kill -HUP 1"}}
+	s, err := c.OpenSVCGetAppTemplateSectionMap(a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r := s["task#reload"]; r["type"] != "host" || r["shared"] != "true" {
+		t.Fatalf("failover reload task: %v", r)
+	}
+	for _, cmd := range []string{appReloadSandboxCommand("runsc-hostnet"), appReloadSandboxCommand("kata")} {
+		if strings.Contains(cmd, " ;") || strings.Contains(cmd, " #") || strings.Contains(cmd, "{") {
+			t.Fatalf("%q: an INI comment marker or an OpenSVC reference", cmd)
+		}
+		marker := t.TempDir() + "/ran"
+		// OpenSVC runs a command with a ';' through /bin/sh -c: the same here
+		sh := exec.Command("/bin/sh", "-c", cmd)
+		sh.Env = []string{"PATH=/usr/bin:/bin", "APP_RELOAD_COMMAND=touch " + marker}
+		out, err := sh.CombinedOutput()
+		if err == nil || !strings.Contains(string(out), "reload refused") {
+			t.Fatalf("%q outside the sandbox: err=%v out=%s", cmd, err, out)
+		}
+		if _, err := os.Stat(marker); err == nil {
+			t.Fatalf("%q ran the reload outside the sandbox", cmd)
+		}
+	}
+	// an invalid runtime with a reload command renders nothing
+	c, a = sandboxTestApp("runc --privileged", true)
+	a.AppConfig.Deployment.Variables = config.VariableMaps{{Name: "APP_RELOAD_COMMAND", Type: config.VariableTypeEnv, Value: "kill -HUP 1"}}
+	if _, err := c.OpenSVCGetAppTemplateSectionMap(a); err == nil {
+		t.Fatal("an invalid runtime with a reload task rendered")
 	}
 }

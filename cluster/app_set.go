@@ -455,10 +455,12 @@ func (app *App) SetSetting(key, value string) error {
 		app.AppConfig.AppS3Provider = value == "true" || value == "1" || value == "on"
 		app.ClusterGroup.refreshAppS3Providers()
 	case "prov-app-cpu-cores":
-		// a whole number: it is written into the container's run options (--cpus)
+		// a number of cores (2, 1.5): it is written into the container's run options (--cpus)
 		value = strings.TrimSpace(value)
-		if n, err := strconv.Atoi(value); value != "" && (err != nil || n < 1) {
-			return fmt.Errorf("prov-app-cpu-cores %q: a whole number of cores >= 1 is expected", value)
+		if value != "" {
+			if _, err := validateAppCores(value); err != nil {
+				return err
+			}
 		}
 		old := app.AppConfig.ProvAppCpuCores
 		app.AppConfig.ProvAppCpuCores = value

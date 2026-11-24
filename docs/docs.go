@@ -27914,6 +27914,10 @@ const docTemplate = `{
                         "$ref": "#/definitions/config.RouteStatus"
                     }
                 },
+                "serviceDefinitionError": {
+                    "description": "last refused rendering of the service definition (APPERR012), \"\" once one renders",
+                    "type": "string"
+                },
                 "serviceName": {
                     "type": "string"
                 },

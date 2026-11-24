@@ -601,7 +601,21 @@ func (cluster *Cluster) OpenSVCProvisionAppService(app *App) error {
 	return nil
 }
 
+// OpenSVCGetAppTemplateSectionMap renders the app's service definition. A refusal is kept
+// on the app (APPERR012, an ERROR state in the app's view) until a rendering succeeds: the
+// provisioning and the definition refresh stop on it, the running containers stay.
 func (cluster *Cluster) OpenSVCGetAppTemplateSectionMap(app *App) (map[string]map[string]string, error) {
+	svcsection, err := cluster.openSVCAppTemplateSectionMap(app)
+	if err != nil {
+		app.setServiceDefinitionError(err.Error())
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlErr, "App %s: service definition refused: %s", app.Name, err)
+		return nil, err
+	}
+	app.setServiceDefinitionError("")
+	return svcsection, nil
+}
+
+func (cluster *Cluster) openSVCAppTemplateSectionMap(app *App) (map[string]map[string]string, error) {
 	if app.AppConfig.ProvAppDockerImg == "" {
 		return nil, errors.New("App image is not defined in app config")
 	}
@@ -666,7 +680,11 @@ func (cluster *Cluster) OpenSVCGetAppTemplateSectionMap(app *App) (map[string]ma
 		svcsection[sectionName] = cluster.OpenSVCGetAppS3MountContainerSection(app, s3m)
 	}
 
-	svcsection["container#app"] = cluster.OpenSVCGetAppContainerSection(app)
+	appContainer, err := cluster.OpenSVCGetAppContainerSection(app)
+	if err != nil {
+		return nil, fmt.Errorf("app %s: %w", app.Name, err)
+	}
+	svcsection["container#app"] = appContainer
 	cluster.openSVCAddAppJobsSections(svcsection, app, &containernum)
 	cluster.openSVCAddAppReloadSection(svcsection, app) // the template's APP_RELOAD_COMMAND, run by a live resize
 	// APU (Compute) + internal network sensor sidecar, same gate as the proxy one (the
@@ -1071,7 +1089,11 @@ func (cluster *Cluster) openSVCUpdateAppEnvironmentV2(svc opensvc.Collector, app
 	for _, h := range hosts {
 		nodes = append(nodes, h.Node_name)
 	}
-	set, unset := appEnvironmentKeywordsV2(cluster.OpenSVCGetAppContainerSection(app), nodes)
+	appContainer, err := cluster.OpenSVCGetAppContainerSection(app)
+	if err != nil {
+		return fmt.Errorf("config/secret maps updated, service definition not refreshed: %w", err)
+	}
+	set, unset := appEnvironmentKeywordsV2(appContainer, nodes)
 	if len(set) == 0 {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Environment keywords of %s left as they are: none rendered for prov-db-service-type %q", app.ServiceName, cluster.Conf.ProvType)
 		return nil
@@ -1187,7 +1209,9 @@ func (cluster *Cluster) OpenSVCGetAppDefaultSection(app *App) map[string]string 
 	return svcdefault
 }
 
-func (cluster *Cluster) OpenSVCGetAppContainerSection(app *App) map[string]string {
+// OpenSVCGetAppContainerSection renders container#app. It fails when the app's docker cap
+// (memory, cores) is not a number: the container is never rendered uncapped.
+func (cluster *Cluster) OpenSVCGetAppContainerSection(app *App) (map[string]string, error) {
 	svccontainer := make(map[string]string)
 	if cluster.Conf.ProvType == "docker" || cluster.Conf.ProvType == "podman" {
 		svccontainer["tags"] = ""
@@ -1213,14 +1237,13 @@ func (cluster *Cluster) OpenSVCGetAppContainerSection(app *App) map[string]strin
 			// (PostgreSQL) never carries one: its cap lives on the om3 PG slice like a
 			// MariaDB server's (DEFAULT section), moved live by the dynamic resize (pg1 ran
 			// at 1 CPU / 1 GB under a 4 GB configuration with the app plan's docker cap)
-			appMemMB, _ := config.ParseUnitMeasurementToInt("M,bytes,required", cluster.GetAppMemory(app.AppConfig), true)
-			appMemStr := strconv.Itoa(appMemMB) + "m"
-			svccontainer["run_args"] = svccontainer["run_args"] + " --memory=" + appMemStr + " --memory-swap=" + appMemStr
-			// the cores are a client setting: only a number reaches run_args
-			// (validateAppDeploymentForService refuses the service otherwise)
-			if cores, err := cluster.appCoresForRunArgs(app); err == nil {
-				svccontainer["run_args"] += " --cpus=" + strconv.Itoa(cores) + ".0"
+			// memory and cores are client settings: only numbers reach run_args, anything
+			// else stops the rendering (validateAppDeploymentForService refuses it first)
+			limits, err := cluster.appRunArgsLimits(app)
+			if err != nil {
+				return nil, err
 			}
+			svccontainer["run_args"] = svccontainer["run_args"] + " " + limits // the rendered form of before, unchanged
 		}
 
 		svccontainer["volume_mounts"] = strings.TrimSpace(cluster.GetOpenSVCDeploymentPathMapping(app) + " " + postgresWalArchiveMount(app))
@@ -1238,7 +1261,7 @@ func (cluster *Cluster) OpenSVCGetAppContainerSection(app *App) map[string]strin
 			}
 		}
 	}
-	return svccontainer
+	return svccontainer, nil
 }
 
 // appConditionalMappings holds, for one agent, the environment mappings that apply the
@@ -1338,25 +1361,23 @@ func (cluster *Cluster) OpenSVCGetAppGitInitContainerSection(app *App, gc *confi
 		svccontainer["configs_environment"] = app.GetOpenSVCDeploymentAppEnv(config.VariableTypeEnv)
 		dirname := filepath.Join("/bootstrap", gc.GetSourcePath())
 
+		// The clone is a fixed script: no client value is ever part of its text. The branch,
+		// the repository and the credentials are read from the environment, each expanded
+		// inside double quotes, so the shell never evaluates them ($(...), backticks, quotes
+		// and ';' stay characters of the value); the directory is the script's first
+		// argument; "--" ends git's options before the URL. The values are validated too
+		// (ValidateGitBranch, ValidateGitRepository), and the variable names come from the
+		// clone name, validated as an identifier (validateAppDeploymentForService).
 		prefix := gc.GetVariablePrefix()
-		branchKey := "$" + prefix + config.GitVarSuffixBranch
-		gituser := prefix + config.GitVarSuffixUser
-		gitpass := prefix + config.GitVarSuffixPass
-		gitURL := prefix + config.GitVarSuffixRepo
-
-		urlString := "$" + gitURL
+		url := "https://$" + prefix + config.GitVarSuffixRepo
 		if cluster.Conf.GetDecryptedPassword(gc.Name, gc.GitPass) != "" {
 			if strings.Contains(gc.GitRepo, "github.com") {
-				urlString = fmt.Sprintf("$%s@$%s", gitpass, gitURL)
+				url = "https://$" + prefix + config.GitVarSuffixPass + "@$" + prefix + config.GitVarSuffixRepo
 			} else {
-				urlString = fmt.Sprintf("$%s:$%s@$%s", gituser, gitpass, gitURL)
+				url = "https://$" + prefix + config.GitVarSuffixUser + ":$" + prefix + config.GitVarSuffixPass + "@$" + prefix + config.GitVarSuffixRepo
 			}
 		}
-
-		// the branch and the repository are client values read from the environment: quoted,
-		// so a space in them never adds an argument to git; the directory and the volume are
-		// validated (validateAppDeploymentForService)
-		svccontainer["command"] = "-c 'rm -rf " + dirname + ";mkdir " + dirname + ";git clone -b \"" + branchKey + "\" \"https://" + urlString + "\" " + dirname + "'"
+		svccontainer["command"] = `-c 'rm -rf "$1" && mkdir "$1" && git clone -b "$` + prefix + config.GitVarSuffixBranch + `" -- "` + url + `" "$1"' sh ` + dirname
 	}
 
 	return svccontainer
@@ -1370,8 +1391,11 @@ func (cluster *Cluster) OpenSVCGetAppS3MountContainerSection(app *App, s3m *conf
 		svccontainer["image"] = "signal18/nfsmixr:latest"
 		svccontainer["netns"] = "container#01"
 		svccontainer["privileged"] = "true"
-		svccontainer["secrets_environment"] = appSecretsEnvironment(app)
-		svccontainer["configs_environment"] = app.GetOpenSVCDeploymentAppEnv(config.VariableTypeEnv)
+		// privileged: it gets the keys of its own mount only, under the names its entrypoint
+		// reads (ENDPOINT, BUCKET, REGION, MOUNT_DIR, AWS_ACCESS_KEY, AWS_SECRET_KEY), never
+		// the app's environment, whose variables are the client's
+		svccontainer["configs_environment"] = s3m.GetVariableKeys(app.Name, config.VariableTypeEnv)
+		svccontainer["secrets_environment"] = s3m.GetVariableKeys(app.Name, config.VariableTypeSecret)
 		diskname := s3m.GetSourceVolumeName()
 		if src, err := config.VolumeSource(diskname, s3m.VolumeDir); err == nil {
 			svccontainer["volume_mounts"] = src + ":/mnt:rw,rshared"

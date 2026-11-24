@@ -1684,16 +1684,18 @@ func (s *S3Mount) GetVariablePrefix() string {
 	return strings.ToUpper(gitVariableReplacer.Replace(s.Name)) + "_"
 }
 
+// GetVariableKeys maps the keys of this mount onto the names the mount sidecar reads:
+// "<KEY>=<app>/<PREFIX><KEY>", space separated (an OpenSVC configs/secrets_environment).
 func (s *S3Mount) GetVariableKeys(appName string, vartype string) string {
 	result := make([]string, 0)
 	prefix := s.GetVariablePrefix()
 	if vartype == "env" {
 		for _, key := range GetS3EnvKeys() {
-			result = append(result, fmt.Sprintf("%s=%s/%s\n", key, appName, prefix+key))
+			result = append(result, fmt.Sprintf("%s=%s/%s", key, appName, prefix+key))
 		}
 	} else if vartype == "secret" {
 		for _, key := range GetS3SecretKeys() {
-			result = append(result, fmt.Sprintf("%s=%s/%s\n", key, appName, prefix+key))
+			result = append(result, fmt.Sprintf("%s=%s/%s", key, appName, prefix+key))
 		}
 	} else {
 		// If vartype is not env or secret, return an empty string
