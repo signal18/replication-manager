@@ -283,6 +283,7 @@ func (repman *ReplicationManager) moveServerKvOnce(e config.SecretKvConfig, m *s
 // recordServerKvWrittenAs: an entry's first successful write records the name it holds the
 // secrets under, from where the write went (the name may have changed since it was queued).
 func (repman *ReplicationManager) recordServerKvWrittenAs(entry string, items []credstore.StoreItem) {
+	repman.recordServerKvAlias(entry, items)
 	e, ok := repman.Conf.SecretKvActiveEntryAt(config.SecretKvLevelServer, entry)
 	if !ok || e.WrittenAs != "" || len(items) == 0 {
 		return
@@ -303,4 +304,46 @@ func (repman *ReplicationManager) recordServerKvWrittenAs(entry string, items []
 	if repman.Conf.SetSecretKvWrittenAsAt(config.SecretKvLevelServer, entry, name) {
 		repman.Save()
 	}
+}
+
+// recordServerKvAlias records the host an orchestrator store wrote the user list's documented
+// key under (<api host>_api-credentials, SecretKvConfig.AliasWrittenAs). When api-public-url
+// named another host before, the key under that host is not deleted (repman never deletes a
+// secret) and is no longer kept current: it gets a moved-to marker naming the new key, and a
+// WARN and a security event say so, so the operator removes it once nothing reads it.
+func (repman *ReplicationManager) recordServerKvAlias(entry string, items []credstore.StoreItem) {
+	host := ""
+	for _, it := range items {
+		if it.Alias && it.Key == apiCredentialsKey {
+			host = it.Path
+		}
+	}
+	if host == "" {
+		return
+	}
+	old, changed := repman.Conf.SetSecretKvAliasWrittenAsAt(config.SecretKvLevelServer, entry, host)
+	if !changed {
+		return
+	}
+	if old != "" {
+		// the keys as the writer names them (StoreItem.PrefixedKey: <path>_<key>)
+		newKey := credstore.StoreItem{Path: host, Key: apiCredentialsKey}.PrefixedKey()
+		oldKey := credstore.StoreItem{Path: old, Key: apiCredentialsKey}.PrefixedKey()
+		oldMarker := credstore.StoreItem{Path: old, Key: ConstServerKvMovedTo}.PrefixedKey()
+		msg := fmt.Sprintf("Server credential store %s: the user list is now kept under %s (api-public-url changed); %s keeps the value it had, passwords included, and is no longer updated, %s names the new key: delete %s in the orchestrator once nothing reads it", entry, newKey, oldKey, oldMarker, oldKey)
+		repman.Logrus.Warn(msg)
+		repman.logSecurityEvent("server_secret_kv_alias_moved", entry, "", msg)
+		// Both markers are queued before the host is saved: a stop in between loses the queue
+		// (in memory) but not the move, the saved host is still the old one and the next write
+		// queues them again. A failed write is requeued by the runner (StoreQueue.Requeue).
+		// The marker under the new host names its own key: back on a host that was left before
+		// (A to B to A), its moved-to stops naming the key it had left for.
+		now := time.Now().UTC()
+		repman.serverKvQueue().Push(
+			credstore.StoreItem{Entry: entry, Path: old, Key: ConstServerKvMovedTo, Alias: true,
+				Version: credstore.Version{Value: newKey, At: now, By: repman.Conf.ArbitrationSasUniqueId}},
+			credstore.StoreItem{Entry: entry, Path: host, Key: ConstServerKvMovedTo, Alias: true,
+				Version: credstore.Version{Value: newKey, At: now, By: repman.Conf.ArbitrationSasUniqueId}})
+	}
+	repman.Save()
 }

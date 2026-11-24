@@ -1081,7 +1081,7 @@
         },
         "/api/clusters/settings/actions/server-secret-kv": {
             "get": {
-                "description": "The entries of the server level, which hold the server secrets (api-credentials, SMTP, GitLab...): a vault under \u003cpath-prefix\u003e/system/repman/\u003cinstance name\u003e, the OpenSVC secret system/sec/repman or a Kubernetes Secret repman-system under the keys \u003cinstance name\u003e_\u003ckey\u003e: secrets never returned, only the names of those set; each one's state (last write, behind: GWARN024, WARN0320 on every cluster) and folder, the instance's name (empty while not complete), the server secrets' names, the plugins' manifests and whether a config file sets the list. The instance's sysops and extsysops only: the server credentials grant on every cluster.",
+                "description": "The entries of the server level, which hold the server secrets (api-credentials, SMTP, GitLab...): a vault under \u003cpath-prefix\u003e/system/repman/\u003cinstance name\u003e, the OpenSVC secret system/sec/repman or a Kubernetes Secret repman-system under the keys \u003cinstance name\u003e_\u003ckey\u003e (an orchestrator store also keeps the user list under \u003capi host\u003e_api-credentials): secrets never returned, only the names of those set; each one's state (last write, behind: GWARN024, WARN0320 on every cluster) and folder, the instance's name (empty while not complete), the server secrets' names, the plugins' manifests and whether a config file sets the list. The instance's sysops and extsysops only: the server credentials grant on every cluster.",
                 "produces": [
                     "application/json"
                 ],
