@@ -17,7 +17,7 @@ func TestAppSandboxRuntimeState(t *testing.T) {
 			c.Apps = append(c.Apps, &App{Name: "web", ClusterGroup: c})
 		}
 		c.CheckAppSandboxRuntime()
-		return c.SecurityStateMachine.IsInState("WARN0328")
+		return c.SecurityStateMachine.CurState.Search("WARN0328")
 	}
 	cases := []struct {
 		runtime string
@@ -40,6 +40,25 @@ func TestAppSandboxRuntimeState(t *testing.T) {
 		if got := open(tc.runtime, tc.cloud18, tc.apps); got != tc.want {
 			t.Errorf("runtime %q cloud18 %v apps %d: WARN0328 open = %v, want %v", tc.runtime, tc.cloud18, tc.apps, got, tc.want)
 		}
+	}
+	// the tick's ClearState then the check: open while off, closed once back to auto (the
+	// current tick's states: IsInState reads the previous tick's)
+	c := &Cluster{Name: "c1", Conf: &config.Config{ProvAppDockerRuntime: "none", Cloud18: true},
+		SecurityStateMachine: new(state.StateMachine)}
+	c.SecurityStateMachine.Init()
+	c.Apps = append(c.Apps, &App{Name: "web", ClusterGroup: c})
+	c.CheckAppSandboxRuntime()
+	if !c.SecurityStateMachine.CurState.Search("WARN0328") {
+		t.Fatal("sandbox off: WARN0328 expected")
+	}
+	c.SecurityStateMachine.ClearState()
+	c.Conf.ProvAppDockerRuntime = config.ConstAppDockerRuntimeAuto
+	c.CheckAppSandboxRuntime()
+	if c.SecurityStateMachine.CurState.Search("WARN0328") {
+		t.Fatal("sandbox back on: WARN0328 closed on the next tick")
+	}
+	if len(c.SecurityStateMachine.GetOpenStates()) != 0 {
+		t.Fatalf("no open security state left: %+v", c.SecurityStateMachine.GetOpenStates())
 	}
 	// a nil security state machine (a cluster not initialised yet) is not a panic
 	(&Cluster{Conf: &config.Config{Cloud18: true}}).CheckAppSandboxRuntime()
