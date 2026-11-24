@@ -1,9 +1,11 @@
 package cluster
 
 import (
+	"os/exec"
 	"strings"
 
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/version"
 )
 
 func (cluster *Cluster) GetMyDumperCompatibleOptions() []string {
@@ -73,4 +75,47 @@ func (cluster *Cluster) GetMyLoaderCompatibleOptions() []string {
 	}
 
 	return params
+}
+
+// myLoaderNoSourceChangeArgs keeps myloader from changing the replication source of the node it
+// loads. The mydumper backups of this tool are taken with --source-data=2 to record the binary log
+// file, position and GTID set in their metadata, which also marks them
+// "myloader_exec_change_source = 1": myloader then sends CHANGE REPLICATION SOURCE TO on its own.
+// MariaDB has no such statement (error 1064; from mydumper 0.20.1 myloader then exits 1 after the
+// data is loaded and the restore fails), and on MySQL/Percona the source of a replica is the
+// business of the replication manager, which positions it after the load
+// (applyMyLoaderReplicaPosition). --source-data=0 on myloader overrides the metadata and leaves the
+// recorded position in place. The backups already taken carry the mark, so this is done on the
+// restore and not only on the dump.
+//
+// Nothing is added when the user set --source-data in backup-myloader-options, or when myloader
+// is older than 0.18.1 (it rejects the option) or its version is unknown. The version is the one of
+// the myloader the restore runs (myLoaderVersion), not the detected mydumper's: backup-myloader-path
+// or the PATH can hold another release, and a 0.17.1 myloader next to a newer mydumper refuses
+// the option and fails the restore.
+func myLoaderNoSourceChangeArgs(args []string, tool *version.Version) []string {
+	if tool == nil || !tool.GreaterEqual("0.18.1") {
+		return args
+	}
+	for _, a := range args {
+		if a == "--source-data" || strings.HasPrefix(a, "--source-data=") {
+			return args
+		}
+	}
+	return append(args, "--source-data=0")
+}
+
+// myLoaderVersion reads the version of the myloader the restore runs (GetMyLoaderPath), parsed as
+// the mydumper version is (RefreshMyDumperVersion). nil when it can not be read: nothing is then
+// added to its arguments.
+func (cluster *Cluster) myLoaderVersion() *version.Version {
+	out, err := exec.Command(cluster.GetMyLoaderPath(), "--version").Output()
+	if err != nil {
+		return nil
+	}
+	v, parsed := version.NewVersionFromString("mydumper", version.ExtractVersionFromOutput(string(out)))
+	if parsed == 0 {
+		return nil
+	}
+	return v
 }
