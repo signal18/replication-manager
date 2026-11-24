@@ -44,7 +44,7 @@ image is `{env.app_img}`, the client's image:
 |---|---|---|
 | `container#app` | client | yes |
 | `container#jobs` (jobs sidecar of an engine app, e.g. PostgreSQL) | client | yes |
-| `task#reload` (live resize reload command) | client | yes |
+| `task#reload` (live resize reload command) | client | runs **in** `container#app` (see below) |
 | `container#01` (pause, holds the network namespace) | ours | no |
 | `container#sensor` | ours | no |
 | `container#NNinit<git>` (git clone), `container#NNinitjobs` (client download) | ours | no |
@@ -57,6 +57,31 @@ whatever precedes it.
 
 The OpenSVC `container.docker` driver has no runtime keyword: om starts the container with
 the docker CLI and passes `run_args` through, so the runtime is a run option.
+
+### The reload task under the sandbox
+
+Off the sandbox, `task#reload` is a container of the client's image that joins the app's
+PID namespace (`pidns = container#app`) and signals its processes through `/proc/1`. Under
+gVisor the app's processes live in the sandbox's own kernel: no other container can join
+that PID namespace. A gVisor reload container sees only itself (`cat: /proc/1/root/run/php/
+php8.4-fpm.pid: No such file or directory`, observed on a node), and a runc one would run
+the client's image outside the sandbox. So when a runtime is set, `openSVCAddAppReloadSection`
+renders a **host task that runs the command in `container#app`**:
+
+```ini
+[task#reload]
+type = host
+container = container#app
+configs_environment = <app>/*
+command = /bin/sh -c 'eval "$APP_RELOAD_COMMAND"'
+```
+
+om3's `task.host` `container` keyword runs the command through the container's runtime (an
+exec into the sandbox) with the task's environment read at run time, the keys of that
+moment: nothing runs on the node, nothing outside the sandbox. Checked on a node (om3
+v3.0.0-rc56): the PHP reload re-renders the sizing files and restarts the php-fpm pool
+inside the gVisor app. The keyword needs an om3 agent that has it (rc56 has it); off the
+sandbox the docker task is unchanged.
 
 ## Why `runsc-hostnet`, not `runsc`
 
@@ -117,10 +142,8 @@ The command stays free: it is the container's arguments, after the image.
 
 ## Known limits
 
-- `task#reload` joins the app's PID namespace (`pidns = container#app`). Under gVisor the
-  app's processes live in the sandbox: whether a reload task in another sandbox sees them has
-  not been tested on a node. The live resize of an app with a reload command is to be
-  checked there; a reprovision always applies.
+- Under the sandbox the reload task needs the om3 `task.host` `container` keyword (present
+  in v3.0.0-rc56); an agent without it refuses the keyword.
 - The jobs sidecar reads the service's cgroup slice through a read-only bind mount; reading
   cgroup files through the gVisor gofer is to be checked on a node (engine apps only).
 - The live resize of a docker-capped app (`prov-db-docker-run-args-limit`) is a reprovision,
@@ -129,6 +152,7 @@ The command stays free: it is the container's arguments, after the image.
 ## Tests
 
 `cluster/app_sandbox_test.go`: resolution of the setting, the runtime on the client-image
-sections only (app, reload task, jobs sidecar) and absent from the pause, sensor and init
-containers, absent when off, an invalid value refused, and each injection path above refused
+sections only (app, jobs sidecar) and absent from the pause, sensor and init containers,
+the reload task run in `container#app` under the sandbox and a docker task in the app's PID
+namespace when off, absent when off, an invalid value refused, and each injection path above refused
 while any image and command stay accepted.

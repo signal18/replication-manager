@@ -22,7 +22,8 @@ import (
 // privileged sidecars. See doc/implementation/cluster/APP_SANDBOX_RUNTIME.md.
 
 // appImageReference is the image keyword of every section that runs the client's image
-// (the app, its jobs sidecar, its reload task): the runtime goes on exactly those.
+// (the app, its jobs sidecar): the runtime goes on exactly those. Under the sandbox the
+// reload task runs in container#app itself (openSVCAddAppReloadSection).
 const appImageReference = "{env.app_img}"
 
 // applyAppDockerRuntime adds --runtime=<runtime> at the END of the run_args of every

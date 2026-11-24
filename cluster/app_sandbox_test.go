@@ -60,8 +60,11 @@ func TestAppDockerRuntimeOnClientImageSectionsOnly(t *testing.T) {
 	if got := s["container#app"]["run_args"]; !strings.HasSuffix(got, " --runtime=runsc-hostnet") || !strings.Contains(got, "--cpus=2.0") {
 		t.Fatalf("container#app run_args: %q", got)
 	}
-	if got := s["task#reload"]["run_args"]; got != "--runtime=runsc-hostnet" {
-		t.Fatalf("task#reload run_args: %q", got)
+	// the reload cannot join the sandbox's PID namespace from another container: it runs IN
+	// container#app (host task, `container` keyword), never on the node nor in a runc container
+	if r := s["task#reload"]; r["type"] != "host" || r["container"] != "container#app" || r["image"] != "" || r["pidns"] != "" ||
+		r["run_args"] != "" || r["command"] != `/bin/sh -c 'eval "$APP_RELOAD_COMMAND"'` || r["configs_environment"] != "web/*" {
+		t.Fatalf("task#reload under the sandbox: %v", r)
 	}
 	if got := s["container#01"]["run_args"]; strings.Contains(got, "--runtime") {
 		t.Fatalf("the pause container keeps the node's runtime: %q", got)
@@ -93,9 +96,14 @@ func TestAppDockerRuntimeOff(t *testing.T) {
 		cloud18 bool
 	}{{"auto", false}, {"none", true}, {"", true}} {
 		c, a := sandboxTestApp(tc.value, tc.cloud18)
+		a.AppConfig.Deployment.Variables = config.VariableMaps{{Name: "APP_RELOAD_COMMAND", Type: config.VariableTypeEnv, Value: "kill -HUP 1"}}
 		s, err := c.OpenSVCGetAppTemplateSectionMap(a)
 		if err != nil {
 			t.Fatal(err)
+		}
+		// off: the reload stays a container of the app image in the app's PID namespace
+		if r := s["task#reload"]; r["type"] != "docker" || r["pidns"] != "container#app" {
+			t.Fatalf("%q cloud18=%v: task#reload off the sandbox: %v", tc.value, tc.cloud18, r)
 		}
 		for name, sec := range s {
 			if strings.Contains(sec["run_args"], "--runtime") {

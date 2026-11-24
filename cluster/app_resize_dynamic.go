@@ -182,8 +182,30 @@ func appReloadCommand(app *App) string {
 // reload command: a container of the app image in the PID and network namespaces of the
 // app, with the app's keys as environment (APP_CONFIGURATOR_SCRIPT, APP_RELOAD_COMMAND).
 // The orchestrator recreates it at each run, so it reads the keys of that moment.
+//
+// Under a sandbox runtime (prov-app-docker-runtime), the app's processes live in its own
+// sandbox kernel: a second container, sandboxed or not, cannot join that PID namespace (in
+// a gVisor task, /proc/1 is the task itself and the reload finds no php-fpm). The task is
+// then a host task that runs the command IN container#app, through the container's
+// runtime (om3 task.host `container` keyword, an exec into the sandbox), with the keys of
+// the moment as its environment: the command never runs on the node nor outside the
+// sandbox.
 func (cluster *Cluster) openSVCAddAppReloadSection(svcsection map[string]map[string]string, app *App) {
 	if appReloadCommand(app) == "" || (cluster.Conf.ProvType != "docker" && cluster.Conf.ProvType != "podman") {
+		return
+	}
+	// an invalid runtime stops the rendering in applyAppDockerRuntime
+	if runtime, err := cluster.Conf.GetAppDockerRuntime(); err == nil && runtime != "" {
+		task := map[string]string{
+			"type":                "host",
+			"container":           "container#app",
+			"configs_environment": app.GetOpenSVCDeploymentAppEnv(config.VariableTypeEnv),
+			"command":             `/bin/sh -c 'eval "$` + appReloadCommandVariable + `"'`,
+		}
+		if app.AppConfig.ProvAppHATopology == "failover" {
+			task["shared"] = "true"
+		}
+		svcsection[appReloadTask] = task
 		return
 	}
 	task := map[string]string{
