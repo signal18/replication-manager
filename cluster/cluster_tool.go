@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"slices"
 	"strings"
 	"time"
 
@@ -49,6 +50,11 @@ func (cluster *Cluster) GetMyDumperCompatibleOptions() []string {
 	return params
 }
 
+// GetMyLoaderCompatibleOptions filters backup-myloader-options by the detected MyDumper version
+// (VersionsMap "mydumper", the executable found on the monitor host, not necessarily the version that produced
+// the backup): the legacy rule drops --innodb-optimize-keys=skip for a MyDumper before 0.16.7. It does not read
+// the myloader version: only myLoaderRestoreArgs (R0 --source-data=0, R1 --drop-table, R2 --optimize-keys)
+// does, from its own bounded probe.
 func (cluster *Cluster) GetMyLoaderCompatibleOptions() []string {
 	params := []string{}
 	tool := cluster.VersionsMap.Get("mydumper")
@@ -151,4 +157,123 @@ func (cluster *Cluster) myLoaderVersion() *version.Version {
 		return nil
 	}
 	return v
+}
+
+// The shipped backup-myloader-options hold two options that newer MyLoader releases no longer take
+// (upstream, read at the release tags):
+//   - --overwrite-tables: accepted but without effect from 0.20.1 (the DROP mode is only selected by
+//     --drop-table since commit 0ae8ffb9: the restore stops on the first existing table), unknown from 1.0.0;
+//     --drop-table=DROP runs the same DROP TABLE / DROP VIEW IF EXISTS;
+//   - --innodb-optimize-keys=skip: unknown or refused from 0.19.1, renamed --optimize-keys=SKIP (same code).
+const (
+	myLoaderDropTableFrom    = "0.20.1"
+	myLoaderOptimizeKeysFrom = "0.19.1"
+
+	myLoaderOptOverwriteTables = "--overwrite-tables"
+	myLoaderOptDropTable       = "--drop-table=DROP"
+	myLoaderOptInnodbSkip      = "--innodb-optimize-keys=skip"
+	myLoaderOptOptimizeSkip    = "--optimize-keys=SKIP"
+)
+
+// myLoaderManagedDefaultArgs returns args with the two shipped-default options replaced by the ones the
+// myloader release takes, and what it replaced. args is not modified. A myloader older than the boundary of
+// an option keeps that option.
+func myLoaderManagedDefaultArgs(args []string, loader *version.Version) (adapted []string, changes []string) {
+	if loader == nil {
+		return slices.Clone(args), nil
+	}
+	adapted = make([]string, 0, len(args))
+	for _, a := range args {
+		switch {
+		case a == myLoaderOptOverwriteTables && loader.GreaterEqual(myLoaderDropTableFrom):
+			adapted = append(adapted, myLoaderOptDropTable)
+			changes = append(changes, myLoaderOptOverwriteTables+" -> "+myLoaderOptDropTable)
+		case a == myLoaderOptInnodbSkip && loader.GreaterEqual(myLoaderOptimizeKeysFrom):
+			adapted = append(adapted, myLoaderOptOptimizeSkip)
+			changes = append(changes, myLoaderOptInnodbSkip+" -> "+myLoaderOptOptimizeSkip)
+		default:
+			adapted = append(adapted, a)
+		}
+	}
+	return adapted, changes
+}
+
+// myLoaderRejectedOptions says, for an argument list that is not rewritten (explicit or custom
+// configuration), which of its options the myloader release does not take or ignores.
+func myLoaderRejectedOptions(args []string, loader *version.Version) []string {
+	if loader == nil {
+		return nil
+	}
+	var out []string
+	for _, a := range args {
+		switch {
+		case a == myLoaderOptOverwriteTables && loader.GreaterEqual(myLoaderDropTableFrom):
+			out = append(out, myLoaderOptOverwriteTables+" does not drop existing tables since MyLoader "+myLoaderDropTableFrom+" (unknown from 1.0.0): use "+myLoaderOptDropTable)
+		case (a == "--innodb-optimize-keys" || strings.HasPrefix(a, "--innodb-optimize-keys=")) && loader.GreaterEqual(myLoaderOptimizeKeysFrom):
+			out = append(out, a+" is refused or unknown since MyLoader "+myLoaderOptimizeKeysFrom+": use --optimize-keys (for example "+myLoaderOptOptimizeSkip+")")
+		}
+	}
+	return out
+}
+
+// myLoaderOptionsExplicit reports whether a configuration source set backup-myloader-options: a config
+// file, the environment or a flag (the immutable map) or the dynamic map. Both maps are read through their
+// synchronized accessors. A value set through the API is not recorded in either map, so it is not detected.
+func (cluster *Cluster) myLoaderOptionsExplicit() bool {
+	if _, ok := cluster.Conf.GetImmuableFlag("backup-myloader-options"); ok {
+		return true
+	}
+	if _, ok := cluster.Conf.GetDynamicFlag("backup-myloader-options"); ok {
+		return true
+	}
+	return false
+}
+
+// adaptMyLoaderDefaults adapts the arguments of a restore to the myloader release: only when the configured
+// value is the exact shipped default AND no configuration source set it. Any other value is left as it is,
+// with a warning for each option the release rejects. Persistent configuration is never written.
+func (cluster *Cluster) adaptMyLoaderDefaults(args []string, loader *version.Version) []string {
+	if cluster.Conf.BackupMyLoaderOptions == config.DefaultBackupMyLoaderOptions && !cluster.myLoaderOptionsExplicit() {
+		adapted, changes := myLoaderManagedDefaultArgs(args, loader)
+		if len(changes) > 0 {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "myloader %s: the shipped default of backup-myloader-options adapted for this release: %s", loader.ToString(), strings.Join(changes, ", "))
+		}
+		return adapted
+	}
+	for _, msg := range myLoaderRejectedOptions(args, loader) {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "myloader %s: backup-myloader-options is configured and left as it is: %s", loader.ToString(), msg)
+	}
+	return args
+}
+
+// myLoaderRestoreArgs builds the myloader arguments of a restore. The version of the myloader that runs is
+// read once (bounded probe) and used for every rule: the managed-default adaptation (only when adaptDefaults,
+// the ordinary replica reseed) and the replication source guard (myLoaderNoSourceChangeArgs). An unknown
+// version adapts nothing.
+func (cluster *Cluster) myLoaderRestoreArgs(adaptDefaults bool) []string {
+	loader := cluster.myLoaderVersion()
+	args := cluster.GetMyLoaderCompatibleOptions()
+	if adaptDefaults && loader != nil {
+		args = cluster.adaptMyLoaderDefaults(args, loader)
+	}
+	return myLoaderNoSourceChangeArgs(args, loader)
+}
+
+// isOrdinaryMyLoaderReseed tells whether the logical reseed ProcessReseedLogical runs takes the adaptation of the
+// managed default options: the shared logical replica reseed path, minus what the reliable execution context
+// excludes when it runs: a point-in-time restore (server.PointInTimeMeta.IsInPITR) and the staging refresh
+// (cluster.IsRefreshStaging, held for the whole refresh, or the configured staging server). A reseed armed by the
+// automatic rejoin (autorejoin-logical-backup) or by the logical-backup cookie reaches ProcessReseedLogical through
+// the same task as the operator's request and carries no origin (reseedFromRejoin is set after the arming): it
+// cannot be told apart and takes the adaptation too.
+func isOrdinaryMyLoaderReseed(isPITR, refreshingStaging, stagingServer bool) bool {
+	return !isPITR && !refreshingStaging && !stagingServer
+}
+
+// adaptsMyLoaderDefaults tells whether a restore gets the managed-default adaptation: the shared logical replica
+// reseed path only (replicaReseed, set by its call site, see isOrdinaryMyLoaderReseed). A restore on the master (jobReseedMyLoader adds
+// --enable-binlog there), the seeding of a child from a parent cluster and the rejoin by logical backup keep
+// their arguments as they are.
+func adaptsMyLoaderDefaults(replicaReseed, restoreOnMaster, fromParent bool) bool {
+	return replicaReseed && !restoreOnMaster && !fromParent
 }

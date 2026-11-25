@@ -3605,7 +3605,15 @@ func myLoaderGtidSet(set string) string {
 }
 
 func (server *ServerMonitor) JobReseedMyLoader(backupdir string, restoreUser bool) error {
-	return server.jobReseedMyLoader(backupdir, restoreUser, false)
+	return server.jobReseedMyLoader(backupdir, restoreUser, false, false)
+}
+
+// JobReseedMyLoaderReplica is the myloader restore of the shared logical replica reseed (ProcessReseedLogical,
+// see isOrdinaryMyLoaderReseed): the only caller whose restore gets the managed default options adapted to
+// the myloader release (#2433). JobReseedMyLoader, used by the rejoin by logical backup, and the excluded
+// reseeds keep the arguments as they are.
+func (server *ServerMonitor) JobReseedMyLoaderReplica(backupdir string, restoreUser bool) error {
+	return server.jobReseedMyLoader(backupdir, restoreUser, false, true)
 }
 
 // JobReseedMyLoaderFromParent loads another cluster's backup (a staging cluster seeded
@@ -3613,10 +3621,10 @@ func (server *ServerMonitor) JobReseedMyLoader(backupdir string, restoreUser boo
 // loaded and no account is replayed, so the node keeps its own root, replication and
 // monitoring accounts and the system tables of its own release, whatever the parent's.
 func (server *ServerMonitor) JobReseedMyLoaderFromParent(backupdir string) error {
-	return server.jobReseedMyLoader(backupdir, false, true)
+	return server.jobReseedMyLoader(backupdir, false, true, false)
 }
 
-func (server *ServerMonitor) jobReseedMyLoader(backupdir string, restoreUser bool, fromParent bool) error {
+func (server *ServerMonitor) jobReseedMyLoader(backupdir string, restoreUser bool, fromParent bool, replicaReseed bool) error {
 	cluster := server.ClusterGroup
 	if err := server.refuseColumnstoreReplicaDump(); err != nil {
 		return err
@@ -3670,7 +3678,9 @@ func (server *ServerMonitor) jobReseedMyLoader(backupdir string, restoreUser boo
 	fresh := server.CheckFreshNode()
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Logical restore (myloader) strategy for %s: fresh %t (%s)", server.URL, fresh.Fresh, fresh.Reason)
 
-	myargs := myLoaderNoSourceChangeArgs(cluster.GetMyLoaderCompatibleOptions(), cluster.myLoaderVersion())
+	// the managed default options are adapted on the shared replica reseed path only: a restore on the master
+	// (--enable-binlog), the seeding from a parent and the rejoin by logical backup keep the arguments as they are
+	myargs := cluster.myLoaderRestoreArgs(adaptsMyLoaderDefaults(replicaReseed, server.URL == master.URL, fromParent))
 	if server.URL == master.URL {
 		myargs = append(myargs, "--enable-binlog")
 	}
@@ -8166,7 +8176,13 @@ func (server *ServerMonitor) ProcessReseedLogical(task string) error {
 	}
 
 	if backupType == config.ConstBackupLogicalTypeMydumper {
-		err = server.JobReseedMyLoader(backupfile, cluster.Conf.BackupRestoreMysqlUser)
+		// the managed default options are adapted on this shared replica reseed path (#2433), except a PITR and the
+		// staging refresh, whose reload also comes here
+		if isOrdinaryMyLoaderReseed(isPITR, cluster.IsRefreshStaging, cluster.IsActiveStagingServer(server)) {
+			err = server.JobReseedMyLoaderReplica(backupfile, cluster.Conf.BackupRestoreMysqlUser)
+		} else {
+			err = server.JobReseedMyLoader(backupfile, cluster.Conf.BackupRestoreMysqlUser)
+		}
 		// the primary's position applies to a link pointing to the primary only (law T27)
 		if err == nil && server.IsSlave && !isPITR && linkOnSource {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Parsing mydumper metadata ")

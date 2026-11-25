@@ -1146,7 +1146,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.BackupKeepUntilValid, "backup-keep-until-valid", false, "Backup will rename previous backup to .old before removing after new backup valid")
 	flags.StringVar(&conf.BackupMyDumperPath, "backup-mydumper-path", "", "Path to mydumper binary")
 	flags.StringVar(&conf.BackupMyLoaderPath, "backup-myloader-path", "", "Path to myloader binary")
-	flags.StringVar(&conf.BackupMyLoaderOptions, "backup-myloader-options", "--overwrite-tables --verbose=3 --innodb-optimize-keys=skip --max-threads-for-schema-creation=1 --max-threads-for-index-creation=1", "Extra options")
+	flags.StringVar(&conf.BackupMyLoaderOptions, "backup-myloader-options", config.DefaultBackupMyLoaderOptions, "Extra options")
 	flags.StringVar(&conf.BackupMyDumperOptions, "backup-mydumper-options", "--chunk-filesize=1000 --compress --less-locking --verbose=3 --triggers --routines --events --trx-consistency-only --kill-long-queries", "Extra options")
 	flags.StringVar(&conf.BackupMyDumperRegex, "backup-mydumper-regex", `^(?!(sys\.|performance_schema\.|information_schema\.|replication_manager_schema\.jobs|mysql\.gtid_slave_pos$))`, "Mydumper regex for backup")
 	flags.BoolVar(&conf.BackupMyDumperStream, "backup-mydumper-stream", false, "Enable mydumper stream mode to produce a single file")
