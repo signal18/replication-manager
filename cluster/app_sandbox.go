@@ -28,12 +28,28 @@ import (
 // reload task runs in container#app itself (openSVCAddAppReloadSection).
 const appImageReference = "{env.app_img}"
 
-// applyAppDockerRuntime adds --runtime=<runtime> at the END of the run_args of every
-// docker/podman section that runs the client's image, when the instance sets one. Last on
-// the line, it is the one docker keeps whatever precedes it. The pause container, the
-// sensor and the init or mount sidecars run images of ours and keep the node's runtime.
-func (cluster *Cluster) applyAppDockerRuntime(svcsection map[string]map[string]string) error {
+// appDockerRuntime returns the docker runtime the containers of this app run under, "" for
+// the node's default runtime: prov-app-docker-runtime, except for an app the instance admin
+// trusts (prov-app-docker-trusted), which runs under the node's runtime. An invalid runtime
+// is an error for every app, trusted or not: the setting is wrong whatever the app.
+func (cluster *Cluster) appDockerRuntime(app *App) (string, error) {
 	runtime, err := cluster.Conf.GetAppDockerRuntime()
+	if err != nil {
+		return "", err
+	}
+	if app != nil && cluster.Conf.IsAppDockerTrusted(app.Id) {
+		return "", nil
+	}
+	return runtime, nil
+}
+
+// applyAppDockerRuntime adds --runtime=<runtime> at the END of the run_args of every
+// docker/podman section that runs the client's image, when the instance sets one and does
+// not trust the app. Last on the line, it is the one docker keeps whatever precedes it. The
+// pause container, the sensor and the init or mount sidecars run images of ours and keep the
+// node's runtime.
+func (cluster *Cluster) applyAppDockerRuntime(svcsection map[string]map[string]string, app *App) error {
+	runtime, err := cluster.appDockerRuntime(app)
 	if err != nil {
 		return err
 	}
@@ -292,4 +308,37 @@ func (cluster *Cluster) CheckAppSandboxRuntime() {
 	value := strings.TrimSpace(cluster.Conf.ProvAppDockerRuntime)
 	cluster.SecurityStateMachine.AddState("WARN0328", state.State{ErrType: "WARNING", ErrFrom: "SECURITY",
 		ErrDesc: fmt.Sprintf(clusterError["WARN0328"], apps, value)})
+}
+
+// CheckAppDockerTrusted opens WARN0329 in the security domain (T3, WARNING), at each tick,
+// while the sandbox is on (prov-app-docker-runtime resolves to a runtime) and apps of this
+// cluster are trusted by the instance admin (prov-app-docker-trusted): those apps run under
+// the node's default runtime, and the state says so, with their names. It closes on the next
+// tick after the last of them is no longer trusted (or is gone). Like WARN0328 it says what
+// the settings are, not what each running container runs: a change applies at the next
+// provisioning or definition refresh of the app.
+func (cluster *Cluster) CheckAppDockerTrusted() {
+	if cluster.SecurityStateMachine == nil || strings.TrimSpace(cluster.Conf.ProvAppDockerTrusted) == "" {
+		return
+	}
+	runtime, err := cluster.Conf.GetAppDockerRuntime()
+	if err != nil || runtime == "" {
+		return
+	}
+	// cluster.Apps is reassigned wholesale under cluster.Lock() (newAppList)
+	cluster.Lock()
+	apps := cluster.Apps
+	cluster.Unlock()
+	names := []string{}
+	for _, app := range apps {
+		if app != nil && cluster.Conf.IsAppDockerTrusted(app.Id) {
+			names = append(names, app.Name)
+		}
+	}
+	if len(names) == 0 {
+		return
+	}
+	sort.Strings(names)
+	cluster.SecurityStateMachine.AddState("WARN0329", state.State{ErrType: "WARNING", ErrFrom: "SECURITY",
+		ErrDesc: fmt.Sprintf(clusterError["WARN0329"], strings.Join(names, ", "), runtime)})
 }

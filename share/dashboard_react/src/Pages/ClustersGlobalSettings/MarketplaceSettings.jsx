@@ -20,7 +20,7 @@ import ConfirmModal from '../../components/Modals/ConfirmModal'
 // gateway and the domain); none shows every row
 const GATEWAY_ROWS = ['Platform Description', 'Gateway Domain Name', 'Gateway Service', 'Gateway Bandwidth (Mb/s)', 'Domain Add Script', 'Domain Drop Script', 'Domain User', 'Domain Secret']
 // part 'apps': the client app containers, shown on every instance (Cloud18 or not)
-const APP_ROWS = ['App Sandbox Runtime']
+const APP_ROWS = ['App Sandbox Runtime', 'Trusted Apps (no sandbox)']
 
 // prov-app-docker-runtime: the choices offered; a runtime set in the configuration file is
 // shown as it is
@@ -62,6 +62,7 @@ function MarketplaceSettings({ config, part }) {
   const hDomainAdd = `**Domain Add Script**\n\nShell script executed when a new marketplace subscription is activated.\nTypically creates DNS records and routing rules for the new tenant's domain.\n\nConfig: \`cloud18-domain-add-script\``
   const hDomainDrop = `**Domain Drop Script**\n\nShell script executed when a marketplace subscription is cancelled.\nShould remove the DNS entries and routing rules created by the Domain Add Script.\n\nConfig: \`cloud18-domain-drop-script\``
   const hDomainUser = `**Domain User**\n\nUsername for the domain management API (DNS provider, load balancer, etc.) called by the add/drop scripts to automate tenant routing.\n\nConfig: \`cloud18-domain-user\``
+  const hAppTrusted = `**Trusted Apps (no sandbox)**\n\nThe apps whose containers run under the node default runtime instead of the App Sandbox Runtime: an application of this instance itself (its own code, not a client's) that is too slow in the sandbox. A comma-separated list of app ids (\`ap...\`, as the API and the app's URL name it); each app also has a **Trusted** switch in its settings, shown to the administrator of this instance.\n\nEvery other app stays in the sandbox. While a trusted app runs outside it, the security warning WARN0329 names it. Applied at the next definition refresh of each app.\n\nConfig: \`prov-app-docker-trusted\``
   const hAppRuntime = `**App Sandbox Runtime**\n\nThe docker runtime of the containers that run a client application image: the application, its jobs sidecar and its reload task. Clients choose their image and command freely; the isolation from the node comes from this runtime, which only the administrator of this instance sets.\n\n- **auto** (default): \`runsc-hostnet\` (the gVisor sandbox) when this instance is connected to Cloud18, the node default runtime otherwise.\n- **runsc-hostnet**: the gVisor sandbox, registered on every node that runs applications as the \`runsc\` binary with \`--network=host\`. Plain \`runsc\` does not work with the orchestrator's network model.\n- **none**: the node default runtime (off).\n\nA runtime missing on a node makes the application fail to start there. Applied at the next provisioning of each application.\n\nConfig: \`prov-app-docker-runtime\``
   const appRuntime = config?.provAppDockerRuntime === undefined ? 'auto' : (config?.provAppDockerRuntime || 'none')
   const appRuntimeOptions = APP_RUNTIME_OPTIONS.some((o) => o.value === appRuntime)
@@ -350,6 +351,12 @@ function MarketplaceSettings({ config, part }) {
           onChange={(value) => dispatch(setGlobalSetting({ setting: 'prov-app-docker-runtime', value }))}
         />
       )
+    },
+    {
+      globalSetting: 'prov-app-docker-trusted',
+      key: 'Trusted Apps (no sandbox)',
+      help: h(hAppTrusted, 'Trusted Apps (no sandbox)'),
+      value: (<TextForm value={config?.provAppDockerTrusted} confirmTitle='Confirm the apps that run without the sandbox: ' onSave={(value) => dispatch(setGlobalSetting({ setting: 'prov-app-docker-trusted', value }))} />)
     },
     ...(!isUnitPricing ? [{
       key: 'Reload Plans',

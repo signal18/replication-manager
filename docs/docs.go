@@ -32771,6 +32771,10 @@ const docTemplate = `{
                     "description": "docker runtime of the containers that run a client app image: auto (runsc-hostnet on a Cloud18 instance, none otherwise), none or empty (off), or a runtime name registered on the nodes",
                     "type": "string"
                 },
+                "provAppDockerTrusted": {
+                    "description": "comma list of app ids (ap\u003cn\u003e) trusted by the instance admin: their containers run under the node's default runtime, never prov-app-docker-runtime",
+                    "type": "string"
+                },
                 "provAppDynamicResource": {
                     "description": "apps follow a memory/cores (APU) change live: cgroup, configurator, reload (app_resize_dynamic.go)",
                     "type": "boolean"

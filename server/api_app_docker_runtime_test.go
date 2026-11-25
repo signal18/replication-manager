@@ -23,3 +23,15 @@ func TestAppDockerRuntimeIsGlobalOnly(t *testing.T) {
 		t.Fatal("the MCP path must refuse a global key")
 	}
 }
+
+// prov-app-docker-trusted exempts an app from the sandbox: the instance admin's only, like
+// the runtime (a cluster user with app rights must never reach it).
+func TestAppDockerTrustedIsGlobalOnly(t *testing.T) {
+	if !config.IsScope("prov-app-docker-trusted", "server") {
+		t.Fatal("prov-app-docker-trusted must be scope server")
+	}
+	repman := &ReplicationManager{}
+	if err := repman.SetClusterSetting(nil, "prov-app-docker-trusted", "ap1"); err == nil {
+		t.Fatal("the MCP path must refuse a global key")
+	}
+}

@@ -697,7 +697,8 @@ func (cluster *Cluster) openSVCAppTemplateSectionMap(app *App) (map[string]map[s
 	}
 	svcsection["env"] = cluster.OpenSVCGetAppEnvSection(app)
 	// the sandbox runtime on every container of the client's image (prov-app-docker-runtime)
-	if err := cluster.applyAppDockerRuntime(svcsection); err != nil {
+	// unless the instance admin trusts the app (prov-app-docker-trusted)
+	if err := cluster.applyAppDockerRuntime(svcsection, app); err != nil {
 		return nil, fmt.Errorf("app %s: %w", app.Name, err)
 	}
 	if err := validateAppServiceSections(svcsection); err != nil {

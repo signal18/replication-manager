@@ -4866,6 +4866,15 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 			return err
 		}
 		mycluster.Conf.ProvAppDockerRuntime = value
+	case "prov-app-docker-trusted":
+		// the apps exempted from the sandbox: the instance admin's, never a cluster's (scope
+		// server, the cluster routes hand it to the global handler, the MCP refuses it);
+		// applied at the next provisioning or definition refresh of each app
+		value = strings.Join(config.AppDockerTrustedIDs(value), ",")
+		if err := config.ValidateAppDockerTrusted(value); err != nil {
+			return err
+		}
+		mycluster.Conf.ProvAppDockerTrusted = value
 	case "prov-service-plan":
 		mycluster.SetServicePlan(value)
 	case "prov-net-cni-cluster":
