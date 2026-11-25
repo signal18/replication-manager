@@ -78,7 +78,7 @@ func TestAppDockerRuntimeOnClientImageSectionsOnly(t *testing.T) {
 	js := map[string]map[string]string{"volume#1": {"name": "pg1-drbd"}, "container#sensor": {"type": "docker", "image": "signal18/sensor"}}
 	n := 1
 	jc.openSVCAddAppJobsSections(js, ja, &n)
-	if err := jc.applyAppDockerRuntime(js); err != nil {
+	if err := jc.applyAppDockerRuntime(js, ja); err != nil {
 		t.Fatal(err)
 	}
 	if js["container#jobs"]["run_args"] != "--runtime=runsc-hostnet" {

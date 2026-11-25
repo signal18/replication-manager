@@ -48,6 +48,61 @@ norm there), on a cluster without apps, or for an invalid value (the provisionin
 stops with APPERR012). The state says what the setting is, not what each running container
 runs: a change applies at the next provisioning of each app (see above).
 
+## Trusted apps: `prov-app-docker-trusted`
+
+An app of the instance itself (its own code, not exposed to the clients) can be too slow under
+gVisor. The instance admin can **trust** it: its containers run under the node's default
+runtime, every other app keeps the sandbox.
+
+| | |
+|---|---|
+| Key | `prov-app-docker-trusted` (`Config.ProvAppDockerTrusted`, json `provAppDockerTrusted`) |
+| Scope | `scope:"server"`: global, admin only, like the runtime |
+| Default | empty (no app trusted) |
+| Value | a comma list of app ids (`ap<n>`, `App.SetID`: `ap` + the crc64 of cluster and app name), normalized (trimmed, each once) and validated (`config.ValidateAppDockerTrusted`) |
+| Resolver | `config.(*Config).IsAppDockerTrusted(appID)`, used by `cluster.(*Cluster).appDockerRuntime(app)` |
+
+**Why a global list, not an `AppConfig` field.** The point is that a cluster user with the
+app-config grant cannot exempt an app from the sandbox. An `AppConfig` field is written by
+many paths a cluster user drives: `App.SetSetting`, the app creation body, reset-from-template,
+save-as-template (which would carry the exemption to every app created from the template), the
+cluster's TOML. A server key is written by one path, the global settings handler, which
+`isGlobalSettingsAdmin` gates (the local admin only); the cluster routes hand a server key to
+that handler, the MCP refuses it (`SetClusterSetting`), the app settings route does not know it
+(`unknown setting`). No new endpoint: the existing global settings route, its ACL rule and its
+Swagger entry carry it.
+
+**Why ids, not names.** The value of a server key is copied into every cluster's `Conf`, which a
+cluster user reads in the cluster's configuration (JSON). A list of `cluster/app` names would show
+every client the names of other clients' clusters and apps; an id is a hash that names nothing.
+
+**Residual.** The id is derived from the cluster and app names: an app deleted and created again
+with the same name in the same cluster is the same id, so it is trusted again. Only the users of
+that cluster can create it, and WARN0329 names it as soon as it exists. Remove an app from the
+list before deleting it.
+
+`appDockerRuntime(app)` returns `""` for a trusted app; `applyAppDockerRuntime(svcsection, app)`
+then adds no `--runtime`, and `openSVCAddAppReloadSection` renders the docker reload task (the
+app's PID namespace), as off the sandbox. An invalid `prov-app-docker-runtime` is still an error
+for a trusted app: the setting is wrong whatever the app.
+
+### WARN0329 (security domain)
+
+`CheckAppDockerTrusted` (each tick, `cluster/app_sandbox.go`) opens **WARN0329** in the cluster's
+`SecurityStateMachine` (WARNING, `ErrFrom` SECURITY) while the sandbox is on
+(`GetAppDockerRuntime` resolves to a runtime) and apps of this cluster are trusted, naming them.
+Nothing is reported when the sandbox is off (WARN0328's case), when no app of the cluster is in
+the list, or for an invalid runtime. Like WARN0328 it states the settings, not what each running
+container runs: a change applies at the next definition refresh or provisioning of the app.
+
+### GUI
+
+- App settings (Overview, General): **Trusted (no sandbox runtime)** switch. Shown to the local
+  `admin` session or a person in admin mode (`adminMode.isActive()`), and to everyone while the
+  app is trusted (read-only for them). It writes the whole list through `setGlobalSetting`; a
+  refusal for want of the local admin brings up the admin login (`adminMode.js`).
+- Global settings, Cloud18 > Marketplace > Apps: **Trusted Apps (no sandbox)**, the list as text.
+
 ## Where it goes
 
 `OpenSVCGetAppTemplateSectionMap` renders the whole service, then `applyAppDockerRuntime`

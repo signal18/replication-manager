@@ -544,6 +544,15 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 			return err
 		}
 		repman.Conf.ProvAppDockerRuntime = value
+	case "prov-app-docker-trusted":
+		// the apps exempted from the sandbox: the instance admin's, never a cluster's (scope
+		// server, the cluster routes hand it to the global handler, the MCP refuses it);
+		// applied at the next provisioning or definition refresh of each app
+		value = strings.Join(config.AppDockerTrustedIDs(value), ",")
+		if err := config.ValidateAppDockerTrusted(value); err != nil {
+			return err
+		}
+		repman.Conf.ProvAppDockerTrusted = value
 	case "sysbench-binary-path":
 		_, storeValue, err := resolveExecutablePath(value, "sysbench-binary-path")
 		if err != nil {

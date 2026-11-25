@@ -6,7 +6,7 @@ import { getUnitRatios } from '../../../../utility/unitRatios';
 import TableType2 from '../../../../components/TableType2';
 import { previewAppTemplateContent, previewResetAppTemplateImpact, resetAppFromTemplate, saveAppAsTemplate, setAppSetting } from '../../../../redux/settingsSlice';
 import Checkboxes from '../../../../components/Checkboxes/Checkboxes';
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Dropdown from '../../../../components/Dropdown';
 import RMIconButton from '../../../../components/RMIconButton';
 import { AiOutlineSave } from 'react-icons/ai';
@@ -18,6 +18,8 @@ import ConfirmModal from '../../../../components/Modals/ConfirmModal';
 import { convertSize } from '../../../../utility/common';
 import Gauge from '../../../../components/Gauge';
 import RMSwitch from '../../../../components/RMSwitch';
+import { setGlobalSetting } from '../../../../redux/globalClustersSlice';
+import { adminMode } from '../../../../services/adminMode';
 
 function AppUnitSlider({ value, min, max, step, isDisabled, formatFn, onChange }) {
   const [draft, setDraft] = useState(null)
@@ -220,6 +222,24 @@ const GeneralSection = ({ clusterName, appId, appName, appHost, config, appConfi
         setIsTemplatePreviewOpen(true)
       })
   }, [clusterName, provAppTemplate, dispatch])
+
+  // prov-app-docker-trusted: the apps the instance admin exempts from the sandbox runtime, a
+  // global (server) list of app ids. Shown to the instance admin (the local admin, or a person
+  // in admin mode), and to everyone while this app is trusted; changed by the admin only (the
+  // server refuses anyone else and the GUI asks for the local admin login).
+  const [adminActive, setAdminActive] = useState(adminMode.isActive())
+  useEffect(() => {
+    const refresh = () => setAdminActive(adminMode.isActive())
+    window.addEventListener(adminMode.CHANGED, refresh)
+    return () => window.removeEventListener(adminMode.CHANGED, refresh)
+  }, [])
+  const isInstanceAdmin = user?.User === 'admin' || adminActive
+  const trustedIds = useMemo(() => (config?.provAppDockerTrusted || '').split(',').map((x) => x.trim()).filter(Boolean), [config?.provAppDockerTrusted])
+  const appDockerTrusted = trustedIds.includes(appId)
+  const onDockerTrustedChange = useCallback(() => {
+    const next = appDockerTrusted ? trustedIds.filter((x) => x !== appId) : [...trustedIds, appId]
+    dispatch(setGlobalSetting({ setting: 'prov-app-docker-trusted', value: next.join(',') }))
+  }, [appDockerTrusted, trustedIds, appId, dispatch])
 
   const [appUnitConfirmState, setAppUnitConfirmState] = useState({ isOpen: false, title: '', handler: null })
   const closeAppUnitConfirm = useCallback(() => setAppUnitConfirmState({ isOpen: false, title: '', handler: null }), [])
@@ -493,6 +513,19 @@ const GeneralSection = ({ clusterName, appId, appName, appHost, config, appConfi
           />
         )
       },
+      ...((isInstanceAdmin || appDockerTrusted) ? [{
+        key: 'Trusted (no sandbox runtime)',
+        value: (
+          <RMSwitch
+            confirmTitle={appDockerTrusted
+              ? 'Confirm: run this app in the sandbox runtime again (prov-app-docker-runtime)? Applied at its next definition refresh.'
+              : 'Confirm: trust this app and run its containers under the node default runtime, WITHOUT the sandbox? For an app of this instance only (its own code), never a client app. Applied at its next definition refresh; a security warning stays open while it is trusted.'}
+            onChange={onDockerTrustedChange}
+            isChecked={appDockerTrusted}
+            isDisabled={!isInstanceAdmin}
+          />
+        )
+      }] : []),
     ]
 
     rows.push({
@@ -621,6 +654,7 @@ const GeneralSection = ({ clusterName, appId, appName, appHost, config, appConfi
     agentList, onAgentsChange, provAppAgents, onHATopologyChange, provAppHaTopology, haTopologyOptions, onMonitorModeChange, appMonitorMode, monitorModeOptions,
     appMonitorPath, appMonitorExpectStatus, onSaveMonitorPath, onSaveMonitorExpectStatus, appMonitorCertExpireDays, onSaveMonitorCertExpireDays, appMonitorInterval, onSaveMonitorInterval,
     appS3Provider, onS3ProviderChange, appStateful, onStatefulChange,
+    isInstanceAdmin, appDockerTrusted, onDockerTrustedChange,
     isUnitMode, isManualMode, isLegacyMode,
     appSizingMode, clusterSizingMode, provAppSizingMode,
     isLegacyAppInUnitCluster, derivedUnitFromResources,

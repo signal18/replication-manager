@@ -67,3 +67,53 @@ func (conf *Config) GetAppDockerRuntime() (string, error) {
 	}
 	return v, nil
 }
+
+// prov-app-docker-trusted: the apps the instance admin trusts (an app of the instance's own,
+// its own code, not exposed to the clients) run under the node's default runtime, never
+// prov-app-docker-runtime. A list of app ids, not of names: the value is a server key that
+// every cluster's configuration carries, so it names no cluster and no app of another client.
+// See doc/implementation/cluster/APP_SANDBOX_RUNTIME.md.
+
+// appIDRe: an app id as App.SetID writes it, "ap" and a crc64 in decimal.
+var appIDRe = regexp.MustCompile(`^ap[0-9]{1,20}$`)
+
+// AppDockerTrustedIDs returns the app ids of a prov-app-docker-trusted value, trimmed, empty
+// entries dropped, each once, in their order.
+func AppDockerTrustedIDs(value string) []string {
+	ids := []string{}
+	seen := map[string]bool{}
+	for _, id := range strings.Split(value, ",") {
+		id = strings.TrimSpace(id)
+		if id == "" || seen[id] {
+			continue
+		}
+		seen[id] = true
+		ids = append(ids, id)
+	}
+	return ids
+}
+
+// ValidateAppDockerTrusted validates a prov-app-docker-trusted value: empty, or a comma list
+// of app ids (ap<n>).
+func ValidateAppDockerTrusted(value string) error {
+	for _, id := range AppDockerTrustedIDs(value) {
+		if !appIDRe.MatchString(id) {
+			return fmt.Errorf("prov-app-docker-trusted must be a comma list of app ids such as ap1234567890, got %q", id)
+		}
+	}
+	return nil
+}
+
+// IsAppDockerTrusted reports whether the instance admin trusts the app of this id
+// (prov-app-docker-trusted): its containers then run under the node's default runtime.
+func (conf *Config) IsAppDockerTrusted(appID string) bool {
+	if appID == "" {
+		return false
+	}
+	for _, id := range AppDockerTrustedIDs(conf.ProvAppDockerTrusted) {
+		if id == appID {
+			return true
+		}
+	}
+	return false
+}

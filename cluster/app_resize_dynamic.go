@@ -213,7 +213,8 @@ func (cluster *Cluster) openSVCAddAppReloadSection(svcsection map[string]map[str
 		return
 	}
 	// an invalid runtime stops the rendering in applyAppDockerRuntime
-	if runtime, err := cluster.Conf.GetAppDockerRuntime(); err == nil && runtime != "" {
+	// a trusted app (prov-app-docker-trusted) runs under the node's runtime: the docker task
+	if runtime, err := cluster.appDockerRuntime(app); err == nil && runtime != "" {
 		task := map[string]string{
 			"type":                "host",
 			"container":           "container#app",
