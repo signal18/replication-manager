@@ -1425,6 +1425,11 @@ type QueryRule struct {
 	Proxies              string         `json:"proxies" db:"proxies"`
 }
 
+// DefaultBackupMyLoaderOptions is the shipped value of backup-myloader-options (the flag default, server/server.go).
+// The restore code compares the configured value with it before adapting a MyLoader option that the myloader
+// release in use no longer takes (cluster/cluster_tool.go).
+const DefaultBackupMyLoaderOptions = "--overwrite-tables --verbose=3 --innodb-optimize-keys=skip --max-threads-for-schema-creation=1 --max-threads-for-index-creation=1"
+
 type MyDumperMetaData struct {
 	MetaDir        string    `json:"metadir" db:"metadir"`
 	StartTimestamp time.Time `json:"start_timestamp" db:"start_timestamp"`

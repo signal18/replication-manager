@@ -120,3 +120,30 @@ passes above for those loaders use adjusted options. The Go tests
 (`cluster/cluster_tool_test.go`) pin the arguments and the bounded version probe only. The
 Docker runs above, including the `testBackupDiscovery` steps, are the evidence for T13; the full
 regtest suite was not run for this change.
+
+## Managed default options on newer MyLoader releases (#2433)
+
+The shipped `backup-myloader-options` hold `--overwrite-tables` and `--innodb-optimize-keys=skip`. Upstream (read at the release tags):
+
+- `--innodb-optimize-keys` was renamed `--optimize-keys` in 0.19.1 (same callback, same variables, same consumers). The old name is unknown in 0.19.1-1/-2, refused with a fatal "deprecated" error in 0.19.1-3 to 0.21.4 and unknown from 1.0.0.
+- `--overwrite-tables` is accepted but has no effect from 0.20.1: commit 0ae8ffb9 moved the DROP mode to `--drop-table` and `purge_mode` is no longer derived from it, so the restore stops on the first existing table (exit 133, nothing loaded). Unknown from 1.0.0. `--drop-table=DROP` runs the same `DROP TABLE IF EXISTS` / `DROP VIEW IF EXISTS` of each object of the backup.
+
+`jobReseedMyLoader` therefore builds the arguments with `myLoaderRestoreArgs`: the version of the myloader that runs (bounded probe, read once per restore, also used by the `--source-data=0` guard) selects the adaptation:
+
+| MyLoader | shipped `--overwrite-tables` | shipped `--innodb-optimize-keys=skip` |
+|---|---|---|
+| up to 0.18.1 | kept | kept |
+| 0.19.1 to 0.19.3 | kept | `--optimize-keys=SKIP` |
+| 0.20.1 and later | `--drop-table=DROP` | `--optimize-keys=SKIP` |
+
+Scope and safeguards:
+
+- Opt-in, on the shared logical replica reseed path. `JobReseedMyLoaderReplica` is the one entry that asks for the adaptation; `JobReseedMyLoader` (the rejoin by logical backup, `JobFlashbackLogicalBackup`) and `JobReseedMyLoaderFromParent` keep their arguments, as does a restore on the master (which adds `--enable-binlog`, refused or ignored by some releases). `ProcessReseedLogical` opts in unless the reliable execution context says otherwise (`isOrdinaryMyLoaderReseed`): a point-in-time restore (`PointInTimeMeta.IsInPITR`), the staging refresh (`Cluster.IsRefreshStaging`) and the configured staging server (`IsActiveStagingServer`) are excluded.
+- Accepted scope, not an exclusive one: the adaptation is not limited to operator-initiated reseeds. A logical reseed armed by the automatic rejoin (`autorejoin-logical-backup`) or by the logical-backup cookie reaches `ProcessReseedLogical` through the same task as the operator's request, and the task carries no origin (`reseedFromRejoin` is set only after the arming returns). Those callers cannot be told apart there and receive the adaptation. The automatic seed of a fresh node (`autoseed`) was validated at runtime (MariaDB 12.2, MyLoader 1.0.1-1). A synthetic attempt on the logical-backup cookie handler remained inconclusive (WARN0111 never opened, so the handler was not exercised); no other automatic caller was validated separately. Recording the reseed origin to exclude them is a change of the recovery path and is not part of this fix.
+- Only R0 (`--source-data=0`), R1 and R2 read the version of the myloader that runs. `GetMyLoaderCompatibleOptions` keeps its legacy rule and runs first; it is keyed on the detected MyDumper version (`VersionsMap` "mydumper", the executable found on the monitor host), not necessarily the version that produced the backup, and removes `--innodb-optimize-keys=skip` for a MyDumper before 0.16.7.
+- Only the exact shipped default value is adapted, and only when no configuration source set it: neither the immutable map (config file, environment, flag) nor the dynamic map has the key (read through `GetImmuableFlag` / `GetDynamicFlag`). String equality is an additional guard, never a substitute for provenance. Any other value is left as it is, with a warning for each option the release rejects. Nothing is written to the persistent configuration. Setting `backup-myloader-options` explicitly is the way to opt out.
+- Unknown version (probe failure): nothing is adapted, as before.
+- Known limitation: a value set through the API is recorded in neither map (the framework does not track it), so one identical to the shipped default cannot be told from an untouched default and is adapted; a different API value is left as it is.
+- Not changed: MyDumper arguments, replication positioning, GTID handling, metadata, failover, rejoin, staging workflows.
+
+Verification: unit tests (`cluster/cluster_tool_test.go`) for the boundaries, mixed dumper and loader versions, explicit and custom values, unknown versions and one probe per restore. Exclusions: call-path tests (the real restore function with a recording myloader) cover the rejoin by logical backup (`JobReseedMyLoader`) and the staging refresh (`IsRefreshStaging`) against the ordinary reseed; the master, parent seeding, point-in-time restore and configured staging server are covered by helper-level tests only. Runtime: reseeds through the API on MariaDB 12.2, MySQL 8.4 and Percona 8.0 (see the PR), an automatic seed of a fresh node, and the existing `testBackupDiscovery` regtest, whose MyDumper checks pass on the three engines (its mysqldump-tool checks have failures unrelated to myloader on MySQL 8.4 and Percona 8.0, see the PR).
