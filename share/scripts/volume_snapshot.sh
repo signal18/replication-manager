@@ -97,7 +97,14 @@ wait_unused() {
     while :; do
         busy=""
         for m in "$@"; do
-            if q fuser -m "$m" >/dev/null 2>&1; then
+            [ -e "$m" ] || continue
+            # 0: a process uses it; 1: none, or an error: told apart by what it printed
+            out=$(q fuser -m "$m" 2>&1)
+            rc=$?
+            case "$out" in
+            *"sudo:"* | *"ermission denied"* | *"not permitted"* | *"not allowed"*) die "fuser -m $m does not run ($out): nothing was changed" ;;
+            esac
+            if [ "$rc" -eq 0 ]; then
                 busy="$m"
                 break
             fi
@@ -107,6 +114,11 @@ wait_unused() {
         sleep 2
         waited=$((waited + 2))
     done
+}
+
+# server_paths: the server's directories (REPMAN_SNAPSHOT_PATHS), one per word
+server_paths() {
+    printf '%s\n' "$PATHS" | tr ':' ' '
 }
 
 ##########
@@ -222,8 +234,10 @@ zfs_snapback() {
     for ds in $datasets; do
         mnts="$mnts $(findmnt -n -l -o TARGET --source "$ds" </dev/null 2>/dev/null | tr '\n' ' ')"
     done
+    # and the server's own directories: what the database holds open, whatever findmnt resolves
+    # (a zvol under the tree has no mount point: not seen here)
     # shellcheck disable=SC2086
-    wait_unused $mnts
+    wait_unused $mnts $(server_paths)
     printf 'CHANGED\n'
     for ds in $datasets; do
         # -r: the snapshots taken after it are destroyed, zfs can roll back to the latest only
@@ -323,8 +337,11 @@ lvm_snapback() {
     [ -n "$dev" ] || die "no device path for $TARGET"
     # the mount points of the volume, deepest first: unmounted before the merge, mounted after
     mnts=$(findmnt -n -l -o TARGET --source "$dev" </dev/null 2>/dev/null | sort -r)
+    # an unmounted volume, or a mount findmnt does not tie to the device (an alias): never go on
+    # to deactivate a volume that may still be mounted
+    [ -n "$mnts" ] || die "no mount point found for $dev (not mounted, or findmnt does not know it): nothing was changed"
     # shellcheck disable=SC2086
-    wait_unused $mnts
+    wait_unused $mnts $(server_paths)
     done_mnts=""
     for m in $mnts; do
         if ! x umount "$m"; then
@@ -339,11 +356,18 @@ lvm_snapback() {
         fi
         done_mnts="$done_mnts $m"
     done
+    seg=$(q lvs --noheadings -o segtype "$TARGET" | tr -d ' ')
     printf 'CHANGED\n'
-    # an inactive origin: a thin merge and a copy-on-write merge both start at its activation
-    x lvchange -an "$TARGET" || die "lvchange -an $TARGET failed"
-    x lvconvert --merge "${TARGET%%/*}/$NAME" || die "lvconvert --merge of ${TARGET%%/*}/$NAME failed"
-    x lvchange -ay "$TARGET" || die "lvchange -ay $TARGET failed"
+    if [ "$seg" = "thin" ]; then
+        # a thin merge into an active origin waits for its next activation
+        x lvchange -an "$TARGET" || die "lvchange -an $TARGET failed"
+        x lvconvert --merge "${TARGET%%/*}/$NAME" || die "lvconvert --merge of ${TARGET%%/*}/$NAME failed"
+        x lvchange -ay "$TARGET" || die "lvchange -ay $TARGET failed"
+    else
+        # a copy-on-write merge into an origin not open (unmounted) starts at once, no
+        # deactivation (some LVM releases refuse it on an origin with an active snapshot)
+        x lvconvert --merge "${TARGET%%/*}/$NAME" || die "lvconvert --merge of ${TARGET%%/*}/$NAME failed"
+    fi
     for m in $(echo "$mnts" | sort); do
         x mount "$m" 2>/dev/null || x mount "$dev" "$m" || die "mount $m failed"
     done

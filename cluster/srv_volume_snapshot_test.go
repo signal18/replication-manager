@@ -411,6 +411,35 @@ func TestVolumeSnapshotHelperZFS(t *testing.T) {
 	}
 }
 
+// fakeLVS: vg0/data, a thick volume with one snapshot repman-20261126T100000Z
+const fakeLVS = `#!/bin/sh
+case "$*" in
+*"vg_name,lv_name"*) echo "  vg0 data" ;;
+*"lv_path"*) echo "  /dev/vg0/data" ;;
+*"segtype"*) echo "  linear" ;;
+*"lv_name,origin,lv_time,lv_size"*) echo "  repman-20261126T100000Z|data|2026-11-26 10:00:00 +0000|1073741824"; echo "  data||2026-11-01 10:00:00 +0000|10737418240" ;;
+esac
+`
+
+func TestVolumeSnapshotHelperLVMNotMountedRefused(t *testing.T) {
+	_, server, vs, dir := newFakeZFSHost(t)
+	os.WriteFile(filepath.Join(dir, "bin", "lvs"), []byte(fakeLVS), 0o755)
+	m, _ := config.SnapshotPlugin(config.ConstSnapshotPluginLVM)
+	vs.manifest = m
+	server.ClusterGroup.Conf.BackupSnapshotPlugin = config.ConstSnapshotPluginLVM
+	server.ClusterGroup.Conf.BackupSnapshotTarget = "vg0/data"
+	list, err := vs.List(server)
+	if err != nil || list.Target != "vg0/data" || len(list.Snapshots) != 1 || !list.Snapshots[0].Managed {
+		t.Fatalf("lvm list: %v %+v", err, list)
+	}
+	// findmnt does not tie a mount to /dev/vg0/data: refused before any change
+	os.WriteFile(filepath.Join(dir, "mounts"), nil, 0o644)
+	run, err := vs.Snapback(server, "repman-20261126T100000Z")
+	if err == nil || run.Changed || !strings.Contains(err.Error(), "no mount point") {
+		t.Fatalf("lvm snapback without a mount point: %v changed=%v", err, run.Changed)
+	}
+}
+
 func TestVolumeSnapshotHelperNotZFS(t *testing.T) {
 	_, server, vs, dir := newFakeZFSHost(t)
 	data := filepath.Join(dir, "srv", "data")

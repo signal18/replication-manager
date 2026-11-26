@@ -108,7 +108,10 @@ and during a failover. Then:
 2. it is stopped through its orchestrator;
 3. once no process uses the volume any more (a database still flushing after its port closed;
    checked with `fuser`, up to 2 minutes; a snapback without a usable `fuser` is refused), its
-   volume is rolled back to the snapshot. On ZFS, the snapshots taken **after** it are
+   volume is rolled back to the snapshot. The check covers the mount points of the volume and
+   the server's directories; a zvol under a ZFS tree has no mount point and is not checked. An
+   LVM volume with no mount point found (not mounted, or mounted through an alias findmnt does
+   not resolve) is refused. On ZFS, the snapshots taken **after** it are
    destroyed (ZFS rolls back to the latest snapshot only). On LVM the volume is unmounted,
    the snapshot merged into it (the snapshot is consumed by the merge), and mounted again (from
    its fstab entry; a volume without one comes back mounted with the default options);
