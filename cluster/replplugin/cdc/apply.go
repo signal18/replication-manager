@@ -13,7 +13,9 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -36,6 +38,10 @@ type applier struct {
 	cfg  wire.Config
 	path string // the plugin's TOML
 
+	// the denormalize mode: the source the unpack queries, the indexes
+	src     *sqlx.DB
+	indexes []*indexMeta
+
 	mu   sync.Mutex
 	done wire.Applied
 	err  string
@@ -47,6 +53,7 @@ func (a *applier) fill(st *wire.Status) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	st.AppliedSeq, st.AppliedGTID, st.ApplyError = a.done.Seq, a.done.GTID, a.err
+	st.IndexesReady = append([]string(nil), a.done.Indexes...)
 	st.PendingMB = wire.PendingBytes(wire.CheckpointDir(a.path)) >> 20
 	if a.last != nil && a.cfg.MergeIntervalMs > 0 {
 		st.MergedSeq, st.MergedGTID, st.MergeTookMs = a.last.Seq, a.last.GTID, a.last.TookMs
@@ -69,11 +76,21 @@ func (a *applier) setErr(err error) {
 
 // TargetDB opens the plugin's target with the password of its environment.
 func TargetDB(cfg wire.Config) (*sqlx.DB, error) {
+	return endpointDB(cfg.Target, os.Getenv(wire.EnvTargetPassword))
+}
+
+// SourceDB opens the plugin's source with the password of its environment (the denormalize
+// mode's queries).
+func SourceDB(cfg wire.Config) (*sqlx.DB, error) {
+	return endpointDB(cfg.Source, os.Getenv(wire.EnvSourcePassword))
+}
+
+func endpointDB(e wire.Endpoint, password string) (*sqlx.DB, error) {
 	mc := mysql.NewConfig()
-	mc.User = cfg.Target.User
-	mc.Passwd = os.Getenv(wire.EnvTargetPassword)
+	mc.User = e.User
+	mc.Passwd = password
 	mc.Net = "tcp"
-	mc.Addr = fmt.Sprintf("%s:%d", cfg.Target.Host, cfg.Target.Port)
+	mc.Addr = fmt.Sprintf("%s:%d", e.Host, e.Port)
 	mc.Timeout = 10 * time.Second
 	mc.AllowNativePasswords = true
 	mc.ParseTime = false
@@ -132,6 +149,19 @@ func (a *applier) runOnce(ctx context.Context) {
 		a.setErr(err)
 		return
 	}
+	if p, ok := a.dest.(Positioner); ok {
+		// committed with the rows: past applied.json after a crash between the two
+		if pos, err := a.position(ctx, db, p); err != nil {
+			a.setErr(err)
+			return
+		} else if pos.Seq > done.Seq {
+			done.Seq, done.GTID = pos.Seq, pos.GTID
+			if err := writeApplied(appliedPath, done); err != nil {
+				a.setErr(err)
+				return
+			}
+		}
+	}
 	a.mu.Lock()
 	a.done = done
 	a.mu.Unlock()
@@ -152,6 +182,10 @@ func (a *applier) runOnce(ctx context.Context) {
 			}
 		}
 		var failed error
+		if err := a.initIndexes(ctx, db, &done, appliedPath); err != nil {
+			a.setErr(err)
+			continue
+		}
 		for _, seq := range pendingCheckpoints(dir, done.Seq) {
 			if ctx.Err() != nil {
 				return
@@ -190,7 +224,7 @@ func (a *applier) applyOne(ctx context.Context, db *sqlx.DB, path string) (strin
 	if err != nil {
 		return "", err
 	}
-	if len(m.Tables) == 0 {
+	if len(m.Tables) == 0 && len(m.Packs) == 0 {
 		return m.GTID, nil
 	}
 	conn, err := a.session(ctx, db)
@@ -198,18 +232,117 @@ func (a *applier) applyOne(ctx context.Context, db *sqlx.DB, path string) (strin
 		return "", err
 	}
 	defer conn.Close()
+	if len(m.Packs) > 0 {
+		// the unpack: each index's micro checkpoints join the checkpoint's tables
+		for _, meta := range a.indexes {
+			tables, f, err := unpack(ctx, a.src, conn, meta, m, files, a.cfg.MergeIntervalMs > 0)
+			if err != nil {
+				return "", err
+			}
+			m.Tables = append(m.Tables, tables...)
+			for k, v := range f {
+				files[k] = v
+			}
+		}
+		if len(m.Tables) == 0 {
+			return m.GTID, nil
+		}
+	}
 	name := func(t wire.TableFiles) string {
 		return fmt.Sprintf("replplugin-%d-%d-%s.%s", os.Getpid(), m.Seq, t.Schema, t.Table)
 	}
 	if a.cfg.MergeIntervalMs > 0 {
 		return m.GTID, stage(ctx, conn, a.dest, m, files, name)
 	}
+	p, transactional := a.dest.(Positioner)
+	if transactional {
+		if _, err := conn.ExecContext(ctx, "START TRANSACTION"); err != nil {
+			return "", err
+		}
+	}
 	for _, t := range m.Tables {
 		if q, err := a.dest.Apply(ctx, conn, t.Schema, t.Table, t, files, name(t), nil); err != nil {
+			if transactional {
+				conn.ExecContext(context.Background(), "ROLLBACK")
+			}
 			return "", fmt.Errorf("%w (%s)", err, q)
 		}
 	}
+	if transactional {
+		if err := p.SavePosition(ctx, conn, a.plugin(), wire.Applied{Seq: m.Seq, GTID: m.GTID}); err != nil {
+			conn.ExecContext(context.Background(), "ROLLBACK")
+			return "", fmt.Errorf("the position in the destination: %w", err)
+		}
+		if _, err := conn.ExecContext(ctx, "COMMIT"); err != nil {
+			return "", err
+		}
+	}
 	return m.GTID, nil
+}
+
+// plugin is the plugin's name, its TOML's: what a Positioner keys its position by.
+func (a *applier) plugin() string {
+	return strings.TrimSuffix(filepath.Base(a.path), filepath.Ext(a.path))
+}
+
+// position reads the position a Positioner destination committed.
+func (a *applier) position(ctx context.Context, db *sqlx.DB, p Positioner) (wire.Applied, error) {
+	conn, err := a.session(ctx, db)
+	if err != nil {
+		return wire.Applied{}, err
+	}
+	defer conn.Close()
+	pos, err := p.Position(ctx, conn, a.plugin())
+	if err != nil {
+		return pos, fmt.Errorf("the position in the destination: %w", err)
+	}
+	return pos, nil
+}
+
+// initIndexes runs the init of each index not done yet (applied.json's Indexes): its
+// denormalized table filled from the query on a consistent snapshot of the source, directly in
+// the destination (the accumulation is for the changes). An index left out of the config is
+// forgotten, so put back it starts again from its init.
+func (a *applier) initIndexes(ctx context.Context, db *sqlx.DB, done *wire.Applied, appliedPath string) error {
+	var kept []string
+	for _, n := range done.Indexes {
+		for _, m := range a.indexes {
+			if m.idx.Name == n {
+				kept = append(kept, n)
+			}
+		}
+	}
+	for _, meta := range a.indexes {
+		if slices.Contains(kept, meta.idx.Name) {
+			continue
+		}
+		conn, err := a.session(ctx, db)
+		if err != nil {
+			return err
+		}
+		err = initIndex(ctx, a.src, db, conn, a.dest, meta, func(t wire.TableFiles, files map[string][]byte) error {
+			q, err := a.dest.Apply(ctx, conn, t.Schema, t.Table, t, files, fmt.Sprintf("replplugin-%d-%s", os.Getpid(), t.Inserts), nil)
+			if err != nil {
+				return fmt.Errorf("%w (%s)", err, q)
+			}
+			return nil
+		})
+		conn.Close()
+		if err != nil {
+			return fmt.Errorf("init of index %s: %w", meta.idx.Name, err)
+		}
+		kept = append(kept, meta.idx.Name)
+	}
+	if !slices.Equal(kept, done.Indexes) {
+		done.Indexes = kept
+		if err := writeApplied(appliedPath, *done); err != nil {
+			return err
+		}
+		a.mu.Lock()
+		a.done = *done
+		a.mu.Unlock()
+	}
+	return nil
 }
 
 // mergeWhenDue merges the staging once the merge interval passed since the last merge (the

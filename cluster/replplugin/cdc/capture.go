@@ -77,6 +77,10 @@ type capture struct {
 	last     atomic.Pointer[wire.Status] // the last status line, printed again while paused
 	txCap    int64                       // a source transaction larger than this stops the plugin
 	txSize   int64                       // the row events of the current transaction
+	// the denormalize mode: the source tables of the indexes, and the open
+	// micro_checkpoint_pack, per source table
+	packTables map[string]bool
+	packs      map[string]*packBuf
 }
 
 func (c *capture) buf(t *schema.Table) *tableBuf {
@@ -108,9 +112,16 @@ func (c *capture) tsv(t *schema.Table, r []interface{}) row {
 func (c *capture) OnRow(e *canal.RowsEvent) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	packed := c.pack(e)
 	if !c.cfg.Matches(e.Table.Schema, e.Table.Name) {
-		c.st.Skipped += int64(len(e.Rows))
-		return nil
+		if !packed {
+			c.st.Skipped += int64(len(e.Rows))
+			return nil
+		}
+		c.inTx = true
+		c.lastTS = e.Header.Timestamp
+		c.rows += len(e.Rows)
+		return c.addRowEvent(int64(e.Header.EventSize))
 	}
 	c.inTx = true
 	c.lastTS = e.Header.Timestamp
@@ -161,6 +172,25 @@ func (c *capture) addRowEvent(size int64) error {
 		c.flushDue = true // at the transaction's end
 	}
 	return nil
+}
+
+// pack records a rows event of an index's source table in the open micro_checkpoint_pack;
+// false when the table is no index's.
+func (c *capture) pack(e *canal.RowsEvent) bool {
+	name := e.Table.Schema + "." + e.Table.Name
+	if !c.packTables[name] {
+		return false
+	}
+	b, ok := c.packs[name]
+	if !ok || b.t != e.Table {
+		if !ok || b.empty() {
+			b = newPackBuf(e.Table)
+			c.packs[name] = b
+		}
+	}
+	b.pack(e.Action, e.Rows)
+	c.st.Packed += int64(len(e.Rows))
+	return true
 }
 
 func (c *capture) OnXID(_ *replication.EventHeader, _ mysql.Position) error {
@@ -216,7 +246,11 @@ func (c *capture) flushLocked() error {
 	c.flushDue = false
 	c.opened = time.Now()
 	tables, files := renderTables(c.bufs)
-	if len(tables) == 0 {
+	packs, packFiles := renderPacks(c.packs)
+	for k, v := range packFiles {
+		files[k] = v
+	}
+	if len(tables) == 0 && len(packs) == 0 {
 		if c.gtid != "" && c.gtid != c.state.GTID {
 			c.state.GTID = c.gtid
 			return wire.WriteState(c.statePath, c.state)
@@ -224,14 +258,14 @@ func (c *capture) flushLocked() error {
 		return nil
 	}
 	seq := c.state.Seq + 1
-	if err := c.w.write(wire.Manifest{Seq: seq, GTID: c.gtid, Tables: tables}, files); err != nil {
+	if err := c.w.write(wire.Manifest{Seq: seq, GTID: c.gtid, Tables: tables, Packs: packs}, files); err != nil {
 		return fmt.Errorf("checkpoint %d: %w", seq, err)
 	}
 	c.state.Seq, c.state.GTID = seq, c.gtid
 	if err := wire.WriteState(c.statePath, c.state); err != nil {
 		return err
 	}
-	c.bufs, c.rows, c.size = map[string]*tableBuf{}, 0, 0
+	c.bufs, c.packs, c.rows, c.size = map[string]*tableBuf{}, map[string]*packBuf{}, 0, 0
 	return nil
 }
 
@@ -442,7 +476,19 @@ func Main(dest Destination) {
 
 	ap := &applier{dest: dest, cfg: cfg, path: *configPath}
 	c := &capture{cfg: cfg, statePath: statePath, state: state, bufs: map[string]*tableBuf{}, keyErrs: map[string]bool{}, gtid: state.GTID, opened: time.Now(), ap: ap,
-		maxSize: sizeBytes(cfg.BatchMB), maxAge: time.Duration(cfg.BatchTimeoutMs) * time.Millisecond}
+		maxSize: sizeBytes(cfg.BatchMB), maxAge: time.Duration(cfg.BatchTimeoutMs) * time.Millisecond, packs: map[string]*packBuf{}}
+	if len(cfg.Indexes) > 0 {
+		// the denormalize mode: the indexes resolved on the source, their source tables packed
+		src, err := SourceDB(cfg)
+		if err != nil {
+			fail(c, err)
+		}
+		defer src.Close()
+		ap.src = src
+		if ap.indexes, c.packTables, err = resolveIndexes(context.Background(), cfg, src); err != nil {
+			fail(c, err)
+		}
+	}
 	c.txCap = mbBytes(cfg.MaxPendingMB)
 	c.w = &checkpointWriter{dir: wire.CheckpointDir(*configPath), maxPending: mbBytes(cfg.MaxPendingMB), paused: func(p int64) {
 		c.pausedMB.Store(p >> 20) // c.mu is held by the caller: never taken here
