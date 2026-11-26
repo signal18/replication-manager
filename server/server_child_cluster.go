@@ -13,6 +13,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
@@ -571,13 +572,7 @@ func childDestinationImage(m wire.PluginManifest, parent *cluster.Cluster) (stri
 // destinationImageFor is the image of manifest m for the parent release v.
 func destinationImageFor(m wire.PluginManifest, parent, v string) (string, error) {
 	if len(m.ImageVersions) > 0 {
-		found := false
-		for _, iv := range m.ImageVersions {
-			if iv == v {
-				found = true
-			}
-		}
-		if !found {
+		if !slices.Contains(m.ImageVersions, v) {
 			return "", fmt.Errorf("the destination %s has no image for %s's release %s (%s exists for %s): upgrade the parent to one of them, or give dbImage", m.Name, parent, v, m.Image, strings.Join(m.ImageVersions, ", "))
 		}
 	}

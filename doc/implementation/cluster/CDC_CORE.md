@@ -9,6 +9,8 @@ the **CDC core**, a library shared by every **destination plugin**: one plugin p
   (its own `go.mod`), so a plugin kept in another repository imports it at a tag
   (`cluster/replplugin/cdc/vX.Y.Z`, with the root module at the matching tag).
 - `cluster/replplugin/plugins/columnstore` is the ColumnStore destination on it, public.
+- `cluster/replplugin/plugins/innodb` is the InnoDB destination on it, public: the copies and the
+  denormalized tables stay InnoDB, applied in transactions that keep their position.
 - Other destinations are external plugins installed next to replication-manager's plugins, with
   a manifest (below). A destination of the enterprise tier is refused unless the seat's plan
   grants the enterprise plugins (`EnterprisePluginsPlan`, the archive plugins' gate).
@@ -58,7 +60,18 @@ the **CDC core**, a library shared by every **destination plugin**: one plugin p
   on the target, as restored from the parent's backup, is examined. The destination refuses it
   with the reason, or makes it its own. One `wire.CreateResult` line per table.
 
-A destination plugin brings two things only, the `cdc.Destination` interface:
+A destination plugin brings two things only, the `cdc.Destination` interface, and two optional
+ones (a destination without them works as before):
+
+- `cdc.Truncater`: empties a table its own way, for an init of the denormalize mode (without it,
+  the core deletes every row);
+- `cdc.Positioner`: a transactional destination keeps the last checkpoint applied in its own
+  transaction. The core then applies each checkpoint in one transaction that ends with
+  `SavePosition`, and at start takes `Position` when it is past `applied.json` (a crash between
+  the commit and that file). The InnoDB destination keeps it in
+  `replication_manager_staging.replplugin_position`, one row per plugin.
+
+The two things:
 
 1. its table, made from the source's table described on the target (`TableDesc`: options,
    columns, primary key), or a refusal with the reason;
@@ -149,7 +162,10 @@ manifest (`replplugin-<name>.manifest.json`, `wire.PluginManifest`) gives:
 - the configurator tags its servers need (added to the child);
 - its default image: `{version}` in it stands for the parent master's release (an engine
   package that must match its server release exactly), and `imageVersions` lists the releases
-  it exists for; the create plan refuses a parent release without image, with the list;
+  it exists for; the create plan refuses a parent release without image, with the list. The
+  release is compared as `X.Y.Z`, without a suffix (`11.8.10`, never `11.8.10-MariaDB-log`),
+  and the image is resolved when the child is created only: a later upgrade of the parent does
+  not change the child's image;
 - `singleServer`, a child of one database.
 
 The plan is refused when the plugin is missing or the plan does not grant its tier. The
@@ -177,6 +193,82 @@ on the child master and **before its channel from the parent starts**:
 A failure stops the reseed with the channel stopped and its state (WARN0252): a table made by
 the destination must never receive native row events.
 
+## Denormalize
+
+The analytic tables are rarely the source's tables as they are: a report joins an entity with
+its children and its dimensions every time. The denormalize mode keeps **the result of a
+denormalizing query** up to date on the child, in a **denormalized table**. Free, in the core,
+toward every destination.
+
+**Configuration.** An **index** is one denormalization: `[[<cluster>.replication-plugin-index]]`
+in the cluster configuration, with `name`, `sql` (the denormalizing query, run on the source),
+`slave-schema` and `slave-table` (the denormalized table on the child, in its own schema) and
+`max-keys-per-batch` (0: 10000). API: `replication-plugin-index-list`,
+`replication-plugin-index-actions/put`, `.../remove/{indexName}` (ACL `GrantClusterSettings`);
+GUI: the Analytic Child settings. The cluster writes the list into the plugin TOML (`[[index]]`,
+`wire.Index`) and the plugin restarts with it. Nothing is given per source table:
+
+- the query's **source tables** and the result columns that hold their columns come from the
+  query's result metadata (the query run with `LIMIT 0` on the source: each column's original
+  schema, table and column), and their **primary keys** from `information_schema`;
+- the query must return the primary key columns of every table it reads, each under one name:
+  together they are the denormalized table's **primary key**, and each source table's columns are
+  indexed there (what an unpack looks rows up by). A missing column, a table joined twice, two
+  result columns of one name are refused with the reason (WARN0243 through the apply error);
+- inner joins: a primary key column is never NULL.
+
+**Init.** Once per index (`applied.json` lists the indexes done; the status's `indexesReady`):
+
+1. the denormalized table is made from the description of the empty query result
+   (`CREATE TABLE ... AS SELECT * FROM (<sql>) AS d WHERE 1=0`, then its primary key and indexes),
+   and the destination makes it its own (`Create`); an existing table of the same columns is
+   emptied instead (`Truncater`);
+2. the query runs on the source in one `START TRANSACTION WITH CONSISTENT SNAPSHOT`, its rows
+   applied by parts of 10000.
+
+**Capture: the micro_checkpoint_pack.** For the source tables of the indexes, the capture keeps
+the primary keys touched, nothing else, per source table: the keys to replace and the keys to
+delete. A deleted key stays deleted; inserted again it is back to replace. An update that changes
+the primary key deletes the old key. The pack goes into the checkpoint (`wire.Manifest.Packs`),
+bounded as every checkpoint (64 MB of row events per period, `max_pending_mb`).
+
+**Unpack: the micro checkpoint.** At apply, for each index and each batch of packed keys:
+
+1. the denormalized rows whose source-table primary key columns hold a packed key are looked up
+   on the child (and in the accumulation's rows when there is one): their keys are deleted;
+2. the denormalizing query restricted to the same keys runs on the source, one branch per source
+   table joined by `UNION` (`SELECT * FROM (<sql>) AS d WHERE (d.k1, d.k2) IN (...) UNION ...`):
+   MariaDB pushes each branch's condition into the derived table, on that table's primary key; an
+   `OR` across the joined tables would read the whole join. The rows it gives are loaded, their
+   keys deleted first.
+
+Together they are the micro checkpoint, a checkpoint's table like any other: the destination, the
+accumulation and the merge interval apply it unchanged. A customer renamed rewrites the rows of
+its orders; an item deleted removes its lines, inserted again it brings them back; an order line
+moved to another item is rewritten with it. The keys are split across batches, never dropped
+(`max-keys-per-batch`, and 60000 placeholders at most per query).
+
+The unpack reads the source as it is when it runs, past the pack: a change after the pack is read
+then, and again at its own pack, which gives the same rows. So the init needs no GTID, and packs
+captured before it unpack after it on the current source.
+
+**Where the design moved, and why.**
+
+- No per-source-table mapping query: the primary key columns of every source table are in the
+  denormalized table, so the old owner of a changed row is found there and the new one by the
+  restricted query.
+- The restricted query is a `UNION` of one branch per source table, not an `OR`, for the index use
+  above.
+- The init streams the query on one consistent snapshot instead of key ranges: one consistent read,
+  no range scan per step, the same snapshot cost on the source.
+- The key of the denormalized table is derived (every source table's primary key), not a `key`
+  setting.
+- The InnoDB destination comes first (public); a columnar destination takes the same micro
+  checkpoints through its plugin.
+
+Version 1 builds the denormalized table on the existing analytic child, seeded from the parent as
+any child; its copied tables (`replication-plugin-tables`) are carried as before.
+
 ## Capture on MariaDB 11.4.13 and later (go-mysql)
 
 Since 11.4.13 / 11.8.9, `binlog_legacy_event_pos=OFF` is the default, so the events inside a
@@ -198,7 +290,13 @@ The ColumnStore destination stays open source, maintained as a community destina
 
 - `cluster/replplugin/cdc/`: the core (capture `capture.go`, checkpoints `checkpoint.go`, apply
   `apply.go`, staging `staging.go`, destination interface `destination.go`, create `create.go`).
+- `cluster/replplugin/cdc/denormalize.go`: the denormalize mode (indexes, pack, unpack, init).
 - `cluster/replplugin/plugins/columnstore/main.go`: the ColumnStore destination.
+- `cluster/replplugin/plugins/innodb/main.go`: the InnoDB destination.
+- `config/replplugin_index.go`, `cluster/cluster_replplugin_index.go`,
+  `server/api_replplugin_index.go`: the index list, its save, its API.
+- `utils/dbhelper/schema_denormalize.go`: the denormalize SQL and the destination position
+  (MariaDB and MySQL; a PostgreSQL server never reaches it, T23).
 - `cluster/replplugin/wire/wire.go`: the contract (wire 2, status, create results, manifest).
 - `cluster/cluster_replplugin.go`: the supervisor, the states, the manifest and the plan gate.
 - `cluster/cluster_repl_source.go`: the source and its checks.
@@ -207,3 +305,7 @@ The ColumnStore destination stays open source, maintained as a community destina
   to choose, `ErrNoStorageEngine`).
 - `regtest/test_replication_plugin_child.go`: `testColumnstoreChildCDC` and
   `testAnalyticChildCDC` (the destination named by `REPMAN_REGTEST_ANALYTIC_DESTINATION`).
+- `regtest/test_replication_plugin_denormalize.go`: `testAnalyticChildDenormalize`, TPC-C
+  (order_line ⋈ orders ⋈ customer ⋈ item), checksums `COUNT(*)` and
+  `BIT_XOR(CRC32(CONCAT_WS(...)))` of the query on the parent against the denormalized table, after
+  the init, a change on each joined table, a deleted item inserted again and a load.
