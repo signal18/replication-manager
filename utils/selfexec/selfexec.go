@@ -15,7 +15,8 @@ import (
 // (REPLICATION_MANAGER_INSTALL_PROFILE / _LAYOUT), set by the server at start (one build,
 // #2444). A child started from Path() is named /proc/self/exe or a plain name, not the
 // flavour symlink its parent was started by: without these it would resolve other defaults
-// and directories than its parent.
+// and directories than its parent. Empty in a program that does not import the server
+// package (CLI, arbitrator): ChildEnv then adds nothing and the child resolves by its name.
 var ProfileEnv []string
 
 // ChildEnv returns env followed by ProfileEnv: the child resolves its parent's install
