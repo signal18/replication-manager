@@ -96,6 +96,8 @@ func testReplicationPluginChild(cl *cluster.Cluster, name string, extra map[stri
 		return fail("logical backup of %s: %s", cl.Name, err)
 	}
 
+	// a name per run: OpenSVC may still be unprovisioning the previous run's child
+	extra["name"] = fmt.Sprintf("%s-cdc%d", cl.Name, time.Now().Unix()%100000)
 	run, skipped, ok := createCheckedChildWith(cl, "child", config.GrantClusterReplication, map[string]int{"Master": 1}, extra)
 	if run.created {
 		defer stagingDelete(cl, run.tok, run.name)

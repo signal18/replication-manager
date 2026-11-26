@@ -122,6 +122,9 @@ func createCheckedChildWith(cl *cluster.Cluster, kind string, grant string, want
 		return run, false, false
 	}
 	name := cl.Name + "-" + kind + "-regtest"
+	if n, ok := extra["name"].(string); ok && n != "" {
+		name = n // a name of its own: the previous run's unprovisioning may still hold the default one
+	}
 	run.name = name
 	parentMaster := cl.GetMaster().Host
 
