@@ -91,6 +91,24 @@ type Config struct {
 	// MergeIntervalMs: 0, each checkpoint applied to the destination; more, each checkpoint
 	// applied to an InnoDB staging on the target, merged into the destination at this period
 	MergeIntervalMs int `toml:"merge_interval_ms" json:"mergeIntervalMs"`
+	// Indexes: the denormalize mode (CDC_CORE.md "Denormalize"), one index per denormalized
+	// table kept up to date from its denormalizing query; none: copy mode only
+	Indexes []Index `toml:"index" json:"indexes,omitempty"`
+}
+
+// Index is one denormalization: the denormalizing query, run on the source, and the
+// denormalized table it fills on the target. The query's source tables and their primary keys
+// are derived from the query's result (each column's original table and column); the
+// denormalized table carries the primary key columns of every source table, its own primary
+// key.
+type Index struct {
+	Name   string `toml:"name" json:"name"`
+	SQL    string `toml:"sql" json:"sql"`
+	Schema string `toml:"slave_schema" json:"slaveSchema"`
+	Table  string `toml:"slave_table" json:"slaveTable"`
+	// MaxKeysPerBatch: the keys one unpack restricts the query to; more are split across
+	// unpacks, never dropped; 0: 10000
+	MaxKeysPerBatch int `toml:"max_keys_per_batch" json:"maxKeysPerBatch"`
 }
 
 // MergedPath is the file the plugin records the last merge of its staging in.
@@ -142,17 +160,21 @@ const (
 
 // Status is one line of a plugin's stdout, printed every batch period and on an error.
 type Status struct {
-	Wire        int    `json:"wire"`
-	Time        string `json:"time"`
-	State       string `json:"state"`
-	GTID        string `json:"gtid"`       // the last source transaction applied to the target
-	LagSeconds  int64  `json:"lagSeconds"` // now minus the source time of that transaction
-	Inserts     int64  `json:"inserts"`    // rows, since the plugin started
-	Updates     int64  `json:"updates"`
-	Deletes     int64  `json:"deletes"`
-	Skipped     int64  `json:"skipped"` // rows of tables no rule selects
-	Error       string `json:"error,omitempty"`
-	Description string `json:"description,omitempty"`
+	Wire       int    `json:"wire"`
+	Time       string `json:"time"`
+	State      string `json:"state"`
+	GTID       string `json:"gtid"`       // the last source transaction applied to the target
+	LagSeconds int64  `json:"lagSeconds"` // now minus the source time of that transaction
+	Inserts    int64  `json:"inserts"`    // rows, since the plugin started
+	Updates    int64  `json:"updates"`
+	Deletes    int64  `json:"deletes"`
+	Skipped    int64  `json:"skipped"` // rows of tables no rule selects
+	// Packed: rows of an index's source tables, recorded in a micro_checkpoint_pack
+	Packed int64 `json:"packed,omitempty"`
+	// IndexesReady: the indexes whose init is done
+	IndexesReady []string `json:"indexesReady,omitempty"`
+	Error        string   `json:"error,omitempty"`
+	Description  string   `json:"description,omitempty"`
 	// LastDDL: the last DDL read on the source since the plugin started, which no checkpoint
 	// carries: the destination keeps the table's old structure
 	LastDDL string `json:"lastDdl,omitempty"`
@@ -302,6 +324,9 @@ func RulesOf(tables []string) []Rule {
 type Applied struct {
 	Seq  int64  `json:"seq"`
 	GTID string `json:"gtid"`
+	// Indexes: the indexes whose init is done (their denormalized table filled once), as
+	// <name>@<checksum of the query and the table>: a changed index runs its init again
+	Indexes []string `json:"indexes,omitempty"`
 }
 
 // ReadState reads a State file; an empty State when there is none yet.
@@ -379,6 +404,20 @@ type Manifest struct {
 	Seq    int64        `json:"seq"`
 	GTID   string       `json:"gtid"`
 	Tables []TableFiles `json:"tables"`
+	// Packs: a micro_checkpoint_pack (denormalize mode): per source table, the primary keys to
+	// replace and to delete; its unpack gives the micro checkpoint of each index
+	Packs []PackTable `json:"packs,omitempty"`
+}
+
+// PackTable is one source table of a micro_checkpoint_pack: its primary key columns and
+// two files of their values (EncodeTSV), the keys to replace and the keys to delete.
+type PackTable struct {
+	Schema     string   `json:"schema"`
+	Table      string   `json:"table"`
+	KeyColumns []string `json:"keyColumns"`
+	Replace    string   `json:"replace,omitempty"`
+	Delete     string   `json:"delete,omitempty"`
+	Keys       int64    `json:"keys"`
 }
 
 // TableFiles are the files of one table in a checkpoint, tab-separated in LOAD DATA's

@@ -16,7 +16,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/BurntSushi/toml"
 	"github.com/signal18/replication-manager/cluster/replplugin/wire"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/dbhelper"
@@ -148,6 +147,7 @@ func (cluster *Cluster) prepareAnalyticChild(parent *Cluster, target *ServerMoni
 		Destination:     plugin,
 		SourceCluster:   parent.Name,
 		MergeIntervalMs: cluster.Conf.ReplicationPluginMergeInterval * 1000,
+		Indexes:         cluster.replPluginIndexes(),
 	}
 	if err := writeReplPluginConfig(path, cfg); err != nil {
 		return err
@@ -328,16 +328,8 @@ func (cluster *Cluster) SetReplicationPluginIntervals(checkpoint, merge int) err
 	if cluster.HasAnalyticChild() {
 		paths = append(paths, cluster.analyticPluginPath())
 	}
-	for _, path := range paths {
-		var cfg wire.Config
-		if _, err := toml.DecodeFile(path, &cfg); err != nil {
-			continue // no such plugin
-		}
+	return rewriteReplPluginConfigs(paths, func(cfg *wire.Config) {
 		cfg.BatchTimeoutMs = cluster.replPluginCheckpointMs()
 		cfg.MergeIntervalMs = merge * 1000
-		if err := writeReplPluginConfig(path, cfg); err != nil {
-			return err
-		}
-	}
-	return nil
+	})
 }

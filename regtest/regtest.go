@@ -200,6 +200,7 @@ var tests = []string{
 	"testAlterEngine",
 	"testColumnstoreChildCDC",
 	"testAnalyticChildCDC",
+	"testAnalyticChildDenormalize",
 	"testProvisionReplicationUser",
 }
 
@@ -371,6 +372,7 @@ var testTargets = map[string][]TestTarget{
 	"testAlterEngine":                                                          anyCluster,
 	"testColumnstoreChildCDC":                                                  anyCluster,
 	"testAnalyticChildCDC":                                                     anyCluster,
+	"testAnalyticChildDenormalize":                                             anyCluster,
 
 	// #2227: a real rotation on MariaDB and MySQL, the versioned file on. Its variant with a vault
 	// entry, testCredentialVersionsRotationVault, is run by name on a cluster whose config enables

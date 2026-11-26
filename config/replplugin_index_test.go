@@ -1,0 +1,57 @@
+// replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
+// Copyright 2017-2026 SIGNAL18 CLOUD SAS
+// This source code is licensed under the GNU General Public License, version 3.
+
+package config
+
+import (
+	"strings"
+	"testing"
+
+	"github.com/pelletier/go-toml"
+)
+
+// The index list: put, replace by name, one denormalized table per index, rendered for the
+// saved config and read back.
+func TestReplicationPluginIndexes(t *testing.T) {
+	conf := &Config{}
+	ol := ReplicationPluginIndex{Name: "order-lines", SQL: "SELECT ol.ol_o_id FROM tpcc.order_line ol;", SlaveSchema: "dn", SlaveTable: "ol"}
+	if err := conf.PutReplicationPluginIndex(ol); err != nil {
+		t.Fatal(err)
+	}
+	ol.MaxKeysPerBatch = 500
+	if err := conf.PutReplicationPluginIndex(ol); err != nil || len(conf.ReplicationPluginIndexes) != 1 || conf.ReplicationPluginIndexes[0].MaxKeysPerBatch != 500 {
+		t.Fatalf("replace: %v %+v", err, conf.ReplicationPluginIndexes)
+	}
+	if err := conf.PutReplicationPluginIndex(ReplicationPluginIndex{Name: "other", SQL: "SELECT 1", SlaveSchema: "dn", SlaveTable: "OL"}); err == nil {
+		t.Fatal("two indexes cannot fill one table")
+	}
+	for _, bad := range []ReplicationPluginIndex{
+		{Name: "Bad Name", SQL: "SELECT 1", SlaveSchema: "a", SlaveTable: "b"},
+		{Name: "x", SQL: "DELETE FROM t", SlaveSchema: "a", SlaveTable: "b"},
+		{Name: "x", SQL: "SELECT 1", SlaveSchema: "a.b", SlaveTable: "b"},
+	} {
+		if err := conf.PutReplicationPluginIndex(bad); err == nil {
+			t.Fatalf("%+v must be refused", bad)
+		}
+	}
+	out, err := conf.ReplicationPluginIndexesToml("saved-c1")
+	if err != nil || !strings.Contains(out, "[[saved-c1.replication-plugin-index]]") || strings.Contains(out, ";") {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	tree, err := toml.Load(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var back struct {
+		C struct {
+			Indexes []ReplicationPluginIndex `toml:"replication-plugin-index"`
+		} `toml:"saved-c1"`
+	}
+	if err := tree.Unmarshal(&back); err != nil || len(back.C.Indexes) != 1 || back.C.Indexes[0].SlaveTable != "ol" || back.C.Indexes[0].MaxKeysPerBatch != 500 {
+		t.Fatalf("%v %+v", err, back)
+	}
+	if !conf.DeleteReplicationPluginIndex("order-lines") || conf.DeleteReplicationPluginIndex("order-lines") {
+		t.Fatal("delete")
+	}
+}

@@ -10369,6 +10369,187 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/replication-plugin-index-actions/put": {
+            "post": {
+                "description": "Stores the index (name, sql, slave-schema, slave-table, max-keys-per-batch) and writes it into the analytic child's plugin configuration: the plugin restarts and a new or changed index starts with its init (the denormalized table made from the query's result, then filled on a consistent snapshot of the source). The query returns the primary key columns of every table it reads.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterReplicationPlugins"
+                ],
+                "summary": "Add or change an index of the denormalize mode",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "the index",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/config.ReplicationPluginIndex"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "name",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid index",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "409": {
+                        "description": "The list is set by a config file",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/replication-plugin-index-actions/remove/{indexName}": {
+            "post": {
+                "description": "The index leaves the plugin's configuration; its denormalized table stays on the child, to drop by hand.",
+                "produces": [
+                    "text/plain"
+                ],
+                "tags": [
+                    "ClusterReplicationPlugins"
+                ],
+                "summary": "Remove an index of the denormalize mode",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Index Name",
+                        "name": "indexName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Index removed",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Unknown index",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "409": {
+                        "description": "The list is set by a config file",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/replication-plugin-index-list": {
+            "get": {
+                "description": "The analytic child's indexes: each a denormalizing query, run on the source, and the denormalized table (slave-schema.slave-table) it fills on the child; ready lists those whose init is done.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterReplicationPlugins"
+                ],
+                "summary": "List the indexes of the denormalize mode",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/server.ReplicationPluginIndexList"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/restic/check-config": {
             "post": {
                 "description": "Validates the current restic repository configuration read-only. Returns ok, initialization_required, or error.",
@@ -30910,6 +31091,27 @@ const docTemplate = `{
                 }
             }
         },
+        "config.ReplicationPluginIndex": {
+            "type": "object",
+            "properties": {
+                "maxKeysPerBatch": {
+                    "description": "MaxKeysPerBatch: the packed keys one unpack restricts the query to; 0: the plugin's default",
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "slaveSchema": {
+                    "type": "string"
+                },
+                "slaveTable": {
+                    "type": "string"
+                },
+                "sql": {
+                    "type": "string"
+                }
+            }
+        },
         "config.Route": {
             "type": "object",
             "properties": {
@@ -34263,6 +34465,12 @@ const docTemplate = `{
                 "replicationPluginDestination": {
                     "type": "string"
                 },
+                "replicationPluginIndexes": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/config.ReplicationPluginIndex"
+                    }
+                },
                 "replicationPluginMergeInterval": {
                     "type": "integer"
                 },
@@ -35771,6 +35979,28 @@ const docTemplate = `{
             "properties": {
                 "download": {
                     "type": "boolean"
+                }
+            }
+        },
+        "server.ReplicationPluginIndexList": {
+            "type": "object",
+            "properties": {
+                "indexes": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/config.ReplicationPluginIndex"
+                    }
+                },
+                "pinned": {
+                    "description": "Pinned: a config file sets the list, the API cannot change it",
+                    "type": "boolean"
+                },
+                "ready": {
+                    "description": "Ready: the indexes whose init is done (the plugin's status)",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 }
             }
         },

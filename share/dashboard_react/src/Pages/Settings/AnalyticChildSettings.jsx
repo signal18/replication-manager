@@ -11,9 +11,11 @@ import modalStyles from '../../components/Modals/styles.module.scss'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { HiQuestionMarkCircle } from 'react-icons/hi'
+import AnalyticChildIndexes from './AnalyticChildIndexes'
 
-// The analytic child (CDC_CORE.md): its destination plugin and tables, and the CDC core
-// settings of a ColumnStore or analytic child (its source, checkpoint and merge intervals).
+// The analytic child (CDC_CORE.md): its destination plugin and tables, the CDC core settings
+// of a ColumnStore or analytic child (its source, checkpoint and merge intervals), and the
+// indexes of its denormalize mode.
 
 // a carried table of this many rows or more: a merge interval of an hour costs far less than
 // applying each checkpoint to a destination without indexes (each key batch scans the table)
@@ -77,6 +79,7 @@ function AnalyticChildSettings({ selectedCluster, user }) {
       <Flex justify='space-between' gap='0'>
         <TableType2 dataArray={dataObject} className={styles.tableWithHelp} helpColumn={true} />
       </Flex>
+      {conf.replicationPluginDestination && <AnalyticChildIndexes clusterName={name} readOnly={readOnly} />}
       <CommonModal isOpen={isCommonModalOpen} closeModal={() => setIsCommonModalOpen(false)} title={action.title} body={action.body} size='xl' />
     </>
   )

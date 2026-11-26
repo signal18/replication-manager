@@ -2488,6 +2488,16 @@ func (cluster *Cluster) SaveConfigFile() (bool, error) {
 		buf.WriteString(archives)
 	}
 
+	// the indexes of an analytic child's denormalize mode, unless a config file pins them
+	if !cluster.ReplicationPluginIndexesPinned() {
+		indexes, err := cluster.Conf.ReplicationPluginIndexesToml("saved-" + cluster.Name)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Error rendering the index list: %s", err)
+			return false, err
+		}
+		buf.WriteString(indexes)
+	}
+
 	// the credential store entries, unless a config file pins them (#2227)
 	if _, pinned := cluster.Conf.GetImmuableFlag("secret-kv"); !pinned {
 		stores, err := cluster.Conf.SecretKvsToml("saved-" + cluster.Name)

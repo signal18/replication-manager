@@ -246,6 +246,20 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxResticCheckConfig)),
 	))
 
+	// the indexes of an analytic child's denormalize mode (CDC_CORE.md "Denormalize")
+	router.Handle("/api/clusters/{clusterName}/replication-plugin-index-list", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxReplicationPluginIndexList)),
+	))
+	router.Handle("/api/clusters/{clusterName}/replication-plugin-index-actions/put", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxReplicationPluginIndexPut)),
+	)).Methods(http.MethodPost)
+	router.Handle("/api/clusters/{clusterName}/replication-plugin-index-actions/remove/{indexName}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxReplicationPluginIndexRemove)),
+	)).Methods(http.MethodPost)
+
 	// credential store entries: the vault entries (#2227)
 	router.Handle("/api/clusters/{clusterName}/secret-kv-list", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),

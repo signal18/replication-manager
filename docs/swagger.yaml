@@ -2328,6 +2328,21 @@ definitions:
           type: string
         type: array
     type: object
+  config.ReplicationPluginIndex:
+    properties:
+      maxKeysPerBatch:
+        description: 'MaxKeysPerBatch: the packed keys one unpack restricts the query
+          to; 0: the plugin''s default'
+        type: integer
+      name:
+        type: string
+      slaveSchema:
+        type: string
+      slaveTable:
+        type: string
+      sql:
+        type: string
+    type: object
   config.Route:
     properties:
       cname:
@@ -4617,6 +4632,10 @@ definitions:
         type: integer
       replicationPluginDestination:
         type: string
+      replicationPluginIndexes:
+        items:
+          $ref: '#/definitions/config.ReplicationPluginIndex'
+        type: array
       replicationPluginMergeInterval:
         type: integer
       replicationPluginSource:
@@ -5682,6 +5701,21 @@ definitions:
     properties:
       download:
         type: boolean
+    type: object
+  server.ReplicationPluginIndexList:
+    properties:
+      indexes:
+        items:
+          $ref: '#/definitions/config.ReplicationPluginIndex'
+        type: array
+      pinned:
+        description: 'Pinned: a config file sets the list, the API cannot change it'
+        type: boolean
+      ready:
+        description: 'Ready: the indexes whose init is done (the plugin''s status)'
+        items:
+          type: string
+        type: array
     type: object
   server.ResticCurrentTaskResponse:
     properties:
@@ -12941,6 +12975,136 @@ paths:
       summary: Retrieve query rules for a specific cluster
       tags:
       - Cluster
+  /api/clusters/{clusterName}/replication-plugin-index-actions/put:
+    post:
+      consumes:
+      - application/json
+      description: 'Stores the index (name, sql, slave-schema, slave-table, max-keys-per-batch)
+        and writes it into the analytic child''s plugin configuration: the plugin
+        restarts and a new or changed index starts with its init (the denormalized
+        table made from the query''s result, then filled on a consistent snapshot
+        of the source). The query returns the primary key columns of every table it
+        reads.'
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: the index
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/config.ReplicationPluginIndex'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: name
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Invalid index
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "409":
+          description: The list is set by a config file
+          schema:
+            type: string
+      summary: Add or change an index of the denormalize mode
+      tags:
+      - ClusterReplicationPlugins
+  /api/clusters/{clusterName}/replication-plugin-index-actions/remove/{indexName}:
+    post:
+      description: The index leaves the plugin's configuration; its denormalized table
+        stays on the child, to drop by hand.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Index Name
+        in: path
+        name: indexName
+        required: true
+        type: string
+      produces:
+      - text/plain
+      responses:
+        "200":
+          description: Index removed
+          schema:
+            type: string
+        "400":
+          description: Unknown index
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "409":
+          description: The list is set by a config file
+          schema:
+            type: string
+      summary: Remove an index of the denormalize mode
+      tags:
+      - ClusterReplicationPlugins
+  /api/clusters/{clusterName}/replication-plugin-index-list:
+    get:
+      description: 'The analytic child''s indexes: each a denormalizing query, run
+        on the source, and the denormalized table (slave-schema.slave-table) it fills
+        on the child; ready lists those whose init is done.'
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/server.ReplicationPluginIndexList'
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: List the indexes of the denormalize mode
+      tags:
+      - ClusterReplicationPlugins
   /api/clusters/{clusterName}/restic/check-config:
     post:
       description: Validates the current restic repository configuration read-only.
