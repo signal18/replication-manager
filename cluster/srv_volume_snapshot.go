@@ -118,7 +118,7 @@ func (c *contractSnapshotter) run(server *ServerMonitor, action, name string) (V
 		}
 	}
 	cluster := server.ClusterGroup
-	env := server.volumeSnapshotEnv(c.manifest, action, name)
+	env := append(server.volumeSnapshotEnv(c.manifest, action, name), "REPMAN_SNAPSHOT_BUSY_WAIT="+strconv.Itoa(volumeSnapshotBusyWait(c.timeout)))
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Volume snapshot %s of %s (plugin %s) %s", action, server.URL, c.manifest.Name, c.exec.Where())
@@ -142,6 +142,20 @@ func (c *contractSnapshotter) run(server *ServerMonitor, action, name string) (V
 		return run, err
 	}
 	return run, nil
+}
+
+// volumeSnapshotBusyWait is how long the helper waits for the volume to be unused before a
+// snapback: well within the run's deadline, so a server still flushing ends in a clean
+// "nothing was changed" refusal, never in a deadline counted as half-way.
+func volumeSnapshotBusyWait(timeout time.Duration) int {
+	wait := int(timeout.Seconds() / 3)
+	if wait > 120 {
+		wait = 120
+	}
+	if wait < 0 {
+		wait = 0
+	}
+	return wait
 }
 
 // volumeSnapshotMaxLines bounds what a run's output keeps (F4): a plugin printing without end

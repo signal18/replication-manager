@@ -111,7 +111,9 @@ and during a failover. Then:
    volume is rolled back to the snapshot. The check covers the mount points of the volume and
    the server's directories; a zvol under a ZFS tree has no mount point and is not checked. An
    LVM volume with no mount point found (not mounted, or mounted through an alias findmnt does
-   not resolve) is refused. On ZFS, the snapshots taken **after** it are
+   not resolve) is refused. The wait is a third of `backup-snapshot-timeout`, at most 2 minutes.
+   A shell of the SSH user whose directory is on the volume counts as a use: the snapback is
+   then refused, nothing changed. On ZFS, the snapshots taken **after** it are
    destroyed (ZFS rolls back to the latest snapshot only). On LVM the volume is unmounted,
    the snapshot merged into it (the snapshot is consumed by the merge), and mounted again (from
    its fstab entry; a volume without one comes back mounted with the default options);

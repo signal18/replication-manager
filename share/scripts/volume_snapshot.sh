@@ -307,6 +307,8 @@ lvm_list() {
 }
 
 lvm_has() {
+    # lvs not running (a sudoers entry missing) is said as such, not as a missing snapshot
+    q lvs "$TARGET" >/dev/null 2>&1 || die "lvs $TARGET does not run (sudoers?)"
     lvm_snapshots 3>/dev/null | cut -f 1 | grep -Fxq -- "$NAME"
 }
 

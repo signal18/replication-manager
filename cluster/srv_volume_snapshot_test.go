@@ -286,14 +286,16 @@ fi
 
 // fakeFuser: -V answers unless FAKE_DIR/fuser-broken exists; -m PATH is in use when PATH is a
 // line of FAKE_DIR/busy.
+// FAKE_DIR/busy-once is busy at the first -m, free after.
 const fakeFuser = `#!/bin/sh
 [ "$1" = "-V" ] && { [ -f "$FAKE_DIR/fuser-broken" ] && exit 1; exit 0; }
+[ -f "$FAKE_DIR/busy-once" ] && { rm -f "$FAKE_DIR/busy-once"; exit 0; }
 [ -f "$FAKE_DIR/busy" ] && grep -qx "$2" "$FAKE_DIR/busy" && exit 0
 exit 1
 `
 
 // shSnapshotExecutor runs the embedded helper with sh and the fake tools of a test.
-type shSnapshotExecutor struct{ bin, dir string }
+type shSnapshotExecutor struct{ bin, dir, busyWait string }
 
 func (e *shSnapshotExecutor) Where() string { return "in a test" }
 
@@ -303,7 +305,12 @@ func (e *shSnapshotExecutor) Exec(ctx context.Context, action string, env []stri
 		return snapshotOutput{}, err
 	}
 	cmd := exec.CommandContext(ctx, "sh", "-s", "--", action)
-	cmd.Env = append([]string{"PATH=" + e.bin + ":/usr/bin:/bin", "REPMAN_SNAPSHOT_SUDO=", "REPMAN_SNAPSHOT_BUSY_WAIT=0", "FAKE_DIR=" + e.dir}, env...)
+	busyWait := e.busyWait
+	if busyWait == "" {
+		busyWait = "0"
+	}
+	// the test's values last: they win over the contract's
+	cmd.Env = append(append([]string{"PATH=" + e.bin + ":/usr/bin:/bin"}, env...), "REPMAN_SNAPSHOT_SUDO=", "REPMAN_SNAPSHOT_BUSY_WAIT="+busyWait, "FAKE_DIR="+e.dir)
 	return runSnapshotCmd(cmd, script)
 }
 
@@ -437,6 +444,28 @@ func TestVolumeSnapshotHelperLVMNotMountedRefused(t *testing.T) {
 	run, err := vs.Snapback(server, "repman-20261126T100000Z")
 	if err == nil || run.Changed || !strings.Contains(err.Error(), "no mount point") {
 		t.Fatalf("lvm snapback without a mount point: %v changed=%v", err, run.Changed)
+	}
+}
+
+func TestVolumeSnapshotHelperWaitsForTheVolume(t *testing.T) {
+	_, server, vs, dir := newFakeZFSHost(t)
+	vs.exec.(*shSnapshotExecutor).busyWait = "10"
+	os.WriteFile(filepath.Join(dir, "busy-once"), nil, 0o644)
+	start := time.Now()
+	run, err := vs.Snapback(server, "daily-1")
+	if err != nil || !run.Changed {
+		t.Fatalf("snapback after the volume got free: %v %+v", err, run)
+	}
+	if time.Since(start) < 2*time.Second {
+		t.Fatal("the busy volume was not waited for")
+	}
+}
+
+func TestVolumeSnapshotBusyWaitWithinTheDeadline(t *testing.T) {
+	for timeout, want := range map[time.Duration]int{30 * time.Second: 10, 30 * time.Minute: 120, 0: 0} {
+		if got := volumeSnapshotBusyWait(timeout); got != want {
+			t.Errorf("busy wait of %s = %d, want %d", timeout, got, want)
+		}
 	}
 }
 
