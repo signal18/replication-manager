@@ -78,7 +78,20 @@ LOG_BIN_BASENAME; relative ones under the datadir), with `findmnt -T`:
 - LVM: their logical volume; several LVs are refused (an LVM snapshot is per LV, not atomic
   across LVs).
 
-`backup-snapshot-target` names it explicitly.
+An auto-resolved ZFS target is refused when it is a pool root, or when a dataset of its tree is
+neither a path dataset, an ancestor or descendant of one, nor mounted inside a server path
+(`zfs_holds_server`): its snapback would roll back data of something else. `backup-snapshot-target`
+names it explicitly (the operator's choice).
+
+Every command of the helper has stdin closed (`x`, `q`): under `sh -s` the script itself is on
+stdin. An LVM snapback whose second `umount` fails mounts back the first and reports nothing
+changed; if that mount fails too, it prints `CHANGED` (half-way).
+
+The snapback claims the server before its checks (`beginVolumeSnapshotOp`, released with
+`releaseVolumeSnapshotOp` when they refuse), its list bounded as the API's. A stop that fails,
+or a refusal found once stopped, starts the server again when it does not answer
+(`snapbackUndoStop`). Every action runs in `goVolumeSnapshotOp`, which recovers a panic and
+ends the op (half-way for a snapback).
 
 ### Retention (F1, F4)
 

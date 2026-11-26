@@ -125,6 +125,9 @@ function VolumeSnapshotsModal({ isOpen, closeModal, clusterName, server, user })
                   <>
                     <Text fontWeight='bold'>Snapback of {server?.host}:{server?.port} to {pending.name}</Text>
                     <Text fontSize='sm'>
+                      Rolled back: <Code>{data?.target || '?'}</Code>{data?.plugin === 'zfs' ? ' and every dataset under it' : ''}.
+                    </Text>
+                    <Text fontSize='sm'>
                       Everything written on this server since the snapshot is lost. The server goes into maintenance, is
                       stopped, its volume rolled back (on ZFS, the snapshots taken after this one are destroyed), then
                       started; it stays in maintenance until you take it out. Its replication resumes from the position

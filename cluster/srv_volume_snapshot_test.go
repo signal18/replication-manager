@@ -242,9 +242,20 @@ list)
 esac
 `
 
+// fakeFindmnt: -T PATH prints the source and type of the mounts file line of PATH; --source DS
+// prints the mount point of a "DS PATH zfs" line (a dataset mounted inside a server path).
 const fakeFindmnt = `#!/bin/sh
-for a in "$@"; do last="$a"; done
-awk -v p="$last" '$1 == p { print $2 " " $3 }' "$FAKE_DIR/mounts"
+source=""
+prev=""
+for a in "$@"; do
+    [ "$prev" = "--source" ] && source="$a"
+    prev="$a"; last="$a"
+done
+if [ -n "$source" ]; then
+    awk -v s="$source" '$1 == s { print $2 }' "$FAKE_DIR/mounts"
+else
+    awk -v p="$last" '$1 == p { print $2 " " $3 }' "$FAKE_DIR/mounts"
+fi
 `
 
 // shSnapshotExecutor runs the embedded helper with sh and the fake tools of a test.
@@ -451,5 +462,69 @@ func TestLimitedBufferTruncated(t *testing.T) {
 	b.Write([]byte("ab"))
 	if !b.Truncated() || len(b.String()) != volumeSnapshotOutputMax {
 		t.Fatalf("truncated=%v len=%d", b.Truncated(), len(b.String()))
+	}
+}
+
+func TestVolumeSnapshotOpPanicEndsTheOp(t *testing.T) {
+	cl, server := newTestClusterServer(t)
+	op, _ := cl.beginVolumeSnapshotOp(server, config.ConstSnapshotActionSnapback, "repman-1", "zfs")
+	done := make(chan struct{})
+	cl.goVolumeSnapshotOp(server, op, func() (VolumeSnapshotRun, error) {
+		defer close(done)
+		var m map[string]int
+		m["x"] = 1 // a panic
+		return VolumeSnapshotRun{}, nil
+	})
+	<-done
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if got := cl.VolumeSnapshotOp(server); got != nil && got.Status != VolumeSnapshotRunning {
+			if got.Status != VolumeSnapshotHalfway || !strings.Contains(got.Error, "panic") {
+				t.Fatalf("a snapback ending in a panic is half-way: %+v", got)
+			}
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("the op stayed running after a panic")
+}
+
+func TestReleaseVolumeSnapshotOp(t *testing.T) {
+	cl, server := newTestClusterServer(t)
+	first, _ := cl.beginVolumeSnapshotOp(server, config.ConstSnapshotActionTake, "repman-1", "zfs")
+	cl.endVolumeSnapshotOp(first, VolumeSnapshotRun{}, nil)
+	op, _ := cl.beginVolumeSnapshotOp(server, config.ConstSnapshotActionSnapback, "repman-1", "zfs")
+	cl.releaseVolumeSnapshotOp(op)
+	if got := cl.VolumeSnapshotOp(server); got == nil || got.Action != config.ConstSnapshotActionTake || got.Status != VolumeSnapshotDone {
+		t.Fatalf("released: the previous action is back: %+v", got)
+	}
+}
+
+func TestVolumeSnapshotHelperZFSPoolRootRefused(t *testing.T) {
+	_, server, vs, dir := newFakeZFSHost(t)
+	data, redo := filepath.Join(dir, "srv", "data"), filepath.Join(dir, "srv", "redo")
+	// the datadir on tank/mysql/data, the redo log on tank/binlog: the common parent is the pool
+	os.WriteFile(filepath.Join(dir, "datasets"), []byte("tank\ntank/mysql\ntank/mysql/data\ntank/binlog\ntank/backups\n"), 0o644)
+	os.WriteFile(filepath.Join(dir, "mounts"), []byte(data+" tank/mysql/data zfs\n"+redo+" tank/binlog zfs\n"), 0o644)
+	if _, err := vs.List(server); err == nil || !strings.Contains(err.Error(), "pool tank") {
+		t.Fatalf("pool root found on a guess: %v", err)
+	}
+	// a sibling dataset of something else under the common parent
+	os.WriteFile(filepath.Join(dir, "datasets"), []byte("tank/db\ntank/db/data\ntank/db/redo\ntank/db/other\n"), 0o644)
+	os.WriteFile(filepath.Join(dir, "mounts"), []byte(data+" tank/db/data zfs\n"+redo+" tank/db/redo zfs\n"), 0o644)
+	if _, err := vs.List(server); err == nil || !strings.Contains(err.Error(), "tank/db/other") {
+		t.Fatalf("a tree with a dataset of something else: %v", err)
+	}
+	// mounted inside the datadir, it belongs to the server
+	os.WriteFile(filepath.Join(dir, "mounts"), []byte(data+" tank/db/data zfs\n"+redo+" tank/db/redo zfs\ntank/db/other "+data+"/.system/tmp zfs\n"), 0o644)
+	if run, err := vs.List(server); err != nil || run.Target != "tank/db" {
+		t.Fatalf("a dataset mounted in the datadir: %v %+v", err, run)
+	}
+	// named explicitly, the operator's choice
+	cl := server.ClusterGroup
+	cl.Conf.BackupSnapshotTarget = "tank/db"
+	os.WriteFile(filepath.Join(dir, "mounts"), []byte(data+" tank/db/data zfs\n"), 0o644)
+	if run, err := vs.List(server); err != nil || run.Target != "tank/db" {
+		t.Fatalf("explicit target: %v %+v", err, run)
 	}
 }

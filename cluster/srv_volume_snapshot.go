@@ -470,6 +470,8 @@ type VolumeSnapshotOp struct {
 	Commands []string  `json:"commands"`
 	// a snapback done: the server stays in maintenance until an operator takes it out (WARN0331)
 	SnapbackDone bool `json:"snapbackDone"`
+	// the server's previous last action, put back when this one is released before it ran
+	prev *VolumeSnapshotOp
 }
 
 // volumeSnapshots: the last action of each server, one entry per server (bounded by the
@@ -488,12 +490,49 @@ func (cluster *Cluster) beginVolumeSnapshotOp(server *ServerMonitor, action, sna
 	if cluster.vsnap.ops == nil {
 		cluster.vsnap.ops = map[string]*VolumeSnapshotOp{}
 	}
-	if old := cluster.vsnap.ops[server.URL]; old != nil && old.Status == VolumeSnapshotRunning {
+	old := cluster.vsnap.ops[server.URL]
+	if old != nil && old.Status == VolumeSnapshotRunning {
 		return nil, errVolumeSnapshotBusy
 	}
-	op := &VolumeSnapshotOp{Server: server.URL, Action: action, Snapshot: snapshot, Plugin: plugin, Status: VolumeSnapshotRunning, Start: time.Now(), Commands: []string{}}
+	op := &VolumeSnapshotOp{Server: server.URL, Action: action, Snapshot: snapshot, Plugin: plugin, Status: VolumeSnapshotRunning, Start: time.Now(), Commands: []string{}, prev: old}
 	cluster.vsnap.ops[server.URL] = op
 	return op, nil
+}
+
+// releaseVolumeSnapshotOp gives the server back without an outcome: an action refused by its
+// checks after it claimed the server, before it ran anything. The previous action is back.
+func (cluster *Cluster) releaseVolumeSnapshotOp(op *VolumeSnapshotOp) {
+	cluster.vsnap.mu.Lock()
+	defer cluster.vsnap.mu.Unlock()
+	if cluster.vsnap.ops[op.Server] != op {
+		return
+	}
+	if op.prev != nil {
+		cluster.vsnap.ops[op.Server] = op.prev
+	} else {
+		delete(cluster.vsnap.ops, op.Server)
+	}
+}
+
+// goVolumeSnapshotOp runs an action in its own goroutine and ends its op whatever happens: a
+// panic is recovered (F2: never the monitor's death, never a server claimed for good) and ends
+// it failed, or half-way for a snapback, whose volume is then in an unknown state.
+func (cluster *Cluster) goVolumeSnapshotOp(server *ServerMonitor, op *VolumeSnapshotOp, fn func() (VolumeSnapshotRun, error)) {
+	go func() {
+		var run VolumeSnapshotRun
+		var err error
+		defer func() {
+			if r := recover(); r != nil {
+				err = fmt.Errorf("volume snapshot %s stopped by a panic: %v", op.Action, r)
+				if op.Action == config.ConstSnapshotActionSnapback {
+					run.Changed = true
+				}
+			}
+			cluster.logVolumeSnapshotEnd(server, op, err)
+			cluster.endVolumeSnapshotOp(op, run, err)
+		}()
+		run, err = fn()
+	}()
 }
 
 func (cluster *Cluster) endVolumeSnapshotOp(op *VolumeSnapshotOp, run VolumeSnapshotRun, err error) {
@@ -601,16 +640,15 @@ func (cluster *Cluster) TakeVolumeSnapshot(server *ServerMonitor) (string, error
 	if err != nil {
 		return "", err
 	}
-	go func() {
+	cluster.goVolumeSnapshotOp(server, op, func() (VolumeSnapshotRun, error) {
 		run, err := vs.Take(server, name)
 		if err == nil {
 			var pruned VolumeSnapshotRun
 			pruned, err = cluster.pruneVolumeSnapshots(server, vs)
 			run.Commands = append(run.Commands, pruned.Commands...)
 		}
-		cluster.logVolumeSnapshotEnd(server, op, err)
-		cluster.endVolumeSnapshotOp(op, run, err)
-	}()
+		return run, err
+	})
 	return name, nil
 }
 
@@ -669,11 +707,9 @@ func (cluster *Cluster) DeleteVolumeSnapshot(server *ServerMonitor, name string)
 	if err != nil {
 		return err
 	}
-	go func() {
-		run, err := vs.Delete(server, name)
-		cluster.logVolumeSnapshotEnd(server, op, err)
-		cluster.endVolumeSnapshotOp(op, run, err)
-	}()
+	cluster.goVolumeSnapshotOp(server, op, func() (VolumeSnapshotRun, error) {
+		return vs.Delete(server, name)
+	})
 	return nil
 }
 
@@ -707,6 +743,27 @@ func (cluster *Cluster) SnapbackVolume(server *ServerMonitor, name string) error
 	if err != nil {
 		return err
 	}
+	// the server is claimed before its checks: two snapbacks never pass them together
+	op, err := cluster.beginVolumeSnapshotOp(server, config.ConstSnapshotActionSnapback, name, vs.Manifest().Name)
+	if err != nil {
+		return err
+	}
+	if err := cluster.snapbackPreflight(server, vs, name); err != nil {
+		cluster.releaseVolumeSnapshotOp(op)
+		return err
+	}
+	cluster.goVolumeSnapshotOp(server, op, func() (VolumeSnapshotRun, error) {
+		return cluster.runVolumeSnapback(server, vs, name)
+	})
+	return nil
+}
+
+// snapbackPreflight: the snapshot exists (a list bounded as the API's, the request waits for
+// it), and the refusals still hold once the server is claimed.
+func (cluster *Cluster) snapbackPreflight(server *ServerMonitor, vs VolumeSnapshotter, name string) error {
+	if c, ok := vs.(*contractSnapshotter); ok && c.timeout > volumeSnapshotListTimeout {
+		vs = &contractSnapshotter{manifest: c.manifest, exec: c.exec, timeout: volumeSnapshotListTimeout}
+	}
 	list, err := vs.List(server)
 	if err != nil {
 		return fmt.Errorf("can not list the snapshots: %w", err)
@@ -718,15 +775,9 @@ func (cluster *Cluster) SnapbackVolume(server *ServerMonitor, name string) error
 	if !found {
 		return fmt.Errorf("snapshot %s not found on %s", name, list.Target)
 	}
-	op, err := cluster.beginVolumeSnapshotOp(server, config.ConstSnapshotActionSnapback, name, vs.Manifest().Name)
-	if err != nil {
-		return err
+	if why := cluster.snapbackRefusal(server); why != "" {
+		return errors.New(why)
 	}
-	go func() {
-		run, err := cluster.runVolumeSnapback(server, vs, name)
-		cluster.logVolumeSnapshotEnd(server, op, err)
-		cluster.endVolumeSnapshotOp(op, run, err)
-	}()
 	return nil
 }
 
@@ -750,7 +801,7 @@ func (cluster *Cluster) runVolumeSnapback(server *ServerMonitor, vs VolumeSnapsh
 	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Snapback of %s to %s: stopping the database", server.URL, name)
 	if err := cluster.StopDatabaseService(server); err != nil {
-		return VolumeSnapshotRun{}, fmt.Errorf("stop failed, nothing was changed: %w", err)
+		return VolumeSnapshotRun{}, cluster.snapbackUndoStop(server, fmt.Errorf("stop failed: %w", err))
 	}
 	// the port closed: the SQL SHUTDOWN or the orchestrator stop is done (a server reachable on
 	// a socket only has no port to watch: it is not monitored by replication-manager either)
@@ -760,7 +811,7 @@ func (cluster *Cluster) runVolumeSnapback(server *ServerMonitor, vs VolumeSnapsh
 	// checked again once stopped: a switchover or a failover may have started meanwhile, or made
 	// this server the master (in maintenance it is no candidate, the check is the guard)
 	if why := cluster.snapbackRefusal(server); why != "" {
-		return VolumeSnapshotRun{}, fmt.Errorf("refused once the server was stopped, nothing was changed: %s", why)
+		return VolumeSnapshotRun{}, cluster.snapbackUndoStop(server, fmt.Errorf("refused once the server was stopped: %s", why))
 	}
 	run, err = vs.Snapback(server, name)
 	if err != nil && run.Changed {
@@ -781,7 +832,26 @@ func (cluster *Cluster) runVolumeSnapback(server *ServerMonitor, vs VolumeSnapsh
 	return run, err
 }
 
-// waitServerPort waits until the server's port answers (up) or refuses (down).
+// volumeSnapshotUndoWait is how long a snapback that changed nothing waits for the server to
+// answer again before it starts it.
+const volumeSnapshotUndoWait = 30 * time.Second
+
+// snapbackUndoStop: the snapback ends before any change to the volume, after its stop (failed or
+// done). The server is started again when it does not answer; the error says where it is left.
+func (cluster *Cluster) snapbackUndoStop(server *ServerMonitor, cause error) error {
+	if waitServerPort(server, true, volumeSnapshotUndoWait) == nil {
+		return fmt.Errorf("%w; nothing was changed, the server answers", cause)
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Snapback of %s ended before any change: starting the database again", server.URL)
+	if err := cluster.StartDatabaseService(server); err == nil && server.WaitDatabaseStart() == nil {
+		return fmt.Errorf("%w; nothing was changed, the server was started again", cause)
+	}
+	return fmt.Errorf("%w; nothing was changed on the volume, but the server is stopped and in maintenance: start it", cause)
+}
+
+// waitServerPort waits until the server's port answers (up) or refuses (down). TCP only, no
+// cancellation, bounded by its timeout: it watches the stop of a server replication-manager
+// monitors on that port, the start is confirmed on SQL (WaitDatabaseStart).
 func waitServerPort(server *ServerMonitor, up bool, timeout time.Duration) error {
 	addr := net.JoinHostPort(misc.Unbracket(server.Host), server.Port)
 	deadline := time.Now().Add(timeout)

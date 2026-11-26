@@ -51,10 +51,16 @@ die() {
     exit 1
 }
 
-# x CMD...: print the command, then run it
+# x CMD...: print the command, then run it. Its stdin is /dev/null: under sh -s the script
+# itself is on stdin, a command reading it (a prompt) would eat the rest of the script.
 x() {
     cmdline "$@" >&3
-    $SUDO "$@"
+    $SUDO "$@" </dev/null
+}
+
+# q CMD...: run a read-only command without printing it, stdin closed as for x
+q() {
+    $SUDO "$@" </dev/null
 }
 
 # cmdline CMD...: the CMD record of a command
@@ -76,7 +82,7 @@ valid_name() {
 mount_source() {
     command -v findmnt >/dev/null 2>&1 || die "findmnt not found on the database host"
     [ -e "$1" ] || die "path $1 does not exist on the database host"
-    findmnt -n -o SOURCE,FSTYPE -T "$1" | head -n 1
+    findmnt -n -o SOURCE,FSTYPE -T "$1" </dev/null | head -n 1
 }
 
 ##########
@@ -92,6 +98,7 @@ zfs_resolve() {
     fi
     [ -n "$PATHS" ] || die "no backup-snapshot-target and no server path to find the dataset"
     common=""
+    pds=""
     oldifs=$IFS
     IFS=:
     for p in $PATHS; do
@@ -101,6 +108,7 @@ zfs_resolve() {
         set -- $src
         [ "${2:-}" = "zfs" ] || die "path $p is on ${2:-an unknown filesystem} (${1:-?}), not on ZFS: set backup-snapshot-target or backup-snapshot-plugin"
         ds="${1%%@*}"
+        pds="$pds $ds"
         if [ -z "$common" ]; then
             common="$ds"
         else
@@ -116,8 +124,39 @@ zfs_resolve() {
     done
     IFS=$oldifs
     [ -n "$common" ] || die "no dataset found for $PATHS"
+    # found, not named: it must hold the server's files and nothing else, its snapback rolls
+    # back every dataset under it
+    case "$common" in
+    */*) ;;
+    *) die "the server's files are spread over the pool $common: its root is never snapshotted on a guess, set backup-snapshot-target" ;;
+    esac
+    tree=$(q zfs list -H -o name -r -t filesystem,volume "$common") || die "can not list the datasets of $common"
+    for ds in $tree; do
+        zfs_holds_server "$ds" || die "dataset $ds under $common holds none of the server's files: set backup-snapshot-target to the dataset to snapshot"
+    done
     TARGET="$common"
     printf 'TARGET\t%s\n' "$TARGET"
+}
+
+# zfs_holds_server DS: DS is a dataset of the server: one holding a server path, above one
+# (between it and the common parent) or under one, or mounted inside a server path
+zfs_holds_server() {
+    for pd in $pds; do
+        [ "$1" = "$pd" ] && return 0
+        [ "${pd#"$1"/}" != "$pd" ] && return 0
+        [ "${1#"$pd"/}" != "$1" ] && return 0
+    done
+    mnt=$(findmnt -n -o TARGET --source "$1" </dev/null 2>/dev/null | head -n 1)
+    [ -n "$mnt" ] || return 1
+    oldifs2=$IFS
+    IFS=:
+    for p in $PATHS; do
+        case "$mnt" in
+        "$p" | "$p"/*) IFS=$oldifs2; return 0 ;;
+        esac
+    done
+    IFS=$oldifs2
+    return 1
 }
 
 zfs_list() {
@@ -127,7 +166,7 @@ zfs_list() {
 }
 
 zfs_has() {
-    $SUDO zfs list -H -o name "$1@$NAME" >/dev/null 2>&1
+    q zfs list -H -o name "$1@$NAME" >/dev/null 2>&1
 }
 
 zfs_take() {
@@ -144,7 +183,7 @@ zfs_delete() {
 
 zfs_snapback() {
     zfs_has "$TARGET" || die "snapshot $TARGET@$NAME not found"
-    datasets=$($SUDO zfs list -H -o name -r -t filesystem,volume "$TARGET") || die "can not list the datasets of $TARGET"
+    datasets=$(q zfs list -H -o name -r -t filesystem,volume "$TARGET") || die "can not list the datasets of $TARGET"
     # every dataset of the tree must hold the snapshot, or the rollback would be partial
     for ds in $datasets; do
         zfs_has "$ds" || die "dataset $ds has no snapshot $NAME (created after it): nothing was changed"
@@ -161,7 +200,7 @@ zfs_snapback() {
 ##########
 
 lvm_lv_of() {
-    $SUDO lvs --noheadings -o vg_name,lv_name "$1" 2>/dev/null | awk 'NR==1 { print $1 "/" $2 }'
+    q lvs --noheadings -o vg_name,lv_name "$1" 2>/dev/null | awk 'NR==1 { print $1 "/" $2 }'
 }
 
 lvm_resolve() {
@@ -202,7 +241,7 @@ lvm_resolve() {
 lvm_snapshots() {
     vg="${TARGET%%/*}"
     lv="${TARGET#*/}"
-    x lvs --noheadings --separator "$TAB" --units b --nosuffix -o lv_name,origin,lv_time,lv_size "$vg" | while IFS="$TAB" read -r n o t s; do
+    x lvs --noheadings --separator '|' --units b --nosuffix -o lv_name,origin,lv_time,lv_size "$vg" | while IFS='|' read -r n o t s; do
         n=$(echo "$n" | tr -d ' ')
         o=$(echo "$o" | tr -d ' ')
         [ "$o" = "$lv" ] || continue
@@ -218,12 +257,12 @@ lvm_list() {
 }
 
 lvm_has() {
-    lvm_snapshots 3>/dev/null | cut -f 1 | grep -qx "$NAME"
+    lvm_snapshots 3>/dev/null | cut -f 1 | grep -Fxq -- "$NAME"
 }
 
 lvm_take() {
     vg="${TARGET%%/*}"
-    seg=$($SUDO lvs --noheadings -o segtype "$TARGET" | tr -d ' ')
+    seg=$(q lvs --noheadings -o segtype "$TARGET" | tr -d ' ')
     if [ "$seg" = "thin" ]; then
         x lvcreate -s -n "$NAME" "$TARGET" || die "lvcreate of thin snapshot $vg/$NAME failed"
     else
@@ -244,12 +283,23 @@ lvm_delete() {
 
 lvm_snapback() {
     lvm_has || die "snapshot $NAME of $TARGET not found"
-    dev=$($SUDO lvs --noheadings -o lv_path "$TARGET" | tr -d ' ')
+    dev=$(q lvs --noheadings -o lv_path "$TARGET" | tr -d ' ')
     [ -n "$dev" ] || die "no device path for $TARGET"
     # the mount points of the volume, deepest first: unmounted before the merge, mounted after
-    mnts=$(findmnt -n -l -o TARGET --source "$dev" 2>/dev/null | sort -r)
+    mnts=$(findmnt -n -l -o TARGET --source "$dev" </dev/null 2>/dev/null | sort -r)
+    done_mnts=""
     for m in $mnts; do
-        x umount "$m" || die "umount $m failed (still in use?): nothing was changed"
+        if ! x umount "$m"; then
+            # put back what this run unmounted: the volume as it was, or say it is not
+            for d in $(echo "$done_mnts" | sort); do
+                if ! { x mount "$d" 2>/dev/null || x mount "$dev" "$d"; }; then
+                    printf 'CHANGED\n'
+                    die "umount $m failed, and $d could not be mounted again: the volume is half unmounted"
+                fi
+            done
+            die "umount $m failed (still in use?): nothing was changed"
+        fi
+        done_mnts="$done_mnts $m"
     done
     printf 'CHANGED\n'
     # an inactive origin: a thin merge and a copy-on-write merge both start at its activation

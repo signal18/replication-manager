@@ -45,7 +45,15 @@ directory of its binary logs.
 - **lvm**: the logical volume that holds all of them. When they are on several logical
   volumes, the snapshot is refused: a snapshot of one of them would not be consistent.
 
-Set `backup-snapshot-target` (a dataset `pool/dataset`, or `vg/lv`) to name it yourself.
+A dataset found this way is refused when it is a pool root, or when a dataset under it holds
+none of the server's files (and is not mounted inside one of its directories): a snapback rolls
+back every dataset under the one snapshotted, so it is never chosen on a guess. Set
+`backup-snapshot-target` (a dataset `pool/dataset`, or `vg/lv`) to name it yourself; a target
+you name is snapshotted and rolled back with every dataset under it.
+
+An LVM snapshot of a thick volume has a fixed copy-on-write space (`backup-snapshot-lvm-size`):
+when the writes after the snapshot fill it, LVM invalidates the snapshot and a snapback to it
+fails. Size it for the writes of the time you keep it, or use a thin volume.
 
 ## Settings
 
