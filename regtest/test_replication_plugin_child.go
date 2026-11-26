@@ -84,6 +84,7 @@ func testReplicationPluginChild(cl *cluster.Cluster, name string, extra map[stri
 			"INSERT INTO "+cdcRegtestSchema+".latin VALUES (1,'a'),(2,'b')")
 	}
 	stmts = append(stmts,
+		"USE "+cdcRegtestSchema, // the seq_1_to_N tables of the sequence engine need a schema
 		fmt.Sprintf("INSERT INTO %s.orders (customer,status,amount,note,created) SELECT seq MOD 1000, 'new', (seq MOD 10000)/100, CONCAT('row ', seq), '2026-01-01' + INTERVAL seq SECOND FROM seq_1_to_%d", cdcRegtestSchema, cdcRegtestRows),
 		fmt.Sprintf("INSERT INTO %s.lines SELECT seq, 1 + seq MOD %d, seq MOD 7, CONCAT('line ', seq) FROM seq_1_to_%d", cdcRegtestSchema, cdcRegtestRows, 2*cdcRegtestRows))
 	if err := tlsExecOneConn(master, stmts...); err != nil {
