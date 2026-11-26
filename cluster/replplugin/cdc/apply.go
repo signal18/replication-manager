@@ -295,6 +295,21 @@ func writeApplied(path string, a wire.Applied) error {
 	return os.Rename(tmp, path)
 }
 
+// nextSeqBase is the last checkpoint number used: the State's, the applied one's, or a file's
+// still waiting, the highest.
+func nextSeqBase(stateSeq int64, appliedPath, dir string) int64 {
+	seq := stateSeq
+	if a, err := readApplied(appliedPath); err == nil && a.Seq > seq {
+		seq = a.Seq
+	}
+	for _, s := range pendingCheckpoints(dir, seq) {
+		if s > seq {
+			seq = s
+		}
+	}
+	return seq
+}
+
 // pendingCheckpoints are the seqs of the checkpoint files after after, in order.
 func pendingCheckpoints(dir string, after int64) []int64 {
 	entries, err := os.ReadDir(dir)

@@ -27,8 +27,16 @@ the **CDC core**, a library shared by every **destination plugin**: one plugin p
     line keeps coming while it lasts.
   - A period closes only at a transaction's end: a GTID event closes the previous transaction,
     an XID or not (a COMMIT of a non-transactional table). One source transaction is held whole
-    in memory: a transaction of more row events than `max_pending_mb` stops the plugin with
-    that reason (WARN0242) instead of growing without bound (F4).
+    in memory: a transaction of more row events than `max_pending_mb` (counted per transaction,
+    from its GTID event) stops the plugin with that reason (WARN0242) instead of growing without
+    bound (F4).
+  - The pause shows in the plugin's status description, so in CINF0017 ("paused: N MB of
+    checkpoints wait to be applied").
+  - A crash between a checkpoint's file and the State that records it: at its start the plugin
+    numbers its next checkpoint past every number used (State, applied, files waiting), so an
+    applied checkpoint is never shadowed by a new one of the same number.
+  - A plugin binary of wire 1 is refused by replication-manager's wire check (WARN0242 with the
+    reason): rebuild or upgrade the plugin with this release.
   - A `RENAME TABLE` or `DROP TABLE` on the source is a DDL like any other: WARN0341, the copy
     keeps its rows.
 - **Apply** (wire 2): the plugin applies its checkpoints itself, in order: to the destination, or

@@ -54,3 +54,40 @@ func TestWaitRoomPauseWithLockHeld(t *testing.T) {
 		t.Fatalf("another description is kept: %q", d)
 	}
 }
+
+// The cap on one source transaction compares the transaction, not the period: many small
+// transactions never trip it, one over the cap does.
+func TestTransactionCap(t *testing.T) {
+	c := &capture{txCap: 1000, maxSize: 1 << 30}
+	for i := 0; i < 50; i++ { // 50 transactions of 100: 5000 in the period
+		for j := 0; j < 2; j++ {
+			if err := c.addRowEvent(50); err != nil {
+				t.Fatalf("small transaction %d refused: %v", i, err)
+			}
+		}
+		c.txSize = 0 // its end (OnXID / OnGTID)
+	}
+	if err := c.addRowEvent(1001); err == nil {
+		t.Fatal("a transaction over the cap must stop the plugin")
+	}
+}
+
+// After a crash between a checkpoint's file and the State, the next number is past every one
+// used (applied or waiting).
+func TestNextSeqBase(t *testing.T) {
+	dir := t.TempDir()
+	cp := filepath.Join(dir, "x.checkpoints")
+	os.MkdirAll(cp, 0750)
+	applied := filepath.Join(dir, "x.applied.json")
+	if got := nextSeqBase(4, applied, cp); got != 4 {
+		t.Fatalf("nothing else: %d", got)
+	}
+	writeApplied(applied, wire.Applied{Seq: 6})
+	if got := nextSeqBase(4, applied, cp); got != 6 {
+		t.Fatalf("applied 6: %d", got)
+	}
+	os.WriteFile(filepath.Join(cp, wire.CheckpointName(7)), []byte("x"), 0640)
+	if got := nextSeqBase(4, applied, cp); got != 7 {
+		t.Fatalf("waiting 7: %d", got)
+	}
+}

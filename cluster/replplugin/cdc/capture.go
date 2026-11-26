@@ -76,6 +76,7 @@ type capture struct {
 	pausedMB atomic.Int64
 	last     atomic.Pointer[wire.Status] // the last status line, printed again while paused
 	txCap    int64                       // a source transaction larger than this stops the plugin
+	txSize   int64                       // the row events of the current transaction
 }
 
 func (c *capture) buf(t *schema.Table) *tableBuf {
@@ -143,10 +144,17 @@ func (c *capture) OnRow(e *canal.RowsEvent) error {
 		}
 	}
 	c.rows += len(e.Rows)
-	c.size += int64(e.Header.EventSize)
-	if c.inTx && c.txCap > 0 && c.size > c.txCap {
-		// a period closes only at a transaction's end: one larger than the pending bound
-		// would be held whole in memory (F4), the plugin stops and says so
+	return c.addRowEvent(int64(e.Header.EventSize))
+}
+
+// addRowEvent counts a row event of the current transaction: the period closes at the
+// transaction's end once it reached batch_mb; a transaction larger than the pending bound would
+// be held whole in memory (F4): the plugin stops and says so. The transaction's own size, not
+// the period's, is what the cap compares (txSize, back to 0 at each transaction's start).
+func (c *capture) addRowEvent(size int64) error {
+	c.size += size
+	c.txSize += size
+	if c.txCap > 0 && c.txSize > c.txCap {
 		return fmt.Errorf("a source transaction of more than %d MB of row events (max_pending_mb): too large for one checkpoint", c.txCap>>20)
 	}
 	if c.size >= c.maxSize {
@@ -157,7 +165,7 @@ func (c *capture) OnRow(e *canal.RowsEvent) error {
 
 func (c *capture) OnXID(_ *replication.EventHeader, _ mysql.Position) error {
 	c.mu.Lock()
-	c.inTx = false
+	c.inTx, c.txSize = false, 0
 	c.mu.Unlock()
 	return nil
 }
@@ -167,7 +175,7 @@ func (c *capture) OnXID(_ *replication.EventHeader, _ mysql.Position) error {
 func (c *capture) OnGTID(_ *replication.EventHeader, _ mysql.BinlogGTIDEvent) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.inTx = false
+	c.inTx, c.txSize = false, 0
 	if c.flushDue {
 		return c.flushLocked()
 	}
@@ -424,6 +432,10 @@ func Main(dest Destination) {
 	if !state.RestoreDone && state.Seq > 0 {
 		fail(nil, fmt.Errorf("a restore was interrupted after %d checkpoints: the child must be seeded again", state.Seq))
 	}
+	// a crash between a checkpoint's file and the State that records it: the next checkpoint
+	// must not reuse that number (one applied would be skipped), it carries the re-read
+	// changes again under a new one (applied twice gives the same table)
+	state.Seq = nextSeqBase(state.Seq, wire.AppliedPath(*configPath), wire.CheckpointDir(*configPath))
 	if state.RestoreDone && len(cfg.Rules) == 0 {
 		cfg.Rules = wire.RulesOf(state.Tables)
 	}
