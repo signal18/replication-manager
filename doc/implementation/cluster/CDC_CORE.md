@@ -55,7 +55,8 @@ A destination plugin brings two things only, the `cdc.Destination` interface:
 ## The accumulation (InnoDB staging)
 
 `replication-plugin-merge-interval` seconds is the client's choice, per child, in the GUI. The
-default 0 exists only so that an unset key works.
+default 0 exists only so that an unset key works. It is capped at 86400 (one day): the staging
+grows on the child's disk until its merge (F3).
 
 - **0**: each checkpoint goes to the destination at once.
 - **More**: each checkpoint goes at once to an InnoDB staging on the child, in the schema
@@ -140,8 +141,12 @@ on the child master and **before its channel from the parent starts**:
 2. the previous plugin is stopped, and its State, checkpoints, merges and staging are removed;
 3. the source is resolved and checked;
 4. the start position is read: the child master's `gtid_slave_pos`, where the channel resumes;
-5. the plugin runs with `-create`. Each table it leaves as it is gets **WARN0340** in the schema
-   domain, raised every tick from `analytic.skipped.json`. Those tables keep replicating natively.
+5. the plugin runs with `-create`, in the seed's goroutine (never on the monitor tick), its
+   results read line by line; **CINF0031** says so while it runs (a conversion copies its table).
+   Each table it leaves as it is gets **WARN0340** in the schema domain, raised every tick from
+   `analytic.skipped.json` (an unreadable file raises WARN0340 too). Those tables keep replicating
+   natively. If `-create` fails, the tables it made before are added to the channel's ignore list
+   all the same, and the channel stays stopped with the reseed's failure.
 6. the channel's `replicate_ignore_table` is set to the tables made, live and in the
    configuration bundle for the next start (`replPluginReplicateIgnore`);
 7. the State is written (restore done, the tables made) and the TOML enabled. The next tick

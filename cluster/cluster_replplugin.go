@@ -343,17 +343,34 @@ func (cluster *Cluster) replPluginManifest(plugin string) (wire.PluginManifest, 
 	if err != nil {
 		return m, err
 	}
-	b, err := os.ReadFile(bin + ".manifest.json")
+	mpath := bin + ".manifest.json"
+	info, err := os.Stat(mpath)
 	if os.IsNotExist(err) {
 		return m, nil
 	}
 	if err != nil {
 		return m, err
 	}
+	// read again only when it changed: the supervisor asks every tick
+	if c, ok := cluster.replManifests.Load(mpath); ok {
+		if cm := c.(replManifestCache); cm.mod.Equal(info.ModTime()) {
+			return cm.m, nil
+		}
+	}
+	b, err := os.ReadFile(mpath)
+	if err != nil {
+		return m, err
+	}
 	if err := json.Unmarshal(b, &m); err != nil {
 		return m, fmt.Errorf("%s.manifest.json: %w", filepath.Base(bin), err)
 	}
+	cluster.replManifests.Store(mpath, replManifestCache{m: m, mod: info.ModTime()})
 	return m, nil
+}
+
+type replManifestCache struct {
+	m   wire.PluginManifest
+	mod time.Time
 }
 
 // ReplicationPluginStatuses are the last status lines of the cluster's running plugins, by

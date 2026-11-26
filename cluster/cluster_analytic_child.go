@@ -6,7 +6,6 @@ package cluster
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -156,6 +155,18 @@ func (cluster *Cluster) prepareAnalyticChild(parent *Cluster, target *ServerMoni
 	results, err := cluster.runReplPluginCreate(plugin, path, cfg)
 	if err != nil {
 		os.Remove(path)
+		// the tables made before the failure are the destination's: the channel ignores them
+		// too (it stays stopped with the reseed's failure, WARN0252, until a new seed)
+		var made []string
+		for _, r := range results {
+			if r.Created {
+				made = append(made, r.Table)
+			}
+		}
+		if len(made) > 0 {
+			q, ierr := dbhelper.SetChannelReplicateIgnoreTable(context.Background(), target.Conn, target.DBVersion, channel, made)
+			cluster.LogSQL(q, ierr, target.URL, "AnalyticChild", config.LvlErr, "Ignore list of channel %s on %s after a failed -create: %s", channel, target.URL, ierr)
+		}
 		return err
 	}
 	var carried []string
@@ -196,22 +207,34 @@ func (cluster *Cluster) prepareAnalyticChild(parent *Cluster, target *ServerMoni
 	return nil
 }
 
-// runReplPluginCreate runs the plugin with -create on its TOML at path and reads its results.
+// runReplPluginCreate runs the plugin with -create on its TOML at path and reads its results,
+// line by line as they come (one per table, never all of its output in memory). It runs in
+// the seed's goroutine, never on the monitor tick; CINF0031 says so while it runs. On a
+// failure the results read so far are returned with the error: the tables made before it
+// are made.
 func (cluster *Cluster) runReplPluginCreate(plugin, path string, cfg wire.Config) ([]wire.CreateResult, error) {
 	bin, err := cluster.verifiedReplPlugin(plugin)
 	if err != nil {
 		return nil, err
 	}
+	start := time.Now()
+	cluster.analyticCreating.Store(&start)
+	defer cluster.analyticCreating.Store(nil)
 	ctx, cancel := context.WithTimeout(context.Background(), analyticCreateTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, bin, "-config", path, "-create")
 	cmd.Env = cluster.replPluginEnv(cfg)
-	var stdout bytes.Buffer
 	var stderr capBuffer
-	cmd.Stdout, cmd.Stderr = &stdout, &stderr
-	runErr := cmd.Run()
+	cmd.Stderr = &stderr
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, err
+	}
+	if err := cmd.Start(); err != nil {
+		return nil, err
+	}
 	var out []wire.CreateResult
-	sc := bufio.NewScanner(&stdout)
+	sc := bufio.NewScanner(stdout)
 	sc.Buffer(make([]byte, 64*1024), 1024*1024)
 	for sc.Scan() {
 		var r wire.CreateResult
@@ -219,7 +242,7 @@ func (cluster *Cluster) runReplPluginCreate(plugin, path string, cfg wire.Config
 			out = append(out, r)
 		}
 	}
-	if runErr != nil {
+	if runErr := cmd.Wait(); runErr != nil {
 		return out, fmt.Errorf("%s -create: %v: %s", filepath.Base(bin), runErr, lastLine(strings.TrimSpace(stderr.String())))
 	}
 	return out, nil
@@ -236,14 +259,16 @@ func writeAnalyticSkipped(path string, skipped []wire.CreateResult) error {
 	return os.WriteFile(path, b, 0640)
 }
 
-func readAnalyticSkipped(path string) []wire.CreateResult {
+func readAnalyticSkipped(path string) ([]wire.CreateResult, error) {
 	b, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
 	if err != nil {
-		return nil
+		return nil, err
 	}
 	var s []wire.CreateResult
-	json.Unmarshal(b, &s)
-	return s
+	return s, json.Unmarshal(b, &s)
 }
 
 // checkAnalyticChildStates raises, every tick, a schema-domain WARN0340 per table the seed left
@@ -253,7 +278,15 @@ func (cluster *Cluster) checkAnalyticChildStates() {
 		return
 	}
 	plugin := strings.TrimSpace(cluster.Conf.ReplicationPluginDestination)
-	for _, s := range readAnalyticSkipped(cluster.analyticSkippedPath()) {
+	if t := cluster.analyticCreating.Load(); t != nil {
+		cluster.SetState("CINF0031", state.State{ErrType: config.LvlInfo, ErrDesc: fmt.Sprintf(clusterError["CINF0031"], cluster.Name, plugin, time.Since(*t).Round(time.Second)), ErrFrom: "REPL"})
+	}
+	skipped, err := readAnalyticSkipped(cluster.analyticSkippedPath())
+	if err != nil {
+		// the tables left as they were cannot be told: said, not hidden
+		cluster.SchemaStateMachine.AddState("WARN0340@"+analyticSkippedFile, state.State{ErrType: "WARNING", ErrKey: "WARN0340", ErrDesc: fmt.Sprintf(clusterError["WARN0340"], cluster.Name, "(unknown)", "?", plugin, analyticSkippedFile+" unreadable: "+err.Error()), ErrFrom: "SCHEMA"})
+	}
+	for _, s := range skipped {
 		cluster.SchemaStateMachine.AddState("WARN0340@"+s.Table, state.State{ErrType: "WARNING", ErrKey: "WARN0340", ErrDesc: fmt.Sprintf(clusterError["WARN0340"], cluster.Name, s.Table, s.Engine, plugin, s.Reason), ErrFrom: "SCHEMA"})
 	}
 }
@@ -275,6 +308,10 @@ func (server *ServerMonitor) replPluginReplicateIgnore() string {
 	return ""
 }
 
+// replPluginMergeIntervalMax: a merge interval of one day at most (the staging grows on the
+// child's disk until its merge, F3)
+const replPluginMergeIntervalMax = 86400
+
 // SetReplicationPluginIntervals sets replication-plugin-checkpoint-interval and
 // replication-plugin-merge-interval (seconds, negative refused) and writes them into the
 // plugin TOMLs of the child: each plugin restarts with them. A merge interval set back to 0
@@ -282,6 +319,9 @@ func (server *ServerMonitor) replPluginReplicateIgnore() string {
 func (cluster *Cluster) SetReplicationPluginIntervals(checkpoint, merge int) error {
 	if checkpoint < 0 || merge < 0 {
 		return fmt.Errorf("an interval is a number of seconds, 0 or more")
+	}
+	if merge > replPluginMergeIntervalMax {
+		return fmt.Errorf("a merge interval of %d s at most: the staging grows on the child's disk until its merge", replPluginMergeIntervalMax)
 	}
 	cluster.Conf.ReplicationPluginCheckpointInterval, cluster.Conf.ReplicationPluginMergeInterval = checkpoint, merge
 	paths := []string{cluster.columnstorePluginPath()}
