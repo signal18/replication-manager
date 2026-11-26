@@ -294,6 +294,13 @@ func (repman *ReplicationManager) CreateChildCluster(parent *cluster.Cluster, pl
 			return cl, fail(err)
 		}
 	}
+	// the parent's database nodes: a child placed where its parent may run (a node list the
+	// parent narrowed, a destination image present on those nodes only)
+	if parent.Conf.ProvAgents != "" && parent.Conf.ProvAgents != cl.Conf.ProvAgents {
+		if err := repman.SetClusterSetting(cl, "prov-db-agents", parent.Conf.ProvAgents); err != nil {
+			return cl, fail(err)
+		}
+	}
 	if mode.staging {
 		if err := repman.SetClusterSetting(cl, "topology-staging", "true"); err != nil {
 			return cl, fail(err)
