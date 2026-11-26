@@ -228,7 +228,9 @@ func testReplicationPluginChild(cl *cluster.Cluster, name string, extra map[stri
 		cl.StartDatabaseService(replica)
 		return fail("%s", err)
 	}
-	moved := cdcPluginSource(child, plugin) != replica.Host
+	// paused: no runner, or one still on the lost replica, never on another server
+	src := cdcPluginSource(child, plugin)
+	moved := src != "" && src != replica.Host
 	cl.StartDatabaseService(replica)
 	if moved {
 		return fail("the plugin moved away from its lost replica source %s", replica.URL)
@@ -277,7 +279,7 @@ func cdcRegtestLoadParent(cl *cluster.Cluster, stop <-chan struct{}) error {
 	}
 }
 
-// cdcPluginSource is the source host of the running plugin, as the child wrote its TOML.
+// cdcPluginSource is the source host of the running plugin, "" when none runs (paused).
 func cdcPluginSource(child *cluster.Cluster, plugin string) string {
 	return child.ReplicationPluginSourceHost(plugin)
 }
