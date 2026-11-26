@@ -48,22 +48,28 @@ former condition refused is still refused (`TestIsSemiSyncReplicaOutOfSyncKeepsF
 - `cluster/srv_has_semisync_test.go`: predicate (legacy / new names, enabled / disabled, missing, contradiction),
   the superset property (no candidate the former test refused is accepted), flag semantics.
 - `regtest/test_failover_semisync_replica_out_of_sync.go`, run through the regtest framework
-  (`POST /api/clusters/<cluster>/tests/actions/run/<test>`), registered in `regtest/regtest.go` and dispatched in
-  `server/regtest.go`:
+  (`POST /api/clusters/<cluster>/tests/actions/run/<test>`), dispatched in `server/regtest.go`:
 
-  | Test | Scenario | Expected |
-  |---|---|---|
-  | `testFailoverSemisyncReplicasOutOfSyncBlocked` | semi-sync healthy, both IO threads stopped, master falls back to async, rows only on the master, master stopped, `failover-at-sync` and `check-replication-state` ON | no promotion, no writable replica, ERR00043 per replica, no failover counted, master in the failed state |
-  | `testFailoverSemisyncInSyncAllowed` | semi-sync healthy, master stopped | promotion, writable master, rows present, replicas recover |
-  | `testFailoverSemisyncDisabledAllowed` | semi-sync disabled, master stopped | ordinary asynchronous failover |
-  | `testFailoverSemisyncOutOfSyncAtSyncOff` | replicas out of sync, `failover-at-sync` OFF | promotion (override) |
-  | `testFailoverSemisyncOutOfSyncNoRplChecks` | replicas out of sync, `check-replication-state` OFF | promotion (override) |
+  | Test | Scenario | Expected | In ALL |
+  |---|---|---|---|
+  | `testFailoverSemisyncReplicasOutOfSyncBlocked` | semi-sync healthy, both IO threads stopped, master falls back to async, rows only on the master, master stopped, `failover-at-sync` and `check-replication-state` ON | no promotion, no writable replica, ERR00043 per replica, no failover counted, master in the failed state | no, named-only |
+  | `testFailoverSemisyncInSyncAllowed` | semi-sync healthy, master stopped | promotion, writable master, rows present, replicas recover | yes |
+  | `testFailoverSemisyncDisabledAllowed` | semi-sync disabled, master stopped | ordinary asynchronous failover | yes |
+  | `testFailoverSemisyncOutOfSyncAtSyncOff` | replicas out of sync (rows still on every replica), `failover-at-sync` OFF | promotion (override) | yes |
+  | `testFailoverSemisyncOutOfSyncNoRplChecks` | replicas out of sync (rows still on every replica), `check-replication-state` OFF | promotion (override) | yes |
 
-- Isolation rules of these tests: each starts by validating a clean state (one master, every server up and healthy, every
-  replica replicating, no schema left by an earlier run) and refuses to run otherwise, before any setting is touched. Each
-  restores what it changed in a deferred step (also after a failed assertion): stopped servers, semi-sync settings,
-  replication, the first master, the test schema; the framework restores the configuration after every test (`RestoreConf`).
-  A test FAILS when the cluster cannot be put back as found, and says it must be discarded. The override tests keep every
-  row on the replicas, so their promotion loses nothing and the former master rejoins; only the blocked test, on a build
-  that promotes (the bug it shows), leaves a diverged former master, and the cluster is not repaired. The scenarios stop
-  the master, like the existing failover regtests: run them on a disposable cluster.
+- Named-only: the blocked test commits rows the replicas lack. On a build that promotes a replica (the bug it shows) it ends
+  with a promoted master and a former master holding rows the promoted master lacks; the test does not repair that. Like
+  `testK8SSingleWriterLifecycle` it is not in the list ALL runs (`regtest/regtest.go`) and is run by name. Because
+  `testTargets` only holds the tests of that list, it checks its own targets (master-slave from 2 servers) and reports SKIP
+  before anything is changed.
+- Isolation of these tests: each starts by validating a clean state (one master, every server up and healthy, every replica
+  replicating, no schema left by an earlier run) before the configuration, the failover counter, the failover mode or a
+  database is touched, and refuses to run otherwise (FAIL, with the reason): a refusal changes nothing and cannot enable or
+  trigger a failover. Each restores what it changed in a deferred step, also after a failed assertion: stopped servers,
+  semi-sync settings, replication, the first master, the test schema. The framework restores the configuration after every
+  test (`RestoreConf`). A test FAILS when the cluster cannot be put back as found, and says it must be discarded.
+- The scenarios stop the master, like the existing failover regtests: run them on a disposable cluster. That is documented,
+  not verified: the framework has no marker of a disposable cluster and the tests do not enforce it. A test that refuses or
+  fails does not stop the following tests of an ALL run; the other tests of this family refuse a cluster that is not clean, the
+  other regtests have no start validation.

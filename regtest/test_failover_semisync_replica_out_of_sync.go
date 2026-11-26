@@ -18,20 +18,26 @@ import (
 // whose replica status is OFF. Five tests share one scenario and differ by the semi-sync state they set up and the
 // two safety flags they keep or drop:
 //
-//	testFailoverSemisyncReplicasOutOfSyncBlocked   semi-sync, both IO threads stopped, failover-at-sync ON: no promotion
+//	testFailoverSemisyncReplicasOutOfSyncBlocked   semi-sync, both IO threads stopped, failover-at-sync ON: no promotion (named-only)
 //	testFailoverSemisyncInSyncAllowed              semi-sync healthy, failover-at-sync ON: promotion, no lost row
 //	testFailoverSemisyncDisabledAllowed            semi-sync disabled, failover-at-sync ON: ordinary asynchronous failover
-//	testFailoverSemisyncOutOfSyncAtSyncOff         the blocked scenario with failover-at-sync OFF: promotion (override)
-//	testFailoverSemisyncOutOfSyncNoRplChecks       the blocked scenario with check-replication-state OFF: promotion (override)
+//	testFailoverSemisyncOutOfSyncAtSyncOff         replicas out of sync, failover-at-sync OFF: promotion (override)
+//	testFailoverSemisyncOutOfSyncNoRplChecks       replicas out of sync, check-replication-state OFF: promotion (override)
 //
-// Each test validates the clean state it starts from (one master, every server up, every replica replicating, no leftover
-// schema) and refuses to run otherwise. It restores what it changed (semi-sync settings, replication, the stopped servers,
-// the master role) in a deferred step, so a failed assertion cleans up too, and it FAILS when the cluster could not be put
-// back as found. The framework restores the cluster configuration (RestoreConf) after every test, pass or fail.
+// Each test validates the clean state it starts from (one master, every server up and healthy, every replica replicating,
+// no schema left by an earlier run) BEFORE anything is changed: configuration, failover counter, automatic failover or
+// database. It refuses to run otherwise (FAIL, with the reason). It restores what it changed (semi-sync settings, replication,
+// the stopped servers, the master role) in a deferred step, so a failed assertion cleans up too, and it FAILS when the
+// cluster could not be put back as found. The framework restores the cluster configuration (RestoreConf) after every test,
+// pass or fail.
 //
-// The scenarios stop the master: run them on a disposable cluster. The only one that can leave a diverged former master is
-// ReplicasOutOfSyncBlocked on a build that promotes (the bug it exists to show): it fails and the cluster is not repaired,
-// discard it. The override tests keep every row on the replicas, a promotion loses nothing and the cluster is restored.
+// The scenarios stop the master, like the existing failover regtests: run them on a disposable cluster. That is documented,
+// not verified: the framework has no marker of a disposable cluster, and the tests do not enforce it.
+//
+// ReplicasOutOfSyncBlocked commits rows no replica has. On a build that promotes a replica (the bug it shows) it ends with a
+// diverged former master that is not repaired: it is NAMED-ONLY, out of the list ALL runs (see regtest.go), and checks its
+// own targets (semisyncBlockedTarget) since testTargets only holds tests of that list. The four others keep every row on the
+// replicas, so a promotion loses nothing and the former master rejoins: they stay in ALL.
 
 const (
 	semisyncTestSchema = "regtest_semisync_2438"
@@ -42,6 +48,10 @@ const (
 	semisyncWaitRestore  = 120
 	semisyncWaitHold     = 30
 )
+
+// semisyncBlockedTarget is the setup the named-only test applies to; the framework matches testTargets for the tests of the
+// list ALL runs only (TestTargetsDeclared), so the named-only test checks it itself.
+var semisyncBlockedTarget = TestTarget{TopologyTarget: []string{config.TopoMasterSlave}, NumberNodesTarget: 2}
 
 // semisyncSaved is what a test found on each server and puts back.
 type semisyncSaved struct {
@@ -179,6 +189,13 @@ func semisyncCleanReason(cl *cluster.Cluster) string {
 // master (source side) and on every replica (replica side), the replicas' source side as found; otherwise both sides
 // OFF everywhere. It then waits for the monitor to see the replicas' operating status match.
 func semisyncPrepare(cl *cluster.Cluster, withSemisync bool, failSync bool, rplChecks bool) (*semisyncSaved, bool) {
+	// The start state is validated FIRST, before the configuration, the failover counter, the failover mode or the databases
+	// are touched: a cluster an earlier destructive test left behind, or one that is failing now, is refused as it is. The
+	// refusal changes nothing and cannot enable or trigger a failover.
+	if !waitSemisync(semisyncWaitState, func() bool { return semisyncCleanReason(cl) == "" }) {
+		semisyncErr(cl, "The cluster is not in a clean state (%s): these tests stop the master and need a disposable cluster, re-provision it", semisyncCleanReason(cl))
+		return nil, false
+	}
 	cl.SetFailoverCtr(0)
 	cl.SetInteractive(false) // automatic failover
 	cl.SetFailSync(failSync)
@@ -188,12 +205,6 @@ func semisyncPrepare(cl *cluster.Cluster, withSemisync bool, failSync bool, rplC
 	cl.SetFailRestartUnsafe(false)
 	cl.SetRejoin(true)
 
-	// The start state is validated, not assumed: a cluster an earlier destructive test left behind is refused, nothing is
-	// changed on it (the test returns before any setting is touched).
-	if !waitSemisync(semisyncWaitState, func() bool { return semisyncCleanReason(cl) == "" }) {
-		semisyncErr(cl, "The cluster is not in a clean state (%s): these tests stop the master and need a disposable cluster, re-provision it", semisyncCleanReason(cl))
-		return nil, false
-	}
 	master := cl.GetMaster()
 	saved := &semisyncSaved{masterEnabled: map[string]bool{}, slaveEnabled: map[string]bool{}, master: master.URL}
 	for _, s := range cl.GetServers() {
@@ -529,8 +540,12 @@ func semisyncOutOfSyncFailover(cl *cluster.Cluster, failSync bool, rplChecks boo
 
 // TestFailoverSemisyncReplicasOutOfSyncBlocked is #2438: nothing is promoted while every replica is out of sync.
 // It does not prove that no transaction is lost for good: the stopped master keeps the rows. On a build without the fix it
-// ends with a promoted master and a diverged former master: it fails, and the cluster is not repaired.
+// ends with a promoted master and a diverged former master: it fails, and the cluster is not repaired. Named-only.
 func (regtest *RegTest) TestFailoverSemisyncReplicasOutOfSyncBlocked(cl *cluster.Cluster, conf string, test *cluster.Test) bool {
+	if miss := semisyncBlockedTarget.missReason(cl); miss != "" {
+		test.SkipReason = miss // SKIP, before anything is changed
+		return false
+	}
 	return semisyncOutOfSyncFailover(cl, true, true, false, true)
 }
 
