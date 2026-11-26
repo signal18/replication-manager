@@ -85,6 +85,30 @@ mount_source() {
     findmnt -n -o SOURCE,FSTYPE -T "$1" </dev/null | head -n 1
 }
 
+# wait_unused MOUNTPOINT...: until no process uses them (a database still flushing after its
+# port closed holds its files), at most REPMAN_SNAPSHOT_BUSY_WAIT seconds; then die: nothing
+# was changed yet. Without fuser (psmisc) the check is skipped, said in the output.
+wait_unused() {
+    if ! command -v fuser >/dev/null 2>&1; then
+        echo "fuser not found on the database host: the volume is not checked for use before the snapback"
+        return 0
+    fi
+    waited=0
+    while :; do
+        busy=""
+        for m in "$@"; do
+            if q fuser -m "$m" >/dev/null 2>&1; then
+                busy="$m"
+                break
+            fi
+        done
+        [ -z "$busy" ] && return 0
+        [ "$waited" -ge "${REPMAN_SNAPSHOT_BUSY_WAIT:-120}" ] && die "$busy is still in use after ${waited}s (the database still running?): nothing was changed"
+        sleep 2
+        waited=$((waited + 2))
+    done
+}
+
 ##########
 # ZFS    #
 ##########
@@ -188,6 +212,13 @@ zfs_snapback() {
     for ds in $datasets; do
         zfs_has "$ds" || die "dataset $ds has no snapshot $NAME (created after it): nothing was changed"
     done
+    # no process on any of their mount points: a busy dataset would fail its rollback half-way
+    mnts=""
+    for ds in $datasets; do
+        mnts="$mnts $(findmnt -n -l -o TARGET --source "$ds" </dev/null 2>/dev/null | tr '\n' ' ')"
+    done
+    # shellcheck disable=SC2086
+    wait_unused $mnts
     printf 'CHANGED\n'
     for ds in $datasets; do
         # -r: the snapshots taken after it are destroyed, zfs can roll back to the latest only
@@ -287,6 +318,8 @@ lvm_snapback() {
     [ -n "$dev" ] || die "no device path for $TARGET"
     # the mount points of the volume, deepest first: unmounted before the merge, mounted after
     mnts=$(findmnt -n -l -o TARGET --source "$dev" </dev/null 2>/dev/null | sort -r)
+    # shellcheck disable=SC2086
+    wait_unused $mnts
     done_mnts=""
     for m in $mnts; do
         if ! x umount "$m"; then

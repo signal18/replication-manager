@@ -88,7 +88,9 @@ From the server menu, Backup, **Volume Snapshots**: the list of the server's sna
 - A snapshot replication-manager takes is named `repman-<UTC time>` (`repman-20261126T101500Z`).
   After each one, the snapshots named `repman-*` beyond `backup-snapshot-keep` are deleted,
   the oldest first.
-- Snapshots of another origin (an OpenSVC schedule, a snapshot you took by hand) are listed
+- Only that exact name counts as replication-manager's: a snapshot you name
+  `repman-before-upgrade` is yours. Snapshots of another origin (an OpenSVC schedule, a
+  snapshot you took by hand) are listed
   and can be the target of a snapback, but replication-manager **never deletes them**.
 
 ## Snapback
@@ -97,13 +99,17 @@ A snapback puts the server's volume back to a snapshot: everything written on th
 since the snapshot is lost. It is only ever started by an operator, from the GUI (you type the
 server's host to confirm) or the API; replication-manager never starts one by itself.
 
-It is refused on the master (switch over first) and during a failover. Then:
+It is refused on the master (switch over first), on a server that accepts writes (read_only off:
+a writer of a multi-master or Galera topology, a replica left writable; set it read-only first),
+and during a failover. Then:
 
 1. the server goes into maintenance;
 2. it is stopped through its orchestrator;
-3. its volume is rolled back to the snapshot. On ZFS, the snapshots taken **after** it are
+3. once no process uses the volume any more (a database still flushing after its port closed;
+   checked with `fuser`, up to 2 minutes), its volume is rolled back to the snapshot. On ZFS, the snapshots taken **after** it are
    destroyed (ZFS rolls back to the latest snapshot only). On LVM the volume is unmounted,
-   the snapshot merged into it (the snapshot is consumed by the merge), and mounted again;
+   the snapshot merged into it (the snapshot is consumed by the merge), and mounted again (from
+   its fstab entry; a volume without one comes back mounted with the default options);
 4. the server is started;
 5. it **stays in maintenance** (state WARN0331) until you take it out of maintenance.
 

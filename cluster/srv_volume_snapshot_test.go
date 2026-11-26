@@ -19,7 +19,7 @@ import (
 
 func TestParseVolumeSnapshotOutput(t *testing.T) {
 	out := "CMD\tzfs list -H -o name tank/db\nTARGET\ttank/db\nsome log line\n" +
-		"SNAPSHOT\tdaily-2\t1700000200\t8192\nSNAPSHOT\trepman-20261126T100000Z\t1700000100\t4096\nCHANGED\n"
+		"SNAPSHOT\tdaily-2\t1700000200\t8192\nSNAPSHOT\trepman-20261126T100000Z\t1700000100\t4096\nSNAPSHOT\trepman-x\t1700000300\t1\nCHANGED\n"
 	run := parseVolumeSnapshotOutput(out)
 	if run.Target != "tank/db" || !run.Changed {
 		t.Fatalf("target/changed: %+v", run)
@@ -27,7 +27,7 @@ func TestParseVolumeSnapshotOutput(t *testing.T) {
 	if len(run.Commands) != 1 || run.Commands[0] != "zfs list -H -o name tank/db" {
 		t.Fatalf("commands: %v", run.Commands)
 	}
-	if len(run.Snapshots) != 2 || run.Snapshots[0].Name != "repman-20261126T100000Z" || !run.Snapshots[0].Managed || run.Snapshots[1].Managed {
+	if len(run.Snapshots) != 3 || run.Snapshots[0].Name != "repman-20261126T100000Z" || !run.Snapshots[0].Managed || run.Snapshots[1].Managed || run.Snapshots[2].Managed {
 		t.Fatalf("snapshots sorted by creation, managed by prefix: %+v", run.Snapshots)
 	}
 	if run.Snapshots[0].Size != 4096 || run.Snapshots[0].Created.Unix() != 1700000100 {
@@ -52,14 +52,16 @@ func TestParseVolumeSnapshotOutputBounded(t *testing.T) {
 func TestVolumeSnapshotsToPrune(t *testing.T) {
 	at := func(s int64) time.Time { return time.Unix(s, 0) }
 	snaps := []VolumeSnapshot{
-		{Name: "repman-1", Created: at(1), Managed: true},
+		{Name: "repman-20261101T000000Z", Created: at(1), Managed: true},
 		{Name: "daily-1", Created: at(2)},
-		{Name: "repman-2", Created: at(3), Managed: true},
-		{Name: "repman-3", Created: at(4), Managed: true},
-		{Name: "repman-4", Created: at(5), Managed: true},
+		{Name: "repman-20261102T000000Z", Created: at(3), Managed: true},
+		{Name: "repman-20261103T000000Z", Created: at(4), Managed: true},
+		{Name: "repman-20261104T000000Z", Created: at(5), Managed: true},
+		// a manual snapshot with the prefix is not replication-manager's: never pruned
+		{Name: "repman-before-upgrade", Created: at(6), Managed: true},
 	}
 	got := volumeSnapshotsToPrune(snaps, 2)
-	if strings.Join(got, ",") != "repman-2,repman-1" {
+	if strings.Join(got, ",") != "repman-20261102T000000Z,repman-20261101T000000Z" {
 		t.Fatalf("prune = %v, want the managed ones beyond the 2 newest", got)
 	}
 	// a creation time the plugin could not give: the newest by its name is kept
@@ -160,11 +162,25 @@ func TestSnapbackRefusedOnMaster(t *testing.T) {
 	}
 }
 
+func TestSnapbackRefusedOnWriter(t *testing.T) {
+	cl, server := newTestClusterServer(t)
+	server.HaveReadOnly = false
+	if why := cl.snapbackRefusal(server); !strings.Contains(why, "accepts writes") {
+		t.Fatalf("a writable server: %q", why)
+	}
+	server.HaveReadOnly = true
+	if why := cl.snapbackRefusal(server); why != "" {
+		t.Fatalf("a read-only replica: %q", why)
+	}
+}
+
 func TestDeleteVolumeSnapshotOnlyManaged(t *testing.T) {
 	cl, server := newTestClusterServer(t)
 	cl.Conf.BackupSnapshot = true
-	if err := cl.DeleteVolumeSnapshot(server, "daily-1"); err == nil || !strings.Contains(err.Error(), "never deleted") {
-		t.Fatalf("delete of a snapshot of another origin: %v", err)
+	for _, name := range []string{"daily-1", "repman-before-upgrade"} {
+		if err := cl.DeleteVolumeSnapshot(server, name); err == nil || !strings.Contains(err.Error(), "never deleted") {
+			t.Fatalf("delete of a snapshot of another origin %s: %v", name, err)
+		}
 	}
 }
 
@@ -376,7 +392,7 @@ func TestVolumeSnapshotHelperNotZFS(t *testing.T) {
 func TestPruneVolumeSnapshots(t *testing.T) {
 	cl, server, vs, dir := newFakeZFSHost(t)
 	cl.Conf.BackupSnapshotKeep = 1
-	for _, n := range []string{"repman-1", "repman-2"} {
+	for _, n := range []string{"repman-20261126T100000Z", "repman-20261126T110000Z"} {
 		if _, err := vs.Take(server, n); err != nil {
 			t.Fatal(err)
 		}
@@ -386,11 +402,11 @@ func TestPruneVolumeSnapshots(t *testing.T) {
 	if err != nil {
 		t.Fatalf("prune: %v", err)
 	}
-	if !containsString(run.Commands, "zfs destroy -r tank/db@repman-1") {
+	if !containsString(run.Commands, "zfs destroy -r tank/db@repman-20261126T100000Z") {
 		t.Fatalf("prune commands: %v", run.Commands)
 	}
 	snaps, _ := os.ReadFile(filepath.Join(dir, "snaps"))
-	if strings.Contains(string(snaps), "@repman-1\t") || !strings.Contains(string(snaps), "@daily-1\t") || !strings.Contains(string(snaps), "@repman-2\t") {
+	if strings.Contains(string(snaps), "@repman-20261126T100000Z\t") || !strings.Contains(string(snaps), "@daily-1\t") || !strings.Contains(string(snaps), "@repman-20261126T110000Z\t") {
 		t.Fatalf("after prune: %s", snaps)
 	}
 }

@@ -46,11 +46,19 @@ const (
 	ConstSnapshotRunMonitorHost  = "monitor-host"  // a program on the replication-manager host
 )
 
-// ConstSnapshotPrefix starts the name of every snapshot replication-manager takes: only these
-// are pruned by backup-snapshot-keep or deleted through the API. A snapshot of another origin
-// (an OpenSVC zfssnap resource, a manual one) is listed and can be the target of a snapback,
-// never removed by replication-manager (F1).
+// ConstSnapshotPrefix starts the name of every snapshot replication-manager takes,
+// repman-<UTC time> (IsManagedSnapshotName): only these are pruned by backup-snapshot-keep or
+// deleted through the API. A snapshot of another origin (an OpenSVC zfssnap resource, a manual
+// one, a manual repman-before-upgrade) is listed and can be the target of a snapback, never
+// removed by replication-manager (F1).
 const ConstSnapshotPrefix = "repman-"
+
+var managedSnapshotNamePattern = regexp.MustCompile(`^repman-[0-9]{8}T[0-9]{6}Z$`)
+
+// IsManagedSnapshotName: the exact name of a snapshot replication-manager took.
+func IsManagedSnapshotName(name string) bool {
+	return managedSnapshotNamePattern.MatchString(name)
+}
 
 // Bounds of backup-snapshot-keep (F4: the snapshots replication-manager keeps are bounded).
 const (

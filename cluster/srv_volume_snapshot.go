@@ -171,7 +171,7 @@ func parseVolumeSnapshotOutput(out string) VolumeSnapshotRun {
 			if len(f) < 2 || f[1] == "" || len(run.Snapshots) >= volumeSnapshotMaxLines {
 				continue
 			}
-			s := VolumeSnapshot{Name: f[1], Managed: strings.HasPrefix(f[1], config.ConstSnapshotPrefix)}
+			s := VolumeSnapshot{Name: f[1], Managed: config.IsManagedSnapshotName(f[1])}
 			if len(f) > 2 {
 				if t, err := strconv.ParseInt(strings.TrimSpace(f[2]), 10, 64); err == nil && t > 0 {
 					s.Created = time.Unix(t, 0).UTC()
@@ -616,6 +616,11 @@ func (cluster *Cluster) ListVolumeSnapshots(server *ServerMonitor) VolumeSnapsho
 		out.Error = err.Error()
 		return out
 	}
+	if out.LastOp != nil && out.LastOp.Status == VolumeSnapshotRunning {
+		// the volume is changing under the running action: its outcome, not a list of it
+		out.Error = fmt.Sprintf("%s %s running: the list follows its end", out.LastOp.Action, out.LastOp.Snapshot)
+		return out
+	}
 	if c, ok := vs.(*contractSnapshotter); ok && c.timeout > volumeSnapshotListTimeout {
 		vs = &contractSnapshotter{manifest: c.manifest, exec: c.exec, timeout: volumeSnapshotListTimeout}
 	}
@@ -661,7 +666,7 @@ func (cluster *Cluster) TakeVolumeSnapshot(server *ServerMonitor) (string, error
 func volumeSnapshotsToPrune(snaps []VolumeSnapshot, keep int) []string {
 	managed := make([]VolumeSnapshot, 0, len(snaps))
 	for _, s := range snaps {
-		if s.Managed {
+		if s.Managed && config.IsManagedSnapshotName(s.Name) {
 			managed = append(managed, s)
 		}
 	}
@@ -698,8 +703,8 @@ func (cluster *Cluster) DeleteVolumeSnapshot(server *ServerMonitor, name string)
 	if err := config.ValidSnapshotName(name); err != nil {
 		return err
 	}
-	if !strings.HasPrefix(name, config.ConstSnapshotPrefix) {
-		return fmt.Errorf("snapshot %s was not taken by replication-manager (%s*): it is never deleted by it", name, config.ConstSnapshotPrefix)
+	if !config.IsManagedSnapshotName(name) {
+		return fmt.Errorf("snapshot %s was not taken by replication-manager (%s<UTC time>): it is never deleted by it", name, config.ConstSnapshotPrefix)
 	}
 	vs, err := cluster.VolumeSnapshotter(server)
 	if err != nil {
@@ -722,6 +727,10 @@ func (cluster *Cluster) snapbackRefusal(server *ServerMonitor) string {
 		return "a failover or switchover is running"
 	case server.IsMaster():
 		return "the server is the master: switch over first, a snapback of the master loses the writes of the whole cluster"
+	case server.IsReadWrite():
+		// a writer of a topology without a single master (multi-master, ring, Galera), or a
+		// replica left writable: its own writes would be lost
+		return "the server accepts writes (read_only off): a snapback loses them, set it read-only first"
 	}
 	if m := cluster.GetMaster(); m != nil && m.URL == server.URL {
 		return "the server is the master: switch over first, a snapback of the master loses the writes of the whole cluster"
@@ -805,8 +814,8 @@ func (cluster *Cluster) runVolumeSnapback(server *ServerMonitor, vs VolumeSnapsh
 	if err := cluster.StopDatabaseService(server); err != nil {
 		return VolumeSnapshotRun{}, cluster.snapbackUndoStop(server, fmt.Errorf("stop failed: %w", err))
 	}
-	// the port closed: the SQL SHUTDOWN or the orchestrator stop is done (a server reachable on
-	// a socket only has no port to watch: it is not monitored by replication-manager either)
+	// the port closed: the shutdown started. The process may still flush and hold its files: the
+	// helper waits until no process uses the volume before it changes anything (wait_unused)
 	if err := waitServerPort(server, false, volumeSnapshotDownTimeout); err != nil {
 		return VolumeSnapshotRun{}, cluster.snapbackUndoStop(server, fmt.Errorf("the database did not stop: %w", err))
 	}
@@ -852,8 +861,9 @@ func (cluster *Cluster) snapbackUndoStop(server *ServerMonitor, cause error) err
 }
 
 // waitServerPort waits until the server's port answers (up) or refuses (down). TCP only, no
-// cancellation, bounded by its timeout: it watches the stop of a server replication-manager
-// monitors on that port, the start is confirmed on SQL (WaitDatabaseStart).
+// cancellation, bounded by its timeout. Down means the shutdown started, not that the process
+// left: the helper's wait_unused is the guard before the volume changes; the start is
+// confirmed on SQL (WaitDatabaseStart).
 func waitServerPort(server *ServerMonitor, up bool, timeout time.Duration) error {
 	addr := net.JoinHostPort(misc.Unbracket(server.Host), server.Port)
 	deadline := time.Now().Add(timeout)
