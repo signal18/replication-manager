@@ -1381,8 +1381,8 @@ and where it differs from 10.4:
   request is taken back only by a poll that lands while its new uptime is still lower than
   that, which the 2 s poll can miss (the upgrade script runs in the guest just before, so a
   guest that young does not happen in practice). A status the hypervisor refuses (4xx: the
-  token, a privilege, no such VM) ends the wait at once; a network error or a 5xx is retried
-  until the deadline. The full `rollingServer` sequence of
+  token, a privilege, no such VM) ends the wait at once; a network error, a 5xx, a 408 or a
+  429 (a proxy under load) is retried until the deadline. The full `rollingServer` sequence of
   10.2 is still step 2's.
 - **States.** `CheckRollingUpgradeHost`, each tick, config domain, WARNING, no I/O:
   `WARN0350` (host step on, backend without hosts; the design's WARN0342), `WARN0351` (servers

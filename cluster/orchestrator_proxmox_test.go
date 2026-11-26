@@ -367,6 +367,16 @@ func TestRollingHostStepStatusRefusedFailsFast(t *testing.T) {
 	if time.Since(start) > time.Second {
 		t.Fatalf("a refused status was retried until the deadline (%s)", time.Since(start))
 	}
+	// a rate limit (429) or a timeout (408), from a proxy under load, is retried
+	cl.Conf.ProvDbHostRebootTimeout = 1
+	for _, code := range []int{http.StatusTooManyRequests, http.StatusRequestTimeout} {
+		rec.rebootedAt = time.Time{}
+		rec.statusErr = &proxmox.APIError{StatusCode: code, Message: "busy"}
+		err := cl.rollingUpgradeHostStep(db1)
+		if err == nil || strings.Contains(err.Error(), "refuses the status") || !strings.Contains(err.Error(), "not back") {
+			t.Fatalf("%d must be retried until the deadline: %v", code, err)
+		}
+	}
 }
 
 func TestHostBootRebooted(t *testing.T) {

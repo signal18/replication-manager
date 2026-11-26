@@ -152,8 +152,10 @@ func (cluster *Cluster) waitHostBack(server *ServerMonitor, orch Orchestrator, b
 		st, err := orch.HostStatus(server)
 		var apiErr *proxmox.APIError
 		switch {
-		case errors.As(err, &apiErr) && apiErr.StatusCode >= 400 && apiErr.StatusCode < 500:
-			// refused (token, privilege, no such VM): waiting cannot change the answer
+		case errors.As(err, &apiErr) && apiErr.StatusCode >= 400 && apiErr.StatusCode < 500 &&
+			apiErr.StatusCode != 408 && apiErr.StatusCode != 429:
+			// refused (token, privilege, no such VM): waiting cannot change the answer; a
+			// timeout (408) or a rate limit (429), from a proxy under load, is retried
 			return fmt.Errorf("the hypervisor refuses the status of the VM: %w", err)
 		case err != nil:
 			last = err.Error()
