@@ -140,6 +140,27 @@ func testReplicationPluginChild(cl *cluster.Cluster, name string, extra map[stri
 		}
 	}
 
+	// REPMAN_REGTEST_MERGE_INTERVAL (seconds): the copies fed through the InnoDB staging,
+	// merged at that period; the rows are then compared once a merge holds the parent's GTID
+	if mi, _ := strconv.Atoi(os.Getenv("REPMAN_REGTEST_MERGE_INTERVAL")); mi > 0 {
+		stok, err := APIToken(child, config.GrantClusterSettings)
+		if err != nil {
+			return fail("%s", err)
+		}
+		if code, _, resp, err := APIRequest(stok, "GET", base+"/settings/actions/set/replication-plugin-merge-interval/"+strconv.Itoa(mi)); err != nil || code != 200 {
+			return fail("replication-plugin-merge-interval: HTTP %d %v %s", code, err, resp)
+		}
+		if err := tlsWait(3*time.Minute, func() error {
+			if st, ok := child.ReplicationPluginStatuses()[plugin]; ok && st.State == "running" && st.NextMergeAt != "" {
+				return nil
+			}
+			return fmt.Errorf("plugin %s not running with its staging yet", plugin)
+		}); err != nil {
+			return fail("%s", err)
+		}
+		tlsLogf(cl, "%s: the copies fed through the staging, merged every %d s", name, mi)
+	}
+
 	// the load, with a switchover of the parent and a stop/start of the child's database
 	var wg sync.WaitGroup
 	stop := make(chan struct{})
