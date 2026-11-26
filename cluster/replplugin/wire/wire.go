@@ -324,7 +324,8 @@ func RulesOf(tables []string) []Rule {
 type Applied struct {
 	Seq  int64  `json:"seq"`
 	GTID string `json:"gtid"`
-	// Indexes: the indexes whose init is done (their denormalized table filled once)
+	// Indexes: the indexes whose init is done (their denormalized table filled once), as
+	// <name>@<checksum of the query and the table>: a changed index runs its init again
 	Indexes []string `json:"indexes,omitempty"`
 }
 

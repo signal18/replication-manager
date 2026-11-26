@@ -214,10 +214,12 @@ GUI: the Analytic Child settings. The cluster writes the list into the plugin TO
 - the query must return the primary key columns of every table it reads, each under one name:
   together they are the denormalized table's **primary key**, and each source table's columns are
   indexed there (what an unpack looks rows up by). A missing column, a table joined twice, two
-  result columns of one name are refused with the reason (WARN0243 through the apply error);
+  result columns of one name are refused when the plugin starts: it stops with the reason
+  (WARN0242) and restarts with its backoff until the index is fixed or removed;
 - inner joins: a primary key column is never NULL.
 
-**Init.** Once per index (`applied.json` lists the indexes done; the status's `indexesReady`):
+**Init.** Once per index (`applied.json` lists the indexes done by name and a checksum of their
+query and table, so a changed query runs its init again; the status's `indexesReady` names them):
 
 1. the denormalized table is made from the description of the empty query result
    (`CREATE TABLE ... AS SELECT * FROM (<sql>) AS d WHERE 1=0`, then its primary key and indexes),

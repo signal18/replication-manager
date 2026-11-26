@@ -9,6 +9,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"hash/crc32"
 	"os"
 	"sort"
 	"strings"
@@ -79,6 +80,12 @@ func (m *indexMeta) lookups() [][]string {
 		out[i] = t.cols
 	}
 	return out
+}
+
+// indexID is an index's name and a checksum of its query and denormalized table: a change of
+// either is a new index, its init runs again.
+func indexID(idx wire.Index) string {
+	return fmt.Sprintf("%s@%08x", idx.Name, crc32.ChecksumIEEE([]byte(idx.SQL+"\x00"+idx.Schema+"\x00"+idx.Table)))
 }
 
 // resolveIndexes resolves the indexes of cfg on the source and returns the source tables they

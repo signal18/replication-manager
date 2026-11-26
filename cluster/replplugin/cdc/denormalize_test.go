@@ -168,3 +168,13 @@ func TestUnpack(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// A changed query or denormalized table is a new index: its init runs again.
+func TestIndexID(t *testing.T) {
+	a := wire.Index{Name: "ol", SQL: "SELECT 1", Schema: "dn", Table: "ol"}
+	b := a
+	b.SQL = "SELECT 2"
+	if indexID(a) == indexID(b) || !strings.HasPrefix(indexID(a), "ol@") || indexID(a) != indexID(a) {
+		t.Fatalf("%s %s", indexID(a), indexID(b))
+	}
+}

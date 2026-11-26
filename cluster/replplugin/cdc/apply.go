@@ -53,7 +53,10 @@ func (a *applier) fill(st *wire.Status) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	st.AppliedSeq, st.AppliedGTID, st.ApplyError = a.done.Seq, a.done.GTID, a.err
-	st.IndexesReady = append([]string(nil), a.done.Indexes...)
+	st.IndexesReady = nil
+	for _, id := range a.done.Indexes {
+		st.IndexesReady = append(st.IndexesReady, strings.SplitN(id, "@", 2)[0])
+	}
 	st.PendingMB = wire.PendingBytes(wire.CheckpointDir(a.path)) >> 20
 	if a.last != nil && a.cfg.MergeIntervalMs > 0 {
 		st.MergedSeq, st.MergedGTID, st.MergeTookMs = a.last.Seq, a.last.GTID, a.last.TookMs
@@ -299,21 +302,22 @@ func (a *applier) position(ctx context.Context, db *sqlx.DB, p Positioner) (wire
 	return pos, nil
 }
 
-// initIndexes runs the init of each index not done yet (applied.json's Indexes): its
-// denormalized table filled from the query on a consistent snapshot of the source, directly in
-// the destination (the accumulation is for the changes). An index left out of the config is
-// forgotten, so put back it starts again from its init.
+// initIndexes runs the init of each index not done yet (applied.json's Indexes, by indexID):
+// its denormalized table filled from the query on a consistent snapshot of the source, directly
+// in the destination (the accumulation is for the changes). An index left out of the config is
+// forgotten, so put back it starts again from its init; a changed query or table is a new
+// index, its init runs again.
 func (a *applier) initIndexes(ctx context.Context, db *sqlx.DB, done *wire.Applied, appliedPath string) error {
 	var kept []string
-	for _, n := range done.Indexes {
+	for _, id := range done.Indexes {
 		for _, m := range a.indexes {
-			if m.idx.Name == n {
-				kept = append(kept, n)
+			if indexID(m.idx) == id {
+				kept = append(kept, id)
 			}
 		}
 	}
 	for _, meta := range a.indexes {
-		if slices.Contains(kept, meta.idx.Name) {
+		if slices.Contains(kept, indexID(meta.idx)) {
 			continue
 		}
 		conn, err := a.session(ctx, db)
@@ -331,7 +335,7 @@ func (a *applier) initIndexes(ctx context.Context, db *sqlx.DB, done *wire.Appli
 		if err != nil {
 			return fmt.Errorf("init of index %s: %w", meta.idx.Name, err)
 		}
-		kept = append(kept, meta.idx.Name)
+		kept = append(kept, indexID(meta.idx))
 	}
 	if !slices.Equal(kept, done.Indexes) {
 		done.Indexes = kept
