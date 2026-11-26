@@ -1340,8 +1340,9 @@ and where it differs from 10.4:
   client and not wired into the inventory yet. `StopHost` uses `/status/shutdown`, the clean
   shutdown, not the `/status/stop` of 10.4: a hard power-off of a guest that holds a database
   is never what an operator wants from this button. `RebootHost` of a stopped VM starts it.
-  Each action waits for its Proxmox task (`/nodes/{node}/tasks/{upid}/status`) bounded by
-  `prov-db-host-reboot-timeout`, and logs the `pvesh` command that reproduces it (F11).
+  Each action waits for its Proxmox task (`/nodes/{node}/tasks/{upid}/status`) until
+  `hostActionDeadline(server)`, and logs the `pvesh` command that reproduces it (F11). A
+  failed status read before a reboot is logged (WARNING) and the reboot asked anyway.
 - **The API client.** `utils/proxmox`: seven calls, token in the `Authorization` header
   only, every request bounded (30 s), answers capped at 1 MB, no error carries the token. The
   PBS client of the archive plugin is another product's API and internal to that plugin, so
@@ -1358,10 +1359,14 @@ and where it differs from 10.4:
 - **The rolling upgrade.** `cluster/cluster_roll_host.go`, `rollingUpgradeHostStep(server)`,
   called by `rollingUpgradeOnPremise` between `WaitDatabaseFailed` and
   `UpgradeDatabaseService`, for the replicas and the old master; an error restores the
-  server's maintenance flag and stops the run, as the other steps of that function. It runs
+  server's maintenance flag and stops the run, as the other steps of that function, and names
+  the VM (`node/vmid`) as possibly stopped or mid-reboot. It runs
   `prov-db-host-upgrade-script` through `runGuestScript` (the SSH script runner the on-premise
   upgrade now shares, `prov_onpremise_db.go`), `RebootHost`, then waits for `HostStatus`
-  `running` and a TCP answer on the guest's SSH port. The full `rollingServer` sequence of
+  `running` and a TCP answer on the guest's SSH port. The reboot and the wait share one
+  deadline (`prov-db-host-reboot-timeout` from the reboot): the step stores it per server in
+  `cluster.hostStepDeadlines`, the backend's task wait reads it through
+  `hostActionDeadline`, and the wait gets what the reboot left, never a second timeout. The full `rollingServer` sequence of
   10.2 is still step 2's.
 - **States.** `CheckRollingUpgradeHost`, each tick, config domain, WARNING, no I/O:
   `WARN0350` (host step on, backend without hosts; the design's WARN0342), `WARN0351` (servers
@@ -1374,11 +1379,18 @@ and where it differs from 10.4:
   also by value for an idempotent Ansible call). Four endpoints in
   `server/api_database_host.go` (`actions/host-stop`, `host-start`, `host-reboot`, `GET
   host-status`), ACL rules reusing `db-stop`, `db-start`, both, and `db-show-status`; the
-  actions run in the background (one per server at a time, 409 otherwise) and answer 202. GUI:
+  actions run in the background (one per server at a time, 409 otherwise) and answer 202.
+  The shutdown and the reboot are refused (409) by `HostActionRefusal` while the database on
+  the VM runs, unless the server is in maintenance, and always on a running master; no
+  override in this version. The rolling step does not ask it: it stopped the database. GUI:
   the server menu entries and the settings rows on a proxmox cluster. User doc:
   `doc/proxmox_orchestrator.md`.
 - **Off-switch (T14).** `proxmox` is not in the default `prov-orchestrator-enable`; the host
   step has `prov-db-rolling-upgrade-host`, default false.
+- **Follow-ups (review of #2447).** A cluster-scoped context for the background host
+  actions and the host wait, so they end with the cluster instead of their timeout (they are
+  bounded today); a `proxmox-api-ca` setting so a self-signed Proxmox certificate is trusted
+  without `proxmox-api-insecure`.
 - **Tests.** `TestProxmoxHostFacet` against a fake Proxmox API (`httptest`, the four VM
   endpoints, the task status, `/version`, token checked), `TestRollingSequenceHostStep` on a
   recording backend (off, on, server without a VM, reboot error, host not back within the

@@ -43,7 +43,7 @@ prov-db-host-reboot-timeout = 900
 | `prov-db-host-vmids` | | the VM under each database server: `host=node/vmid` pairs, comma separated. `host` is the server's host, `host:port`, or name, as in `db-servers-hosts` |
 | `prov-db-rolling-upgrade-host` | `false` | the host step of the rolling upgrade (below) |
 | `prov-db-host-upgrade-script` | | a local script run over SSH in the guest before its reboot (the kernel and package upgrade); empty: a reboot only |
-| `prov-db-host-reboot-timeout` | `600` | seconds a host action may take, and for a rebooted VM to be running again and to answer on its SSH port |
+| `prov-db-host-reboot-timeout` | `600` | seconds a host action may take; in the rolling upgrade, one bound for the reboot and the return of the VM together (running again and answering on its SSH port) |
 
 All of them are per cluster, set in the configuration file or in the GUI
 (cluster, Configs, Databases, Orchestrator VM, shown when the cluster's
@@ -71,8 +71,12 @@ In the GUI, on a `proxmox` cluster, the menu of each database server
   stop of the API is never used;
 - **Start Host (VM)**.
 
-The database inside the VM goes down with it: stop it first, or use the
-rolling upgrade. One host action runs at a time per server.
+The database inside the VM goes down with it, so a shutdown or a reboot is
+refused (`409`, with the reason) while the database on the VM runs, unless
+the server is in maintenance, and always on the running master: stop the
+database or switch over first, or use the rolling upgrade, which stops each
+database itself. A start is never refused. One host action runs at a time per
+server.
 
 API (each needs the grants named, like the database start and stop):
 
@@ -98,14 +102,16 @@ switchover:
 2. the clean stop of the database (as on-premise);
 3. **the host step**: `prov-db-host-upgrade-script` in the guest over SSH,
    then the reboot of the VM through the API, then a wait for the VM to be
-   `running` and its SSH port to answer, bounded by
+   `running` and its SSH port to answer; the reboot and the wait share one
    `prov-db-host-reboot-timeout`;
 4. `onpremise-ssh-upgrade-db-script` (the database packages and the upgrade
    tool, as on-premise), the wait for the database and its replication;
 5. maintenance off.
 
 A failed upgrade script, a refused reboot or a VM that is not back in time
-stops the rolling upgrade at that server, as any failed step. A server
+stops the rolling upgrade at that server, as any failed step; the error names
+the VM (`node/vmid`) and says it may be stopped or mid-reboot: check it in
+Proxmox, then run the rolling upgrade again. A server
 without a VM in `prov-db-host-vmids` is upgraded without the host step.
 
 Two configuration warnings tell when the host step is on but has no effect:

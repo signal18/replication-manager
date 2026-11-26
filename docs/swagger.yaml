@@ -16408,7 +16408,8 @@ paths:
     post:
       description: Asks the hypervisor for a clean reboot of the VM under the server
         (a stopped VM is started), in the background. Only an orchestrator that drives
-        the hosts (proxmox) supports it.
+        the hosts (proxmox) supports it. Refused (409) while the database on the VM
+        runs, unless the server is in maintenance; always refused on a running master.
       parameters:
       - default: Bearer <Add access token here>
         description: Insert your access token
@@ -16448,7 +16449,8 @@ paths:
               type: string
             type: object
         "409":
-          description: A host action is already running on the server
+          description: A host action is already running on the server, or the database
+            on the VM runs (not in maintenance, or the running master)
           schema:
             additionalProperties:
               type: string
@@ -16524,8 +16526,9 @@ paths:
       description: 'Asks the hypervisor for a clean shutdown of the VM under the server
         (never a hard stop), in the background. Only an orchestrator that drives the
         hosts (proxmox) supports it; the VM is the server''s entry in prov-db-host-vmids.
-        The database inside the VM is not stopped first: stop it before, or use the
-        rolling upgrade.'
+        Refused (409) while the database on the VM runs, unless the server is in maintenance;
+        always refused on a running master: stop the database or switch over first,
+        or use the rolling upgrade.'
       parameters:
       - default: Bearer <Add access token here>
         description: Insert your access token
@@ -16565,7 +16568,8 @@ paths:
               type: string
             type: object
         "409":
-          description: A host action is already running on the server
+          description: A host action is already running on the server, or the database
+            on the VM runs (not in maintenance, or the running master)
           schema:
             additionalProperties:
               type: string

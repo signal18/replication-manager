@@ -180,6 +180,11 @@ type recordingHostOrchestrator struct {
 	calls     []string
 	rebootErr error
 	states    []string // HostStatus answers in turn, the last repeated
+	// rebootTakes: the time RebootHost takes; deadlineSeen: the deadline a host action of
+	// the backend would use while the reboot runs (hostActionDeadline)
+	rebootTakes  time.Duration
+	deadlineSeen time.Time
+	cluster      *Cluster
 }
 
 func newRecordingHostOrchestrator() *recordingHostOrchestrator {
@@ -197,6 +202,10 @@ func (o *recordingHostOrchestrator) RebootHost(s *ServerMonitor) error {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	o.calls = append(o.calls, "reboot "+s.URL)
+	if o.cluster != nil {
+		o.deadlineSeen = o.cluster.hostActionDeadline(s)
+	}
+	time.Sleep(o.rebootTakes)
 	return o.rebootErr
 }
 func (o *recordingHostOrchestrator) HostStatus(s *ServerMonitor) (HostStatus, error) {
@@ -246,19 +255,68 @@ func TestRollingSequenceHostStep(t *testing.T) {
 	}
 	// the reboot fails: the step fails
 	rec.rebootErr = errors.New("VM locked")
-	if err := cl.rollingUpgradeHostStep(db1); err == nil || !strings.Contains(err.Error(), "VM locked") {
-		t.Fatalf("reboot error: %v", err)
+	if err := cl.rollingUpgradeHostStep(db1); err == nil || !strings.Contains(err.Error(), "VM locked") ||
+		!strings.Contains(err.Error(), "pve1/101") || !strings.Contains(err.Error(), "may be stopped or mid-reboot") {
+		t.Fatalf("reboot error must name the VM and say it may be stopped or mid-reboot: %v", err)
 	}
 	// the host does not come back within the timeout
 	rec.rebootErr = nil
 	rec.states = []string{"stopped"}
 	cl.Conf.ProvDbHostRebootTimeout = 1
 	start := time.Now()
-	if err := cl.rollingUpgradeHostStep(db1); err == nil || !strings.Contains(err.Error(), "not back") {
+	if err := cl.rollingUpgradeHostStep(db1); err == nil || !strings.Contains(err.Error(), "not back") || !strings.Contains(err.Error(), "pve1/101") {
 		t.Fatalf("timeout: %v", err)
 	}
 	if time.Since(start) > 3*time.Second {
 		t.Fatalf("the wait is not bounded by prov-db-host-reboot-timeout: %s", time.Since(start))
+	}
+
+	// one deadline for the reboot and the wait: a reboot that takes most of the timeout
+	// leaves the wait the rest, not a fresh timeout; the backend's own action uses it too
+	rec.cluster = cl
+	rec.rebootTakes = 700 * time.Millisecond
+	start = time.Now()
+	if err := cl.rollingUpgradeHostStep(db1); err == nil {
+		t.Fatal("a host that never comes back must fail")
+	}
+	if elapsed := time.Since(start); elapsed > 1500*time.Millisecond {
+		t.Fatalf("reboot + wait took %s, more than one prov-db-host-reboot-timeout (1s)", elapsed)
+	}
+	if rec.deadlineSeen.IsZero() || rec.deadlineSeen.After(start.Add(1100*time.Millisecond)) {
+		t.Fatalf("the backend's action deadline %s is not the step's (start %s + 1s)", rec.deadlineSeen, start)
+	}
+	if _, ok := cl.hostStepDeadlines.Load(db1.URL); ok {
+		t.Fatal("the step's deadline must be cleared when it ends")
+	}
+}
+
+// The API's shutdown and reboot are refused while the database on the VM runs, unless the
+// server is in maintenance, and always on a running master; a stopped database is allowed.
+func TestHostActionRefusal(t *testing.T) {
+	cl := proxmoxTestCluster(t, "https://pve.invalid:8006")
+	master := &ServerMonitor{Name: "db1", Id: "db1", URL: "10.0.0.1:3306", State: stateMaster, ClusterGroup: cl}
+	replica := &ServerMonitor{Name: "db2", Id: "db2", URL: "10.0.0.2:3306", State: stateSlave, ClusterGroup: cl}
+	cl.master = master
+
+	if err := cl.HostActionRefusal(replica); err == nil || !strings.Contains(err.Error(), "not in maintenance") {
+		t.Fatalf("running replica, no maintenance: %v", err)
+	}
+	replica.IsMaintenance = true
+	if err := cl.HostActionRefusal(replica); err != nil {
+		t.Fatalf("replica in maintenance: %v", err)
+	}
+	master.IsMaintenance = true
+	if err := cl.HostActionRefusal(master); err == nil || !strings.Contains(err.Error(), "running master") {
+		t.Fatalf("running master, even in maintenance: %v", err)
+	}
+	master.State = stateFailed
+	if err := cl.HostActionRefusal(master); err != nil {
+		t.Fatalf("stopped master: %v", err)
+	}
+	replica.IsMaintenance = false
+	replica.State = stateFailed
+	if err := cl.HostActionRefusal(replica); err != nil {
+		t.Fatalf("stopped replica: %v", err)
 	}
 }
 

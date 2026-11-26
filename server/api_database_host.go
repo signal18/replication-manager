@@ -77,10 +77,19 @@ func (repman *ReplicationManager) hostRequest(w http.ResponseWriter, r *http.Req
 
 // hostAction runs one host action in the background (a reboot waits for the hypervisor's
 // task, minutes) and answers 202; the result is logged in the orchestrator module.
-func (repman *ReplicationManager) hostAction(w http.ResponseWriter, r *http.Request, action string, run func(cluster.Orchestrator, *cluster.ServerMonitor) error) {
+// guarded: a shutdown or a reboot, refused while the database on the VM runs (HostActionRefusal).
+func (repman *ReplicationManager) hostAction(w http.ResponseWriter, r *http.Request, action string, guarded bool, run func(cluster.Orchestrator, *cluster.ServerMonitor) error) {
 	mycluster, node, ok := repman.hostRequest(w, r)
 	if !ok {
 		return
+	}
+	if guarded {
+		if err := mycluster.HostActionRefusal(node); err != nil {
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "API host %s of %s refused: %s", action, node.URL, err)
+			w.WriteHeader(http.StatusConflict)
+			json.NewEncoder(w).Encode(map[string]string{"error": "host " + action + " refused: " + err.Error()})
+			return
+		}
 	}
 	key := mycluster.Name + "/" + node.URL
 	if _, busy := hostActionsInFlight.LoadOrStore(key, action); busy {
@@ -102,7 +111,7 @@ func (repman *ReplicationManager) hostAction(w http.ResponseWriter, r *http.Requ
 
 // handlerMuxServerHostStop shuts down the VM of a server.
 // @Summary Shut down the host (VM) of a database server
-// @Description Asks the hypervisor for a clean shutdown of the VM under the server (never a hard stop), in the background. Only an orchestrator that drives the hosts (proxmox) supports it; the VM is the server's entry in prov-db-host-vmids. The database inside the VM is not stopped first: stop it before, or use the rolling upgrade.
+// @Description Asks the hypervisor for a clean shutdown of the VM under the server (never a hard stop), in the background. Only an orchestrator that drives the hosts (proxmox) supports it; the VM is the server's entry in prov-db-host-vmids. Refused (409) while the database on the VM runs, unless the server is in maintenance; always refused on a running master: stop the database or switch over first, or use the rolling upgrade.
 // @Tags DatabaseActions
 // @Produce json
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
@@ -111,11 +120,11 @@ func (repman *ReplicationManager) hostAction(w http.ResponseWriter, r *http.Requ
 // @Success 202 {object} map[string]string "Host shutdown started"
 // @Failure 403 {object} map[string]string "No valid ACL"
 // @Failure 404 {object} map[string]string "Cluster Not Found or Server Not Found"
-// @Failure 409 {object} map[string]string "A host action is already running on the server"
+// @Failure 409 {object} map[string]string "A host action is already running on the server, or the database on the VM runs (not in maintenance, or the running master)"
 // @Failure 501 {object} map[string]string "The orchestrator does not drive the hosts"
 // @Router /api/clusters/{clusterName}/servers/{serverName}/actions/host-stop [post]
 func (repman *ReplicationManager) handlerMuxServerHostStop(w http.ResponseWriter, r *http.Request) {
-	repman.hostAction(w, r, "stop", func(o cluster.Orchestrator, s *cluster.ServerMonitor) error { return o.StopHost(s) })
+	repman.hostAction(w, r, "stop", true, func(o cluster.Orchestrator, s *cluster.ServerMonitor) error { return o.StopHost(s) })
 }
 
 // handlerMuxServerHostStart starts the VM of a server.
@@ -133,12 +142,12 @@ func (repman *ReplicationManager) handlerMuxServerHostStop(w http.ResponseWriter
 // @Failure 501 {object} map[string]string "The orchestrator does not drive the hosts"
 // @Router /api/clusters/{clusterName}/servers/{serverName}/actions/host-start [post]
 func (repman *ReplicationManager) handlerMuxServerHostStart(w http.ResponseWriter, r *http.Request) {
-	repman.hostAction(w, r, "start", func(o cluster.Orchestrator, s *cluster.ServerMonitor) error { return o.StartHost(s) })
+	repman.hostAction(w, r, "start", false, func(o cluster.Orchestrator, s *cluster.ServerMonitor) error { return o.StartHost(s) })
 }
 
 // handlerMuxServerHostReboot reboots the VM of a server.
 // @Summary Reboot the host (VM) of a database server
-// @Description Asks the hypervisor for a clean reboot of the VM under the server (a stopped VM is started), in the background. Only an orchestrator that drives the hosts (proxmox) supports it.
+// @Description Asks the hypervisor for a clean reboot of the VM under the server (a stopped VM is started), in the background. Only an orchestrator that drives the hosts (proxmox) supports it. Refused (409) while the database on the VM runs, unless the server is in maintenance; always refused on a running master.
 // @Tags DatabaseActions
 // @Produce json
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
@@ -147,11 +156,11 @@ func (repman *ReplicationManager) handlerMuxServerHostStart(w http.ResponseWrite
 // @Success 202 {object} map[string]string "Host reboot started"
 // @Failure 403 {object} map[string]string "No valid ACL"
 // @Failure 404 {object} map[string]string "Cluster Not Found or Server Not Found"
-// @Failure 409 {object} map[string]string "A host action is already running on the server"
+// @Failure 409 {object} map[string]string "A host action is already running on the server, or the database on the VM runs (not in maintenance, or the running master)"
 // @Failure 501 {object} map[string]string "The orchestrator does not drive the hosts"
 // @Router /api/clusters/{clusterName}/servers/{serverName}/actions/host-reboot [post]
 func (repman *ReplicationManager) handlerMuxServerHostReboot(w http.ResponseWriter, r *http.Request) {
-	repman.hostAction(w, r, "reboot", func(o cluster.Orchestrator, s *cluster.ServerMonitor) error { return o.RebootHost(s) })
+	repman.hostAction(w, r, "reboot", true, func(o cluster.Orchestrator, s *cluster.ServerMonitor) error { return o.RebootHost(s) })
 }
 
 // hostStatusResponse is the host status as the API serves it.

@@ -453,7 +453,7 @@ function ServerMenu({
                       onClick: () => {
                         openConfirmModal()
                         setConfirmTitle(
-                          `Confirm reboot of the VM of ${serverName}? The database inside it goes down with the VM: stop it first, or use the rolling upgrade.`
+                          `Confirm reboot of the VM of ${serverName}? Refused while its database runs, unless the server is in maintenance, and always on the running master: stop the database or switch over first, or use the rolling upgrade.`
                         )
                         setConfirmHandler(
                           () => () => dispatch(hostActionDatabase({ clusterName, serverId: row.id, action: 'reboot' }))
@@ -466,7 +466,7 @@ function ServerMenu({
                       onClick: () => {
                         openConfirmModal()
                         setConfirmTitle(
-                          `Confirm shutdown of the VM of ${serverName}? The database inside it goes down with the VM: stop it first.`
+                          `Confirm shutdown of the VM of ${serverName}? Refused while its database runs, unless the server is in maintenance, and always on the running master: stop the database or switch over first.`
                         )
                         setConfirmHandler(
                           () => () => dispatch(hostActionDatabase({ clusterName, serverId: row.id, action: 'stop' }))

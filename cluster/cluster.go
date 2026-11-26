@@ -103,6 +103,9 @@ type Cluster struct {
 	// read through Orchestrator() and orchestrator(server), never directly.
 	Orchestrators      map[string]Orchestrator `json:"-"`
 	orchestratorsMutex sync.RWMutex            `json:"-"`
+	// hostStepDeadlines: server URL -> the one deadline of a rolling host step (the reboot
+	// and the wait for the host share it, cluster_roll_host.go)
+	hostStepDeadlines sync.Map `json:"-"`
 	// MasterChangeTs is when the CURRENT master was designated in this process (failover,
 	// switchover, or first discovery). Anchors the rejoin staleness guards (#1793): a crash
 	// record older than this names a loser that is no longer relevant to the live master.

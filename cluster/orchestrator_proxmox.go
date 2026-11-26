@@ -137,7 +137,8 @@ func (o *proxmoxOrchestrator) vm(server *ServerMonitor) (proxmoxVM, error) {
 	return vm, nil
 }
 
-// hostAction runs one VM action and waits for its task, bounded by the reboot timeout.
+// hostAction runs one VM action and waits for its task, until hostActionDeadline (the rolling
+// host step's shared deadline, else prov-db-host-reboot-timeout from now).
 // The line logged is the action and the pvesh command that reproduces it (F11), never the
 // token (F10).
 func (o *proxmoxOrchestrator) hostAction(server *ServerMonitor, action string, run func(context.Context, *proxmox.Client, proxmoxVM) (string, error)) error {
@@ -152,7 +153,7 @@ func (o *proxmoxOrchestrator) hostAction(server *ServerMonitor, action string, r
 	o.cluster.LogModulePrintf(o.cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
 		"Proxmox: %s of the VM of %s (node %s, vmid %s): pvesh create /nodes/%s/qemu/%s/status/%s",
 		action, server.URL, vm.Node, vm.VMID, vm.Node, vm.VMID, action)
-	ctx, cancel := context.WithTimeout(context.Background(), o.cluster.hostRebootTimeout())
+	ctx, cancel := context.WithDeadline(context.Background(), o.cluster.hostActionDeadline(server))
 	defer cancel()
 	upid, err := run(ctx, client, vm)
 	if err != nil {
@@ -182,7 +183,12 @@ func (o *proxmoxOrchestrator) StartHost(server *ServerMonitor) error {
 // RebootHost reboots the VM; a VM found stopped is started (a reboot of a stopped VM is
 // refused by the API, and the caller wants it running).
 func (o *proxmoxOrchestrator) RebootHost(server *ServerMonitor) error {
-	if st, err := o.HostStatus(server); err == nil && st.State == "stopped" {
+	st, err := o.HostStatus(server)
+	if err != nil {
+		// the reboot is asked anyway: the API refuses it if the VM cannot be rebooted
+		o.cluster.LogModulePrintf(o.cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn,
+			"Proxmox: status of the VM of %s before its reboot failed, asking the reboot anyway: %s", server.URL, err)
+	} else if st.State == "stopped" {
 		return o.StartHost(server)
 	}
 	return o.hostAction(server, "reboot", func(ctx context.Context, c *proxmox.Client, vm proxmoxVM) (string, error) {
