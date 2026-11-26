@@ -1891,6 +1891,76 @@ definitions:
       variableName:
         type: string
     type: object
+  cluster.VolumeSnapshot:
+    properties:
+      created:
+        type: string
+      managed:
+        description: 'taken by replication-manager: pruned by backup-snapshot-keep,
+          deletable'
+        type: boolean
+      name:
+        type: string
+      size:
+        description: 'bytes: the space it holds (ZFS), its copy-on-write space (LVM)'
+        type: integer
+    type: object
+  cluster.VolumeSnapshotList:
+    properties:
+      commands:
+        items:
+          type: string
+        type: array
+      enabled:
+        type: boolean
+      error:
+        type: string
+      isMaster:
+        type: boolean
+      keep:
+        type: integer
+      lastOp:
+        $ref: '#/definitions/cluster.VolumeSnapshotOp'
+      plugin:
+        type: string
+      plugins:
+        items:
+          $ref: '#/definitions/config.SnapshotPluginManifest'
+        type: array
+      snapshots:
+        items:
+          $ref: '#/definitions/cluster.VolumeSnapshot'
+        type: array
+      target:
+        type: string
+    type: object
+  cluster.VolumeSnapshotOp:
+    properties:
+      action:
+        type: string
+      commands:
+        items:
+          type: string
+        type: array
+      end:
+        type: string
+      error:
+        type: string
+      plugin:
+        type: string
+      server:
+        type: string
+      snapbackDone:
+        description: 'a snapback done: the server stays in maintenance until an operator
+          takes it out (WARN0331)'
+        type: boolean
+      snapshot:
+        type: string
+      start:
+        type: string
+      status:
+        type: string
+    type: object
   cluster.backupCandidateSet:
     properties:
       candidates:
@@ -2440,6 +2510,26 @@ definitions:
           $ref: '#/definitions/config.Task'
         type: array
     type: object
+  config.SnapshotPluginManifest:
+    properties:
+      actions:
+        description: the ConstSnapshotAction* it implements
+        items:
+          type: string
+        type: array
+      description:
+        type: string
+      external:
+        type: boolean
+      name:
+        type: string
+      run:
+        description: ConstSnapshotRun*
+        type: string
+      tier:
+        description: ConstArchiveTierEnterprise, "" for every plan
+        type: string
+    type: object
   config.SourceType:
     enum:
     - volume
@@ -2944,6 +3034,20 @@ definitions:
         type: boolean
       backupSaveScript:
         type: string
+      backupSnapshot:
+        type: boolean
+      backupSnapshotKeep:
+        type: integer
+      backupSnapshotLvmSize:
+        type: string
+      backupSnapshotPlugin:
+        type: string
+      backupSnapshotScript:
+        type: string
+      backupSnapshotTarget:
+        type: string
+      backupSnapshotTimeout:
+        type: integer
       backupSplitMysqlUser:
         type: boolean
       backupSplitdumpCreateDatabases:
@@ -18020,6 +18124,157 @@ paths:
       summary: Upgrade the system tables of a server
       tags:
       - DatabaseActions
+  /api/clusters/{clusterName}/servers/{serverName}/actions/volume-snapback/{snapshotName}:
+    post:
+      description: |-
+        Destructive, an operator's action only: the server goes into maintenance, is stopped through its orchestrator, its volume is rolled back to the snapshot (on ZFS the snapshots taken after it are destroyed), the server is started and stays in maintenance (WARN0331) until an operator takes it out. Refused on the master and during a failover. A rollback that fails after it changed the volume leaves the server stopped and in maintenance (ERR00123). The replication links of the server are not changed. Runs in the background.
+        Required grants: db-restore and db-maintenance
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Server Name
+        in: path
+        name: serverName
+        required: true
+        type: string
+      - description: Snapshot Name
+        in: path
+        name: snapshotName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: The snapback started
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "404":
+          description: Cluster Not Found" or "Server Not Found
+          schema:
+            type: string
+        "409":
+          description: 'Refused: the master, a failover running, snapshot not found,
+            snapshots off, plugin refused, an action already running'
+          schema:
+            type: string
+      summary: Snapback a server to a volume snapshot
+      tags:
+      - DatabaseBackup
+  /api/clusters/{clusterName}/servers/{serverName}/actions/volume-snapshot-delete/{snapshotName}:
+    post:
+      description: |-
+        Deletes the snapshot (recursively on ZFS). Only a snapshot replication-manager took (repman-*) can be deleted: a snapshot of another origin is refused. Runs in the background, like the take.
+        Required grant: db-backup
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Server Name
+        in: path
+        name: serverName
+        required: true
+        type: string
+      - description: Snapshot Name
+        in: path
+        name: snapshotName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: The delete started
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "404":
+          description: Cluster Not Found" or "Server Not Found
+          schema:
+            type: string
+        "409":
+          description: 'Refused: not a repman-* snapshot, invalid name, snapshots
+            off, plugin refused, an action already running'
+          schema:
+            type: string
+      summary: Delete a volume snapshot of a server
+      tags:
+      - DatabaseBackup
+  /api/clusters/{clusterName}/servers/{serverName}/actions/volume-snapshot-take:
+    post:
+      description: |-
+        Starts a snapshot named repman-<UTC time> of the volume holding the server's files (a recursive ZFS snapshot, an LVM snapshot, or the client's script), then deletes the managed snapshots beyond backup-snapshot-keep. The run goes on in the background: its outcome is the server's last action (volume-snapshots) and the states CINF0024 / WARN0330.
+        Required grant: db-backup
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Server Name
+        in: path
+        name: serverName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: 'The snapshot started: its name'
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "404":
+          description: Cluster Not Found" or "Server Not Found
+          schema:
+            type: string
+        "409":
+          description: 'Refused: snapshots off, plugin refused or unreachable, an
+            action already running on the server'
+          schema:
+            type: string
+      summary: Take a volume snapshot of a server
+      tags:
+      - DatabaseBackup
   /api/clusters/{clusterName}/servers/{serverName}/actions/wait-innodb-purge:
     get:
       description: Waits for InnoDB purge on a specified server within a cluster.
@@ -19993,6 +20248,46 @@ paths:
       summary: Set custom value for a variable on a server
       tags:
       - DatabaseConfig
+  /api/clusters/{clusterName}/servers/{serverName}/volume-snapshots:
+    get:
+      description: |-
+        Runs the list action of the cluster's snapshot plugin (backup-snapshot-plugin, or backup-snapshot-script when set) and returns the snapshots of the volume holding the server's files, the commands run, the plugins known and the server's last snapshot action. A plugin that can not run is reported in error, with an empty list. Snapshots named repman-* are the ones replication-manager took (managed): only these are pruned and deletable.
+        Required grant: cluster-show-backups or db-backup
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Server Name
+        in: path
+        name: serverName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: The snapshots
+          schema:
+            $ref: '#/definitions/cluster.VolumeSnapshotList'
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "404":
+          description: Cluster Not Found" or "Server Not Found
+          schema:
+            type: string
+      summary: List the volume snapshots of a server
+      tags:
+      - DatabaseBackup
   /api/clusters/{clusterName}/servers/{serverName}/vtables:
     get:
       description: Retrieves the virtual tables of a specified server within a cluster.

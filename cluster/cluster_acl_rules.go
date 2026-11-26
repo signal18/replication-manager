@@ -63,6 +63,14 @@ var databaseACLRules = []ACLRule{
 	{"/actions/backup-slowquery-log", nil, []string{config.GrantDBBackup}},
 	{"/actions/flush-logs", nil, []string{config.GrantDBBackup}},
 
+	// Volume snapshots of a server's data volume (#2443): the list for who sees backups, the
+	// take and the delete for who backs up, the snapback (destructive) for who restores AND
+	// may put the server in maintenance
+	{"/volume-snapshots", nil, []string{config.GrantClusterShowBackups, config.GrantDBBackup}},
+	{"/actions/volume-snapshot-take", nil, []string{config.GrantDBBackup}},
+	{"/actions/volume-snapshot-delete/", nil, []string{config.GrantDBBackup}},
+	{"/actions/volume-snapback/", []string{config.GrantDBRestore, config.GrantDBMaintenance}, nil},
+
 	// Restore actions
 	{"/actions/reseed/", nil, []string{config.GrantDBRestore}},
 	{"/actions/reseed-restic", nil, []string{config.GrantDBRestore}},
@@ -137,6 +145,9 @@ var pricingACLRules = []ACLRule{
 	{"/settings/actions/switch/cloud18-marketplace-bau-client-storage", nil, []string{config.GrantSalesPricing}},
 	// SMT gain calibration (#1958): runs sysbench on the replication-manager host and writes a server setting
 	{"/settings/actions/calibrate-smt-gain", nil, []string{config.GrantGlobalSettings}},
+	// the volume snapshot script (#2443) is a program run on the replication-manager host
+	// for every snapshot action: the instance admin's, never a cluster owner's
+	{"/settings/actions/set/backup-snapshot-script", nil, []string{config.GrantGlobalSettings}},
 }
 
 // appACLRules defines ACL rules for application endpoints

@@ -910,6 +910,13 @@ type Config struct {
 	BackupKeepWeekly                          int               `mapstructure:"backup-keep-weekly" toml:"backup-keep-weekly" json:"backupKeepWeekly"`
 	BackupKeepMonthly                         int               `mapstructure:"backup-keep-monthly" toml:"backup-keep-monthly" json:"backupKeepMonthly"`
 	BackupKeepYearly                          int               `mapstructure:"backup-keep-yearly" toml:"backup-keep-yearly" json:"backupKeepYearly"`
+	BackupSnapshot                            bool              `mapstructure:"backup-snapshot" toml:"backup-snapshot" json:"backupSnapshot"`
+	BackupSnapshotPlugin                      string            `mapstructure:"backup-snapshot-plugin" toml:"backup-snapshot-plugin" json:"backupSnapshotPlugin"`
+	BackupSnapshotTarget                      string            `mapstructure:"backup-snapshot-target" toml:"backup-snapshot-target" json:"backupSnapshotTarget"`
+	BackupSnapshotKeep                        int               `mapstructure:"backup-snapshot-keep" toml:"backup-snapshot-keep" json:"backupSnapshotKeep"`
+	BackupSnapshotLVMSize                     string            `mapstructure:"backup-snapshot-lvm-size" toml:"backup-snapshot-lvm-size" json:"backupSnapshotLvmSize"`
+	BackupSnapshotScript                      string            `mapstructure:"backup-snapshot-script" toml:"backup-snapshot-script" json:"backupSnapshotScript"`
+	BackupSnapshotTimeout                     int               `mapstructure:"backup-snapshot-timeout" toml:"backup-snapshot-timeout" json:"backupSnapshotTimeout"`
 	BackupKeepWithin                          string            `mapstructure:"backup-keep-within" toml:"backup-keep-within" json:"backupKeepWithin"`
 	BackupKeepWithinHourly                    string            `mapstructure:"backup-keep-within-hourly" toml:"backup-keep-within-hourly" json:"backupKeepWithinHourly"`
 	BackupKeepWithinDaily                     string            `mapstructure:"backup-keep-within-daily" toml:"backup-keep-within-daily" json:"backupKeepWithinDaily"`
