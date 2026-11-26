@@ -142,7 +142,11 @@ log, before you start it.
 For a thin LVM volume the sequence is `lvchange -an`, `lvconvert --merge`, `lvchange -ay`, then
 the mounts: when it stops after the deactivation, the volume is left inactive and unmounted.
 Activate it (`lvchange -ay vg/lv`), mount it (`mount <mount point>`), check it, then start the
-server.
+server. When it stops at a mount after the merge (thin or thick), the merge is done and only
+the mounts are missing: mount them, check, start.
+
+A mount point of the volume with a blank in its path is not supported: the snapback is refused,
+nothing changed.
 
 ## States
 

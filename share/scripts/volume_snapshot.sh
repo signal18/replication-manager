@@ -119,6 +119,12 @@ wait_unused() {
     done
 }
 
+# no_blank_mounts LINES: a mount point holding a blank is refused, the lists here are words
+no_blank_mounts() {
+    printf '%s\n' "$1" | grep -q '[[:blank:]]' && die "a mount point of the volume holds a blank ($(printf '%s' "$1" | tr '\n' ',')): not supported, nothing was changed"
+    return 0
+}
+
 # server_paths: the server's directories (REPMAN_SNAPSHOT_PATHS), one per word
 server_paths() {
     printf '%s\n' "$PATHS" | tr ':' ' '
@@ -235,7 +241,9 @@ zfs_snapback() {
     # no process on any of their mount points: a busy dataset would fail its rollback half-way
     mnts=""
     for ds in $datasets; do
-        mnts="$mnts $(findmnt -n -l -o TARGET --source "$ds" </dev/null 2>/dev/null | tr '\n' ' ')"
+        dsm=$(findmnt -n -l -o TARGET --source "$ds" </dev/null 2>/dev/null)
+        no_blank_mounts "$dsm"
+        mnts="$mnts $(printf '%s\n' "$dsm" | tr '\n' ' ')"
     done
     # and the server's own directories: what the database holds open, whatever findmnt resolves
     # (a zvol under the tree has no mount point: not seen here)
@@ -345,6 +353,7 @@ lvm_snapback() {
     # an unmounted volume, or a mount findmnt does not tie to the device (an alias): never go on
     # to deactivate a volume that may still be mounted
     [ -n "$mnts" ] || die "no mount point found for $dev (not mounted, or findmnt does not know it): nothing was changed"
+    no_blank_mounts "$mnts"
     # shellcheck disable=SC2086
     wait_unused $mnts $(server_paths)
     done_mnts=""
