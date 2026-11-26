@@ -220,6 +220,8 @@ var clusterACLRules = []ACLRule{
 	{"/secret-kv-actions/remove/", nil, []string{config.GrantClusterSettings}},
 	{"/secret-kv-actions/enable/", nil, []string{config.GrantClusterSettings, config.GrantDBConfigFlag}},
 	{"/secret-kv-actions/disable/", nil, []string{config.GrantClusterSettings, config.GrantDBConfigFlag}},
+	// the past versions of a secret (a leaked value): the instance's sysops only
+	{"/secret-kv-actions/prune-history/", nil, []string{config.GrantClusterServerCredentials}},
 	{"/archive-list", nil, []string{config.GrantClusterShowBackups}},
 	{"/archive-offers", nil, []string{config.GrantClusterShowBackups}},
 	{"/archive-actions/add", nil, []string{config.GrantClusterSettings}},
@@ -396,6 +398,8 @@ var globalSettingsACLRules = []ACLRule{
 	{"/api/clusters/settings/actions/license-pull", nil, []string{config.GrantGlobalSettings, config.GrantGlobalAdminConf}},
 	// the server credential stores, which hold the server secrets: sysops and extsysops only
 	{"/api/clusters/settings/actions/server-secret-kv", nil, []string{config.GrantClusterServerCredentials}},
+	// the admin login by one-time link (ADMIN_LOGIN_REVEAL.md): sysops and extsysops only
+	{"/api/clusters/settings/actions/admin-login-reveal", nil, []string{config.GrantClusterServerCredentials}},
 }
 
 // terminalACLRules defines ACL rules for terminal access

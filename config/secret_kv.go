@@ -217,6 +217,11 @@ type SecretKvConfig struct {
 	// secrets are moved from there (CREDENTIAL_STORES.md "The move"). Saved, so a
 	// restart or the other monitor knows where they are.
 	WrittenAs string `mapstructure:"written-as" toml:"written-as" json:"-"`
+	// AliasWrittenAs is the host the orchestrator store last wrote the user list's documented
+	// key under (<api host>_api-credentials): when api-public-url names another host, the old
+	// key is left with a moved-to marker, never deleted (CREDENTIAL_STORES.md "Mandatory
+	// copies"). Saved, so a restart knows which key the store kept.
+	AliasWrittenAs string `mapstructure:"alias-written-as" toml:"alias-written-as" json:"-"`
 }
 
 // SecretKvOffer is the marketplace vault offer an entry comes from, as the API gives it.
@@ -508,6 +513,9 @@ func (conf *Config) SecretKvsTomlAt(level SecretKvLevel, section string) (string
 		}
 		if e.WrittenAs != "" {
 			head["written-as"] = e.WrittenAs
+		}
+		if e.AliasWrittenAs != "" {
+			head["alias-written-as"] = e.AliasWrittenAs
 		}
 		settings := make(map[string]interface{}, len(e.Settings))
 		for k, v := range e.Settings {
@@ -851,6 +859,20 @@ func (conf *Config) SetSecretKvWrittenAsAt(level SecretKvLevel, name, as string)
 	}
 	e.WrittenAs = as
 	return true
+}
+
+// SetSecretKvAliasWrittenAsAt records the host level's entry last wrote the user list's
+// documented key under, and returns the one it replaces ("" the first time). changed is false
+// when the entry is gone or already says so.
+func (conf *Config) SetSecretKvAliasWrittenAsAt(level SecretKvLevel, name, host string) (old string, changed bool) {
+	secretKvMu.Lock()
+	defer secretKvMu.Unlock()
+	e := conf.secretKvByNameAt(level, name)
+	if e == nil || e.AliasWrittenAs == host {
+		return "", false
+	}
+	old, e.AliasWrittenAs = e.AliasWrittenAs, host
+	return old, true
 }
 
 // SetSecretKvWrittenAsIfAt sets the name level's entry holds its secrets under to as, only
@@ -1210,6 +1232,17 @@ func APIUserListHas(list, user string) bool {
 		}
 	}
 	return false
+}
+
+// APIUserListPassword is user's password in list (user:password,...), its first entry, as the
+// list holds it; false when user is not in it. Never logged (F10).
+func APIUserListPassword(list, user string) (string, bool) {
+	for _, e := range strings.Split(list, ",") {
+		if u, p, _ := strings.Cut(strings.TrimSpace(e), ":"); u == user {
+			return p, true
+		}
+	}
+	return "", false
 }
 
 // DecryptedAPIUserList is the instance's list (api-credentials) with every password in clear.

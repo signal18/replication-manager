@@ -812,6 +812,8 @@ type Config struct {
 	ProvAppTemplateRepoPassword               string            `secret:"true" mapstructure:"prov-app-template-repo-password" toml:"prov-app-template-repo-password" json:"provAppTemplateRepoPassword" groups:"apps"`
 	ProvAppTemplateRepoTimeout                int               `mapstructure:"prov-app-template-repo-timeout" toml:"prov-app-template-repo-timeout" json:"provAppTemplateRepoTimeout" groups:"apps"`
 	ProvAppTemplateRepoAllowOverride          bool              `scope:"server" mapstructure:"prov-app-template-repo-allow-override" toml:"prov-app-template-repo-allow-override" json:"provAppTemplateRepoAllowOverride"`
+	ProvAppDockerRuntime                      string            `scope:"server" mapstructure:"prov-app-docker-runtime" toml:"prov-app-docker-runtime" json:"provAppDockerRuntime"` // docker runtime of the containers that run a client app image: auto (runsc-hostnet on a Cloud18 instance, none otherwise), none or empty (off), or a runtime name registered on the nodes
+	ProvAppDockerTrusted                      string            `scope:"server" mapstructure:"prov-app-docker-trusted" toml:"prov-app-docker-trusted" json:"provAppDockerTrusted"` // comma list of app ids (ap<n>) trusted by the instance admin: their containers run under the node's default runtime, never prov-app-docker-runtime
 	TemplateVariableMaxDepth                  int               `mapstructure:"template-var-max-depth" toml:"template-var-max-depth" json:"templateVarMaxDepth"`
 	TemplateStrict                            bool              `mapstructure:"template-strict" toml:"template-strict" json:"templateStrict"`
 	APIUsers                                  string            `secret:"true" scope:"server" mapstructure:"api-credentials" toml:"api-credentials" json:"apiCredentials"`
@@ -1173,6 +1175,9 @@ type Config struct {
 	APISecretLoginWindow                   int                    `scope:"server" mapstructure:"api-secret-login-window" toml:"api-secret-login-window" json:"apiSecretLoginWindow"`
 	APISecretReveal                        bool                   `scope:"server" mapstructure:"api-secret-reveal" toml:"api-secret-reveal" json:"apiSecretReveal"`
 	APISecretRevealExpireHours             int                    `scope:"server" mapstructure:"api-secret-reveal-expire-hours" toml:"api-secret-reveal-expire-hours" json:"apiSecretRevealExpireHours"`
+	APISecretRevealAdminLogin              bool                   `scope:"server" mapstructure:"api-secret-reveal-admin-login" toml:"api-secret-reveal-admin-login" json:"apiSecretRevealAdminLogin"`
+	APISecretRevealAdminLoginExpireMinutes int                    `scope:"server" mapstructure:"api-secret-reveal-admin-login-expire-minutes" toml:"api-secret-reveal-admin-login-expire-minutes" json:"apiSecretRevealAdminLoginExpireMinutes"`
+	APISecretRevealAdminLoginMaxPerHour    int                    `scope:"server" mapstructure:"api-secret-reveal-admin-login-max-per-hour" toml:"api-secret-reveal-admin-login-max-per-hour" json:"apiSecretRevealAdminLoginMaxPerHour"`
 	JobLogBatchSize                        int                    `mapstructure:"job-log-batch-size" toml:"job-log-batch-size" json:"jobLogBatchSize"`
 	APIUserTokens                          bool                   `scope:"server" mapstructure:"api-user-tokens" toml:"api-user-tokens" json:"apiUserTokens"`
 	APIUserTokensDefaultExpireDays         int                    `scope:"server" mapstructure:"api-user-tokens-default-expire-days" toml:"api-user-tokens-default-expire-days" json:"apiUserTokensDefaultExpireDays"`
@@ -1420,6 +1425,11 @@ type QueryRule struct {
 	Multiplex            sql.NullInt64  `json:"multiplex" db:"multiplex"`
 	Proxies              string         `json:"proxies" db:"proxies"`
 }
+
+// DefaultBackupMyLoaderOptions is the shipped value of backup-myloader-options (the flag default, server/server.go).
+// The restore code compares the configured value with it before adapting a MyLoader option that the myloader
+// release in use no longer takes (cluster/cluster_tool.go).
+const DefaultBackupMyLoaderOptions = "--overwrite-tables --verbose=3 --innodb-optimize-keys=skip --max-threads-for-schema-creation=1 --max-threads-for-index-creation=1"
 
 type MyDumperMetaData struct {
 	MetaDir        string    `json:"metadir" db:"metadir"`

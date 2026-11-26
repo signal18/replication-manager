@@ -303,6 +303,28 @@ test counts from what the file holds when it starts.
   cluster's version store (the save writes the file), offline the file as before.
   `secret-store-copy` is unchanged (an export copy). An app secret's versions
   (`apps/<app>/<key>`) are history: `--all` leaves them out, an explicit app key is refused.
+- **Prune the history of one secret** (`Cluster.PruneSecretHistory`, API
+  `POST /api/clusters/{cluster}/secret-kv-actions/prune-history/{key}[?dry-run=true]`, grant
+  `cluster-server-credentials`, GUI: Settings, credential stores, "Version history"): a value
+  that leaked is removed from the version store of the running monitor, the save writes the
+  file (T25). `secret-store-prune` cannot do it: it prunes every key (the root password
+  history that decrypts old backups goes with it), keeps the last N whatever they are, and
+  run offline next to a live monitor it is undone by the next save, which writes the file from
+  memory. Rule per key: a key the version store holds keeps its latest version and the last
+  `from_config_file` one (`--keep-last 1`); any other secret (the file is only its history,
+  the config is the value: `api-credentials-external`, the API accounts) keeps its latest
+  version only when it decrypts to the current value, else none (the next reconcile records the
+  current value again). The filter runs under the version store's lock (`VersionStore.Prune`):
+  a version recorded during the prune (a rotation, a reconcile) waits for it and lands after,
+  never lost between the read and the write; the current value is read before the lock (the
+  chain may read the store). Pruning the database passwords' history (`db-servers-credential`
+  and the root passwords) means an older backup taken with a past value may no longer be
+  restored with repman's help: the GUI confirmation says so for those keys. Values are compared
+  in memory, never logged or returned (F10). A
+  monitor pair prunes on both monitors: the standby merges the active monitor's versions
+  (rule 11) and would bring a pruned version back after a failover. Copies elsewhere (a vault
+  entry, the config repo's git history, `cluster.d/<cluster>_secret_store.json` exports) are
+  not touched.
 - **Orchestrator and app writers** (rule 7): `reportOrchestratorSecret` after each
   successful OpenSVC `CreateSecretKeyValue*` and `k8sPatchSecretValues` (the root password
   under every database server, the shard proxy password under every shard proxy, an app's
@@ -684,6 +706,43 @@ is treated the same; only the path a level maps to differs per store.
   (`StoreItem.Alias`) that is never taken as the entry's place. With no public host (none, or
   `localhost`, a loopback or unspecified address, as the default `https://127.0.0.1:10005`) the
   alias is not written, with a WARN: every such instance would share the same key.
+  So `system/sec/repman` holds two prefixes for the instance, by design: `<prefix>_<key>` for
+  every server secret, and `<api host>_api-credentials` for the user list, both written from the
+  same version in the same pass (equal, each with its `_OLD`). The server list gives both
+  (`ServerSecretKvState.Path` for the folder, `AliasPath` for the host's key, two fields: a
+  location stays a location for an API client). The host written is saved with the entry
+  (`SecretKvConfig.AliasWrittenAs`, `alias-written-as`): when `api-public-url` names another
+  host, the old host's key is never deleted; it keeps the value it had, **passwords included,
+  and is never rotated again**: an admin password changed later is not in it, the one it had
+  stays readable there until an operator deletes the key. Two `moved-to` markers say where the
+  list is now, both naming the new key: `<old host>_moved-to` and `<new host>_moved-to` (a
+  marker naming its own host's key says that key is the current one, so a move back A to B to A
+  leaves no marker at A still pointing at B). A WARN and a security event
+  (`server_secret_kv_alias_moved`) say it once, at the move: delete the old key in the
+  orchestrator once nothing reads it (`recordServerKvAlias`). The markers are queued before the
+  host is saved: a stop in between loses the queue (memory) but not the move, the next write
+  queues them again. The new host is saved only once the old host's marker is written (its
+  write comes back to `recordServerKvAlias`): a restart before that finds the move again at the
+  next write and queues the markers again; the move waiting for its marker is kept in memory
+  (`aliasPending`), so the WARN is said once per run. A failed marker write is requeued by the
+  runner like any item. Limits: an
+  instance upgraded from a release that wrote the alias but did not record the host has an empty
+  `alias-written-as`; its first write records the host and leaves no marker, so an alias key
+  left under an older host before the upgrade is not marked. `alias-written-as` is written by
+  the active monitor's worker only, without the compare-and-set `written-as` has.
+  **The start (fixed 2026-11-24).** The server credentials are taken from `/etc` and the pass is
+  asked in `InitConfig`, before any cluster is initialised. The worker used to start there: an
+  orchestrator store's carrier was not listed yet, the write failed with "cluster X, which
+  carries this store, is not monitored here", the store was behind (`GWARN024`, `WARN0320` on
+  every cluster) and the worker slept a whole `secret-kv-retry-interval` before the next try.
+  At every start, every cluster showed the store behind for about a minute, and an `/etc` edit
+  reached the store that minute late (seen on a marketplace instance: `/etc` edited, restart,
+  new version taken at once, store written 61 s later; the store did hold the current value
+  after that, and was rightly not rewritten at the next restart, its value being unchanged). Now
+  the worker starts only once every cluster is initialised (`startServerKvWorker`,
+  `clustersReady`): what is queued or due before is written once the flag is raised
+  (`startServerKvWorker` right after `clustersReady.Store(true)`), the tick only retries.
+  A carrier that is still missing then is a real reason, and the store is behind with it.
   **Upgrade:** this applies on-prem too. The first tick after the upgrade of an instance with a
   cluster on OpenSVC or Kubernetes adds `cloud18-opensvc` or `cloud18-kubernetes` and writes the
   server secrets there. **Orchestrator unreachable** (agent down, certificate not loaded, a

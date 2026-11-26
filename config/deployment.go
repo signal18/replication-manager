@@ -1211,8 +1211,39 @@ func VolumeSource(volname, srcpath string) (string, error) {
 	return src, nil
 }
 
-// SafeDockerMapping is GetDockerMapping for a source that stays inside its volume.
+// mountPathRe: the characters of a path written into a container mount ("src:dst") or a
+// shell command of a sidecar. A space starts another mount (a host path, the docker
+// socket), a ':' adds mount options, a quote or ';' leaves the command: all refused.
+var mountPathRe = regexp.MustCompile(`^[A-Za-z0-9._/@+~-]+$`)
+
+// ValidateMountPath validates a path of a deployment that ends up in a container mount or a
+// sidecar command: what names it (field) is in the error.
+func ValidateMountPath(field, p string) error {
+	if !mountPathRe.MatchString(p) {
+		return fmt.Errorf("%s %q: letters, digits and '.', '_', '/', '@', '+', '~', '-' only", field, p)
+	}
+	for _, part := range strings.Split(p, "/") {
+		if part == ".." {
+			return fmt.Errorf("%s %q: no '..'", field, p)
+		}
+	}
+	return nil
+}
+
+// SafeDockerMapping is GetDockerMapping for a source that stays inside its volume and a
+// target that is one absolute path in the container.
 func (p PathMapping) SafeDockerMapping(volname string) (string, error) {
+	if p.SourcePath != "" {
+		if err := ValidateMountPath("source path", p.SourcePath); err != nil {
+			return "", err
+		}
+	}
+	if err := ValidateMountPath("container path", p.DockerPath); err != nil {
+		return "", err
+	}
+	if !strings.HasPrefix(p.DockerPath, "/") {
+		return "", fmt.Errorf("container path %q: an absolute path is expected", p.DockerPath)
+	}
 	src, err := VolumeSource(volname, p.SourcePath)
 	if err != nil {
 		return "", err
@@ -1352,9 +1383,17 @@ func GetGitSecretKeys() []string {
 	}
 }
 
+// GitRepositoryWithoutScheme returns a git clone repository without its leading https://
+// or http://. The clone script always prefixes https:// itself, so a repository stored
+// with its scheme would otherwise clone https://https://... The validator
+// (cluster.ValidateGitRepository) checks the same form.
+func GitRepositoryWithoutScheme(repo string) string {
+	return strings.TrimPrefix(strings.TrimPrefix(repo, "https://"), "http://")
+}
+
 func (gc *GitClone) GetEnvVariables() map[string]string {
 	envVars := make(map[string]string)
-	envVars[GitVarSuffixRepo] = gc.GitRepo
+	envVars[GitVarSuffixRepo] = GitRepositoryWithoutScheme(gc.GitRepo)
 	envVars[GitVarSuffixBranch] = gc.GitBranch
 	envVars[GitVarSuffixUser] = gc.GitUser
 	return envVars
@@ -1653,16 +1692,18 @@ func (s *S3Mount) GetVariablePrefix() string {
 	return strings.ToUpper(gitVariableReplacer.Replace(s.Name)) + "_"
 }
 
+// GetVariableKeys maps the keys of this mount onto the names the mount sidecar reads:
+// "<KEY>=<app>/<PREFIX><KEY>", space separated (an OpenSVC configs/secrets_environment).
 func (s *S3Mount) GetVariableKeys(appName string, vartype string) string {
 	result := make([]string, 0)
 	prefix := s.GetVariablePrefix()
 	if vartype == "env" {
 		for _, key := range GetS3EnvKeys() {
-			result = append(result, fmt.Sprintf("%s=%s/%s\n", key, appName, prefix+key))
+			result = append(result, fmt.Sprintf("%s=%s/%s", key, appName, prefix+key))
 		}
 	} else if vartype == "secret" {
 		for _, key := range GetS3SecretKeys() {
-			result = append(result, fmt.Sprintf("%s=%s/%s\n", key, appName, prefix+key))
+			result = append(result, fmt.Sprintf("%s=%s/%s", key, appName, prefix+key))
 		}
 	} else {
 		// If vartype is not env or secret, return an empty string

@@ -415,6 +415,9 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.IntVar(&conf.APISecretLoginWindow, "api-secret-login-window", 300, "Seconds a one-time job body is accepted around its timestamp (clock skew between a database server and replication-manager); its nonce is refused if seen within twice that")
 	flags.BoolVar(&conf.APISecretReveal, "api-secret-reveal", true, "Mail a password as a one-time link (<api-public-url>/reveal), never in the mail: the new password of a rotated user whose login is an email, and the credentials mails. Off: a rotated password is shown once to who rotated it, and the credentials mails are not sent")
 	flags.IntVar(&conf.APISecretRevealExpireHours, "api-secret-reveal-expire-hours", 24, "Hours a one-time password link stays valid when not opened")
+	flags.BoolVar(&conf.APISecretRevealAdminLogin, "api-secret-reveal-admin-login", true, "Let the instance's sysops and extsysops signed in with Cloud18 receive the local admin login as a one-time link mailed to their own Cloud18 email, opened only in their own session (needs api-secret-reveal). Off: the button and its API are refused")
+	flags.IntVar(&conf.APISecretRevealAdminLoginExpireMinutes, "api-secret-reveal-admin-login-expire-minutes", 15, "Minutes a one-time admin login link stays valid when not opened")
+	flags.IntVar(&conf.APISecretRevealAdminLoginMaxPerHour, "api-secret-reveal-admin-login-max-per-hour", 5, "One-time admin login links a person can ask for in an hour")
 	flags.BoolVar(&conf.APIUserTokens, "api-user-tokens", true, "Let users issue API tokens for themselves (bearer tokens narrowed to a subset of their grants and a cluster scope, stored encrypted in monitoring-datadir/api-tokens.json)")
 	flags.IntVar(&conf.APIUserTokensDefaultExpireDays, "api-user-tokens-default-expire-days", 120, "Default lifetime in days of a user-issued API token (0 = never expires)")
 	// 0 = never expires; issueAppAPIToken passes it to the token form as -1 (the form reads 0 as the user default)
@@ -1143,7 +1146,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.BackupKeepUntilValid, "backup-keep-until-valid", false, "Backup will rename previous backup to .old before removing after new backup valid")
 	flags.StringVar(&conf.BackupMyDumperPath, "backup-mydumper-path", "", "Path to mydumper binary")
 	flags.StringVar(&conf.BackupMyLoaderPath, "backup-myloader-path", "", "Path to myloader binary")
-	flags.StringVar(&conf.BackupMyLoaderOptions, "backup-myloader-options", "--overwrite-tables --verbose=3 --innodb-optimize-keys=skip --max-threads-for-schema-creation=1 --max-threads-for-index-creation=1", "Extra options")
+	flags.StringVar(&conf.BackupMyLoaderOptions, "backup-myloader-options", config.DefaultBackupMyLoaderOptions, "Extra options")
 	flags.StringVar(&conf.BackupMyDumperOptions, "backup-mydumper-options", "--chunk-filesize=1000 --compress --less-locking --verbose=3 --triggers --routines --events --trx-consistency-only --kill-long-queries", "Extra options")
 	flags.StringVar(&conf.BackupMyDumperRegex, "backup-mydumper-regex", `^(?!(sys\.|performance_schema\.|information_schema\.|replication_manager_schema\.jobs|mysql\.gtid_slave_pos$))`, "Mydumper regex for backup")
 	flags.BoolVar(&conf.BackupMyDumperStream, "backup-mydumper-stream", false, "Enable mydumper stream mode to produce a single file")
@@ -1537,6 +1540,8 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.ProvAppTemplateRepoPassword, "prov-app-template-repo-password", "", "Git repository password for application templates (cluster-scoped)")
 	flags.IntVar(&conf.ProvAppTemplateRepoTimeout, "prov-app-template-repo-timeout", 30, "Git repository timeout for application templates (cluster-scoped)")
 	flags.BoolVar(&conf.ProvAppTemplateRepoAllowOverride, "prov-app-template-repo-allow-override", true, "Allow clusters to override inherited prov-app-template-repo* defaults")
+	flags.StringVar(&conf.ProvAppDockerRuntime, "prov-app-docker-runtime", config.ConstAppDockerRuntimeAuto, "Docker runtime of the containers that run a client app image (the app, its jobs sidecar, its reload task): auto (runsc-hostnet, the gVisor sandbox, on a Cloud18 instance; none otherwise), none or empty (the node's default runtime), or the name of a runtime registered in the docker daemon of every node that runs apps. Global, admin only")
+	flags.StringVar(&conf.ProvAppDockerTrusted, "prov-app-docker-trusted", "", "Comma-separated list of app ids (ap<n>, as the API names an app) whose containers run under the node's default runtime instead of prov-app-docker-runtime: an app of the instance's own, trusted by its admin. Each one opens WARN0329 while the sandbox is on. Global, admin only")
 	flags.BoolVar(&conf.TerminalSessionResume, "terminal-session-resume", false, "Enable terminal session resume")
 	flags.StringVar(&conf.TerminalSessionManager, "terminal-session-manager", "tmux", "Terminal session manager: tmux|screen")
 	flags.BoolVar(&conf.TerminalSessionEnabled, "terminal-session-enabled", false, "Enable terminal session")
@@ -3187,6 +3192,9 @@ func (repman *ReplicationManager) Run() error {
 	// The ACL users load in phase 1 (initCluster); the flag is raised once every cluster is
 	// initialised (phases 1-4 done). Before, loginHandler answers 503 "starting".
 	repman.clustersReady.Store(true)
+	// the server credential stores' worker waited for the clusters (startServerKvWorker):
+	// what was queued meanwhile is written now, not at the next tick
+	repman.startServerKvWorker()
 	// tokens bound to a cluster gone from the configuration while repman was stopped
 	repman.revokeTokensOfVanishedClusters()
 

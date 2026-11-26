@@ -54,6 +54,15 @@ type StoreItem struct {
 	Alias bool
 }
 
+// PrefixedKey is the key a store that keeps every secret in one object (the orchestrator
+// stores) writes the item under: <path>_<key>, the key alone without a path.
+func (it StoreItem) PrefixedKey() string {
+	if it.Path != "" {
+		return it.Path + "_" + it.Key
+	}
+	return it.Key
+}
+
 // SecretPath is the folder of an object's secrets: <space>/<cluster>/<kind>/<object name>
 // (space being config.SecretSpace's).
 func SecretPath(space, kind, object string) string {

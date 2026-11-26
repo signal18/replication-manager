@@ -47,6 +47,9 @@ type serverSecretKv struct {
 	behind      map[string]string    // entry -> why it is behind (never a value)
 	lastWritten map[string]time.Time // entry -> its last successful write
 	moves       map[string]*serverKvMove
+	// aliasPending: entry -> the API host its user list moved to, until the old host's moved-to
+	// marker is written (recordServerKvAlias); in memory, a restart finds the move again
+	aliasPending map[string]string
 }
 
 // errServerKvNotNamed: the instance's name is not complete, its folder in a shared store is
@@ -176,6 +179,18 @@ func (repman *ReplicationManager) queueServerVersion(key string) {
 		return
 	}
 	repman.serverKvQueue().Push(items...)
+	repman.startServerKvWorker()
+}
+
+// startServerKvWorker starts the server stores' worker once every cluster is initialised
+// (clustersReady). Before, an orchestrator store's carrier is not listed yet: the write failed
+// with "not monitored here", the store was behind (GWARN024, WARN0320 on every cluster) and the
+// worker waited a whole secret-kv-retry-interval before the next try, at every start. What is
+// queued or due meanwhile waits for the first tick, which comes after the clusters are ready.
+func (repman *ReplicationManager) startServerKvWorker() {
+	if !repman.clustersReady.Load() {
+		return
+	}
 	repman.serverKvRunner().Start()
 }
 
@@ -225,7 +240,7 @@ func (repman *ReplicationManager) startServerKvPass() {
 	}
 	repman.serverKvQueue()
 	repman.serverSecretKv.passDue.Store(true)
-	repman.serverKvRunner().Start()
+	repman.startServerKvWorker()
 }
 
 // ServerKvBehind is why each server entry is behind, for the states of every level.
@@ -261,7 +276,7 @@ func (repman *ReplicationManager) checkServerSecretKvStores() {
 		repman.startServerKvPass()
 	}
 	if q := repman.serverKvQueue(); q.Len() > 0 || repman.serverSecretKv.passDue.Load() {
-		repman.serverKvRunner().Start()
+		repman.startServerKvWorker()
 	}
 	repman.ensureServerMarketplaceVaults()
 	repman.ensureServerOrchestratorStores()
@@ -470,6 +485,9 @@ type ServerSecretKvState struct {
 	Behind    string    `json:"behind,omitempty"`
 	// Path is the entry's folder for this instance, empty while the instance is not named
 	Path string `json:"path,omitempty"`
+	// AliasPath is the second key of the user list in an orchestrator store, the one named
+	// after the API host (<api host>_api-credentials, kept equal to the one under Path)
+	AliasPath string `json:"aliasPath,omitempty"`
 	// Mandatory: the entry cannot be switched off (serverStoreMandatory); the GUI shows it locked
 	Mandatory bool `json:"mandatory,omitempty"`
 }
@@ -515,6 +533,12 @@ func (repman *ReplicationManager) serverSecretKvList() ServerSecretKvListResult 
 		st := ServerSecretKvState{LastWrite: k.lastWritten[e.Name], Behind: behind[e.Name], Mandatory: mandatory[e.Name]}
 		if named {
 			st.Path = repman.Conf.ServerSecretKvLocation(e, name)
+			if e.Offer == config.ConstSecretKvOrchestratorOffer {
+				// the second key of the same secret: two prefixes in the object, said here
+				if host, why := aliasHost(repman.Conf.APIPublicURL); why == "" {
+					st.AliasPath = credstore.StoreItem{Path: host, Key: apiCredentialsKey}.PrefixedKey()
+				}
+			}
 		}
 		res.States[e.Name] = st
 	}

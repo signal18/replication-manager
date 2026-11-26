@@ -137,7 +137,7 @@ func (repman *ReplicationManager) checkServerStoreCluster(spec config.SecretKvSp
 
 // handlerMuxServerSecretKvList lists the server credential stores.
 // @Summary List the server credential stores
-// @Description The entries of the server level, which hold the server secrets (api-credentials, SMTP, GitLab...): a vault under <path-prefix>/system/repman/<instance name>, the OpenSVC secret system/sec/repman or a Kubernetes Secret repman-system under the keys <instance name>_<key>: secrets never returned, only the names of those set; each one's state (last write, behind: GWARN024, WARN0320 on every cluster) and folder, the instance's name (empty while not complete), the server secrets' names, the plugins' manifests and whether a config file sets the list. The instance's sysops and extsysops only: the server credentials grant on every cluster.
+// @Description The entries of the server level, which hold the server secrets (api-credentials, SMTP, GitLab...): a vault under <path-prefix>/system/repman/<instance name>, the OpenSVC secret system/sec/repman or a Kubernetes Secret repman-system under the keys <instance name>_<key> (an orchestrator store also keeps the user list under <api host>_api-credentials): secrets never returned, only the names of those set; each one's state (last write, behind: GWARN024, WARN0320 on every cluster) and folder, the instance's name (empty while not complete), the server secrets' names, the plugins' manifests and whether a config file sets the list. The instance's sysops and extsysops only: the server credentials grant on every cluster.
 // @Tags GlobalSetting
 // @Produce json
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)

@@ -83,8 +83,8 @@ func (cluster *Cluster) openSVCStore() *openSVCStore {
 
 // storeKey is the key an item is written under in the object.
 func storeKey(prefixed bool, it credstore.StoreItem) string {
-	if prefixed && it.Path != "" {
-		return it.Path + "_" + it.Key
+	if prefixed {
+		return it.PrefixedKey()
 	}
 	return it.Key
 }

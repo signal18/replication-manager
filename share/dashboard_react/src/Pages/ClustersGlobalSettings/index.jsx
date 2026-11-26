@@ -47,7 +47,7 @@ function ClustersGlobalSettings({ user }) {
   const [cloud18Tab, setCloud18Tab] = useState(0)
   // Cloud18 > Marketplace: Pricing and Gateway & Domain for a Cloud18 instance only
   const [marketplaceTab, setMarketplaceTab] = useState(0)
-  const marketplaceTabs = ['Peering', ...(monitor?.config?.cloud18 ? ['Pricing', 'Gateway & Domain'] : []), 'App Templates Repo']
+  const marketplaceTabs = ['Peering', ...(monitor?.config?.cloud18 ? ['Pricing', 'Gateway & Domain'] : []), 'Apps']
   return (
     <Flex className={styles.settingsContainer}>
       <StandbyBanner />
@@ -84,14 +84,19 @@ function ClustersGlobalSettings({ user }) {
                         </SectionFrame>
                       ]
                     : []),
-                  <SectionFrame key='templates' title='App Templates Repo'>
-                    <AppTemplateRepoSection
+                  <React.Fragment key='templates'>
+                    <SectionFrame title='App Templates Repo'>
+                      <AppTemplateRepoSection
                 scope='global'
                 config={monitor?.config}
                 canEdit={canEditGlobalSettings}
                 onSet={(setting, value) => dispatch(setGlobalSetting({ setting, value }))}
               />
-                  </SectionFrame>
+                    </SectionFrame>
+                    <SectionFrame title='App Containers'>
+                      <MarketplaceSettings config={monitor?.config} part='apps' />
+                    </SectionFrame>
+                  </React.Fragment>
                 ]}
               />
             ]}

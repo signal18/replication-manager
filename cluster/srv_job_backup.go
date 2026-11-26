@@ -3605,7 +3605,15 @@ func myLoaderGtidSet(set string) string {
 }
 
 func (server *ServerMonitor) JobReseedMyLoader(backupdir string, restoreUser bool) error {
-	return server.jobReseedMyLoader(backupdir, restoreUser, false)
+	return server.jobReseedMyLoader(backupdir, restoreUser, false, false)
+}
+
+// JobReseedMyLoaderReplica is the myloader restore of the shared logical replica reseed (ProcessReseedLogical,
+// see isOrdinaryMyLoaderReseed): the only caller whose restore gets the managed default options adapted to
+// the myloader release (#2433). JobReseedMyLoader, used by the rejoin by logical backup, and the excluded
+// reseeds keep the arguments as they are.
+func (server *ServerMonitor) JobReseedMyLoaderReplica(backupdir string, restoreUser bool) error {
+	return server.jobReseedMyLoader(backupdir, restoreUser, false, true)
 }
 
 // JobReseedMyLoaderFromParent loads another cluster's backup (a staging cluster seeded
@@ -3613,10 +3621,10 @@ func (server *ServerMonitor) JobReseedMyLoader(backupdir string, restoreUser boo
 // loaded and no account is replayed, so the node keeps its own root, replication and
 // monitoring accounts and the system tables of its own release, whatever the parent's.
 func (server *ServerMonitor) JobReseedMyLoaderFromParent(backupdir string) error {
-	return server.jobReseedMyLoader(backupdir, false, true)
+	return server.jobReseedMyLoader(backupdir, false, true, false)
 }
 
-func (server *ServerMonitor) jobReseedMyLoader(backupdir string, restoreUser bool, fromParent bool) error {
+func (server *ServerMonitor) jobReseedMyLoader(backupdir string, restoreUser bool, fromParent bool, replicaReseed bool) error {
 	cluster := server.ClusterGroup
 	if err := server.refuseColumnstoreReplicaDump(); err != nil {
 		return err
@@ -3670,7 +3678,9 @@ func (server *ServerMonitor) jobReseedMyLoader(backupdir string, restoreUser boo
 	fresh := server.CheckFreshNode()
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Logical restore (myloader) strategy for %s: fresh %t (%s)", server.URL, fresh.Fresh, fresh.Reason)
 
-	myargs := cluster.GetMyLoaderCompatibleOptions()
+	// the managed default options are adapted on the shared replica reseed path only: a restore on the master
+	// (--enable-binlog), the seeding from a parent and the rejoin by logical backup keep the arguments as they are
+	myargs := cluster.myLoaderRestoreArgs(adaptsMyLoaderDefaults(replicaReseed, server.URL == master.URL, fromParent))
 	if server.URL == master.URL {
 		myargs = append(myargs, "--enable-binlog")
 	}
@@ -8077,17 +8087,37 @@ func (server *ServerMonitor) ProcessReseedLogical(task string) error {
 		server.markReseedStoppedLinks([]string{cluster.Conf.MasterConn}, "restore of "+backupfile)
 
 		// positioned on its source only: a link pointing elsewhere is not moved (law T27)
+		var pointLogs string
+		var pointErr error
 		if ok, why := server.reseedLinkPointsToPrimary(); !ok {
 			linkOnSource = false
 			server.markReseedStoppedLinks([]string{cluster.Conf.MasterConn}, why+": the reseed does not move a link, rejoin the server")
 		} else if server.DBVersion.IsMySQLOrPercona() {
 			if server.HasMySQLGTID() {
-				cluster.pointSlaveToMasterWithMode(server, "MASTER_AUTO_POSITION")
+				pointLogs, pointErr = cluster.pointSlaveToMasterWithMode(server, "MASTER_AUTO_POSITION")
 			} else {
-				cluster.pointSlaveToMasterPositional(server)
+				pointLogs, pointErr = cluster.pointSlaveToMasterPositional(server)
 			}
 		} else {
-			cluster.pointSlaveToMasterWithMode(server, "SLAVE_POS")
+			pointLogs, pointErr = cluster.pointSlaveToMasterWithMode(server, "SLAVE_POS")
+		}
+		if pointErr != nil {
+			cluster.LogSQL(pointLogs, pointErr, server.URL, "Rejoin", config.LvlErr, "Failed to point %s to the primary before the restore: %s", server.URL, pointErr)
+			// Error 3079, a MySQL/Percona replica with several channels and the managed one not
+			// named: the statement did nothing and the relay log of the link stays in place. The
+			// restore that follows would put the data back to the backup and the replica would
+			// resume past the transactions it applied before, replication started, data short.
+			// The reseed ends here, before anything is loaded; the link stays stopped and WARN0252
+			// says so (law T27). Any other positioning error is logged above and the reseed goes on
+			// as it always did: some failed states, a restore that stopped half-way, are repaired by
+			// the next restore.
+			if server.DBVersion.IsMySQLOrPercona() && isReplicaMultipleChannelsError(pointErr) {
+				err := fmt.Errorf("reseed %s cancelled before the restore: positioning on the primary failed: %w", server.URL, pointErr)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error reseed %s on %s: %s", backupType, server.URL, err.Error())
+				server.MarkReseedFailed(err)
+				server.JobsUpdateStateRuntimeOnly(task, err.Error(), 5, 1)
+				return err
+			}
 		}
 	}
 
@@ -8146,7 +8176,13 @@ func (server *ServerMonitor) ProcessReseedLogical(task string) error {
 	}
 
 	if backupType == config.ConstBackupLogicalTypeMydumper {
-		err = server.JobReseedMyLoader(backupfile, cluster.Conf.BackupRestoreMysqlUser)
+		// the managed default options are adapted on this shared replica reseed path (#2433), except a PITR and the
+		// staging refresh, whose reload also comes here
+		if isOrdinaryMyLoaderReseed(isPITR, cluster.IsRefreshStaging, cluster.IsActiveStagingServer(server)) {
+			err = server.JobReseedMyLoaderReplica(backupfile, cluster.Conf.BackupRestoreMysqlUser)
+		} else {
+			err = server.JobReseedMyLoader(backupfile, cluster.Conf.BackupRestoreMysqlUser)
+		}
 		// the primary's position applies to a link pointing to the primary only (law T27)
 		if err == nil && server.IsSlave && !isPITR && linkOnSource {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Parsing mydumper metadata ")

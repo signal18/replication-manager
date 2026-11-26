@@ -273,6 +273,12 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 	case "api-secret-reveal-expire-hours":
 		val, _ := strconv.Atoi(value)
 		repman.Conf.APISecretRevealExpireHours = val
+	case "api-secret-reveal-admin-login-expire-minutes":
+		val, _ := strconv.Atoi(value)
+		repman.Conf.APISecretRevealAdminLoginExpireMinutes = val
+	case "api-secret-reveal-admin-login-max-per-hour":
+		val, _ := strconv.Atoi(value)
+		repman.Conf.APISecretRevealAdminLoginMaxPerHour = val
 	case "cloud18":
 		if value == "true" {
 			// Set Cloud18=true optimistically so the UI sees the state change immediately.
@@ -530,6 +536,23 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 			return fmt.Errorf("invalid boolean value for %s: %q", name, value)
 		}
 		repman.Conf.ProvAppTemplateRepoAllowOverride = parsed
+	case "prov-app-docker-runtime":
+		// the sandbox of the client app containers: the instance admin's, never a cluster's
+		// (scope server); applied at the next provisioning of each app
+		value = strings.TrimSpace(value)
+		if err := config.ValidateAppDockerRuntime(value); err != nil {
+			return err
+		}
+		repman.Conf.ProvAppDockerRuntime = value
+	case "prov-app-docker-trusted":
+		// the apps exempted from the sandbox: the instance admin's, never a cluster's (scope
+		// server, the cluster routes hand it to the global handler, the MCP refuses it);
+		// applied at the next provisioning or definition refresh of each app
+		value = strings.Join(config.AppDockerTrustedIDs(value), ",")
+		if err := config.ValidateAppDockerTrusted(value); err != nil {
+			return err
+		}
+		repman.Conf.ProvAppDockerTrusted = value
 	case "sysbench-binary-path":
 		_, storeValue, err := resolveExecutablePath(value, "sysbench-binary-path")
 		if err != nil {
@@ -665,6 +688,8 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 		repman.Conf.ApiSwaggerEnabled = isactive
 	case "api-secret-reveal":
 		repman.Conf.APISecretReveal = isactive
+	case "api-secret-reveal-admin-login":
+		repman.Conf.APISecretRevealAdminLogin = isactive
 	case "mcp-server":
 		repman.Conf.MCPServ = isactive
 		repman.restartMCPServer()
@@ -867,6 +892,8 @@ func (repman *ReplicationManager) switchRepmanSetting(name string) error {
 		repman.Conf.ApiSwaggerEnabled = !repman.Conf.ApiSwaggerEnabled
 	case "api-secret-reveal":
 		repman.Conf.APISecretReveal = !repman.Conf.APISecretReveal
+	case "api-secret-reveal-admin-login":
+		repman.Conf.APISecretRevealAdminLogin = !repman.Conf.APISecretRevealAdminLogin
 	case "mcp-server":
 		repman.Conf.MCPServ = !repman.Conf.MCPServ
 		repman.restartMCPServer()

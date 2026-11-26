@@ -58,6 +58,7 @@ export const clusterService = {
   putSecretKv,
   switchSecretKv,
   removeSecretKv,
+  pruneSecretHistory,
   getArchiveOffers,
   addArchive,
   editArchive,
@@ -1171,6 +1172,11 @@ function switchSecretKv(clusterName, entryName, enabled, baseURL) {
 
 function removeSecretKv(clusterName, entryName, baseURL) {
   return getApi(baseURL).post(`clusters/${clusterName}/secret-kv-actions/remove/${encodeURIComponent(entryName)}`)
+}
+
+// the past versions of one secret go from the version store; the instance's sysops only
+function pruneSecretHistory(clusterName, secretKey, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/secret-kv-actions/prune-history/${encodeURIComponent(secretKey)}`)
 }
 
 // archive list (#2091): secrets go in through add and edit and never come back

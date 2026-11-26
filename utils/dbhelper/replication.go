@@ -192,7 +192,7 @@ func ChangeMaster(db *sqlx.DB, opt ChangeMasterOpt, myver *version.Version) (str
 	}
 	cm = strings.Replace(cm, opt.Password, "XXX", -1)
 	if err != nil {
-		return cm, fmt.Errorf("Change "+masterOrSource+" statement %s failed, reason: %s", cm, err)
+		return cm, fmt.Errorf("Change "+masterOrSource+" statement %s failed, reason: %w", cm, err)
 	}
 	return cm, nil
 }

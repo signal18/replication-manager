@@ -193,10 +193,11 @@ func TestConfigForceSkipsNeedConfigFetch(t *testing.T) {
 	}
 }
 
-// need-config-refresh says "not needed" with a 500 and its text: no error; any other answer is one.
+// need-config-refresh says "not needed" with a 204 (with a 500 and its text up to v3.1.52):
+// no error; any other answer is one.
 func TestNeedConfigRefreshAnswers(t *testing.T) {
-	answer := http.StatusInternalServerError
-	text := "500 -No config refresh needed!"
+	answer := http.StatusNoContent
+	text := ""
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(answer)
 		w.Write([]byte(text))
@@ -204,7 +205,15 @@ func TestNeedConfigRefreshAnswers(t *testing.T) {
 	defer srv.Close()
 	c := &Client{BaseURL: srv.URL, Cluster: "c1", Server: "db1", Port: "3306", JobsKey: "jk", HTTP: srv.Client()}
 	if ok, err := c.NeedConfigRefresh(); ok || err != nil {
-		t.Fatalf("not needed: %v %v", ok, err)
+		t.Fatalf("not needed (204): %v %v", ok, err)
+	}
+	answer, text = http.StatusInternalServerError, "500 -No config refresh needed!"
+	if ok, err := c.NeedConfigRefresh(); ok || err != nil {
+		t.Fatalf("not needed (older replication-manager, 500): %v %v", ok, err)
+	}
+	answer, text = http.StatusInternalServerError, "500 -No valid server!"
+	if _, err := c.NeedConfigRefresh(); err == nil {
+		t.Fatal("no valid server is an error, not a no")
 	}
 	answer, text = http.StatusOK, "200 -Need config refresh!"
 	if ok, err := c.NeedConfigRefresh(); !ok || err != nil {

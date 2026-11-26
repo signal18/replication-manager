@@ -432,6 +432,43 @@ func (s *VersionStore) Take(held func(string) bool) map[string][]FileVersion {
 	return out
 }
 
+// Replace sets the versions of key, none removing the key; the next save writes the file.
+func (s *VersionStore) Replace(key string, versions []FileVersion) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(versions) == 0 {
+		delete(s.versions, key)
+	} else {
+		s.versions[key] = append([]FileVersion(nil), versions...)
+	}
+	s.dirty = true
+}
+
+// Prune keeps, of key's versions, what keep returns from them (oldest first), under the store's
+// lock: a version recorded meanwhile cannot be lost between the read and the write. With dryRun
+// nothing changes. It returns how many versions there were and how many stay.
+func (s *VersionStore) Prune(key string, dryRun bool, keep func(versions []FileVersion) []FileVersion) (before, after int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	versions := append([]FileVersion(nil), s.versions[key]...)
+	before = len(versions)
+	if before == 0 {
+		return 0, 0
+	}
+	kept := keep(versions)
+	after = len(kept)
+	if dryRun || after == before {
+		return before, after
+	}
+	if after == 0 {
+		delete(s.versions, key)
+	} else {
+		s.versions[key] = append([]FileVersion(nil), kept...)
+	}
+	s.dirty = true
+	return before, after
+}
+
 // MarkDirty asks the next save to write the file.
 func (s *VersionStore) MarkDirty() {
 	s.mu.Lock()
@@ -493,6 +530,17 @@ func (s *VersionStore) Empty() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return len(s.versions) == 0
+}
+
+// Counts is the number of versions of each key, never a value.
+func (s *VersionStore) Counts() map[string]int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make(map[string]int, len(s.versions))
+	for k, vs := range s.versions {
+		out[k] = len(vs)
+	}
+	return out
 }
 
 // Count is how many versions key has.

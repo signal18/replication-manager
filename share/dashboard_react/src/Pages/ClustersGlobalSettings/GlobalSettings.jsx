@@ -63,6 +63,9 @@ function GlobalSettings({ config, cards }) {
   const hLogHeartbeatLevel = `**Log HeartBeat Level**\n\nVerbosity of the heartbeat log channel.\n\nConfig: \`log-level-heartbeat\``
   const hApiV3 = `**Enable API v3**\n\nServes the v3 API (gRPC and its JSON gateway under \`/v3/\`) on the API port. The GUI and \`replication-manager-cli\` do not use it: they use the REST API under \`/api/\`. Off by default: a v3 request then gets 404. Applied live.\n\nConfig: \`api-v3-server\``
   const hSecretReveal = `**Mail Passwords as One-time Links**\n\nA password reaches a person by mail as a one-time link (\`<api-public-url>/reveal\`), never in the mail: the new password of a rotated user whose login is an email (who rotated it then does not see it), and the credentials mails (sponsor, DBA, sysadmin). The page shows it once after a click, then the link is gone; the secrets wait encrypted with the instance's key. Off: a rotated password is shown once to who rotated it, and the credentials mails are not sent. The link is built on API Public URL: it must be the address the recipients reach.\n\nConfig: \`api-secret-reveal\``
+  const hSecretRevealAdminLogin = `**Send the Admin Login by One-time Link**\n\nThe instance's sysops and extsysops signed in with Cloud18 get a "Send me the admin login" button in their user profile: the local admin login (the admin zone's) is mailed as a one-time link to the email of their own Cloud18 session, and the link opens only in that same person's signed-in session, while the role holds. The link carries no secret: the login is read when it is opened. Nothing is rotated. Needs Mail Passwords as One-time Links. Off: the button and its API are refused.\n\nConfig: \`api-secret-reveal-admin-login\``
+  const hSecretRevealAdminLoginExpire = `**Admin Login Link Expiry in Minutes**\n\nMinutes a one-time admin login link works when nobody opens it. Default 15.\n\nConfig: \`api-secret-reveal-admin-login-expire-minutes\``
+  const hSecretRevealAdminLoginMax = `**Admin Login Links per Hour**\n\nOne-time admin login links a person can ask for in an hour. Default 5.\n\nConfig: \`api-secret-reveal-admin-login-max-per-hour\``
   const hSecretRevealExpire = `**One-time Link Expiry in Hours**\n\nHours a one-time password link works when nobody opens it. Default 24.\n\nConfig: \`api-secret-reveal-expire-hours\``
   const hSwagger = `**Enable API Swagger**\n\nServes the interactive API explorer at \`/api-docs/\`.\n\nConfig: \`api-swagger-enabled\``
   const hLogApiAccess = `**Log API Access**\n\nKeeps the API calls that change something and the failed calls (method, path, status, duration, user, address) in memory for the Access Logs tab of the instance Dashboard; successful reads, the GUI's polling, are not kept. Never the query string, a header, a token or a secret value from the path. On by default.\n\nConfig: \`log-api-access\``
@@ -198,6 +201,48 @@ function GlobalSettings({ config, cards }) {
           showConfirmModal={true}
           confirmTitle={`Confirm change 'api-secret-reveal-expire-hours' to: `}
           onConfirm={(value) => dispatch(setGlobalSetting({ setting: 'api-secret-reveal-expire-hours', value: value }))}
+        />
+      )
+    },
+    {
+      globalSetting: 'api-secret-reveal-admin-login',
+      key: 'Send the Admin Login by One-time Link',
+      help: h(hSecretRevealAdminLogin, 'Send the Admin Login by One-time Link'),
+      value: (
+        <RMSwitch
+          confirmTitle={'Confirm switch global settings for the admin login by one-time link?'}
+          onChange={(_v, setRefresh) => dispatch(switchGlobalSetting({ setting: 'api-secret-reveal-admin-login', setRefresh }))}
+          isChecked={config?.apiSecretRevealAdminLogin}
+        />
+      )
+    },
+    {
+      globalSetting: 'api-secret-reveal-admin-login-expire-minutes',
+      key: 'Admin Login Link Expiry in Minutes',
+      help: h(hSecretRevealAdminLoginExpire, 'Admin Login Link Expiry in Minutes'),
+      value: (
+        <NumberInput
+          min={1}
+          value={config?.apiSecretRevealAdminLoginExpireMinutes}
+          showEditButton={true}
+          showConfirmModal={true}
+          confirmTitle={`Confirm change 'api-secret-reveal-admin-login-expire-minutes' to: `}
+          onConfirm={(value) => dispatch(setGlobalSetting({ setting: 'api-secret-reveal-admin-login-expire-minutes', value: value }))}
+        />
+      )
+    },
+    {
+      globalSetting: 'api-secret-reveal-admin-login-max-per-hour',
+      key: 'Admin Login Links per Hour',
+      help: h(hSecretRevealAdminLoginMax, 'Admin Login Links per Hour'),
+      value: (
+        <NumberInput
+          min={1}
+          value={config?.apiSecretRevealAdminLoginMaxPerHour}
+          showEditButton={true}
+          showConfirmModal={true}
+          confirmTitle={`Confirm change 'api-secret-reveal-admin-login-max-per-hour' to: `}
+          onConfirm={(value) => dispatch(setGlobalSetting({ setting: 'api-secret-reveal-admin-login-max-per-hour', value: value }))}
         />
       )
     },

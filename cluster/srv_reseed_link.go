@@ -45,6 +45,14 @@ func noReplicationChannel(err error) bool {
 	return errors.As(err, &e) && e.Number == 1617
 }
 
+// isReplicaMultipleChannelsError is error 3079 (ER_REPLICA_MULTIPLE_CHANNELS_CMD, ER_SLAVE_MULTIPLE_CHANNELS_CMD
+// before 8.0.22): a statement without a channel name on a MySQL/Percona replica that has several
+// channels. The statement is refused and changes nothing.
+func isReplicaMultipleChannelsError(err error) bool {
+	var e *mysql.MySQLError
+	return errors.As(err, &e) && e.Number == 3079
+}
+
 // reseedStoppedLinkList is the channels a reseed stopped and are not known to run again.
 func (server *ServerMonitor) reseedStoppedLinkList() []string {
 	server.reseedLinksMu.Lock()

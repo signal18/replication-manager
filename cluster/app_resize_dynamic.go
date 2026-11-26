@@ -164,6 +164,22 @@ func appOnNodes(nodes []string, anyNode bool, fn func(node string) error) error 
 	return errors.Join(errs...)
 }
 
+// appReloadSandboxCommand is the command of the reload task under a sandbox runtime: the
+// template's APP_RELOAD_COMMAND, run only once the shell has checked it is inside the
+// app's sandbox, never on the node. Under gVisor (runsc*) the kernel the shell reads is
+// gVisor's (/proc/version "...-gvisor", the node's is not); under another runtime, the
+// container files docker (/.dockerenv) and podman (/run/.containerenv) create, which the
+// node does not have. Fixed text: the runtime name only picks one of the two. Neither
+// " ;" nor " #" appear in it (the INI reader would take the rest as a comment).
+func appReloadSandboxCommand(runtime string) string {
+	if strings.HasPrefix(runtime, "runsc") {
+		return `/bin/sh -c 'read -r k </proc/version;case "$k" in *gvisor*) eval "$` + appReloadCommandVariable +
+			`";;*) echo "reload refused: not in the app sandbox" >&2;exit 1;;esac'`
+	}
+	return `/bin/sh -c 'if [ -e /.dockerenv ] || [ -e /run/.containerenv ];then eval "$` + appReloadCommandVariable +
+		`";else echo "reload refused: not in the app container" >&2;exit 1;fi'`
+}
+
 // appReloadCommand is the template's reload command (deployment variable
 // APP_RELOAD_COMMAND), "" when the app has none.
 func appReloadCommand(app *App) string {
@@ -179,11 +195,36 @@ func appReloadCommand(app *App) string {
 }
 
 // openSVCAddAppReloadSection adds task#reload to an app service whose template has a
-// reload command: a container of the app image in the PID and network namespaces of the
-// app, with the app's keys as environment (APP_CONFIGURATOR_SCRIPT, APP_RELOAD_COMMAND).
-// The orchestrator recreates it at each run, so it reads the keys of that moment.
+// reload command (APP_RELOAD_COMMAND), run by a live resize with the app's keys of that
+// moment as its environment (APP_CONFIGURATOR_SCRIPT, APP_RELOAD_COMMAND). Two forms:
+//
+//   - No sandbox runtime: a container of the app image, recreated at each run, in the PID
+//     and network namespaces of the app, so it signals the app's processes.
+//   - A sandbox runtime (prov-app-docker-runtime): the app's processes live in the
+//     sandbox's own kernel, and no second container, sandboxed or not, can join that PID
+//     namespace (in a gVisor task, /proc/1 is the task itself and the reload finds no
+//     php-fpm). The task is a host task that runs the command IN container#app, through
+//     the container's runtime (om3 task.host `container` keyword, an exec into the sandbox,
+//     the environment read by the agent at the run). The command refuses to run anywhere
+//     else (appReloadSandboxCommand): an agent that ignored the `container` keyword (om3
+//     only warns on an unknown keyword) would run it on the node, where it exits 1.
 func (cluster *Cluster) openSVCAddAppReloadSection(svcsection map[string]map[string]string, app *App) {
 	if appReloadCommand(app) == "" || (cluster.Conf.ProvType != "docker" && cluster.Conf.ProvType != "podman") {
+		return
+	}
+	// an invalid runtime stops the rendering in applyAppDockerRuntime
+	// a trusted app (prov-app-docker-trusted) runs under the node's runtime: the docker task
+	if runtime, err := cluster.appDockerRuntime(app); err == nil && runtime != "" {
+		task := map[string]string{
+			"type":                "host",
+			"container":           "container#app",
+			"configs_environment": app.GetOpenSVCDeploymentAppEnv(config.VariableTypeEnv),
+			"command":             appReloadSandboxCommand(runtime),
+		}
+		if app.AppConfig.ProvAppHATopology == "failover" {
+			task["shared"] = "true"
+		}
+		svcsection[appReloadTask] = task
 		return
 	}
 	task := map[string]string{
@@ -464,6 +505,22 @@ func (app *App) setLiveResizeError(msg string) {
 		defer app.Unlock()
 	}
 	app.LiveResizeError = msg
+}
+
+func (app *App) setServiceDefinitionError(msg string) {
+	if app.Mutex != nil {
+		app.Lock()
+		defer app.Unlock()
+	}
+	app.ServiceDefinitionError = msg
+}
+
+func (app *App) getServiceDefinitionError() string {
+	if app.Mutex != nil {
+		app.Lock()
+		defer app.Unlock()
+	}
+	return app.ServiceDefinitionError
 }
 
 func (app *App) getLiveResizeError() string {

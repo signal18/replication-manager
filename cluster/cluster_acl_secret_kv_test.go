@@ -45,3 +45,18 @@ func TestACL_SecretKvEntries(t *testing.T) {
 		}
 	}
 }
+
+// the prune of a secret's history is the instance's sysops' (cluster-server-credentials):
+// neither the sponsor nor an operator with cluster-settings reaches it
+func TestACL_SecretKvPruneHistory(t *testing.T) {
+	cl := setupACLTestCluster()
+	cl.APIUsers["operator"] = APIUser{User: "operator", Grants: map[string]bool{config.GrantClusterSettings: true, config.GrantDBConfigFlag: true}}
+	cl.APIUsers["sysops"] = APIUser{User: "sysops", Grants: map[string]bool{config.GrantClusterServerCredentials: true}}
+	url := "/api/clusters/" + cl.Name + "/secret-kv-actions/prune-history/api-credentials-external"
+	if cl.IsURLPassACL("operator", url, false) {
+		t.Error("operator reached the prune")
+	}
+	if !cl.IsURLPassACL("sysops", url, false) {
+		t.Error("sysops refused")
+	}
+}

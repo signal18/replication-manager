@@ -283,6 +283,7 @@ func (repman *ReplicationManager) moveServerKvOnce(e config.SecretKvConfig, m *s
 // recordServerKvWrittenAs: an entry's first successful write records the name it holds the
 // secrets under, from where the write went (the name may have changed since it was queued).
 func (repman *ReplicationManager) recordServerKvWrittenAs(entry string, items []credstore.StoreItem) {
+	repman.recordServerKvAlias(entry, items)
 	e, ok := repman.Conf.SecretKvActiveEntryAt(config.SecretKvLevelServer, entry)
 	if !ok || e.WrittenAs != "" || len(items) == 0 {
 		return
@@ -303,4 +304,90 @@ func (repman *ReplicationManager) recordServerKvWrittenAs(entry string, items []
 	if repman.Conf.SetSecretKvWrittenAsAt(config.SecretKvLevelServer, entry, name) {
 		repman.Save()
 	}
+}
+
+// recordServerKvAlias records the host an orchestrator store wrote the user list's documented
+// key under (<api host>_api-credentials, SecretKvConfig.AliasWrittenAs). When api-public-url
+// named another host before, the key under that host is not deleted (repman never deletes a
+// secret) and is no longer kept current: it gets a moved-to marker naming the new key, and a
+// WARN and a security event say so, so the operator removes it once nothing reads it.
+//
+// The new host is saved only once the old host's marker is written (its write comes back here):
+// until then the saved host is the old one, so a restart before the marker is written (the
+// queue is in memory) finds the move again at the next write and queues the markers again. The
+// move waiting for its marker is kept in memory (aliasPending) so the WARN is said once per run.
+func (repman *ReplicationManager) recordServerKvAlias(entry string, items []credstore.StoreItem) {
+	e, ok := repman.Conf.SecretKvEntryAt(config.SecretKvLevelServer, entry)
+	if !ok {
+		return
+	}
+	saved := e.AliasWrittenAs
+	k := &repman.serverSecretKv
+	host := ""
+	for _, it := range items {
+		if it.Alias && it.Key == apiCredentialsKey {
+			host = it.Path
+		}
+	}
+	k.mu.Lock()
+	pending := k.aliasPending[entry]
+	markerWritten := false
+	for _, it := range items {
+		// the old host's marker, naming the key of the move waiting for it: the move is done
+		if pending != "" && it.Key == ConstServerKvMovedTo && it.Alias && it.Path == saved &&
+			it.Version.Value == (credstore.StoreItem{Path: pending, Key: apiCredentialsKey}).PrefixedKey() {
+			markerWritten = true
+		}
+	}
+	if markerWritten {
+		delete(k.aliasPending, entry)
+	}
+	k.mu.Unlock()
+	if markerWritten {
+		if _, changed := repman.Conf.SetSecretKvAliasWrittenAsAt(config.SecretKvLevelServer, entry, pending); changed {
+			repman.Save()
+		}
+		saved = pending
+	}
+	if host == "" || host == saved {
+		return
+	}
+	if saved == "" {
+		// the first write: no old key, no marker
+		if _, changed := repman.Conf.SetSecretKvAliasWrittenAsAt(config.SecretKvLevelServer, entry, host); changed {
+			repman.Save()
+		}
+		return
+	}
+	k.mu.Lock()
+	if k.aliasPending == nil {
+		k.aliasPending = map[string]string{}
+	}
+	pending = k.aliasPending[entry]
+	k.aliasPending[entry] = host
+	k.mu.Unlock()
+	if pending == host {
+		return // queued already, waiting for its marker
+	}
+	// the keys as the writer names them (StoreItem.PrefixedKey: <path>_<key>)
+	newKey := credstore.StoreItem{Path: host, Key: apiCredentialsKey}.PrefixedKey()
+	oldKey := credstore.StoreItem{Path: saved, Key: apiCredentialsKey}.PrefixedKey()
+	oldMarker := credstore.StoreItem{Path: saved, Key: ConstServerKvMovedTo}.PrefixedKey()
+	msg := fmt.Sprintf("Server credential store %s: the user list is now kept under %s (api-public-url changed); %s keeps the value it had, passwords included, and is no longer updated, %s names the new key: delete %s in the orchestrator once nothing reads it", entry, newKey, oldKey, oldMarker, oldKey)
+	repman.Logrus.Warn(msg)
+	repman.logSecurityEvent("server_secret_kv_alias_moved", entry, "", msg)
+	// The marker under the new host names its own key: back on a host that was left before
+	// (A to B to A), its moved-to stops naming the key it had left for. A host that was waiting
+	// for its marker (a second change meanwhile) gets one too. A failed write is requeued by the
+	// runner (StoreQueue.Requeue).
+	now := time.Now().UTC()
+	marker := func(at string) credstore.StoreItem {
+		return credstore.StoreItem{Entry: entry, Path: at, Key: ConstServerKvMovedTo, Alias: true,
+			Version: credstore.Version{Value: newKey, At: now, By: repman.Conf.ArbitrationSasUniqueId}}
+	}
+	markers := []credstore.StoreItem{marker(saved), marker(host)}
+	if pending != "" && pending != saved && pending != host {
+		markers = append(markers, marker(pending))
+	}
+	repman.serverKvQueue().Push(markers...)
 }

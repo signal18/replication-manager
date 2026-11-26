@@ -1577,6 +1577,10 @@ func (cluster *Cluster) tickBody() {
 		cluster.CheckSecretKvStores()
 		// a skipped scheduled password rotation (#2269)
 		cluster.CheckScheduledPasswordRotation()
+		// the client apps of a Cloud18 instance run without the sandbox runtime
+		cluster.CheckAppSandboxRuntime()
+		// the apps the instance admin trusts run without the sandbox runtime
+		cluster.CheckAppDockerTrusted()
 		// Run generic log-tailer plugin checks (errorlog / sqlerrorlog / slowlog 24h)
 		cluster.CheckLogPlugins()
 		// Replication plugins: supervised on the active monitor only (#2015)
