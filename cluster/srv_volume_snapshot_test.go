@@ -104,7 +104,7 @@ func TestVolumeSnapshotterRefusals(t *testing.T) {
 	if err != nil {
 		t.Fatalf("on-premise SSH: %v", err)
 	}
-	if _, ok := vs.(*contractSnapshotter).exec.(*sshSnapshotExecutor); !ok {
+	if _, ok := vs.(*contractSnapshotter).exec.(*sshSnapshotExecutor); !ok || vs.(*contractSnapshotter).exec.(*sshSnapshotExecutor).server != server {
 		t.Fatalf("on-premise runs over SSH: %T", vs.(*contractSnapshotter).exec)
 	}
 	// the client's script wins over every plugin, on any orchestrator (F6)
@@ -197,7 +197,9 @@ func TestCheckVolumeSnapshotStates(t *testing.T) {
 	}
 	op, _ = cl.beginVolumeSnapshotOp(server, config.ConstSnapshotActionSnapback, "repman-1", "zfs")
 	cl.endVolumeSnapshotOp(op, VolumeSnapshotRun{}, nil)
-	op.SnapbackDone = true
+	if !cl.VolumeSnapshotOp(server).SnapbackDone {
+		t.Fatal("a snapback done is marked with its status")
+	}
 	server.IsMaintenance = true
 	cl.checkVolumeSnapshotStates()
 	if !inServerState(cl, "WARN0331", server) {
@@ -250,10 +252,10 @@ type shSnapshotExecutor struct{ bin, dir string }
 
 func (e *shSnapshotExecutor) Where() string { return "in a test" }
 
-func (e *shSnapshotExecutor) Exec(ctx context.Context, action string, env []string) (string, string, error) {
+func (e *shSnapshotExecutor) Exec(ctx context.Context, action string, env []string) (snapshotOutput, error) {
 	script, err := helperScript(env)
 	if err != nil {
-		return "", "", err
+		return snapshotOutput{}, err
 	}
 	cmd := exec.CommandContext(ctx, "sh", "-s", "--", action)
 	cmd.Env = append([]string{"PATH=" + e.bin + ":/usr/bin:/bin", "REPMAN_SNAPSHOT_SUDO=", "FAKE_DIR=" + e.dir}, env...)
@@ -385,4 +387,69 @@ func containsString(list []string, s string) bool {
 		}
 	}
 	return false
+}
+
+// stubExecutor answers a run with a fixed output, or blocks until the deadline.
+type stubExecutor struct {
+	out   snapshotOutput
+	err   error
+	block bool
+}
+
+func (e *stubExecutor) Where() string { return "stub" }
+
+func (e *stubExecutor) Exec(ctx context.Context, action string, env []string) (snapshotOutput, error) {
+	if e.block {
+		<-ctx.Done()
+		return e.out, ctx.Err()
+	}
+	return e.out, e.err
+}
+
+func TestSnapbackTimeoutIsHalfway(t *testing.T) {
+	_, server := newTestClusterServer(t)
+	m, _ := config.SnapshotPlugin(config.ConstSnapshotPluginZFS)
+	vs := &contractSnapshotter{manifest: m, exec: &stubExecutor{block: true}, timeout: 50 * time.Millisecond}
+	run, err := vs.Snapback(server, "repman-1")
+	if err == nil || !run.Changed {
+		t.Fatalf("a snapback stopped by its deadline is half-way: %v changed=%v", err, run.Changed)
+	}
+	// a take stopped by its deadline is a plain failure
+	if run, err := vs.Take(server, "repman-2"); err == nil || run.Changed {
+		t.Fatalf("take at its deadline: %v changed=%v", err, run.Changed)
+	}
+	// an output cut short: CHANGED may be past the cut
+	vs.exec = &stubExecutor{out: snapshotOutput{stdout: "CMD\tzfs\n", truncated: true}, err: os.ErrInvalid}
+	if run, _ := vs.Snapback(server, "repman-1"); !run.Changed {
+		t.Fatal("a failed snapback with a truncated output is half-way")
+	}
+	// a plain refusal before any change: not half-way, the error is the last line of stderr
+	vs.exec = &stubExecutor{out: snapshotOutput{stderr: "noise\nsnapshot not found\n"}, err: os.ErrInvalid}
+	run, err = vs.Snapback(server, "repman-1")
+	if run.Changed || err == nil || err.Error() != "snapshot not found" {
+		t.Fatalf("refusal: %v changed=%v", err, run.Changed)
+	}
+}
+
+func TestParseVolumeSnapshotOutputChangedAfterManyLines(t *testing.T) {
+	var b strings.Builder
+	for i := 0; i < volumeSnapshotMaxLines*5; i++ {
+		b.WriteString("log line\n")
+	}
+	b.WriteString("CHANGED\n")
+	if !parseVolumeSnapshotOutput(b.String()).Changed {
+		t.Fatal("CHANGED after many log lines is read")
+	}
+}
+
+func TestLimitedBufferTruncated(t *testing.T) {
+	var b limitedBuffer
+	b.Write(make([]byte, volumeSnapshotOutputMax-1))
+	if b.Truncated() {
+		t.Fatal("not yet")
+	}
+	b.Write([]byte("ab"))
+	if !b.Truncated() || len(b.String()) != volumeSnapshotOutputMax {
+		t.Fatalf("truncated=%v len=%d", b.Truncated(), len(b.String()))
+	}
 }

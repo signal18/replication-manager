@@ -38,7 +38,7 @@ func (repman *ReplicationManager) apiVolumeSnapshotProtectedHandler(router *mux.
 // volumeSnapshotServer resolves the cluster and the server of a request and checks its ACL;
 // nil when it answered the request with the error.
 func (repman *ReplicationManager) volumeSnapshotServer(w http.ResponseWriter, r *http.Request) (*cluster.Cluster, *cluster.ServerMonitor) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+	// no CORS wildcard on these routes: a snapback is destructive
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster == nil {

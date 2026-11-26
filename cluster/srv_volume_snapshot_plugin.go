@@ -25,7 +25,9 @@ import (
 
 var snapshotPluginsLoad sync.Once
 
-// LoadSnapshotPlugins registers the external snapshot plugins found, once per process: each
+// LoadSnapshotPlugins registers the external snapshot plugins found, once per process (the
+// registry is the process's, as for the archive plugins: the plugin directories derive from
+// working-dir, an instance setting, the same for every cluster): each
 // prints its manifests (a JSON array of config.SnapshotPluginManifest) on --manifest. An
 // unsigned one, or one that does not answer, is left out with a warning in the log.
 func (cluster *Cluster) LoadSnapshotPlugins() {
@@ -58,12 +60,12 @@ func (cluster *Cluster) loadSnapshotPlugin(bin string) error {
 	defer cancel()
 	cmd := exec.CommandContext(ctx, bin, "--manifest")
 	cmd.Env = archivePluginBaseEnv()
-	out, _, err := runSnapshotCmd(cmd, nil)
+	out, err := runSnapshotCmd(cmd, nil)
 	if err != nil {
 		return fmt.Errorf("--manifest: %w", err)
 	}
 	var list []config.SnapshotPluginManifest
-	if err := json.Unmarshal([]byte(out), &list); err != nil {
+	if err := json.Unmarshal([]byte(out.stdout), &list); err != nil {
 		return fmt.Errorf("--manifest: %w", err)
 	}
 	for _, m := range list {

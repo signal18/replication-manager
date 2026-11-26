@@ -100,6 +100,16 @@ child holds the snapshot; the LV unmounted). An error after `CHANGED` is half-wa
 is not started (ERR00123, status `halfway`). An error before it: the server is started again
 and the maintenance this run set is removed.
 
+Re-checked after the stop (`snapbackRefusal`): a switchover or failover started during the
+stop, or the server made master, ends the run before the rollback. A server in maintenance is no
+failover candidate, so the window is the stop itself. A snapback stopped by its deadline, or
+whose output was cut (`limitedBuffer.Truncated`), counts as changed: the remote program may
+still run (`ssh.SIGKILL` is sent, not every SSH server honours it), the server is not started.
+The start is confirmed through `WaitDatabaseStart` (Ping + Refresh, the monitor's SQL path);
+the stop by the port closing.
+
+The snapshot is crash-consistent (no lock, no flush): InnoDB recovers it at the start.
+
 Replication links (T27): the snapback stops the server and starts it; it issues no
 `CHANGE MASTER`, `RESET SLAVE` or `STOP SLAVE`. The volume carries the replica's own position
 (GTID state, relay log info) consistent with its data, and the replica resumes from it.
@@ -117,7 +127,9 @@ half-way, WARN0331 left in maintenance, WARN0332 the plugin can not run. Cluster
   at the deadline the SSH connection is closed or the process killed (`WaitDelay` for children
   holding the pipes). No action runs on the monitor tick; take, delete and snapback run in
   their own goroutine, one action per server at a time.
-- Output kept: 1 MiB per stream (`limitedBuffer`), 512 commands/snapshots/log lines per run.
+- Output kept: the first 1 MiB of stdout (`limitedBuffer`, the records come first), the last
+  4 KiB of stderr (`capBuffer`, the error is the last line), 512 commands/snapshots/log lines
+  per run; `CHANGED` is read wherever it is.
 
 ### Security
 

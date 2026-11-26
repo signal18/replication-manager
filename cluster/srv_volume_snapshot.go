@@ -24,6 +24,7 @@ import (
 	"github.com/signal18/replication-manager/share"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/state"
+	"golang.org/x/crypto/ssh"
 )
 
 // Volume snapshots (#2443, doc/implementation/cluster/VOLUME_SNAPSHOTS.md): a snapshot of the
@@ -66,9 +67,17 @@ type VolumeSnapshotter interface {
 	Snapback(server *ServerMonitor, name string) (VolumeSnapshotRun, error)
 }
 
+// snapshotOutput is what a run printed: the head of its standard output (the records, cut at
+// volumeSnapshotOutputMax, truncated then), the tail of its standard error (the error).
+type snapshotOutput struct {
+	stdout    string
+	truncated bool
+	stderr    string
+}
+
 // snapshotExecutor runs the contract's program for one action and returns its output.
 type snapshotExecutor interface {
-	Exec(ctx context.Context, action string, env []string) (stdout, stderr string, err error)
+	Exec(ctx context.Context, action string, env []string) (snapshotOutput, error)
 	Where() string // for the log: "on db1 over SSH", "with /usr/local/bin/snap.sh"
 }
 
@@ -111,16 +120,21 @@ func (c *contractSnapshotter) run(server *ServerMonitor, action, name string) (V
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Volume snapshot %s of %s (plugin %s) %s", action, server.URL, c.manifest.Name, c.exec.Where())
-	stdout, stderr, err := c.exec.Exec(ctx, action, env)
-	run := parseVolumeSnapshotOutput(stdout)
+	out, err := c.exec.Exec(ctx, action, env)
+	run := parseVolumeSnapshotOutput(out.stdout)
 	for _, cmd := range run.Commands {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Volume snapshot %s of %s ran: %s", action, server.URL, cmd)
+	}
+	if action == config.ConstSnapshotActionSnapback && err != nil && (ctx.Err() != nil || out.truncated) {
+		// what ran on the volume is not known (a deadline: the remote program may still run;
+		// an output cut short: a CHANGED past the cut): half-way, the server is never started
+		run.Changed = true
 	}
 	if err != nil {
 		if ctx.Err() == context.DeadlineExceeded {
 			return run, fmt.Errorf("stopped after %s (backup-snapshot-timeout)", c.timeout)
 		}
-		if msg := strings.TrimSpace(lastLine(strings.TrimSpace(stderr))); msg != "" {
+		if msg := strings.TrimSpace(lastLine(strings.TrimSpace(out.stderr))); msg != "" {
 			return run, errors.New(msg)
 		}
 		return run, err
@@ -137,7 +151,7 @@ func parseVolumeSnapshotOutput(out string) VolumeSnapshotRun {
 	run := VolumeSnapshotRun{Snapshots: []VolumeSnapshot{}, Commands: []string{}, Log: []string{}}
 	sc := bufio.NewScanner(strings.NewReader(out))
 	sc.Buffer(make([]byte, 64*1024), 1024*1024)
-	for n := 0; sc.Scan() && n < volumeSnapshotMaxLines*4; n++ {
+	for sc.Scan() {
 		line := strings.TrimRight(sc.Text(), "\r")
 		f := strings.Split(line, "\t")
 		switch f[0] {
@@ -268,33 +282,37 @@ func (e *sshSnapshotExecutor) Where() string {
 	return "on " + e.server.Host + " over SSH"
 }
 
-func (e *sshSnapshotExecutor) Exec(ctx context.Context, action string, env []string) (string, string, error) {
+func (e *sshSnapshotExecutor) Exec(ctx context.Context, action string, env []string) (snapshotOutput, error) {
 	client, err := e.server.ClusterGroup.OnPremiseConnect(e.server)
 	if err != nil {
-		return "", "", err
+		return snapshotOutput{}, err
 	}
 	defer client.Close()
 	script, err := helperScript(env)
 	if err != nil {
-		return "", "", err
+		return snapshotOutput{}, err
 	}
 	session, err := client.UnderlyingClient().NewSession()
 	if err != nil {
-		return "", "", err
+		return snapshotOutput{}, err
 	}
 	defer session.Close()
-	var stdout, stderr limitedBuffer
+	var stdout limitedBuffer
+	var stderr capBuffer
 	session.Stdin, session.Stdout, session.Stderr = script, &stdout, &stderr
 	done := make(chan error, 1)
 	go func() { done <- session.Run("sh -s -- " + shellQuote(action)) }()
 	select {
 	case err = <-done:
 	case <-ctx.Done():
-		// the deadline closes the connection: the run never holds its caller past it (F2)
+		// the deadline kills the remote run where the server honours the signal, then closes
+		// the connection: the run never holds its caller past it (F2). A remote program that
+		// outlives it is possible: a snapback stopped this way is half-way (run).
+		session.Signal(ssh.SIGKILL)
 		client.Close()
 		err = ctx.Err()
 	}
-	return stdout.String(), stderr.String(), err
+	return snapshotOutput{stdout: stdout.String(), truncated: stdout.Truncated(), stderr: stderr.String()}, err
 }
 
 // localSnapshotExecutor runs the helper on this host: the localhost orchestrator, whose
@@ -303,10 +321,10 @@ type localSnapshotExecutor struct{}
 
 func (e *localSnapshotExecutor) Where() string { return "on the replication-manager host" }
 
-func (e *localSnapshotExecutor) Exec(ctx context.Context, action string, env []string) (string, string, error) {
+func (e *localSnapshotExecutor) Exec(ctx context.Context, action string, env []string) (snapshotOutput, error) {
 	script, err := helperScript(env)
 	if err != nil {
-		return "", "", err
+		return snapshotOutput{}, err
 	}
 	cmd := exec.CommandContext(ctx, "sh", "-s", "--", action)
 	cmd.Env = append([]string{"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"}, env...)
@@ -323,24 +341,34 @@ type programSnapshotExecutor struct {
 
 func (e *programSnapshotExecutor) Where() string { return "with " + e.program }
 
-func (e *programSnapshotExecutor) Exec(ctx context.Context, action string, env []string) (string, string, error) {
+func (e *programSnapshotExecutor) Exec(ctx context.Context, action string, env []string) (snapshotOutput, error) {
 	cmd := exec.CommandContext(ctx, e.program, action)
 	cmd.Env = append(append([]string{}, e.baseEnv...), env...)
 	return runSnapshotCmd(cmd, nil)
 }
 
-func runSnapshotCmd(cmd *exec.Cmd, stdin io.Reader) (string, string, error) {
-	var stdout, stderr limitedBuffer
+func runSnapshotCmd(cmd *exec.Cmd, stdin io.Reader) (snapshotOutput, error) {
+	var stdout limitedBuffer
+	var stderr capBuffer // its tail: the error is the last line
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = stdin, &stdout, &stderr
 	cmd.WaitDelay = 5 * time.Second // a child keeping the pipes open does not hold the run
 	err := cmd.Run()
-	return stdout.String(), stderr.String(), err
+	return snapshotOutput{stdout: stdout.String(), truncated: stdout.Truncated(), stderr: stderr.String()}, err
 }
 
-// limitedBuffer keeps the first volumeSnapshotOutputMax bytes written to it (F4).
+// limitedBuffer keeps the first volumeSnapshotOutputMax bytes written to it (F4): the records,
+// printed first. capBuffer (the tail) is the one for standard error.
 type limitedBuffer struct {
-	mu  sync.Mutex
-	buf bytes.Buffer
+	mu        sync.Mutex
+	buf       bytes.Buffer
+	truncated bool
+}
+
+// Truncated tells whether bytes were dropped.
+func (b *limitedBuffer) Truncated() bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.truncated
 }
 
 const volumeSnapshotOutputMax = 1 << 20
@@ -348,12 +376,15 @@ const volumeSnapshotOutputMax = 1 << 20
 func (b *limitedBuffer) Write(p []byte) (int, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	if room := volumeSnapshotOutputMax - b.buf.Len(); room > 0 {
-		if len(p) > room {
-			b.buf.Write(p[:room])
-		} else {
-			b.buf.Write(p)
-		}
+	room := volumeSnapshotOutputMax - b.buf.Len()
+	switch {
+	case room <= 0:
+		b.truncated = b.truncated || len(p) > 0
+	case len(p) > room:
+		b.buf.Write(p[:room])
+		b.truncated = true
+	default:
+		b.buf.Write(p)
 	}
 	return len(p), nil
 }
@@ -368,10 +399,7 @@ func (b *limitedBuffer) String() string {
 // backup-snapshot off, a plugin refused (unknown, enterprise without the plan), or no way to
 // reach the database host for a plugin that runs there.
 func (cluster *Cluster) VolumeSnapshotter(server *ServerMonitor) (VolumeSnapshotter, error) {
-	if !cluster.Conf.BackupSnapshot {
-		return nil, errors.New("volume snapshots are off (backup-snapshot)")
-	}
-	m, err := cluster.Conf.SnapshotPluginAllowed()
+	m, err := cluster.volumeSnapshotRefusal()
 	if err != nil {
 		return nil, err
 	}
@@ -384,25 +412,41 @@ func (cluster *Cluster) VolumeSnapshotter(server *ServerMonitor) (VolumeSnapshot
 	case m.Name == config.ConstSnapshotPluginScript:
 		ex = &programSnapshotExecutor{program: strings.TrimSpace(cluster.Conf.BackupSnapshotScript), baseEnv: cluster.GetExecEnv()}
 	case m.External:
+		// nothing of this process: PATH, HOME and the wire version only (archivePluginBaseEnv)
 		ex = &programSnapshotExecutor{program: m.Binary, baseEnv: archivePluginBaseEnv()}
-	case m.Run == config.ConstSnapshotRunDatabaseHost:
-		switch orch := cluster.GetOrchestrator(); orch {
-		case config.ConstOrchestratorOnPremise:
-			if !cluster.Conf.OnPremiseSSH {
-				return nil, fmt.Errorf("snapshot plugin %s runs on the database host over SSH: onpremise-ssh is off", m.Name)
-			}
-			if server != nil {
-				ex = &sshSnapshotExecutor{server: server}
-			}
-		case config.ConstOrchestratorLocalhost:
-			ex = &localSnapshotExecutor{}
-		default:
-			return nil, fmt.Errorf("snapshot plugin %s runs on the database host, which orchestrator %s gives no access to: use the on-premise or localhost orchestrator, or a backup-snapshot-script", m.Name, orch)
-		}
+	case cluster.GetOrchestrator() == config.ConstOrchestratorLocalhost:
+		ex = &localSnapshotExecutor{}
 	default:
-		return nil, fmt.Errorf("snapshot plugin %s: nowhere to run it", m.Name)
+		ex = &sshSnapshotExecutor{server: server}
 	}
 	return &contractSnapshotter{manifest: m, exec: ex, timeout: timeout}, nil
+}
+
+// volumeSnapshotRefusal is the cluster's snapshot plugin, or why it can not run: backup-snapshot
+// off, a plugin refused (unknown, enterprise without the plan), or no way to reach the database
+// host for a plugin that runs there. No server needed: the state check reads it every tick.
+func (cluster *Cluster) volumeSnapshotRefusal() (config.SnapshotPluginManifest, error) {
+	if !cluster.Conf.BackupSnapshot {
+		return config.SnapshotPluginManifest{}, errors.New("volume snapshots are off (backup-snapshot)")
+	}
+	m, err := cluster.Conf.SnapshotPluginAllowed()
+	if err != nil {
+		return m, err
+	}
+	if m.Run != config.ConstSnapshotRunDatabaseHost || m.External || m.Name == config.ConstSnapshotPluginScript {
+		return m, nil
+	}
+	switch orch := cluster.GetOrchestrator(); orch {
+	case config.ConstOrchestratorOnPremise:
+		if !cluster.Conf.OnPremiseSSH {
+			return m, fmt.Errorf("snapshot plugin %s runs on the database host over SSH: onpremise-ssh is off", m.Name)
+		}
+		return m, nil
+	case config.ConstOrchestratorLocalhost:
+		return m, nil
+	default:
+		return m, fmt.Errorf("snapshot plugin %s runs on the database host, which orchestrator %s gives no access to: use the on-premise or localhost orchestrator, or a backup-snapshot-script", m.Name, orch)
+	}
 }
 
 // Volume snapshot action statuses.
@@ -456,6 +500,8 @@ func (cluster *Cluster) endVolumeSnapshotOp(op *VolumeSnapshotOp, run VolumeSnap
 	cluster.vsnap.mu.Lock()
 	defer cluster.vsnap.mu.Unlock()
 	op.End = time.Now()
+	// set with the status: a tick never sees a snapback done without its WARN0331
+	op.SnapbackDone = err == nil && op.Action == config.ConstSnapshotActionSnapback
 	op.Commands = append(op.Commands, run.Commands...)
 	if len(op.Commands) > volumeSnapshotMaxLines {
 		op.Commands = append([]string{}, op.Commands[len(op.Commands)-volumeSnapshotMaxLines:]...)
@@ -680,11 +726,6 @@ func (cluster *Cluster) SnapbackVolume(server *ServerMonitor, name string) error
 		run, err := cluster.runVolumeSnapback(server, vs, name)
 		cluster.logVolumeSnapshotEnd(server, op, err)
 		cluster.endVolumeSnapshotOp(op, run, err)
-		if err == nil {
-			cluster.vsnap.mu.Lock()
-			op.SnapbackDone = true
-			cluster.vsnap.mu.Unlock()
-		}
 	}()
 	return nil
 }
@@ -695,7 +736,9 @@ const volumeSnapshotDownTimeout = 5 * time.Minute
 func (cluster *Cluster) runVolumeSnapback(server *ServerMonitor, vs VolumeSnapshotter, name string) (run VolumeSnapshotRun, err error) {
 	setMaintenance := !server.IsMaintenance
 	defer func() {
-		// nothing changed and the server is back up: out of the maintenance this run set
+		// nothing changed and the server answers: out of the maintenance this run set. Safe even
+		// when the stop failed and the port never closed: the volume was not touched, the
+		// server is the one it was before the snapback
 		if err != nil && !run.Changed && setMaintenance && waitServerPort(server, true, time.Second) == nil {
 			server.DelMaintenance()
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Snapback of %s to %s did not change the volume: server out of maintenance again", server.URL, name)
@@ -709,8 +752,15 @@ func (cluster *Cluster) runVolumeSnapback(server *ServerMonitor, vs VolumeSnapsh
 	if err := cluster.StopDatabaseService(server); err != nil {
 		return VolumeSnapshotRun{}, fmt.Errorf("stop failed, nothing was changed: %w", err)
 	}
+	// the port closed: the SQL SHUTDOWN or the orchestrator stop is done (a server reachable on
+	// a socket only has no port to watch: it is not monitored by replication-manager either)
 	if err := waitServerPort(server, false, volumeSnapshotDownTimeout); err != nil {
 		return VolumeSnapshotRun{}, fmt.Errorf("the database did not stop, nothing was changed: %w", err)
+	}
+	// checked again once stopped: a switchover or a failover may have started meanwhile, or made
+	// this server the master (in maintenance it is no candidate, the check is the guard)
+	if why := cluster.snapbackRefusal(server); why != "" {
+		return VolumeSnapshotRun{}, fmt.Errorf("refused once the server was stopped, nothing was changed: %s", why)
 	}
 	run, err = vs.Snapback(server, name)
 	if err != nil && run.Changed {
@@ -724,7 +774,8 @@ func (cluster *Cluster) runVolumeSnapback(server *ServerMonitor, vs VolumeSnapsh
 		}
 		return run, fmt.Errorf("volume rolled back, the start failed: %w", serr)
 	}
-	if werr := waitServerPort(server, true, volumeSnapshotDownTimeout); werr != nil && err == nil {
+	// started: answered on SQL through the monitor's own path (Ping, Refresh), not a port
+	if werr := server.WaitDatabaseStart(); werr != nil && err == nil {
 		return run, fmt.Errorf("volume rolled back, the database did not start: %w", werr)
 	}
 	return run, err
@@ -766,7 +817,7 @@ func (cluster *Cluster) logVolumeSnapshotEnd(server *ServerMonitor, op *VolumeSn
 // WARN0332 snapshots switched on with a plugin that can not run.
 func (cluster *Cluster) checkVolumeSnapshotStates() {
 	if cluster.Conf.BackupSnapshot {
-		if _, err := cluster.VolumeSnapshotter(nil); err != nil {
+		if _, err := cluster.volumeSnapshotRefusal(); err != nil {
 			cluster.SetState("WARN0332", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0332"], err), ErrFrom: "BACKUP"})
 		}
 	}

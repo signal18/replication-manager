@@ -21,8 +21,9 @@ The zfs and lvm commands run **on the database host**:
 
 - with the **on-premise** orchestrator, over the SSH connection replication-manager already
   uses for that host (`onpremise-ssh`, `onpremise-ssh-credential`). The commands run as the
-  SSH user: root runs them itself, another user through `sudo -n` (grant it `zfs`, or `lvs`,
-  `lvcreate`, `lvremove`, `lvchange`, `lvconvert`, `umount`, `mount`);
+  SSH user: root runs them itself, another user through `sudo -n`: a sudoers entry without
+  password for `zfs`, or for `lvs`, `lvcreate`, `lvremove`, `lvchange`, `lvconvert`, `umount`
+  and `mount` (`findmnt` needs none);
 - with the **localhost** orchestrator, on the replication-manager host itself.
 
 On OpenSVC and Kubernetes the database host is not reachable that way: use your own script
@@ -60,6 +61,14 @@ Set `backup-snapshot-target` (a dataset `pool/dataset`, or `vg/lv`) to name it y
 
 In the GUI: cluster settings, Backups, Volume Snapshots.
 
+## Consistency
+
+A snapshot is **crash-consistent**: it is taken while the server runs, without a lock, as if
+the host had lost power at that instant. InnoDB recovers it at the start after a snapback, as
+after a crash. Tables of an engine without crash recovery (MyISAM, Aria without its log) may
+need a repair. The snapshot does not record a replication position: on a replica the position
+is the one its own volume holds (see Snapback).
+
 ## Taking, listing, deleting
 
 From the server menu, Backup, **Volume Snapshots**: the list of the server's snapshots, a
@@ -89,9 +98,15 @@ It is refused on the master (switch over first) and during a failover. Then:
 
 The replication links of the server are not changed: the volume holds the replication
 position of its own data, and the server resumes from there. The master must still have the
-binary logs from that position.
+binary logs from that position: when it purged them, the replica stops on a replication
+error and needs a reseed. Prefer a recent snapshot, and check the master's oldest binary log
+before a snapback to an old one.
 
-If the rollback fails before it changed anything, the server is started again and taken out
+The server is checked again once stopped: a switchover or failover started meanwhile, or the
+server become master, stops the snapback before the rollback.
+
+A snapback stopped by `backup-snapshot-timeout` counts as changed (the command may still run
+on the host): the server is left stopped. If the rollback fails before it changed anything, the server is started again and taken out
 of the maintenance the snapback put it in. If it fails after it changed the volume (a ZFS
 child dataset that could not be rolled back, a merge that failed), the server is **left
 stopped and in maintenance** (state ERR00123): check the volume, the commands are in the
