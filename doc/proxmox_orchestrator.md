@@ -119,3 +119,9 @@ without a VM in `prov-db-host-vmids` is upgraded without the host step.
 Two configuration warnings tell when the host step is on but has no effect:
 `WARN0350` (the cluster's orchestrator does not drive the hosts) and
 `WARN0351` (servers without a VM in `prov-db-host-vmids`, named).
+
+The VM counts as back only once Proxmox reports a new boot (its uptime
+restarted). On a setup where the uptime would not restart after an API
+reboot, the step fails at the timeout with "has not rebooted yet": the
+database is never upgraded on a guest that did not reboot. A status refused
+by Proxmox (the token, a privilege, no such VM) stops the step at once.

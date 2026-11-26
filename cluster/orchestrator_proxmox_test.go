@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/proxmox"
 	"github.com/signal18/replication-manager/utils/state"
 )
 
@@ -185,6 +186,7 @@ type recordingHostOrchestrator struct {
 	rebootTakes  time.Duration
 	uptime       func() time.Duration // the VM's uptime; nil: an hour before the reboot, then the time since it
 	rebootedAt   time.Time
+	statusErr    error // HostStatus answers it once the reboot was asked
 	deadlineSeen time.Time
 	cluster      *Cluster
 }
@@ -215,6 +217,9 @@ func (o *recordingHostOrchestrator) HostStatus(s *ServerMonitor) (HostStatus, er
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	o.calls = append(o.calls, "status "+s.URL)
+	if o.statusErr != nil && !o.rebootedAt.IsZero() {
+		return HostStatus{State: "unknown"}, o.statusErr
+	}
 	st := o.states[0]
 	if len(o.states) > 1 {
 		o.states = o.states[1:]
@@ -334,6 +339,33 @@ func TestRollingHostStepOldGuestStillUp(t *testing.T) {
 	}
 	if err := cl.rollingUpgradeHostStep(db1); err != nil {
 		t.Fatalf("a guest that reboots within the deadline is back: %v", err)
+	}
+}
+
+// A status the hypervisor refuses (4xx: token, privilege, no such VM) ends the wait at once
+// instead of retrying until the deadline.
+func TestRollingHostStepStatusRefusedFailsFast(t *testing.T) {
+	saveInterval, saveReach := hostWaitInterval, hostGuestReachable
+	defer func() { hostWaitInterval, hostGuestReachable = saveInterval, saveReach }()
+	hostWaitInterval = 10 * time.Millisecond
+	hostGuestReachable = func(string, time.Duration) error { return nil }
+
+	cl := proxmoxTestCluster(t, "https://pve.invalid:8006")
+	cl.Conf.ProvDbRollingUpgradeHost = true
+	cl.Conf.ProvDbHostRebootTimeout = 5
+	rec := newRecordingHostOrchestrator()
+	rec.states = []string{"running"}
+	rec.statusErr = &proxmox.APIError{StatusCode: http.StatusForbidden, Message: "Permission check failed (VM.Audit)"}
+	cl.Orchestrators = map[string]Orchestrator{config.ConstOrchestratorProxmox: rec}
+	db1 := &ServerMonitor{Name: "db1", Host: "10.0.0.1", Port: "3306", URL: "10.0.0.1:3306", ClusterGroup: cl}
+
+	start := time.Now()
+	err := cl.rollingUpgradeHostStep(db1)
+	if err == nil || !strings.Contains(err.Error(), "refuses the status") || !strings.Contains(err.Error(), "VM.Audit") {
+		t.Fatalf("a refused status must end the step with its reason: %v", err)
+	}
+	if time.Since(start) > time.Second {
+		t.Fatalf("a refused status was retried until the deadline (%s)", time.Since(start))
 	}
 }
 

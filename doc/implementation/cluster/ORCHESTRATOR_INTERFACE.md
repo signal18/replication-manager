@@ -1374,7 +1374,15 @@ and where it differs from 10.4:
   guest's uptime only grows from before, so it never passes; a VM whose status could not be
   read before is judged on the time since the request alone. The Proxmox uptime is used
   rather than the guest's `boot_id` over SSH: it comes from the same API call as the state,
-  and needs no session into a guest that is going down. The full `rollingServer` sequence of
+  and needs no session into a guest that is going down. Two limits, both failing closed (the step times out, the
+  database is never upgraded on a guest that did not reboot): the rule needs the Proxmox
+  uptime to restart on an API reboot (the QEMU process is restarted, so it should: the T13
+  run checks it, with and without the guest agent); and a VM booted less than 2 s before the
+  request is taken back only by a poll that lands while its new uptime is still lower than
+  that, which the 2 s poll can miss (the upgrade script runs in the guest just before, so a
+  guest that young does not happen in practice). A status the hypervisor refuses (4xx: the
+  token, a privilege, no such VM) ends the wait at once; a network error or a 5xx is retried
+  until the deadline. The full `rollingServer` sequence of
   10.2 is still step 2's.
 - **States.** `CheckRollingUpgradeHost`, each tick, config domain, WARNING, no I/O:
   `WARN0350` (host step on, backend without hosts; the design's WARN0342), `WARN0351` (servers

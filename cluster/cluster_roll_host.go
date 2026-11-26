@@ -14,6 +14,7 @@ import (
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/misc"
+	"github.com/signal18/replication-manager/utils/proxmox"
 	"github.com/signal18/replication-manager/utils/state"
 )
 
@@ -149,7 +150,11 @@ func (cluster *Cluster) waitHostBack(server *ServerMonitor, orch Orchestrator, b
 	last := "no answer yet"
 	for {
 		st, err := orch.HostStatus(server)
+		var apiErr *proxmox.APIError
 		switch {
+		case errors.As(err, &apiErr) && apiErr.StatusCode >= 400 && apiErr.StatusCode < 500:
+			// refused (token, privilege, no such VM): waiting cannot change the answer
+			return fmt.Errorf("the hypervisor refuses the status of the VM: %w", err)
 		case err != nil:
 			last = err.Error()
 		case st.State != "running":
