@@ -23,6 +23,14 @@ the **CDC core**, a library shared by every **destination plugin**: one plugin p
   - The keys of the loaded rows are in the deletes, so a checkpoint applied twice gives the same
     table.
   - The capture pauses while the checkpoints not applied exceed `max_pending_mb` (the bound, F3).
+    The pause is told without the capture's lock (it holds it while it waits), and a status
+    line keeps coming while it lasts.
+  - A period closes only at a transaction's end: a GTID event closes the previous transaction,
+    an XID or not (a COMMIT of a non-transactional table). One source transaction is held whole
+    in memory: a transaction of more row events than `max_pending_mb` stops the plugin with
+    that reason (WARN0242) instead of growing without bound (F4).
+  - A `RENAME TABLE` or `DROP TABLE` on the source is a DDL like any other: WARN0341, the copy
+    keeps its rows.
 - **Apply** (wire 2): the plugin applies its checkpoints itself, in order: to the destination, or
   to the staging (below). The last one applied is in `<name>.applied.json`, and its file is then
   removed. A failure is retried; its text is in the status (WARN0243).
@@ -70,8 +78,12 @@ grows on the child's disk until its merge (F3).
   - a checkpoint staged twice gives the same staging.
 
   Every merge interval, per table, one destination transaction deletes the staged keys (batches
-  of 1000 explicit keys) and inserts the staged rows (`INSERT ... SELECT`). Only then is the
-  staging purged, both tables in one InnoDB transaction.
+  of 1000 explicit keys) and inserts the staged rows (`INSERT ... SELECT` of the columns both
+  tables have, by name: a destination changed by hand after a DDL keeps merging). Only then is
+  the staging purged, both tables in one InnoDB transaction. The tables merged are the carried
+  ones and every table the staging holds (its rows tables name it in their comment), so rows
+  staged for a table no longer carried are not lost. The apply's connections are never pooled:
+  each one leaves with its session and any transaction.
 
   There is no transaction across InnoDB and the destination, so a merge stopped anywhere is run
   again whole and gives the same table. The last merge is `<name>.merged.json`, its state

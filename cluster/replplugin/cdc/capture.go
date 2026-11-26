@@ -35,7 +35,9 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -69,6 +71,11 @@ type capture struct {
 	st       wire.Status
 	keyErrs  map[string]bool
 	ap       *applier // what the apply did, in the status
+	// pausedMB: the checkpoints waiting while the capture is paused on max_pending_mb, 0 when
+	// it is not; set without c.mu, which the paused capture holds
+	pausedMB atomic.Int64
+	last     atomic.Pointer[wire.Status] // the last status line, printed again while paused
+	txCap    int64                       // a source transaction larger than this stops the plugin
 }
 
 func (c *capture) buf(t *schema.Table) *tableBuf {
@@ -137,6 +144,11 @@ func (c *capture) OnRow(e *canal.RowsEvent) error {
 	}
 	c.rows += len(e.Rows)
 	c.size += int64(e.Header.EventSize)
+	if c.inTx && c.txCap > 0 && c.size > c.txCap {
+		// a period closes only at a transaction's end: one larger than the pending bound
+		// would be held whole in memory (F4), the plugin stops and says so
+		return fmt.Errorf("a source transaction of more than %d MB of row events (max_pending_mb): too large for one checkpoint", c.txCap>>20)
+	}
 	if c.size >= c.maxSize {
 		c.flushDue = true // at the transaction's end
 	}
@@ -147,6 +159,18 @@ func (c *capture) OnXID(_ *replication.EventHeader, _ mysql.Position) error {
 	c.mu.Lock()
 	c.inTx = false
 	c.mu.Unlock()
+	return nil
+}
+
+// OnGTID: a transaction starts, so the previous one ended, also one without an XID (a
+// COMMIT of a non-transactional table): a period due closes there.
+func (c *capture) OnGTID(_ *replication.EventHeader, _ mysql.BinlogGTIDEvent) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.inTx = false
+	if c.flushDue {
+		return c.flushLocked()
+	}
 	return nil
 }
 
@@ -231,13 +255,45 @@ func (c *capture) statusLocked(state, errText string) {
 	c.st.State = state
 	c.st.Error = errText
 	c.st.GTID = c.state.GTID
+	c.st.Description = pausedDescription(c.st.Description, c.pausedMB.Load(), c.cfg.MaxPendingMB)
 	if c.ap != nil {
 		c.ap.fill(&c.st)
 	}
 	if c.lastTS > 0 {
 		c.st.LagSeconds = time.Now().Unix() - int64(c.lastTS)
 	}
+	st := c.st
+	c.last.Store(&st)
 	b, _ := json.Marshal(c.st)
+	fmt.Println(string(b))
+}
+
+// pausedDescription is desc with the pause said while there is one, and taken out after.
+func pausedDescription(desc string, pausedMB int64, maxPendingMB int) string {
+	const prefix = "paused: "
+	if strings.HasPrefix(desc, prefix) {
+		desc = ""
+	}
+	if pausedMB > 0 {
+		return fmt.Sprintf("%s%d MB of checkpoints wait to be applied (max_pending_mb %d)", prefix, pausedMB, mbBytes(maxPendingMB)>>20)
+	}
+	return desc
+}
+
+// pausedStatus prints the last status line again, the pause and the apply updated, without
+// c.mu: the paused capture holds it.
+func (c *capture) pausedStatus() {
+	last := c.last.Load()
+	if last == nil {
+		return
+	}
+	st := *last
+	st.Time = time.Now().UTC().Format(time.RFC3339)
+	st.Description = pausedDescription(st.Description, c.pausedMB.Load(), c.cfg.MaxPendingMB)
+	if c.ap != nil {
+		c.ap.fill(&st)
+	}
+	b, _ := json.Marshal(st)
 	fmt.Println(string(b))
 }
 
@@ -375,10 +431,9 @@ func Main(dest Destination) {
 	ap := &applier{dest: dest, cfg: cfg, path: *configPath}
 	c := &capture{cfg: cfg, statePath: statePath, state: state, bufs: map[string]*tableBuf{}, keyErrs: map[string]bool{}, gtid: state.GTID, opened: time.Now(), ap: ap,
 		maxSize: sizeBytes(cfg.BatchMB), maxAge: time.Duration(cfg.BatchTimeoutMs) * time.Millisecond}
+	c.txCap = mbBytes(cfg.MaxPendingMB)
 	c.w = &checkpointWriter{dir: wire.CheckpointDir(*configPath), maxPending: mbBytes(cfg.MaxPendingMB), paused: func(p int64) {
-		c.mu.Lock()
-		c.st.Description = fmt.Sprintf("paused: %d MB of checkpoints wait to be applied (max_pending_mb %d)", p>>20, mbBytes(cfg.MaxPendingMB)>>20)
-		c.mu.Unlock()
+		c.pausedMB.Store(p >> 20) // c.mu is held by the caller: never taken here
 	}}
 
 	ccfg := canal.NewDefaultConfig()
@@ -415,6 +470,14 @@ func Main(dest Destination) {
 	statusEvery := time.Duration(cfg.BatchTimeoutMs) * time.Millisecond
 	lastStatus := time.Now()
 	tick := func() {
+		if c.pausedMB.Load() > 0 {
+			// the capture waits for room with its lock held: only a status line
+			if time.Since(lastStatus) >= statusEvery {
+				lastStatus = time.Now()
+				c.pausedStatus()
+			}
+			return
+		}
 		if err := c.tick(); err != nil {
 			fail(c, err)
 		}

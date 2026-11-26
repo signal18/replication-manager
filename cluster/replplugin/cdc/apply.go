@@ -82,6 +82,9 @@ func TargetDB(cfg wire.Config) (*sqlx.DB, error) {
 		return nil, err
 	}
 	db.SetMaxOpenConns(4)
+	// never a pooled connection: each one leaves with its session (sql_log_bin=0, MIXED) and,
+	// after a cancellation, maybe a transaction
+	db.SetMaxIdleConns(0)
 	return db, nil
 }
 
@@ -100,7 +103,18 @@ func (a *applier) session(ctx context.Context, db *sqlx.DB) (*sqlx.Conn, error) 
 	return conn, nil
 }
 
+// run applies until ctx ends; a panic is said and the apply starts again a round later.
 func (a *applier) run(ctx context.Context) {
+	for ctx.Err() == nil {
+		a.runOnce(ctx)
+		select {
+		case <-ctx.Done():
+		case <-time.After(applyEvery):
+		}
+	}
+}
+
+func (a *applier) runOnce(ctx context.Context) {
 	defer func() {
 		if p := recover(); p != nil {
 			a.setErr(fmt.Errorf("panic in the apply: %v", p))
@@ -248,7 +262,13 @@ func (a *applier) merge(ctx context.Context, db *sqlx.DB) error {
 		return err
 	}
 	defer reader.Close()
-	return mergeAll(ctx, conn, reader, st.Tables)
+	// the carried tables and every table the staging holds (a table no longer carried keeps
+	// its staged rows until they are merged)
+	tables, err := stagedTables(ctx, reader, st.Tables)
+	if err != nil {
+		return err
+	}
+	return mergeAll(ctx, conn, reader, tables)
 }
 
 func readApplied(path string) (wire.Applied, error) {

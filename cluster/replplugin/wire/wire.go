@@ -81,8 +81,9 @@ type Config struct {
 	// SourceChannel: the target's native replication channel from the same source, which
 	// ignores the tables this plugin carries (replicate_ignore_table), "" when none
 	SourceChannel string `toml:"source_channel" json:"sourceChannel"`
-	// Destination: how replication-manager applies the checkpoints to the target, the
-	// destination of the CDC core: "columnstore" (also when empty), or the name of an external destination plugin
+	// Destination: the destination the plugin applies its checkpoints to (wire 2: the plugin
+	// applies them, replication-manager supervises): "columnstore" (also when empty), or the
+	// name of an external destination plugin
 	Destination string `toml:"destination" json:"destination"`
 	// SourceCluster: the cluster of the source server, whose master or replica
 	// replication-manager keeps as the source (replication-plugin-source); "" none
@@ -92,7 +93,7 @@ type Config struct {
 	MergeIntervalMs int `toml:"merge_interval_ms" json:"mergeIntervalMs"`
 }
 
-// MergedPath is the file replication-manager records the last merge of the staging in.
+// MergedPath is the file the plugin records the last merge of its staging in.
 func MergedPath(configPath string) string {
 	return strings.TrimSuffix(configPath, filepath.Ext(configPath)) + ".merged.json"
 }
@@ -292,7 +293,8 @@ func RulesOf(tables []string) []Rule {
 	return rules
 }
 
-// Applied is what replication-manager applied to the target, <name>.applied.json.
+// Applied is what the plugin applied to the target, <name>.applied.json (replication-manager
+// applied it before wire 2).
 type Applied struct {
 	Seq  int64  `json:"seq"`
 	GTID string `json:"gtid"`

@@ -101,7 +101,7 @@ func ApplyDeleteThenLoad(ctx context.Context, conn *sqlx.Conn, schema, table str
 			}
 		}
 		if err := sc.Err(); err != nil {
-			return "", err
+			return "", fmt.Errorf("keys of %s.%s in the checkpoint: %w", schema, table, err)
 		}
 		if len(batch) > 0 {
 			if q, err := flush(); err != nil {

@@ -186,3 +186,50 @@ func quoteColumns(cols []string) string {
 	}
 	return strings.Join(q, ", ")
 }
+
+// InsertSelectColumns copies the columns cols of every row of srcSchema.srcTable into the
+// same columns of dstSchema.dstTable: the merge of the staged rows, by name, so a destination
+// changed after a DDL keeps merging.
+func InsertSelectColumns(ctx context.Context, conn *sqlx.Conn, dstSchema, dstTable, srcSchema, srcTable string, cols []string) (string, error) {
+	if len(cols) == 0 {
+		return "", fmt.Errorf("no common column between %s.%s and %s.%s", dstSchema, dstTable, srcSchema, srcTable)
+	}
+	dst, err := QuoteMySQLTableIdentifier(dstSchema + "." + dstTable)
+	if err != nil {
+		return "", err
+	}
+	src, err := QuoteMySQLTableIdentifier(srcSchema + "." + srcTable)
+	if err != nil {
+		return "", err
+	}
+	list := quoteColumns(cols)
+	query := "INSERT INTO " + dst + " (" + list + ") SELECT " + list + " FROM " + src
+	_, err = conn.ExecContext(ctx, query)
+	return query, err
+}
+
+// GetColumnNamesConn lists the columns of schema.table in their order.
+func GetColumnNamesConn(ctx context.Context, conn *sqlx.Conn, schema, table string) ([]string, string, error) {
+	query := "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? ORDER BY ORDINAL_POSITION"
+	var cols []string
+	err := conn.SelectContext(ctx, &cols, query, schema, table)
+	return cols, query, err
+}
+
+// GetCommonColumnNames lists the columns of schemaA.tableA that schemaB.tableB has too, in
+// tableA's order.
+func GetCommonColumnNames(ctx context.Context, conn *sqlx.Conn, schemaA, tableA, schemaB, tableB string) ([]string, string, error) {
+	query := "SELECT a.COLUMN_NAME FROM information_schema.COLUMNS a JOIN information_schema.COLUMNS b ON b.TABLE_SCHEMA = ? AND b.TABLE_NAME = ? AND b.COLUMN_NAME = a.COLUMN_NAME WHERE a.TABLE_SCHEMA = ? AND a.TABLE_NAME = ? ORDER BY a.ORDINAL_POSITION"
+	var cols []string
+	err := conn.SelectContext(ctx, &cols, query, schemaB, tableB, schemaA, tableA)
+	return cols, query, err
+}
+
+// GetTableCommentsBySuffix lists the comments of the tables of schema whose name ends with
+// suffix (taken literally).
+func GetTableCommentsBySuffix(ctx context.Context, conn *sqlx.Conn, schema, suffix string) ([]string, string, error) {
+	query := "SELECT TABLE_COMMENT FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND RIGHT(TABLE_NAME, CHAR_LENGTH(?)) = ?"
+	var out []string
+	err := conn.SelectContext(ctx, &out, query, schema, suffix, suffix)
+	return out, query, err
+}

@@ -74,13 +74,47 @@ func stage(ctx context.Context, conn *sqlx.Conn, dest Destination, m wire.Manife
 			return err
 		}
 		if _, err := dest.Apply(ctx, conn, StagingSchema, rows, t, files, name(t), addKeys); err != nil {
-			conn.ExecContext(ctx, "ROLLBACK")
+			rollbackFresh(conn)
 			return err
 		}
 	}
 	_, err := conn.ExecContext(ctx, "COMMIT")
 	return err
 }
+
+// rollbackFresh rolls back with a context of its own: the caller's may be the cancelled one.
+func rollbackFresh(conn *sqlx.Conn) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	conn.ExecContext(ctx, "ROLLBACK")
+}
+
+// stagedTables are the carried tables and those the staging holds (its rows tables name
+// their table in their comment), each once.
+func stagedTables(ctx context.Context, reader *sqlx.Conn, carried []string) ([]string, error) {
+	seen := map[string]bool{}
+	var out []string
+	for _, t := range carried {
+		if !seen[t] {
+			seen[t] = true
+			out = append(out, t)
+		}
+	}
+	comments, _, err := dbhelper.GetTableCommentsBySuffix(ctx, reader, StagingSchema, "__r")
+	if err != nil {
+		return nil, err
+	}
+	for _, cm := range comments {
+		if t, ok := strings.CutPrefix(cm, stagingCommentPrefix); ok && !seen[t] {
+			seen[t] = true
+			out = append(out, t)
+		}
+	}
+	return out, nil
+}
+
+// stagingCommentPrefix starts the comment of a rows table: the table it stages follows
+const stagingCommentPrefix = "replication-manager staging of "
 
 func readMerged(path string) (*merged, error) {
 	b, err := os.ReadFile(path)
@@ -123,8 +157,8 @@ func mergeAll(ctx context.Context, conn, reader *sqlx.Conn, tables []string) err
 
 func mergeTable(ctx context.Context, conn, reader *sqlx.Conn, schema, table string) error {
 	rows, keys := StagingNames(schema, table)
-	var keyColumns []string
-	if err := reader.SelectContext(ctx, &keyColumns, "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? ORDER BY ORDINAL_POSITION", StagingSchema, keys); err != nil {
+	keyColumns, _, err := dbhelper.GetColumnNamesConn(ctx, reader, StagingSchema, keys)
+	if err != nil {
 		return err
 	}
 	if len(keyColumns) == 0 {
@@ -134,7 +168,7 @@ func mergeTable(ctx context.Context, conn, reader *sqlx.Conn, schema, table stri
 		return err
 	}
 	rollback := func(err error) error {
-		conn.ExecContext(ctx, "ROLLBACK")
+		rollbackFresh(conn)
 		return err
 	}
 	if q, err := dbhelper.ForEachKeyBatch(ctx, reader, StagingSchema, keys, keyColumns, mergeKeysBatch, func(batch [][]interface{}) error {
@@ -143,7 +177,14 @@ func mergeTable(ctx context.Context, conn, reader *sqlx.Conn, schema, table stri
 	}); err != nil {
 		return rollback(fmt.Errorf("delete of the staged keys: %w (%s)", err, q))
 	}
-	if q, err := dbhelper.InsertSelectAll(ctx, conn, schema, table, StagingSchema, rows); err != nil {
+	// the columns both tables have: the destination changed by hand after a DDL on the source
+	// (WARN0341) keeps merging, a column it lacks is left out, one the staging lacks takes its
+	// default
+	cols, _, err := dbhelper.GetCommonColumnNames(ctx, reader, StagingSchema, rows, schema, table)
+	if err != nil {
+		return rollback(err)
+	}
+	if q, err := dbhelper.InsertSelectColumns(ctx, conn, schema, table, StagingSchema, rows, cols); err != nil {
 		return rollback(fmt.Errorf("insert of the staged rows: %w (%s)", err, q))
 	}
 	if _, err := conn.ExecContext(ctx, "COMMIT"); err != nil {
@@ -159,6 +200,6 @@ func mergeTable(ctx context.Context, conn, reader *sqlx.Conn, schema, table stri
 			return rollback(err)
 		}
 	}
-	_, err := conn.ExecContext(ctx, "COMMIT")
+	_, err = conn.ExecContext(ctx, "COMMIT")
 	return err
 }

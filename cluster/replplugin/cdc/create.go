@@ -40,16 +40,23 @@ func runCreate(cfg wire.Config, dest Destination) int {
 		}
 	}
 	out := json.NewEncoder(os.Stdout)
+	// each schema listed once, each table examined once (two rules on one schema)
+	schemas, seen := map[string]bool{}, map[string]bool{}
 	for _, r := range cfg.Rules {
+		if schemas[strings.ToLower(r.Schema)] {
+			continue
+		}
+		schemas[strings.ToLower(r.Schema)] = true
 		tables, q, err := dbhelper.GetTablesByEngine(db, nil, "", r.Schema, "")
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "%s: %s\n", q, err)
 			return 1
 		}
 		for _, t := range tables {
-			if !cfg.Matches(t.Schema, t.Table) {
+			if !cfg.Matches(t.Schema, t.Table) || seen[t.Schema+"."+t.Table] {
 				continue
 			}
+			seen[t.Schema+"."+t.Table] = true
 			res := wire.CreateResult{Table: t.Schema + "." + t.Table, Engine: t.Engine}
 			d, err := ReadTableDesc(db, t.Schema, t.Table)
 			if err != nil {
