@@ -54,6 +54,11 @@ you name goes through the same checks: never a pool root, it must hold every ser
 and (ZFS) no dataset under it may hold something else; an LVM volume you name must be the one of
 the server's directories.
 
+So the server's directories must all sit under one dataset below the pool root (for example
+`tank/db/data`, `tank/db/redo`, `tank/db/binlog` under `tank/db`) holding nothing else, or on one
+LVM volume. A layout that spreads them over the pool (`tank/mysql/data` and `tank/binlog`) can not
+be snapshotted by the built-in backends: move them, or use `backup-snapshot-script`.
+
 An LVM snapshot of a thick volume has a fixed copy-on-write space (`backup-snapshot-lvm-size`):
 when the writes after the snapshot fill it, LVM invalidates the snapshot and a snapback to it
 fails. Size it for the writes of the time you keep it, or use a thin volume.

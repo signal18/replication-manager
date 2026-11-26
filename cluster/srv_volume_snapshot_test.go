@@ -706,6 +706,15 @@ func TestVolumeSnapshotHelperZFSNamedTargetChecked(t *testing.T) {
 	if strings.Contains(string(calls), "zfs snapshot") {
 		t.Fatalf("a refused target was snapshotted: %s", calls)
 	}
+	// the datadir and the redo log on siblings under the pool root: only the root holds both,
+	// named or not it is refused
+	os.WriteFile(filepath.Join(dir, "mounts"), []byte(data+" tank/mysql/data zfs\n"+redo+" tank/binlog zfs\n"), 0o644)
+	os.WriteFile(filepath.Join(dir, "datasets"), []byte("tank\ntank/mysql\ntank/mysql/data\ntank/binlog\n"), 0o644)
+	cl.Conf.BackupSnapshotTarget = "tank"
+	if _, err := vs.List(server); err == nil || !strings.Contains(err.Error(), "dataset tank (named) is the root of a pool") {
+		t.Fatalf("named pool root holding every path: %v", err)
+	}
+	os.WriteFile(filepath.Join(dir, "mounts"), []byte(data+" data/db/data zfs\n"+redo+" data/db/redo zfs\n"), 0o644)
 	// a foreign dataset under the named one
 	os.WriteFile(filepath.Join(dir, "datasets"), []byte("data\ndata/db\ndata/db/data\ndata/db/redo\ndata/db/other\n"), 0o644)
 	cl.Conf.BackupSnapshotTarget = "data/db"

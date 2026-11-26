@@ -147,7 +147,7 @@ zfs_resolve() {
     command -v zfs >/dev/null 2>&1 || die "zfs not found on the database host"
     # the server's paths are always resolved: a named target is checked against them as a
     # found one is (it must hold every one of them, and nothing else)
-    [ -n "$PATHS" ] || die "no server path to check the dataset against"
+    [ -n "$PATHS" ] || die "the server's directories are not known (its variables not read yet): nothing to check the dataset against"
     common=""
     pds=""
     oldifs=$IFS
@@ -189,11 +189,11 @@ zfs_resolve() {
     # under it, so never a pool root, never a tree holding something else
     case "$root" in
     */*) ;;
-    *) die "dataset $root ($how) is the root of a pool: never snapshotted, name the dataset holding the server's files in backup-snapshot-target" ;;
+    *) die "dataset $root ($how) is the root of a pool: never snapshotted. The server's directories must all sit under one dataset below the pool root (name it in backup-snapshot-target if it is not found), or use backup-snapshot-script" ;;
     esac
     tree=$(q zfs list -H -o name -r -t filesystem,volume "$root") || die "can not list the datasets of $root"
     for ds in $tree; do
-        zfs_holds_server "$ds" || die "dataset $ds under $root ($how) holds none of the server's files: name the dataset holding only them in backup-snapshot-target"
+        zfs_holds_server "$ds" || die "dataset $ds under $root ($how) holds none of the server's files: the snapshot would take it too. The server's directories must sit under a dataset holding only them, or use backup-snapshot-script"
     done
     TARGET="$root"
     printf 'TARGET\t%s\n' "$TARGET"
@@ -285,7 +285,7 @@ lvm_lv_of() {
 lvm_resolve() {
     command -v lvs >/dev/null 2>&1 || die "lvs not found on the database host"
     # the server's paths are always resolved: a named volume must hold every one of them
-    [ -n "$PATHS" ] || die "no server path to check the logical volume against"
+    [ -n "$PATHS" ] || die "the server's directories are not known (its variables not read yet): nothing to check the logical volume against"
     found=""
     oldifs=$IFS
     IFS=:
