@@ -89,6 +89,8 @@ From the server menu, Backup, **Volume Snapshots**: the list of the server's sna
 - A snapshot replication-manager takes is named `repman-<UTC time>` (`repman-20261126T101500Z`).
   After each one, the snapshots named `repman-*` beyond `backup-snapshot-keep` are deleted,
   the oldest first.
+- A delete is recursive on ZFS, as the take: the snapshot of that name goes on every dataset
+  under the target.
 - Only that exact name counts as replication-manager's: a snapshot you name
   `repman-before-upgrade` is yours. Snapshots of another origin (an OpenSVC schedule, a
   snapshot you took by hand) are listed

@@ -25,6 +25,8 @@
 # database: replication-manager stops it before a snapback and starts it after.
 
 set -u
+# no globbing: the words split from findmnt and the server paths are never patterns
+set -f
 # messages in English: the fuser and sudo errors are read from their text (sudo keeps LC_*)
 LC_ALL=C
 export LC_ALL
@@ -79,6 +81,10 @@ valid_name() {
     case "$1" in
     "" | -* | *[!A-Za-z0-9._-]*) die "invalid snapshot name '$1'" ;;
     esac
+    case "$1" in
+    *[!.]*) ;;
+    *) die "invalid snapshot name '$1': only dots" ;;
+    esac
 }
 
 # mount_source PATH: the device or dataset mounted at the mount point holding PATH, and its type
@@ -100,7 +106,10 @@ wait_unused() {
     while :; do
         busy=""
         for m in "$@"; do
-            [ -e "$m" ] || continue
+            if [ ! -e "$m" ]; then
+                echo "$m does not exist on the database host: not checked for use"
+                continue
+            fi
             # 0: a process uses it; 1: none, or an error: told apart by what it printed
             out=$(q fuser -m "$m" 2>&1)
             rc=$?
@@ -205,8 +214,9 @@ zfs_holds_server() {
 }
 
 zfs_list() {
-    x zfs list -H -p -t snapshot -d 1 -o name,creation,used -s creation "$TARGET" | while IFS="$TAB" read -r n c u; do
-        printf 'SNAPSHOT\t%s\t%s\t%s\n' "${n#*@}" "$c" "$u"
+    out=$(x zfs list -H -p -t snapshot -d 1 -o name,creation,used -s creation "$TARGET") || die "zfs list of the snapshots of $TARGET failed"
+    printf '%s\n' "$out" | while IFS="$TAB" read -r n c u; do
+        if [ -n "$n" ]; then printf 'SNAPSHOT\t%s\t%s\t%s\n' "${n#*@}" "$c" "$u"; fi
     done
 }
 
@@ -216,8 +226,9 @@ zfs_has() {
 
 zfs_take() {
     x zfs snapshot -r "$TARGET@$NAME" || die "zfs snapshot of $TARGET@$NAME failed"
-    x zfs list -H -p -t snapshot -o name,creation,used "$TARGET@$NAME" | while IFS="$TAB" read -r n c u; do
-        printf 'SNAPSHOT\t%s\t%s\t%s\n' "${n#*@}" "$c" "$u"
+    out=$(x zfs list -H -p -t snapshot -o name,creation,used "$TARGET@$NAME") || die "snapshot $TARGET@$NAME taken, its read-back failed"
+    printf '%s\n' "$out" | while IFS="$TAB" read -r n c u; do
+        if [ -n "$n" ]; then printf 'SNAPSHOT\t%s\t%s\t%s\n' "${n#*@}" "$c" "$u"; fi
     done
 }
 
@@ -302,7 +313,8 @@ lvm_resolve() {
 lvm_snapshots() {
     vg="${TARGET%%/*}"
     lv="${TARGET#*/}"
-    x lvs --noheadings --separator '|' --units b --nosuffix -o lv_name,origin,lv_time,lv_size "$vg" | while IFS='|' read -r n o t s; do
+    out=$(x lvs --noheadings --separator '|' --units b --nosuffix -o lv_name,origin,lv_time,lv_size "$vg") || die "lvs of $vg failed"
+    printf '%s\n' "$out" | while IFS='|' read -r n o t s; do
         n=$(echo "$n" | tr -d ' ')
         o=$(echo "$o" | tr -d ' ')
         [ "$o" = "$lv" ] || continue
@@ -312,15 +324,17 @@ lvm_snapshots() {
 }
 
 lvm_list() {
-    lvm_snapshots | sort -t "$TAB" -k 2,2n | while IFS="$TAB" read -r n c s; do
-        printf 'SNAPSHOT\t%s\t%s\t%s\n' "$n" "$c" "$s"
+    snaps=$(lvm_snapshots) || exit 1
+    printf '%s\n' "$snaps" | sort -t "$TAB" -k 2,2n | while IFS="$TAB" read -r n c s; do
+        if [ -n "$n" ]; then printf 'SNAPSHOT\t%s\t%s\t%s\n' "$n" "$c" "$s"; fi
     done
 }
 
 lvm_has() {
     # lvs not running (a sudoers entry missing) is said as such, not as a missing snapshot
     q lvs "$TARGET" >/dev/null 2>&1 || die "lvs $TARGET does not run (sudoers?)"
-    lvm_snapshots 3>/dev/null | cut -f 1 | grep -Fxq -- "$NAME"
+    snaps=$(lvm_snapshots 3>/dev/null) || exit 1
+    printf '%s\n' "$snaps" | cut -f 1 | grep -Fxq -- "$NAME"
 }
 
 lvm_take() {
@@ -334,8 +348,9 @@ lvm_take() {
         *) x lvcreate -s -L "$LVM_SIZE" -n "$NAME" "$TARGET" || die "lvcreate of snapshot $vg/$NAME failed" ;;
         esac
     fi
-    lvm_snapshots 3>/dev/null | while IFS="$TAB" read -r n c s; do
-        [ "$n" = "$NAME" ] && printf 'SNAPSHOT\t%s\t%s\t%s\n' "$n" "$c" "$s"
+    snaps=$(lvm_snapshots 3>/dev/null) || die "snapshot $NAME taken, its read-back failed"
+    printf '%s\n' "$snaps" | while IFS="$TAB" read -r n c s; do
+        if [ "$n" = "$NAME" ]; then printf 'SNAPSHOT\t%s\t%s\t%s\n' "$n" "$c" "$s"; fi
     done
 }
 
@@ -360,7 +375,8 @@ lvm_snapback() {
     for m in $mnts; do
         if ! x umount "$m"; then
             # put back what this run unmounted: the volume as it was, or say it is not
-            for d in $(echo "$done_mnts" | sort); do
+            # parents first: one word per line, then sorted
+            for d in $(printf '%s\n' $done_mnts | sort); do
                 if ! { x mount "$d" 2>/dev/null || x mount "$dev" "$d"; }; then
                     printf 'CHANGED\n'
                     die "umount $m failed, and $d could not be mounted again: the volume is half unmounted"
@@ -404,3 +420,5 @@ esac
 
 "${TYPE}_resolve"
 "${TYPE}_${ACTION}"
+# an action that did not die succeeded: a loop's last test never becomes the exit status
+exit 0
