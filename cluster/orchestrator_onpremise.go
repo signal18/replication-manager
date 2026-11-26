@@ -33,7 +33,9 @@ func newOnPremiseOrchestrator(cluster *Cluster, name string) *onPremiseOrchestra
 func (o *onPremiseOrchestrator) Name() string { return o.name }
 func (o *onPremiseOrchestrator) Type() string { return config.ConstOrchestratorOnPremise }
 
-func (o *onPremiseOrchestrator) Traits() OrchestratorTraits { return OrchestratorTraits{} }
+func (o *onPremiseOrchestrator) Traits() OrchestratorTraits {
+	return OrchestratorTraits{HostBySSH: true}
+}
 
 func (o *onPremiseOrchestrator) Layout(server *ServerMonitor) ServiceLayout {
 	return o.cluster.databaseLayout(server)

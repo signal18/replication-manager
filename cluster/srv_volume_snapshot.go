@@ -434,7 +434,7 @@ func (cluster *Cluster) VolumeSnapshotter(server *ServerMonitor) (VolumeSnapshot
 	case m.External:
 		// nothing of this process: PATH, HOME and the wire version only (archivePluginBaseEnv)
 		ex = &programSnapshotExecutor{program: m.Binary, baseEnv: archivePluginBaseEnv()}
-	case cluster.GetOrchestrator() == config.ConstOrchestratorLocalhost:
+	case cluster.Orchestrator().Traits().HostIsLocal:
 		ex = &localSnapshotExecutor{}
 	default:
 		ex = &sshSnapshotExecutor{server: server}
@@ -456,16 +456,17 @@ func (cluster *Cluster) volumeSnapshotRefusal() (config.SnapshotPluginManifest, 
 	if m.Run != config.ConstSnapshotRunDatabaseHost || m.External || m.Name == config.ConstSnapshotPluginScript {
 		return m, nil
 	}
-	switch orch := cluster.GetOrchestrator(); orch {
-	case config.ConstOrchestratorOnPremise:
+	orch := cluster.Orchestrator()
+	switch traits := orch.Traits(); {
+	case traits.HostBySSH:
 		if !cluster.Conf.OnPremiseSSH {
 			return m, fmt.Errorf("snapshot plugin %s runs on the database host over SSH: onpremise-ssh is off", m.Name)
 		}
 		return m, nil
-	case config.ConstOrchestratorLocalhost:
+	case traits.HostIsLocal:
 		return m, nil
 	default:
-		return m, fmt.Errorf("snapshot plugin %s runs on the database host, which orchestrator %s gives no access to: use the on-premise or localhost orchestrator, or a backup-snapshot-script", m.Name, orch)
+		return m, fmt.Errorf("snapshot plugin %s runs on the database host, which orchestrator %s gives no access to: use the on-premise or localhost orchestrator, or a backup-snapshot-script", m.Name, orch.Type())
 	}
 }
 
