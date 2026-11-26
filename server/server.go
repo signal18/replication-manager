@@ -1313,6 +1313,16 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.OnPremiseSSHDbJobScript, "onpremise-ssh-db-job-script", "", "Run via ssh a custom script to execute database jobs")
 	flags.StringVar(&conf.OnPremiseSSHUpgradeDbScript, "onpremise-ssh-upgrade-db-script", "", "Run via ssh a custom script to upgrade database version")
 
+	// Proxmox VE orchestrator (prov-orchestrator = "proxmox", listed in prov-orchestrator-enable):
+	// the on-premise SSH service operations plus the VM of each database server (design 10.4)
+	flags.StringVar(&conf.ProxmoxAPIURL, "proxmox-api-url", "", "Proxmox VE API endpoint, https://host:8006")
+	flags.StringVar(&conf.ProxmoxAPIToken, "proxmox-api-token", "", "Proxmox VE API token user@realm!tokenid=secret (a secret: encrypted in the config, never logged)")
+	flags.BoolVar(&conf.ProxmoxAPIInsecure, "proxmox-api-insecure", false, "Accept the Proxmox VE API certificate without verification (a lab only)")
+	flags.StringVar(&conf.ProvDbHostVmids, "prov-db-host-vmids", "", "The VM under each database server, host=node/vmid pairs comma separated (db1=pve1/101,db2=pve2/102)")
+	flags.BoolVar(&conf.ProvDbRollingUpgradeHost, "prov-db-rolling-upgrade-host", false, "Rolling upgrade reboots the host (VM) of each server between the database stop and its upgrade, on an orchestrator that drives the hosts")
+	flags.StringVar(&conf.ProvDbHostUpgradeScript, "prov-db-host-upgrade-script", "", "Local script run over ssh in the guest before its reboot in the rolling upgrade host step (kernel and packages); empty: reboot only")
+	flags.IntVar(&conf.ProvDbHostRebootTimeout, "prov-db-host-reboot-timeout", 600, "Seconds for a host action (shutdown, start, reboot) and for the rebooted VM to run and answer on ssh")
+
 	flags.BoolVar(&conf.Cloud18, "cloud18", false, "Enable Cloud 18 DBAAS")
 	flags.StringVar(&conf.Cloud18Domain, "cloud18-domain", "", "DNS sub domain per organisation")
 	flags.StringVar(&conf.Cloud18SubDomain, "cloud18-sub-domain", "", "DNS sub domain per replication-manger instance")

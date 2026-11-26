@@ -381,8 +381,12 @@ func (cluster *Cluster) GetDomain() string {
 	return ""
 }
 
+// GetOrchestrator is the orchestrator type the services of the cluster are dispatched on: the
+// configured prov-orchestrator, except a backend that reuses another's service operations
+// (proxmox: the on-premise ones, serviceOrchestratorType). The configured value is
+// Conf.ProvOrchestrator; the backend itself is cluster.Orchestrator().
 func (cluster *Cluster) GetOrchestrator() string {
-	return cluster.Conf.ProvOrchestrator
+	return serviceOrchestratorType(cluster.Conf.ProvOrchestrator)
 }
 
 // GetDomainHeadCluster is GetDomain for a child cluster resolving its

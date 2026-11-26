@@ -1581,6 +1581,8 @@ func (cluster *Cluster) tickBody() {
 		cluster.CheckAppSandboxRuntime()
 		// the apps the instance admin trusts run without the sandbox runtime
 		cluster.CheckAppDockerTrusted()
+		// the host step of the rolling upgrade without effect: no host backend, servers without a VM
+		cluster.CheckRollingUpgradeHost()
 		// Run generic log-tailer plugin checks (errorlog / sqlerrorlog / slowlog 24h)
 		cluster.CheckLogPlugins()
 		// Replication plugins: supervised on the active monitor only (#2015)
@@ -2658,6 +2660,8 @@ func (cluster *Cluster) GetEncryptedValueFromMemory(key string) string {
 		return cluster.Conf.GetStableEncryptedValue("backup-verification-credential", cluster.Conf.GetDecryptedValue("backup-verification-credential"))
 	case "haproxy-password":
 		return cluster.Conf.GetStableEncryptedValue("haproxy-password", cluster.Conf.GetDecryptedValue("haproxy-password"))
+	case "proxmox-api-token":
+		return cluster.Conf.GetStableEncryptedValue("proxmox-api-token", cluster.Conf.GetDecryptedValue("proxmox-api-token"))
 	case "maxscale-pass":
 		return cluster.Conf.GetStableEncryptedValue("maxscale-pass", cluster.Conf.GetDecryptedValue("maxscale-pass"))
 	case "myproxy-password":

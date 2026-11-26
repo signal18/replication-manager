@@ -80,6 +80,8 @@ var ClusterError = map[string]string{
 	"ERR00056":  "Master user %s is not defined on replication candidate %s",
 	"ERR00057":  "Database duplicate users not allowed in proxysql %s",
 	"WARN0327":  "Server %s names orchestrator %s: %s",
+	"WARN0350":  "Rolling upgrade host step is on (prov-db-rolling-upgrade-host) but orchestrator %s (%s) does not drive the hosts: the rolling upgrade skips the host step -- use the proxmox orchestrator, or turn the host step off",
+	"WARN0351":  "Rolling upgrade host step is on but server(s) %s have no VM in prov-db-host-vmids: their host is not rebooted by the rolling upgrade -- add host=node/vmid for each of them",
 	"WARN0326":  "Orchestrator %s (%s) unreachable: %s -- every provisioning action of the cluster will fail until it answers",
 	"WARN0324":  "Server %s: its jobs have not reached replication-manager %s: no backup, log collection or config check runs there -- check the jobs container's log (no replication-manager-cli beside the jobs script; for an older script on a stock MySQL or Percona image, no socat: set prov-db-docker-xtrabackup-img), its network to replication-manager and its clock",
 	"WARN0325":  "Server %s: its jobs script is not upgraded until its database service restarts: its jobs run with replication-manager-cli %s, and the current script needs a newer one. The jobs go on with their current script; the restart brings the new CLI and the new script together",

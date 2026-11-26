@@ -162,6 +162,8 @@ func (repman *ReplicationManager) apiDatabaseUnprotectedHandler(router *mux.Rout
 
 func (repman *ReplicationManager) apiDatabaseProtectedHandler(router *mux.Router) {
 	//PROTECTED ENDPOINTS FOR SERVERS
+	// the host (VM) of a server: api_database_host.go
+	repman.apiDatabaseHostHandlers(router)
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServer)),

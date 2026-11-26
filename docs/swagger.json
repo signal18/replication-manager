@@ -13578,6 +13578,255 @@
                 }
             }
         },
+        "/api/clusters/{clusterName}/servers/{serverName}/actions/host-reboot": {
+            "post": {
+                "description": "Asks the hypervisor for a clean reboot of the VM under the server (a stopped VM is started), in the background. Only an orchestrator that drives the hosts (proxmox) supports it.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "DatabaseActions"
+                ],
+                "summary": "Reboot the host (VM) of a database server",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Name",
+                        "name": "serverName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Host reboot started",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Cluster Not Found or Server Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "A host action is already running on the server",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "501": {
+                        "description": "The orchestrator does not drive the hosts",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/servers/{serverName}/actions/host-start": {
+            "post": {
+                "description": "Starts the VM under the server through the hypervisor, in the background. Only an orchestrator that drives the hosts (proxmox) supports it.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "DatabaseActions"
+                ],
+                "summary": "Start the host (VM) of a database server",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Name",
+                        "name": "serverName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Host start started",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Cluster Not Found or Server Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "A host action is already running on the server",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "501": {
+                        "description": "The orchestrator does not drive the hosts",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/servers/{serverName}/actions/host-stop": {
+            "post": {
+                "description": "Asks the hypervisor for a clean shutdown of the VM under the server (never a hard stop), in the background. Only an orchestrator that drives the hosts (proxmox) supports it; the VM is the server's entry in prov-db-host-vmids. The database inside the VM is not stopped first: stop it before, or use the rolling upgrade.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "DatabaseActions"
+                ],
+                "summary": "Shut down the host (VM) of a database server",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Name",
+                        "name": "serverName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Host shutdown started",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Cluster Not Found or Server Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "A host action is already running on the server",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "501": {
+                        "description": "The orchestrator does not drive the hosts",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/servers/{serverName}/actions/job-cancel/{task}": {
             "get": {
                 "description": "Cancels a task identified by its name on a specified server within a cluster.",
@@ -16714,6 +16963,86 @@
                         "description": "Cluster Not Found\" or \"Server Not Found\" or \"Encoding error",
                         "schema": {
                             "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/servers/{serverName}/host-status": {
+            "get": {
+                "description": "Answers the hypervisor node, the vmid, the state (running, stopped, paused, unknown) and the uptime of the VM under the server, and the host action running on it if any. Only an orchestrator that drives the hosts (proxmox) supports it.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Database"
+                ],
+                "summary": "Status of the host (VM) of a database server",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Name",
+                        "name": "serverName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The host status",
+                        "schema": {
+                            "$ref": "#/definitions/server.hostStatusResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Cluster Not Found or Server Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "501": {
+                        "description": "The orchestrator does not drive the hosts",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "502": {
+                        "description": "The hypervisor did not answer",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     }
                 }
@@ -32959,6 +33288,15 @@
                 "provDbExpireLogDays": {
                     "type": "integer"
                 },
+                "provDbHostRebootTimeout": {
+                    "type": "integer"
+                },
+                "provDbHostUpgradeScript": {
+                    "type": "string"
+                },
+                "provDbHostVmids": {
+                    "type": "string"
+                },
                 "provDbJobsDockerRunArgs": {
                     "type": "string"
                 },
@@ -33007,6 +33345,9 @@
                 },
                 "provDbResourceRaisedOverPlanScript": {
                     "type": "string"
+                },
+                "provDbRollingUpgradeHost": {
+                    "type": "boolean"
                 },
                 "provDbRunAsUid": {
                     "type": "string"
@@ -33274,6 +33615,15 @@
                 },
                 "provUseIpv6": {
                     "type": "boolean"
+                },
+                "proxmoxAPIInsecure": {
+                    "type": "boolean"
+                },
+                "proxmoxAPIToken": {
+                    "type": "string"
+                },
+                "proxmoxAPIURL": {
+                    "type": "string"
                 },
                 "proxyServersBackendCompression": {
                     "type": "boolean"
@@ -35874,6 +36224,26 @@
                 "usableGwu": {
                     "description": "= capacity: the uplink has no quota",
                     "type": "number"
+                }
+            }
+        },
+        "server.hostStatusResponse": {
+            "type": "object",
+            "properties": {
+                "actionRunning": {
+                    "type": "string"
+                },
+                "node": {
+                    "type": "string"
+                },
+                "state": {
+                    "type": "string"
+                },
+                "uptimeSeconds": {
+                    "type": "integer"
+                },
+                "vmid": {
+                    "type": "string"
                 }
             }
         },

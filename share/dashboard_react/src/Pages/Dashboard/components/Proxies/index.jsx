@@ -23,7 +23,7 @@ function Proxies({ selectedCluster, user }) {
         isDesktop={isDesktop}
         clusterName={selectedCluster?.name}
         showGridView={showGridView}
-        isMenuOptionsVisible={selectedCluster?.config?.provOrchestrator !== 'onpremise'}
+        isMenuOptionsVisible={!['onpremise', 'proxmox'].includes(selectedCluster?.config?.provOrchestrator)}
         showTerminal={selectedCluster?.config?.terminalSessionEnabled}
         topoStaging={selectedCluster?.config?.topologyStaging}
         orchestrator={selectedCluster?.config?.provOrchestrator}
@@ -35,7 +35,7 @@ function Proxies({ selectedCluster, user }) {
         isDesktop={isDesktop}
         clusterName={selectedCluster?.name}
         showTableView={showTableView}
-        isMenuOptionsVisible={selectedCluster?.config?.provOrchestrator !== 'onpremise'}
+        isMenuOptionsVisible={!['onpremise', 'proxmox'].includes(selectedCluster?.config?.provOrchestrator)}
         showTerminal={selectedCluster?.config?.terminalSessionEnabled}
         topoStaging={selectedCluster?.config?.topologyStaging}
         orchestrator={selectedCluster?.config?.provOrchestrator}

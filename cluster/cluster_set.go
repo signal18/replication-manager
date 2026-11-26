@@ -3030,6 +3030,57 @@ func (cluster *Cluster) SetBackupVerificationCredential(cred string) error {
 	return nil
 }
 
+// SetProxmoxAPIToken sets proxmox-api-token, the Proxmox VE API token of the proxmox
+// orchestrator: through the credential chain, so it is a version in every active store and
+// encrypted in the saved config (F9), never logged (F10). Empty clears it.
+func (cluster *Cluster) SetProxmoxAPIToken(token string) error {
+	token = strings.TrimSpace(token)
+	if token != "" && (!strings.Contains(token, "!") || !strings.Contains(token, "=")) {
+		return errors.New("proxmox-api-token must be user@realm!tokenid=secret")
+	}
+	if err := cluster.CredentialChain().Set("proxmox-api-token", token); err != nil {
+		return err
+	}
+	cluster.Conf.ProxmoxAPIToken = token
+	cluster.MarkSecretVersionStoreDirty()
+	return nil
+}
+
+// SetProxmoxSetting sets one of the plain settings of the proxmox orchestrator:
+// proxmox-api-url, prov-db-host-vmids (validated: host=node/vmid pairs),
+// prov-db-host-upgrade-script.
+func (cluster *Cluster) SetProxmoxSetting(name string, value string) error {
+	value = strings.TrimSpace(value)
+	switch name {
+	case "proxmox-api-url":
+		cluster.Conf.ProxmoxAPIURL = value
+	case "prov-db-host-vmids":
+		if _, err := parseHostVMIDs(value); err != nil {
+			return err
+		}
+		cluster.Conf.ProvDbHostVmids = value
+	case "prov-db-host-upgrade-script":
+		cluster.Conf.ProvDbHostUpgradeScript = value
+	default:
+		return fmt.Errorf("%s is not a proxmox orchestrator setting", name)
+	}
+	return nil
+}
+
+// SetProvDbHostRebootTimeout sets prov-db-host-reboot-timeout: the seconds a host action and
+// the return of a rebooted host may take, more than 0.
+func (cluster *Cluster) SetProvDbHostRebootTimeout(value string) error {
+	v, err := strconv.Atoi(strings.TrimSpace(value))
+	if err != nil {
+		return err
+	}
+	if v <= 0 {
+		return fmt.Errorf("prov-db-host-reboot-timeout must be more than 0 seconds, got %d", v)
+	}
+	cluster.Conf.ProvDbHostRebootTimeout = v
+	return nil
+}
+
 // SetBackupVerificationTimeout sets backup-verification-timeout: the seconds a test restore
 // may run, 0 for no limit.
 func (cluster *Cluster) SetBackupVerificationTimeout(value string) error {

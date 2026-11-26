@@ -31,6 +31,8 @@ import {
   startDatabase,
   restartDatabase,
   upgradeDatabase,
+  hostActionDatabase,
+  getHostStatusDatabase,
   startSlave,
   stopDatabase,
   stopSlave,
@@ -438,6 +440,52 @@ function ServerMenu({
                   setConfirmHandler(() => () => dispatch(upgradeDatabase({ clusterName, serverId: row.id })))
                 }
               },
+              ...(orchestrator === 'proxmox'
+                ? [
+                    {
+                      name: 'Host (VM) Status',
+                      isDisabled: !user?.grants['db-show-status'],
+                      onClick: () => dispatch(getHostStatusDatabase({ clusterName, serverId: row.id }))
+                    },
+                    {
+                      name: 'Reboot Host (VM)',
+                      isDisabled: !user?.grants['db-start'] || !user?.grants['db-stop'],
+                      onClick: () => {
+                        openConfirmModal()
+                        setConfirmTitle(
+                          `Confirm reboot of the VM of ${serverName}? The database inside it goes down with the VM: stop it first, or use the rolling upgrade.`
+                        )
+                        setConfirmHandler(
+                          () => () => dispatch(hostActionDatabase({ clusterName, serverId: row.id, action: 'reboot' }))
+                        )
+                      }
+                    },
+                    {
+                      name: 'Shutdown Host (VM)',
+                      isDisabled: !user?.grants['db-stop'],
+                      onClick: () => {
+                        openConfirmModal()
+                        setConfirmTitle(
+                          `Confirm shutdown of the VM of ${serverName}? The database inside it goes down with the VM: stop it first.`
+                        )
+                        setConfirmHandler(
+                          () => () => dispatch(hostActionDatabase({ clusterName, serverId: row.id, action: 'stop' }))
+                        )
+                      }
+                    },
+                    {
+                      name: 'Start Host (VM)',
+                      isDisabled: !user?.grants['db-start'],
+                      onClick: () => {
+                        openConfirmModal()
+                        setConfirmTitle(`Confirm start of the VM of ${serverName}?`)
+                        setConfirmHandler(
+                          () => () => dispatch(hostActionDatabase({ clusterName, serverId: row.id, action: 'start' }))
+                        )
+                      }
+                    }
+                  ]
+                : []),
               ...(orchestrator === 'opensvc'
                 ? [
                     {
