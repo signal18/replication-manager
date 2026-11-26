@@ -25,6 +25,8 @@
 # database: replication-manager stops it before a snapback and starts it after.
 
 set -u
+# no globbing: the words split from findmnt and the server paths are never patterns
+set -f
 # messages in English: the fuser and sudo errors are read from their text (sudo keeps LC_*)
 LC_ALL=C
 export LC_ALL
@@ -211,7 +213,7 @@ zfs_holds_server() {
 zfs_list() {
     out=$(x zfs list -H -p -t snapshot -d 1 -o name,creation,used -s creation "$TARGET") || die "zfs list of the snapshots of $TARGET failed"
     printf '%s\n' "$out" | while IFS="$TAB" read -r n c u; do
-        [ -n "$n" ] && printf 'SNAPSHOT\t%s\t%s\t%s\n' "${n#*@}" "$c" "$u"
+        if [ -n "$n" ]; then printf 'SNAPSHOT\t%s\t%s\t%s\n' "${n#*@}" "$c" "$u"; fi
     done
 }
 
@@ -223,7 +225,7 @@ zfs_take() {
     x zfs snapshot -r "$TARGET@$NAME" || die "zfs snapshot of $TARGET@$NAME failed"
     out=$(x zfs list -H -p -t snapshot -o name,creation,used "$TARGET@$NAME") || die "snapshot $TARGET@$NAME taken, its read-back failed"
     printf '%s\n' "$out" | while IFS="$TAB" read -r n c u; do
-        [ -n "$n" ] && printf 'SNAPSHOT\t%s\t%s\t%s\n' "${n#*@}" "$c" "$u"
+        if [ -n "$n" ]; then printf 'SNAPSHOT\t%s\t%s\t%s\n' "${n#*@}" "$c" "$u"; fi
     done
 }
 
@@ -321,7 +323,7 @@ lvm_snapshots() {
 lvm_list() {
     snaps=$(lvm_snapshots) || exit 1
     printf '%s\n' "$snaps" | sort -t "$TAB" -k 2,2n | while IFS="$TAB" read -r n c s; do
-        [ -n "$n" ] && printf 'SNAPSHOT\t%s\t%s\t%s\n' "$n" "$c" "$s"
+        if [ -n "$n" ]; then printf 'SNAPSHOT\t%s\t%s\t%s\n' "$n" "$c" "$s"; fi
     done
 }
 
@@ -345,7 +347,7 @@ lvm_take() {
     fi
     snaps=$(lvm_snapshots 3>/dev/null) || die "snapshot $NAME taken, its read-back failed"
     printf '%s\n' "$snaps" | while IFS="$TAB" read -r n c s; do
-        [ "$n" = "$NAME" ] && printf 'SNAPSHOT\t%s\t%s\t%s\n' "$n" "$c" "$s"
+        if [ "$n" = "$NAME" ]; then printf 'SNAPSHOT\t%s\t%s\t%s\n' "$n" "$c" "$s"; fi
     done
 }
 
@@ -414,3 +416,5 @@ esac
 
 "${TYPE}_resolve"
 "${TYPE}_${ACTION}"
+# an action that did not die succeeded: a loop's last test never becomes the exit status
+exit 0

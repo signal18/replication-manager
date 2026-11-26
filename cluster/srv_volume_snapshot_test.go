@@ -257,7 +257,7 @@ list)
     case "$*" in
     *"name,clones"*) grep "^$last@" "$D/snaps" | while IFS="	" read -r n c u; do
         cl=$(awk -v n="$n" '$1 == n { print $2 }' "$D/clones" 2>/dev/null); printf '%s\t%s\n' "$n" "${cl:--}"; done ;;
-    *"-t snapshot -d 1"*) grep "^$last@" "$D/snaps" ;;
+    *"-t snapshot -d 1"*) grep "^$last@" "$D/snaps" || true ;;
     *"-t snapshot"*) grep "^$last	" "$D/snaps" ;;
     *"-r -t filesystem,volume"*) grep -E "^$last(/|$)" "$D/datasets" ;;
     *)
@@ -425,7 +425,9 @@ case "$*" in
 *"vg_name,lv_name"*) echo "  vg0 data" ;;
 *"lv_path"*) echo "  /dev/vg0/data" ;;
 *"segtype"*) echo "  linear" ;;
-*"lv_name,origin,lv_time,lv_size"*) echo "  repman-20261126T100000Z|data|2026-11-26 10:00:00 +0000|1073741824"; echo "  data||2026-11-01 10:00:00 +0000|10737418240" ;;
+*"lv_name,origin,lv_time,lv_size"*)
+    [ -f "$FAKE_DIR/lvm-empty" ] && { echo "  data||2026-11-01 10:00:00 +0000|10737418240"; exit 0; }
+    echo "  data||2026-11-01 10:00:00 +0000|10737418240"; echo "  repman-20261126T100000Z|data|2026-11-26 10:00:00 +0000|1073741824"; echo "  zz-manual|data|2026-11-26 11:00:00 +0000|1073741824" ;;
 esac
 `
 
@@ -436,13 +438,25 @@ func TestVolumeSnapshotHelperLVMNotMountedRefused(t *testing.T) {
 	vs.manifest = m
 	server.ClusterGroup.Conf.BackupSnapshotPlugin = config.ConstSnapshotPluginLVM
 	server.ClusterGroup.Conf.BackupSnapshotTarget = "vg0/data"
+	os.WriteFile(filepath.Join(dir, "bin", "lvcreate"), []byte("#!/bin/sh\nexit 0\n"), 0o755)
 	list, err := vs.List(server)
-	if err != nil || list.Target != "vg0/data" || len(list.Snapshots) != 1 || !list.Snapshots[0].Managed {
+	if err != nil || list.Target != "vg0/data" || len(list.Snapshots) != 2 {
 		t.Fatalf("lvm list: %v %+v", err, list)
 	}
+	// the snapshot taken is not the last row (a manual one sorts after it): still a success
+	run, err := vs.Take(server, "repman-20261126T100000Z")
+	if err != nil || len(run.Snapshots) != 1 {
+		t.Fatalf("lvm take, its row not the last: %v %+v", err, run)
+	}
+	// no snapshot yet: an empty list, not an error
+	os.WriteFile(filepath.Join(dir, "lvm-empty"), nil, 0o644)
+	if list, err := vs.List(server); err != nil || len(list.Snapshots) != 0 {
+		t.Fatalf("empty lvm list: %v %+v", err, list)
+	}
+	os.Remove(filepath.Join(dir, "lvm-empty"))
 	// findmnt does not tie a mount to /dev/vg0/data: refused before any change
 	os.WriteFile(filepath.Join(dir, "mounts"), nil, 0o644)
-	run, err := vs.Snapback(server, "repman-20261126T100000Z")
+	run, err = vs.Snapback(server, "repman-20261126T100000Z")
 	if err == nil || run.Changed || !strings.Contains(err.Error(), "no mount point") {
 		t.Fatalf("lvm snapback without a mount point: %v changed=%v", err, run.Changed)
 	}
@@ -467,6 +481,14 @@ func TestVolumeSnapshotBusyWaitWithinTheDeadline(t *testing.T) {
 		if got := volumeSnapshotBusyWait(timeout); got != want {
 			t.Errorf("busy wait of %s = %d, want %d", timeout, got, want)
 		}
+	}
+}
+
+func TestVolumeSnapshotHelperEmptyZFSList(t *testing.T) {
+	_, server, vs, dir := newFakeZFSHost(t)
+	os.WriteFile(filepath.Join(dir, "snaps"), nil, 0o644)
+	if list, err := vs.List(server); err != nil || len(list.Snapshots) != 0 {
+		t.Fatalf("no snapshot yet: an empty list, not an error: %v %+v", err, list)
 	}
 }
 
