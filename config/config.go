@@ -57,6 +57,8 @@ type Config struct {
 	GoArch                                   string                       `mapstructure:"goarch" toml:"-" json:"goArch"`
 	WithTarball                              string                       `mapstructure:"-" toml:"-" json:"withTarball"`
 	WithEmbed                                string                       `mapstructure:"-" toml:"-" json:"withEmbed"`
+	InstallProfile                           string                       `mapstructure:"-" toml:"-" json:"installProfile"` // osc|tst|pro, resolved at start, not a key (#2444)
+	InstallLayout                            string                       `mapstructure:"-" toml:"-" json:"installLayout"`  // package|tarball|embed, resolved at start, not a key (#2444)
 	MemProfile                               string                       `mapstructure:"-" toml:"-" json:"-"`
 	Include                                  string                       `mapstructure:"include" toml:"-" json:"-"`
 	MonitoringSystemUser                     string                       `scope:"server" mapstructure:"user" toml:"-" json:"-"`

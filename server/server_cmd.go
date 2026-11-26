@@ -23,34 +23,27 @@ var (
 	cpuprofile string
 	// Version is the semantic version number, e.g. 1.0.1
 	Version string
-	// Provisoning to add flags for compile
-	WithProvisioning      string = "ON"
-	WithArbitration       string = "OFF"
-	WithArbitrationClient string = "ON"
-	WithProxysql          string = "ON"
-	WithHaproxy           string = "ON"
-	WithMaxscale          string = "ON"
-	WithMariadbshardproxy string = "ON"
-	WithMonitoring        string = "ON"
-	WithMail              string = "ON"
-	WithHttp              string = "ON"
-	WithSpider            string
-	WithEnforce           string = "ON"
-	WithDeprecate         string = "ON"
-	WithOpenSVC           string = "OFF"
-	WithTarball           string
-	WithEmbed             string = "OFF"
-	WithMySQLRouter       string
-	WithSphinx            string = "ON"
-	WithBackup            string = "ON"
-	WithReact             string = "ON"
+	// installProfile gives this process the defaults of the flavour it replaces (one build,
+	// #2444): resolved from the environment or the program name before any flag is
+	// registered. The four With* below are derived from it; a -X on them is not honoured.
+	installProfile = resolveProcessInstallProfile()
+	// WithProvisioning: the provisioning keys get their defaults (else their zero value).
+	WithProvisioning = onOff(installProfile.Provisioning())
+	// WithOpenSVC: the OpenSVC keys get their defaults and prov-orchestrator defaults to opensvc.
+	WithOpenSVC = onOff(installProfile.OpenSVC())
+	// WithTarball: default directories under /usr/local/replication-manager.
+	WithTarball = tarballOnOff(installProfile)
+	// WithEmbed: default directories under the user's home, share read from the embedded copy.
+	WithEmbed = embedOnOff(installProfile)
+	// WithArbitration is set at run time by the arbitrator program.
+	WithArbitration string = "OFF"
 	// FullVersion is the semantic version number + git commit hash
 	FullVersion string
 	// Build is the build date of replication-manager
-	Build         string
-	GoOS          string = "linux"
-	GoArch        string = "amd64"
-	conf          config.Config
+	Build  string
+	GoOS   string = "linux"
+	GoArch string = "amd64"
+	conf   config.Config
 )
 
 var rootCmd = &cobra.Command{
@@ -72,6 +65,7 @@ var versionCmd = &cobra.Command{
 		fmt.Println("Replication Manager " + Version + " for MariaDB 10.x and MySQL 5.7 Series")
 		fmt.Println("Full Version: ", FullVersion)
 		fmt.Println("Build Time: ", Build)
+		fmt.Printf("Install profile: %s (%s), layout: %s (%s)\n", installProfile.Profile, installProfile.ProfileSource, installProfile.Layout, installProfile.LayoutSource)
 	},
 }
 
@@ -83,6 +77,8 @@ func init() {
 	conf.FullVersion = FullVersion
 	conf.WithTarball = WithTarball
 	conf.WithEmbed = WithEmbed
+	conf.InstallProfile = installProfile.Profile
+	conf.InstallLayout = installProfile.Layout
 	rootCmd.PersistentFlags().StringVar(&conf.ConfigFile, "config", "", "Configuration file (default is config.toml)")
 	rootCmd.PersistentFlags().StringVar(&cfgGroup, "cluster", "", "Configuration group (default is none)")
 	rootCmd.Flags().StringVar(&conf.KeyPath, "keypath", "/etc/replication-manager/.replication-manager.key", "Encryption key file path")

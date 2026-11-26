@@ -6,8 +6,9 @@ license: "GPLv3"
 arch: ${architecture}
 platform: linux
 contents:
-  - src: build/binaries/replication-manager-pro
-    dst: /usr/bin/
+  # the one server binary (#2444), under the name that selects the pro install profile
+  - src: build/binaries/replication-manager
+    dst: /usr/bin/replication-manager-pro
   - src: etc/cluster.d/cluster1.toml.sample
     dst: /etc/replication-manager/cluster.d/cluster1.toml.sample
     type: config
@@ -21,13 +22,22 @@ contents:
     dst: /usr/share/replication-manager
     type: tree
 # the CLI of the same release: a server upgrade alone must not leave an older client
+# osc and pro install the same files: one or the other. deb Replaces lets
+# `apt install replication-manager-osc` switch; no rpm Obsoletes, so an update never
+# switches flavour on its own (switch with `dnf swap`).
 overrides:
   deb:
     depends:
       - replication-manager-client (>= ${version})
+    conflicts:
+      - replication-manager-osc
+    replaces:
+      - replication-manager-osc
   rpm:
     depends:
       - replication-manager-client >= ${version}
+    conflicts:
+      - replication-manager-osc
 
 scripts:
   postinstall: ./scripts/post_install.sh
