@@ -19,6 +19,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/cluster/configurator"
+	"github.com/signal18/replication-manager/cluster/replplugin/wire"
 	"github.com/signal18/replication-manager/config"
 	repmanmcp "github.com/signal18/replication-manager/mcp"
 )
@@ -68,12 +69,14 @@ type ChildPlan struct {
 	DBImage           string   `json:"dbImage"`
 	DBCount           int      `json:"dbCount"`
 	DBUPerNode        int      `json:"dbuPerNode"`
-	Proxy             string   `json:"proxy"`              // "" = none
-	Domain            string   `json:"domain"`             // GTID domain: the one of its name
-	SourceName        string   `json:"sourceName"`         // channel from the parent's master: the parent's replication-source-name
-	OwnSourceName     string   `json:"ownSourceName"`      // the new cluster's replication-source-name (its master to its replicas)
-	BackupLogicalType string   `json:"backupLogicalType"`  // the parent's
-	Topology          string   `json:"topology,omitempty"` // the child's topology-target, "" the default (#2012)
+	Proxy             string   `json:"proxy"`                 // "" = none
+	Domain            string   `json:"domain"`                // GTID domain: the one of its name
+	SourceName        string   `json:"sourceName"`            // channel from the parent's master: the parent's replication-source-name
+	OwnSourceName     string   `json:"ownSourceName"`         // the new cluster's replication-source-name (its master to its replicas)
+	BackupLogicalType string   `json:"backupLogicalType"`     // the parent's
+	Topology          string   `json:"topology,omitempty"`    // the child's topology-target, "" the default (#2012)
+	Destination       string   `json:"destination,omitempty"` // an analytic child's destination plugin (CDC_CORE.md)
+	Tables            string   `json:"tables,omitempty"`      // the tables it copies
 	Backup            string   `json:"backup"`
 	Notes             []string `json:"notes,omitempty"`
 }
@@ -140,10 +143,35 @@ func (repman *ReplicationManager) PlanChildCluster(parent *cluster.Cluster, req 
 		}
 	}
 	columnstore := plan.Topology == config.TopoColumnstore
+	plan.Destination, plan.Tables = strings.TrimSpace(req.Destination), strings.TrimSpace(req.Tables)
+	var manifest wire.PluginManifest
+	if plan.Destination != "" {
+		if mode.staging || plan.Topology != "" {
+			return plan, fmt.Errorf("an analytic child is a child cluster of the default topology")
+		}
+		if plan.Tables == "" {
+			return plan, fmt.Errorf("an analytic child needs tables: the tables to copy, schema.table or schema.*")
+		}
+		// the plugin installed, and granted by the seat's plan (an enterprise tier)
+		if err := parent.ReplicationPluginAllowed(plan.Destination); err != nil {
+			return plan, err
+		}
+		var err error
+		if manifest, err = parent.ReplicationPluginManifest(plan.Destination); err != nil {
+			return plan, err
+		}
+		// a destination written out of the binlog: a replica of the child would not follow it
+		if manifest.SingleServer && req.DBCount > 1 {
+			return plan, fmt.Errorf("a child of the destination %s has 1 database: its replicas would not receive the copies", plan.Destination)
+		}
+	}
 	plan.DBCount = req.DBCount
 	if plan.DBCount == 0 {
 		// ColumnStore: equal servers, each a UM and a PM holding a dbroot (#2021)
 		plan.DBCount = mode.dbCount
+		if manifest.SingleServer {
+			plan.DBCount = 1
+		}
 	}
 	if plan.DBCount < 1 || plan.DBCount > childMaxDBCount {
 		return plan, fmt.Errorf("dbCount must be between 1 and %d", childMaxDBCount)
@@ -157,11 +185,21 @@ func (repman *ReplicationManager) PlanChildCluster(parent *cluster.Cluster, req 
 		if columnstore {
 			plan.DBImage = childColumnstoreImage
 		}
+		if manifest.Image != "" {
+			plan.DBImage = manifest.Image
+		}
 	}
 	plan.Notes = append(plan.Notes, "configurator tags: the parent's ("+parent.Conf.ProvTags+")")
 	if columnstore {
 		plan.Notes = append(plan.Notes, "each table of the parent's backup is converted to ColumnStore at the seed: keys removed, types widened or mapped (the log lists every change)")
 		plan.Notes = append(plan.Notes, fmt.Sprintf("%d ColumnStore servers, each its own failover service holding a dbroot; the master is seeded, the others replicate its schema", plan.DBCount))
+	}
+	if plan.Destination != "" {
+		plan.Notes = append(plan.Notes, "the tables of "+plan.Tables+" are made "+plan.Destination+" tables on the child at the seed (never on the parent) by the plugin replplugin-"+plan.Destination+", which feeds them from the parent's binlog; a table it cannot hold stays as it is, replicated natively, with a state giving the reason")
+		if len(manifest.Tags) > 0 {
+			plan.Notes = append(plan.Notes, "configurator tags added: "+strings.Join(manifest.Tags, ", "))
+		}
+		plan.Notes = append(plan.Notes, "replication-plugin-merge-interval 0 applies each checkpoint to the copies; more accumulates them in an InnoDB staging merged at that period, cheaper for large or busy tables")
 	}
 	plan.DBUPerNode = parent.Conf.ProvDbDbu
 	if columnstore && plan.DBUPerNode < cluster.ColumnstoreMinDBU {
@@ -270,6 +308,13 @@ func (repman *ReplicationManager) CreateChildCluster(parent *cluster.Cluster, pl
 	if plan.Topology != "" {
 		if err := repman.SetClusterSetting(cl, "topology-target", plan.Topology); err != nil {
 			return cl, fail(err)
+		}
+	}
+	if plan.Destination != "" {
+		for _, kv := range [][2]string{{"replication-plugin-tables", plan.Tables}, {"replication-plugin-destination", plan.Destination}} {
+			if err := repman.SetClusterSetting(cl, kv[0], kv[1]); err != nil {
+				return cl, fail(err)
+			}
 		}
 	}
 	if err := repman.SetClusterSetting(cl, "prov-db-domain", plan.Domain); err != nil {

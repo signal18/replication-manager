@@ -4495,6 +4495,16 @@ definitions:
         type: string
       replicationPgLogicalDdl:
         type: boolean
+      replicationPluginCheckpointInterval:
+        type: integer
+      replicationPluginDestination:
+        type: string
+      replicationPluginMergeInterval:
+        type: integer
+      replicationPluginSource:
+        type: string
+      replicationPluginTables:
+        type: string
       replicationSourceName:
         type: string
       replicationSslCa:
@@ -5272,6 +5282,9 @@ definitions:
         type: string
       dbuPerNode:
         type: integer
+      destination:
+        description: an analytic child's destination plugin (CDC_CORE.md)
+        type: string
       domain:
         description: 'GTID domain: the one of its name'
         type: string
@@ -5297,6 +5310,9 @@ definitions:
       sourceName:
         description: 'channel from the parent''s master: the parent''s replication-source-name'
         type: string
+      tables:
+        description: the tables it copies
+        type: string
       topology:
         description: the child's topology-target, "" the default (#2012)
         type: string
@@ -5312,8 +5328,16 @@ definitions:
       dbImage:
         description: default the parent's prov-db-image
         type: string
+      destination:
+        description: |-
+          Destination: an analytic child (CDC_CORE.md), the destination plugin (replplugin-<name>)
+          that makes the copies of Tables (schema.table or schema.*, comma separated) at the seed
+          and feeds them; its manifest gives the default image and the tags
+        type: string
       name:
         description: default <parent>-staging or <parent>-child
+        type: string
+      tables:
         type: string
       topology:
         description: |-

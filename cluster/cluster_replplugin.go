@@ -53,7 +53,6 @@ type replPluginRunner struct {
 
 	status  atomic.Pointer[wire.Status]
 	stopped atomic.Pointer[replPluginStop] // nil while the process runs
-	applied atomic.Pointer[replApplied]    // what the applier applied to the target
 
 	inMu  sync.Mutex     // one frame at a time on stdin
 	stdin io.WriteCloser // the running process's, nil when none
@@ -154,6 +153,24 @@ func (cluster *Cluster) readReplPluginConfigs() (map[string]wire.Config, map[str
 func (cluster *Cluster) CheckReplicationPlugins() {
 	cfgs, mods, errs := cluster.readReplPluginConfigs()
 	active := cluster.IsActive() && !cluster.exit.Load()
+	if active {
+		// the source the plugin reads (cluster_repl_source.go): followed after a switchover,
+		// a plugin without a valid source does not run
+		for path, c := range cfgs {
+			if !c.Enabled {
+				continue
+			}
+			// a plugin missing, or that the plan does not grant, never runs (ERR00132)
+			err := cluster.replPluginAllowed(c.Plugin)
+			if err != nil {
+				cluster.SetState("ERR00132", state.State{ErrType: config.LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00132"], c.Plugin, cluster.Name, err), ErrFrom: "REPL"})
+			}
+			if err != nil || !cluster.followReplPluginSource(path, &c) {
+				c.Enabled = false
+				cfgs[path] = c
+			}
+		}
+	}
 	cluster.replPluginsMu.Lock()
 	if cluster.replPlugins == nil {
 		cluster.replPlugins = map[string]*replPluginRunner{}
@@ -188,11 +205,8 @@ func (cluster *Cluster) startReplPluginLocked(path string, c wire.Config, mod ti
 	r := &replPluginRunner{path: path, modTime: mod, cfg: c, cancel: cancel, done: make(chan struct{})}
 	cluster.replPlugins[path] = r
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Replication plugin %s of %s: starting (%s)", c.Plugin, cluster.Name, path)
-	var wg sync.WaitGroup
-	wg.Add(2)
-	go func() { defer wg.Done(); cluster.superviseReplPlugin(ctx, r) }()
-	go func() { defer wg.Done(); cluster.applyReplCheckpoints(ctx, r) }()
-	go func() { wg.Wait(); replPluginClaims.Delete(path); close(r.done) }()
+	// the plugin applies its checkpoints itself (the CDC core, wire 2)
+	go func() { cluster.superviseReplPlugin(ctx, r); replPluginClaims.Delete(path); close(r.done) }()
 }
 
 func (cluster *Cluster) stopReplPluginLocked(path string, r *replPluginRunner) {
@@ -289,30 +303,118 @@ func (cluster *Cluster) replPluginSourcePass(c wire.Config) string {
 	return cluster.GetDbPass()
 }
 
-// execReplPlugin runs the plugin once, until it exits or the context ends.
-func (cluster *Cluster) execReplPlugin(ctx context.Context, r *replPluginRunner) error {
-	bin, err := cluster.replPluginBinary(r.cfg.Plugin)
+// verifiedReplPlugin is the plugin's binary, its signature checked like the log plugins'
+// (when the key is there, a valid signature).
+func (cluster *Cluster) verifiedReplPlugin(plugin string) (string, error) {
+	bin, err := cluster.replPluginBinary(plugin)
 	if err != nil {
-		return err
+		return "", err
 	}
-	// the same check as the log plugins: when the key is there, a valid signature
 	if key := cluster.Conf.PluginSigningPublicKey; key != "" {
 		if _, serr := os.Stat(key); serr == nil {
 			if err := logplugin.VerifyPluginSignature(bin, filepath.Join(cluster.Conf.ShareDir, "plugins"), key); err != nil {
-				return fmt.Errorf("signature: %w", err)
+				return "", fmt.Errorf("signature: %w", err)
 			}
 		}
+	}
+	return bin, nil
+}
+
+// replPluginEnv is a plugin's minimal environment: the passwords, the wire version, the plan,
+// nothing of this process's.
+func (cluster *Cluster) replPluginEnv(c wire.Config) []string {
+	env := []string{
+		"PATH=/usr/local/bin:/usr/bin:/bin",
+		wire.EnvWireVersion + "=" + strconv.Itoa(wire.WireVersion),
+		wire.EnvSourcePassword + "=" + cluster.replPluginSourcePass(c),
+		wire.EnvTargetPassword + "=" + cluster.GetDbPass(),
+	}
+	if cluster.Conf.EnterprisePluginsPlan() {
+		env = append(env, wire.EnvEnterprisePlan+"=1")
+	}
+	return env
+}
+
+// replPluginManifest is the manifest shipped next to the plugin's binary
+// (<binary>.manifest.json); a plugin without one is of every plan, with no tag or image.
+func (cluster *Cluster) replPluginManifest(plugin string) (wire.PluginManifest, error) {
+	m := wire.PluginManifest{Name: plugin}
+	bin, err := cluster.replPluginBinary(plugin)
+	if err != nil {
+		return m, err
+	}
+	b, err := os.ReadFile(bin + ".manifest.json")
+	if os.IsNotExist(err) {
+		return m, nil
+	}
+	if err != nil {
+		return m, err
+	}
+	if err := json.Unmarshal(b, &m); err != nil {
+		return m, fmt.Errorf("%s.manifest.json: %w", filepath.Base(bin), err)
+	}
+	return m, nil
+}
+
+// ReplicationPluginStatuses are the last status lines of the cluster's running plugins, by
+// plugin name.
+func (cluster *Cluster) ReplicationPluginStatuses() map[string]wire.Status {
+	out := map[string]wire.Status{}
+	cluster.replPluginsMu.Lock()
+	defer cluster.replPluginsMu.Unlock()
+	for _, r := range cluster.replPlugins {
+		if st := r.status.Load(); st != nil {
+			out[r.cfg.Plugin] = *st
+		}
+	}
+	return out
+}
+
+// ReplicationPluginSourceHost is the source host of the cluster's running plugin, "" none.
+func (cluster *Cluster) ReplicationPluginSourceHost(plugin string) string {
+	cluster.replPluginsMu.Lock()
+	defer cluster.replPluginsMu.Unlock()
+	for _, r := range cluster.replPlugins {
+		if r.cfg.Plugin == plugin {
+			return r.cfg.Source.Host
+		}
+	}
+	return ""
+}
+
+// ReplicationPluginManifest is the manifest of an installed replication plugin.
+func (cluster *Cluster) ReplicationPluginManifest(plugin string) (wire.PluginManifest, error) {
+	return cluster.replPluginManifest(plugin)
+}
+
+// ReplicationPluginAllowed is nil when the plugin is installed and the seat's plan grants it.
+func (cluster *Cluster) ReplicationPluginAllowed(plugin string) error {
+	return cluster.replPluginAllowed(plugin)
+}
+
+// replPluginAllowed is nil when the plugin is installed and the seat's plan grants it: an
+// enterprise-tier plugin needs EnterprisePluginsPlan, the archive plugins' gate.
+func (cluster *Cluster) replPluginAllowed(plugin string) error {
+	m, err := cluster.replPluginManifest(plugin)
+	if err != nil {
+		return err
+	}
+	if m.Tier == config.ConstArchiveTierEnterprise && !cluster.Conf.EnterprisePluginsPlan() {
+		return fmt.Errorf("plugin %s needs an enterprise plan (partner, support or developer)", plugin)
+	}
+	return nil
+}
+
+// execReplPlugin runs the plugin once, until it exits or the context ends.
+func (cluster *Cluster) execReplPlugin(ctx context.Context, r *replPluginRunner) error {
+	bin, err := cluster.verifiedReplPlugin(r.cfg.Plugin)
+	if err != nil {
+		return err
 	}
 	cmd := exec.CommandContext(ctx, bin, "-config", r.path)
 	cmd.Cancel = func() error { return cmd.Process.Signal(syscall.SIGTERM) }
 	cmd.WaitDelay = replPluginStopGrace
-	// a minimal environment: the passwords and the wire version, nothing of this process's
-	cmd.Env = []string{
-		"PATH=/usr/local/bin:/usr/bin:/bin",
-		wire.EnvWireVersion + "=" + strconv.Itoa(wire.WireVersion),
-		wire.EnvSourcePassword + "=" + cluster.replPluginSourcePass(r.cfg),
-		wire.EnvTargetPassword + "=" + cluster.GetDbPass(),
-	}
+	cmd.Env = cluster.replPluginEnv(r.cfg)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return err
@@ -373,24 +475,35 @@ func (cluster *Cluster) checkReplPluginStates(runners []*replPluginRunner, errs 
 			cluster.SetState("WARN0242", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0242"], name, cluster.Name, stop.Reason, in), ErrFrom: "REPL"})
 			continue
 		}
-		ap := r.applied.Load()
-		if ap == nil {
-			ap = &replApplied{}
-		}
-		if ap.Err != "" {
-			cluster.SetState("WARN0243", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0243"], name, cluster.Name, ap.Err), ErrFrom: "REPL"})
-		}
 		st := r.status.Load()
 		if st == nil {
 			continue
+		}
+		if st.ApplyError != "" {
+			cluster.SetState("WARN0243", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0243"], name, cluster.Name, st.ApplyError), ErrFrom: "REPL"})
 		}
 		detail := ""
 		if st.Description != "" {
 			detail = "; " + st.Description
 		}
-		pendingMB := wire.PendingBytes(wire.CheckpointDir(r.path)) >> 20
-		cluster.SetState("CINF0017", state.State{ErrType: config.LvlInfo, ErrDesc: fmt.Sprintf(clusterError["CINF0017"], name, cluster.Name, st.State, st.GTID, ap.Seq, ap.GTID, pendingMB, st.LagSeconds, st.Inserts, st.Updates, st.Deletes, st.Skipped, detail), ErrFrom: "REPL"})
+		cluster.SetState("CINF0017", state.State{ErrType: config.LvlInfo, ErrDesc: fmt.Sprintf(clusterError["CINF0017"], name, cluster.Name, st.State, st.GTID, st.AppliedSeq, st.AppliedGTID, st.PendingMB, st.LagSeconds, st.Inserts, st.Updates, st.Deletes, st.Skipped, detail), ErrFrom: "REPL"})
+		if st.LastDDL != "" {
+			// the destination keeps the old structure: a state, not a log line (F7)
+			cluster.SetState("WARN0341", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0341"], name, cluster.Name, st.LastDDL, r.cfg.Target.Host), ErrFrom: "REPL"})
+		}
+		if r.cfg.MergeIntervalMs > 0 && st.NextMergeAt != "" {
+			next := time.Duration(0)
+			if t, err := time.Parse(time.RFC3339, st.NextMergeAt); err == nil && time.Until(t) > 0 {
+				next = time.Until(t).Round(time.Second)
+			}
+			at := st.MergedAt
+			if at == "" {
+				at = "never"
+			}
+			cluster.SetState("CINF0030", state.State{ErrType: config.LvlInfo, ErrDesc: fmt.Sprintf(clusterError["CINF0030"], name, cluster.Name, st.MergedSeq, st.MergedGTID, at, st.MergeTookMs, st.AppliedSeq-st.MergedSeq, next), ErrFrom: "REPL"})
+		}
 	}
+	cluster.checkAnalyticChildStates()
 	for path, err := range errs {
 		cluster.SetState("WARN0242", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0242"], filepath.Base(path), cluster.Name, "its TOML does not parse: "+err.Error(), time.Duration(0)), ErrFrom: "REPL"})
 	}

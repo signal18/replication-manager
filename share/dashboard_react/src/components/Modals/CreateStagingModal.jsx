@@ -33,6 +33,8 @@ import { createChildCluster } from '../../redux/clusterSlice'
 // Changing a field drops the plan: Create needs a Check of what will be sent.
 // A child can take another topology (#2012): columnstore makes a ColumnStore child, its
 // tables converted at the seed, with the ColumnStore image and one database (the UM).
+// Analytic makes an analytic child: the chosen tables made at the seed by a destination plugin,
+// which feeds them from the parent's binlog.
 
 function CreateStagingModal({ selectedCluster, kind = 'staging', isOpen, closeModal }) {
   const dispatch = useDispatch()
@@ -42,11 +44,20 @@ function CreateStagingModal({ selectedCluster, kind = 'staging', isOpen, closeMo
   const [dbImage, setDbImage] = useState(selectedCluster?.config?.provDbDockerImg || '')
   const [dbCount, setDbCount] = useState(kind === 'staging' ? 3 : 2)
   const [topology, setTopology] = useState('')
+  const [destination, setDestination] = useState('')
+  const [tables, setTables] = useState('')
+  // the choice 'analytic' is a child of the usual topology with a destination plugin (CDC_CORE.md);
+  // the plan gives the image of the plugin's manifest
+  const analytic = topology === 'analytic'
+  const request = () => ({ name, dbImage, dbCount: Number(dbCount) || 0, topology: analytic ? '' : topology, destination: analytic ? destination : '', tables: analytic ? tables : '' })
   const changeTopology = (t) => {
     setTopology(t)
     setPlan(null)
     if (t === 'columnstore') {
       setDbImage('signal18/mariadb-columnstore:11.8')
+      setDbCount(1)
+    } else if (t === 'analytic') {
+      setDbImage('')
       setDbCount(1)
     } else {
       setDbImage(selectedCluster?.config?.provDbDockerImg || '')
@@ -62,7 +73,7 @@ function CreateStagingModal({ selectedCluster, kind = 'staging', isOpen, closeMo
     setPlan(null)
     setRefusal('')
     try {
-      const { data, status } = await clusterService.createChildCluster(parent, kind, { name, dbImage, dbCount: Number(dbCount) || 0, topology, confirm: false })
+      const { data, status } = await clusterService.createChildCluster(parent, kind, { ...request(), confirm: false })
       if (status === 200) {
         setPlan(data)
       } else {
@@ -81,7 +92,7 @@ function CreateStagingModal({ selectedCluster, kind = 'staging', isOpen, closeMo
   }, [isOpen, parent])
 
   const create = () => {
-    dispatch(createChildCluster({ clusterName: parent, kind, name, dbImage, dbCount: Number(dbCount) || 0, topology }))
+    dispatch(createChildCluster({ clusterName: parent, kind, ...request() }))
     closeModal()
   }
 
@@ -103,8 +114,21 @@ function CreateStagingModal({ selectedCluster, kind = 'staging', isOpen, closeMo
                 <Select id='child-topology' size='sm' value={topology} onChange={(e) => changeTopology(e.target.value)}>
                   <option value=''>Same as a usual child</option>
                   <option value='columnstore'>ColumnStore (tables converted at the seed)</option>
+                  <option value='analytic'>Analytic copies (chosen tables made by a destination plugin)</option>
                 </Select>
               </FormControl>
+            )}
+            {kind === 'child' && analytic && (
+              <>
+                <FormControl>
+                  <FormLabel fontSize='sm'>Destination plugin (replplugin-&lt;name&gt;)</FormLabel>
+                  <Input id='child-destination' size='sm' value={destination} onChange={(e) => { setDestination(e.target.value); setPlan(null) }} />
+                </FormControl>
+                <FormControl>
+                  <FormLabel fontSize='sm'>Tables (schema.table or schema.*, comma separated)</FormLabel>
+                  <Input id='child-tables' size='sm' value={tables} placeholder='shop.orders, shop.*' onChange={(e) => { setTables(e.target.value); setPlan(null) }} />
+                </FormControl>
+              </>
             )}
             <FormControl>
               <FormLabel fontSize='sm'>Database image (empty: the parent's)</FormLabel>
@@ -122,7 +146,7 @@ function CreateStagingModal({ selectedCluster, kind = 'staging', isOpen, closeMo
               {plan && (
                 <Stack spacing={1}>
                   <Text>
-                    <b>{plan.name}</b> on {plan.orchestrator}{plan.topology ? `, topology ${plan.topology}` : ''}: {plan.dbCount} × {plan.dbImage}, {plan.dbuPerNode} DBU per node, proxy{' '}
+                    <b>{plan.name}</b> on {plan.orchestrator}{plan.topology ? `, topology ${plan.topology}` : ''}{plan.destination ? `, ${plan.destination} copies of ${plan.tables}` : ''}: {plan.dbCount} × {plan.dbImage}, {plan.dbuPerNode} DBU per node, proxy{' '}
                     {plan.proxy || 'none'}
                   </Text>
                   <Text>

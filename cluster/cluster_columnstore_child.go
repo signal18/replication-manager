@@ -56,21 +56,28 @@ func (cluster *Cluster) startColumnstoreChild(parent *Cluster, target *ServerMon
 	if pmaster == nil {
 		return fmt.Errorf("parent %s has no master", parent.Name)
 	}
+	source := cluster.resolveReplPluginSource(wire.Config{Plugin: columnstorePluginName, SourceCluster: parent.Name})
+	if source == nil {
+		return fmt.Errorf("no source for the replication plugin on %s (replication-plugin-source %q): see its state", parent.Name, cluster.Conf.ReplicationPluginSource)
+	}
 	meta, err := splitdump.ReadMetadata(backupPath)
 	if err != nil || meta == nil || meta.GTID == "" {
 		return fmt.Errorf("the GTID of the backup %s is unknown (%v): the plugin cannot know where to start", backupPath, err)
 	}
 	cfg := wire.Config{
-		Plugin:         columnstorePluginName,
-		Enabled:        true,
-		Mode:           "csv",
-		ServerID:       columnstorePluginServerID(cluster.Name),
-		Source:         wire.Endpoint{Host: pmaster.Host, Port: atoiPort(pmaster.Port), User: cluster.GetDbUser()},
-		Target:         wire.Endpoint{Host: target.Host, Port: atoiPort(target.Port), User: cluster.GetDbUser()},
-		BatchTimeoutMs: 10000,
-		StartGTID:      meta.GTID,
-		MaxPendingMB:   1024,
-		BatchMB:        64,
+		Plugin:          columnstorePluginName,
+		Enabled:         true,
+		Mode:            "csv",
+		ServerID:        columnstorePluginServerID(cluster.Name),
+		Source:          wire.Endpoint{Host: source.Host, Port: atoiPort(source.Port), User: cluster.GetDbUser()},
+		Target:          wire.Endpoint{Host: target.Host, Port: atoiPort(target.Port), User: cluster.GetDbUser()},
+		BatchTimeoutMs:  cluster.replPluginCheckpointMs(),
+		Destination:     columnstorePluginName,
+		SourceCluster:   parent.Name,
+		MergeIntervalMs: cluster.Conf.ReplicationPluginMergeInterval * 1000,
+		StartGTID:       meta.GTID,
+		MaxPendingMB:    1024,
+		BatchMB:         64,
 		// the seed's checkpoints at 30 s or 64 MB: bigger CSVs, fewer LOAD DATA
 		RestoreBatchTimeoutMs: 30000,
 		RestoreBatchMB:        64,
@@ -89,7 +96,7 @@ func (cluster *Cluster) startColumnstoreChild(parent *Cluster, target *ServerMon
 	}
 	cluster.columnstoreFeed.Store(&replFeed{path: path})
 	cluster.CheckReplicationPlugins()
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "ColumnStore child %s: replplugin-columnstore started, the restore of %s feeds it, then the binlog of %s from GTID %s", cluster.Name, backupPath, pmaster.URL, meta.GTID)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "ColumnStore child %s: replplugin-columnstore started, the restore of %s feeds it, then the binlog of %s from GTID %s", cluster.Name, backupPath, source.URL, meta.GTID)
 	return nil
 }
 
@@ -160,11 +167,19 @@ func writeReplPluginConfig(path string, cfg wire.Config) error {
 		return err
 	}
 	var b bytes.Buffer
-	b.WriteString("# replication-manager: written at the seed of the ColumnStore child (#2015); its tables are in its state once the restore is done\n")
+	b.WriteString("# replication-manager: written at the seed of the child (#2015, CDC_CORE.md); its tables are in its state once the restore is done\n")
 	if err := toml.NewEncoder(&b).Encode(cfg); err != nil {
 		return err
 	}
 	return os.WriteFile(path, b.Bytes(), 0640)
+}
+
+// replPluginCheckpointMs: replication-plugin-checkpoint-interval in ms, 10 s when unset
+func (cluster *Cluster) replPluginCheckpointMs() int {
+	if cluster.Conf.ReplicationPluginCheckpointInterval <= 0 {
+		return 10000
+	}
+	return cluster.Conf.ReplicationPluginCheckpointInterval * 1000
 }
 
 func atoiPort(p string) int {
@@ -172,20 +187,26 @@ func atoiPort(p string) int {
 	return n
 }
 
-// columnstoreReplicateIgnore is "<channel>.replicate_ignore_table=<tables>" for a UM's
-// configuration bundle, from the ColumnStore plugin's TOML; "" when there is none.
+// columnstoreReplicateIgnore is the replicate_ignore_table line of a ColumnStore UM's
+// configuration bundle (replPluginReplicateIgnore, the same for an analytic child).
 func (server *ServerMonitor) columnstoreReplicateIgnore() string {
 	cl := server.ClusterGroup
 	if cl == nil || !cl.HasConfigTopoColumnstore() {
 		return ""
 	}
+	return server.replPluginReplicateIgnore()
+}
+
+// replPluginReplicateIgnoreLine is "<channel>.replicate_ignore_table=<tables>" from the plugin
+// TOML at path, its tables from its State once the restore told them; "" when there is none.
+func replPluginReplicateIgnoreLine(path string) string {
 	var cfg wire.Config
-	if _, err := toml.DecodeFile(cl.columnstorePluginPath(), &cfg); err != nil || !cfg.Enabled || cfg.SourceChannel == "" {
+	if _, err := toml.DecodeFile(path, &cfg); err != nil || !cfg.Enabled || cfg.SourceChannel == "" {
 		return ""
 	}
 	if len(cfg.Rules) == 0 {
 		// the tables carried are those the restore's end told the plugin
-		st, err := wire.ReadState(wire.StatePath(cl.columnstorePluginPath()))
+		st, err := wire.ReadState(wire.StatePath(path))
 		if err != nil || !st.RestoreDone {
 			return ""
 		}

@@ -2,7 +2,7 @@
 // Copyright 2017-2026 SIGNAL18 CLOUD SAS
 // This source code is licensed under the GNU General Public License, version 3.
 
-package main
+package cdc
 
 import (
 	"archive/tar"

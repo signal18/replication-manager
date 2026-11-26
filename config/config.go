@@ -544,6 +544,11 @@ type Config struct {
 	TopologyStaging                          bool                         `mapstructure:"topology-staging" toml:"topology-staging" json:"topologyStaging"`
 	TopologyStagingRefreshScript             string                       `mapstructure:"topology-staging-refresh-script" toml:"topology-staging-refresh-script" json:"topologyStagingRefreshScript"`
 	TopologyStagingPostDetachScript          string                       `mapstructure:"topology-staging-post-detach-script" toml:"topology-staging-post-detach-script" json:"topologyStagingPostDetachScript"`
+	ReplicationPluginDestination             string                       `mapstructure:"replication-plugin-destination" toml:"replication-plugin-destination" json:"replicationPluginDestination"`
+	ReplicationPluginTables                  string                       `mapstructure:"replication-plugin-tables" toml:"replication-plugin-tables" json:"replicationPluginTables"`
+	ReplicationPluginSource                  string                       `mapstructure:"replication-plugin-source" toml:"replication-plugin-source" json:"replicationPluginSource"`
+	ReplicationPluginCheckpointInterval      int                          `mapstructure:"replication-plugin-checkpoint-interval" toml:"replication-plugin-checkpoint-interval" json:"replicationPluginCheckpointInterval"`
+	ReplicationPluginMergeInterval           int                          `mapstructure:"replication-plugin-merge-interval" toml:"replication-plugin-merge-interval" json:"replicationPluginMergeInterval"`
 	StagingProxyHosts                        string                       `mapstructure:"staging-proxy-hosts" toml:"staging-proxy-hosts" json:"stagingProxyHosts"`
 	StagingServerHost                        string                       `mapstructure:"staging-server-host" toml:"staging-server-host" json:"stagingServerHost"`
 	GraphiteMetrics                          bool                         `scope:"server" mapstructure:"graphite-metrics" toml:"graphite-metrics" json:"graphiteMetrics"`

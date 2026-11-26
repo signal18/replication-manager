@@ -1093,6 +1093,7 @@ func (cluster *Cluster) InitFromConf() {
 
 	cluster.Conf.TopologyTarget = cluster.GetTopologyFromConf()
 	cluster.addColumnstoreTag()
+	cluster.addAnalyticTags()
 	cluster.disableColumnstoreDynamic()
 }
 

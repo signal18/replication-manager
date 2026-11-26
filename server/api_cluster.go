@@ -5090,6 +5090,35 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.MonitorSchemaEventsMax = val
 	case "backup-binlogs-keep":
 		mycluster.SetBackupBinlogsKeep(value)
+	case "replication-plugin-destination":
+		if err := mycluster.SetReplicationPluginDestination(value); err != nil {
+			return err
+		}
+	case "replication-plugin-tables":
+		mycluster.Conf.ReplicationPluginTables = strings.TrimSpace(value)
+	case "replication-plugin-source":
+		v := strings.TrimSpace(value)
+		if v == "" {
+			v = "master"
+		}
+		mycluster.Conf.ReplicationPluginSource = v
+	case "replication-plugin-checkpoint-interval", "replication-plugin-merge-interval":
+		val, err := strconv.Atoi(value)
+		if err != nil || val < 0 {
+			return fmt.Errorf("invalid value for %s: %q, expected a number of seconds, 0 or more", name, value)
+		}
+		checkpoint, merge := mycluster.Conf.ReplicationPluginCheckpointInterval, mycluster.Conf.ReplicationPluginMergeInterval
+		if name == "replication-plugin-checkpoint-interval" {
+			if val == 0 {
+				return fmt.Errorf("invalid value for %s: a checkpoint lasts 1 second or more", name)
+			}
+			checkpoint = val
+		} else {
+			merge = val
+		}
+		if err := mycluster.SetReplicationPluginIntervals(checkpoint, merge); err != nil {
+			return err
+		}
 	case "delay-stat-rotate":
 		mycluster.SetDelayStatRotate(value)
 	case "print-delay-stat-interval":

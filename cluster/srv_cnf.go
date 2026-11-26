@@ -32,7 +32,7 @@ func (server *ServerMonitor) GetEnv() map[string]string {
 		"%%ENV:SVC_CONF_ENV_MAX_CORES%%":                            server.ClusterGroup.Configurator.GetConfigDBCores(),
 		"%%ENV:SVC_CONF_ENV_MAX_CONNECTIONS%%":                      server.ClusterGroup.Configurator.GetConfigMaxConnections(),
 		"%%ENV:SVC_CONF_ENV_CRC32_ID%%":                             string(server.Id[2:10]),
-		configurator.ColumnstoreReplicateIgnoreEnv:                  server.columnstoreReplicateIgnore(),
+		configurator.ColumnstoreReplicateIgnoreEnv:                  server.replPluginReplicateIgnore(),
 		"%%ENV:SVC_CONF_ENV_SERVER_ID%%":                            string(server.Id[2:10]),
 		"%%ENV:SERVER_IP%%":                                         misc.Unbracket(server.GetBindAddress()),
 		"%%ENV:SERVER_HOST%%":                                       server.Host,
