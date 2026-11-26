@@ -83,8 +83,9 @@ func (cluster *Cluster) Bootstrap() error {
 
 	// active-passive: one server, no replication to set up; its discovery (the lone server
 	// is the master) answered "already has an existing master/slave setup" and the
-	// provision failed after the service was up (#2004)
-	if !cluster.HasConfigTopoActivePassive() {
+	// provision failed after the service was up (#2004). The same for any cluster of one
+	// server: a one-database ColumnStore or analytic child (#2440)
+	if !cluster.HasConfigTopoActivePassive() && len(cluster.Servers) > 1 {
 		// the containers only get the root password: a separate replication user must exist on
 		// every server before the replicas connect (#2360)
 		cluster.createReplicationUser()

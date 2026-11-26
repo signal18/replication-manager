@@ -113,3 +113,9 @@ depend on the last tag build having published a plugin set for the current wire 
   build runs queues, matching the old Jenkins `concurrentBuild: false`.
 - The root `Jenkinsfile` and its Mattermost plumbing are dead code and can be removed once
   nobody references the old Jenkins job.
+- **The CDC core module tag** (`doc/implementation/cluster/CDC_CORE.md`): `cluster/replplugin/cdc`
+  is a Go module of its own, imported by destination plugins kept in other repositories. At
+  each release that changes it, push the module tag `cluster/replplugin/cdc/vX.Y.Z` (same
+  `X.Y.Z` as the release tag) on the release commit, next to `vX.Y.Z`:
+  `git tag cluster/replplugin/cdc/vX.Y.Z <commit> && git push origin cluster/replplugin/cdc/vX.Y.Z`.
+  No workflow creates it.

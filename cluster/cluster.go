@@ -655,6 +655,8 @@ type Cluster struct {
 	replPlugins          map[string]*replPluginRunner         `json:"-"` // replication plugins by TOML path (#2015)
 	columnstoreFeed      atomic.Pointer[replFeed]             `json:"-"` // the seed's restore feeding replplugin-columnstore (#2015)
 	replPluginsMu        sync.Mutex                           `json:"-"`
+	analyticCreating     atomic.Pointer[time.Time]            `json:"-"` // the analytic child's -create running since (CINF0031)
+	replManifests        sync.Map                             `json:"-"` // replication plugin manifests read, by binary path, with its modification time
 	// backupVerifying holds the backups being verified (#2023): backup id -> level.
 	backupVerificationMu sync.Mutex `json:"-"`
 	backupVerifying      sync.Map   `json:"-"`
@@ -1101,6 +1103,7 @@ func (cluster *Cluster) InitFromConf() {
 
 	cluster.Conf.TopologyTarget = cluster.GetTopologyFromConf()
 	cluster.addColumnstoreTag()
+	cluster.addAnalyticTags()
 	cluster.disableColumnstoreDynamic()
 }
 

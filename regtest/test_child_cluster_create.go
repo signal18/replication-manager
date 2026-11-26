@@ -100,6 +100,12 @@ type childRun struct {
 // checks it (#1988, #1997); the caller deletes it when created. skipped: the cluster
 // cannot have one (not provisioned, no master, itself staging).
 func createCheckedChild(cl *cluster.Cluster, kind string, grant string, wantStates map[string]int) (run childRun, skipped bool, ok bool) {
+	return createCheckedChildWith(cl, kind, grant, wantStates, nil)
+}
+
+// createCheckedChildWith is createCheckedChild with more fields in the request (a topology, a
+// destination plugin and its tables).
+func createCheckedChildWith(cl *cluster.Cluster, kind string, grant string, wantStates map[string]int, extra map[string]any) (run childRun, skipped bool, ok bool) {
 	orch := cl.GetOrchestrator()
 	if orch != config.ConstOrchestratorOpenSVC && orch != config.ConstOrchestratorKubernetes || cl.Conf.TopologyStaging || cl.GetMaster() == nil {
 		tlsLogf(cl, "Skipping Create "+kind+": needs a provisioned (OpenSVC or Kubernetes) cluster with a master, not itself staging")
@@ -116,6 +122,9 @@ func createCheckedChild(cl *cluster.Cluster, kind string, grant string, wantStat
 		return run, false, false
 	}
 	name := cl.Name + "-" + kind + "-regtest"
+	if n, ok := extra["name"].(string); ok && n != "" {
+		name = n // a name of its own: the previous run's unprovisioning may still hold the default one
+	}
 	run.name = name
 	parentMaster := cl.GetMaster().Host
 
@@ -133,7 +142,11 @@ func createCheckedChild(cl *cluster.Cluster, kind string, grant string, wantStat
 	var plan struct {
 		Name, Domain, SourceName, OwnSourceName string
 	}
-	if err := stagingPost(tok, cl.Name, kind, map[string]any{"name": name}, http.StatusOK, &plan); err != nil {
+	body := map[string]any{"name": name}
+	for k, v := range extra {
+		body[k] = v
+	}
+	if err := stagingPost(tok, cl.Name, kind, body, http.StatusOK, &plan); err != nil {
 		tlsLogf(cl, "FAIL Create "+kind+": plan: %s", err)
 		return run, false, false
 	}
@@ -144,7 +157,8 @@ func createCheckedChild(cl *cluster.Cluster, kind string, grant string, wantStat
 		return run, false, false
 	}
 
-	if err := stagingPost(tok, cl.Name, kind, map[string]any{"name": name, "confirm": true}, http.StatusAccepted, nil); err != nil {
+	body["confirm"] = true
+	if err := stagingPost(tok, cl.Name, kind, body, http.StatusAccepted, nil); err != nil {
 		tlsLogf(cl, "FAIL Create "+kind+": create: %s", err)
 		return run, false, false
 	}

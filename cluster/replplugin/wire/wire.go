@@ -23,7 +23,9 @@ import (
 )
 
 // WireVersion is the version of this contract; a plugin built for another one is refused.
-const WireVersion = 1
+// 2: the plugin applies its checkpoints itself (the CDC core, cluster/replplugin/cdc), its
+// status says what it applied and merged; a plugin of wire 1 only captured.
+const WireVersion = 2
 
 // BinaryPrefix names a replication plugin binary: replplugin-<plugin>. Not "plugin-": the
 // log plugin loader takes every plugin-* it finds.
@@ -79,6 +81,21 @@ type Config struct {
 	// SourceChannel: the target's native replication channel from the same source, which
 	// ignores the tables this plugin carries (replicate_ignore_table), "" when none
 	SourceChannel string `toml:"source_channel" json:"sourceChannel"`
+	// Destination: the destination the plugin applies its checkpoints to (wire 2: the plugin
+	// applies them, replication-manager supervises): "columnstore" (also when empty), or the
+	// name of an external destination plugin
+	Destination string `toml:"destination" json:"destination"`
+	// SourceCluster: the cluster of the source server, whose master or replica
+	// replication-manager keeps as the source (replication-plugin-source); "" none
+	SourceCluster string `toml:"source_cluster" json:"sourceCluster"`
+	// MergeIntervalMs: 0, each checkpoint applied to the destination; more, each checkpoint
+	// applied to an InnoDB staging on the target, merged into the destination at this period
+	MergeIntervalMs int `toml:"merge_interval_ms" json:"mergeIntervalMs"`
+}
+
+// MergedPath is the file the plugin records the last merge of its staging in.
+func MergedPath(configPath string) string {
+	return strings.TrimSuffix(configPath, filepath.Ext(configPath)) + ".merged.json"
 }
 
 // Tables lists the rules' tables as schema.table; ok false when a rule takes a whole
@@ -136,7 +153,58 @@ type Status struct {
 	Skipped     int64  `json:"skipped"` // rows of tables no rule selects
 	Error       string `json:"error,omitempty"`
 	Description string `json:"description,omitempty"`
+	// LastDDL: the last DDL read on the source since the plugin started, which no checkpoint
+	// carries: the destination keeps the table's old structure
+	LastDDL string `json:"lastDdl,omitempty"`
+	// the apply: the last checkpoint applied (to the destination, or to the staging with a
+	// merge interval) and its GTID, the error it retries, the checkpoints waiting
+	AppliedSeq  int64  `json:"appliedSeq"`
+	AppliedGTID string `json:"appliedGtid,omitempty"`
+	ApplyError  string `json:"applyError,omitempty"`
+	PendingMB   int64  `json:"pendingMb"`
+	// the merge of the staging (merge_interval_ms > 0): the checkpoint and GTID it holds up
+	// to, when it ended (RFC 3339), how long it took, when the next one is due
+	MergedSeq   int64  `json:"mergedSeq,omitempty"`
+	MergedGTID  string `json:"mergedGtid,omitempty"`
+	MergedAt    string `json:"mergedAt,omitempty"`
+	MergeTookMs int64  `json:"mergeTookMs,omitempty"`
+	NextMergeAt string `json:"nextMergeAt,omitempty"`
 }
+
+// CreateResult is one line of a plugin run with -create: a table of its rules, made the
+// destination's on the target (Created), or left as it is with the Reason.
+type CreateResult struct {
+	Table   string `json:"table"`
+	Engine  string `json:"engine"`
+	Created bool   `json:"created"`
+	Reason  string `json:"reason,omitempty"`
+}
+
+// PluginManifest is what a replication plugin ships next to its binary, replplugin-<name>.manifest.json:
+// its destination, the plan it needs and what a child of it takes. A plugin without one is a
+// plugin of every plan, with no tag or image of its own.
+type PluginManifest struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	// Tier: "enterprise", the plans of EnterprisePluginsPlan only; "" every plan
+	Tier    string `json:"tier,omitempty"`
+	License string `json:"license,omitempty"`
+	// Tags: the configurator tags the target's servers need (the engine, localinfile)
+	Tags []string `json:"tags,omitempty"`
+	// Image: the database image of a child of this destination, by default. "{version}" in it
+	// stands for the parent master's release (X.Y.Z): an engine package that must match its
+	// server release exactly, the child running the parent's release
+	Image string `json:"image,omitempty"`
+	// ImageVersions: the releases an Image with "{version}" exists for; empty, any
+	ImageVersions []string `json:"imageVersions,omitempty"`
+	// SingleServer: the destination is written out of the binlog, a child of it has one
+	// database (its replicas would not receive the destination's tables)
+	SingleServer bool `json:"singleServer,omitempty"`
+}
+
+// EnvEnterprisePlan is "1" in the environment of a plugin when the seat's plan grants the
+// enterprise plugins; an enterprise plugin refuses to run without it.
+const EnvEnterprisePlan = "REPMAN_REPLPLUGIN_ENTERPRISE_PLAN"
 
 // State is a plugin's position, <name>.state.json next to its TOML: where it restarts.
 // RestoreDone: the restore's rows were all received, the binlog streams from GTID; Tables:
@@ -229,7 +297,8 @@ func RulesOf(tables []string) []Rule {
 	return rules
 }
 
-// Applied is what replication-manager applied to the target, <name>.applied.json.
+// Applied is what the plugin applied to the target, <name>.applied.json (replication-manager
+// applied it before wire 2).
 type Applied struct {
 	Seq  int64  `json:"seq"`
 	GTID string `json:"gtid"`

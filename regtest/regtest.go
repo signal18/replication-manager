@@ -198,6 +198,8 @@ var tests = []string{
 	"testCreateStagingSplitdump",
 	"testCreateChildSplitdump",
 	"testAlterEngine",
+	"testColumnstoreChildCDC",
+	"testAnalyticChildCDC",
 	"testProvisionReplicationUser",
 }
 
@@ -367,6 +369,8 @@ var testTargets = map[string][]TestTarget{
 	"testCreateStagingSplitdump":                                               anyCluster,
 	"testCreateChildSplitdump":                                                 anyCluster,
 	"testAlterEngine":                                                          anyCluster,
+	"testColumnstoreChildCDC":                                                  anyCluster,
+	"testAnalyticChildCDC":                                                     anyCluster,
 
 	// #2227: a real rotation on MariaDB and MySQL, the versioned file on. Its variant with a vault
 	// entry, testCredentialVersionsRotationVault, is run by name on a cluster whose config enables

@@ -33490,6 +33490,21 @@ const docTemplate = `{
                 "replicationPgLogicalDdl": {
                     "type": "boolean"
                 },
+                "replicationPluginCheckpointInterval": {
+                    "type": "integer"
+                },
+                "replicationPluginDestination": {
+                    "type": "string"
+                },
+                "replicationPluginMergeInterval": {
+                    "type": "integer"
+                },
+                "replicationPluginSource": {
+                    "type": "string"
+                },
+                "replicationPluginTables": {
+                    "type": "string"
+                },
                 "replicationSourceName": {
                     "type": "string"
                 },
@@ -34589,6 +34604,10 @@ const docTemplate = `{
                 "dbuPerNode": {
                     "type": "integer"
                 },
+                "destination": {
+                    "description": "an analytic child's destination plugin (CDC_CORE.md)",
+                    "type": "string"
+                },
                 "domain": {
                     "description": "GTID domain: the one of its name",
                     "type": "string"
@@ -34623,6 +34642,10 @@ const docTemplate = `{
                     "description": "channel from the parent's master: the parent's replication-source-name",
                     "type": "string"
                 },
+                "tables": {
+                    "description": "the tables it copies",
+                    "type": "string"
+                },
                 "topology": {
                     "description": "the child's topology-target, \"\" the default (#2012)",
                     "type": "string"
@@ -34644,8 +34667,15 @@ const docTemplate = `{
                     "description": "default the parent's prov-db-image",
                     "type": "string"
                 },
+                "destination": {
+                    "description": "Destination: an analytic child (CDC_CORE.md), the destination plugin (replplugin-\u003cname\u003e)\nthat makes the copies of Tables (schema.table or schema.*, comma separated) at the seed\nand feeds them; its manifest gives the default image and the tags",
+                    "type": "string"
+                },
                 "name": {
                     "description": "default \u003cparent\u003e-staging or \u003cparent\u003e-child",
+                    "type": "string"
+                },
+                "tables": {
                     "type": "string"
                 },
                 "topology": {

@@ -2,7 +2,7 @@
 // Copyright 2017-2026 SIGNAL18 CLOUD SAS
 // This source code is licensed under the GNU General Public License, version 3.
 
-package main
+package cdc
 
 import (
 	"archive/tar"
@@ -171,13 +171,16 @@ func (b *tableBuf) keyNames() []string {
 type checkpointWriter struct {
 	dir        string
 	maxPending int64
-	paused     func(pending int64) // told while it waits
+	paused     func(pending int64) // told while it waits, 0 when it ends; called with the capture's lock held: it must not take it
 }
 
 func (w *checkpointWriter) waitRoom() {
-	for {
+	for waited := false; ; waited = true {
 		p := wire.PendingBytes(w.dir)
 		if p <= w.maxPending {
+			if waited && w.paused != nil {
+				w.paused(0) // room again: the pause ends
+			}
 			return
 		}
 		if w.paused != nil {

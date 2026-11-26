@@ -93,7 +93,12 @@ type ChildClusterSpec struct {
 	// default. columnstore: a ColumnStore child of an OLTP parent, its tables converted at
 	// the seed (#2010), image signal18/mariadb-columnstore and 1 database (the UM) by default
 	Topology string `json:"topology,omitempty"`
-	Confirm  bool   `json:"confirm"` // false: the plan only
+	// Destination: an analytic child (CDC_CORE.md), the destination plugin (replplugin-<name>)
+	// that makes the copies of Tables (schema.table or schema.*, comma separated) at the seed
+	// and feeds them; its manifest gives the default image and the tags
+	Destination string `json:"destination,omitempty"`
+	Tables      string `json:"tables,omitempty"`
+	Confirm     bool   `json:"confirm"` // false: the plan only
 }
 
 // Cloud18ClusterSpec is a self-service cluster request on an infrastructure.

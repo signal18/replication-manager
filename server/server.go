@@ -690,6 +690,11 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.TopologyStaging, "topology-staging", false, "Use topology staging")
 	flags.StringVar(&conf.TopologyStagingRefreshScript, "topology-staging-refresh-script", "", "Topology staging refresh script path. Empty will use copy of embedded template in working directory")
 	flags.StringVar(&conf.TopologyStagingPostDetachScript, "topology-staging-post-detach-script", "", "Topology staging post detach script path. Empty will not execute anything")
+	flags.StringVar(&conf.ReplicationPluginDestination, "replication-plugin-destination", "", "Analytic child: the destination plugin (replplugin-<name>) that makes and feeds the copies of replication-plugin-tables at the seed from the parent; empty: none")
+	flags.StringVar(&conf.ReplicationPluginTables, "replication-plugin-tables", "", "Analytic child: the tables the destination plugin copies, comma separated schema.table or schema.* (empty: none)")
+	flags.StringVar(&conf.ReplicationPluginSource, "replication-plugin-source", "master", "ColumnStore or analytic child: the parent server whose binlog the replication plugin reads, master (followed after a failover) or host:port of a dedicated replica")
+	flags.IntVar(&conf.ReplicationPluginCheckpointInterval, "replication-plugin-checkpoint-interval", 10, "ColumnStore or analytic child: seconds of binlog per checkpoint of the replication plugin")
+	flags.IntVar(&conf.ReplicationPluginMergeInterval, "replication-plugin-merge-interval", 0, "ColumnStore or analytic child: seconds between two merges of the InnoDB staging into the destination; 0 applies each checkpoint to the destination")
 	flags.StringVar(&conf.StagingProxyHosts, "staging-proxy-hosts", "", "Staging proxy hosts list to monitor separated by commas")
 	flags.StringVar(&conf.StagingServerHost, "staging-server-host", "", "Staging database host")
 

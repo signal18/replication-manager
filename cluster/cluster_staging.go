@@ -694,6 +694,18 @@ func (cluster *Cluster) ReseedFromParentCluster(parent *Cluster, target *ServerM
 		return "", err
 	}
 
+	// an analytic child (CDC_CORE.md): its chosen tables made by its destination plugin and
+	// handed to it before the channel starts, which then ignores them
+	if target.IsMaster() && cluster.HasAnalyticChild() {
+		if err := cluster.prepareAnalyticChild(parent, target, channel); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Analytic child %s: %s", cluster.Name, err)
+			target.MarkReseedFailed(err)
+			target.JobsUpdateStateRuntimeOnly(task, err.Error(), 5, 1)
+			target.markReseedStoppedLinks([]string{channel}, fmt.Sprintf("analytic child %s not prepared, its tables would replicate natively: %s", cluster.Name, err))
+			return "", fmt.Errorf("analytic child preparation: %w", err)
+		}
+	}
+
 	target.JobsUpdateStateRuntimeOnly(task, "Reseed completed", 3, 1)
 
 	if target.IsMaster() {

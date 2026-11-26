@@ -16,6 +16,7 @@ import (
 // channel from the parent ignores them: <channel>.replicate_ignore_table, set live at the
 // seed and rendered here into the bundle for the next start. The line comes from the
 // plugin's TOML, through the server's template environment (ColumnstoreReplicateIgnoreEnv).
+// An analytic child (CDC_CORE.md) renders its channel's ignore list the same way.
 const (
 	columnstoreReplicateIgnoreFile = "03_with_mcs_replicate_ignore.cnf"
 	// ColumnstoreReplicateIgnoreEnv is "<channel>.replicate_ignore_table=<tables>" in a UM's
@@ -30,6 +31,6 @@ func (configurator *Configurator) writeColumnstoreReplicateIgnore(Datadir, line 
 	if err := os.MkdirAll(dir, os.FileMode(0775)); err != nil {
 		return fmt.Errorf("Compliance create directory %q: %s", dir, err)
 	}
-	content := "# replication-manager: the ColumnStore tables are carried by replplugin-columnstore, not by this channel (see columnstore_replication.go)\n[mariadb]\n" + line + "\n"
+	content := "# replication-manager: the ColumnStore or analytic copies are carried by the replication plugin, not by this channel (see columnstore_replication.go)\n[mariadb]\n" + line + "\n"
 	return os.WriteFile(dir+"/"+columnstoreReplicateIgnoreFile, []byte(content), 0644)
 }
