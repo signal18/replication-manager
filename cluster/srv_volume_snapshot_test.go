@@ -253,6 +253,7 @@ rollback)
     [ -f "$D/rollback-fails" ] && grep -qx "${last%@*}" "$D/rollback-fails" && exit 1
     echo "$last" >>"$D/rolled" ;;
 list)
+    case "$*" in *"-t snapshot"*) [ -f "$D/list-fails" ] && { echo "sudo: a password is required" >&2; exit 1; } ;; esac
     case "$*" in
     *"name,clones"*) grep "^$last@" "$D/snaps" | while IFS="	" read -r n c u; do
         cl=$(awk -v n="$n" '$1 == n { print $2 }' "$D/clones" 2>/dev/null); printf '%s\t%s\n' "$n" "${cl:--}"; done ;;
@@ -466,6 +467,14 @@ func TestVolumeSnapshotBusyWaitWithinTheDeadline(t *testing.T) {
 		if got := volumeSnapshotBusyWait(timeout); got != want {
 			t.Errorf("busy wait of %s = %d, want %d", timeout, got, want)
 		}
+	}
+}
+
+func TestVolumeSnapshotHelperListFailureIsAnError(t *testing.T) {
+	_, server, vs, dir := newFakeZFSHost(t)
+	os.WriteFile(filepath.Join(dir, "list-fails"), nil, 0o644)
+	if _, err := vs.List(server); err == nil || !strings.Contains(err.Error(), "zfs list") {
+		t.Fatalf("a failing zfs list must be an error, not an empty list: %v", err)
 	}
 }
 
