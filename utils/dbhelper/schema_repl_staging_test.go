@@ -120,3 +120,31 @@ func TestInsertIgnoreKeysAndBatches(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// The staged keys of a composite key with a string part and a NULL part delete by exact
+// value (IS NULL for the NULL), and the merge inserts the columns both tables have, by name.
+func TestKeyBatchesAndColumnMerge(t *testing.T) {
+	conn, mock := stagingConn(t)
+	ctx := context.Background()
+	mock.ExpectExec(regexp.QuoteMeta("DELETE FROM `shop`.`lines` WHERE (`order_ref` = ? AND `line` = ?) OR (`order_ref` = ? AND `line` IS NULL)")).
+		WithArgs([]byte("ÉtÉ-1"), int64(2), []byte("abc")).WillReturnResult(sqlmock.NewResult(0, 2))
+	if _, err := DeleteRowsByKey(ctx, conn, "shop", "lines", []string{"order_ref", "line"}, [][]interface{}{{[]byte("ÉtÉ-1"), int64(2)}, {[]byte("abc"), nil}}); err != nil {
+		t.Fatal(err)
+	}
+	mock.ExpectQuery("SELECT a.COLUMN_NAME FROM information_schema.COLUMNS a JOIN").WithArgs("shop", "lines", "stg", "shop__lines__r").
+		WillReturnRows(sqlmock.NewRows([]string{"c"}).AddRow("order_ref").AddRow("line"))
+	cols, _, err := GetCommonColumnNames(ctx, conn, "stg", "shop__lines__r", "shop", "lines")
+	if err != nil || len(cols) != 2 {
+		t.Fatalf("common columns %v, %v", cols, err)
+	}
+	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO `shop`.`lines` (`order_ref`, `line`) SELECT `order_ref`, `line` FROM `stg`.`shop__lines__r`")).WillReturnResult(sqlmock.NewResult(0, 5))
+	if _, err := InsertSelectColumns(ctx, conn, "shop", "lines", "stg", "shop__lines__r", cols); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := InsertSelectColumns(ctx, conn, "shop", "lines", "stg", "shop__lines__r", nil); err == nil {
+		t.Fatal("no common column must be refused")
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
