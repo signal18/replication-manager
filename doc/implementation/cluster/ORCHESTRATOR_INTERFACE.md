@@ -401,7 +401,7 @@ backend logs today. New states, numbered after the last ones (WARN0324, ERR00121
 | ERR00122 | server | ERROR | an orchestrator operation the monitor or the user asked for failed on this server (provision, start, refresh): the service cannot do its job until someone acts. Text: `Orchestrator %s: %s of %s failed: %s` | the next successful operation of the same kind on the server |
 | WARN0326 | cluster | WARNING | `Check()` of a configured orchestrator fails (unreachable, bad credentials, script missing or not executable): every provisioning action of the cluster will fail. Text: `Orchestrator %s (%s) unreachable: %s` | the next successful check |
 | WARN0327 | cluster | WARNING | a configuration names an orchestrator that does not exist, or a server names one of another type than the cluster's and the operation needs the cluster's (3.3). Text: `Server %s names orchestrator %s: %s` | the configuration is fixed |
-| WARN0327 | server | WARNING | the server is frozen for a rolling operation on a backend without a freeze of its own (the frozen flag, 2.5): the monitor rejoins, restarts and reprovisions nothing on it. Text: `Server %s frozen for a rolling operation: no rejoin, restart or reprovision until unfrozen` | `UnfreezeDatabaseService` |
+| WARN0342 | server | WARNING | the server is frozen for a rolling operation on a backend without a freeze of its own (the frozen flag, 2.5): the monitor rejoins, restarts and reprovisions nothing on it. Text: `Server %s frozen for a rolling operation: no rejoin, restart or reprovision until unfrozen` | `UnfreezeDatabaseService` |
 | WARN0328 | server (the proxy) | WARNING | the proxy's runtime differs from its configuration (12.2): a materialization failed, a runtime change was refused for want of a hook, or the drift check found a difference. Text: `Proxy %s: runtime differs from configuration (%s): %s` | the materialization succeeds, or runtime and configuration agree |
 
 The existing states keep their meaning: WARN0275 (the orchestrator secret lags the
@@ -469,7 +469,7 @@ terminal, 6 the configuration model (section 5).
 partitions, OpenSVC v2), `FreezeDatabaseService` sets a server cookie `freeze` (the cookie
 mechanism of `createCookie`, as `cookiePGCapPending`) that replication-manager's own
 orchestration honours: no automatic rejoin, no restart, no reprovision of a frozen server
-from the monitor, and the state WARN0327 (2.4) on the server while it is set;
+from the monitor, and the state WARN0342 (2.4) on the server while it is set;
 `UnfreezeDatabaseService` removes the cookie and the state. The rolling loop freezes before
 its stop and unfreezes after its start on every backend, so what the OpenSVC v3 freeze
 protects (opensvc/om3#1142) is protected everywhere repman is the one that acts.
@@ -479,7 +479,7 @@ once the steps have landed):
 
 | Method | Backends | Why | What a dependent caller does |
 |---|---|---|---|
-| `HostOrchestrator` (`StopHost`, `StartHost`, `RebootHost`, `HostStatus`) | OpenSVC, Kubernetes, on-premise, localhost, SlapOS | the backend does not own the machine under the server; only a hypervisor backend (Proxmox, 10.4) or the client's script does | the rolling upgrade with `prov-db-rolling-upgrade-host` on such a backend opens WARN0327 naming the server and skips the host step |
+| `HostOrchestrator` (`StopHost`, `StartHost`, `RebootHost`, `HostStatus`) | OpenSVC, Kubernetes, on-premise, localhost, SlapOS | the backend does not own the machine under the server; only a hypervisor backend (Proxmox, 10.4) or the client's script does | the rolling upgrade with `prov-db-rolling-upgrade-host` on such a backend opens WARN0342 naming the server and skips the host step |
 | `AbortDatabaseService`, `AbortProxyService`, `AbortAppService`, `Clear*InstanceState` | OpenSVC through the collector API (v2) | the v2 API has no abort and no instance-state clear; v2 is not developed further | the API action answers 501 with the reason; no state, the user asked |
 | `secret-check`, `secret-remove` answering exit 3 | script | the client's tooling keeps no copy of the secret to check or remove | the drift check records WARN0275 as unverifiable and does not rewrite; the unprovision logs the absence |
 
@@ -507,7 +507,7 @@ set of codes for all backends, in the existing numbering, the existing ones reus
 | slow | WARN0330 (WARNING) | the target | an operation runs past its threshold (`prov-orchestrator-slow-threshold`, seconds, default 300, T16): `Orchestrator %s: %s of %s running for %s, threshold %s` | the operation returns |
 | unreachable | WARN0326 (WARNING) | cluster | `Check()` fails (2.4) | `Check()` succeeds |
 | misnamed | WARN0327 (WARNING) | cluster | the configuration names an orchestrator wrongly (2.4, 3.3) | the configuration is fixed |
-| frozen | WARN0327 (WARNING) | server | the frozen flag (2.5) | unfreeze |
+| frozen | WARN0342 (WARNING) | server | the frozen flag (2.5) | unfreeze |
 | secret drift | WARN0275 (WARNING) | cluster | the shared secret differs from the reference (11.1) | the rewrite succeeds |
 | proxy drift | WARN0328 (WARNING) | proxy | the proxy's runtime differs from its configuration (12.2) | they agree |
 
