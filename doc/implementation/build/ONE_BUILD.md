@@ -154,14 +154,20 @@ Resolution (`server/server_install_profile.go`, `resolveInstallProfile`), first 
 1. `REPLICATION_MANAGER_INSTALL_PROFILE` = `osc|tst|pro` and
    `REPLICATION_MANAGER_INSTALL_LAYOUT` = `package|tarball|embed` in the environment (each
    one independently). The Docker images set them.
-2. The program name, split on `-`: `osc`, `tst`, `pro` select the profile, `basedir` the
-   tarball layout; `cli` (the CLI, which embeds the server package) is `tst` + `embed` and
+2. The program name `replication-manager-<word>[-...]`: `osc`, `tst`, `pro` select the
+   profile, a later `basedir` the tarball layout; `cli` (the CLI, which embeds the server package) is `tst` + `embed` and
    `arb` (the arbitrator) is `tst` + `package`, as they were linked before. The packages
    install the binary as `/usr/bin/replication-manager-osc` or `-pro` and keep their unit,
    so a package install resolves to the profile it had.
 3. A Go test binary (`*.test`): `tst` + `package`, the defaults of an unflagged build.
 4. Any other name (`replication-manager`, `replication-manager-linux-amd64`): `pro` +
-   `embed`, the old `emb` binary and release download.
+   `embed`, the old `emb` binary and release download. The monitor logs this choice at
+   WARN, naming the two variables, so a renamed binary does not change its defaults
+   unnoticed.
+
+Only the word right after `replication-manager-` names a flavour (`replication-manager-pro`,
+`replication-manager-osc-basedir`); `basedir` counts only after a flavour word. A name with
+an unrelated suffix (`replication-manager-host1-arb`, `repman-osc`) falls to rule 4.
 
 An unknown value in the environment is ignored with a message on stderr and the next
 source applies. The profile and layout are printed by `version` and logged at start, and

@@ -278,9 +278,10 @@ kubectl --context kind-repman get nodes
 sudo sysctl -w fs.inotify.max_user_instances=1024   # environment workaround, see above
 
 # --- build the modified binary for the kind node (linux/amd64, matches Makefile's `pro` target) ---
+# (before 4.0 this also passed -X ...server.WithOpenSVC=ON; since the one build, #2444, the
+#  name replication-manager-pro selects the pro install profile)
 env CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -v --tags "server" \
-  --ldflags "-w -s -X 'github.com/signal18/replication-manager/server.Version=6.0-maxscale-k8s-test' \
-             -X github.com/signal18/replication-manager/server.WithOpenSVC=ON" \
+  --ldflags "-w -s -X 'github.com/signal18/replication-manager/server.Version=6.0-maxscale-k8s-test'" \
   -o replication-manager-pro .
 
 # --- swap the binary on the node without touching the pod ---

@@ -2932,7 +2932,13 @@ func (repman *ReplicationManager) Run() error {
 	}
 	repman.termlength = 40
 	repman.Logrus.WithField("version", repman.Version).Info("Replication-Manager started in daemon mode")
-	repman.Logrus.WithField("version", repman.Version).Infof("Install profile %s (%s), layout %s (%s)", installProfile.Profile, installProfile.ProfileSource, installProfile.Layout, installProfile.LayoutSource)
+	if installProfile.ProfileSource == "default" {
+		// Neither the environment nor the program name chose: a renamed binary gets the pro
+		// defaults and the embedded layout, say it so an operator can set REPLICATION_MANAGER_INSTALL_PROFILE.
+		repman.Logrus.WithField("version", repman.Version).Warnf("Install profile %s, layout %s: chosen by default (program name %q names no flavour); set %s / %s to choose", installProfile.Profile, installProfile.Layout, filepath.Base(os.Args[0]), EnvInstallProfile, EnvInstallLayout)
+	} else {
+		repman.Logrus.WithField("version", repman.Version).Infof("Install profile %s (%s), layout %s (%s)", installProfile.Profile, installProfile.ProfileSource, installProfile.Layout, installProfile.LayoutSource)
+	}
 	loglen := repman.termlength - 9 - (len(strings.Split(repman.Conf.Hosts, ",")) * 3)
 	repman.tlog = s18log.NewTermLog(loglen)
 	repman.Logs = s18log.NewHttpLog(200)

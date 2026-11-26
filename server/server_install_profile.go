@@ -72,37 +72,37 @@ func validInstallLayout(v string) bool {
 }
 
 // resolveInstallProfile resolves the profile and layout from, first match wins: the
-// environment (each one on its own), the program name (tokens osc, tst, pro, basedir,
-// cli, arb), a Go test binary (tst + package), anything else (pro + embed, the old emb
-// binary and the release download). warn receives a line for an unknown environment value.
+// environment (each one on its own), the program name replication-manager-<token>[-...]
+// (first token osc, tst, pro, cli or arb; basedir anywhere after it), a Go test binary
+// (tst + package), anything else (pro + embed, the old emb binary and the release
+// download). warn receives a line for an unknown environment value.
 func resolveInstallProfile(argv0 string, getenv func(string) string, warn func(string)) InstallProfile {
 	name := strings.ToLower(filepath.Base(argv0))
 	name = strings.TrimSuffix(name, ".exe")
 
-	// From the program name.
+	// From the program name: only the word right after "replication-manager-" names a
+	// flavour, so an unrelated suffix (a hostname, a wrapper) cannot select one.
 	p := InstallProfile{Profile: InstallProfilePro, Layout: InstallLayoutEmbed, ProfileSource: "default", LayoutSource: "default"}
 	if strings.HasSuffix(name, ".test") {
 		p = InstallProfile{Profile: InstallProfileTst, Layout: InstallLayoutPackage, ProfileSource: "test binary", LayoutSource: "test binary"}
-	} else {
-		named := false
-		for _, tok := range strings.Split(name, "-") {
-			switch tok {
-			case InstallProfileOsc, InstallProfileTst, InstallProfilePro:
-				p.Profile, p.ProfileSource, named = tok, "program name", true
-			case "cli":
-				p.Profile, p.ProfileSource = InstallProfileTst, "program name"
-				p.Layout, p.LayoutSource = InstallLayoutEmbed, "program name"
-			case "arb":
-				p.Profile, p.ProfileSource = InstallProfileTst, "program name"
-				p.Layout, p.LayoutSource = InstallLayoutPackage, "program name"
-			}
-		}
-		if named {
+	} else if rest, ok := strings.CutPrefix(name, "replication-manager-"); ok {
+		toks := strings.Split(rest, "-")
+		switch toks[0] {
+		case InstallProfileOsc, InstallProfileTst, InstallProfilePro:
+			p.Profile, p.ProfileSource = toks[0], "program name"
+			p.Layout, p.LayoutSource = InstallLayoutPackage, "program name"
+		case "cli":
+			p.Profile, p.ProfileSource = InstallProfileTst, "program name"
+			p.Layout, p.LayoutSource = InstallLayoutEmbed, "program name"
+		case "arb":
+			p.Profile, p.ProfileSource = InstallProfileTst, "program name"
 			p.Layout, p.LayoutSource = InstallLayoutPackage, "program name"
 		}
-		for _, tok := range strings.Split(name, "-") {
-			if tok == "basedir" {
-				p.Layout, p.LayoutSource = InstallLayoutTarball, "program name"
+		if p.ProfileSource == "program name" {
+			for _, tok := range toks[1:] {
+				if tok == "basedir" {
+					p.Layout, p.LayoutSource = InstallLayoutTarball, "program name"
+				}
 			}
 		}
 	}
@@ -143,6 +143,10 @@ func isInstallProfileEnv(name string) bool {
 // withDefaults is true, else with the zero value of their type: the value an old flavour
 // had when it did not register them at all. The flags exist either way, so the key can be
 // set from the config, the API and the GUI on every profile.
+// unzeroableProfileFlags lists the flags of a profile group whose type has no zero value
+// in zeroFlagValue: they keep their default on every profile. It must stay empty (test).
+var unzeroableProfileFlags []string
+
 func addFlagsWithDefaults(flags *pflag.FlagSet, withDefaults bool, register func(*pflag.FlagSet)) {
 	group := pflag.NewFlagSet("profile-group", pflag.ContinueOnError)
 	register(group)
@@ -150,7 +154,8 @@ func addFlagsWithDefaults(flags *pflag.FlagSet, withDefaults bool, register func
 		group.VisitAll(func(f *pflag.Flag) {
 			zero, ok := zeroFlagValue(f.Value.Type())
 			if !ok {
-				// A type without a known zero keeps its default: say it loudly in tests.
+				// A type without a known zero keeps its default; the test fails on it.
+				unzeroableProfileFlags = append(unzeroableProfileFlags, f.Name+" ("+f.Value.Type()+")")
 				return
 			}
 			if err := f.Value.Set(zero); err == nil {

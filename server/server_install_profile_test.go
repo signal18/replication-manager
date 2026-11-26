@@ -29,6 +29,11 @@ func TestResolveInstallProfile(t *testing.T) {
 		{"replication-manager", "", "", InstallProfilePro, InstallLayoutEmbed},
 		{"replication-manager-linux-amd64", "", "", InstallProfilePro, InstallLayoutEmbed},
 		{"REPLICATION-MANAGER-OSC.exe", "", "", InstallProfileOsc, InstallLayoutPackage},
+		// Only the word after "replication-manager-" names a flavour.
+		{"replication-manager-pro-osc", "", "", InstallProfilePro, InstallLayoutPackage},
+		{"repman-osc", "", "", InstallProfilePro, InstallLayoutEmbed},
+		{"replication-manager-host1-arb", "", "", InstallProfilePro, InstallLayoutEmbed},
+		{"replication-manager-basedir", "", "", InstallProfilePro, InstallLayoutEmbed},
 		// Docker images: the environment wins, each variable on its own.
 		{"/usr/bin/replication-manager", "osc", "package", InstallProfileOsc, InstallLayoutPackage},
 		{"/usr/bin/replication-manager", "PRO", "package", InstallProfilePro, InstallLayoutPackage},
@@ -130,7 +135,11 @@ func TestInstallProfileDefaults(t *testing.T) {
 
 // Every flag of the two profile groups has a type addFlagsWithDefaults can zero.
 func TestInstallProfileGroupsZeroable(t *testing.T) {
+	unzeroableProfileFlags = nil
 	osc, _ := addFlagsForProfile(t, InstallProfileOsc)
+	if len(unzeroableProfileFlags) > 0 {
+		t.Errorf("profile group flags without a zero value (they keep their default on osc): %v", unzeroableProfileFlags)
+	}
 	pro, _ := addFlagsForProfile(t, InstallProfilePro)
 	pro.VisitAll(func(f *pflag.Flag) {
 		o := osc.Lookup(f.Name)
