@@ -13,6 +13,7 @@ import (
 	"fmt"
 
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/selfexec"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -79,6 +80,9 @@ func init() {
 	conf.WithEmbed = WithEmbed
 	conf.InstallProfile = installProfile.Profile
 	conf.InstallLayout = installProfile.Layout
+	// A re-executed child (backups folder mount server, /etc writer) runs from
+	// /proc/self/exe, not the flavour symlink: hand it this process's profile.
+	selfexec.ProfileEnv = []string{EnvInstallProfile + "=" + installProfile.Profile, EnvInstallLayout + "=" + installProfile.Layout}
 	rootCmd.PersistentFlags().StringVar(&conf.ConfigFile, "config", "", "Configuration file (default is config.toml)")
 	rootCmd.PersistentFlags().StringVar(&cfgGroup, "cluster", "", "Configuration group (default is none)")
 	rootCmd.Flags().StringVar(&conf.KeyPath, "keypath", "/etc/replication-manager/.replication-manager.key", "Encryption key file path")

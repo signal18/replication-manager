@@ -229,6 +229,13 @@ What a process started through a symlink carries:
   `replication-man`, the same for every name.
 - `os.Executable()` is the real file (`/proc/self/exe` resolves the link): rule 4 uses it to
   find the sibling flavour symlink.
+- Re-executed children (the backups folder mount server `utils/s3fuse`, the /etc writer
+  `utils/etcwriter`) start from `selfexec.Path()` (`/proc/self/exe`) under a plain name, so
+  their own program name says nothing. The server hands them its resolved profile in the
+  environment (`selfexec.ProfileEnv`, appended by `selfexec.ChildEnv`; the s3fuse allowlist
+  gets the two variables, no secret), so a child always resolves its parent's defaults and
+  directories (otherwise, in a dev tree or as `exe`, it would take pro + embed and the
+  embedded layout's home directory).
 
 Upgrade from 3.x: `/usr/bin/replication-manager-osc|pro` was a regular file owned by the
 package and becomes a symlink owned by the same package; dpkg and rpm replace a file by a
