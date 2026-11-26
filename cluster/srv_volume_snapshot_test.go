@@ -254,6 +254,8 @@ rollback)
     echo "$last" >>"$D/rolled" ;;
 list)
     case "$*" in
+    *"name,clones"*) grep "^$last@" "$D/snaps" | while IFS="	" read -r n c u; do
+        cl=$(awk -v n="$n" '$1 == n { print $2 }' "$D/clones" 2>/dev/null); printf '%s\t%s\n' "$n" "${cl:--}"; done ;;
     *"-t snapshot -d 1"*) grep "^$last@" "$D/snaps" ;;
     *"-t snapshot"*) grep "^$last	" "$D/snaps" ;;
     *"-r -t filesystem,volume"*) grep -E "^$last(/|$)" "$D/datasets" ;;
@@ -282,6 +284,14 @@ else
 fi
 `
 
+// fakeFuser: -V answers unless FAKE_DIR/fuser-broken exists; -m PATH is in use when PATH is a
+// line of FAKE_DIR/busy.
+const fakeFuser = `#!/bin/sh
+[ "$1" = "-V" ] && { [ -f "$FAKE_DIR/fuser-broken" ] && exit 1; exit 0; }
+[ -f "$FAKE_DIR/busy" ] && grep -qx "$2" "$FAKE_DIR/busy" && exit 0
+exit 1
+`
+
 // shSnapshotExecutor runs the embedded helper with sh and the fake tools of a test.
 type shSnapshotExecutor struct{ bin, dir string }
 
@@ -293,7 +303,7 @@ func (e *shSnapshotExecutor) Exec(ctx context.Context, action string, env []stri
 		return snapshotOutput{}, err
 	}
 	cmd := exec.CommandContext(ctx, "sh", "-s", "--", action)
-	cmd.Env = append([]string{"PATH=" + e.bin + ":/usr/bin:/bin", "REPMAN_SNAPSHOT_SUDO=", "FAKE_DIR=" + e.dir}, env...)
+	cmd.Env = append([]string{"PATH=" + e.bin + ":/usr/bin:/bin", "REPMAN_SNAPSHOT_SUDO=", "REPMAN_SNAPSHOT_BUSY_WAIT=0", "FAKE_DIR=" + e.dir}, env...)
 	return runSnapshotCmd(cmd, script)
 }
 
@@ -307,6 +317,7 @@ func newFakeZFSHost(t *testing.T) (*Cluster, *ServerMonitor, *contractSnapshotte
 	os.MkdirAll(bin, 0o755)
 	os.WriteFile(filepath.Join(bin, "zfs"), []byte(fakeZFS), 0o755)
 	os.WriteFile(filepath.Join(bin, "findmnt"), []byte(fakeFindmnt), 0o755)
+	os.WriteFile(filepath.Join(bin, "fuser"), []byte(fakeFuser), 0o755)
 	data, redo := filepath.Join(dir, "srv", "data"), filepath.Join(dir, "srv", "redo")
 	os.MkdirAll(data, 0o755)
 	os.MkdirAll(redo, 0o755)
@@ -360,6 +371,27 @@ func TestVolumeSnapshotHelperZFS(t *testing.T) {
 	if string(rolled) != "tank/db@daily-1\ntank/db/data@daily-1\ntank/db/redo@daily-1\n" {
 		t.Fatalf("rolled back = %q", rolled)
 	}
+
+	// a clone of a snapshot taken after it: refused, nothing changed
+	os.WriteFile(filepath.Join(dir, "clones"), []byte("tank/db/data@repman-20261126T100000Z tank/clone1\n"), 0o644)
+	if run, err := vs.Snapback(server, "daily-1"); err == nil || run.Changed || !strings.Contains(err.Error(), "clones") {
+		t.Fatalf("snapback over a clone: %v changed=%v", err, run.Changed)
+	}
+	os.Remove(filepath.Join(dir, "clones"))
+
+	// a dataset still in use (the database flushing): refused, nothing changed
+	os.WriteFile(filepath.Join(dir, "mounts"), []byte(filepath.Join(dir, "srv", "data")+" tank/db/data zfs\n"+filepath.Join(dir, "srv", "redo")+" tank/db/redo zfs\ntank/db/data "+filepath.Join(dir, "srv", "data")+" zfs\n"), 0o644)
+	os.WriteFile(filepath.Join(dir, "busy"), []byte(filepath.Join(dir, "srv", "data")+"\n"), 0o644)
+	if run, err := vs.Snapback(server, "daily-1"); err == nil || run.Changed || !strings.Contains(err.Error(), "in use") {
+		t.Fatalf("snapback of a busy volume: %v changed=%v", err, run.Changed)
+	}
+	os.Remove(filepath.Join(dir, "busy"))
+	// fuser that does not run (sudo refusing it): refused, nothing changed
+	os.WriteFile(filepath.Join(dir, "fuser-broken"), nil, 0o644)
+	if run, err := vs.Snapback(server, "daily-1"); err == nil || run.Changed || !strings.Contains(err.Error(), "fuser") {
+		t.Fatalf("snapback without a usable fuser: %v changed=%v", err, run.Changed)
+	}
+	os.Remove(filepath.Join(dir, "fuser-broken"))
 
 	// a rollback failing on a child after the first: half-way
 	os.WriteFile(filepath.Join(dir, "rollback-fails"), []byte("tank/db/redo\n"), 0o644)

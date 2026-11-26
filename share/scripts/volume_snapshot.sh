@@ -87,12 +87,12 @@ mount_source() {
 
 # wait_unused MOUNTPOINT...: until no process uses them (a database still flushing after its
 # port closed holds its files), at most REPMAN_SNAPSHOT_BUSY_WAIT seconds; then die: nothing
-# was changed yet. Without fuser (psmisc) the check is skipped, said in the output.
+# was changed yet. fuser (psmisc) must run, through sudo for a non-root user: without it the
+# snapback is refused, the check is what makes its destructive part safe.
 wait_unused() {
-    if ! command -v fuser >/dev/null 2>&1; then
-        echo "fuser not found on the database host: the volume is not checked for use before the snapback"
-        return 0
-    fi
+    [ $# -gt 0 ] || return 0
+    command -v fuser >/dev/null 2>&1 || die "fuser not found on the database host (package psmisc): the volume can not be checked for use, nothing was changed"
+    q fuser -V >/dev/null 2>&1 || die "fuser does not run (${SUDO:-as} $(id -un)): add it to the sudoers entries, nothing was changed"
     waited=0
     while :; do
         busy=""
@@ -211,6 +211,11 @@ zfs_snapback() {
     # every dataset of the tree must hold the snapshot, or the rollback would be partial
     for ds in $datasets; do
         zfs_has "$ds" || die "dataset $ds has no snapshot $NAME (created after it): nothing was changed"
+    done
+    # a clone of a snapshot taken after it: zfs rollback -r refuses, after CHANGED
+    for ds in $datasets; do
+        clones=$(q zfs list -H -t snapshot -d 1 -s creation -o name,clones "$ds" | awk -F '\t' -v s="$ds@$NAME" 'found && $2 != "-" && $2 != "" { print $1 } $1 == s { found = 1 }')
+        [ -z "$clones" ] || die "snapshot(s) taken after $NAME have clones ($clones): zfs can not roll back over them, nothing was changed"
     done
     # no process on any of their mount points: a busy dataset would fail its rollback half-way
     mnts=""

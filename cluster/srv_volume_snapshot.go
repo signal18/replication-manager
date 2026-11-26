@@ -356,6 +356,7 @@ func runSnapshotCmd(cmd *exec.Cmd, stdin io.Reader) (snapshotOutput, error) {
 	var stdout limitedBuffer
 	var stderr capBuffer // its tail: the error is the last line
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = stdin, &stdout, &stderr
+	snapshotCmdOwnGroup(cmd)        // the deadline kills the helper's children too
 	cmd.WaitDelay = 5 * time.Second // a child keeping the pipes open does not hold the run
 	err := cmd.Run()
 	return snapshotOutput{stdout: stdout.String(), truncated: stdout.Truncated(), stderr: stderr.String()}, err
@@ -528,7 +529,7 @@ func (cluster *Cluster) goVolumeSnapshotOp(server *ServerMonitor, op *VolumeSnap
 		var err error
 		defer func() {
 			if r := recover(); r != nil {
-				err = fmt.Errorf("volume snapshot %s stopped by a panic: %v", op.Action, r)
+				err = fmt.Errorf("volume snapshot %s stopped by a panic, the volume in an unknown state: %v", op.Action, r)
 				if op.Action == config.ConstSnapshotActionSnapback {
 					run.Changed = true
 				}
@@ -854,6 +855,8 @@ func (cluster *Cluster) snapbackUndoStop(server *ServerMonitor, cause error) err
 		return fmt.Errorf("%w; nothing was changed, the server answers", cause)
 	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Snapback of %s ended before any change: starting the database again", server.URL)
+	// a process still shutting down after 30 s holds the datadir lock: a second one started on
+	// it refuses to start (InnoDB, Aria lock their files), the error below then says stopped
 	if err := cluster.StartDatabaseService(server); err == nil && server.WaitDatabaseStart() == nil {
 		return fmt.Errorf("%w; nothing was changed, the server was started again", cause)
 	}

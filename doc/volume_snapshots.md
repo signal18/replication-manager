@@ -23,7 +23,8 @@ The zfs and lvm commands run **on the database host**:
   uses for that host (`onpremise-ssh`, `onpremise-ssh-credential`). The commands run as the
   SSH user: root runs them itself, another user through `sudo -n`: a sudoers entry without
   password for `zfs`, or for `lvs`, `lvcreate`, `lvremove`, `lvchange`, `lvconvert`, `umount`
-  and `mount` (`findmnt` needs none);
+  and `mount`, and for `fuser` in both cases (`findmnt` needs none). `fuser` (package psmisc)
+  is required for a snapback;
 - with the **localhost** orchestrator, on the replication-manager host itself.
 
 On OpenSVC and Kubernetes the database host is not reachable that way: use your own script
@@ -106,7 +107,8 @@ and during a failover. Then:
 1. the server goes into maintenance;
 2. it is stopped through its orchestrator;
 3. once no process uses the volume any more (a database still flushing after its port closed;
-   checked with `fuser`, up to 2 minutes), its volume is rolled back to the snapshot. On ZFS, the snapshots taken **after** it are
+   checked with `fuser`, up to 2 minutes; a snapback without a usable `fuser` is refused), its
+   volume is rolled back to the snapshot. On ZFS, the snapshots taken **after** it are
    destroyed (ZFS rolls back to the latest snapshot only). On LVM the volume is unmounted,
    the snapshot merged into it (the snapshot is consumed by the merge), and mounted again (from
    its fstab entry; a volume without one comes back mounted with the default options);

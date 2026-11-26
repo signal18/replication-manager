@@ -70,6 +70,13 @@ function VolumeSnapshotsModal({ isOpen, closeModal, clusterName, server, user })
     setConfirmText('')
   }
 
+  // the snapshots taken after name: a ZFS rollback destroys them
+  const newerThan = (name) => {
+    const list = data?.snapshots || []
+    const i = list.findIndex((s) => s.name === name)
+    return i < 0 ? [] : list.slice(i + 1).map((s) => s.name)
+  }
+
   const lastOp = data?.lastOp
   const running = lastOp?.status === 'running'
 
@@ -128,6 +135,11 @@ function VolumeSnapshotsModal({ isOpen, closeModal, clusterName, server, user })
                       Rolled back: <Code>{data?.target || '?'}</Code>{data?.plugin === 'zfs' ? ' and every dataset under it' : ''}.
                       {data?.plugin === 'lvm' ? ' The snapshot is merged into the volume: it no longer exists after the snapback.' : ''}
                     </Text>
+                    {data?.plugin === 'zfs' && newerThan(pending.name).length > 0 && (
+                      <Text fontSize='sm' fontWeight='bold'>
+                        Destroyed with it, taken after it (whatever their origin): {newerThan(pending.name).join(', ')}
+                      </Text>
+                    )}
                     <Text fontSize='sm'>
                       Everything written on this server since the snapshot is lost. The server goes into maintenance, is
                       stopped, its volume rolled back (on ZFS, the snapshots taken after this one are destroyed), then
