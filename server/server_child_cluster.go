@@ -186,7 +186,11 @@ func (repman *ReplicationManager) PlanChildCluster(parent *cluster.Cluster, req 
 			plan.DBImage = childColumnstoreImage
 		}
 		if manifest.Image != "" {
-			plan.DBImage = manifest.Image
+			img, err := childDestinationImage(manifest, parent)
+			if err != nil {
+				return plan, err
+			}
+			plan.DBImage = img
 		}
 	}
 	plan.Notes = append(plan.Notes, "configurator tags: the parent's ("+parent.Conf.ProvTags+")")
@@ -548,4 +552,34 @@ func (repman *ReplicationManager) CreateChildClusterAs(p *repmanmcp.Principal, p
 	sess := &peerSession{callBase: repman.loopbackAPI(), token: p.Bearer}
 	status, body, err := sess.call(http.MethodPost, "/api/clusters/"+url.PathEscape(parent)+"/actions/create-"+kind, spec)
 	return status, strings.TrimSpace(string(body)), err
+}
+
+// childDestinationImage is the default image of a child of a destination plugin: its
+// manifest's image, "{version}" replaced by the parent master's release, refused when the
+// manifest lists the releases it exists for and the parent's is not one of them.
+func childDestinationImage(m wire.PluginManifest, parent *cluster.Cluster) (string, error) {
+	if !strings.Contains(m.Image, "{version}") {
+		return m.Image, nil
+	}
+	pm := parent.GetMaster()
+	if pm == nil || pm.DBVersion == nil {
+		return "", fmt.Errorf("the image of the destination %s follows the parent's release, and %s has no master to read it from", m.Name, parent.Name)
+	}
+	return destinationImageFor(m, parent.Name, pm.DBVersion.ToString())
+}
+
+// destinationImageFor is the image of manifest m for the parent release v.
+func destinationImageFor(m wire.PluginManifest, parent, v string) (string, error) {
+	if len(m.ImageVersions) > 0 {
+		found := false
+		for _, iv := range m.ImageVersions {
+			if iv == v {
+				found = true
+			}
+		}
+		if !found {
+			return "", fmt.Errorf("the destination %s has no image for %s's release %s (%s exists for %s): upgrade the parent to one of them, or give dbImage", m.Name, parent, v, m.Image, strings.Join(m.ImageVersions, ", "))
+		}
+	}
+	return strings.ReplaceAll(m.Image, "{version}", v), nil
 }

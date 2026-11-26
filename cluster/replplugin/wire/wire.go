@@ -191,8 +191,12 @@ type PluginManifest struct {
 	License string `json:"license,omitempty"`
 	// Tags: the configurator tags the target's servers need (the engine, localinfile)
 	Tags []string `json:"tags,omitempty"`
-	// Image: the database image of a child of this destination, by default
+	// Image: the database image of a child of this destination, by default. "{version}" in it
+	// stands for the parent master's release (X.Y.Z): an engine package that must match its
+	// server release exactly, the child running the parent's release
 	Image string `json:"image,omitempty"`
+	// ImageVersions: the releases an Image with "{version}" exists for; empty, any
+	ImageVersions []string `json:"imageVersions,omitempty"`
 	// SingleServer: the destination is written out of the binlog, a child of it has one
 	// database (its replicas would not receive the destination's tables)
 	SingleServer bool `json:"singleServer,omitempty"`

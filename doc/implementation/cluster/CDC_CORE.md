@@ -147,7 +147,9 @@ manifest (`replplugin-<name>.manifest.json`, `wire.PluginManifest`) gives:
 
 - its tier and licence;
 - the configurator tags its servers need (added to the child);
-- its default image;
+- its default image: `{version}` in it stands for the parent master's release (an engine
+  package that must match its server release exactly), and `imageVersions` lists the releases
+  it exists for; the create plan refuses a parent release without image, with the list;
 - `singleServer`, a child of one database.
 
 The plan is refused when the plugin is missing or the plan does not grant its tier. The
