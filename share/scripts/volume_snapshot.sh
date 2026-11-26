@@ -106,7 +106,10 @@ wait_unused() {
     while :; do
         busy=""
         for m in "$@"; do
-            [ -e "$m" ] || continue
+            if [ ! -e "$m" ]; then
+                echo "$m does not exist on the database host: not checked for use"
+                continue
+            fi
             # 0: a process uses it; 1: none, or an error: told apart by what it printed
             out=$(q fuser -m "$m" 2>&1)
             rc=$?
@@ -372,7 +375,8 @@ lvm_snapback() {
     for m in $mnts; do
         if ! x umount "$m"; then
             # put back what this run unmounted: the volume as it was, or say it is not
-            for d in $(echo "$done_mnts" | sort); do
+            # parents first: one word per line, then sorted
+            for d in $(printf '%s\n' $done_mnts | sort); do
                 if ! { x mount "$d" 2>/dev/null || x mount "$dev" "$d"; }; then
                     printf 'CHANGED\n'
                     die "umount $m failed, and $d could not be mounted again: the volume is half unmounted"
