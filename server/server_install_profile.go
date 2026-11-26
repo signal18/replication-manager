@@ -139,14 +139,16 @@ func isInstallProfileEnv(name string) bool {
 	return name == EnvInstallProfile || name == EnvInstallLayout
 }
 
+// unzeroableProfileFlags lists the flags of a profile group that could not be set to a
+// zero value (no zero for their type in zeroFlagValue, or Set refused it): they keep their
+// default on every profile. It must stay empty (TestInstallProfileGroupsZeroable). Keyed
+// by name, so registering the flags again (tests) does not grow it.
+var unzeroableProfileFlags = map[string]string{}
+
 // addFlagsWithDefaults registers the flags that register adds, with their defaults when
 // withDefaults is true, else with the zero value of their type: the value an old flavour
 // had when it did not register them at all. The flags exist either way, so the key can be
 // set from the config, the API and the GUI on every profile.
-// unzeroableProfileFlags lists the flags of a profile group whose type has no zero value
-// in zeroFlagValue: they keep their default on every profile. It must stay empty (test).
-var unzeroableProfileFlags []string
-
 func addFlagsWithDefaults(flags *pflag.FlagSet, withDefaults bool, register func(*pflag.FlagSet)) {
 	group := pflag.NewFlagSet("profile-group", pflag.ContinueOnError)
 	register(group)
@@ -154,13 +156,14 @@ func addFlagsWithDefaults(flags *pflag.FlagSet, withDefaults bool, register func
 		group.VisitAll(func(f *pflag.Flag) {
 			zero, ok := zeroFlagValue(f.Value.Type())
 			if !ok {
-				// A type without a known zero keeps its default; the test fails on it.
-				unzeroableProfileFlags = append(unzeroableProfileFlags, f.Name+" ("+f.Value.Type()+")")
+				unzeroableProfileFlags[f.Name] = "type " + f.Value.Type() + " has no zero value"
 				return
 			}
-			if err := f.Value.Set(zero); err == nil {
-				f.DefValue = zero
+			if err := f.Value.Set(zero); err != nil {
+				unzeroableProfileFlags[f.Name] = "set " + zero + ": " + err.Error()
+				return
 			}
+			f.DefValue = zero
 		})
 	}
 	flags.AddFlagSet(group)

@@ -135,7 +135,7 @@ func TestInstallProfileDefaults(t *testing.T) {
 
 // Every flag of the two profile groups has a type addFlagsWithDefaults can zero.
 func TestInstallProfileGroupsZeroable(t *testing.T) {
-	unzeroableProfileFlags = nil
+	unzeroableProfileFlags = map[string]string{}
 	osc, _ := addFlagsForProfile(t, InstallProfileOsc)
 	if len(unzeroableProfileFlags) > 0 {
 		t.Errorf("profile group flags without a zero value (they keep their default on osc): %v", unzeroableProfileFlags)
