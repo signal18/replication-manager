@@ -1,7 +1,12 @@
 package server
 
 import (
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/signal18/replication-manager/config"
@@ -20,6 +25,7 @@ func TestResolveInstallProfile(t *testing.T) {
 		{"build/binaries/replication-manager-osc-cgo", "", "", InstallProfileOsc, InstallLayoutPackage},
 		{"/usr/local/replication-manager/bin/replication-manager-osc-basedir", "", "", InstallProfileOsc, InstallLayoutTarball},
 		{"replication-manager-pro-basedir", "", "", InstallProfilePro, InstallLayoutTarball},
+		{"build/binaries/replication-manager-emb", "", "", InstallProfilePro, InstallLayoutEmbed},
 		// The CLI and the arbitrator embed the server package: their old link defaults.
 		{"/usr/bin/replication-manager-cli", "", "", InstallProfileTst, InstallLayoutEmbed},
 		{"/usr/bin/replication-manager-arb", "", "", InstallProfileTst, InstallLayoutPackage},
@@ -45,12 +51,88 @@ func TestResolveInstallProfile(t *testing.T) {
 	for _, c := range cases {
 		env := map[string]string{EnvInstallProfile: c.envProfile, EnvInstallLayout: c.envLayout}
 		warned := 0
-		p := resolveInstallProfile(c.argv0, func(k string) string { return env[k] }, func(string) { warned++ })
+		p := resolveInstallProfile(c.argv0, func(k string) string { return env[k] }, func(string) { warned++ }, nil)
 		if p.Profile != c.profile || p.Layout != c.layout {
 			t.Errorf("%s env(%q,%q): got %s/%s, want %s/%s", c.argv0, c.envProfile, c.envLayout, p.Profile, p.Layout, c.profile, c.layout)
 		}
 		if c.envProfile == "enterprise" && warned != 2 {
 			t.Errorf("unknown environment values: %d warnings, want 2", warned)
+		}
+	}
+}
+
+// The plain name beside exactly one flavour symlink (a package install) takes that flavour.
+func TestResolveInstallProfileSibling(t *testing.T) {
+	has := func(set ...string) func(string) bool {
+		return func(f string) bool {
+			for _, s := range set {
+				if s == f {
+					return true
+				}
+			}
+			return false
+		}
+	}
+	none := func(string) string { return "" }
+	for _, c := range []struct {
+		argv0   string
+		sibling func(string) bool
+		env     map[string]string
+		want    string
+	}{
+		{"/usr/bin/replication-manager", has("osc"), nil, "osc/package"},
+		{"/usr/bin/replication-manager", has("pro"), nil, "pro/package"},
+		{"build/binaries/replication-manager", has("osc", "tst", "pro"), nil, "pro/embed"}, // a dev tree: no rule
+		{"/usr/bin/replication-manager", has(), nil, "pro/embed"},
+		{"/usr/bin/replication-manager-osc", has("pro"), nil, "osc/package"}, // the name wins
+		{"/usr/bin/replication-manager", has("osc"), map[string]string{EnvInstallProfile: "pro"}, "pro/package"},
+	} {
+		getenv := none
+		if c.env != nil {
+			getenv = func(k string) string { return c.env[k] }
+		}
+		p := resolveInstallProfile(c.argv0, getenv, nil, c.sibling)
+		if got := p.Profile + "/" + p.Layout; got != c.want {
+			t.Errorf("%s: got %s, want %s", c.argv0, got, c.want)
+		}
+	}
+}
+
+// A process started through a symlink resolves the profile from the symlink's name, as the
+// packages and the Makefile install the flavour names (/usr/bin/replication-manager-osc ->
+// replication-manager). The test binary re-executes itself through such symlinks.
+func TestInstallProfileThroughSymlink(t *testing.T) {
+	if os.Getenv("ONEBUILD_PRINT_PROFILE") == "1" {
+		p := resolveProcessInstallProfile()
+		fmt.Printf("PROFILE=%s/%s\n", p.Profile, p.Layout)
+		return
+	}
+	self, err := os.Executable()
+	if err != nil {
+		t.Skip(err)
+	}
+	dir := t.TempDir()
+	target := filepath.Join(dir, "replication-manager")
+	if err := os.Symlink(self, target); err != nil {
+		t.Skip(err)
+	}
+	for name, want := range map[string]string{
+		"replication-manager-osc":         "osc/package",
+		"replication-manager-pro":         "pro/package",
+		"replication-manager-pro-basedir": "pro/tarball",
+	} {
+		link := filepath.Join(dir, name)
+		if err := os.Symlink("replication-manager", link); err != nil { // relative, symlink to a symlink
+			t.Fatal(err)
+		}
+		cmd := exec.Command(link, "-test.run=^TestInstallProfileThroughSymlink$")
+		cmd.Env = append(os.Environ(), "ONEBUILD_PRINT_PROFILE=1", EnvInstallProfile+"=", EnvInstallLayout+"=")
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("%s: %v\n%s", name, err, out)
+		}
+		if !strings.Contains(string(out), "PROFILE="+want+"\n") {
+			t.Errorf("%s: want PROFILE=%s, got:\n%s", name, want, out)
 		}
 	}
 }

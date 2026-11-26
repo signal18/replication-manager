@@ -17,10 +17,10 @@ WITH_REACT = ON
 
 # One build (#2444, doc/implementation/build/ONE_BUILD.md): the server is linked ONCE, as
 # $(BINDIR)/$(BIN), with everything compiled in. The old flavour targets (osc, tst, pro,
-# emb, *-basedir) are copies of that binary under the name that selects their install
-# profile at run time (replication-manager-osc -> osc defaults, -pro -> pro defaults,
-# -basedir -> tarball layout, any other name -> pro defaults + embedded layout). No
-# -X server.With... linker flag exists any more.
+# emb, *-basedir) are symlinks to that binary, named after the install profile they select
+# at run time (replication-manager-osc -> osc defaults, -pro -> pro defaults, -emb -> pro
+# defaults + embedded layout, -basedir -> tarball layout; the program name is the symlink's).
+# No -X server.With... linker flag exists any more.
 SERVER_LDFLAGS = -X github.com/signal18/replication-manager/server.Version=$(VERSION) -X github.com/signal18/replication-manager/server.FullVersion=$(FULLVERSION) -X github.com/signal18/replication-manager/server.Build=$(BUILD)
 
 .PHONY: all bin server non-cgo tar react osc osc-bin osc-basedir \
@@ -51,31 +51,32 @@ repos:
 server: react
 	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -v --tags "server" --ldflags "-extldflags '-static' -w -s $(SERVER_LDFLAGS)" $(LDFLAGS) -o $(BINDIR)/$(BIN)
 
-# The flavour names: the same binary, copied (not linked: dev scripts find the monitor by
-# its process name, and a Docker COPY of a symlink is not portable).
+# The flavour names: relative symlinks to the one binary in the same directory. A process
+# started through one carries the symlink's name in its argv[0] (the profile) and in ps.
 emb: server
+	ln -sfn $(BIN) $(BINDIR)/$(BIN)-emb
 
 osc: osc-bin plugins
 
 osc-bin: server
-	cp -f $(BINDIR)/$(BIN) $(BINDIR)/$(BIN-OSC)
+	ln -sfn $(BIN) $(BINDIR)/$(BIN-OSC)
 
 osc-basedir: server
-	cp -f $(BINDIR)/$(BIN) $(BINDIR)/$(BIN-OSC)-basedir
+	ln -sfn $(BIN) $(BINDIR)/$(BIN-OSC)-basedir
 
 tst: server
-	cp -f $(BINDIR)/$(BIN) $(BINDIR)/$(BIN-TST)
+	ln -sfn $(BIN) $(BINDIR)/$(BIN-TST)
 
 tst-basedir: server
-	cp -f $(BINDIR)/$(BIN) $(BINDIR)/$(BIN-TST)-basedir
+	ln -sfn $(BIN) $(BINDIR)/$(BIN-TST)-basedir
 
 pro: pro-bin plugins
 
 pro-bin: server
-	cp -f $(BINDIR)/$(BIN) $(BINDIR)/$(BIN-PRO)
+	ln -sfn $(BIN) $(BINDIR)/$(BIN-PRO)
 
 pro-basedir: server
-	cp -f $(BINDIR)/$(BIN) $(BINDIR)/$(BIN-PRO)-basedir
+	ln -sfn $(BIN) $(BINDIR)/$(BIN-PRO)-basedir
 
 cli:
 	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH)  go build -v --tags "clients" --ldflags "-w -s -X github.com/signal18/replication-manager/clients.Version=$(VERSION) -X github.com/signal18/replication-manager/clients.FullVersion=$(FULLVERSION) -X github.com/signal18/replication-manager/clients.Build=$(BUILD)"  $(LDFLAGS) -o $(BINDIR)/$(BIN-CLI)

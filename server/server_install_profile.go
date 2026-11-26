@@ -73,10 +73,18 @@ func validInstallLayout(v string) bool {
 
 // resolveInstallProfile resolves the profile and layout from, first match wins: the
 // environment (each one on its own), the program name replication-manager-<token>[-...]
-// (first token osc, tst, pro, cli or arb; basedir anywhere after it), a Go test binary
+// (first token osc, tst, pro, emb, cli or arb; basedir anywhere after it; the name of the
+// symlink a package or the Makefile starts it through), a Go test binary
 // (tst + package), anything else (pro + embed, the old emb binary and the release
 // download). warn receives a line for an unknown environment value.
-func resolveInstallProfile(argv0 string, getenv func(string) string, warn func(string)) InstallProfile {
+//
+// One more rule for the plain name: a package installs the binary as
+// /usr/bin/replication-manager next to ONE flavour symlink (replication-manager-osc or
+// -pro). Started by its plain name there (an operator typing replication-manager version
+// or decrypt), it takes that flavour and the package layout. sibling(flavour) reports
+// whether replication-manager-<flavour> beside the executable is a link to it; with more
+// than one (a dev tree has them all) the rule does not apply.
+func resolveInstallProfile(argv0 string, getenv func(string) string, warn func(string), sibling func(string) bool) InstallProfile {
 	name := strings.ToLower(filepath.Base(argv0))
 	name = strings.TrimSuffix(name, ".exe")
 
@@ -91,6 +99,9 @@ func resolveInstallProfile(argv0 string, getenv func(string) string, warn func(s
 		case InstallProfileOsc, InstallProfileTst, InstallProfilePro:
 			p.Profile, p.ProfileSource = toks[0], "program name"
 			p.Layout, p.LayoutSource = InstallLayoutPackage, "program name"
+		case "emb": // the old emb binary: pro defaults, embedded layout
+			p.Profile, p.ProfileSource = InstallProfilePro, "program name"
+			p.Layout, p.LayoutSource = InstallLayoutEmbed, "program name"
 		case "cli":
 			p.Profile, p.ProfileSource = InstallProfileTst, "program name"
 			p.Layout, p.LayoutSource = InstallLayoutEmbed, "program name"
@@ -104,6 +115,16 @@ func resolveInstallProfile(argv0 string, getenv func(string) string, warn func(s
 					p.Layout, p.LayoutSource = InstallLayoutTarball, "program name"
 				}
 			}
+		}
+	} else if name == "replication-manager" && sibling != nil {
+		var found []string
+		for _, f := range []string{InstallProfileOsc, InstallProfileTst, InstallProfilePro} {
+			if sibling(f) {
+				found = append(found, f)
+			}
+		}
+		if len(found) == 1 {
+			p = InstallProfile{Profile: found[0], Layout: InstallLayoutPackage, ProfileSource: "package symlink replication-manager-" + found[0], LayoutSource: "package symlink replication-manager-" + found[0]}
 		}
 	}
 
@@ -130,7 +151,23 @@ func resolveProcessInstallProfile() InstallProfile {
 	if len(os.Args) > 0 {
 		argv0 = os.Args[0]
 	}
-	return resolveInstallProfile(argv0, os.Getenv, func(s string) { fmt.Fprintln(os.Stderr, s) })
+	return resolveInstallProfile(argv0, os.Getenv, func(s string) { fmt.Fprintln(os.Stderr, s) }, executableSibling)
+}
+
+// executableSibling reports whether replication-manager-<flavour> in the directory of the
+// running executable is a symlink resolving to the same file as the executable.
+func executableSibling(flavour string) bool {
+	exe, err := os.Executable()
+	if err != nil {
+		return false
+	}
+	link := filepath.Join(filepath.Dir(exe), "replication-manager-"+flavour)
+	if fi, err := os.Lstat(link); err != nil || fi.Mode()&os.ModeSymlink == 0 {
+		return false
+	}
+	a, errA := os.Stat(link)
+	b, errB := os.Stat(exe)
+	return errA == nil && errB == nil && os.SameFile(a, b)
 }
 
 // isInstallProfileEnv reports whether an environment variable name is one of the two

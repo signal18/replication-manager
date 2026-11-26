@@ -7,9 +7,13 @@ license: "GPLv3"
 arch: ${architecture}
 platform: linux
 contents:
-  # the one server binary (#2444), under the name that selects the osc install profile
+  # the one server binary (#2444), and the flavour name the unit and scripts call: a symlink
+  # to it, whose name selects the osc install profile
   - src: build/binaries/replication-manager
+    dst: /usr/bin/replication-manager
+  - src: replication-manager
     dst: /usr/bin/replication-manager-osc
+    type: symlink
   - src: etc/cluster.d/cluster1.toml.sample
     dst: /etc/replication-manager/cluster.d/
     type: config

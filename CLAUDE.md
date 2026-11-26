@@ -20,7 +20,7 @@ the monitor is always a release blocker.
 ## Build System
 
 Build tags select the program (server, CLI, arbitrator). There is ONE server binary
-(4.0, #2444, `doc/implementation/build/ONE_BUILD.md`): the old flavours are copies of it
+(4.0, #2444, `doc/implementation/build/ONE_BUILD.md`): the old flavours are symlinks to it
 whose program name (or `REPLICATION_MANAGER_INSTALL_PROFILE` / `_LAYOUT`) selects an
 install profile, a set of default values only.
 
@@ -33,11 +33,11 @@ make all
 # Build individual components
 make server       # the one server binary: build/binaries/replication-manager
 make cli          # CLI client: replication-manager-cli
-make osc          # server copied as replication-manager-osc (osc defaults: no provisioning) + plugins
-make tst          # server copied as replication-manager-tst (provisioning defaults, no OpenSVC)
-make pro          # server copied as replication-manager-pro (OpenSVC defaults) + plugins
+make osc          # symlink replication-manager-osc -> the server (osc defaults: no provisioning) + plugins
+make tst          # symlink replication-manager-tst (provisioning defaults, no OpenSVC)
+make pro          # symlink replication-manager-pro (OpenSVC defaults) + plugins
 make arb          # Arbitrator service
-make emb          # the server itself (pro defaults, home-directory layout)
+make emb          # symlink replication-manager-emb (pro defaults, home-directory layout)
 
 # Build with React dashboard (required for pro/osc/emb)
 make react        # Builds dashboard from share/dashboard_react/

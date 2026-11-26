@@ -122,7 +122,8 @@ and `replication-manager-<os>-<arch>`, the last one linked with Embed + OpenSVC 
 ### 2.1 One binary
 
 `make bin` (`server` target) links the server once:
-`build/binaries/replication-manager`, static, `CGO_ENABLED=0`. Everything is compiled in
+`build/binaries/replication-manager`, static, `CGO_ENABLED=0`; the flavour names are
+symlinks to it (2.4). Everything is compiled in
 and every flag is registered in every instance: the provisioning and OpenSVC flags exist
 on an osc install too (they can be set from the config file, the API and the GUI).
 
@@ -155,19 +156,26 @@ Resolution (`server/server_install_profile.go`, `resolveInstallProfile`), first 
    `REPLICATION_MANAGER_INSTALL_LAYOUT` = `package|tarball|embed` in the environment (each
    one independently). The Docker images set them.
 2. The program name `replication-manager-<word>[-...]`: `osc`, `tst`, `pro` select the
-   profile, a later `basedir` the tarball layout; `cli` (the CLI, which embeds the server package) is `tst` + `embed` and
-   `arb` (the arbitrator) is `tst` + `package`, as they were linked before. The packages
-   install the binary as `/usr/bin/replication-manager-osc` or `-pro` and keep their unit,
-   so a package install resolves to the profile it had.
+   profile (package layout), `emb` pro + embed, a later `basedir` the tarball layout; `cli`
+   (the CLI, which embeds the server package) is `tst` + `embed` and `arb` (the
+   arbitrator) is `tst` + `package`, as they were linked before. The flavour names are
+   **symlinks** to the one binary (2.4): `os.Args[0]` is the name the process was started
+   by, the symlink's, so the unit `ExecStart=/usr/bin/replication-manager-osc` resolves to
+   the profile its package had.
 3. A Go test binary (`*.test`): `tst` + `package`, the defaults of an unflagged build.
-4. Any other name (`replication-manager`, `replication-manager-linux-amd64`): `pro` +
+4. The plain name `replication-manager` beside exactly one flavour symlink resolving to the
+   same file (`/usr/bin/replication-manager` + `/usr/bin/replication-manager-osc` on an osc
+   package host): that flavour + `package`, so an operator typing `replication-manager
+   version` or `decrypt` on a package host gets the package's profile and directories. With
+   several flavour symlinks (a dev tree has them all) this rule does not apply.
+5. Any other name (`replication-manager`, `replication-manager-linux-amd64`): `pro` +
    `embed`, the old `emb` binary and release download. The monitor logs this choice at
    WARN, naming the two variables, so a renamed binary does not change its defaults
    unnoticed.
 
 Only the word right after `replication-manager-` names a flavour (`replication-manager-pro`,
 `replication-manager-osc-basedir`); `basedir` counts only after a flavour word. A name with
-an unrelated suffix (`replication-manager-host1-arb`, `repman-osc`) falls to rule 4.
+an unrelated suffix (`replication-manager-host1-arb`, `repman-osc`) falls to rule 5.
 
 An unknown value in the environment is ignored with a message on stderr and the next
 source applies. The profile and layout are printed by `version` and logged at start, and
@@ -181,21 +189,59 @@ excluded from the environment cluster discovery (`REPLICATION_MANAGER_<CLUSTER>_
 
 - The `With*` linker variables that never changed (`WithMaxscale`, `WithHaproxy`, ...) and
   the unread ones (`WithHttp`, `WithBackup`, `WithReact`, `WithDeprecate`): their flags are
-  always registered. `spider` and `mysqlrouter-*` are now registered with the default the
-  fields already had (false / unused).
+  always registered. `spider` is now registered with the default its field already had
+  (false). The `mysqlrouter-*` flags stay unregistered: no build ever registered them, and
+  registering them would put a default secret (`mysqlrouter-pass`) in every instance.
 - `WithProvisioning`, `WithOpenSVC`, `WithTarball`, `WithEmbed` stay as package variables
   (many readers), set from the profile; a `-X` on them is no longer honoured.
-- Makefile: `osc`, `tst`, `pro`, `emb` and the `-basedir` names are copies of the one
-  binary under the name that selects their profile (dev instances, packages and scripts
-  keep working); `osc-cgo` is dropped (shipped nowhere).
+- `osc-cgo` is dropped (shipped nowhere).
+
+### 2.4 One real binary, the flavour names are symlinks
+
+There is one real file, `replication-manager`; every flavour name is a relative symlink to
+it in the same directory, so nothing that calls an old name breaks:
+
+| Where | Real binary | Symlinks |
+|---|---|---|
+| Makefile | `build/binaries/replication-manager` (`make server`) | `replication-manager-osc`, `-tst`, `-pro`, `-emb`, `-osc-basedir`, `-tst-basedir`, `-pro-basedir` (`ln -sfn replication-manager ...`) |
+| `replication-manager-osc` package | `/usr/bin/replication-manager` | `/usr/bin/replication-manager-osc` (nfpm `type: symlink`) |
+| `replication-manager-pro` package | `/usr/bin/replication-manager` | `/usr/bin/replication-manager-pro` |
+| osc images (`Dockerfile`, rootless, slim) | `/usr/bin/replication-manager` | `/usr/bin/replication-manager-osc` |
+| pro images (`Dockerfile.pro`, rootless) | `/usr/bin/replication-manager` | `/usr/bin/replication-manager-pro` |
+| dev images | `/usr/bin/replication-manager` (copied from the tree) | `/usr/bin/replication-manager-pro`; the tree keeps `./replication-manager-pro` -> `build/binaries/replication-manager-pro` -> `replication-manager` |
+
+What a process started through a symlink carries:
+
+- `os.Args[0]` is the symlink path: the profile (rule 2). Covered by
+  `TestInstallProfileThroughSymlink`, which re-executes the test binary through
+  `replication-manager-osc`, `-pro` and `-pro-basedir` symlinks (a symlink to a symlink, as
+  in the tree).
+- `ps aux` / `ps -ef` print the command line, so the symlink name: the dev scripts
+  (`stop.sh`, `wait.sh`: `ps aux | grep replication-manager-pro | grep monitor`) still find
+  the monitor. Checked on macOS: a program started through `x-osc -> x` shows `x-osc` in
+  `ps -o command` and is found by `pgrep -x x-osc`; the kernel's own short name (`ucomm`) is
+  the target's there.
+- On Linux the kernel names the task after the basename of the path given to `execve`, the
+  symlink's (the same reason a process re-executed through `/proc/self/exe` is named `exe`,
+  which `utils/s3fuse/stuck_linux.go` relies on). Not checked by a run in this change (no
+  Linux host reachable from the session that wrote it); nothing in the tree depends on it:
+  the dev scripts read the command line, and `utils/s3fuse` matches the 15-character
+  `replication-man`, the same for every name.
+- `os.Executable()` is the real file (`/proc/self/exe` resolves the link): rule 4 uses it to
+  find the sibling flavour symlink.
+
+Upgrade from 3.x: `/usr/bin/replication-manager-osc|pro` was a regular file owned by the
+package and becomes a symlink owned by the same package; dpkg and rpm replace a file by a
+symlink on upgrade. `/usr/bin/replication-manager` is new in the packages: a file of that
+name installed by hand (the release download) is overwritten by the package.
 
 ## 3. What a package client sees on upgrade
 
 - `apt upgrade` / `yum update` of `replication-manager-osc` or `replication-manager-pro`:
-  same package name, same `/usr/bin/replication-manager-osc|pro`, same unit file, same
-  config files (left untouched, they are config files). The binary is the one build; its
-  name selects the profile the package had, so every default is the one it had. Nothing to
-  do.
+  same package name, same `/usr/bin/replication-manager-osc|pro` (now a symlink to the new
+  `/usr/bin/replication-manager`), same unit file, same config files (left untouched, they
+  are config files). The unit starts the monitor through the flavour symlink, whose name
+  selects the profile the package had, so every default is the one it had. Nothing to do.
 - New: each server package declares a conflict with the other (deb `Conflicts` +
   `Replaces`, rpm `Conflicts`), so switching from osc to pro (or back) is one
   `apt install replication-manager-pro` (rpm: `dnf swap replication-manager-osc

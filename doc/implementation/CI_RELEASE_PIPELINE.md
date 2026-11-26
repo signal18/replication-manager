@@ -33,8 +33,9 @@ Two jobs on two self-hosted runners:
    `architecture=arm64`. Each run does `make`, then builds `deb`+`rpm` for the four nfpm
    configs (`client`, `osc`, `prov`, `arbitrator`) into `build/release/`, moved to
    `/builds/<tag>/` on the runner. Since 4.0 (#2444) `osc` and `prov` pack the same one
-   server binary (`build/binaries/replication-manager`) as `/usr/bin/replication-manager-osc`
-   or `-pro`; the name selects the install profile (`doc/implementation/build/ONE_BUILD.md`).
+   server binary (`build/binaries/replication-manager`) as `/usr/bin/replication-manager`,
+   plus a symlink `/usr/bin/replication-manager-osc` or `-pro` to it; the name the unit
+   starts it by selects the install profile (`doc/implementation/build/ONE_BUILD.md`).
 3. The packages are uploaded as the artifact `packages-<tag>` (kept 3 days).
 
 **`publish`** (runner label `repo-publish`: a runner inside the package repository
@@ -101,7 +102,8 @@ changed; the arbitrator nightly has its own narrower filter.
 
 Every server image carries the same one server binary (#2444); its Dockerfile sets
 `REPLICATION_MANAGER_INSTALL_PROFILE` (`osc` for `latest`/`{tag}`/slim, `pro` for `-pro`
-and `nightly`) and `REPLICATION_MANAGER_INSTALL_LAYOUT=package`. The dev images set the
+and `nightly`) and `REPLICATION_MANAGER_INSTALL_LAYOUT=package`, and adds the symlink
+`/usr/bin/replication-manager-osc` or `-pro` next to `/usr/bin/replication-manager`. The dev images set the
 layout only: the dev tree's `./replication-manager-pro` / `-osc` names select the profile.
 
 **Branch jobs** (push to `develop`): `nightly`, `nightly-rootless`, `nightly-arb`, `dev`,
