@@ -250,8 +250,9 @@ func main() {
 				Severity: "SECURITY",
 				Description: fmt.Sprintf(
 					"Server %s: skip_name_resolve=ON but %d account(s) use DNS hostnames as host —"+
-						" with DNS resolution disabled these accounts can never connect, and every logical"+
-						" backup or dump reseed of this server stops on them (SHOW CREATE USER, error 1133)."+
+						" with DNS resolution disabled these accounts can never connect, and a server ignoring them"+
+						" cannot export them: a logical backup, or the account replay of a freshly restored node, leaves them out"+
+						" and says so (WARN0330)."+
 						" Convert each grant to an IP address or '%%' for an app account (RENAME USER ... TO ...@'<ip>'): %s",
 					req.ServerURL, len(hostnameAccounts), strings.Join(hostnameAccounts, ", ")),
 			})

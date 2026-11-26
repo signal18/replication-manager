@@ -3605,7 +3605,7 @@ func myLoaderGtidSet(set string) string {
 }
 
 func (server *ServerMonitor) JobReseedMyLoader(backupdir string, restoreUser bool) error {
-	return server.jobReseedMyLoader(backupdir, restoreUser, false, false)
+	return server.jobReseedMyLoader(backupdir, restoreUser, false, false, nil)
 }
 
 // JobReseedMyLoaderReplica is the myloader restore of the shared logical replica reseed (ProcessReseedLogical,
@@ -3613,7 +3613,7 @@ func (server *ServerMonitor) JobReseedMyLoader(backupdir string, restoreUser boo
 // the myloader release (#2433). JobReseedMyLoader, used by the rejoin by logical backup, and the excluded
 // reseeds keep the arguments as they are.
 func (server *ServerMonitor) JobReseedMyLoaderReplica(backupdir string, restoreUser bool) error {
-	return server.jobReseedMyLoader(backupdir, restoreUser, false, true)
+	return server.jobReseedMyLoader(backupdir, restoreUser, false, true, nil)
 }
 
 // JobReseedMyLoaderFromParent loads another cluster's backup (a staging cluster seeded
@@ -3621,10 +3621,11 @@ func (server *ServerMonitor) JobReseedMyLoaderReplica(backupdir string, restoreU
 // loaded and no account is replayed, so the node keeps its own root, replication and
 // monitoring accounts and the system tables of its own release, whatever the parent's.
 func (server *ServerMonitor) JobReseedMyLoaderFromParent(backupdir string) error {
-	return server.jobReseedMyLoader(backupdir, false, true, false)
+	return server.jobReseedMyLoader(backupdir, false, true, false, nil)
 }
 
-func (server *ServerMonitor) jobReseedMyLoader(backupdir string, restoreUser bool, fromParent bool, replicaReseed bool) error {
+// omitted, when not nil, receives the accounts of the live account replay that were left out (srv_account_export.go).
+func (server *ServerMonitor) jobReseedMyLoader(backupdir string, restoreUser bool, fromParent bool, replicaReseed bool, omitted *[]string) error {
 	cluster := server.ClusterGroup
 	if err := server.refuseColumnstoreReplicaDump(); err != nil {
 		return err
@@ -3730,8 +3731,12 @@ func (server *ServerMonitor) jobReseedMyLoader(backupdir string, restoreUser boo
 		if server.URL == master.URL {
 			sqlLogBin = 1
 		}
-		if err := server.replayMasterSystemUsers(master, sqlLogBin); err != nil {
+		replayOmitted, err := server.replayMasterSystemUsers(master, sqlLogBin)
+		if err != nil {
 			return fmt.Errorf("logical restore of %s: data restored, accounts from %s not replayed: %w", server.URL, master.URL, err)
+		}
+		if omitted != nil {
+			*omitted = replayOmitted
 		}
 	}
 	elapsed := time.Since(start).Round(time.Second)
@@ -4677,6 +4682,57 @@ func boundedWait(wg *sync.WaitGroup, fired <-chan struct{}, grace time.Duration)
 }
 
 func (server *ServerMonitor) JobBackupMysqldump(ctx context.Context, task, filename string, allowRotate bool) error {
+	return server.jobBackupMysqldump(ctx, task, filename, allowRotate, nil)
+}
+
+// jobBackupMysqldumpRecovering runs the main dump; when it stops on an account the server cannot show (SHOW CREATE USER,
+// error 1133) it recovers through the guarded accounts-only export (srv_account_export.go) and runs the dump once more
+// without the accounts, which are then appended to the artifact: the same stream the --system=all dump writes, the
+// account section last. Never on a dump run on the DB node (its stderr does not reach this process), never with
+// --force on the data dump. It returns the accounts left out; every failure that is not fully explained is the first
+// error, unchanged.
+func (server *ServerMonitor) jobBackupMysqldumpRecovering(ctx context.Context, task, filename string, allowRotate bool) ([]string, error) {
+	cluster := server.ClusterGroup
+	err := server.jobBackupMysqldump(ctx, task, filename, allowRotate, nil)
+	if err == nil || !isAccountExportFailureError(err) {
+		return nil, err
+	}
+	client, _ := cluster.GetToolsVersion("client-dump")
+	remote := server.LastBackupMeta.Logical != nil && server.LastBackupMeta.Logical.ExecRemote
+	if verr := accountRecoveryApplicable(remote, cluster.GetMysqlBackupDumpOptions(server, server.JobGetDumpGtidParameter()), client); verr != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Accounts of %s are not recovered: %s", server.URL, verr)
+		return nil, err
+	}
+	acc, aerr := cluster.exportAccounts(ctx, server, server.GetMyBackupDirectory(), false)
+	// a cancellation asked between the two runs is still a cancellation (the job cancel is registered per run)
+	if server.isJobCancelRequested(task) {
+		acc.Close()
+		return nil, errors.Join(errJobCanceledByUser, err)
+	}
+	if aerr != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Accounts of %s are not recovered: %s", server.URL, aerr)
+		return nil, err
+	}
+	defer acc.Close()
+	if len(acc.Omitted) == 0 {
+		return nil, err
+	}
+	// the previous backup was rotated by the first run; the partial artifact of that run is removed, not rotated
+	err = server.jobBackupMysqldump(ctx, task, filename, false, acc)
+	if err != nil {
+		return nil, err
+	}
+	return acc.OmittedNames(), nil
+}
+
+// mergeOmittedAccounts merges two lists of omitted accounts, sorted and without duplicates.
+func mergeOmittedAccounts(a, b []string) []string {
+	all := append(append([]string{}, a...), b...)
+	sort.Strings(all)
+	return slices.Compact(all)
+}
+
+func (server *ServerMonitor) jobBackupMysqldump(ctx context.Context, task, filename string, allowRotate bool, accounts *accountExport) error {
 	cluster := server.ClusterGroup
 	var err error
 	var bckConn *sqlx.DB
@@ -4726,7 +4782,15 @@ func (server *ServerMonitor) JobBackupMysqldump(ctx context.Context, task, filen
 		}
 		return err
 	}
-	dumpCmd := exec.CommandContext(dumpCtx, cluster.GetMysqlDumpPath(), cluster.GetMysqlBackupDumpOptions(server, server.JobGetDumpGtidParameter())...)
+	dumpArgs := cluster.GetMysqlBackupDumpOptions(server, server.JobGetDumpGtidParameter())
+	if accounts != nil {
+		// recovery run: the accounts come from the guarded export appended below
+		client, _ := cluster.GetToolsVersion("client-dump")
+		if dumpArgs, err = accountRecoveryDumpArgs(dumpArgs, client); err != nil {
+			return err
+		}
+	}
+	dumpCmd := exec.CommandContext(dumpCtx, cluster.GetMysqlDumpPath(), dumpArgs...)
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Command: %s ", strings.Replace(dumpCmd.String(), "="+cluster.GetDbPass(), "=XXXX", -1))
 	// Get the stdout pipe from the command
@@ -4863,6 +4927,7 @@ func (server *ServerMonitor) JobBackupMysqldump(ctx context.Context, task, filen
 		defer wg.Done()
 		defer close(errCh)
 		errSent := false
+		readClean := true
 
 		for {
 			n, err := reader.Read(buffer)
@@ -4871,6 +4936,7 @@ func (server *ServerMonitor) JobBackupMysqldump(ctx context.Context, task, filen
 					errCh <- fmt.Errorf("Error reading buffer: %w", err)
 					errSent = true
 				}
+				readClean = false
 				break
 			}
 			if n == 0 {
@@ -4886,6 +4952,14 @@ func (server *ServerMonitor) JobBackupMysqldump(ctx context.Context, task, filen
 		}
 
 		positionLines.Flush()
+
+		// recovery run: the accounts follow the data dump, through the same writer (gzip file or splitdump pipeline)
+		if accounts != nil && readClean {
+			if err := appendAccountExport(teeWriter, accounts); err != nil && !errSent {
+				errCh <- err
+				errSent = true
+			}
+		}
 
 		if splitDumpPipeline != nil {
 			_ = splitDumpPipeline.pipeWriter.Close()
@@ -4983,77 +5057,60 @@ func (server *ServerMonitor) JobBackupMysqldump(ctx context.Context, task, filen
 	return err
 }
 
-// logicalBackupAccountsBlocker refuses a logical backup that dumps the server's accounts
-// while some of them are hidden by skip_name_resolve: mariadb-dump runs SHOW CREATE USER
-// on each account it lists and stops at the first one the server ignores (error 1133).
-func (server *ServerMonitor) logicalBackupAccountsBlocker(logicalType string) error {
+// usersSidecarPartialSuffix names the users sidecar while its backup runs: it is published (renamed) only once the whole
+// logical backup succeeded, so a failed backup leaves the previous sidecar next to the previous backup, and never a
+// truncated one.
+const usersSidecarPartialSuffix = ".partial"
+
+// JobBackupMysqldumpUser writes the users sidecar of the backup, the --system=user dump of this server's accounts and
+// grants, to mysql.users.sql.gz.partial and returns the accounts it had to leave out (see srv_account_export.go). The caller
+// publishes it with publishUsersSidecar once the backup succeeded, or removes it with discardUsersSidecar. Every
+// write, gzip close and file close failure is returned.
+func (server *ServerMonitor) JobBackupMysqldumpUser(ctx context.Context) (omitted []string, err error) {
 	cluster := server.ClusterGroup
-	dumpsAccounts := cluster.Conf.BackupSplitMysqlUser ||
-		(logicalType == config.ConstBackupLogicalTypeMysqldump && server.IsMariaDB() && strings.Contains(cluster.getDumpParameter(), "--system="))
-	if !dumpsAccounts {
-		return nil
-	}
-	hidden := server.AccountsIgnoredBySkipNameResolve()
-	if len(hidden) == 0 {
-		return nil
-	}
-	return fmt.Errorf("logical backup refused on %s: skip_name_resolve=ON makes the server ignore %d account(s) with a DNS host and the dump of the accounts stops on them (SHOW CREATE USER, error 1133): %s -- convert them to an IP, or to '%%' for an app account", server.URL, len(hidden), strings.Join(hidden, ", "))
-}
-
-// mysqldumpUserArgs is the --system=user dump of this server's accounts and grants, the
-// one JobBackupMysqldumpUser writes as the users sidecar and replayMasterSystemUsers
-// streams live from the master.
-func (server *ServerMonitor) mysqldumpUserArgs() []string {
-	args := append(server.ClusterGroup.GetDumpCredentials(server), server.GetSSLClientParam("client-dump")...)
-	return append(args, "--insert-ignore", "--system=user")
-}
-
-func (server *ServerMonitor) JobBackupMysqldumpUser() error {
-	cluster := server.ClusterGroup
-	var err error
-
 	dir := server.GetMyBackupDirectory()
-	userpath := filepath.Join(dir, "mysql.users.sql.gz")
+	partial := filepath.Join(dir, "mysql.users.sql.gz"+usersSidecarPartialSuffix)
 
-	dumpCmd := exec.Command(cluster.GetMysqlDumpPath(), server.mysqldumpUserArgs()...)
-
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Command: %s ", strings.Replace(dumpCmd.String(), "="+cluster.GetDbPass(), "=XXXX", -1))
-
-	f, gw, err := cluster.createGzipWriter(userpath, config.ConstLogModTask)
+	acc, err := cluster.exportAccounts(ctx, server, dir, true)
 	if err != nil {
-		return err
+		return nil, err
 	}
+	defer acc.Close()
 
-	// Buffer before gzip to improve compression
-	bw := bufio.NewWriterSize(gw, 64*1024)
-	defer func() {
-		if err := bw.Flush(); err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error flushing buffer: %s", err.Error())
-		}
-		if err := gw.Close(); err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error closing gzip: %s", err.Error())
-		}
+	f, gw, err := cluster.createGzipWriter(partial, config.ConstLogModTask)
+	if err != nil {
+		return nil, err
+	}
+	in, err := os.Open(acc.Path)
+	if err != nil {
+		gw.Close()
 		f.Close()
-	}()
+		_ = os.Remove(partial)
+		return nil, err
+	}
+	_, copyErr := io.Copy(gw, in)
+	in.Close()
+	err = errors.Join(copyErr, gw.Close(), f.Close())
+	if err != nil {
+		_ = os.Remove(partial)
+		return nil, fmt.Errorf("write the users sidecar: %w", err)
+	}
+	return acc.OmittedNames(), nil
+}
 
-	dumpCmd.Stdout = gw
-	stderrIn, _ := dumpCmd.StderrPipe()
-
-	if err := dumpCmd.Start(); err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error backup request: %s", err)
+// publishUsersSidecar makes the sidecar of a successful backup the one next to it.
+func (server *ServerMonitor) publishUsersSidecar() error {
+	final := filepath.Join(server.GetMyBackupDirectory(), "mysql.users.sql.gz")
+	partial := final + usersSidecarPartialSuffix
+	if _, err := os.Stat(partial); err != nil {
 		return err
 	}
+	return os.Rename(partial, final)
+}
 
-	var wg sync.WaitGroup
-	server.spawnLogCopier(&wg, stderrIn, config.ConstLogModBackupStream, config.LvlDbg)
-	wg.Wait()
-
-	err = dumpCmd.Wait()
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "mysqldump: %s", err)
-	}
-
-	return err
+// discardUsersSidecar removes the unpublished sidecar of a backup that did not succeed.
+func (server *ServerMonitor) discardUsersSidecar() {
+	_ = os.Remove(filepath.Join(server.GetMyBackupDirectory(), "mysql.users.sql.gz"+usersSidecarPartialSuffix))
 }
 
 // mydumper versions: trx-tables mode refuses a non-transactional table since
@@ -5503,6 +5560,28 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, op
 		}
 	}
 
+	// The users sidecar: the account export runs before any state of the backup is touched, so a failure of it (an
+	// account that is not explained, an unsupported statement) leaves the previous completed backup in the catalogue.
+	// Accounts the server ignores because of skip_name_resolve are left out of the account dumps, with a warning, when
+	// that is fully confirmed (srv_account_export.go).
+	var omitted []string
+	splitUser := cluster.Conf.BackupSplitMysqlUser
+	if splitUser {
+		sidecarOmitted, serr := server.JobBackupMysqldumpUser(ctx)
+		if serr != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error mysqldump backup request: %s", serr.Error())
+			server.JobsUpdateStateRuntimeOnly(logicalType, serr.Error(), 5, 1)
+			return serr
+		}
+		omitted = append(omitted, sidecarOmitted...)
+		// whatever ends the backup short of its publication removes the unpublished sidecar
+		defer func() {
+			if err != nil {
+				server.discardUsersSidecar()
+			}
+		}()
+	}
+
 	// Remove from backup list, since the file will be replaced
 	if !cluster.Conf.BackupKeepUntilValid {
 		server.retireReplacedBackup(prevId)
@@ -5520,30 +5599,15 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, op
 		ResticEnabled:  resticEnabled,
 	}
 	server.ensureBackupSessionID(server.LastBackupMeta.Logical, backupmgr.BackupMethodLogical, start)
+	if splitUser {
+		server.LastBackupMeta.Logical.SplitUser = true
+	}
 	server.LastBackupMeta.Logical.ExecRemote = execRemote
 
 	cluster.BackupMetaMap.Set(server.LastBackupMeta.Logical.Id, server.LastBackupMeta.Logical)
 
 	// Removing previous valid backup state and start
 	server.DelBackupLogicalCookie()
-
-	// The dump of the accounts (--system=all of a MariaDB mysqldump, or the users sidecar)
-	// stops on the first account skip_name_resolve hides from the server: refuse before
-	// anything runs, with the accounts in the job result (ERR00118 shows it, #2046).
-	if err := server.logicalBackupAccountsBlocker(logicalType); err != nil {
-		server.JobsUpdateStateRuntimeOnly(logicalType, err.Error(), 5, 1)
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "%s", err)
-		return err
-	}
-
-	if cluster.Conf.BackupSplitMysqlUser {
-		server.LastBackupMeta.Logical.SplitUser = true
-		err := server.JobBackupMysqldumpUser()
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error mysqldump backup request: %s", err.Error())
-			return err
-		}
-	}
 
 	//Skip other type if using backup script
 	if cluster.Conf.BackupSaveScript != "" {
@@ -5563,7 +5627,7 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, op
 
 		err = server.JobBackupScript(filename)
 		if err == nil {
-			server.JobsUpdateStateRuntimeOnly(task, "Backup completed", 3, 1)
+			server.JobsUpdateStateRuntimeOnly(task, accountOmissionResult("Backup completed", omitted), 3, 1)
 			server.LastBackupMeta.Logical.Completed = true
 			server.SetBackupLogicalCookie(task)
 		} else {
@@ -5632,11 +5696,13 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, op
 			}
 
 			allowRotate := cluster.Conf.BackupKeepUntilValid
+			var dumpOmitted []string
 			if cluster.Conf.BackupMysqldumpSplitDump {
-				err = server.JobBackupMysqldump(ctx, task, stagedDir, allowRotate)
+				dumpOmitted, err = server.jobBackupMysqldumpRecovering(ctx, task, stagedDir, allowRotate)
 			} else {
-				err = server.JobBackupMysqldump(ctx, task, stagedFile, allowRotate)
+				dumpOmitted, err = server.jobBackupMysqldumpRecovering(ctx, task, stagedFile, allowRotate)
 			}
+			omitted = mergeOmittedAccounts(omitted, dumpOmitted)
 			if err != nil {
 				result := err.Error()
 				if errors.Is(err, errJobCanceledByUser) {
@@ -5648,7 +5714,7 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, op
 			} else {
 				if remoteRow {
 					// dbjobs already recorded the end of the dump on the row
-				} else if e2 := updateJobState(task, "Backup completed", 3, 1); e2 != nil {
+				} else if e2 := updateJobState(task, accountOmissionResult("Backup completed", omitted), 3, 1); e2 != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
 				}
 				checkPath := stagedFile
@@ -5687,7 +5753,7 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, op
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
 				}
 			} else {
-				if e2 := updateJobState(task, "Backup completed", 3, 1); e2 != nil {
+				if e2 := updateJobState(task, accountOmissionResult("Backup completed", omitted), 3, 1); e2 != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
 				}
 				_, e3 := os.Stat(stagedDir)
@@ -5722,7 +5788,7 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, op
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
 				}
 			} else {
-				if e2 := updateJobState(task, "Backup completed", 3, 1); e2 != nil {
+				if e2 := updateJobState(task, accountOmissionResult("Backup completed", omitted), 3, 1); e2 != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
 				}
 
@@ -5746,7 +5812,7 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, op
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
 				}
 			} else {
-				if e2 := updateJobState(task, "Backup completed", 3, 1); e2 != nil {
+				if e2 := updateJobState(task, accountOmissionResult("Backup completed", omitted), 3, 1); e2 != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
 				}
 				server.LastBackupMeta.Logical.EndTime = time.Now()
@@ -5763,7 +5829,7 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, op
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
 				}
 			} else {
-				if e2 := updateJobState(task, "Backup completed", 3, 1); e2 != nil {
+				if e2 := updateJobState(task, accountOmissionResult("Backup completed", omitted), 3, 1); e2 != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
 				}
 			}
@@ -5779,6 +5845,19 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, op
 	if err != nil {
 		// A failed job never leaves its plaintext staging output behind.
 		cluster.discardBackupStaging(server.LastBackupMeta.Logical)
+	}
+	// The users sidecar belongs to the backup it was taken with: published once that backup succeeded, removed otherwise,
+	// so the previous sidecar stays next to the previous backup.
+	if cluster.Conf.BackupSplitMysqlUser {
+		if err == nil {
+			if pubErr := server.publishUsersSidecar(); pubErr != nil {
+				err = fmt.Errorf("publish the users sidecar: %w", pubErr)
+				server.JobsUpdateStateRuntimeOnly(logicalType, err.Error(), 5, 1)
+				cluster.discardBackupStaging(server.LastBackupMeta.Logical)
+			}
+		} else {
+			server.discardUsersSidecar()
+		}
 	}
 
 	backupMeta := server.LastBackupMeta.Logical
@@ -8178,11 +8257,9 @@ func (server *ServerMonitor) ProcessReseedLogical(task string) error {
 	if backupType == config.ConstBackupLogicalTypeMydumper {
 		// the managed default options are adapted on this shared replica reseed path (#2433), except a PITR and the
 		// staging refresh, whose reload also comes here
-		if isOrdinaryMyLoaderReseed(isPITR, cluster.IsRefreshStaging, cluster.IsActiveStagingServer(server)) {
-			err = server.JobReseedMyLoaderReplica(backupfile, cluster.Conf.BackupRestoreMysqlUser)
-		} else {
-			err = server.JobReseedMyLoader(backupfile, cluster.Conf.BackupRestoreMysqlUser)
-		}
+		var accountsOmitted []string
+		err = server.jobReseedMyLoader(backupfile, cluster.Conf.BackupRestoreMysqlUser, false,
+			isOrdinaryMyLoaderReseed(isPITR, cluster.IsRefreshStaging, cluster.IsActiveStagingServer(server)), &accountsOmitted)
 		// the primary's position applies to a link pointing to the primary only (law T27)
 		if err == nil && server.IsSlave && !isPITR && linkOnSource {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Parsing mydumper metadata ")
@@ -8206,7 +8283,7 @@ func (server *ServerMonitor) ProcessReseedLogical(task string) error {
 			return err
 		}
 
-		server.JobsUpdateStateRuntimeOnly(task, "Reseed completed", 3, 1)
+		server.JobsUpdateStateRuntimeOnly(task, accountOmissionResult("Reseed completed", accountsOmitted), 3, 1)
 		return nil
 	}
 

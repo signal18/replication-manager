@@ -2102,6 +2102,32 @@ func (cluster *Cluster) CheckJobsCli() {
 // (backup-logical-type, or backup-save-script)
 var logicalBackupTasks = []string{config.ConstBackupLogicalTypeMysqldump, config.ConstBackupLogicalTypeMydumper, config.ConstBackupLogicalTypeDumpling, "script"}
 
+// accountOmissionTasks are the jobs whose result can carry accounts left out of a dump or of a live account replay
+// (srv_account_export.go): the logical backups and the logical reseeds.
+var accountOmissionTasks = append(append([]string{}, logicalBackupTasks...), "reseedmydumper", "reseedmysqldump")
+
+// LastAccountsOmittedJob returns the task and the accounts text of the server's latest finished backup or reseed job
+// when it ended OK with accounts left out (skip_name_resolve), "" when the latest one left none out. Derived from the
+// tracked job results only: the next job that ends without omission closes it.
+func (server *ServerMonitor) LastAccountsOmittedJob() (task, accounts string) {
+	if server.JobResults == nil {
+		return "", ""
+	}
+	var last *config.Task
+	for _, name := range accountOmissionTasks {
+		if t := server.JobResults.Get(name); t != nil && t.Done == 1 && t.End > 0 && t.State < 5 && (last == nil || t.End > last.End) {
+			last = t
+		}
+	}
+	if last == nil {
+		return "", ""
+	}
+	if a := accountsOmittedFromResult(last.Result); a != "" {
+		return last.Task, a
+	}
+	return "", ""
+}
+
 // LastFailedLogicalBackup returns the server's last logical backup job when it ended in
 // error (states 5 and 6), nil when the last one ended OK or none ran. A logical backup
 // replication-manager took itself never goes through the jobs table: a completed one in the

@@ -7,10 +7,11 @@
 package cluster
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
-	"os/exec"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -158,45 +159,45 @@ func (c *myloaderCritical) wrap(err error) error {
 // dump of the users sidecar) and replays them on this freshly restored node through the
 // system-catalogue path (classify, publish, restoreSystemCatalog). A fresh node's own
 // system tables stay those of its release; only the accounts come from the master.
-func (server *ServerMonitor) replayMasterSystemUsers(master *ServerMonitor, sqlLogBin int) error {
+// Accounts the master ignores because of skip_name_resolve are left out, when fully
+// confirmed (srv_account_export.go), and returned for the job result; any other failure fails.
+func (server *ServerMonitor) replayMasterSystemUsers(master *ServerMonitor, sqlLogBin int) ([]string, error) {
 	cluster := server.ClusterGroup
 	suffix, err := randomHexSuffix(6)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	writer, err := server.newDirectReseedSystemArtifactWriter("myloader-users-"+suffix, time.Now().UTC())
 	if err != nil {
-		return err
+		return nil, err
 	}
-	dumpCmd := exec.Command(cluster.GetMysqlDumpPath(), master.mysqldumpUserArgs()...)
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Accounts of %s for %s: %s", master.URL, server.URL, strings.ReplaceAll(dumpCmd.String(), "="+cluster.GetDbPass(), "=XXXX"))
-	stdout, err := dumpCmd.StdoutPipe()
+	// the export sits in the artifact's own unpublished directory, removed before it is published
+	acc, err := cluster.exportAccounts(context.Background(), master, writer.tmpDir, true)
 	if err != nil {
 		writer.discard()
-		return err
+		return nil, err
 	}
-	stderr, _ := dumpCmd.StderrPipe()
-	if err := dumpCmd.Start(); err != nil {
+	in, err := os.Open(acc.Path)
+	if err != nil {
+		acc.Close()
 		writer.discard()
-		return err
+		return nil, err
 	}
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		server.copyLogs(stderr, config.ConstLogModBackupStream, config.LvlDbg)
-	}()
-	result, classifyErr := splitdump.ClassifyStream(stdout, splitdump.ClassifyOptions{ApplicationWriter: io.Discard, SystemWriter: writer})
-	wg.Wait()
-	waitErr := dumpCmd.Wait()
-	if classifyErr != nil || waitErr != nil {
+	result, classifyErr := splitdump.ClassifyStream(in, splitdump.ClassifyOptions{ApplicationWriter: io.Discard, SystemWriter: writer})
+	in.Close()
+	omitted := acc.OmittedNames()
+	acc.Close()
+	if classifyErr != nil {
 		writer.discard()
-		return errors.Join(classifyErr, waitErr)
+		return nil, classifyErr
 	}
 	if !result.HasSystemContent {
 		writer.discard()
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Accounts of %s: the dump carried no account for %s", master.URL, server.URL)
-		return nil
+		return omitted, nil
 	}
-	return server.publishAndReplayReseedMysqldumpSystemArtifact(writer, result.Metadata, "live:"+master.URL, sqlLogBin)
+	if len(omitted) > 0 {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Accounts of %s not replayed on %s, ignored by skip_name_resolve: %s", master.URL, server.URL, strings.Join(omitted, ", "))
+	}
+	return omitted, server.publishAndReplayReseedMysqldumpSystemArtifact(writer, result.Metadata, "live:"+master.URL, sqlLogBin)
 }

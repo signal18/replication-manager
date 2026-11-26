@@ -652,6 +652,19 @@ func (cluster *Cluster) assertDomainObservabilityStates() {
 			}
 		}
 	}
+	// Config domain: servers whose latest backup or reseed ended OK with accounts left out because of skip_name_resolve.
+	// Asserted every tick from the tracked job results: the next job that leaves none out closes it.
+	if cluster.ConfigStateMachine != nil {
+		for _, srv := range cluster.Servers {
+			if srv == nil {
+				continue
+			}
+			if task, accounts := srv.LastAccountsOmittedJob(); task != "" {
+				cluster.ConfigStateMachine.AddState(state.BuildStateKey("WARN0330", srv.URL), state.State{ErrType: "WARNING", ErrKey: "WARN0330",
+					ErrDesc: fmt.Sprintf(clusterError["WARN0330"], srv.URL, task, accounts), ErrFrom: "CONFIG", ServerUrl: srv.URL})
+			}
+		}
+	}
 	// Schema monitor lifecycle tags: next scheduled run and in-progress runs.
 	if cluster.SchemaStateMachine != nil {
 		if cluster.StateMachine != nil && cluster.StateMachine.IsInSchemaMonitor() {

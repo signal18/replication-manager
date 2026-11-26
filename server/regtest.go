@@ -470,6 +470,9 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 		if test.Name == "testGraphiteMetricsQueueBound" {
 			res = regtest.TestGraphiteMetricsQueueBound(cl, test.ConfigFile, &test)
 		}
+		if test.Name == "testLogicalBackupSkipNameResolve" {
+			res = regtest.TestLogicalBackupSkipNameResolve(cl, test.ConfigFile, &test)
+		}
 		if test.Name == "testDirectReseedSystemAllEmptyDestination" {
 			res = regtest.TestDirectReseedSystemAllEmptyDestination(cl, test.ConfigFile, &test)
 		}
