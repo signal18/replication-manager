@@ -25,6 +25,9 @@
 # database: replication-manager stops it before a snapback and starts it after.
 
 set -u
+# messages in English: the fuser and sudo errors are read from their text (sudo keeps LC_*)
+LC_ALL=C
+export LC_ALL
 
 ACTION="${1:-}"
 TYPE="${REPMAN_SNAPSHOT_TYPE:-}"

@@ -113,7 +113,10 @@ and during a failover. Then:
    LVM volume with no mount point found (not mounted, or mounted through an alias findmnt does
    not resolve) is refused. The wait is a third of `backup-snapshot-timeout`, at most 2 minutes.
    A shell of the SSH user whose directory is on the volume counts as a use: the snapback is
-   then refused, nothing changed. On ZFS, the snapshots taken **after** it are
+   then refused, nothing changed. `fuser -m` checks the whole filesystem of a path: with a
+   `backup-snapshot-target` that leaves a server directory on another filesystem (binary logs
+   on `/`), any process there counts as a use and the snapback is refused; keep every server
+   directory on the snapshotted volume. On ZFS, the snapshots taken **after** it are
    destroyed (ZFS rolls back to the latest snapshot only). On LVM the volume is unmounted,
    the snapshot merged into it (the snapshot is consumed by the merge), and mounted again (from
    its fstab entry; a volume without one comes back mounted with the default options);
