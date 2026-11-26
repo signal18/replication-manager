@@ -139,6 +139,11 @@ child dataset that could not be rolled back, a merge that failed), the server is
 stopped and in maintenance** (state ERR00123): check the volume, the commands are in the
 log, before you start it.
 
+For a thin LVM volume the sequence is `lvchange -an`, `lvconvert --merge`, `lvchange -ay`, then
+the mounts: when it stops after the deactivation, the volume is left inactive and unmounted.
+Activate it (`lvchange -ay vg/lv`), mount it (`mount <mount point>`), check it, then start the
+server.
+
 ## States
 
 | State | When |

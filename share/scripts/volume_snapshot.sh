@@ -229,7 +229,7 @@ zfs_snapback() {
     done
     # a clone of a snapshot taken after it: zfs rollback -r refuses, after CHANGED
     for ds in $datasets; do
-        clones=$(q zfs list -H -t snapshot -d 1 -s creation -o name,clones "$ds" | awk -F '\t' -v s="$ds@$NAME" 'found && $2 != "-" && $2 != "" { print $1 } $1 == s { found = 1 }')
+        clones=$(q zfs list -H -t snapshot -d 1 -s createtxg -o name,clones "$ds" | awk -F '\t' -v s="$ds@$NAME" 'found && $2 != "-" && $2 != "" { print $1 } $1 == s { found = 1 }')
         [ -z "$clones" ] || die "snapshot(s) taken after $NAME have clones ($clones): zfs can not roll back over them, nothing was changed"
     done
     # no process on any of their mount points: a busy dataset would fail its rollback half-way
