@@ -55,6 +55,9 @@ export const clusterService = {
   resticWipeRepo,
   getArchiveList,
   getSecretKvList,
+  getReplicationPluginIndexList,
+  putReplicationPluginIndex,
+  removeReplicationPluginIndex,
   putSecretKv,
   switchSecretKv,
   removeSecretKv,
@@ -1153,6 +1156,19 @@ function resticCopyRepo(clusterName, payload, baseURL) {
 
 function resticWipeRepo(clusterName, payload, baseURL) {
   return getApi(baseURL).post(`clusters/${clusterName}/restic/wipe`, payload)
+}
+
+// the indexes of an analytic child's denormalize mode (CDC_CORE.md "Denormalize")
+function getReplicationPluginIndexList(clusterName, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/replication-plugin-index-list`)
+}
+
+function putReplicationPluginIndex(clusterName, index, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/replication-plugin-index-actions/put`, index)
+}
+
+function removeReplicationPluginIndex(clusterName, indexName, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/replication-plugin-index-actions/remove/${encodeURIComponent(indexName)}`)
 }
 
 // credential store entries, the vault entries (#2227): secrets go in through add and edit and

@@ -549,6 +549,7 @@ type Config struct {
 	ReplicationPluginSource                  string                       `mapstructure:"replication-plugin-source" toml:"replication-plugin-source" json:"replicationPluginSource"`
 	ReplicationPluginCheckpointInterval      int                          `mapstructure:"replication-plugin-checkpoint-interval" toml:"replication-plugin-checkpoint-interval" json:"replicationPluginCheckpointInterval"`
 	ReplicationPluginMergeInterval           int                          `mapstructure:"replication-plugin-merge-interval" toml:"replication-plugin-merge-interval" json:"replicationPluginMergeInterval"`
+	ReplicationPluginIndexes                 []ReplicationPluginIndex     `mapstructure:"replication-plugin-index" toml:"replication-plugin-index" json:"replicationPluginIndexes"`
 	StagingProxyHosts                        string                       `mapstructure:"staging-proxy-hosts" toml:"staging-proxy-hosts" json:"stagingProxyHosts"`
 	StagingServerHost                        string                       `mapstructure:"staging-server-host" toml:"staging-server-host" json:"stagingServerHost"`
 	GraphiteMetrics                          bool                         `scope:"server" mapstructure:"graphite-metrics" toml:"graphite-metrics" json:"graphiteMetrics"`
