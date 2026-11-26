@@ -40,6 +40,12 @@ var databaseACLRules = []ACLRule{
 
 	{"/actions/restart", []string{config.GrantDBStart, config.GrantDBStop}, nil},
 
+	// The host (VM) of a server, on an orchestrator that drives the hosts (api_database_host.go)
+	{"/actions/host-stop", nil, []string{config.GrantDBStop}},
+	{"/actions/host-start", nil, []string{config.GrantDBStart}},
+	{"/actions/host-reboot", []string{config.GrantDBStart, config.GrantDBStop}, nil},
+	{"/host-status", nil, []string{config.GrantDBShowStatus}},
+
 	// Actions with multiple allowed grants (OR logic)
 	{"/actions/analyze-pfs", nil, []string{config.GrantDBOptimize, config.GrantDBAnalyse}},
 

@@ -129,41 +129,50 @@ func (cluster *Cluster) OnPremiseUpgradeDatabaseService(server *ServerMonitor) e
 		}
 	}
 
+	cmd := cluster.Configurator.GetSshUpgradeDBScript()
+	out, errOut, err := cluster.runGuestScript(server, cmd)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "OnPremise upgrade database via ssh script %s failed: %s %s", cmd, err, errOut)
+		return err
+	}
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "OnPremise upgrade script: %s, out: %s, err: %s", cmd, out, errOut)
+
+	return nil
+}
+
+// runGuestScript runs a local script file in a shell on the server's host over the
+// on-premise SSH session, its input prefixed with the server's environment (GetSshEnv, which
+// the output never echoes). It returns the script's stdout and stderr. Used by the
+// on-premise upgrade (onpremise-ssh-upgrade-db-script) and by the host step of the rolling
+// upgrade (prov-db-host-upgrade-script, cluster_roll_host.go).
+func (cluster *Cluster) runGuestScript(server *ServerMonitor, script string) (string, string, error) {
 	client, err := cluster.OnPremiseConnect(server)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "OnPremise upgrade database via ssh failed: %s", err)
-		return err
+		return "", "", err
 	}
 	defer client.Close()
 
-	cmd := cluster.Configurator.GetSshUpgradeDBScript()
-
-	filerc, err := os.Open(cmd)
+	filerc, err := os.Open(script)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "OnPremise upgrade database via ssh script %s failed: %s", cmd, err)
-		return fmt.Errorf("can't open upgrade script: %s", cmd)
+		return "", "", fmt.Errorf("can't open script: %s", script)
 	}
 	defer filerc.Close()
 
 	buf := new(bytes.Buffer)
-	buf.ReadFrom(filerc)
-
-	buf2 := strings.NewReader(server.GetSshEnv())
-	r := io.MultiReader(buf2, buf)
+	if _, err := buf.ReadFrom(filerc); err != nil {
+		return "", "", fmt.Errorf("can't read script %s: %w", script, err)
+	}
+	r := io.MultiReader(strings.NewReader(server.GetSshEnv()), buf)
 
 	var (
 		stdout bytes.Buffer
 		stderr bytes.Buffer
 	)
 	if err := client.Shell().SetStdio(r, &stdout, &stderr).Start(); err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "OnPremise upgrade database via ssh error: %s", stderr.String())
-		return err
+		return stdout.String(), stderr.String(), err
 	}
-	out := stdout.String()
-
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "OnPremise upgrade script: %s, out: %s, err: %s", cmd, out, stderr.String())
-
-	return nil
+	return stdout.String(), stderr.String(), nil
 }
 
 func (cluster *Cluster) OnPremiseGetNodes() ([]Agent, error) {

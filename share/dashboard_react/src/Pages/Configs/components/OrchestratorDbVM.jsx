@@ -199,6 +199,100 @@ function OrchestratorDbVM({ selectedCluster, user, scope }) {
         />
       )
     },
+    ...(selectedCluster?.config?.provOrchestrator === 'proxmox'
+      ? [
+          {
+            clusterSetting: 'proxmox-api-url',
+            key: 'Proxmox API URL',
+            value: (
+              <TextForm
+                value={selectedCluster?.config?.proxmoxAPIURL}
+                placeholder='https://pve.example:8006'
+                confirmTitle='Proxmox API URL Change'
+                confirmBody='The Proxmox VE API endpoint of the hosts of this cluster. Change "proxmox-api-url" to: '
+                onSave={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'proxmox-api-url', value: btoa(value) }))}
+              />
+            )
+          },
+          {
+            clusterSetting: 'proxmox-api-token',
+            key: 'Proxmox API Token',
+            value: (
+              <TextForm
+                type='password'
+                value={selectedCluster?.config?.proxmoxAPIToken || ''}
+                placeholder='user@realm!tokenid=secret'
+                confirmTitle='Proxmox API Token Change'
+                confirmBody='The API token, encrypted in the configuration and never logged. Change "proxmox-api-token"'
+                onSave={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'proxmox-api-token', value: btoa(value) }))}
+              />
+            )
+          },
+          {
+            clusterSetting: 'proxmox-api-insecure',
+            key: 'Proxmox API Accept Any Certificate',
+            value: (
+              <RMSwitch
+                isChecked={selectedCluster?.config?.proxmoxAPIInsecure}
+                isDisabled={user?.grants['cluster-settings'] == false}
+                confirmTitle={'Confirm switch settings for proxmox-api-insecure (a lab only)?'}
+                onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'proxmox-api-insecure' }))}
+              />
+            )
+          },
+          {
+            clusterSetting: 'prov-db-host-vmids',
+            key: 'Database Host VMs (host=node/vmid)',
+            value: (
+              <TextForm
+                value={selectedCluster?.config?.provDbHostVmids}
+                placeholder='db1=pve1/101,db2=pve2/102'
+                confirmTitle='Database Host VMs Change'
+                confirmBody='The VM under each database server, host=node/vmid pairs comma separated. Change "prov-db-host-vmids" to: '
+                onSave={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'prov-db-host-vmids', value: btoa(value) }))}
+              />
+            )
+          },
+          {
+            clusterSetting: 'prov-db-rolling-upgrade-host',
+            key: 'Rolling Upgrade Reboots The Host',
+            value: (
+              <RMSwitch
+                isChecked={selectedCluster?.config?.provDbRollingUpgradeHost}
+                isDisabled={user?.grants['cluster-settings'] == false}
+                confirmTitle={'Confirm switch settings for prov-db-rolling-upgrade-host?'}
+                onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'prov-db-rolling-upgrade-host' }))}
+              />
+            )
+          },
+          {
+            clusterSetting: 'prov-db-host-upgrade-script',
+            key: 'Host Upgrade Script (run in the guest before the reboot)',
+            value: (
+              <TextForm
+                value={selectedCluster?.config?.provDbHostUpgradeScript}
+                placeholder='/etc/replication-manager/host-upgrade.sh'
+                confirmTitle='Host Upgrade Script Change'
+                confirmBody='A local script run over ssh in the guest before its reboot in the rolling upgrade; empty: reboot only. Change "prov-db-host-upgrade-script" to: '
+                onSave={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'prov-db-host-upgrade-script', value: btoa(value) }))}
+              />
+            )
+          },
+          {
+            clusterSetting: 'prov-db-host-reboot-timeout',
+            key: 'Host Reboot Timeout (s)',
+            value: (
+              <TextForm
+                value={selectedCluster?.config?.provDbHostRebootTimeout}
+                placeholder='600'
+                confirmTitle='Host Reboot Timeout Change'
+                confirmBody='Seconds for a host action and for a rebooted VM to run and answer on ssh. Change "prov-db-host-reboot-timeout" to: '
+                onSave={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'prov-db-host-reboot-timeout', value: value }))}
+              />
+            )
+          }
+        ]
+      : []),
     {
       clusterSetting: 'prov-docker-daemon-private',
       key: 'Provisioning Private Docker Daemon',

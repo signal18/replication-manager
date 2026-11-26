@@ -93,25 +93,46 @@ var orchestratorMatrix = map[string]map[string]matrixStatus{
 	// TerminalOrchestrator
 	"TerminalCommand":  backends(implemented, notSupportedS, implemented, notSupportedS, notSupportedS),
 	"DefaultContainer": backends(implemented, notSupportedS, notSupportedS, notSupportedS, notSupportedS),
+	// HostOrchestrator (step 3b, design 10.4): only a backend that drives a hypervisor
+	"StopHost":   allBackends(notSupportedS),
+	"StartHost":  allBackends(notSupportedS),
+	"RebootHost": allBackends(notSupportedS),
+	"HostStatus": allBackends(notSupportedS),
+}
+
+// The proxmox column: the on-premise backend's cells (it embeds the on-premise adapter for
+// the services, design 10.4) and the host facet implemented.
+func init() {
+	hostMethods := map[string]bool{"StopHost": true, "StartHost": true, "RebootHost": true, "HostStatus": true}
+	for method, row := range orchestratorMatrix {
+		if hostMethods[method] {
+			row[config.ConstOrchestratorProxmox] = implemented
+			continue
+		}
+		row[config.ConstOrchestratorProxmox] = row[config.ConstOrchestratorOnPremise]
+	}
 }
 
 // matrixBackends is the column order of backends(): OpenSVC, Kubernetes, on-premise,
-// localhost, SlapOS.
+// localhost, SlapOS; then proxmox, whose column is derived from the on-premise one (init).
 var matrixBackends = []string{
 	config.ConstOrchestratorOpenSVC,
 	config.ConstOrchestratorKubernetes,
 	config.ConstOrchestratorOnPremise,
 	config.ConstOrchestratorLocalhost,
 	config.ConstOrchestratorSlapOS,
+	config.ConstOrchestratorProxmox,
 }
 
-// matrixFiles is the adapter file of each backend.
-var matrixFiles = map[string]string{
-	config.ConstOrchestratorOpenSVC:    "orchestrator_opensvc.go",
-	config.ConstOrchestratorKubernetes: "orchestrator_k8s.go",
-	config.ConstOrchestratorOnPremise:  "orchestrator_onpremise.go",
-	config.ConstOrchestratorLocalhost:  "orchestrator_localhost.go",
-	config.ConstOrchestratorSlapOS:     "orchestrator_slapos.go",
+// matrixFiles are the adapter files of each backend: a backend that embeds another adapter
+// declares its methods in both.
+var matrixFiles = map[string][]string{
+	config.ConstOrchestratorOpenSVC:    {"orchestrator_opensvc.go"},
+	config.ConstOrchestratorKubernetes: {"orchestrator_k8s.go"},
+	config.ConstOrchestratorOnPremise:  {"orchestrator_onpremise.go"},
+	config.ConstOrchestratorLocalhost:  {"orchestrator_localhost.go"},
+	config.ConstOrchestratorSlapOS:     {"orchestrator_slapos.go"},
+	config.ConstOrchestratorProxmox:    {"orchestrator_proxmox.go", "orchestrator_onpremise.go"},
 }
 
 func backends(opensvc, kube, onpremise, local, slapos matrixStatus) map[string]matrixStatus {
@@ -183,7 +204,12 @@ func TestOrchestratorMatrix(t *testing.T) {
 	}
 
 	for _, backend := range matrixBackends {
-		declared := declaredMethods(t, matrixFiles[backend])
+		declared := map[string]bool{}
+		for _, file := range matrixFiles[backend] {
+			for method := range declaredMethods(t, file) {
+				declared[method] = true
+			}
+		}
 		cl := matrixCluster(t, backend)
 		orch := cl.Orchestrator()
 		if orch.Type() != backend {

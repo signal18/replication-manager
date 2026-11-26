@@ -75,6 +75,7 @@ func TestOrchestratorRegistryBuildsEveryType(t *testing.T) {
 		config.ConstOrchestratorOnPremise,
 		config.ConstOrchestratorLocalhost,
 		config.ConstOrchestratorSlapOS,
+		config.ConstOrchestratorProxmox,
 	} {
 		cl := &Cluster{Name: "types", Conf: &config.Config{ProvOrchestrator: typ}}
 		if err := cl.newOrchestratorList(); err != nil {

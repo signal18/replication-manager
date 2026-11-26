@@ -141,6 +141,8 @@ export const clusterService = {
   startDatabase,
   restartDatabase,
   upgradeDatabase,
+  hostActionDatabase,
+  getHostStatusDatabase,
   provisionDatabase,
   unprovisionDatabase,
   updateOpensvcTemplate,
@@ -693,6 +695,15 @@ function restartDatabase(clusterName, serverId, rid, baseURL) {
 
 function upgradeDatabase(clusterName, serverId, baseURL) {
   return getApi(baseURL).post(`clusters/${clusterName}/servers/${serverId}/actions/upgrade`)
+}
+
+// the host (VM) of a server, on an orchestrator that drives the hosts (proxmox)
+function hostActionDatabase(clusterName, serverId, action, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/servers/${serverId}/actions/host-${action}`)
+}
+
+function getHostStatusDatabase(clusterName, serverId, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/servers/${serverId}/host-status`)
 }
 
 function provisionDatabase(clusterName, serverId, baseURL) {

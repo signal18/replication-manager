@@ -138,8 +138,23 @@ func (cluster *Cluster) newOrchestrator(oc orchestratorConfig) (Orchestrator, bo
 		return newLocalhostOrchestrator(cluster, oc.Name), true
 	case config.ConstOrchestratorSlapOS:
 		return newSlapOSOrchestrator(cluster, oc.Name), true
+	case config.ConstOrchestratorProxmox:
+		return newProxmoxOrchestrator(cluster, oc.Name), true
 	}
 	return nil, false
+}
+
+// serviceOrchestratorType is the backend whose service operations an orchestrator type
+// uses, for the dispatch that still switches on the type (cluster.GetOrchestrator(), until
+// migration step 2 routes every caller through the interface). The proxmox backend is the
+// on-premise backend's service operations plus the host facet (design 10.4), so every
+// switch on the type treats a proxmox cluster exactly as an on-premise one; the registry
+// (Orchestrator()) still resolves the configured type, so the host facet is the proxmox one.
+func serviceOrchestratorType(provOrchestrator string) string {
+	if provOrchestrator == config.ConstOrchestratorProxmox {
+		return config.ConstOrchestratorOnPremise
+	}
+	return provOrchestrator
 }
 
 // Orchestrator is the cluster's orchestrator: the registered one named by prov-orchestrator,
@@ -359,6 +374,19 @@ func (u *unsupportedOrchestrator) TerminalCommand(TerminalRequest) (TerminalComm
 	return TerminalCommand{}, notSupported("TerminalCommand", u.orch)
 }
 func (u *unsupportedOrchestrator) DefaultContainer(TerminalTarget) (string, bool) { return "", false }
+
+func (u *unsupportedOrchestrator) StopHost(*ServerMonitor) error {
+	return notSupported("StopHost", u.orch)
+}
+func (u *unsupportedOrchestrator) StartHost(*ServerMonitor) error {
+	return notSupported("StartHost", u.orch)
+}
+func (u *unsupportedOrchestrator) RebootHost(*ServerMonitor) error {
+	return notSupported("RebootHost", u.orch)
+}
+func (u *unsupportedOrchestrator) HostStatus(*ServerMonitor) (HostStatus, error) {
+	return HostStatus{}, notSupported("HostStatus", u.orch)
+}
 
 // notSupportedStore is the secret store of a backend without a shared secret: every write
 // and read answers ErrOrchestratorNotSupported, so a caller never holds a nil store.

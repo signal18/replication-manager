@@ -613,8 +613,12 @@ func (cluster *Cluster) RollingUpgrade() error {
 	return nil
 }
 
-// rollingUpgradeOnPremise performs a rolling version upgrade for on-premise (SSH) deployments.
-// Each node is: maintenance on → stop → run upgrade script (package upgrade + mariadb-upgrade + start) → wait sync → maintenance off.
+// rollingUpgradeOnPremise performs a rolling version upgrade for on-premise (SSH) deployments,
+// the proxmox backend's included (its services are the on-premise ones).
+// Each node is: maintenance on → stop → [host step: guest upgrade hook, VM reboot, wait] →
+// run upgrade script (package upgrade + mariadb-upgrade + start) → wait sync → maintenance off.
+// The host step runs only with prov-db-rolling-upgrade-host on a backend that drives the hosts
+// (cluster_roll_host.go).
 func (cluster *Cluster) rollingUpgradeOnPremise() error {
 	cluster.SetInRollingRestart(true)
 	defer cluster.SetInRollingRestart(false)
@@ -659,6 +663,16 @@ func (cluster *Cluster) rollingUpgradeOnPremise() error {
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
 				"Rolling upgrade: slave does not transit failed %s: %s", slave.URL, err)
+			if maintEnabled {
+				slave.SwitchMaintenance()
+			}
+			return err
+		}
+
+		// the host step (prov-db-rolling-upgrade-host): the guest upgrade hook, the VM reboot
+		if err = cluster.rollingUpgradeHostStep(slave); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
+				"Rolling upgrade: host step failed on slave %s: %s", slave.URL, err)
 			if maintEnabled {
 				slave.SwitchMaintenance()
 			}
@@ -739,6 +753,16 @@ func (cluster *Cluster) rollingUpgradeOnPremise() error {
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
 			"Rolling upgrade: old master does not transit failed %s: %s", master.URL, err)
+		if maintEnabled {
+			master.SwitchMaintenance()
+		}
+		return err
+	}
+
+	// the host step (prov-db-rolling-upgrade-host): the guest upgrade hook, the VM reboot
+	if err = cluster.rollingUpgradeHostStep(master); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
+			"Rolling upgrade: host step failed on old master %s: %s", master.URL, err)
 		if maintEnabled {
 			master.SwitchMaintenance()
 		}

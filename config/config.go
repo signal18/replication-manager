@@ -610,6 +610,13 @@ type Config struct {
 	OnPremiseSSHStopProxyScript              string                       `mapstructure:"onpremise-ssh-stop-proxy-script" toml:"onpremise-ssh-stop-proxy-script" json:"onpremiseSshStopProxyScript"`
 	OnPremiseSSHDbJobScript                  string                       `mapstructure:"onpremise-ssh-db-job-script" toml:"onpremise-ssh-db-job-script" json:"onpremiseSshDbJobScript"`
 	OnPremiseSSHUpgradeDbScript              string                       `mapstructure:"onpremise-ssh-upgrade-db-script" toml:"onpremise-ssh-upgrade-db-script" json:"onpremiseSshUpgradeDbScript"`
+	ProxmoxAPIURL                            string                       `mapstructure:"proxmox-api-url" toml:"proxmox-api-url" json:"proxmoxAPIURL"`
+	ProxmoxAPIToken                          string                       `secret:"true" mapstructure:"proxmox-api-token" toml:"proxmox-api-token" json:"proxmoxAPIToken"`
+	ProxmoxAPIInsecure                       bool                         `mapstructure:"proxmox-api-insecure" toml:"proxmox-api-insecure" json:"proxmoxAPIInsecure"`
+	ProvDbHostVmids                          string                       `mapstructure:"prov-db-host-vmids" toml:"prov-db-host-vmids" json:"provDbHostVmids"`
+	ProvDbRollingUpgradeHost                 bool                         `mapstructure:"prov-db-rolling-upgrade-host" toml:"prov-db-rolling-upgrade-host" json:"provDbRollingUpgradeHost"`
+	ProvDbHostUpgradeScript                  string                       `mapstructure:"prov-db-host-upgrade-script" toml:"prov-db-host-upgrade-script" json:"provDbHostUpgradeScript"`
+	ProvDbHostRebootTimeout                  int                          `mapstructure:"prov-db-host-reboot-timeout" toml:"prov-db-host-reboot-timeout" json:"provDbHostRebootTimeout"`
 	ProvOpensvcP12Certificate                string                       `mapstructure:"opensvc-p12-certificate" toml:"opensvc-p12-certificate" json:"opensvcP12Certificate"`
 	ProvOpensvcP12Secret                     string                       `secret:"true" mapstructure:"opensvc-p12-secret" toml:"opensvc-p12-secret" json:"opensvcP12Secret"`
 	ProvOpensvcUseCollectorAPI               bool                         `mapstructure:"opensvc-use-collector-api" toml:"opensvc-use-collector-api" json:"opensvcUseCollectorApi"`
@@ -1680,6 +1687,9 @@ const (
 	ConstOrchestratorSlapOS     string = "slapos"
 	ConstOrchestratorLocalhost  string = "local"
 	ConstOrchestratorOnPremise  string = "onpremise"
+	// ConstOrchestratorProxmox is the Proxmox VE backend: the on-premise service operations
+	// (SSH into the guest) plus the host facet (the VM, through the Proxmox API).
+	ConstOrchestratorProxmox string = "proxmox"
 
 	// DB container memory-cap alignment modes (prov-db-resource-align). The cgroup --memory
 	// cap is deliberately set ABOVE the MySQL config memory (prov-db-memory) so mariadbd's
@@ -3204,6 +3214,12 @@ func (conf *Config) GetOrchestratorsProv() []ConfigVariableType {
 			Id:        5,
 			Name:      ConstOrchestratorOnPremise,
 			Available: strings.Contains(conf.ProvOrchestratorEnable, ConstOrchestratorOnPremise),
+			Label:     "",
+		},
+		ConfigVariableType{
+			Id:        6,
+			Name:      ConstOrchestratorProxmox,
+			Available: strings.Contains(conf.ProvOrchestratorEnable, ConstOrchestratorProxmox),
 			Label:     "",
 		},
 	}

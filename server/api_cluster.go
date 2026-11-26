@@ -3962,6 +3962,10 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.Conf.LogArbitration = !mycluster.Conf.LogArbitration
 	case "onpremise-ssh":
 		mycluster.Conf.OnPremiseSSH = !mycluster.Conf.OnPremiseSSH
+	case "proxmox-api-insecure":
+		mycluster.Conf.ProxmoxAPIInsecure = !mycluster.Conf.ProxmoxAPIInsecure
+	case "prov-db-rolling-upgrade-host":
+		mycluster.Conf.ProvDbRollingUpgradeHost = !mycluster.Conf.ProvDbRollingUpgradeHost
 	case "db-log-rotate":
 		mycluster.Conf.DBLogRotate = !mycluster.Conf.DBLogRotate
 		// Nothing else notices this flag turning off -- close any writers
@@ -4319,13 +4323,16 @@ var base64LogValueSettings = map[string]struct{}{
 	"cloud18-gitlab-password":             {},
 	"cloud18-sponsor-user-credentials":    {},
 	"mail-smtp-password":                  {},
+	"prov-db-host-upgrade-script":         {},
+	"prov-db-host-vmids":                  {},
+	"proxmox-api-url":                     {},
 	"topology-staging-post-detach-script": {},
 	"topology-staging-refresh-script":     {},
 }
 
 func GetApiChangeLogFormat(name, value string) (string, []interface{}) {
 	switch name {
-	case "replication-credential", "db-servers-credential", "proxysql-servers-credential", "proxy-servers-backend-max-connections", "proxy-servers-backend-max-replication-lag", "maxscale-servers-credential", "shardproxy-servers-credential", "mail-smtp-password", "mail-smtp-user", "mail-to", "mail-from", "cloud18-gitlab-user", "cloud18-gitlab-password", "cloud18-domain-secret", "backup-restic-aws-access-key-id", "backup-restic-aws-access-secret", "backup-restic-password", "cloud18-dba-user-credentials", "cloud18-sponsor-user-credentials", "haproxy-password", "backup-verification-credential", "alert-slack-url", "cloud18-alert-slack-url", "alert-teams-url", "alert-teams-proxy-url":
+	case "replication-credential", "db-servers-credential", "proxysql-servers-credential", "proxy-servers-backend-max-connections", "proxy-servers-backend-max-replication-lag", "maxscale-servers-credential", "shardproxy-servers-credential", "mail-smtp-password", "mail-smtp-user", "mail-to", "mail-from", "cloud18-gitlab-user", "cloud18-gitlab-password", "cloud18-domain-secret", "backup-restic-aws-access-key-id", "backup-restic-aws-access-secret", "backup-restic-password", "cloud18-dba-user-credentials", "cloud18-sponsor-user-credentials", "haproxy-password", "backup-verification-credential", "alert-slack-url", "cloud18-alert-slack-url", "alert-teams-url", "alert-teams-proxy-url", "proxmox-api-token":
 		return "API receive set setting %s to ****", []interface{}{name}
 	default:
 		logValue := value
@@ -4633,6 +4640,10 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.CompressBackupsDecompressBufferSize = val
 	case "backup-reseed-remote-decompress":
 		mycluster.Conf.BackupReseedRemoteDecompress = applyIsActive(mycluster.Conf.BackupReseedRemoteDecompress, isactive)
+	case "proxmox-api-insecure":
+		mycluster.Conf.ProxmoxAPIInsecure = applyIsActive(mycluster.Conf.ProxmoxAPIInsecure, isactive)
+	case "prov-db-rolling-upgrade-host":
+		mycluster.Conf.ProvDbRollingUpgradeHost = applyIsActive(mycluster.Conf.ProvDbRollingUpgradeHost, isactive)
 	case "compress-backups-logical":
 		normalized, err := normalizeCompressionOverride(value)
 		if err != nil {
@@ -4951,6 +4962,27 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.SetProvDbDiskFS(value)
 	case "prov-db-disk-pool":
 		mycluster.SetProvDbDiskPool(value)
+	case "proxmox-api-url", "prov-db-host-vmids", "prov-db-host-upgrade-script":
+		// base64 like every value that may hold a slash (a URL, node/vmid, a path)
+		val, err := base64.StdEncoding.DecodeString(value)
+		if err != nil {
+			return errors.New("unable to decode")
+		}
+		if err := mycluster.SetProxmoxSetting(name, string(val)); err != nil {
+			return err
+		}
+	case "proxmox-api-token":
+		val, err := base64.StdEncoding.DecodeString(value)
+		if err != nil {
+			return errors.New("unable to decode")
+		}
+		if err := mycluster.SetProxmoxAPIToken(string(val)); err != nil {
+			return err
+		}
+	case "prov-db-host-reboot-timeout":
+		if err := mycluster.SetProvDbHostRebootTimeout(value); err != nil {
+			return err
+		}
 	case "prov-db-start-timeout":
 		if err := mycluster.SetProvDbStartTimeout(value); err != nil {
 			return err

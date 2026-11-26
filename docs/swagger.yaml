@@ -4137,6 +4137,12 @@ definitions:
         type: string
       provDbExpireLogDays:
         type: integer
+      provDbHostRebootTimeout:
+        type: integer
+      provDbHostUpgradeScript:
+        type: string
+      provDbHostVmids:
+        type: string
       provDbJobsDockerRunArgs:
         type: string
       provDbLoadCsv:
@@ -4177,6 +4183,8 @@ definitions:
         type: string
       provDbResourceRaisedOverPlanScript:
         type: string
+      provDbRollingUpgradeHost:
+        type: boolean
       provDbRunAsUid:
         type: string
       provDbServiceType:
@@ -4359,6 +4367,12 @@ definitions:
         type: string
       provUseIpv6:
         type: boolean
+      proxmoxAPIInsecure:
+        type: boolean
+      proxmoxAPIToken:
+        type: string
+      proxmoxAPIURL:
+        type: string
       proxyServersBackendCompression:
         type: boolean
       proxyServersBackendMaxConnections:
@@ -6214,6 +6228,19 @@ definitions:
       usableGwu:
         description: '= capacity: the uplink has no quota'
         type: number
+    type: object
+  server.hostStatusResponse:
+    properties:
+      actionRunning:
+        type: string
+      node:
+        type: string
+      state:
+        type: string
+      uptimeSeconds:
+        type: integer
+      vmid:
+        type: string
     type: object
   server.licensePullRequest:
     properties:
@@ -16401,6 +16428,185 @@ paths:
       summary: Flush logs on a server
       tags:
       - DatabaseLogs
+  /api/clusters/{clusterName}/servers/{serverName}/actions/host-reboot:
+    post:
+      description: Asks the hypervisor for a clean reboot of the VM under the server
+        (a stopped VM is started), in the background. Only an orchestrator that drives
+        the hosts (proxmox) supports it. Refused (409) while the database on the VM
+        runs, unless the server is in maintenance; always refused on a running master.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Server Name
+        in: path
+        name: serverName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Host reboot started
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: No valid ACL
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Cluster Not Found or Server Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: A host action is already running on the server, or the database
+            on the VM runs (not in maintenance, or the running master)
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "501":
+          description: The orchestrator does not drive the hosts
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Reboot the host (VM) of a database server
+      tags:
+      - DatabaseActions
+  /api/clusters/{clusterName}/servers/{serverName}/actions/host-start:
+    post:
+      description: Starts the VM under the server through the hypervisor, in the background.
+        Only an orchestrator that drives the hosts (proxmox) supports it.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Server Name
+        in: path
+        name: serverName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Host start started
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: No valid ACL
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Cluster Not Found or Server Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: A host action is already running on the server
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "501":
+          description: The orchestrator does not drive the hosts
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Start the host (VM) of a database server
+      tags:
+      - DatabaseActions
+  /api/clusters/{clusterName}/servers/{serverName}/actions/host-stop:
+    post:
+      description: 'Asks the hypervisor for a clean shutdown of the VM under the server
+        (never a hard stop), in the background. Only an orchestrator that drives the
+        hosts (proxmox) supports it; the VM is the server''s entry in prov-db-host-vmids.
+        Refused (409) while the database on the VM runs, unless the server is in maintenance;
+        always refused on a running master: stop the database or switch over first,
+        or use the rolling upgrade.'
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Server Name
+        in: path
+        name: serverName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Host shutdown started
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: No valid ACL
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Cluster Not Found or Server Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: A host action is already running on the server, or the database
+            on the VM runs (not in maintenance, or the running master)
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "501":
+          description: The orchestrator does not drive the hosts
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Shut down the host (VM) of a database server
+      tags:
+      - DatabaseActions
   /api/clusters/{clusterName}/servers/{serverName}/actions/job-cancel/{task}:
     get:
       description: Cancels a task identified by its name on a specified server within
@@ -18589,6 +18795,63 @@ paths:
       summary: Get error log of a server
       tags:
       - DatabaseLogs
+  /api/clusters/{clusterName}/servers/{serverName}/host-status:
+    get:
+      description: Answers the hypervisor node, the vmid, the state (running, stopped,
+        paused, unknown) and the uptime of the VM under the server, and the host action
+        running on it if any. Only an orchestrator that drives the hosts (proxmox)
+        supports it.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Server Name
+        in: path
+        name: serverName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: The host status
+          schema:
+            $ref: '#/definitions/server.hostStatusResponse'
+        "403":
+          description: No valid ACL
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Cluster Not Found or Server Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "501":
+          description: The orchestrator does not drive the hosts
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "502":
+          description: The hypervisor did not answer
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Status of the host (VM) of a database server
+      tags:
+      - Database
   /api/clusters/{clusterName}/servers/{serverName}/is-failed:
     get:
       description: Checks if a specified server within a cluster is in a failed state.
