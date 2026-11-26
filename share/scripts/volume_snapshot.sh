@@ -145,12 +145,9 @@ server_paths() {
 
 zfs_resolve() {
     command -v zfs >/dev/null 2>&1 || die "zfs not found on the database host"
-    if [ -n "$TARGET" ]; then
-        x zfs list -H -o name "$TARGET" >/dev/null || die "dataset $TARGET not found"
-        printf 'TARGET\t%s\n' "$TARGET"
-        return
-    fi
-    [ -n "$PATHS" ] || die "no backup-snapshot-target and no server path to find the dataset"
+    # the server's paths are always resolved: a named target is checked against them as a
+    # found one is (it must hold every one of them, and nothing else)
+    [ -n "$PATHS" ] || die "no server path to check the dataset against"
     common=""
     pds=""
     oldifs=$IFS
@@ -170,7 +167,7 @@ zfs_resolve() {
             while [ "$ds" != "$common" ] && [ "${ds#"$common"/}" = "$ds" ]; do
                 case "$common" in
                 */*) common="${common%/*}" ;;
-                *) die "the server's files are on several pools ($common, $ds): set backup-snapshot-target" ;;
+                *) die "the server's files are on several pools ($common, $ds): one snapshot can not hold them" ;;
                 esac
             done
         fi
@@ -178,17 +175,27 @@ zfs_resolve() {
     done
     IFS=$oldifs
     [ -n "$common" ] || die "no dataset found for $PATHS"
-    # found, not named: it must hold the server's files and nothing else, its snapback rolls
-    # back every dataset under it
-    case "$common" in
+    root="$common"
+    how="found"
+    if [ -n "$TARGET" ]; then
+        x zfs list -H -o name "$TARGET" >/dev/null || die "dataset $TARGET not found"
+        for pd in $pds; do
+            [ "$pd" = "$TARGET" ] || [ "${pd#"$TARGET"/}" != "$pd" ] || die "backup-snapshot-target $TARGET does not hold $pd, a dataset of the server's files"
+        done
+        root="$TARGET"
+        how="named"
+    fi
+    # it must hold the server's files and nothing else: its snapback rolls back every dataset
+    # under it, so never a pool root, never a tree holding something else
+    case "$root" in
     */*) ;;
-    *) die "the server's files are spread over the pool $common: its root is never snapshotted on a guess, set backup-snapshot-target" ;;
+    *) die "dataset $root ($how) is the root of a pool: never snapshotted, name the dataset holding the server's files in backup-snapshot-target" ;;
     esac
-    tree=$(q zfs list -H -o name -r -t filesystem,volume "$common") || die "can not list the datasets of $common"
+    tree=$(q zfs list -H -o name -r -t filesystem,volume "$root") || die "can not list the datasets of $root"
     for ds in $tree; do
-        zfs_holds_server "$ds" || die "dataset $ds under $common holds none of the server's files: set backup-snapshot-target to the dataset to snapshot"
+        zfs_holds_server "$ds" || die "dataset $ds under $root ($how) holds none of the server's files: name the dataset holding only them in backup-snapshot-target"
     done
-    TARGET="$common"
+    TARGET="$root"
     printf 'TARGET\t%s\n' "$TARGET"
 }
 
@@ -277,15 +284,8 @@ lvm_lv_of() {
 
 lvm_resolve() {
     command -v lvs >/dev/null 2>&1 || die "lvs not found on the database host"
-    if [ -n "$TARGET" ]; then
-        lv=$(lvm_lv_of "$TARGET")
-        [ -n "$lv" ] || die "logical volume $TARGET not found"
-        cmdline lvs "$TARGET"
-        TARGET="$lv"
-        printf 'TARGET\t%s\n' "$TARGET"
-        return
-    fi
-    [ -n "$PATHS" ] || die "no backup-snapshot-target and no server path to find the logical volume"
+    # the server's paths are always resolved: a named volume must hold every one of them
+    [ -n "$PATHS" ] || die "no server path to check the logical volume against"
     found=""
     oldifs=$IFS
     IFS=:
@@ -295,7 +295,7 @@ lvm_resolve() {
         src=$(mount_source "$p") || exit 1
         set -- $src
         lv=$(lvm_lv_of "${1:-}")
-        [ -n "$lv" ] || die "path $p is on ${1:-an unknown device}, not on an LVM logical volume: set backup-snapshot-target or backup-snapshot-plugin"
+        [ -n "$lv" ] || die "path $p is on ${1:-an unknown device}, not on an LVM logical volume: set backup-snapshot-plugin"
         if [ -z "$found" ]; then
             found="$lv"
         elif [ "$found" != "$lv" ]; then
@@ -305,6 +305,12 @@ lvm_resolve() {
     done
     IFS=$oldifs
     [ -n "$found" ] || die "no logical volume found for $PATHS"
+    if [ -n "$TARGET" ]; then
+        lv=$(lvm_lv_of "$TARGET")
+        cmdline lvs "$TARGET"
+        [ -n "$lv" ] || die "logical volume $TARGET not found"
+        [ "$lv" = "$found" ] || die "backup-snapshot-target $TARGET is not the logical volume of the server's files ($found)"
+    fi
     TARGET="$found"
     printf 'TARGET\t%s\n' "$TARGET"
 }

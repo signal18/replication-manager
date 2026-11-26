@@ -49,8 +49,10 @@ directory of its binary logs.
 A dataset found this way is refused when it is a pool root, or when a dataset under it holds
 none of the server's files (and is not mounted inside one of its directories): a snapback rolls
 back every dataset under the one snapshotted, so it is never chosen on a guess. Set
-`backup-snapshot-target` (a dataset `pool/dataset`, or `vg/lv`) to name it yourself; a target
-you name is snapshotted and rolled back with every dataset under it.
+`backup-snapshot-target` (a dataset `pool/dataset`, or `vg/lv`) to name it yourself. A target
+you name goes through the same checks: never a pool root, it must hold every server directory,
+and (ZFS) no dataset under it may hold something else; an LVM volume you name must be the one of
+the server's directories.
 
 An LVM snapshot of a thick volume has a fixed copy-on-write space (`backup-snapshot-lvm-size`):
 when the writes after the snapshot fill it, LVM invalidates the snapshot and a snapback to it

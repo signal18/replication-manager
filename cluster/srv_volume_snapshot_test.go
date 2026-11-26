@@ -422,7 +422,9 @@ func TestVolumeSnapshotHelperZFS(t *testing.T) {
 // fakeLVS: vg0/data, a thick volume with one snapshot repman-20261126T100000Z
 const fakeLVS = `#!/bin/sh
 case "$*" in
-*"vg_name,lv_name"*) echo "  vg0 data" ;;
+*"vg_name,lv_name"*)
+    for x in "$@"; do last="$x"; done
+    case "$last" in vg0/data | /dev/vg0/data | /dev/mapper/vg0-data) echo "  vg0 data" ;; vg0/other | /dev/vg0/other) echo "  vg0 other" ;; esac ;;
 *"lv_path"*) echo "  /dev/vg0/data" ;;
 *"segtype"*) echo "  linear" ;;
 *"lv_name,origin,lv_time,lv_size"*)
@@ -437,8 +439,15 @@ func TestVolumeSnapshotHelperLVMNotMountedRefused(t *testing.T) {
 	m, _ := config.SnapshotPlugin(config.ConstSnapshotPluginLVM)
 	vs.manifest = m
 	server.ClusterGroup.Conf.BackupSnapshotPlugin = config.ConstSnapshotPluginLVM
+	data, redo := filepath.Join(dir, "srv", "data"), filepath.Join(dir, "srv", "redo")
+	os.WriteFile(filepath.Join(dir, "mounts"), []byte(data+" /dev/mapper/vg0-data ext4\n"+redo+" /dev/mapper/vg0-data ext4\n"), 0o644)
+	// a named volume that is not the one of the server's files: refused
+	server.ClusterGroup.Conf.BackupSnapshotTarget = "vg0/other"
+	if _, err := vs.List(server); err == nil || !strings.Contains(err.Error(), "not the logical volume") {
+		t.Fatalf("named LV not holding the server's files: %v", err)
+	}
 	server.ClusterGroup.Conf.BackupSnapshotTarget = "vg0/data"
-	os.WriteFile(filepath.Join(dir, "bin", "lvcreate"), []byte("#!/bin/sh\nexit 0\n"), 0o755)
+	os.WriteFile(filepath.Join(bin(dir), "lvcreate"), []byte("#!/bin/sh\nexit 0\n"), 0o755)
 	list, err := vs.List(server)
 	if err != nil || list.Target != "vg0/data" || len(list.Snapshots) != 2 {
 		t.Fatalf("lvm list: %v %+v", err, list)
@@ -454,8 +463,7 @@ func TestVolumeSnapshotHelperLVMNotMountedRefused(t *testing.T) {
 		t.Fatalf("empty lvm list: %v %+v", err, list)
 	}
 	os.Remove(filepath.Join(dir, "lvm-empty"))
-	// findmnt does not tie a mount to /dev/vg0/data: refused before any change
-	os.WriteFile(filepath.Join(dir, "mounts"), nil, 0o644)
+	// findmnt does not tie a mount to /dev/vg0/data (no --source line): refused before any change
 	run, err = vs.Snapback(server, "repman-20261126T100000Z")
 	if err == nil || run.Changed || !strings.Contains(err.Error(), "no mount point") {
 		t.Fatalf("lvm snapback without a mount point: %v changed=%v", err, run.Changed)
@@ -535,6 +543,8 @@ func TestPruneVolumeSnapshots(t *testing.T) {
 func inServerState(cl *Cluster, key string, server *ServerMonitor) bool {
 	return cl.StateMachine.OldState.Search(state.BuildStateKey(key, server.URL))
 }
+
+func bin(dir string) string { return filepath.Join(dir, "bin") }
 
 func containsString(list []string, s string) bool {
 	for _, v := range list {
@@ -657,7 +667,7 @@ func TestVolumeSnapshotHelperZFSPoolRootRefused(t *testing.T) {
 	// the datadir on tank/mysql/data, the redo log on tank/binlog: the common parent is the pool
 	os.WriteFile(filepath.Join(dir, "datasets"), []byte("tank\ntank/mysql\ntank/mysql/data\ntank/binlog\ntank/backups\n"), 0o644)
 	os.WriteFile(filepath.Join(dir, "mounts"), []byte(data+" tank/mysql/data zfs\n"+redo+" tank/binlog zfs\n"), 0o644)
-	if _, err := vs.List(server); err == nil || !strings.Contains(err.Error(), "pool tank") {
+	if _, err := vs.List(server); err == nil || !strings.Contains(err.Error(), "dataset tank (found) is the root of a pool") {
 		t.Fatalf("pool root found on a guess: %v", err)
 	}
 	// a sibling dataset of something else under the common parent
@@ -671,11 +681,40 @@ func TestVolumeSnapshotHelperZFSPoolRootRefused(t *testing.T) {
 	if run, err := vs.List(server); err != nil || run.Target != "tank/db" {
 		t.Fatalf("a dataset mounted in the datadir: %v %+v", err, run)
 	}
-	// named explicitly, the operator's choice
+}
+
+// a named target goes through the checks of a found one (the bug of the first real-host run:
+// backup-snapshot-target "data", a pool root, snapshotted the whole pool)
+func TestVolumeSnapshotHelperZFSNamedTargetChecked(t *testing.T) {
+	_, server, vs, dir := newFakeZFSHost(t)
+	data, redo := filepath.Join(dir, "srv", "data"), filepath.Join(dir, "srv", "redo")
 	cl := server.ClusterGroup
-	cl.Conf.BackupSnapshotTarget = "tank/db"
-	os.WriteFile(filepath.Join(dir, "mounts"), []byte(data+" tank/db/data zfs\n"), 0o644)
-	if run, err := vs.List(server); err != nil || run.Target != "tank/db" {
-		t.Fatalf("explicit target: %v %+v", err, run)
+	os.WriteFile(filepath.Join(dir, "mounts"), []byte(data+" data/db/data zfs\n"+redo+" data/db/redo zfs\n"), 0o644)
+	os.WriteFile(filepath.Join(dir, "datasets"), []byte("data\ndata/db\ndata/db/data\ndata/db/redo\ndata/gitlab\n"), 0o644)
+	for target, want := range map[string]string{
+		"data":         "root of a pool", // the pool root
+		"data/gitlab":  "does not hold",  // a dataset not holding the server's files
+		"data/db/data": "does not hold",  // holds the datadir, not the redo log
+		"data/nosuch":  "not found",      // missing
+	} {
+		cl.Conf.BackupSnapshotTarget = target
+		if _, err := vs.Take(server, "repman-20261126T100000Z"); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("named target %s: %v, want %q", target, err, want)
+		}
+	}
+	calls, _ := os.ReadFile(filepath.Join(dir, "calls"))
+	if strings.Contains(string(calls), "zfs snapshot") {
+		t.Fatalf("a refused target was snapshotted: %s", calls)
+	}
+	// a foreign dataset under the named one
+	os.WriteFile(filepath.Join(dir, "datasets"), []byte("data\ndata/db\ndata/db/data\ndata/db/redo\ndata/db/other\n"), 0o644)
+	cl.Conf.BackupSnapshotTarget = "data/db"
+	if _, err := vs.List(server); err == nil || !strings.Contains(err.Error(), "data/db/other") {
+		t.Fatalf("named target with a foreign dataset: %v", err)
+	}
+	// the dataset holding every path and only them: accepted
+	os.WriteFile(filepath.Join(dir, "datasets"), []byte("data\ndata/db\ndata/db/data\ndata/db/redo\n"), 0o644)
+	if run, err := vs.List(server); err != nil || run.Target != "data/db" {
+		t.Fatalf("named target holding the server's files: %v %+v", err, run)
 	}
 }
