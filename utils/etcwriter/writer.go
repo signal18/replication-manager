@@ -189,6 +189,7 @@ func Start(files []string, uid int, groups []int) (*Writer, error) {
 	}
 	args := append([]string{Command, "--uid", strconv.Itoa(uid), "--groups", strings.Join(gs, ",")}, files...)
 	cmd := exec.Command(selfexec.Path(), args...)
+	cmd.Env = selfexec.ChildEnv(os.Environ()) // the parent's install profile (#2444)
 	cmd.SysProcAttr = selfexec.ChildAttr()
 	cmd.Stdout, cmd.Stderr = os.Stderr, os.Stderr
 	in, err := cmd.StdinPipe()

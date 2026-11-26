@@ -19,21 +19,25 @@ the monitor is always a release blocker.
 
 ## Build System
 
-The project uses Go build tags to create multiple binaries from the same codebase:
+Build tags select the program (server, CLI, arbitrator). There is ONE server binary
+(4.0, #2444, `doc/implementation/build/ONE_BUILD.md`): the old flavours are symlinks to it
+whose program name (or `REPLICATION_MANAGER_INSTALL_PROFILE` / `_LAYOUT`) selects an
+install profile, a set of default values only.
 
 ### Build Commands
 
 ```bash
-# Build all binaries (CLI, server variants, tarball versions, arbitrator)
+# Build all binaries (CLI, the server and its flavour names, arbitrator)
 make all
 
 # Build individual components
+make server       # the one server binary: build/binaries/replication-manager
 make cli          # CLI client: replication-manager-cli
-make osc          # Open Source Community server (no provisioning)
-make tst          # Testing server (with all features)
-make pro          # Professional server (with OpenSVC)
+make osc          # symlink replication-manager-osc -> the server (osc defaults: no provisioning) + plugins
+make tst          # symlink replication-manager-tst (provisioning defaults, no OpenSVC)
+make pro          # symlink replication-manager-pro (OpenSVC defaults) + plugins
 make arb          # Arbitrator service
-make emb          # Embedded server
+make emb          # symlink replication-manager-emb (pro defaults, home-directory layout)
 
 # Build with React dashboard (required for pro/osc/emb)
 make react        # Builds dashboard from share/dashboard_react/
@@ -52,13 +56,15 @@ Three main build tags control which binary is produced:
 - `clients` → CLI client for interacting with server
 - `arbitrator` → Split-brain arbitrator service
 
-### Feature Flags (Compile-Time)
+### Install profile (no compile-time feature flags)
 
-Build-time flags control which features are compiled in (set via `-X` linker flags):
-```
-WithProvisioning, WithArbitration, WithProxysql, WithHaproxy, WithMaxscale,
-WithMonitoring, WithMail, WithHttp, WithOpenSVC, WithTarball, WithEmbed, etc.
-```
+There are no `-X server.With...` feature flags any more: everything is compiled in and
+every flag is registered in every instance. `WithProvisioning`, `WithOpenSVC`,
+`WithTarball`, `WithEmbed` are set at start from the install profile
+(`server/server_install_profile.go`): `osc` (provisioning and OpenSVC keys at their zero
+value), `tst` (provisioning defaults), `pro` (provisioning + OpenSVC defaults); layout
+`package`, `tarball` or `embed`. Never gate a new feature on the profile: gate it on a
+config key (T14), later on the plan or a plugin.
 
 ## Docker Build System
 
@@ -67,6 +73,9 @@ WithMonitoring, WithMail, WithHttp, WithOpenSVC, WithTarball, WithEmbed, etc.
 The project provides multiple Docker image variants for different deployment scenarios:
 
 **Standard Variants**:
+All variants carry the same server binary; the image sets its install profile
+(`REPLICATION_MANAGER_INSTALL_PROFILE`), so the variant only changes the defaults.
+
 - `osc` - Open Source Community edition
 - `pro` - Professional edition with OpenSVC
 - `slim` - Minimal footprint
@@ -507,7 +516,7 @@ When creating new implementation documentation:
 
 ## Common Issues
 
-**CGO Dependencies**: Some builds require CGO (osc-cgo variant). Most builds use `CGO_ENABLED=0` for static binaries.
+**CGO Dependencies**: The server is built with `CGO_ENABLED=0` (static); the old `osc-cgo` variant is gone (it was shipped nowhere).
 
 **Module Path**: The module is `github.com/signal18/replication-manager`. Import paths must use this prefix.
 

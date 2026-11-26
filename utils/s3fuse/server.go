@@ -130,6 +130,9 @@ func startServer(ctx context.Context, o Options) (*server, error) {
 			cmd.Env = append(cmd.Env, k+"="+v)
 		}
 	}
+	// The parent's install profile (#2444): no secret, and without it the child, named
+	// replication-manager here, would resolve other defaults and directories.
+	cmd.Env = selfexec.ChildEnv(cmd.Env)
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return nil, err
