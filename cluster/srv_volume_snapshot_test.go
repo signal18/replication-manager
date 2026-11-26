@@ -62,6 +62,14 @@ func TestVolumeSnapshotsToPrune(t *testing.T) {
 	if strings.Join(got, ",") != "repman-2,repman-1" {
 		t.Fatalf("prune = %v, want the managed ones beyond the 2 newest", got)
 	}
+	// a creation time the plugin could not give: the newest by its name is kept
+	undated := []VolumeSnapshot{
+		{Name: "repman-20261126T100000Z", Created: at(100), Managed: true},
+		{Name: "repman-20261126T110000Z", Managed: true},
+	}
+	if got := volumeSnapshotsToPrune(undated, 1); strings.Join(got, ",") != "repman-20261126T100000Z" {
+		t.Fatalf("an undated snapshot just taken was pruned: %v", got)
+	}
 	if got := volumeSnapshotsToPrune(snaps, 10); len(got) != 0 {
 		t.Fatalf("nothing beyond keep: %v", got)
 	}
@@ -450,6 +458,12 @@ func TestParseVolumeSnapshotOutputChangedAfterManyLines(t *testing.T) {
 	b.WriteString("CHANGED\n")
 	if !parseVolumeSnapshotOutput(b.String()).Changed {
 		t.Fatal("CHANGED after many log lines is read")
+	}
+}
+
+func TestParseVolumeSnapshotOutputIncomplete(t *testing.T) {
+	if run := parseVolumeSnapshotOutput(strings.Repeat("x", 2<<20)); !run.incomplete {
+		t.Fatal("a line past the scanner's limit makes the output incomplete")
 	}
 }
 

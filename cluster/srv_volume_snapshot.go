@@ -54,6 +54,8 @@ type VolumeSnapshotRun struct {
 	Commands  []string         `json:"commands"` // every command it ran, replayable by hand (F11)
 	Changed   bool             `json:"changed"`  // a snapback changed the volume
 	Log       []string         `json:"log"`
+	// incomplete: the output could not be read to its end (a line past the scanner's limit)
+	incomplete bool
 }
 
 // VolumeSnapshotter is the interface of a snapshot plugin (T7): one implementation per way of
@@ -125,7 +127,7 @@ func (c *contractSnapshotter) run(server *ServerMonitor, action, name string) (V
 	for _, cmd := range run.Commands {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Volume snapshot %s of %s ran: %s", action, server.URL, cmd)
 	}
-	if action == config.ConstSnapshotActionSnapback && err != nil && (ctx.Err() != nil || out.truncated) {
+	if action == config.ConstSnapshotActionSnapback && err != nil && (ctx.Err() != nil || out.truncated || run.incomplete) {
 		// what ran on the volume is not known (a deadline: the remote program may still run;
 		// an output cut short: a CHANGED past the cut): half-way, the server is never started
 		run.Changed = true
@@ -184,6 +186,9 @@ func parseVolumeSnapshotOutput(out string) VolumeSnapshotRun {
 				run.Log = append(run.Log, line)
 			}
 		}
+	}
+	if sc.Err() != nil {
+		run.incomplete = true
 	}
 	sort.SliceStable(run.Snapshots, func(i, j int) bool { return run.Snapshots[i].Created.Before(run.Snapshots[j].Created) })
 	return run
@@ -660,12 +665,9 @@ func volumeSnapshotsToPrune(snaps []VolumeSnapshot, keep int) []string {
 			managed = append(managed, s)
 		}
 	}
-	sort.SliceStable(managed, func(i, j int) bool {
-		if managed[i].Created.Equal(managed[j].Created) {
-			return managed[i].Name > managed[j].Name
-		}
-		return managed[i].Created.After(managed[j].Created)
-	})
+	// newest first by name: repman-<UTC time> sorts as its time, and a creation time a plugin
+	// could not give (zero) never makes the snapshot just taken the oldest one
+	sort.SliceStable(managed, func(i, j int) bool { return managed[i].Name > managed[j].Name })
 	var out []string
 	for i := keep; i < len(managed); i++ {
 		out = append(out, managed[i].Name)
@@ -806,7 +808,7 @@ func (cluster *Cluster) runVolumeSnapback(server *ServerMonitor, vs VolumeSnapsh
 	// the port closed: the SQL SHUTDOWN or the orchestrator stop is done (a server reachable on
 	// a socket only has no port to watch: it is not monitored by replication-manager either)
 	if err := waitServerPort(server, false, volumeSnapshotDownTimeout); err != nil {
-		return VolumeSnapshotRun{}, fmt.Errorf("the database did not stop, nothing was changed: %w", err)
+		return VolumeSnapshotRun{}, cluster.snapbackUndoStop(server, fmt.Errorf("the database did not stop: %w", err))
 	}
 	// checked again once stopped: a switchover or a failover may have started meanwhile, or made
 	// this server the master (in maintenance it is no candidate, the check is the guard)

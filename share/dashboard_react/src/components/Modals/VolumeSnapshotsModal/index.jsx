@@ -126,6 +126,7 @@ function VolumeSnapshotsModal({ isOpen, closeModal, clusterName, server, user })
                     <Text fontWeight='bold'>Snapback of {server?.host}:{server?.port} to {pending.name}</Text>
                     <Text fontSize='sm'>
                       Rolled back: <Code>{data?.target || '?'}</Code>{data?.plugin === 'zfs' ? ' and every dataset under it' : ''}.
+                      {data?.plugin === 'lvm' ? ' The snapshot is merged into the volume: it no longer exists after the snapback.' : ''}
                     </Text>
                     <Text fontSize='sm'>
                       Everything written on this server since the snapshot is lost. The server goes into maintenance, is

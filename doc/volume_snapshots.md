@@ -55,6 +55,9 @@ An LVM snapshot of a thick volume has a fixed copy-on-write space (`backup-snaps
 when the writes after the snapshot fill it, LVM invalidates the snapshot and a snapback to it
 fails. Size it for the writes of the time you keep it, or use a thin volume.
 
+The lvm backend reads the creation time of a snapshot with GNU `date -d` (Linux coreutils);
+without it the time shows as unknown, the retention still orders the snapshots by their name.
+
 ## Settings
 
 | Setting | Default | |
