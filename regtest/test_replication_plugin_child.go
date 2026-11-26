@@ -150,9 +150,38 @@ func testReplicationPluginChild(cl *cluster.Cluster, name string, extra map[stri
 	time.Sleep(cdcRegtestLoad / 6)
 	cm := child.GetMaster()
 	tlsLogf(cl, "%s: stop and start of %s during the feed", name, cm.URL)
+	url := cm.URL
 	child.StopDatabaseService(cm)
-	time.Sleep(15 * time.Second)
-	child.StartDatabaseService(cm)
+	// the stop's orchestration done before the start (a start during it is refused, 409)
+	if err := tlsWait(5*time.Minute, func() error {
+		if sv := child.GetServerFromURL(url); sv != nil && !sv.IsDown() {
+			return fmt.Errorf("%s still up", url)
+		}
+		return nil
+	}); err != nil {
+		close(stop)
+		wg.Wait()
+		return fail("the child's database did not stop: %s", err)
+	}
+	time.Sleep(20 * time.Second)
+	var started time.Time
+	if err := tlsWait(10*time.Minute, func() error {
+		sv := child.GetServerFromURL(url)
+		if sv == nil || sv.IsDown() {
+			// once, then again each 2 minutes while it stays down (a start refused while
+			// another orchestration ran)
+			if sv != nil && time.Since(started) > 2*time.Minute {
+				started = time.Now()
+				child.StartDatabaseService(sv)
+			}
+			return fmt.Errorf("%s not back", url)
+		}
+		return nil
+	}); err != nil {
+		close(stop)
+		wg.Wait()
+		return fail("the child's database did not start again: %s", err)
+	}
 	time.Sleep(cdcRegtestLoad / 3)
 	close(stop)
 	wg.Wait()
