@@ -228,6 +228,7 @@ type Cluster struct {
 	backupMount    backupMount                // the backups folder mount (#2091)
 	snapbackMu     sync.Mutex                 // guards snapbacks
 	snapbacks      map[string]*SnapbackState  // server URL -> its backup directory's snapback (#2091), nil until read
+	vsnap          volumeSnapshots            // the last volume snapshot action of each server (#2443)
 	binlogGapMu    sync.Mutex                 // guards binlogGaps and binlogInSnapshotFile
 	binlogGaps     map[string]*BinlogGap      // server URL -> its lost binlog continuity in the archive (#2091), nil until read
 	catalogueMu    sync.Mutex                 // guards catalogueSaved
@@ -906,6 +907,7 @@ func (cluster *Cluster) InitFromConf() {
 	}
 	cluster.ensureCloud18Provider() // registered to Cloud18: the Cloud18 storage, SSO (#2091)
 	cluster.LoadArchivePlugins()    // the external archive plugins' manifests, once per process (#2091)
+	cluster.LoadSnapshotPlugins()   // the external snapshot plugins' manifests, once per process (#2443)
 
 	// the newest version the vault entries hold, read once before monitoring begins, for
 	// the secrets the local file does not version (#2227 rule 1b, bounded); first, a

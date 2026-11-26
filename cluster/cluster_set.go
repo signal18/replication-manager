@@ -66,6 +66,7 @@ func (cluster *Cluster) SetStatus() {
 	cluster.checkBinlogBudgetStates()             // WARN0264 the binlog budget at its floor, WARN0265 a replica beyond it (#2142)
 	cluster.checkArchiveEncryptionStates()        // WARN0263 an archive encrypted client-side kept without a key (#2091)
 	cluster.checkSnapbackStates()                 // CINF0020 snapback running, WARN0255 a backup directory not at its latest snapshot (backups locked), WARN0256 a snapback failed (#2091)
+	cluster.checkVolumeSnapshotStates()           // CINF0024 a volume snapshot action running, WARN0330 one failed, WARN0331 a server left in maintenance by a snapback, ERR00123 a snapback stopped half-way, WARN0332 the plugin can not run (#2443)
 	cluster.checkRegisteredVerificationStates()   // WARN0253 while a registered backup's last verification failed (#2108)
 	cluster.saveBackupCatalogue()                 // the global backup catalogue files, written when changed on the active replication-manager (#2091)
 	cluster.checkCatalogueStates()                // the catalogue's automatic rebuild when due, CINF0021 while one runs, WARN0260 when it differs from an archive (#2091)

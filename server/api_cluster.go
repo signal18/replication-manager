@@ -3786,6 +3786,8 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.Conf.BackupRestoreDefinerStrict = !mycluster.Conf.BackupRestoreDefinerStrict
 	case "backup-check-free-space":
 		mycluster.Conf.BackupCheckFreeSpace = !mycluster.Conf.BackupCheckFreeSpace
+	case "backup-snapshot":
+		mycluster.Conf.BackupSnapshot = !mycluster.Conf.BackupSnapshot
 	case "backup-estimate-size":
 		mycluster.Conf.BackupEstimateSize = !mycluster.Conf.BackupEstimateSize
 	case "backup-restic-purge-oldest-on-disk-space":
@@ -4317,6 +4319,7 @@ var base64LogValueSettings = map[string]struct{}{
 	"backup-restic-password":              {},
 	"backup-restic-repository":            {},
 	"backup-save-script":                  {},
+	"backup-snapshot-script":              {},
 	"backup-verification-host":            {},
 	"cloud18-alert-slack-url":             {},
 	"cloud18-dba-user-credentials":        {},
@@ -4504,6 +4507,43 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		if err != nil {
 			return err
 		}
+	case "backup-snapshot-plugin":
+		if _, ok := config.SnapshotPlugin(value); !ok || value == config.ConstSnapshotPluginScript {
+			return fmt.Errorf("unknown snapshot plugin %q: zfs, lvm or an external plugin (the script is set by backup-snapshot-script)", value)
+		}
+		mycluster.Conf.BackupSnapshotPlugin = value
+	case "backup-snapshot-target":
+		if err := config.ValidSnapshotTarget(value); err != nil {
+			return err
+		}
+		mycluster.Conf.BackupSnapshotTarget = value
+	case "backup-snapshot-keep":
+		keep, err := strconv.Atoi(value)
+		if err != nil || keep < 1 || keep > config.ConstSnapshotKeepMax {
+			return fmt.Errorf("backup-snapshot-keep must be 1 to %d", config.ConstSnapshotKeepMax)
+		}
+		mycluster.Conf.BackupSnapshotKeep = keep
+	case "backup-snapshot-lvm-size":
+		if err := config.ValidSnapshotLVMSize(value); err != nil {
+			return err
+		}
+		mycluster.Conf.BackupSnapshotLVMSize = value
+	case "backup-snapshot-timeout":
+		timeout, err := strconv.Atoi(value)
+		if err != nil || timeout < 10 {
+			return errors.New("backup-snapshot-timeout must be 10 seconds or more")
+		}
+		mycluster.Conf.BackupSnapshotTimeout = timeout
+	case "backup-snapshot-script":
+		val, err := base64.StdEncoding.DecodeString(value)
+		if err != nil {
+			return errors.New("unable to decode")
+		}
+		_, storeValue, err := resolveExecutablePath(string(val), "backup-snapshot-script")
+		if err != nil {
+			return err
+		}
+		mycluster.Conf.BackupSnapshotScript = storeValue
 	case "backup-logical-remote-pickup-timeout":
 		if err = mycluster.SetBackupLogicalRemotePickupTimeout(value); err != nil {
 			return err
@@ -6125,6 +6165,8 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.BackupMysqldumpSplitDump = applyIsActive(mycluster.Conf.BackupMysqldumpSplitDump, isactive)
 	case "backup-check-free-space":
 		mycluster.Conf.BackupCheckFreeSpace = applyIsActive(mycluster.Conf.BackupCheckFreeSpace, isactive)
+	case "backup-snapshot":
+		mycluster.Conf.BackupSnapshot = applyIsActive(mycluster.Conf.BackupSnapshot, isactive)
 	case "backup-estimate-size":
 		mycluster.Conf.BackupEstimateSize = applyIsActive(mycluster.Conf.BackupEstimateSize, isactive)
 	case "backup-encryption":

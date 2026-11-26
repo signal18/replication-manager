@@ -33,6 +33,10 @@ export const clusterService = {
   getSchemaEvents,
   getQueryRules,
   getServerLostEvents,
+  getVolumeSnapshots,
+  takeVolumeSnapshot,
+  deleteVolumeSnapshot,
+  snapbackVolume,
   rejoinCluster,
 
   // Restic management APIs
@@ -396,6 +400,23 @@ function getResticSnapshot(clusterName, baseURL, filter) {
 
 function getResticStats(clusterName, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/restic/stats`)
+}
+
+// Volume snapshots of a server's data volume (#2443)
+function getVolumeSnapshots(clusterName, serverId, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/servers/${serverId}/volume-snapshots`)
+}
+
+function takeVolumeSnapshot(clusterName, serverId, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/servers/${serverId}/actions/volume-snapshot-take`)
+}
+
+function deleteVolumeSnapshot(clusterName, serverId, name, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/servers/${serverId}/actions/volume-snapshot-delete/${encodeURIComponent(name)}`)
+}
+
+function snapbackVolume(clusterName, serverId, name, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/servers/${serverId}/actions/volume-snapback/${encodeURIComponent(name)}`)
 }
 
 function getServerLostEvents(clusterName, serverId, { file = 'forward', pos = 0, bytes = 262144, ts = 0 } = {}, baseURL) {

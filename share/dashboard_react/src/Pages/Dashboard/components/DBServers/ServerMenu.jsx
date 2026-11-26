@@ -3,6 +3,7 @@ import MenuOptions from '../../../../components/MenuOptions'
 import ConfirmModal from '../../../../components/Modals/ConfirmModal'
 import AdvancedReseedModal from '../../../../components/Modals/AdvancedReseedModal'
 import LostEventsModal from '../../../../components/Modals/LostEventsModal'
+import VolumeSnapshotsModal from '../../../../components/Modals/VolumeSnapshotsModal'
 import {
   abortDatabase,
   clearDatabase,
@@ -116,6 +117,7 @@ function ServerMenu({
 
   // State for LostEventsModal (last divergence viewer)
   const [isLostEventsModalOpen, setIsLostEventsModalOpen] = useState(false)
+  const [isVolumeSnapshotsOpen, setIsVolumeSnapshotsOpen] = useState(false)
 
   const serverName = row?.id ? `server ${row.host}:${row.port} (${row.id})` : ''
 
@@ -358,6 +360,11 @@ function ServerMenu({
                     )
                   }
                 }
+              },
+              {
+                name: 'Volume Snapshots',
+                isDisabled: !user?.grants['db-backup'] && !user?.grants['cluster-show-backups'],
+                onClick: () => setIsVolumeSnapshotsOpen(true)
               },
               {
                 name: 'Flush logs',
@@ -688,6 +695,16 @@ function ServerMenu({
             port: row.port
           }}
           backupType={reseedOperationType.includes('physical') ? backupPhysicalType : backupLogicalType}
+        />
+      )}
+
+      {isVolumeSnapshotsOpen && (
+        <VolumeSnapshotsModal
+          isOpen={isVolumeSnapshotsOpen}
+          closeModal={() => setIsVolumeSnapshotsOpen(false)}
+          clusterName={clusterName}
+          server={row}
+          user={user}
         />
       )}
 

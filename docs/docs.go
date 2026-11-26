@@ -16196,6 +16196,215 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/servers/{serverName}/actions/volume-snapback/{snapshotName}": {
+            "post": {
+                "description": "Destructive, an operator's action only: the server goes into maintenance, is stopped through its orchestrator, its volume is rolled back to the snapshot (on ZFS the snapshots taken after it are destroyed), the server is started and stays in maintenance (WARN0331) until an operator takes it out. Refused on the master and during a failover. A rollback that fails after it changed the volume leaves the server stopped and in maintenance (ERR00123). The replication links of the server are not changed. Runs in the background.\nRequired grants: db-restore and db-maintenance",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "DatabaseBackup"
+                ],
+                "summary": "Snapback a server to a volume snapshot",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Name",
+                        "name": "serverName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Snapshot Name",
+                        "name": "snapshotName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "The snapback started",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "Cluster Not Found\" or \"Server Not Found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "409": {
+                        "description": "Refused: the master, a failover running, snapshot not found, snapshots off, plugin refused, an action already running",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/servers/{serverName}/actions/volume-snapshot-delete/{snapshotName}": {
+            "post": {
+                "description": "Deletes the snapshot (recursively on ZFS). Only a snapshot replication-manager took (repman-*) can be deleted: a snapshot of another origin is refused. Runs in the background, like the take.\nRequired grant: db-backup",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "DatabaseBackup"
+                ],
+                "summary": "Delete a volume snapshot of a server",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Name",
+                        "name": "serverName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Snapshot Name",
+                        "name": "snapshotName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "The delete started",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "Cluster Not Found\" or \"Server Not Found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "409": {
+                        "description": "Refused: not a repman-* snapshot, invalid name, snapshots off, plugin refused, an action already running",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/servers/{serverName}/actions/volume-snapshot-take": {
+            "post": {
+                "description": "Starts a snapshot named repman-\u003cUTC time\u003e of the volume holding the server's files (a recursive ZFS snapshot, an LVM snapshot, or the client's script), then deletes the managed snapshots beyond backup-snapshot-keep. The run goes on in the background: its outcome is the server's last action (volume-snapshots) and the states CINF0024 / WARN0330.\nRequired grant: db-backup",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "DatabaseBackup"
+                ],
+                "summary": "Take a volume snapshot of a server",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Name",
+                        "name": "serverName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "The snapshot started: its name",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "Cluster Not Found\" or \"Server Not Found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "409": {
+                        "description": "Refused: snapshots off, plugin refused or unreachable, an action already running on the server",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/servers/{serverName}/actions/wait-innodb-purge": {
             "get": {
                 "description": "Waits for InnoDB purge on a specified server within a cluster.",
@@ -19108,6 +19317,62 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Cluster Not Found\" or \"Server Not Found\" or \"Error setting custom variable value",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/servers/{serverName}/volume-snapshots": {
+            "get": {
+                "description": "Runs the list action of the cluster's snapshot plugin (backup-snapshot-plugin, or backup-snapshot-script when set) and returns the snapshots of the volume holding the server's files, the commands run, the plugins known and the server's last snapshot action. A plugin that can not run is reported in error, with an empty list. Snapshots named repman-* are the ones replication-manager took (managed): only these are pruned and deletable.\nRequired grant: cluster-show-backups or db-backup",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "DatabaseBackup"
+                ],
+                "summary": "List the volume snapshots of a server",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Name",
+                        "name": "serverName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The snapshots",
+                        "schema": {
+                            "$ref": "#/definitions/cluster.VolumeSnapshotList"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "Cluster Not Found\" or \"Server Not Found",
                         "schema": {
                             "type": "string"
                         }
@@ -30069,6 +30334,108 @@ const docTemplate = `{
                 }
             }
         },
+        "cluster.VolumeSnapshot": {
+            "type": "object",
+            "properties": {
+                "created": {
+                    "type": "string"
+                },
+                "managed": {
+                    "description": "taken by replication-manager: pruned by backup-snapshot-keep, deletable",
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "size": {
+                    "description": "bytes: the space it holds (ZFS), its copy-on-write space (LVM)",
+                    "type": "integer"
+                }
+            }
+        },
+        "cluster.VolumeSnapshotList": {
+            "type": "object",
+            "properties": {
+                "commands": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "isMaster": {
+                    "type": "boolean"
+                },
+                "keep": {
+                    "type": "integer"
+                },
+                "lastOp": {
+                    "$ref": "#/definitions/cluster.VolumeSnapshotOp"
+                },
+                "plugin": {
+                    "type": "string"
+                },
+                "plugins": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/config.SnapshotPluginManifest"
+                    }
+                },
+                "snapshots": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/cluster.VolumeSnapshot"
+                    }
+                },
+                "target": {
+                    "type": "string"
+                }
+            }
+        },
+        "cluster.VolumeSnapshotOp": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string"
+                },
+                "commands": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "end": {
+                    "type": "string"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "plugin": {
+                    "type": "string"
+                },
+                "server": {
+                    "type": "string"
+                },
+                "snapbackDone": {
+                    "description": "a snapback done: the server stays in maintenance until an operator takes it out (WARN0331)",
+                    "type": "boolean"
+                },
+                "snapshot": {
+                    "type": "string"
+                },
+                "start": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
         "cluster.backupCandidateSet": {
             "type": "object",
             "properties": {
@@ -30801,6 +31168,35 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/config.Task"
                     }
+                }
+            }
+        },
+        "config.SnapshotPluginManifest": {
+            "type": "object",
+            "properties": {
+                "actions": {
+                    "description": "the ConstSnapshotAction* it implements",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "description": {
+                    "type": "string"
+                },
+                "external": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "run": {
+                    "description": "ConstSnapshotRun*",
+                    "type": "string"
+                },
+                "tier": {
+                    "description": "ConstArchiveTierEnterprise, \"\" for every plan",
+                    "type": "string"
                 }
             }
         },
@@ -31549,6 +31945,27 @@ const docTemplate = `{
                 },
                 "backupSaveScript": {
                     "type": "string"
+                },
+                "backupSnapshot": {
+                    "type": "boolean"
+                },
+                "backupSnapshotKeep": {
+                    "type": "integer"
+                },
+                "backupSnapshotLvmSize": {
+                    "type": "string"
+                },
+                "backupSnapshotPlugin": {
+                    "type": "string"
+                },
+                "backupSnapshotScript": {
+                    "type": "string"
+                },
+                "backupSnapshotTarget": {
+                    "type": "string"
+                },
+                "backupSnapshotTimeout": {
+                    "type": "integer"
                 },
                 "backupSplitMysqlUser": {
                     "type": "boolean"
