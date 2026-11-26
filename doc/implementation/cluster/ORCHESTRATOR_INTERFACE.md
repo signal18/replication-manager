@@ -1366,7 +1366,15 @@ and where it differs from 10.4:
   `running` and a TCP answer on the guest's SSH port. The reboot and the wait share one
   deadline (`prov-db-host-reboot-timeout` from the reboot): the step stores it per server in
   `cluster.hostStepDeadlines`, the backend's task wait reads it through
-  `hostActionDeadline`, and the wait gets what the reboot left, never a second timeout. The full `rollingServer` sequence of
+  `hostActionDeadline`, and the wait gets what the reboot left, never a second timeout.
+  The wait accepts only a new boot (the reboot race of the second review): the step reads
+  the VM's uptime before asking the reboot (`hostBootBefore`), and `hostBoot.rebooted` takes
+  the VM back only when its uptime is lower than before or no longer than the time since the
+  request (plus 2 s of rounding), with the state `running` and the SSH port answering. The old
+  guest's uptime only grows from before, so it never passes; a VM whose status could not be
+  read before is judged on the time since the request alone. The Proxmox uptime is used
+  rather than the guest's `boot_id` over SSH: it comes from the same API call as the state,
+  and needs no session into a guest that is going down. The full `rollingServer` sequence of
   10.2 is still step 2's.
 - **States.** `CheckRollingUpgradeHost`, each tick, config domain, WARNING, no I/O:
   `WARN0350` (host step on, backend without hosts; the design's WARN0342), `WARN0351` (servers

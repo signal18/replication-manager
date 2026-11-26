@@ -102,7 +102,9 @@ switchover:
 2. the clean stop of the database (as on-premise);
 3. **the host step**: `prov-db-host-upgrade-script` in the guest over SSH,
    then the reboot of the VM through the API, then a wait for the VM to be
-   `running` and its SSH port to answer; the reboot and the wait share one
+   `running` **on a new boot** (its uptime restarted: an old guest still up
+   before the reboot begins is not taken for a rebooted one) and its SSH
+   port to answer; the reboot and the wait share one
    `prov-db-host-reboot-timeout`;
 4. `onpremise-ssh-upgrade-db-script` (the database packages and the upgrade
    tool, as on-premise), the wait for the database and its replication;

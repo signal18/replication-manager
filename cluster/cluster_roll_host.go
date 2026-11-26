@@ -77,11 +77,13 @@ func (cluster *Cluster) rollingUpgradeHostStep(server *ServerMonitor) error {
 	deadline := time.Now().Add(cluster.hostRebootTimeout())
 	cluster.hostStepDeadlines.Store(server.URL, deadline)
 	defer cluster.hostStepDeadlines.Delete(server.URL)
+	// the boot identity before the reboot: the VM is back only once it booted again
+	boot := hostBootBefore(orch, server)
 	if err := orch.RebootHost(server); err != nil {
 		return fmt.Errorf("reboot of the VM %s/%s of %s failed, the VM may be stopped or mid-reboot (check it in Proxmox, then run the rolling upgrade again): %w",
 			vm.Node, vm.VMID, server.URL, err)
 	}
-	if err := cluster.waitHostBack(server, orch, deadline); err != nil {
+	if err := cluster.waitHostBack(server, orch, boot, deadline); err != nil {
 		return fmt.Errorf("the VM %s/%s of %s may be stopped or mid-reboot (check it in Proxmox, then run the rolling upgrade again): %w",
 			vm.Node, vm.VMID, server.URL, err)
 	}
@@ -101,9 +103,48 @@ func (cluster *Cluster) hostActionDeadline(server *ServerMonitor) time.Time {
 	return time.Now().Add(cluster.hostRebootTimeout())
 }
 
-// waitHostBack waits for the hypervisor to report the server's VM running and for the guest
-// to answer on its SSH port, until deadline (the host step's, shared with the reboot).
-func (cluster *Cluster) waitHostBack(server *ServerMonitor, orch Orchestrator, deadline time.Time) error {
+// hostBoot is the boot identity of a VM before its reboot: the uptime the hypervisor
+// reported (known false when the status could not be read or the VM was not running) and when
+// the reboot was asked.
+type hostBoot struct {
+	uptime time.Duration
+	known  bool
+	asked  time.Time
+}
+
+// hostBootBefore reads the VM's uptime right before the reboot is asked.
+func hostBootBefore(orch Orchestrator, server *ServerMonitor) hostBoot {
+	b := hostBoot{asked: time.Now()}
+	if st, err := orch.HostStatus(server); err == nil && st.State == "running" {
+		b.uptime, b.known = st.Uptime, true
+	}
+	return b
+}
+
+// hostBootSlack absorbs the rounding of the hypervisor's uptime (whole seconds) and the
+// delay between the request and the start of the new boot.
+const hostBootSlack = 2 * time.Second
+
+// rebooted tells whether the VM's uptime belongs to a boot after the reboot was asked: lower
+// than the uptime before it (the old guest's only grows), or no longer than the time since
+// the request. An old guest still up has uptime before+elapsed: never lower than before, and
+// longer than the elapsed time unless it had booted within the slack, in which case only the
+// first rule decides.
+func (b hostBoot) rebooted(uptime time.Duration, now time.Time) bool {
+	if b.known && uptime < b.uptime {
+		return true
+	}
+	if b.known && b.uptime <= hostBootSlack {
+		return false
+	}
+	return uptime <= now.Sub(b.asked)+hostBootSlack
+}
+
+// waitHostBack waits, until deadline (the host step's, shared with the reboot), for the
+// hypervisor to report the server's VM running on a new boot (boot: its identity before the
+// reboot) and for the guest to answer on its SSH port. The old guest, still up because the
+// reboot has not started yet, is not back.
+func (cluster *Cluster) waitHostBack(server *ServerMonitor, orch Orchestrator, boot hostBoot, deadline time.Time) error {
 	address := net.JoinHostPort(misc.Unbracket(server.Host), strconv.Itoa(cluster.Conf.OnPremiseSSHPort))
 	last := "no answer yet"
 	for {
@@ -113,12 +154,14 @@ func (cluster *Cluster) waitHostBack(server *ServerMonitor, orch Orchestrator, d
 			last = err.Error()
 		case st.State != "running":
 			last = "the VM is " + st.State
+		case !boot.rebooted(st.Uptime, time.Now()):
+			last = fmt.Sprintf("the VM has not rebooted yet (uptime %s, %s before the reboot)", st.Uptime, boot.uptime)
 		default:
 			if err := hostGuestReachable(address, 5*time.Second); err != nil {
 				last = "the guest does not answer on " + address + ": " + err.Error()
 			} else {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
-					"Rolling upgrade: the host of %s is back (node %s, vmid %s)", server.URL, st.Node, st.VMID)
+					"Rolling upgrade: the host of %s is back on a new boot (node %s, vmid %s, uptime %s)", server.URL, st.Node, st.VMID, st.Uptime)
 				return nil
 			}
 		}

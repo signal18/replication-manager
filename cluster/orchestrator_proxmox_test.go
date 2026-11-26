@@ -183,6 +183,8 @@ type recordingHostOrchestrator struct {
 	// rebootTakes: the time RebootHost takes; deadlineSeen: the deadline a host action of
 	// the backend would use while the reboot runs (hostActionDeadline)
 	rebootTakes  time.Duration
+	uptime       func() time.Duration // the VM's uptime; nil: an hour before the reboot, then the time since it
+	rebootedAt   time.Time
 	deadlineSeen time.Time
 	cluster      *Cluster
 }
@@ -202,6 +204,7 @@ func (o *recordingHostOrchestrator) RebootHost(s *ServerMonitor) error {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	o.calls = append(o.calls, "reboot "+s.URL)
+	o.rebootedAt = time.Now()
 	if o.cluster != nil {
 		o.deadlineSeen = o.cluster.hostActionDeadline(s)
 	}
@@ -216,7 +219,14 @@ func (o *recordingHostOrchestrator) HostStatus(s *ServerMonitor) (HostStatus, er
 	if len(o.states) > 1 {
 		o.states = o.states[1:]
 	}
-	return HostStatus{Node: "pve1", VMID: "101", State: st}, nil
+	up := time.Hour
+	switch {
+	case o.uptime != nil:
+		up = o.uptime()
+	case !o.rebootedAt.IsZero():
+		up = time.Since(o.rebootedAt)
+	}
+	return HostStatus{Node: "pve1", VMID: "101", State: st, Uptime: up}, nil
 }
 
 // The host step of the rolling upgrade on a recording backend: off by default (no call), on
@@ -231,7 +241,7 @@ func TestRollingSequenceHostStep(t *testing.T) {
 
 	cl := proxmoxTestCluster(t, "https://pve.invalid:8006")
 	rec := newRecordingHostOrchestrator()
-	rec.states = []string{"stopped", "running"}
+	rec.states = []string{"running", "stopped", "running"} // before the reboot, then the wait
 	cl.Orchestrators = map[string]Orchestrator{config.ConstOrchestratorProxmox: rec}
 	db1 := &ServerMonitor{Name: "db1", Host: "10.0.0.1", Port: "3306", URL: "10.0.0.1:3306", ClusterGroup: cl}
 	db3 := &ServerMonitor{Name: "db3", Host: "10.0.0.3", Port: "3306", URL: "10.0.0.3:3306", ClusterGroup: cl}
@@ -244,7 +254,7 @@ func TestRollingSequenceHostStep(t *testing.T) {
 	if err := cl.rollingUpgradeHostStep(db1); err != nil {
 		t.Fatalf("host step: %v", err)
 	}
-	want := "reboot 10.0.0.1:3306,status 10.0.0.1:3306,status 10.0.0.1:3306"
+	want := "status 10.0.0.1:3306,reboot 10.0.0.1:3306,status 10.0.0.1:3306,status 10.0.0.1:3306"
 	if got := strings.Join(rec.calls, ","); got != want || reached != 1 {
 		t.Fatalf("calls %s (reached %d), want %s", got, reached, want)
 	}
@@ -287,6 +297,65 @@ func TestRollingSequenceHostStep(t *testing.T) {
 	}
 	if _, ok := cl.hostStepDeadlines.Load(db1.URL); ok {
 		t.Fatal("the step's deadline must be cleared when it ends")
+	}
+}
+
+// The reboot race: the reboot was asked but the old guest is still up (running, SSH
+// answering, its uptime still growing from before). It is not "back": the step waits for a
+// new boot and fails at the deadline. Without the boot identity the old guest passed.
+func TestRollingHostStepOldGuestStillUp(t *testing.T) {
+	saveInterval, saveReach := hostWaitInterval, hostGuestReachable
+	defer func() { hostWaitInterval, hostGuestReachable = saveInterval, saveReach }()
+	hostWaitInterval = 10 * time.Millisecond
+	hostGuestReachable = func(string, time.Duration) error { return nil }
+
+	cl := proxmoxTestCluster(t, "https://pve.invalid:8006")
+	cl.Conf.ProvDbRollingUpgradeHost = true
+	cl.Conf.ProvDbHostRebootTimeout = 1
+	rec := newRecordingHostOrchestrator()
+	rec.states = []string{"running"}
+	bootedAt := time.Now().Add(-time.Hour)
+	rec.uptime = func() time.Duration { return time.Since(bootedAt) } // never rebooted
+	cl.Orchestrators = map[string]Orchestrator{config.ConstOrchestratorProxmox: rec}
+	db1 := &ServerMonitor{Name: "db1", Host: "10.0.0.1", Port: "3306", URL: "10.0.0.1:3306", ClusterGroup: cl}
+
+	err := cl.rollingUpgradeHostStep(db1)
+	if err == nil || !strings.Contains(err.Error(), "has not rebooted yet") {
+		t.Fatalf("the old guest still up must not count as back: %v", err)
+	}
+
+	// the guest reboots during the wait: back once its uptime restarts
+	rebootAt := time.Now().Add(300 * time.Millisecond)
+	rec.uptime = func() time.Duration {
+		if time.Now().Before(rebootAt) {
+			return time.Since(bootedAt)
+		}
+		return time.Since(rebootAt)
+	}
+	if err := cl.rollingUpgradeHostStep(db1); err != nil {
+		t.Fatalf("a guest that reboots within the deadline is back: %v", err)
+	}
+}
+
+func TestHostBootRebooted(t *testing.T) {
+	asked := time.Now()
+	now := asked.Add(30 * time.Second)
+	b := hostBoot{uptime: time.Hour, known: true, asked: asked}
+	if b.rebooted(time.Hour+30*time.Second, now) {
+		t.Error("the old guest (uptime grown from before) counted as rebooted")
+	}
+	if !b.rebooted(10*time.Second, now) {
+		t.Error("a new boot (uptime lower than before) not seen")
+	}
+	// the status before the reboot could not be read: a boot after the request counts
+	u := hostBoot{asked: asked}
+	if !u.rebooted(20*time.Second, now) || u.rebooted(time.Hour, now) {
+		t.Error("unknown boot: uptime against the time since the request")
+	}
+	// a VM booted within the slack before the reboot: only a lower uptime proves a new boot
+	young := hostBoot{uptime: time.Second, known: true, asked: asked}
+	if young.rebooted(31*time.Second, now) {
+		t.Error("a young old guest counted as rebooted")
 	}
 }
 
