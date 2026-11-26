@@ -97,6 +97,7 @@ var orchestratorDispatchAllowed = map[string]int{
 	"cluster/srv_job.go":                   1,
 	"cluster/srv_job_backup.go":            1,
 	"cluster/srv_job_postgres.go":          3,
+	"cluster/srv_volume_snapshot.go":       1, // OnPremiseConnect: the SSH session to the database host, as srv_job.go
 	"cluster/srv_set.go":                   1,
 	"cluster/srv_wal_archive.go":           2,
 	"mcp/tools_app.go":                     6,

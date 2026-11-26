@@ -65,6 +65,8 @@ type OrchestratorTraits struct {
 	ProvisionsNewHosts  bool // a child or self-service cluster can be provisioned on new servers: server_child_cluster.go, server_selfservice.go
 	HasTerminal         bool // a shell into the service container: server_tty.go, api.go
 	HasAtomicRestart    bool // a restart that is not a stop then a start: api_database.go restartSupportedForOrchestrator
+	HostIsLocal         bool // the database runs on the monitor's own host: a command for the database host runs locally (srv_volume_snapshot.go)
+	HostBySSH           bool // the database host is reached over SSH (onpremise-ssh): a command for the database host runs there (srv_volume_snapshot.go)
 }
 
 // ServiceLayout is where a service keeps its data, configuration, binaries and socket, and
