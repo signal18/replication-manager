@@ -132,6 +132,7 @@ var tests = []string{
 	"testAPIUserRotatePassword",
 	"testCredentialStoreSaveOnly",
 	"testAppSecretVersions",
+	"testVolumeSnapshotExternalPlugin",
 	"testCredentialConfigRotationScheduled",
 	"testConfigCookiePushBasic",
 	"testConfigCookiePushLifecycle",
@@ -341,6 +342,8 @@ var testTargets = map[string][]TestTarget{
 	"testK8SProvisionSchedulerVolumeBinding":                                   {{OrchestratorTarget: []string{config.ConstOrchestratorKubernetes}}},
 	"testK8SStopStartDatabaseService":                                          {{OrchestratorTarget: []string{config.ConstOrchestratorKubernetes}}},
 	"testSchemaPlugin":                                                         anyCluster,
+	// a fake external snapshot plugin on a replica (#2456): a master and a replica
+	"testVolumeSnapshotExternalPlugin": {{TopologyTarget: []string{config.TopoMasterSlave}, NumberNodesTarget: 2}},
 	"testJobsRoundTrip":                                                        {{OrchestratorTarget: []string{config.ConstOrchestratorOpenSVC, config.ConstOrchestratorKubernetes}}},
 	// its own local web service: any cluster
 	"testAppMonitorHTTP": anyCluster,

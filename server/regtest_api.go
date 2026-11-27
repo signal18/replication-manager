@@ -45,10 +45,20 @@ func (repman *ReplicationManager) regtestAPIToken(cl *cluster.Cluster, grants ..
 		if !hasAll {
 			continue
 		}
-		// scoped like a login (api_session_scope.go)
-		return repman.issueJWT(repman.passwordSessionInfo(u.User, u.Password), "")
+		return repman.regtestAPITokenOf(cl, name)
 	}
 	return "", errors.New("no local API user holds the grants the test needs")
+}
+
+// regtestAPITokenOf issues a token as /api/login does for local auth, for the
+// named local API user of the cluster.
+func (repman *ReplicationManager) regtestAPITokenOf(cl *cluster.Cluster, name string) (string, error) {
+	u, ok := cl.GetACLUser(name)
+	if !ok || u.IsExternal || u.Password == "" {
+		return "", errors.New("no local API user " + name + " with a password")
+	}
+	// scoped like a login (api_session_scope.go)
+	return repman.issueJWT(repman.passwordSessionInfo(u.User, u.Password), "")
 }
 
 // regtestAPIAddress is the host:port the regtest reaches the API on: the bind

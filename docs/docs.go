@@ -22755,7 +22755,7 @@ const docTemplate = `{
         },
         "/api/clusters/{clusterName}/settings/actions/set/{settingName}/{settingValue}": {
             "post": {
-                "description": "This endpoint sets the settings for the specified cluster.\nA credential setting is user:password, with a user and a password: in clear for db-servers-credential, replication-credential, proxysql-servers-credential, maxscale-servers-credential and shardproxy-servers-credential; encoded in base64 for backup-verification-credential, cloud18-dba-user-credentials and cloud18-sponsor-user-credentials (an empty value clears the verification and sponsor credentials). Any other value is refused with 400, the value never echoed.",
+                "description": "This endpoint sets the settings for the specified cluster.\nA credential setting is user:password, with a user and a password: in clear for db-servers-credential, replication-credential, proxysql-servers-credential, maxscale-servers-credential and shardproxy-servers-credential; encoded in base64 for backup-verification-credential, cloud18-dba-user-credentials and cloud18-sponsor-user-credentials (an empty value clears the verification and sponsor credentials). Any other value is refused with 400, the value never echoed.\nWith an empty settingValue (the path ending in a slash), a POST takes the value from the request body (64 KiB at most), for a value that must not sit in a URL.\nOn-premise SSH: onpremise-ssh-credential is user:password in base64, the password may be empty to connect with the private key; onpremise-ssh-private-key is in base64 either the absolute path of the key on the replication-manager host or the key itself (PEM / OpenSSH, no passphrase), which is written 0600 under the cluster's working directory, never in the config git, the setting then holding that path (send it as the POST body to .../set/onpremise-ssh-private-key/ so the key never sits in a URL); onpremise-ssh-port is the port; the onpremise-ssh-*-script settings are in base64 the absolute path of a local script. An on-premise SSH setting set in the configuration file under /etc, on the command line or in the environment is refused with 409.",
                 "consumes": [
                     "application/json"
                 ],
@@ -22817,7 +22817,7 @@ const docTemplate = `{
                         }
                     },
                     "409": {
-                        "description": "A credential change refused (no store keeps versions)",
+                        "description": "A credential change refused (no store keeps versions), or an on-premise SSH setting set in the immutable configuration",
                         "schema": {
                             "type": "string"
                         }
@@ -25306,6 +25306,141 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Error updating user\" or \"No valid cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/volume-snapshot-plugin-actions/set/{pluginName}": {
+            "post": {
+                "description": "Stores the settings its manifest declares, each checked against its type; a secret is encrypted with the replication-manager key before it is saved (refused without a key) and never returned; an empty secret keeps the one held; unset removes settings. The plugin gets them in its environment at its next run: REPMAN_SNAPSHOT_SETTING_\u003cNAME\u003e, and the secret decrypted as REPMAN_SNAPSHOT_SECRET_\u003cNAME\u003e.\nRequired grant: global-settings (the settings direct a program on the replication-manager host)",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "DatabaseBackup"
+                ],
+                "summary": "Set the settings of an external snapshot plugin",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Plugin Name",
+                        "name": "pluginName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "the settings",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/cluster.VolumeSnapshotPluginSettingsSpec"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The settings held, without the secrets",
+                        "schema": {
+                            "$ref": "#/definitions/config.SnapshotPluginEntry"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid setting",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "Cluster Not Found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "409": {
+                        "description": "The settings are set by a config file",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No encryption key: a secret is never stored in clear",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/volume-snapshot-plugins": {
+            "get": {
+                "description": "The snapshot plugins known (built-in, the client's script, the external plugins found beside the other plugins), each with the settings its manifest declares, the values the cluster holds for it (a secret never: only its name in secretsSet), whether the plan allows it and whether it says it has been tested on the storage it drives.\nRequired grant: cluster-show-backups, db-backup or global-settings",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "DatabaseBackup"
+                ],
+                "summary": "List the volume snapshot plugins and their settings",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The plugins",
+                        "schema": {
+                            "$ref": "#/definitions/cluster.VolumeSnapshotPluginList"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "Cluster Not Found",
                         "schema": {
                             "type": "string"
                         }
@@ -30617,6 +30752,91 @@ const docTemplate = `{
                 }
             }
         },
+        "cluster.VolumeSnapshotPluginInfo": {
+            "type": "object",
+            "properties": {
+                "actions": {
+                    "description": "the ConstSnapshotAction* it implements",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "allowed": {
+                    "description": "Allowed: the plan lets the cluster use it (an enterprise one needs an enterprise plan)",
+                    "type": "boolean"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "entry": {
+                    "description": "Entry: the settings held, a secret never (SnapshotPluginEntry.MarshalJSON)",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/config.SnapshotPluginEntry"
+                        }
+                    ]
+                },
+                "external": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "run": {
+                    "description": "ConstSnapshotRun*",
+                    "type": "string"
+                },
+                "settings": {
+                    "description": "Settings: what an external plugin needs set (#2456), stored per cluster in its\n[[snapshot-plugin]] entry, a secret encrypted; passed in its environment",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/config.PluginSetting"
+                    }
+                },
+                "tested": {
+                    "description": "Tested: false when the plugin says it has not run against the real storage it drives",
+                    "type": "boolean"
+                },
+                "tier": {
+                    "description": "ConstArchiveTierEnterprise, \"\" for every plan",
+                    "type": "string"
+                }
+            }
+        },
+        "cluster.VolumeSnapshotPluginList": {
+            "type": "object",
+            "properties": {
+                "pinned": {
+                    "description": "Pinned: a config file sets the plugin settings ([[snapshot-plugin]]): the API can not\nchange them",
+                    "type": "boolean"
+                },
+                "plugins": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/cluster.VolumeSnapshotPluginInfo"
+                    }
+                },
+                "selected": {
+                    "type": "string"
+                }
+            }
+        },
+        "cluster.VolumeSnapshotPluginSettingsSpec": {
+            "type": "object",
+            "properties": {
+                "settings": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "unset": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
         "cluster.backupCandidateSet": {
             "type": "object",
             "properties": {
@@ -31373,6 +31593,18 @@ const docTemplate = `{
                 }
             }
         },
+        "config.SnapshotPluginEntry": {
+            "type": "object",
+            "properties": {
+                "plugin": {
+                    "type": "string"
+                },
+                "settings": {
+                    "type": "object",
+                    "additionalProperties": true
+                }
+            }
+        },
         "config.SnapshotPluginManifest": {
             "type": "object",
             "properties": {
@@ -31395,6 +31627,17 @@ const docTemplate = `{
                 "run": {
                     "description": "ConstSnapshotRun*",
                     "type": "string"
+                },
+                "settings": {
+                    "description": "Settings: what an external plugin needs set (#2456), stored per cluster in its\n[[snapshot-plugin]] entry, a secret encrypted; passed in its environment",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/config.PluginSetting"
+                    }
+                },
+                "tested": {
+                    "description": "Tested: false when the plugin says it has not run against the real storage it drives",
+                    "type": "boolean"
                 },
                 "tier": {
                     "description": "ConstArchiveTierEnterprise, \"\" for every plan",
@@ -32219,6 +32462,9 @@ const docTemplate = `{
                 },
                 "backupSnapshotTimeout": {
                     "type": "integer"
+                },
+                "backupSnapshotUnmount": {
+                    "type": "boolean"
                 },
                 "backupSplitMysqlUser": {
                     "type": "boolean"
@@ -34770,6 +35016,13 @@ const docTemplate = `{
                 },
                 "slaposSphinxPartitions": {
                     "type": "string"
+                },
+                "snapshotPlugins": {
+                    "description": "SnapshotPluginEntries: the settings of the external snapshot plugins (#2456)",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/config.SnapshotPluginEntry"
+                    }
                 },
                 "sphinx": {
                     "type": "boolean"

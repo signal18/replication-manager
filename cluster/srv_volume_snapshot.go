@@ -88,6 +88,9 @@ type contractSnapshotter struct {
 	manifest config.SnapshotPluginManifest
 	exec     snapshotExecutor
 	timeout  time.Duration
+	// host runs the helper's host actions (devices, unmount, mount) on the database host for an
+	// external plugin (#2456); nil when the orchestrator gives no access to it
+	host snapshotExecutor
 }
 
 func (c *contractSnapshotter) Manifest() config.SnapshotPluginManifest { return c.manifest }
@@ -117,10 +120,28 @@ func (c *contractSnapshotter) run(server *ServerMonitor, action, name string) (V
 			return VolumeSnapshotRun{}, err
 		}
 	}
-	cluster := server.ClusterGroup
-	env := append(server.volumeSnapshotEnv(c.manifest, action, name), "REPMAN_SNAPSHOT_BUSY_WAIT="+strconv.Itoa(volumeSnapshotBusyWait(c.timeout)))
+	// one deadline for the whole action, the host steps of an external snapback included
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
+	if action == config.ConstSnapshotActionSnapback && c.unmountsHost(server) {
+		return c.snapbackUnmounted(ctx, server, name)
+	}
+	return c.runCtx(ctx, server, action, name, nil)
+}
+
+// runCtx runs the plugin's program for one action; extra is added to its environment.
+func (c *contractSnapshotter) runCtx(ctx context.Context, server *ServerMonitor, action, name string, extra []string) (VolumeSnapshotRun, error) {
+	cluster := server.ClusterGroup
+	env := append(server.volumeSnapshotEnv(c.manifest, action, name), "REPMAN_SNAPSHOT_BUSY_WAIT="+strconv.Itoa(volumeSnapshotBusyWait(c.timeout)))
+	if c.manifest.External {
+		// its settings and secrets (decrypted only into its environment), and the devices of
+		// the server's files when the database host can be asked (#2456)
+		env = append(env, cluster.Conf.SnapshotPluginEnv(c.manifest)...)
+		if c.host != nil {
+			env = append(env, envSnapshotDevices+"="+c.hostDevices(ctx, server))
+		}
+	}
+	env = append(env, extra...)
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Volume snapshot %s of %s (plugin %s) %s", action, server.URL, c.manifest.Name, c.exec.Where())
 	out, err := c.exec.Exec(ctx, action, env)
 	run := parseVolumeSnapshotOutput(out.stdout)
@@ -442,7 +463,11 @@ func (cluster *Cluster) VolumeSnapshotter(server *ServerMonitor) (VolumeSnapshot
 	default:
 		ex = &sshSnapshotExecutor{server: server}
 	}
-	return &contractSnapshotter{manifest: m, exec: ex, timeout: timeout}, nil
+	c := &contractSnapshotter{manifest: m, exec: ex, timeout: timeout}
+	if m.External {
+		c.host = cluster.volumeSnapshotHostExecutor(server)
+	}
+	return c, nil
 }
 
 // volumeSnapshotRefusal is the cluster's snapshot plugin, or why it can not run: backup-snapshot
@@ -641,7 +666,7 @@ func (cluster *Cluster) ListVolumeSnapshots(server *ServerMonitor) VolumeSnapsho
 		return out
 	}
 	if c, ok := vs.(*contractSnapshotter); ok && c.timeout > volumeSnapshotListTimeout {
-		vs = &contractSnapshotter{manifest: c.manifest, exec: c.exec, timeout: volumeSnapshotListTimeout}
+		vs = &contractSnapshotter{manifest: c.manifest, exec: c.exec, timeout: volumeSnapshotListTimeout, host: c.host}
 	}
 	run, err := vs.List(server)
 	out.Target, out.Snapshots, out.Commands = run.Target, run.Snapshots, run.Commands
@@ -792,7 +817,7 @@ func (cluster *Cluster) SnapbackVolume(server *ServerMonitor, name string) error
 // it), and the refusals still hold once the server is claimed.
 func (cluster *Cluster) snapbackPreflight(server *ServerMonitor, vs VolumeSnapshotter, name string) error {
 	if c, ok := vs.(*contractSnapshotter); ok && c.timeout > volumeSnapshotListTimeout {
-		vs = &contractSnapshotter{manifest: c.manifest, exec: c.exec, timeout: volumeSnapshotListTimeout}
+		vs = &contractSnapshotter{manifest: c.manifest, exec: c.exec, timeout: volumeSnapshotListTimeout, host: c.host}
 	}
 	list, err := vs.List(server)
 	if err != nil {
