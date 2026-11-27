@@ -4476,6 +4476,10 @@ func checkCredentialSetting(name, value string) error {
 		}
 		return fmt.Errorf("%w: %s must be user:password %s, with a user and a password", ErrInvalidCredentialFormat, name, encoding)
 	}
+	// the SSH user is refused by its setter with spaces around it: refuse it here too, so the answer is a 400
+	if name == "onpremise-ssh-credential" && user != strings.TrimSpace(user) {
+		return fmt.Errorf("%w: %s: the user has spaces around it", ErrInvalidCredentialFormat, name)
+	}
 	return nil
 }
 

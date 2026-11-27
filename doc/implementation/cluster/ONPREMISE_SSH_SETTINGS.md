@@ -105,5 +105,9 @@ Databases tab. A setting pinned in /etc shows the lock of `clusterSetting` rows.
   encrypted and read back; the key content written 0600, the setting holding the path, the key in
   neither the JSON nor the saved file, the refusals (passphrase, not a key, relative path,
   missing file); port and scripts.
-- `server/api_onpremise_ssh_settings_test.go`: the API cases, the 400 on a malformed credential,
-  the change log masked, the 409 on a setting pinned in the immutable configuration.
+- `server/api_onpremise_ssh_settings_test.go`: the API cases, the 400 on a malformed credential
+  (a user with spaces around it included), the value read from the request body when the path has
+  none (`TestSettingValueFromBody`), the change log masked, the 409 on each of the eight settings
+  pinned in the immutable configuration, through the set and the switch paths.
+- `cluster/cluster_set_onpremise_test.go` also covers the managed key file removed when the setting
+  no longer names it, and the key given as a path.

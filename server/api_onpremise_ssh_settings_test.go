@@ -62,7 +62,7 @@ func TestSetOnPremiseSSHSettingsThroughAPI(t *testing.T) {
 	if err := repman.setClusterSetting(cl, "onpremise-ssh-credential", b64("deploy:MARKERSSH")); err != nil {
 		t.Fatal(err)
 	}
-	for _, bad := range []string{"bm90LWJhc2U2NA", b64("nouser"), b64(":pass")} {
+	for _, bad := range []string{"bm90LWJhc2U2NA", b64("nouser"), b64(":pass"), b64(" root:pass")} {
 		err := repman.setClusterSetting(cl, "onpremise-ssh-credential", bad)
 		if err == nil || setSettingErrorCode(err) != http.StatusBadRequest {
 			t.Errorf("credential %q: %v, want a 400", bad, err)
@@ -143,11 +143,18 @@ func TestOnPremiseSSHChangeLogMasked(t *testing.T) {
 // set and switch; the credential follows the credential chain instead.
 func TestOnPremiseSSHImmutableRefused(t *testing.T) {
 	// every on-premise SSH setting but the credential, set or switched, is refused when pinned
+	// through the API's set and switch paths, each answers 409
 	for name := range onPremiseSSHSettings {
 		pinned := newOnPremiseSSHTestCluster(t)
 		pinned.Conf.ImmuableFlagMap[name] = "pinned"
-		if err := (&ReplicationManager{}).setClusterSetting(pinned, name, b64("/tmp/x")); !errors.Is(err, errImmutableGlobalSetting) {
-			t.Errorf("pinned %s set: %v", name, err)
+		var err error
+		if name == "onpremise-ssh" {
+			err = (&ReplicationManager{}).switchClusterSettings(pinned, name)
+		} else {
+			err = (&ReplicationManager{}).setClusterSetting(pinned, name, b64("/tmp/x"))
+		}
+		if !errors.Is(err, errImmutableGlobalSetting) || setSettingErrorCode(err) != http.StatusConflict {
+			t.Errorf("pinned %s: %v (code %d), want 409", name, err, setSettingErrorCode(err))
 		}
 	}
 	if _, ok := onPremiseSSHSettings["onpremise-ssh-credential"]; ok {
