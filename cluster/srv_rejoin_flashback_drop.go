@@ -62,7 +62,7 @@ type flashbackDropFacts struct {
 	Target          string      // the rejoin position
 	OwnServerID     uint64      // the old master's server_id
 	BinlogState     string      // its gtid_binlog_state, read live
-	Saved           []gtid.Gtid // the GTIDs of the saved lost transactions (the decoded copy)
+	Saved           []gtid.Gtid // the GTIDs of the saved lost transactions (the analysis of the copy, else the decoded copy)
 	SavedErr        error       // why they could not be read
 	Replayed        int         // the transactions the replay applied
 	MaxTransactions int
@@ -154,7 +154,11 @@ func (server *ServerMonitor) flashbackDropPlan(crash *Crash, copy, target string
 	if parentBackupBehind(target, f.BinlogState) == "" {
 		return nil // nothing past the target: nothing to drop
 	}
-	f.Saved, f.SavedErr = savedLostGTIDs(crash.DeltaDecoded)
+	if crash.DeltaAnalyzed && len(crash.DeltaGTIDs) == crash.DeltaTransactions {
+		f.Saved = crash.DeltaGTIDs // the analysis of the copy, just before the replay
+	} else {
+		f.Saved, f.SavedErr = savedLostGTIDs(crash.DeltaDecoded) // a re-armed rejoin: the decoded copy
+	}
 	f.DumpThreads, logs, err = dbhelper.GetBinlogDumpThreads(server.Conn, server.DBVersion)
 	cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Could not count the binlog dump threads on %s: %s", server.URL, err)
 	if err != nil {
@@ -211,8 +215,9 @@ func (server *ServerMonitor) replicationsFromMe() []string {
 // "#261127 19:54:50 server id 11626367  end_log_pos 261982468 CRC32 0x475763b7 	GTID 1-11626367-1203981 trans".
 var savedGTIDLine = regexp.MustCompile(`^#\d{6} .*\sGTID (\d+)-(\d+)-(\d+)`)
 
-// savedLostGTIDs reads the GTIDs of the lost transactions repman saved with the crash: the GTID
-// events of the decoded copy (Crash.DeltaDecoded).
+// savedLostGTIDs reads the GTIDs of the lost transactions repman saved with the crash from the
+// decoded copy (Crash.DeltaDecoded), when the analysis did not record them (a rejoin re-armed
+// after a restart).
 func savedLostGTIDs(decoded string) ([]gtid.Gtid, error) {
 	if decoded == "" {
 		return nil, fmt.Errorf("no decoded copy of the lost events")

@@ -27,6 +27,7 @@ import (
 
 	"github.com/go-mysql-org/go-mysql/replication"
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/gtid"
 	"github.com/signal18/replication-manager/utils/sqlmask"
 	"github.com/signal18/replication-manager/utils/state"
 )
@@ -37,6 +38,7 @@ import (
 func (server *ServerMonitor) analyzeLostEvents(crash *Crash, archive string) {
 	cluster := server.ClusterGroup
 	crash.DeltaTransactions, crash.DeltaRowEvents, crash.DeltaDDL, crash.DeltaStatementDML = 0, 0, 0, 0
+	crash.DeltaGTIDs = nil
 	crash.DeltaAnalyzed = false
 	crash.DeltaFlashable = false
 
@@ -45,6 +47,9 @@ func (server *ServerMonitor) analyzeLostEvents(crash *Crash, archive string) {
 		switch e.Header.EventType {
 		case replication.MARIADB_GTID_EVENT, replication.GTID_EVENT:
 			crash.DeltaTransactions++
+			if g, ok := e.Event.(*replication.MariadbGTIDEvent); ok {
+				crash.DeltaGTIDs = append(crash.DeltaGTIDs, gtid.Gtid{DomainID: uint64(g.GTID.DomainID), ServerID: uint64(g.GTID.ServerID), SeqNo: g.GTID.SequenceNumber})
+			}
 		case replication.WRITE_ROWS_EVENTv0, replication.WRITE_ROWS_EVENTv1, replication.WRITE_ROWS_EVENTv2,
 			replication.UPDATE_ROWS_EVENTv0, replication.UPDATE_ROWS_EVENTv1, replication.UPDATE_ROWS_EVENTv2,
 			replication.DELETE_ROWS_EVENTv0, replication.DELETE_ROWS_EVENTv1, replication.DELETE_ROWS_EVENTv2:

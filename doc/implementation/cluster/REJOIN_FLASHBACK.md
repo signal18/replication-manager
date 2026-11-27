@@ -51,7 +51,7 @@ Two facts, both checked on the saved crash binlog and on a throwaway MariaDB 11.
    | `replay` | the replay applied exactly the saved transactions | the row transactions counted on the replay's input (`flashbackTxCounter`) equal the saved GTIDs |
    | `max-transactions` | no more lost transactions than the cap | `autorejoin-async-flashback-drop-binlog-max-transactions`, default 10000 (0 = default, never unbounded): a failover under load loses hundreds; beyond ten thousand a reseed is the repair. The binlog size is not read: the transaction count bounds the replay, the size of a binlog says little about it |
    | `domain` | one GTID domain | `gtid_binlog_state` (live) and the target carry one domain (no multi-source, no other cluster's writes) |
-   | `lost-transactions` | past the target, only what was rewound | in `gtid_binlog_state` only the old master's `server_id` is past the target; the saved GTIDs (the GTID events of the decoded copy, `Crash.DeltaDecoded`) are exactly target+1 .. head of that server, their count the head minus the target |
+   | `lost-transactions` | past the target, only what was rewound | in `gtid_binlog_state` only the old master's `server_id` is past the target; the saved GTIDs (the GTID events the analysis of the copy recorded, `Crash.DeltaGTIDs`; for a rejoin re-armed after a restart, those of the decoded copy `Crash.DeltaDecoded`) are exactly target+1 .. head of that server, their count the head minus the target |
    | `readers` | nobody reads that binary log | no binlog dump thread on the old master (live), no replication of any monitored cluster (native channel, CDC feed, child cluster) whose source is it |
 
    A guard that fails keeps the binary log, logs it and opens **WARN0365** (server, guard,

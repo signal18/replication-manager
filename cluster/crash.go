@@ -59,6 +59,9 @@ type Crash struct {
 	DeltaRowEvents        int    `json:"deltaRowEvents"`
 	DeltaDDL              int    `json:"deltaDdl"`
 	DeltaStatementDML     int    `json:"deltaStatementDml"`
+	// DeltaGTIDs are the MariaDB GTIDs of the lost transactions, read by the analysis: what the
+	// binlog drop of the flashback rejoin checks the binary log against. Not persisted.
+	DeltaGTIDs []gtid.Gtid `json:"-"`
 	// RejoinResult is stamped when the rejoin EXECUTION ends: it moves the crash
 	// out of the working set into history carrying WHY it ended. This is the loop
 	// terminator — a crash with a result is done and never re-drives automatically
