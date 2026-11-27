@@ -26,18 +26,60 @@ Issue #2453. Status: **design validated by the maintainer (2026-11-27)**. Steps 
 - Never in a name: physical or logical, async, semi-sync or group (properties of a topology), and a
   mode (copy, denormalize, S3 partition or table: settings of the link).
 
+## A link: an edge between two servers
+
+A replication is between two servers, often of two clusters. A link carries both ends:
+
+```go
+type Link struct {
+    Plugin        ReplicationPlugin
+    SourceCluster *Cluster        // the cluster read; nil for an external source repman does not manage
+    Source        Endpoint        // the server read: a server of a cluster, or an external address
+    TargetCluster *Cluster        // the cluster written into
+    Target        *ServerMonitor  // the server written into
+    Name          string          // the link's identity on the target: the channel, the subscription, the feed
+    Settings      PluginSettings  // its settings, declared by the plugin (see "Settings: per plugin")
+}
+
+type Endpoint struct {
+    Server *ServerMonitor // set when repman manages the source
+    Host   string         // otherwise its address, and the account read from the credential chain
+    Port   string
+}
+```
+
+- **The topology of a cluster is a graph of links.** Master-slave: one link from the master to each
+  replica. Multi-tier: a chain, a server the target of one link and the source of the next. Ring: a
+  cycle. Multi-source: several links into one target. A child cluster, a staging or a CDC feed: a
+  link whose `SourceCluster` is another cluster.
+- **Nothing is "on a server"** in the interface: every verb takes a link; only `Bootstrap` takes the
+  cluster's topology. Stopping every link of a server before a reseed is `Stop` on each of its links
+  (a plugin may send one `STOP ALL SLAVES` for them when the engine allows it: its own business, not a
+  verb).
+- **A failover is two edge operations**: `Promote` on the candidate's link to the old master (that
+  edge ends, its target becomes a source), then `ChangeSource` of the other replicas' links to the
+  new master.
+- **Status belongs to the link**: read on the target for the native plugins, from the plugin for a
+  CDC feed; it always describes the relation between the two servers.
+
 ## The interface
 
 ```go
 type ReplicationPlugin interface {
     Manifest() ReplicationManifest
 
-    Bootstrap(c *Cluster, topology string, master *ServerMonitor) error // sets up the cluster's replication
-    Create(l Link, reason string) (string, error)                       // adds one link (bootstrap, operator)
+    // the graph
+    Bootstrap(c *Cluster, topology string, master *ServerMonitor) error // sets up the cluster's links; checks first
+    Create(l Link, reason string) (string, error)                       // adds one edge; its checks first (prerequisites, account, filters)
     Remove(l Link, reason string) (string, error)                       // promotion or operator only (T27)
+    Promote(l Link, reason string) (string, error)                      // the edge ends, its target becomes a source
+    ChangeSource(l Link, to Endpoint, opt ChangeSourceOpt, reason string) (string, error) // failover, switchover, rejoin only
 
+    // the state
     Status(l Link) (dbhelper.SlaveStatus, string, error)                 // one row shape, Kind = the plugin; the statement (F11)
+    WaitCaughtUp(l Link, until Position, timeout time.Duration) (string, error) // switchover: the target has applied up to until
 
+    // run
     Start(l Link, reason string) (string, error)                         // copy + apply
     Stop(l Link, reason string) (string, error)
     StartCopyEvents(l Link, reason string) (string, error)
@@ -45,12 +87,23 @@ type ReplicationPlugin interface {
     StartApplyEvents(l Link, reason string) (string, error)
     StopApplyEvents(l Link, reason string) (string, error)
 
+    // position
     ResetPositions(l Link, reason string) (string, error)                // the link stays (T27)
-    ChangeSource(l Link, opt dbhelper.ChangeMasterOpt, reason string) (string, error) // failover, switchover, rejoin only
+    SetPosition(l Link, at Position, reason string) (string, error)      // reseed, rejoin: the GTID the target resumes from
     SkipEvent(l Link, reason string) (string, error)
     Rejoin(l Link) error                                                 // resume, or rebuild from a new initial load
+
+    // configuration
+    Configure(l Link, opts LinkOptions, reason string) (string, error)   // heartbeat, exec mode, GTID mode, parallelism, filters, semi-sync: the options its manifest declares
+    RotateCredential(l Link, reason string) (string, error)              // the replication account of the link (rotation, T16)
 }
 ```
+
+- `Position` is the engine's position (a GTID set, a binlog file and offset, a PostgreSQL LSN), as the
+  plugin reads and writes it; repman compares positions only through the plugin.
+- `Promote` by engine: MariaDB and MySQL `RESET SLAVE ALL` on the edge then `read_only` off;
+  PostgreSQL `pg_promote()`; Group Replication `group_replication_set_as_primary`; Galera nothing to do
+  (every member writes); a CDC feed is never promoted (a child never replaces its parent).
 
 - The verbs name what the link does whatever the engine: it **copies** the source's events, then
   **applies** them (for MariaDB the IO and SQL threads; for a CDC feed the capture and the apply).
@@ -154,6 +207,38 @@ Today `BootstrapReplication` (`prov.go`) holds the topologies as branches per en
    then each subscription; for a CDC plugin, the feed and its initial load (today's seed of the child).
 5. `Create` is the same step for one link: an operator adding a channel or a feed.
 
+## Every replication function of dbhelper, and its place
+
+Built from the code (`utils/dbhelper`), so that no operation repman does on a link is left out of the
+interface. A function is a verb of every plugin, or the bootstrap of one plugin.
+
+| dbhelper | Verb, or plugin |
+|---|---|
+| `StartSlave`, `StopSlave` | `Start`, `Stop` |
+| `StartSlaveIOThread`, `StopSlaveIOThread` | `StartCopyEvents`, `StopCopyEvents` |
+| `StartSlaveSQLThread`, `StopSlaveSQLThread` | `StartApplyEvents`, `StopApplyEvents` |
+| `StopAllSlaves` | `Stop` on each link of the target (the binlog plugin may batch it) |
+| `ResetSlave` without ALL | `ResetPositions` |
+| `ResetSlave` with ALL, `ResetAllSlaves` | `Remove` (on each link for the bootstrap cleanup), `Promote` (binlog) |
+| `ChangeMaster` | `Create` (a new edge), `ChangeSource` (an edge repointed) |
+| `SkipBinlogEvent` | `SkipEvent` |
+| `GetSlaveStatus`, `GetAllSlavesStatus`, `GetChannelSlaveStatus`, `GetMSlaveStatus`, `GetPGSlaveStatus`, `PostgresGetChannel` | `Status` |
+| `SetGTIDSlavePos`, `SetGTIDBinlogState`, `SetGtidPurged` | `SetPosition` |
+| `MasterWaitGTID`, `MasterWaitGTIDReached`, `CheckSlaveSync`, `GetReplicationLastReceived`, `PostgresSubscriberCaughtUp` | `WaitCaughtUp` |
+| `SetSlaveHeartbeat`, `SetSlaveExecMode`, `SetSlaveGTIDMode`, `SetSlaveGTIDModeStrict`, `SetSlaveParallelMode`, `SetChannelReplicateIgnoreTable`, `SetSemiSyncMaster`, `SetSemiSyncMasterEnabled`, `SetSemiSyncSlave`, `InstallSemiSync`, `SetMySQLGtidMode`, `SetEnforceGTIDConsistency` | `Configure` (each option declared by the plugin's manifest) |
+| `ChangeReplicationPassword`, `CreateReplicationUser`, `CheckReplicationAccount` | `RotateCredential`; the account's creation and check in `Create` and `Bootstrap` |
+| `CheckSlavePrerequisites`, `CheckReplicationFilters`, `CheckSlaveSemiSync` | the checks of `Create` and `Bootstrap` (a link refused says why) |
+| `PostgresPromote` | `Promote` (postgresql) |
+| `PostgresEnsurePublication`, `PostgresOwnSubscription`, `PostgresSubscriptionName`, `PostgresRefreshSubscription`, `PostgresSubscriptionNeedsRefresh`, `PostgresInstallDDLReplication` | `Bootstrap`, `Create`, `Configure` of postgresql (logical) |
+| `PostgresDropSubscription`, `PostgresDropReplicationSlot`, `PostgresDropDDLReplication` | `Remove` of postgresql (logical) |
+| `BootstrapGroupReplication`, `StartGroupReplication`, `SetGroupReplicationAllowlist` | `Bootstrap`, `Start`, `Configure` of group replication |
+| `SetGroupReplicationPrimary`, `IsGroupReplicationMaster`, `IsGroupReplicationSlave` | `Promote`, `Status` of group replication |
+| `GaleraSSTAccountInitSQL`, `GaleraSSTPrivileges` | `Bootstrap`, `RotateCredential` of galera |
+| `SetHeartbeatTable`, `WriteHeartbeat`, `SetStatusActiveHeartbeat` | the monitor's own lag probe, not a link verb: stays in the monitor |
+| `GetBinlogEventPseudoGTID`, `GetLastPseudoGTID`, `BinlogGtidPos`, `GetFirstBinaryLogGtidList`, `GTIDSubset`, `GtidPurgedSubsetOf` | the binlog plugin's `Position` helpers (positions compared through the plugin) |
+| `GetSlaveHosts`, `GetSlaveHostsArray`, `GetSlaveHostsDiscovery` | the discovery of the graph: which links point at a source (topology discovery) |
+| `SetSlaveConnectionsNeededForPurge` | `Configure` of the source side of a binlog link |
+
 ## Links are the client's (T27, F1)
 
 - `Remove` only for a promotion (failover, switchover) or an operator request, never in another path.
@@ -196,7 +281,8 @@ Today `BootstrapReplication` (`prov.go`) holds the topologies as branches per en
 
 | Step | What changes |
 |---|---|
-| 2 | `ReplicationLink` becomes `ReplicationPlugin` + `Link`; the verbs renamed (`StopCopyEvents`, `StopApplyEvents`) and `StartCopyEvents`, `StartApplyEvents` added; the manifest; the registry of plugins (as `newOrchestratorList`) |
+| 2 | (done) `ReplicationLink` becomes `ReplicationPlugin` + `Link`; the verbs renamed (`StopCopyEvents`, `StopApplyEvents`) and `StartCopyEvents`, `StartApplyEvents` added; the manifest; the registry of plugins (as `newOrchestratorList`) |
+| 2b | `Link` carries both ends (`SourceCluster`, `Source`, `TargetCluster`, `Target`); `Promote`, `SetPosition`, `WaitCaughtUp`, `Configure`, `RotateCredential` added; the failover, switchover, reseed and rejoin calls moved onto them; `StopCopyEvents`, `StopApplyEvents` and `ChangeSource` record the link change once their statement succeeded, as `Stop` |
 | 3 | The native code split into the built-in plugins: binlog (three manifests), galera, group replication, postgresql, columnstore |
 | 4 | `replication_cdc.go` becomes the external adapter; the `replication-plugin-*` keys become the plugins' own settings; the CDC binaries renamed (`replplugin-innodb` → `repl-mariadb-mariadb-cdc`, `replplugin-columnstore` → `repl-mariadb-columnstore-cdc`, `replplugin-duckdb` → `repl-mariadb-duckdb-cdc`, `replplugin-postgresql` → `repl-postgresql-mariadb-cdc`) with their manifests |
 | 5 | `Bootstrap` and `Create` moved from `prov.go` into the plugins, topology by topology |
