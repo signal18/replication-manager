@@ -88,15 +88,26 @@ func (regtest *RegTest) TestTableChecksum(cl *clusterpkg.Cluster, conf string, t
 		}
 		return "absent"
 	}
-	// refresh asks for a schema scan until the table is (or is no longer) in the dictionary
+	// refresh asks for a schema scan, then waits for the table to be (or no longer be) in the
+	// dictionary; asked again every 80 s. Not at each poll: the scan starts when WARN0163, the
+	// request, resolves, and a request repeated every 2 s keeps it open; a request within 60 s
+	// of the previous scan's end is not served, hence the rounds.
 	refresh := func(name string, present bool) error {
-		return tlsWait(5*time.Minute, func() error {
+		for round := 0; round < 5; round++ {
 			if (table(name) != nil) == present {
 				return nil
 			}
 			cl.SetWaitMonitorSchema()
-			return fmt.Errorf("%s.%s present=%t not reached after the schema refreshes", tableChecksumDB, name, !present)
-		})
+			if tlsWait(80*time.Second, func() error {
+				if (table(name) != nil) == present {
+					return nil
+				}
+				return fmt.Errorf("not yet")
+			}) == nil {
+				return nil
+			}
+		}
+		return fmt.Errorf("%s.%s present=%t not reached after 5 schema refresh requests", tableChecksumDB, name, present)
 	}
 	// waitDone waits until none of the tables is running (PR) or waiting (WA)
 	waitDone := func(names ...string) error {
