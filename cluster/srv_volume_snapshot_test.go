@@ -79,11 +79,15 @@ func TestVolumeSnapshotsToPrune(t *testing.T) {
 
 func TestVolumeSnapshotPaths(t *testing.T) {
 	_, server := newTestClusterServer(t)
+	// the monitor keeps Variables uppercased (GetVariables): the paths come from the
+	// case-preserving SensitiveVariables, never from them
 	server.Variables = config.NewStringsMap()
-	server.Variables.Set("DATADIR", "/srv/db/data/")
-	server.Variables.Set("INNODB_LOG_GROUP_HOME_DIR", "/srv/db/redo")
-	server.Variables.Set("INNODB_UNDO_DIRECTORY", "./")
-	server.Variables.Set("LOG_BIN_BASENAME", "/srv/db/binlog/mysql-bin")
+	server.Variables.Set("DATADIR", "/SRV/DB/DATA/")
+	server.SensitiveVariables = config.NewStringsMap()
+	server.SensitiveVariables.Set("DATADIR", "/srv/db/data/")
+	server.SensitiveVariables.Set("INNODB_LOG_GROUP_HOME_DIR", "/srv/db/redo")
+	server.SensitiveVariables.Set("INNODB_UNDO_DIRECTORY", "./")
+	server.SensitiveVariables.Set("LOG_BIN_BASENAME", "/srv/db/binlog/mysql-bin")
 	got := strings.Join(server.volumeSnapshotPaths(), ":")
 	if got != "/srv/db/data:/srv/db/redo:/srv/db/binlog" {
 		t.Fatalf("paths = %s", got)
@@ -336,9 +340,9 @@ func newFakeZFSHost(t *testing.T) (*Cluster, *ServerMonitor, *contractSnapshotte
 	cl, server := newTestClusterServer(t)
 	cl.Conf.BackupSnapshot = true
 	cl.Conf.BackupSnapshotPlugin = config.ConstSnapshotPluginZFS
-	server.Variables = config.NewStringsMap()
-	server.Variables.Set("DATADIR", data)
-	server.Variables.Set("INNODB_LOG_GROUP_HOME_DIR", redo)
+	server.SensitiveVariables = config.NewStringsMap()
+	server.SensitiveVariables.Set("DATADIR", data)
+	server.SensitiveVariables.Set("INNODB_LOG_GROUP_HOME_DIR", redo)
 	m, _ := config.SnapshotPlugin(config.ConstSnapshotPluginZFS)
 	vs := &contractSnapshotter{manifest: m, exec: &shSnapshotExecutor{bin: bin, dir: dir}, timeout: time.Minute}
 	return cl, server, vs, dir
@@ -512,7 +516,7 @@ func TestVolumeSnapshotHelperNotZFS(t *testing.T) {
 	_, server, vs, dir := newFakeZFSHost(t)
 	data := filepath.Join(dir, "srv", "data")
 	os.WriteFile(filepath.Join(dir, "mounts"), []byte(data+" /dev/sda1 ext4\n"), 0o644)
-	server.Variables.Set("INNODB_LOG_GROUP_HOME_DIR", data)
+	server.SensitiveVariables.Set("INNODB_LOG_GROUP_HOME_DIR", data)
 	if _, err := vs.List(server); err == nil || !strings.Contains(err.Error(), "not on ZFS") {
 		t.Fatalf("datadir on ext4: %v", err)
 	}

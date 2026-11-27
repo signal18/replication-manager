@@ -212,11 +212,14 @@ func parseVolumeSnapshotOutput(out string) VolumeSnapshotRun {
 // datadir, the redo, undo and InnoDB data directories, the binary logs. A relative one is
 // under the datadir. The helper snapshots the volume holding all of them.
 func (server *ServerMonitor) volumeSnapshotPaths() []string {
-	if server.Variables == nil {
+	// SensitiveVariables keeps the values' case: Variables holds them uppercased
+	// (/VAR/LIB/MYSQL), a path no host has
+	vars := server.SensitiveVariables
+	if vars == nil {
 		return nil
 	}
 	datadir := ""
-	if v, ok := server.Variables.CheckAndGet("DATADIR"); ok {
+	if v, ok := vars.CheckAndGet("DATADIR"); ok {
 		datadir = filepath.Clean(strings.TrimSpace(v))
 	}
 	seen := map[string]bool{}
@@ -240,11 +243,11 @@ func (server *ServerMonitor) volumeSnapshotPaths() []string {
 	}
 	add(datadir)
 	for _, v := range []string{"INNODB_LOG_GROUP_HOME_DIR", "INNODB_UNDO_DIRECTORY", "INNODB_DATA_HOME_DIR"} {
-		if val, ok := server.Variables.CheckAndGet(v); ok {
+		if val, ok := vars.CheckAndGet(v); ok {
 			add(val)
 		}
 	}
-	if val, ok := server.Variables.CheckAndGet("LOG_BIN_BASENAME"); ok && strings.TrimSpace(val) != "" {
+	if val, ok := vars.CheckAndGet("LOG_BIN_BASENAME"); ok && strings.TrimSpace(val) != "" {
 		add(filepath.Dir(strings.TrimSpace(val)))
 	}
 	return out
