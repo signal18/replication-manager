@@ -1,4 +1,4 @@
-import { VStack } from '@chakra-ui/react'
+import { Flex, Text, VStack } from '@chakra-ui/react'
 import React, { useState, useEffect } from 'react'
 
 import Dropdown from '../../../components/Dropdown'
@@ -10,10 +10,13 @@ import { setSetting, switchSetting } from '../../../redux/settingsSlice'
 import { getKubeStorageClasses } from '../../../redux/clusterSlice'
 import { convertObjectToArrayForDropdown } from '../../../utility/common'
 import RMSwitch from '../../../components/RMSwitch'
+import RMButton from '../../../components/RMButton'
+import SetCredentialsModal from '../../../components/Modals/SetCredentialsModal'
+import SSHPrivateKeyModal from '../../../components/Modals/SSHPrivateKeyModal'
 
 // the configurator's Databases / Proxies tabs (#2268): scope 'proxy' keeps the proxy rows, 'db' the
 // others (the database rows and those both share); no scope keeps every row
-const PROXY_ROWS = ['Proxy Start Timeout', 'Proxy VM', 'Kubernetes Proxy Storage Class']
+const PROXY_ROWS = ['Proxy Start Timeout', 'Proxy VM', 'Kubernetes Proxy Storage Class', 'SSH Start Proxy Script', 'SSH Stop Proxy Script']
 const scopedRows = (rows, scope) =>
   !scope ? rows : rows.filter((row) => (scope === 'proxy') === PROXY_ROWS.includes(row.key))
 
@@ -24,6 +27,29 @@ function OrchestratorDbVM({ selectedCluster, user, scope }) {
   } = useSelector((state) => state)
   const kubeStorageClasses = useSelector((state) => state.cluster?.kubeStorageClasses || [])
   const [serviceVMs, setServiceVMs] = useState([])
+  const [isSSHCredentialOpen, setIsSSHCredentialOpen] = useState(false)
+  const [isSSHKeyOpen, setIsSSHKeyOpen] = useState(false)
+  const canEdit = user?.grants?.['cluster-settings'] !== false
+  const orchestrator = selectedCluster?.config?.provOrchestrator
+  // the on-premise SSH settings: the onpremise orchestrator, and proxmox, which runs its host
+  // scripts in the guests over the same SSH
+  const usesSSH = orchestrator === 'onpremise' || orchestrator === 'proxmox'
+  // a local script of the replication-manager host, sent over SSH; base64 like every path
+  const sshScriptRow = (setting, key, field, body) => ({
+    clusterSetting: setting,
+    key,
+    value: (
+      <TextForm
+        value={selectedCluster?.config?.[field]}
+        placeholder='/etc/replication-manager/scripts/script.sh'
+        isDisabled={!canEdit}
+        maxLength={1024}
+        confirmTitle={`${key} Change`}
+        confirmBody={`${body} Empty: the built-in command. Change "${setting}" to: `}
+        onSave={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting, value: btoa(value) }))}
+      />
+    )
+  })
 
   useEffect(() => {
     if (monitor?.serviceVM) {
@@ -293,6 +319,61 @@ function OrchestratorDbVM({ selectedCluster, user, scope }) {
           }
         ]
       : []),
+    ...(usesSSH
+      ? [
+          {
+            clusterSetting: 'onpremise-ssh',
+            key: 'SSH To The Hosts',
+            value: (
+              <RMSwitch
+                isChecked={selectedCluster?.config?.onpremiseSsh}
+                isDisabled={!canEdit}
+                confirmTitle={'Confirm switch settings for onpremise-ssh?'}
+                onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'onpremise-ssh' }))}
+              />
+            )
+          },
+          {
+            clusterSetting: 'onpremise-ssh-port',
+            key: 'SSH Port',
+            value: (
+              <TextForm
+                value={selectedCluster?.config?.onpremiseSshPort}
+                placeholder='22'
+                isDisabled={!canEdit}
+                confirmTitle='SSH Port Change'
+                confirmBody='The SSH port of the database and proxy hosts. Change "onpremise-ssh-port" to: '
+                onSave={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'onpremise-ssh-port', value }))}
+              />
+            )
+          },
+          {
+            clusterSetting: 'onpremise-ssh-credential',
+            key: 'SSH Credentials',
+            value: (
+              <Flex align='center' gap='3' wrap='wrap'>
+                <Text as='span' color='gray.500'>user:password ****</Text>
+                <RMButton isDisabled={!canEdit} onClick={() => setIsSSHCredentialOpen(true)}>Change</RMButton>
+              </Flex>
+            )
+          },
+          {
+            clusterSetting: 'onpremise-ssh-private-key',
+            key: 'SSH Private Key',
+            value: (
+              <Flex align='center' gap='3' wrap='wrap'>
+                <Text as='span' fontFamily='mono' fontSize='sm'>{selectedCluster?.config?.onpremiseSshPrivateKey || '~/.ssh/id_rsa (default)'}</Text>
+                <RMButton isDisabled={!canEdit} onClick={() => setIsSSHKeyOpen(true)}>Change</RMButton>
+              </Flex>
+            )
+          },
+          sshScriptRow('onpremise-ssh-start-db-script', 'SSH Start Database Script', 'onpremiseSshStartDbScript', 'Starts the database on its host.'),
+          sshScriptRow('onpremise-ssh-db-job-script', 'SSH Database Jobs Script', 'onpremiseSshDbJobScript', 'Runs the database jobs on its host.'),
+          sshScriptRow('onpremise-ssh-upgrade-db-script', 'SSH Upgrade Database Script', 'onpremiseSshUpgradeDbScript', 'Upgrades the database in the rolling upgrade.'),
+          sshScriptRow('onpremise-ssh-start-proxy-script', 'SSH Start Proxy Script', 'onpremiseSshStartProxyScript', 'Starts the proxy on its host.'),
+          sshScriptRow('onpremise-ssh-stop-proxy-script', 'SSH Stop Proxy Script', 'onpremiseSshStopProxyScript', 'Stops the proxy on its host.')
+        ]
+      : []),
     {
       clusterSetting: 'prov-docker-daemon-private',
       key: 'Provisioning Private Docker Daemon',
@@ -325,6 +406,15 @@ function OrchestratorDbVM({ selectedCluster, user, scope }) {
   return (
     <VStack>
       <TableType2 dataArray={scopedRows(dataObject, scope)} className={parentStyles.table} />
+      {isSSHCredentialOpen && (
+        <SetCredentialsModal clusterName={selectedCluster?.name} isOpen={isSSHCredentialOpen}
+          type='onpremise-ssh-credential' closeModal={() => setIsSSHCredentialOpen(false)} />
+      )}
+      {isSSHKeyOpen && (
+        <SSHPrivateKeyModal isOpen={isSSHKeyOpen} closeModal={() => setIsSSHKeyOpen(false)}
+          currentPath={selectedCluster?.config?.onpremiseSshPrivateKey}
+          onSave={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'onpremise-ssh-private-key', value: btoa(value) }))} />
+      )}
     </VStack>
   )
 }
