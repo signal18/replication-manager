@@ -54,14 +54,14 @@ var replicationLinkSQLLaterNames = map[string]bool{
 
 // measured at the step that introduced the interface (#2453); lower it when a call moves
 var replicationLinkSQLLater = map[string]int{
-	"cluster/cluster_analytic_child.go":   2, // the analytic child's replicate_ignore_table
+	"cluster/cluster_analytic_child.go":    2, // the analytic child's replicate_ignore_table
 	"cluster/cluster_columnstore_child.go": 1, // the ColumnStore child's replicate_ignore_table
-	"cluster/prov.go":                     1, // the bootstrap's default_master_connection
-	"cluster/spider.go":                   1, // the Spider shard's multi-source channel
-	"cluster/srv_chk.go":                  4, // the exec and GTID modes the monitor enforces
-	"cluster/srv_heartbeat.go":            1, // the managed channel's heartbeat period
-	"cluster/srv_rejoin.go":               1, // the replication password after a rotation
-	"cluster/srv_set.go":                  1, // default_master_connection
+	"cluster/prov.go":                      1, // the bootstrap's default_master_connection
+	"cluster/spider.go":                    1, // the Spider shard's multi-source channel
+	"cluster/srv_chk.go":                   4, // the exec and GTID modes the monitor enforces
+	"cluster/srv_heartbeat.go":             1, // the managed channel's heartbeat period
+	"cluster/srv_rejoin.go":                1, // the replication password after a rotation
+	"cluster/srv_set.go":                   1, // default_master_connection
 }
 
 // replicationLinkSQLLines returns, per helper set, the lines of one file that name a helper of

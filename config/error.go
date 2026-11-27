@@ -386,7 +386,6 @@ var ClusterError = map[string]string{
 	"ERR00132":  "Replication plugin %s of %s does not run: %s",
 	"WARN0340":  "Analytic child %s: table %s stays %s, not made a %s table: %s",
 	"WARN0341":  "Replication plugin %s of %s: a DDL on the source is not applied to the destination, whose table keeps its structure: %s; apply it on %s out of the binlog, or seed the child again",
-	"CINF0032":  "Replication plugin feed %s of %s rebuilt by its rejoin: its source had purged the binary logs it needed, the denormalized tables run their init again and the capture resumes from GTID %s of %s",
 	"CINF0031":  "Analytic child %s: the destination plugin %s is making the chosen tables, for %s (the seed waits for it)",
 	"ERR00140":  "Replication plugin %s of %s is stopped until a new initial load: %s -- rejoin the feed (a new initial load from the source)",
 	"WARN0360":  "Replication plugin %s of %s: its source %s: %s",

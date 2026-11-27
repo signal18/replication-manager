@@ -29,12 +29,17 @@ type linkChange struct {
 	at      time.Time
 }
 
-// recordLinkChange records a change of the channel, replacing its previous one.
+// recordLinkChange records a change of the channel, replacing its previous one; a reseed's
+// record (WARN0252) stays: the reseed's own steps (its repoint, its reset) do not hide why the
+// link is down, only a start or a removal ends it.
 func (server *ServerMonitor) recordLinkChange(channel, op, reason string) {
 	server.linkChangesMu.Lock()
 	defer server.linkChangesMu.Unlock()
 	kept := server.linkChanges[:0:0]
 	for _, c := range server.linkChanges {
+		if c.channel == channel && c.key == "WARN0252" {
+			return
+		}
 		if c.channel != channel {
 			kept = append(kept, c)
 		}

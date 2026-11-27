@@ -78,27 +78,30 @@ code here: the TOML, the State and applied files, and the supervisor's last stat
   = the GTID captured, `Gtid_Slave_Pos` = the GTID applied, `Last_IO_Error` = the plugin's error or
   its stop reason, `Last_SQL_Error` = the apply error, `Slave_SQL_Running_State` = the plugin's
   description (a pause) or disabled / stopped / not started.
-- **Start, stop**: the TOML's `enabled`, then `CheckReplicationPlugins`.
-- **Rejoin**: the GTID applied (`applied.json`, else the State) is checked against the source's
-  binary logs (`gtidRetained`, shared with the backup verification: MySQL `gtid_purged`, MariaDB
-  `BINLOG_GTID_POS` of the oldest binary log). Still there: the feed starts again and resumes from
-  its State. Purged: the feed is rebuilt. It is stopped and its process waited for, the source's
-  current GTID read (`gtid_binlog_pos`, MySQL `gtid_executed`), the applied file, the merges, the
-  checkpoints and the staging schema on the child dropped, the State written at that GTID, and
-  the feed started: the denormalized tables run their init again (the denormalizing query on one
-  consistent snapshot, CDC_CORE.md "Init") and the capture resumes from the GTID read before it,
-  a superset of what follows the snapshot (CINF0032). A feed that also copies tables
-  (`State.Tables`, every analytic child of version 1) cannot be rebuilt by itself: their initial
-  load is the child's seed. The rejoin refuses with the reason and the feed stays recorded
-  (WARN0352): reseed the child master from its parent.
+- **Start, stop**: the TOML's `enabled`, then `CheckReplicationPlugins`. The feed of the
+  `replication-plugin-feed-*` settings (`CDC_SOURCES.md`) has its TOML written every tick from
+  those settings, one source of truth: its link refuses start and stop
+  (`ErrReplicationNotSupported`, naming `replication-plugin-feed-source-cluster`) until the feed
+  has a setting of its own for it; the link never writes that TOML.
+- **Rejoin**: one implementation of the new start, `ReinitReplicationPlugin`
+  (`cluster_replplugin_feed.go`: the plugin stopped and waited for, its position, applied file,
+  checkpoints and merges dropped, what it owns on the source kept).
+  - A capture source of another engine (`SourceKind`, PostgreSQL): when its State says it needs a
+    new initial load (`NeedsInit`), `ReinitReplicationPlugin`; then it resumes.
+  - A MariaDB/MySQL binlog: the GTID applied (`applied.json`, else the State) is checked against
+    the source's binary logs (`gtidRetained`, shared with the backup verification: MySQL
+    `gtid_purged`, MariaDB `BINLOG_GTID_POS` of the oldest binary log). Still there: the feed
+    resumes from its State. Purged: `ReinitReplicationPlugin`, which refuses a binlog feed with the
+    reason (its copies' new start is the child's seed): the feed stays recorded (WARN0352) with
+    that reason, and the operator reseeds the child master from its parent.
 - The source is read only: its binary log list, its positions (F1).
 - **States**: the feed's health stays where it was, in the child's HA domain (WARN0242 stopped,
   WARN0243 apply failing, ERR00130/ERR00131 source, CINF0017): the copies stop until someone acts.
   The merge of the staging late by more than one merge interval is a throughput fact, in the
   workload domain: **WARN0353** (T3, T4: never in the HA view).
 
-A DuckDB or any other destination plugs in by being a replication plugin: its feed is a CDC link
-with no code in this file.
+A DuckDB or any other destination, and any capture source of another engine, plugs in by being a
+replication plugin: its feed is a CDC link with no code in this file.
 
 ## Consumers
 
