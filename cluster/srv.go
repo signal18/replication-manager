@@ -1898,11 +1898,20 @@ func (server *ServerMonitor) freeze() bool {
 	return true
 }
 
+// relayLogStatus is the status row of the managed channel (replication-source-name) that
+// ReadAllRelayLogs waits on. The first read named the default channel "" (since 2019): with a
+// named channel it found no row, its empty Using_Gtid ended the wait at once, and the failover
+// reset a candidate that had not applied its relay log (a test failover: IO at 1309861, applied
+// 1308314, 1547 received transactions dropped, the old master then rejoined as not diverged).
+func (server *ServerMonitor) relayLogStatus() (dbhelper.SlaveStatus, string, error) {
+	return dbhelper.GetMSlaveStatus(server.Conn, server.ClusterGroup.Conf.MasterConn, server.DBVersion)
+}
+
 func (server *ServerMonitor) ReadAllRelayLogs() error {
 	cluster := server.ClusterGroup
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Reading all relay logs on %s", server.URL)
 	if server.DBVersion.IsMariaDB() && server.HaveMariaDBGTID {
-		ss, logs, err := dbhelper.GetMSlaveStatus(server.Conn, "", server.DBVersion)
+		ss, logs, err := server.relayLogStatus()
 		cluster.LogSQL(logs, err, server.URL, "ReadAllRelayLogs", config.LvlInfo, "Could not get slave status %s %s", server.URL, err)
 		if err != nil {
 			return err
@@ -1915,7 +1924,7 @@ func (server *ServerMonitor) ReadAllRelayLogs() error {
 
 		for !myGtid_Slave_Pos.Equal(myGtid_IO_Pos) && ss.UsingGtid.String != "" && ss.GtidSlavePos.String != "" && server.State != stateFailed {
 			server.Refresh()
-			ss, logs, err = dbhelper.GetMSlaveStatus(server.Conn, cluster.Conf.MasterConn, server.DBVersion)
+			ss, logs, err = server.relayLogStatus()
 			cluster.LogSQL(logs, err, server.URL, "ReadAllRelayLogs", config.LvlInfo, "Could not get slave status %s %s", server.URL, err)
 
 			if err != nil {

@@ -158,3 +158,20 @@ func TestFlashbackDropsBinlog(t *testing.T) {
 		t.Fatal("switch off: the binary log is kept")
 	}
 }
+
+// ReadAllRelayLogs waits on the managed channel's row: a named channel (replication-source-name)
+// is found, its Gtid_IO_Pos read, never the empty row of a default channel that does not exist.
+func TestRelayLogStatusNamedChannel(t *testing.T) {
+	mariadb := &version.Version{Flavor: "MariaDB", Major: 11, Minor: 8, Release: 9}
+	server, mock := newMyLoaderPositionServer(t, mariadb, true)
+	server.ClusterGroup.Conf.MasterConn = "bench"
+	mock.ExpectQuery("SHOW ALL SLAVES STATUS").WillReturnRows(sqlmock.NewRows([]string{"Connection_name", "Using_Gtid", "Gtid_IO_Pos", "Gtid_Slave_Pos"}).
+		AddRow("bench", "Slave_Pos", "1-11626367-1309861", "1-11626367-1308314"))
+	ss, _, err := server.relayLogStatus()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ss.ConnectionName.String != "bench" || ss.UsingGtid.String == "" || ss.GtidIOPos.String != "1-11626367-1309861" {
+		t.Fatalf("the managed channel's row must be read: %+v", ss)
+	}
+}
