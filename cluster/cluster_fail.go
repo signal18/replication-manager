@@ -1414,7 +1414,7 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 		cluster.oldMaster.freeze()
 	}
 	if !fail && cluster.Conf.MultiMasterGrouprep {
-		logs, errswitch := cluster.slaves[key].SetGroupReplicationPrimary()
+		logs, errswitch := cluster.slaves[key].GroupReplication().Promote(LinkBySwitchover)
 		if errswitch != nil {
 			// the group kept its PRIMARY: so does replication-manager
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Server %s could not be made the group's PRIMARY (%s): %s; switchover canceled", cluster.slaves[key].URL, logs, errswitch)

@@ -6,85 +6,93 @@ package cluster
 
 import (
 	"errors"
-	"fmt"
-	"strings"
-	"time"
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 )
 
-// The native plugin: a channel of the server's own replication, MariaDB and MySQL/Percona
-// channels, PostgreSQL subscriptions and the standby's WAL receiver (the engine branches are
-// dbhelper's, T1/T23). It is the code that was spread over srv.go (StopSlave, StartSlave,
-// ResetSlave, ...), srv_set.go (ChangeMaster) and the monitor's status read, moved here without a
-// change of what it sends: this file is the only one of the cluster, server, mcp and regtest
-// packages that calls dbhelper's replication link helpers (TestNoReplicationLinkSQLOutsideBackend).
-// One manifest for every engine until step 3 of the design splits it.
+// The native replications: a channel of the server's own replication (MariaDB and MySQL/Percona
+// channels, PostgreSQL subscriptions and the standby's WAL receiver), given by one of the native
+// plugins built into repman (F2: a failover never waits on an external process):
+// replication_binlog.go (repl-mariadb-mariadb-native, repl-mysql-mysql-native,
+// repl-mysql-mariadb-native, repl-columnstore-columnstore-native), replication_postgres.go
+// (repl-postgresql-postgresql-native), replication_group.go (the group membership of the MySQL
+// plugin's group replication). This file holds what every one of them does the same way, the
+// engine branches being dbhelper's (T1/T23), and the monitor's read that builds the objects.
+// These files are the only ones of the cluster, server, mcp and regtest packages that call
+// dbhelper's replication link helpers (TestNoReplicationLinkSQLOutsideBackend).
 
-type nativeReplicationPlugin struct {
-	unsupportedReplicationPlugin
+// nativePlugin is a native plugin: it builds the object of each replication the monitor reads.
+type nativePlugin interface {
+	ReplicationPlugin
+	newReplication(base replicationBase) Replication
 }
 
-// nativeTopologies are the topologies the native code sets up today (BootstrapReplication).
-var nativeTopologies = []ReplicationTopology{
-	{Name: config.TopoMasterSlave, Transport: ReplicationTransportLogical, Consistency: ReplicationConsistencyAsync},
-	{Name: config.TopoMasterSlave, Transport: ReplicationTransportLogical, Consistency: ReplicationConsistencySemiSync},
-	{Name: config.TopoMultiTierSlave, Transport: ReplicationTransportLogical, Consistency: ReplicationConsistencyAsync},
-	{Name: config.TopoMultiMaster, Transport: ReplicationTransportLogical, Consistency: ReplicationConsistencyAsync},
-	{Name: config.TopoMultiMasterRing, Transport: ReplicationTransportLogical, Consistency: ReplicationConsistencyAsync},
-	{Name: config.TopoActivePassive, Transport: ReplicationTransportLogical, Consistency: ReplicationConsistencyAsync},
-	{Name: config.TopoBinlogServer, Transport: ReplicationTransportLogical, Consistency: ReplicationConsistencyAsync},
-	{Name: config.TopoMultiMasterWsrep, Transport: ReplicationTransportLogical, Consistency: ReplicationConsistencyGroup},
-	{Name: config.TopoMultiMasterGrouprep, Transport: ReplicationTransportLogical, Consistency: ReplicationConsistencyGroup},
-	{Name: config.TopoMasterSlavePgStream, Transport: ReplicationTransportPhysical, Consistency: ReplicationConsistencyAsync},
-	{Name: config.TopoMasterSlavePgLog, Transport: ReplicationTransportLogical, Consistency: ReplicationConsistencyAsync},
-	{Name: config.TopoColumnstore, Transport: ReplicationTransportLogical, Consistency: ReplicationConsistencyAsync},
+// nativePlugins are the native plugins by name, built in (no cluster state: their manifests
+// are fixed).
+var nativePlugins = map[string]nativePlugin{
+	ReplicationPluginMariaDBNative:      &binlogReplicationPlugin{manifest: mariadbNativeManifest},
+	ReplicationPluginMySQLNative:        &binlogReplicationPlugin{manifest: mysqlNativeManifest},
+	ReplicationPluginMySQLMariaDBNative: &binlogReplicationPlugin{manifest: mysqlMariaDBNativeManifest},
+	ReplicationPluginColumnStoreNative:  &binlogReplicationPlugin{manifest: columnstoreNativeManifest},
+	ReplicationPluginPostgreSQLNative:   &postgresReplicationPlugin{},
 }
 
-// nativeManifest: every action but the bootstrap and the creation of a link, which stay in
-// prov.go until step 5.
-var nativeManifest = ReplicationManifest{
-	Name:       ReplicationPluginNative,
-	Type:       string(ReplicationKindNative),
-	Source:     []string{"MariaDB", "MySQL", "Percona", "PostgreSQL"},
-	Target:     []string{"MariaDB", "MySQL", "Percona", "PostgreSQL"},
-	Topologies: nativeTopologies,
-	Actions: []string{
-		ReplicationActionRemove, ReplicationActionStatus, ReplicationActionWaitCaughtUp,
-		ReplicationActionStart, ReplicationActionStop,
-		ReplicationActionStartCopyEvents, ReplicationActionStopCopyEvents,
-		ReplicationActionStartApplyEvents, ReplicationActionStopApplyEvents,
-		ReplicationActionResetPositions, ReplicationActionSetPosition, ReplicationActionChangeSource,
-		ReplicationActionPromote, ReplicationActionSkipEvent, ReplicationActionRejoin,
-		ReplicationActionConfigure, ReplicationActionRotateCredential,
-	},
+// nativePluginName is the native plugin of a replication into server from source: the
+// server's engine, the cluster's topology, and the source's engine when repman monitors it
+// (a MySQL source into a MariaDB server is repl-mysql-mariadb-native). Without a known
+// engine, the MariaDB one, as every object was before the split.
+func (server *ServerMonitor) nativePluginName(source Endpoint) string {
+	if server == nil {
+		return ReplicationPluginMariaDBNative
+	}
+	if server.IsPostgreSQLHost() { // the engine, or a PostgreSQL topology declared
+		return ReplicationPluginPostgreSQLNative
+	}
+	if server.DBVersion == nil {
+		return ReplicationPluginMariaDBNative
+	}
+	switch {
+	case server.DBVersion.IsMySQLOrPercona():
+		return ReplicationPluginMySQLNative
+	case server.ClusterGroup != nil && server.ClusterGroup.Conf != nil && server.ClusterGroup.HasConfigTopoColumnstore():
+		return ReplicationPluginColumnStoreNative
+	case source.Server != nil && source.Server.DBVersion != nil && source.Server.DBVersion.IsMySQLOrPercona():
+		return ReplicationPluginMySQLMariaDBNative
+	}
+	return ReplicationPluginMariaDBNative
 }
 
-func (p *nativeReplicationPlugin) Manifest() ReplicationManifest { return nativeManifest }
-
-// Bootstrap: step 5 of the design moves BootstrapReplication (prov.go) here; until then the
-// bootstrap runs from prov.go.
-func (p *nativeReplicationPlugin) Bootstrap(c *Cluster, topology string, master *ServerMonitor) error {
-	return fmt.Errorf("%w: %s of topology %q by %s (step 5)", ErrReplicationNotSupported, ReplicationActionBootstrap, topology, ReplicationPluginNative)
+// newNativeObject is the object of base's plugin (base.manifest.Name), a binlog one for a name
+// no native plugin has.
+func newNativeObject(base replicationBase) Replication {
+	if p, ok := nativePlugins[base.manifest.Name]; ok {
+		return p.newReplication(base)
+	}
+	return &binlogReplication{nativeReplication{base}}
 }
 
-// Create: step 5, with the bootstrap.
-func (p *nativeReplicationPlugin) Create(source Endpoint, target *ServerMonitor, name, reason string) (Replication, error) {
-	return nil, fmt.Errorf("%w: %s of %q by %s (step 5)", ErrReplicationNotSupported, ReplicationActionCreate, name, ReplicationPluginNative)
+// isNativePlugin tells whether name is a built-in native plugin.
+func isNativePlugin(name string) bool {
+	_, ok := nativePlugins[name]
+	return ok
 }
 
 // nativeReplication is one channel of a server: MariaDB and MySQL/Percona channels, a
-// PostgreSQL subscription or a standby's WAL receiver. The engine branches are dbhelper's.
+// PostgreSQL subscription or a standby's WAL receiver, with the verbs every native plugin does
+// the same way (status, start, stop, reset of the positions, removal, CHANGE MASTER, rejoin).
+// Each plugin's object embeds it and adds its own (binlogReplication, postgresReplication).
 type nativeReplication struct {
 	replicationBase
 }
 
-// nativeReplication is the object of one row the monitor read (refreshNativeLinks), or of a
+// newNativeReplication is the object of one row the monitor read (refreshNativeLinks), or of a
 // channel not defined yet (ReplicationChannelLink): its source resolved from the row's
-// Master_Host and Master_Port.
-func (server *ServerMonitor) nativeReplication(channel string, row dbhelper.SlaveStatus) *nativeReplication {
-	return &nativeReplication{replicationBase: newReplicationBase(nativeManifest, server, channel, row, row.MasterHost.String, row.MasterPort.String)}
+// Master_Host and Master_Port, then its plugin chosen (nativePluginName).
+func (server *ServerMonitor) newNativeReplication(channel string, row dbhelper.SlaveStatus) Replication {
+	base := newReplicationBase(ReplicationManifest{}, server, channel, row, row.MasterHost.String, row.MasterPort.String)
+	base.manifest = nativePlugins[server.nativePluginName(base.source)].Manifest()
+	return newNativeObject(base)
 }
 
 // conn is the target, refused without a connection pool (and for a copy decoded from JSON).
@@ -136,51 +144,6 @@ func (r *nativeReplication) Start(reason string) (string, error) {
 	return logs, err
 }
 
-// StartCopyEvents starts the IO thread. The record of a stop stays until the tick sees both
-// threads run (checkLinkChanges): half a link started is not a link running.
-func (r *nativeReplication) StartCopyEvents(reason string) (string, error) {
-	server, err := r.conn()
-	if err != nil {
-		return "", err
-	}
-	return dbhelper.StartSlaveIOThread(server.Conn, r.name, server.DBVersion)
-}
-
-// StopCopyEvents stops the IO thread, recorded once the statement succeeded.
-func (r *nativeReplication) StopCopyEvents(reason string) (string, error) {
-	server, err := r.conn()
-	if err != nil {
-		return "", err
-	}
-	logs, err := dbhelper.StopSlaveIOThread(server.Conn, r.name, server.DBVersion)
-	if err == nil {
-		server.recordLinkChange(r.name, linkOpStopCopyEvents, reason)
-	}
-	return logs, err
-}
-
-// StartApplyEvents starts the SQL thread; the record stays as for StartCopyEvents.
-func (r *nativeReplication) StartApplyEvents(reason string) (string, error) {
-	server, err := r.conn()
-	if err != nil {
-		return "", err
-	}
-	return dbhelper.StartSlaveSQLThread(server.Conn, r.name, server.DBVersion)
-}
-
-// StopApplyEvents stops the SQL thread, recorded once the statement succeeded.
-func (r *nativeReplication) StopApplyEvents(reason string) (string, error) {
-	server, err := r.conn()
-	if err != nil {
-		return "", err
-	}
-	logs, err := dbhelper.StopSlaveSQLThread(server.Conn, r.name, server.DBVersion)
-	if err == nil {
-		server.recordLinkChange(r.name, linkOpStopApplyEvents, reason)
-	}
-	return logs, err
-}
-
 // ResetPositions clears the channel's positions and relay logs and keeps the link (RESET
 // SLAVE without ALL): what a reseed may do, never delete the link (law T27, #2093).
 func (r *nativeReplication) ResetPositions(reason string) (string, error) {
@@ -206,94 +169,6 @@ func (r *nativeReplication) Remove(reason string) (string, error) {
 	logs, err := dbhelper.ResetSlave(server.Conn, true, r.name, server.DBVersion)
 	if err == nil {
 		server.clearLinkChange(r.name)
-	}
-	return logs, err
-}
-
-// Promote ends this edge, the link part of the failover and switchover's promotion of the
-// candidate, moved from cluster_fail.go with its statements and its log lines: on MySQL and
-// Percona the channel is stopped first (a reset needs every thread stopped), then RESET SLAVE ALL
-// on the channel (Remove), the reset tried whatever the stop gave, as before. read_only is the
-// server's, not the link's: the failover sets it off itself (SetReadWrite) after reading the new
-// master's position (openNewMaster). PostgreSQL: pg_promote() (PostgresPromote), the standby
-// leaves recovery. Each failure is logged here; the error joins them.
-func (r *nativeReplication) Promote(reason string) (string, error) {
-	server, err := r.conn()
-	if err != nil {
-		return "", err
-	}
-	if server.IsPostgreSQLHost() {
-		return dbhelper.PostgresPromote(server.Conn, postgresPromoteWaitSeconds)
-	}
-	cluster := server.ClusterGroup
-	var all string
-	var errs []error
-	if server.DBVersion.IsMySQLOrPercona() {
-		// Need to stop all threads to reset on MySQL
-		logs, err := r.Stop(reason)
-		cluster.LogSQL(logs, err, server.URL, "MasterFailover", config.LvlErr, "Failed stop slave on new master %s %s", server.URL, err)
-		all += logs
-		errs = append(errs, err)
-	}
-	logs, err := r.Remove(reason)
-	cluster.LogSQL(logs, err, server.URL, "MasterFailover", config.LvlErr, "Failed reset slave on new master %s %s", server.URL, err)
-	all += logs
-	errs = append(errs, err)
-	return all, errors.Join(errs...)
-}
-
-// SetPosition sets where the apply resumes. MariaDB: gtid_slave_pos, the link's resume position
-// (SetGTIDSlavePos, every caller's statement until now). MySQL and Percona: GTID_PURGED
-// (SetGtidPurged, the backup verification's), which is the server's whole GTID state, not the
-// link's: valid only right after a restore, once RESET MASTER emptied gtid_executed; on a server
-// whose gtid_executed is not empty it is refused (ErrReplicationPositionNotEmpty), never
-// attempted. Not recorded (the callers stop the link around it). PostgreSQL: a subscription's
-// position is its replication origin, which repman does not set: ErrReplicationNotSupported.
-func (r *nativeReplication) SetPosition(at Position, reason string) (string, error) {
-	server, err := r.conn()
-	if err != nil {
-		return "", err
-	}
-	switch {
-	case server.DBVersion.IsPostgreSQL():
-		return "", r.notSupported(ReplicationActionSetPosition + " on PostgreSQL")
-	case server.DBVersion.IsMySQLOrPercona():
-		executed, logs, err := dbhelper.GetVariableByName(server.Conn, "GTID_EXECUTED", server.DBVersion)
-		if err != nil {
-			return logs, err
-		}
-		if strings.TrimSpace(executed) != "" {
-			return logs, fmt.Errorf("%w: gtid_executed of %s is %q, GTID_PURGED is set only on a server just reset (RESET MASTER after a restore)", ErrReplicationPositionNotEmpty, server.URL, executed)
-		}
-		return dbhelper.SetGtidPurged(server.Conn, server.DBVersion, at.GTID)
-	}
-	return dbhelper.SetGTIDSlavePos(server.Conn, at.GTID)
-}
-
-// WaitCaughtUp waits for the channel to apply until: MASTER_GTID_WAIT on MariaDB
-// (MasterWaitGTIDReached), MASTER_POS_WAIT / SOURCE_POS_WAIT of the channel otherwise
-// (MasterPosWaitReached), the statements WaitSyncToMaster and WaitSyncToTarget sent. The
-// timeout is ErrReplicationNotCaughtUp; a wait the server aborted (NULL) an error.
-// PostgreSQL: the wait reads the primary's LSN (postgresWaitSync, cluster_fail_postgres.go)
-// until step 3 moves it here: ErrReplicationNotSupported.
-func (r *nativeReplication) WaitCaughtUp(until Position, timeout time.Duration) (string, error) {
-	server, err := r.conn()
-	if err != nil {
-		return "", err
-	}
-	if server.DBVersion.IsPostgreSQL() {
-		return "", r.notSupported(ReplicationActionWaitCaughtUp + " on PostgreSQL")
-	}
-	secs := int(timeout / time.Second)
-	var reached bool
-	var logs string
-	if server.DBVersion.IsMariaDB() {
-		reached, logs, err = dbhelper.MasterWaitGTIDReached(server.Conn, until.GTID, secs)
-	} else {
-		reached, logs, err = dbhelper.MasterPosWaitReached(server.Conn, server.DBVersion, until.File, until.Pos, secs, r.name)
-	}
-	if err == nil && !reached {
-		err = fmt.Errorf("%w: %s after %s", ErrReplicationNotCaughtUp, until.String(), timeout)
 	}
 	return logs, err
 }
@@ -329,16 +204,6 @@ func (r *nativeReplication) ChangeSource(to Endpoint, opt ChangeSourceOpt, reaso
 	return logs, err
 }
 
-// SkipEvent skips one event; reason is not used: the skip runs between a stop and a start,
-// which record and clear the link's state.
-func (r *nativeReplication) SkipEvent(reason string) (string, error) {
-	server, err := r.conn()
-	if err != nil {
-		return "", err
-	}
-	return dbhelper.SkipBinlogEvent(server.Conn, r.name, server.DBVersion)
-}
-
 // Rejoin is the rejoin family of srv_rejoin.go (flashback, reseed, dump, SST, script, ...):
 // the server rejoins the cluster's master, whatever the channel the link names.
 func (r *nativeReplication) Rejoin() error {
@@ -346,70 +211,6 @@ func (r *nativeReplication) Rejoin() error {
 		return r.noTarget()
 	}
 	return r.target.rejoinMaster()
-}
-
-// setSlaveHeartbeat changes a channel's period; a variable so a test sees the call.
-var setSlaveHeartbeat = dbhelper.SetSlaveHeartbeat
-
-// Configure applies opts on the channel, each option with the statement the force-slave-*
-// enforcement sent before (CheckSlaveSettings, checkReplicationHeartbeatPeriod): the GTID mode
-// (SetSlaveGTIDMode), gtid_strict_mode (SetSlaveGTIDModeStrict), the exec mode
-// (SetSlaveExecMode), the parallel mode (SetSlaveParallelMode, which stops and starts the SQL
-// thread) and the heartbeat period (SetSlaveHeartbeat). The decision of what to set, and the
-// states, stay the monitor's. PostgreSQL has none of these: ErrReplicationNotSupported.
-func (r *nativeReplication) Configure(opts LinkOptions, reason string) (string, error) {
-	server, err := r.conn()
-	if err != nil {
-		return "", err
-	}
-	if opts.empty() {
-		return "", nil
-	}
-	if server.DBVersion.IsPostgreSQL() {
-		return "", r.notSupported(ReplicationActionConfigure + " on PostgreSQL")
-	}
-	var all string
-	var errs []error
-	run := func(logs string, err error) {
-		all += logs
-		errs = append(errs, err)
-	}
-	if opts.GTIDMode != "" {
-		run(dbhelper.SetSlaveGTIDMode(server.Conn, opts.GTIDMode, r.name, server.DBVersion))
-	}
-	if opts.GTIDStrict {
-		run(dbhelper.SetSlaveGTIDModeStrict(server.Conn, server.DBVersion))
-	}
-	if opts.ExecMode != "" {
-		run(dbhelper.SetSlaveExecMode(server.Conn, opts.ExecMode, r.name, server.DBVersion))
-	}
-	if opts.ParallelMode != "" {
-		run(dbhelper.SetSlaveParallelMode(server.Conn, opts.ParallelMode, r.name, server.DBVersion))
-	}
-	if opts.HeartbeatPeriod != "" {
-		run(setSlaveHeartbeat(server.Conn, opts.HeartbeatPeriod, r.name, server.DBVersion))
-	}
-	return all, errors.Join(errs...)
-}
-
-// RotateCredential sets the cluster's replication account (GetRplUser, GetRplPass) on the
-// channel: ChangeReplicationPassword, the rejoin's statement after a rotation (it stops the
-// channel to change it). PostgreSQL: a subscription's password is in its conninfo, which repman
-// does not rotate yet: ErrReplicationNotSupported.
-func (r *nativeReplication) RotateCredential(reason string) (string, error) {
-	server, err := r.conn()
-	if err != nil {
-		return "", err
-	}
-	if server.DBVersion.IsPostgreSQL() {
-		return "", r.notSupported(ReplicationActionRotateCredential + " on PostgreSQL")
-	}
-	cluster := server.ClusterGroup
-	return dbhelper.ChangeReplicationPassword(server.Conn, dbhelper.ChangeMasterOpt{
-		User:     cluster.GetRplUser(),
-		Password: cluster.GetRplPass(),
-		Channel:  r.name,
-	}, server.DBVersion)
 }
 
 // SkipReplicationEvent stops the managed link, skips the next event of its apply and starts it
@@ -514,7 +315,7 @@ func (server *ServerMonitor) refreshNativeLinks() (ReplicationList, string, erro
 		list = make(ReplicationList, 0, len(rows))
 	}
 	for _, row := range rows {
-		list = append(list, server.nativeReplication(row.ConnectionName.String, row))
+		list = append(list, server.newNativeReplication(row.ConnectionName.String, row))
 	}
 	if len(rows) > 0 && err == nil && server.DBVersion.IsPostgreSQL() && server.ReplicationSourceName == "" {
 		//setting first subscription if we don't have one

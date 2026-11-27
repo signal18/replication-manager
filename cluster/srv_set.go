@@ -69,12 +69,6 @@ func (server *ServerMonitor) SetEventScheduler(value bool) (string, error) {
 	return logs, err
 }
 
-func (server *ServerMonitor) SetGroupReplicationPrimary() (string, error) {
-	logs, err := dbhelper.SetGroupReplicationPrimary(server.Conn, server.DBVersion)
-	server.GetCluster().LogSQL(logs, err, server.URL, "MasterFailover", config.LvlErr, "Could not set server a primary")
-	return logs, err
-}
-
 func (server *ServerMonitor) SetState(state string) {
 	cluster := server.ClusterGroup
 	if server.PrevState != state {

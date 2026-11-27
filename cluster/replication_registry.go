@@ -8,22 +8,26 @@ import (
 	"fmt"
 )
 
-// The built-in replication plugins (design step 2). The native binlog code serves every
-// engine under one manifest until step 3 splits it (repl-mysql-mysql-native,
-// repl-postgresql-postgresql-native, ...); every CDC binary is one generic adapter until step 4
-// gives each binary its manifest (repl-mariadb-duckdb-cdc, ...).
-const (
-	ReplicationPluginNative = "repl-mariadb-mariadb-native"
-	ReplicationPluginCDC    = "repl-cdc"
-)
+// The built-in replication plugins: the native ones (nativePlugins, replication_native.go:
+// binlog under four manifests, PostgreSQL), and every CDC binary as one generic adapter until
+// step 4 gives each binary its manifest (repl-mariadb-duckdb-cdc, ...).
+const ReplicationPluginCDC = "repl-cdc"
+
+// builtinReplicationPlugins are the names of the built-in plugins, the native ones first.
+func builtinReplicationPlugins() []string {
+	return []string{
+		ReplicationPluginMariaDBNative, ReplicationPluginMySQLNative, ReplicationPluginMySQLMariaDBNative,
+		ReplicationPluginPostgreSQLNative, ReplicationPluginColumnStoreNative, ReplicationPluginCDC,
+	}
+}
 
 // newReplicationPluginList builds the cluster's replication plugins by name, as
-// newOrchestratorList builds its orchestrators: today the two built in.
+// newOrchestratorList builds its orchestrators: today the built-in ones.
 func (cluster *Cluster) newReplicationPluginList() error {
 	cluster.replicationPluginsMutex.Lock()
 	defer cluster.replicationPluginsMutex.Unlock()
 	cluster.ReplicationPlugins = make(map[string]ReplicationPlugin)
-	for _, name := range []string{ReplicationPluginNative, ReplicationPluginCDC} {
+	for _, name := range builtinReplicationPlugins() {
 		if p, ok := newReplicationPlugin(name); ok {
 			cluster.ReplicationPlugins[name] = p
 		}
@@ -33,9 +37,10 @@ func (cluster *Cluster) newReplicationPluginList() error {
 
 // newReplicationPlugin builds the plugin of that name; false for an unknown one.
 func newReplicationPlugin(name string) (ReplicationPlugin, bool) {
+	if p, ok := nativePlugins[name]; ok {
+		return p, true
+	}
 	switch name {
-	case ReplicationPluginNative:
-		return &nativeReplicationPlugin{}, true
 	case ReplicationPluginCDC:
 		return &cdcReplicationPlugin{}, true
 	}
@@ -95,7 +100,8 @@ func (n *nullReplicationPlugin) Manifest() ReplicationManifest {
 }
 
 var (
-	_ ReplicationPlugin = (*nativeReplicationPlugin)(nil)
+	_ nativePlugin      = (*binlogReplicationPlugin)(nil)
+	_ nativePlugin      = (*postgresReplicationPlugin)(nil)
 	_ ReplicationPlugin = (*cdcReplicationPlugin)(nil)
 	_ ReplicationPlugin = (*nullReplicationPlugin)(nil)
 )

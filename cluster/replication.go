@@ -245,7 +245,7 @@ var ErrReplicationNotSupported = errors.New("operation not supported by this rep
 
 // ErrReplicationPositionNotEmpty: SetPosition on MySQL refused, the server already has a GTID
 // state (gtid_executed not empty): GTID_PURGED is set only right after a restore.
-var ErrReplicationPositionNotEmpty = errors.New("the server's GTID state is not empty")
+var ErrReplicationPositionNotEmpty = dbhelper.ErrGTIDStateNotEmpty
 
 // ErrReplicationNotCaughtUp: WaitCaughtUp's timeout came before the position.
 var ErrReplicationNotCaughtUp = errors.New("replication did not reach the position before the timeout")
@@ -306,11 +306,11 @@ func (l *ReplicationList) UnmarshalJSON(b []byte) error {
 			row:  j.SlaveStatus,
 			ends: replicationEnds{SourceCluster: j.SourceCluster, SourceServer: j.SourceServer, TargetCluster: j.TargetCluster, TargetServer: j.TargetServer},
 		}
-		switch j.Plugin {
-		case ReplicationPluginNative:
-			base.manifest = nativeManifest
-			out = append(out, &nativeReplication{replicationBase: base})
-		case ReplicationPluginCDC:
+		switch {
+		case isNativePlugin(j.Plugin):
+			base.manifest = nativePlugins[j.Plugin].Manifest()
+			out = append(out, newNativeObject(base))
+		case j.Plugin == ReplicationPluginCDC:
 			base.manifest = cdcManifest
 			out = append(out, &cdcReplication{replicationBase: base})
 		default:
@@ -551,7 +551,7 @@ func (server *ServerMonitor) ReplicationChannelLink(channel string) Replication 
 			return r
 		}
 	}
-	return server.nativeReplication(channel, dbhelper.SlaveStatus{})
+	return server.newNativeReplication(channel, dbhelper.SlaveStatus{})
 }
 
 // NativeReplications are the server's native channels as last read (no CDC feed): what the

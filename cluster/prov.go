@@ -1064,7 +1064,7 @@ func (cluster *Cluster) BootstrapReplication(clean bool, ftwrl bool) error {
 				if cluster.Conf.MultiMasterGrouprep {
 					// All clsuter node need a specialreplicaton for recovery parameters are not important as leader host is not needed
 					server.ChangeMasterTo(server, "CURRENT_POS", LinkByBootstrap)
-					server.BootstrapGroupReplication()
+					server.GroupReplication().bootstrapGroup()
 				}
 				continue
 			} else {
@@ -1079,7 +1079,7 @@ func (cluster *Cluster) BootstrapReplication(clean bool, ftwrl bool) error {
 
 				if cluster.Conf.MultiMasterGrouprep {
 					_ = server.ChangeMasterTo(server, "SLAVE_POS", LinkByBootstrap)
-					server.StartGroupReplication()
+					server.GroupReplication().Start(LinkByBootstrap)
 				} else {
 					if server.IsPostgreSQLHost() {
 						// the DDL replication objects before the subscription: the log table

@@ -57,10 +57,20 @@ var replicationLinkSQL = map[string]bool{
 	"SetSlaveHeartbeat":         true,
 	"SetSlaveParallelMode":      true,
 	"ChangeReplicationPassword": true,
+	// step 3: the engine branches of the binlog plugin, and the group membership
+	"ReplicaWaitReached":           true,
+	"SetReplicaPosition":           true,
+	"SetGroupReplicationPrimary":   true,
+	"StartGroupReplication":        true,
+	"BootstrapGroupReplication":    true,
+	"SetGroupReplicationAllowlist": true,
 }
 
 var replicationLinkBackendFiles = map[string]bool{
-	"cluster/replication_native.go": true,
+	"cluster/replication_native.go":   true,
+	"cluster/replication_binlog.go":   true,
+	"cluster/replication_postgres.go": true,
+	"cluster/replication_group.go":    true,
 }
 
 var replicationLinkSQLLaterNames = map[string]bool{
@@ -178,10 +188,10 @@ func (server *ServerMonitor) replicationsOfRows(rows ...dbhelper.SlaveStatus) Re
 	out := ReplicationList{}
 	for _, row := range rows {
 		if server == nil {
-			out = append(out, &nativeReplication{replicationBase: replicationBase{manifest: nativeManifest, name: row.ConnectionName.String, row: row}})
+			out = append(out, newNativeObject(replicationBase{manifest: mariadbNativeManifest, name: row.ConnectionName.String, row: row}))
 			continue
 		}
-		out = append(out, server.nativeReplication(row.ConnectionName.String, row))
+		out = append(out, server.newNativeReplication(row.ConnectionName.String, row))
 	}
 	return out
 }
@@ -243,13 +253,13 @@ func TestReplicationPluginRegistry(t *testing.T) {
 	if err := c.newReplicationPluginList(); err != nil {
 		t.Fatal(err)
 	}
-	for name, kind := range map[string]ReplicationKind{ReplicationPluginNative: ReplicationKindNative, ReplicationPluginCDC: ReplicationKindCDC} {
+	for name, kind := range map[string]ReplicationKind{ReplicationPluginMariaDBNative: ReplicationKindNative, ReplicationPluginCDC: ReplicationKindCDC} {
 		m := c.ReplicationPlugin(name).Manifest()
 		if m.Name != name || ReplicationKind(m.Type) != kind || len(m.Topologies) == 0 || len(m.Actions) == 0 {
 			t.Errorf("%s: manifest %+v", name, m)
 		}
 	}
-	native := c.ReplicationPlugin(ReplicationPluginNative).Manifest()
+	native := c.ReplicationPlugin(ReplicationPluginMariaDBNative).Manifest()
 	for _, a := range []string{ReplicationActionStartCopyEvents, ReplicationActionStopCopyEvents, ReplicationActionStartApplyEvents, ReplicationActionStopApplyEvents, ReplicationActionChangeSource, ReplicationActionRejoin,
 		ReplicationActionPromote, ReplicationActionSetPosition, ReplicationActionWaitCaughtUp, ReplicationActionConfigure, ReplicationActionRotateCredential} {
 		if !native.Can(a) {
@@ -261,10 +271,10 @@ func TestReplicationPluginRegistry(t *testing.T) {
 			t.Errorf("native: %s listed before step 5", a)
 		}
 	}
-	if err := c.ReplicationPlugin(ReplicationPluginNative).Bootstrap(c, "master-slave", sv); !errors.Is(err, ErrReplicationNotSupported) {
+	if err := c.ReplicationPlugin(ReplicationPluginMariaDBNative).Bootstrap(c, "master-slave", sv); !errors.Is(err, ErrReplicationNotSupported) {
 		t.Errorf("native Bootstrap: want ErrReplicationNotSupported (step 5), got %v", err)
 	}
-	if _, err := c.ReplicationPlugin(ReplicationPluginNative).Create(Endpoint{Host: "db2.belair", Port: "3306"}, sv, "belair", LinkByTest); !errors.Is(err, ErrReplicationNotSupported) {
+	if _, err := c.ReplicationPlugin(ReplicationPluginMariaDBNative).Create(Endpoint{Host: "db2.belair", Port: "3306"}, sv, "belair", LinkByTest); !errors.Is(err, ErrReplicationNotSupported) {
 		t.Errorf("native Create: want ErrReplicationNotSupported (step 5), got %v", err)
 	}
 	unknownPlugin := c.ReplicationPlugin("repl-nowhere-nowhere-native")
@@ -282,7 +292,7 @@ func TestReplicationPluginRegistry(t *testing.T) {
 	if CanFailover(unknown) {
 		t.Error("the failover never moves a replication whose plugin can not promote")
 	}
-	if (*Cluster)(nil).ReplicationPlugin(ReplicationPluginNative).Manifest().Name != ReplicationPluginNative {
+	if (*Cluster)(nil).ReplicationPlugin(ReplicationPluginMariaDBNative).Manifest().Name != ReplicationPluginMariaDBNative {
 		t.Error("a nil cluster still resolves a built-in plugin")
 	}
 }
@@ -308,7 +318,7 @@ func TestReplicationEnds(t *testing.T) {
 		if r.SourceCluster() != want.cluster || r.SourceServer().Server != want.server || r.SourceServer().URL() != want.url {
 			t.Errorf("%s: source %v %+v", want.name, r.SourceCluster(), r.SourceServer())
 		}
-		if r.TargetServer() != sv || r.TargetCluster() != c || r.Plugin().Name != ReplicationPluginNative {
+		if r.TargetServer() != sv || r.TargetCluster() != c || r.Plugin().Name != ReplicationPluginMariaDBNative {
 			t.Errorf("%s: target %v %v", want.name, r.TargetServer(), r.TargetCluster())
 		}
 	}
@@ -354,7 +364,7 @@ func TestReplicationJSONKeepsTheRowKeys(t *testing.T) {
 			t.Errorf("key %q: %s, today %s", k, e[k], v)
 		}
 	}
-	for k, v := range map[string]string{"plugin": ReplicationPluginNative, "sourceCluster": "belair", "sourceServer": "db2.belair:3306", "targetCluster": "belair", "targetServer": "db1.child:3306"} {
+	for k, v := range map[string]string{"plugin": ReplicationPluginMariaDBNative, "sourceCluster": "belair", "sourceServer": "db2.belair:3306", "targetCluster": "belair", "targetServer": "db1.child:3306"} {
 		var s string
 		if err := json.Unmarshal(e[k], &s); err != nil || s != v {
 			t.Errorf("%s: %s, want %q", k, e[k], v)

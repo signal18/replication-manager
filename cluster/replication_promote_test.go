@@ -33,7 +33,7 @@ func TestOpenNewMasterOrder(t *testing.T) {
 		{"multi-master switchover", false, true, []string{"refresh", "read-write"}},
 	} {
 		var calls []string
-		link := &recordingReplication{replicationBase: replicationBase{manifest: nativeManifest, name: "belair"}, calls: &calls}
+		link := &recordingReplication{replicationBase: replicationBase{manifest: mariadbNativeManifest, name: "belair"}, calls: &calls}
 		rwErr := errors.New("read only refused")
 		err := openNewMaster(link, LinkBySwitchover, c.promote, c.refresh,
 			func() error { calls = append(calls, "refresh"); return nil },

@@ -173,7 +173,7 @@ func (server *ServerMonitor) rejoinMaster() error {
 			server.RejoinScript()
 			if cluster.Conf.MultiMasterGrouprep {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Group replication rejoin: %s joins the group", server.URL)
-				server.StartGroupReplication()
+				server.GroupReplication().Start(LinkByRejoin)
 
 			} else {
 				if cluster.Conf.FailoverSemiSyncState {
@@ -830,7 +830,8 @@ func (server *ServerMonitor) rejoinMasterAsSlave() error {
 		// running channel makes START GROUP_REPLICATION fail on a secondary (#2170). The
 		// same rejoin as when a master is known; no channel is created, stopped or changed.
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Group replication rejoin: %s joins the group", server.URL)
-		return server.StartGroupReplication()
+		_, err := server.GroupReplication().Start(LinkByRejoin)
+		return err
 	}
 	realmaster := cluster.lastmaster
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Rejoining old master server %s to saved master %s", server.URL, realmaster.URL)
