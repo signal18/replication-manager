@@ -8,6 +8,7 @@ package cluster
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -1128,6 +1129,30 @@ func (cluster *Cluster) CancelTableChecksum() {
 	cluster.checksumCancel.Add(1)
 }
 
+// checksumRepairChunkSQL is the repair of one chunk of schema.table that differs on a replica, in
+// one transaction on the master, logged in row format: the chunk's rows copied aside, deleted,
+// written back, so that every replica receives them again. The copy aside is created LIKE the
+// table, its primary key with it: CREATE ... AS SELECT made a table without one, which
+// innodb_force_primary_key refuses (1173), and the repair stopped at its first chunk (#2465).
+func checksumRepairChunkSQL(schema string, table string, cond string) []string {
+	return []string{
+		"START TRANSACTION",
+		"CREATE OR REPLACE TEMPORARY TABLE tmp_repair LIKE " + schema + "." + table,
+		"INSERT INTO tmp_repair SELECT * FROM " + schema + "." + table + " A WHERE  " + cond + " FOR UPDATE",
+		// Multi-table DELETE form: the chunk condition is built with A.-qualified
+		// predicates, and single-table DELETE only accepts an alias on MariaDB >= 11.6
+		// (MDEV-33988; backport to LTS refused in MDEV-37227). DELETE A FROM ... A works
+		// everywhere.
+		"DELETE A FROM " + schema + "." + table + " A WHERE  " + cond,
+		"INSERT INTO " + schema + "." + table + " SELECT * FROM  tmp_repair",
+		"COMMIT",
+	}
+}
+
+// RepairTableChecksum rewrites on the master the chunks of schema.table that differ on a
+// replica (from the last checksum), then checksums the table again. It runs on one pinned
+// connection: its session settings, its transaction and its temporary table hold on it. A
+// statement that fails rolls the chunk back and ends the table NA with WARN0342 (#2465).
 func (cluster *Cluster) RepairTableChecksum(schema string, table string) {
 	master := cluster.GetMaster()
 	if master == nil {
@@ -1135,20 +1160,33 @@ func (cluster *Cluster) RepairTableChecksum(schema string, table string) {
 		return
 	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Repair table %s.%s %s", schema, table, master.URL)
-	Conn, err := master.GetNewDBConn()
+	failed := func(reason string) {
+		if master.DictTables != nil {
+			if t := master.DictTables.Get(schema + "." + table); t != nil {
+				cluster.checksumFailed(master, t, schema, table, "repair: "+reason)
+				return
+			}
+		}
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Repair table %s.%s failed: %s", schema, table, reason)
+	}
+	db, err := master.GetNewDBConn()
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error connection in exec query no log %s", err)
+		failed(fmt.Sprintf("connection: %s", err))
+		return
+	}
+	defer db.Close()
+	ctx := context.Background()
+	Conn, err := db.Connx(ctx)
+	if err != nil {
+		failed(fmt.Sprintf("connection: %s", err))
 		return
 	}
 	defer Conn.Close()
 
-	Conn.SetConnMaxLifetime(3595 * time.Second)
-	Conn.Exec("SET SESSION TRANSACTION ISOLATION LEVEL REPEATABLE READ")
-	Conn.Exec("SET SESSION binlog_format = 'ROW'")
-	Conn.Exec("SET SESSION FOREIGN_KEY_CHECKS = 0")
-
-	Conn.Exec("USE " + schema)
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Repair table %s.%s", schema, table)
+	Conn.ExecContext(ctx, "SET SESSION TRANSACTION ISOLATION LEVEL REPEATABLE READ")
+	Conn.ExecContext(ctx, "SET SESSION binlog_format = 'ROW'")
+	Conn.ExecContext(ctx, "SET SESSION FOREIGN_KEY_CHECKS = 0")
+	Conn.ExecContext(ctx, "USE "+schema)
 
 	for _, s := range cluster.slaves {
 		if s.DictTables == nil {
@@ -1164,45 +1202,14 @@ func (cluster *Cluster) RepairTableChecksum(schema string, table string) {
 				}
 			}
 			for i, chunk := range ts.TableChunksError {
-				query := "start transaction "
-				_, err = Conn.Exec(query)
-				if err != nil {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "ERROR: Could not process chunck %s %s", query, err)
-					return
+				for _, query := range checksumRepairChunkSQL(schema, table, chunk.ChunkRangeCondition) {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Repair chunk %d/%d %s", i, len(ts.TableChunksError), query)
+					if _, err = Conn.ExecContext(ctx, query); err != nil {
+						Conn.ExecContext(ctx, "ROLLBACK")
+						failed(fmt.Sprintf("chunk %d: %s: %s", i, query, err))
+						return
+					}
 				}
-				query = "CREATE OR REPLACE TEMPORARY TABLE tmp_repair AS SELECT * FROM " + schema + "." + table + " A WHERE  " + chunk.ChunkRangeCondition + " FOR UPDATE"
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Repair chunk %d/%d %s", i, len(ts.TableChunksError), query)
-				_, err = Conn.Exec(query)
-				if err != nil {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "ERROR: Could not process chunck %s %s", query, err)
-					return
-				}
-				// Multi-table DELETE form: the chunk condition is built with
-				// A.-qualified predicates, and single-table DELETE only accepts
-				// an alias on MariaDB >= 11.6 (MDEV-33988; backport to LTS
-				// refused in MDEV-37227). DELETE A FROM ... A works everywhere.
-				query = "DELETE A FROM " + schema + "." + table + " A WHERE  " + chunk.ChunkRangeCondition
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Repair chunk %d/%d %s", i, len(ts.TableChunksError), query)
-				_, err = Conn.Exec(query)
-				if err != nil {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "ERROR: Could not process chunck %s %s", query, err)
-					return
-				}
-				query = "INSERT INTO " + schema + "." + table + " SELECT * FROM  tmp_repair"
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Repair chunk %d/%d %s", i, len(ts.TableChunksError), query)
-				_, err = Conn.Exec(query)
-				if err != nil {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "ERROR: Could not process chunck %s %s", query, err)
-					return
-				}
-				query = "COMMIT"
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Repair chunk %d/%d %s", i, len(ts.TableChunksError), query)
-				_, err = Conn.Exec(query)
-				if err != nil {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "ERROR: Could not process chunck %s %s", query, err)
-					return
-				}
-
 			}
 			//  Empry the slice of chunk errors
 			ts.TableChunksError = ts.TableChunksError[:0]

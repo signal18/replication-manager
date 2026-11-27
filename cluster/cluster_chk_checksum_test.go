@@ -370,3 +370,25 @@ func TestChecksumFailureState(t *testing.T) {
 		t.Fatal("a table gone from the dictionary must be forgotten")
 	}
 }
+
+// The repair's copy aside is created LIKE the table (its primary key with it), never by CREATE
+// ... AS SELECT that innodb_force_primary_key refuses (1173); one transaction per chunk.
+func TestChecksumRepairChunkSQL(t *testing.T) {
+	q := checksumRepairChunkSQL("app", "t1", "A.id >=1 AND A.id<=1999")
+	want := []string{
+		"START TRANSACTION",
+		"CREATE OR REPLACE TEMPORARY TABLE tmp_repair LIKE app.t1",
+		"INSERT INTO tmp_repair SELECT * FROM app.t1 A WHERE  A.id >=1 AND A.id<=1999 FOR UPDATE",
+		"DELETE A FROM app.t1 A WHERE  A.id >=1 AND A.id<=1999",
+		"INSERT INTO app.t1 SELECT * FROM  tmp_repair",
+		"COMMIT",
+	}
+	if strings.Join(q, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("repair statements:\n%s\nwant\n%s", strings.Join(q, "\n"), strings.Join(want, "\n"))
+	}
+	for _, s := range q {
+		if strings.Contains(s, " AS SELECT") {
+			t.Fatalf("a table created AS SELECT has no primary key: %s", s)
+		}
+	}
+}
