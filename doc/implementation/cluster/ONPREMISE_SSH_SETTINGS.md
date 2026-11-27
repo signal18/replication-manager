@@ -50,9 +50,23 @@ that path. The key content is never in the config, in the config git (which stag
 `<cluster>/*.toml` and named json files only, and commits only tracked files), in the API JSON
 or in a log line; parse errors never quote it.
 
-Any other value must be the absolute path of an existing file; empty goes back to the default
-`~/.ssh/id_rsa` of the replication-manager user. Each change re-arms the key check
-(`HaveSSHKeyChecked = false`).
+Any other value must be the absolute path of an existing file, parsed the same way (a file that
+is not a key, or a key with a passphrase, is refused at once instead of failing at the next SSH
+dial); empty goes back to the default `~/.ssh/id_rsa` of the replication-manager user. Each change
+re-arms the key check (`HaveSSHKeyChecked = false`). When the setting leaves the file written from
+key content (cleared, or another path), that file is removed: no key stays on disk that no
+setting names. Before a new key overwrites an existing file, the file is chmod 0600 first, so the
+key is never readable by another user even for a moment; the `.ssh` directory is created 0700.
+
+## Trust model of the script settings
+
+The five scripts are files of the replication-manager host, read and run over SSH on the database
+and proxy hosts. Whoever holds the cluster settings grant can point them at any file the
+replication-manager user can read and have it run on those hosts: the same power that grant
+already gives through the other script settings (`prov-db-host-upgrade-script`, the backup and
+alert scripts, which run on the replication-manager host itself) and that the cluster file gave.
+The API adds no new power, so the scripts are not restricted to a directory; the check is an
+absolute path of an existing regular file (`os.Stat` follows a symlink to its target).
 
 Not covered: the key file lives on the instance that received it. A peer that takes the cluster
 over from the config git gets the path, not the file: give the key to each instance, or use a

@@ -5,6 +5,9 @@
 package server
 
 import (
+	"crypto/ed25519"
+	"crypto/rand"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"net/http"
@@ -16,6 +19,7 @@ import (
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/config/manager"
+	"golang.org/x/crypto/ssh"
 )
 
 func newOnPremiseSSHTestCluster(t *testing.T) *cluster.Cluster {
@@ -73,7 +77,12 @@ func TestSetOnPremiseSSHSettingsThroughAPI(t *testing.T) {
 		t.Fatalf("script: %v", err)
 	}
 	keyPath := filepath.Join(t.TempDir(), "id_ed25519")
-	os.WriteFile(keyPath, []byte("key"), 0o600)
+	_, priv, _ := ed25519.GenerateKey(rand.Reader)
+	block, err := ssh.MarshalPrivateKey(priv, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.WriteFile(keyPath, pem.EncodeToMemory(block), 0o600)
 	if err := repman.setClusterSetting(cl, "onpremise-ssh-private-key", b64(keyPath)); err != nil || cl.Conf.OnPremiseSSHPrivateKey != keyPath {
 		t.Fatalf("key path: %v", err)
 	}

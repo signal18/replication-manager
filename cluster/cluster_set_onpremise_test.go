@@ -186,8 +186,26 @@ func TestOnPremiseSSHPrivateKeyContent(t *testing.T) {
 	if err := cl.SetOnPremiseSSHPrivateKey(other); err != nil || cl.Conf.OnPremiseSSHPrivateKey != other {
 		t.Fatalf("path %s: %v, setting %q", other, err, cl.Conf.OnPremiseSSHPrivateKey)
 	}
+	// the key received earlier is removed once no setting names it
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("the key file %s stays after the setting moved to another path", path)
+	}
+	// a key file in a path is checked like a key received as content
+	for name, content := range map[string]string{"passphrase": testOnPremiseKeyPEM(t, "secret"), "not a key": "hello\n"} {
+		bad := filepath.Join(t.TempDir(), "id")
+		os.WriteFile(bad, []byte(content), 0o600)
+		if err := cl.SetOnPremiseSSHPrivateKey(bad); err == nil || cl.Conf.OnPremiseSSHPrivateKey != other {
+			t.Errorf("key path holding %s accepted", name)
+		}
+	}
+	if err := cl.SetOnPremiseSSHPrivateKey(t.TempDir()); err == nil {
+		t.Errorf("a directory accepted as the key")
+	}
 	if err := cl.SetOnPremiseSSHPrivateKey(""); err != nil || cl.Conf.OnPremiseSSHPrivateKey != "" {
 		t.Fatalf("clear: %v, setting %q", err, cl.Conf.OnPremiseSSHPrivateKey)
+	}
+	if err := cl.SetOnPremiseSSHCredential(" :pass"); err == nil {
+		t.Errorf("a blank user accepted")
 	}
 }
 
@@ -216,6 +234,12 @@ func TestOnPremiseSSHSettings(t *testing.T) {
 		}
 		if err := cl.SetOnPremiseSSHSetting(name, "relative.sh"); err == nil || *field != script {
 			t.Fatalf("%s: a relative path accepted", name)
+		}
+		if err := cl.SetOnPremiseSSHSetting(name, filepath.Join(t.TempDir(), "absent.sh")); err == nil || *field != script {
+			t.Fatalf("%s: a missing file accepted", name)
+		}
+		if err := cl.SetOnPremiseSSHSetting(name, t.TempDir()); err == nil || *field != script {
+			t.Fatalf("%s: a directory accepted", name)
 		}
 		if err := cl.SetOnPremiseSSHSetting(name, ""); err != nil || *field != "" {
 			t.Fatalf("%s: clear: %v", name, err)
