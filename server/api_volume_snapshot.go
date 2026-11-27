@@ -13,6 +13,7 @@ import (
 	"github.com/codegangsta/negroni"
 	"github.com/gorilla/mux"
 	"github.com/signal18/replication-manager/cluster"
+	"github.com/signal18/replication-manager/config"
 )
 
 // Volume snapshots of a database server's data volume (#2443,
@@ -228,6 +229,7 @@ func (repman *ReplicationManager) handlerMuxVolumeSnapshotPlugins(w http.Respons
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 404 {string} string "Cluster Not Found"
 // @Failure 409 {string} string "The settings are set by a config file"
+// @Failure 500 {string} string "No encryption key: a secret is never stored in clear"
 // @Router /api/clusters/{clusterName}/volume-snapshot-plugin-actions/set/{pluginName} [post]
 func (repman *ReplicationManager) handlerMuxVolumeSnapshotPluginSet(w http.ResponseWriter, r *http.Request) {
 	mycluster := repman.volumeSnapshotCluster(w, r)
@@ -243,6 +245,10 @@ func (repman *ReplicationManager) handlerMuxVolumeSnapshotPluginSet(w http.Respo
 	if err := mycluster.SetVolumeSnapshotPluginSettings(plugin, spec); err != nil {
 		if errors.Is(err, cluster.ErrSnapshotPluginSettingsPinned) {
 			http.Error(w, err.Error(), http.StatusConflict)
+			return
+		}
+		if errors.Is(err, config.ErrSnapshotSecretNoKey) {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 		http.Error(w, err.Error(), http.StatusBadRequest)

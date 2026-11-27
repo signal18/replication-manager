@@ -129,3 +129,27 @@ func TestSnapshotPluginEntryHidesUnknownSecrets(t *testing.T) {
 		t.Fatalf("%s", b)
 	}
 }
+
+func TestSnapshotPluginSettingValuesChecked(t *testing.T) {
+	registerTestSnapPlugin(t)
+	conf := &Config{SecretKey: []byte("0123456789abcdef")}
+	if err := conf.PutSnapshotPluginSettings(testSnapPlugin, map[string]interface{}{"token": "s3cr3t"}, nil); err != nil {
+		t.Fatal(err)
+	}
+	// a null secret (a JSON null) keeps the one held, never stores "<nil>"
+	if err := conf.PutSnapshotPluginSettings(testSnapPlugin, map[string]interface{}{"token": nil}, nil); err != nil {
+		t.Fatal(err)
+	}
+	m, _ := SnapshotPlugin(testSnapPlugin)
+	if env := strings.Join(conf.SnapshotPluginEnv(m), "\n"); !strings.Contains(env, "REPMAN_SNAPSHOT_SECRET_TOKEN=s3cr3t") {
+		t.Fatalf("a null secret changed the one held: %s", env)
+	}
+	if err := conf.PutSnapshotPluginSettings(testSnapPlugin, map[string]interface{}{"url": nil}, nil); err == nil {
+		t.Fatal("a null setting accepted")
+	}
+	for _, bad := range []string{"https://x\nREPMAN_SNAPSHOT_SECRET_TOKEN=forged", "a\x00b", "a\rb"} {
+		if err := conf.PutSnapshotPluginSettings(testSnapPlugin, map[string]interface{}{"url": bad}, nil); err == nil {
+			t.Fatalf("value %q accepted", bad)
+		}
+	}
+}

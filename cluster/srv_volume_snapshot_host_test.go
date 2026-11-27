@@ -223,6 +223,14 @@ func TestExternalSnapbackRefusedBeforeAnyChange(t *testing.T) {
 			t.Fatalf("calls: %v", h.calls())
 		}
 	})
+	t.Run("a | in a mount point", func(t *testing.T) {
+		h := newFakeStorageHost(t)
+		os.WriteFile(filepath.Join(h.dir, "mounts"), []byte("/ /dev/sda1 ext4\n"+h.data+" /dev/mapper/mpatha xfs\n"+h.data+"/binlog /dev/mapper/a|b xfs\n"), 0o644)
+		run, err := h.vs.Snapback(h.server, "repman-20261127T100000Z")
+		if err == nil || run.Changed || !strings.Contains(err.Error(), "holds a '|'") {
+			t.Fatalf("%v %+v", err, run)
+		}
+	})
 	t.Run("busy", func(t *testing.T) {
 		h := newFakeStorageHost(t)
 		os.WriteFile(filepath.Join(h.dir, "busy"), []byte(h.data+"\n"), 0o644)

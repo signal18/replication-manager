@@ -25389,6 +25389,12 @@ const docTemplate = `{
                         "schema": {
                             "type": "string"
                         }
+                    },
+                    "500": {
+                        "description": "No encryption key: a secret is never stored in clear",
+                        "schema": {
+                            "type": "string"
+                        }
                     }
                 }
             }

@@ -479,7 +479,7 @@ host_devices() {
 # system_mount MOUNTPOINT: a mount point of the system, never unmounted for a snapback
 system_mount() {
     case "$1" in
-    / | /usr | /var | /etc | /boot | /home | /opt | /tmp | /root | /proc | /sys | /dev | /run | /srv | /mnt | /media) return 0 ;;
+    / | /usr | /var | /etc | /boot | /home | /opt | /tmp | /root | /proc | /sys | /dev | /run) return 0 ;;
     esac
     return 1
 }
@@ -508,6 +508,8 @@ $(findmnt -n -l -o TARGET,SOURCE -R "$t" </dev/null)"
     [ -n "$lines" ] || die "no mount point found for the server's files: nothing was changed"
     targets=$(printf '%s\n' "$lines" | awk '{ print $1 }')
     no_blank_mounts "$targets"
+    # a pair is target|source: a '|' in either would split it wrong (host data, never trusted)
+    printf '%s\n' "$lines" | grep -q '|' && die "a mount point or source of the server's files holds a '|': not supported, nothing was changed"
     # shellcheck disable=SC2086
     wait_unused $targets $(server_paths)
     pairs=$(printf '%s\n' "$lines" | awk '{ print $1 "|" $2 }')
@@ -523,6 +525,14 @@ $(findmnt -n -l -o TARGET,SOURCE -R "$t" </dev/null)"
 host_mount() {
     mounts="${REPMAN_SNAPSHOT_MOUNTS:-}"
     [ -n "$mounts" ] || die "nothing to mount (REPMAN_SNAPSHOT_MOUNTS empty)"
+    no_blank_mounts "$mounts"
+    for pr in $mounts; do
+        case "$pr" in
+        *"|"*"|"* | "|"* | *"|") die "invalid mount pair $pr: nothing was mounted" ;;
+        *"|"*) ;;
+        *) die "invalid mount pair $pr: nothing was mounted" ;;
+        esac
+    done
     for pr in $(printf '%s\n' "$mounts" | sort -u -t '|' -k 1,1); do
         case "${pr#*|}" in
         /dev/*) x blockdev --flushbufs "${pr#*|}" || echo "blockdev --flushbufs ${pr#*|} failed: mounted anyway" ;;

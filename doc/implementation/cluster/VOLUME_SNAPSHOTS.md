@@ -186,11 +186,20 @@ What an external plugin needs from replication-manager to drive a storage system
   - `hostDevices` passes them as `REPMAN_SNAPSHOT_DEVICES`, or nothing when one path is
     unresolved: never a partial list, which would let a plugin's "holds only the server's
     files" check pass on an incomplete set.
+  - Devices are computed before every action, `list` and `delete` included: a plugin resolves
+    its target from them on each run (one host round trip, read-only, under the action's
+    deadline). Empty means unknown: the plugin contract says it is never read as "no
+    restriction".
 - **Unmount (T14: `backup-snapshot-unmount`).** `snapbackUnmounted` wraps the plugin's
   snapback in the helper's `unmount` and `mount` actions, under the action's deadline.
   - The mount gets a deadline of its own (`volumeSnapshotDownTimeout`): an unchanged volume is
     never left unmounted because the plugin used the whole deadline.
-  - `unmount` refuses a system mount point. It waits for the volume to be unused (`wait_unused`),
+  - `unmount` refuses a system mount point (an exact list: `/`, `/usr`, `/var`, ... ; a dedicated
+    `/srv` or `/data` is accepted) and a mount point or source holding a blank or a `|` (the
+    pairs are `target|source` words; the values come from the host, never trusted); `mount`
+    checks the pairs it is given the same way.
+  - The settings' values go into the plugin's environment: a null setting is refused (a null
+    secret is kept), a NUL or a line break refused. It waits for the volume to be unused (`wait_unused`),
     unmounts deepest first through `unmount_pairs` (shared with the LVM snapback, T2: on a
     failure it puts back what it unmounted, or says CHANGED), and prints the `MOUNT` records the
     `mount` action replays after `blockdev --flushbufs`.

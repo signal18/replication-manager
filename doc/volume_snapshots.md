@@ -117,8 +117,10 @@ every action. The answer is the WWN of every disk under the mount (through multi
 partitions and LVM volumes), or the NFS export. The plugin gets it as
 `REPMAN_SNAPSHOT_DEVICES`, one `<path>\t<fstype>\t<source>\t<id>` line per device, and uses it
 to find its volume and to check that it holds only the server's files. When one directory can
-not be told (a ZFS dataset, an overlay file system), the variable is empty. A plugin may then
-refuse a snapback unless the target is named and trusted: see its own documentation.
+not be told (a ZFS dataset, an overlay file system), or the database host can not be asked,
+the variable is empty. **Empty means unknown, never "no restriction":** a plugin must not
+conclude from it that its target holds only the server's files. It refuses a snapback unless
+the target is named and the operator says to trust it (see the plugin's documentation).
 
 **Snapback.** A storage system restored under a mounted file system corrupts it, so with
 `backup-snapshot-unmount` on (the default), the snapback of an external plugin runs in this
@@ -127,8 +129,10 @@ order:
 1. The server is stopped, as for every snapback.
 2. On the database host, the file systems holding the server's directories (and those mounted
    under them) are unmounted, deepest first, once no process uses them. A system mount point
-   (`/`, `/var`, `/home`, ...) is never unmounted: the server's files must be on file systems of
-   their own. A busy or failed unmount puts back what it unmounted and ends the snapback with
+   (`/`, `/usr`, `/var`, `/etc`, `/boot`, `/home`, `/opt`, `/tmp`, `/root`, `/proc`, `/sys`,
+   `/dev`, `/run`) is never unmounted: the server's files must be on file systems of their own
+   (a datadir on a dedicated `/srv` or `/data` file system is fine). A mount point or a device
+   holding a blank or a `|` is refused. A busy or failed unmount puts back what it unmounted and ends the snapback with
    nothing changed.
 3. The plugin restores, with `REPMAN_SNAPSHOT_UNMOUNTED=1` in its environment.
 4. The block devices' buffers are dropped (`blockdev --flushbufs`), and the file systems are

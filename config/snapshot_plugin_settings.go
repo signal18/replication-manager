@@ -88,6 +88,22 @@ func (conf *Config) PutSnapshotPluginSettings(plugin string, settings map[string
 	if !ok || !m.External {
 		return fmt.Errorf("%q is not an external snapshot plugin: only those have settings", plugin)
 	}
+	// a null value: a secret kept (as an empty one), any other setting refused (unset removes)
+	clean := make(map[string]interface{}, len(settings))
+	for name, v := range settings {
+		if v == nil {
+			if m.Settings.HasSecret(name) {
+				continue
+			}
+			return fmt.Errorf("setting %s: null, use unset to remove it", name)
+		}
+		// the value goes into the plugin's environment: one line, no NUL
+		if strings.ContainsAny(fmt.Sprintf("%v", v), "\x00\n\r") {
+			return fmt.Errorf("setting %s: a NUL or a line break is not allowed", name)
+		}
+		clean[name] = v
+	}
+	settings = clean
 	for name, v := range settings {
 		if m.Settings.HasSecret(name) && fmt.Sprintf("%v", v) != "" {
 			if conf.SecretKey == nil {

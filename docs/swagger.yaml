@@ -23559,6 +23559,10 @@ paths:
           description: The settings are set by a config file
           schema:
             type: string
+        "500":
+          description: 'No encryption key: a secret is never stored in clear'
+          schema:
+            type: string
       summary: Set the settings of an external snapshot plugin
       tags:
       - DatabaseBackup
