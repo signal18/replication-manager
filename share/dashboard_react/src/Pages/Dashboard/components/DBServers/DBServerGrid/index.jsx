@@ -8,6 +8,8 @@ import TableType3 from '../../../../../components/TableType3'
 import CustomIcon from '../../../../../components/Icons/CustomIcon'
 import TableType2 from '../../../../../components/TableType2'
 import {
+  channelsOf,
+  feedsOf,
   getCurrentGtid,
   getCurrentGtidHeader,
   getDelay,
@@ -188,8 +190,8 @@ function DBServerGrid({
                       <TagPill key={index} colorScheme={tag.startsWith('NO_') ? 'red' : 'green'} text={tag} />
                     ))}
                 </Flex>
-                {rowData.replications?.length > 0 ? (
-                  rowData.replications.map((replication, index) => {
+                {channelsOf(rowData).length > 0 ? (
+                  channelsOf(rowData).map((replication, index) => {
                     const replicationTableData = [
                       {
                         key: 'IO Thread',
@@ -356,8 +358,8 @@ function DBServerGrid({
                     }
                   />
                 )}
-                {rowData.replicationFeeds?.length > 0 &&
-                  rowData.replicationFeeds.map((feed, index) => {
+                {feedsOf(rowData).length > 0 &&
+                  feedsOf(rowData).map((feed, index) => {
                     const running = (v) =>
                       v == 'Yes' ? <CustomIcon icon={HiCheck} color='green' /> : <CustomIcon icon={HiX} color='red' />
                     return (
