@@ -274,8 +274,10 @@ GUI: the Analytic Child settings. The cluster writes the list into the plugin TO
 query and table, so a changed query runs its init again; the status's `indexesReady` names them):
 
 1. the denormalized table is made from the description of the empty query result
-   (`CREATE TABLE ... AS SELECT * FROM (<sql>) AS d WHERE 1=0`, then its primary key and indexes),
-   and the destination makes it its own (`Create`); an existing table of the same columns is
+   with its primary key and indexes in the same statement
+   (`CREATE TABLE ... (PRIMARY KEY (...), INDEX ...) ENGINE=InnoDB AS SELECT * FROM (<sql>) AS d
+   WHERE 1=0`: a server with `innodb_force_primary_key=ON`, which replication-manager's
+   configurator sets, refuses a table created without a key, error 1173), and the destination makes it its own (`Create`); an existing table of the same columns is
    emptied instead (`Truncater`);
 2. the query runs on the source in one `START TRANSACTION WITH CONSISTENT SNAPSHOT`, its rows
    applied by parts of 10000.
