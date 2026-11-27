@@ -91,6 +91,9 @@ function VolumeSnapshotsModal({ isOpen, closeModal, clusterName, server, user })
             {data && (
               <HStack spacing={4} wrap='wrap'>
                 <Text fontSize='sm'>Plugin: <Badge variant={badgeVariant}>{data.plugin || '-'}</Badge></Text>
+                {(data.plugins || []).find((p) => p.name === data.plugin)?.tested === false && (
+                  <Badge colorScheme='orange' variant={badgeVariant}>untested on a real storage system</Badge>
+                )}
                 <Text fontSize='sm'>Volume: <Code>{data.target || '?'}</Code></Text>
                 <Text fontSize='sm'>Kept: {data.keep} taken by replication-manager</Text>
                 {!data.enabled && <Badge colorScheme='gray' variant={badgeVariant}>off (backup-snapshot)</Badge>}

@@ -473,6 +473,9 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 		if test.Name == "testAppSecretVersions" {
 			res = regtest.TestAppSecretVersions(cl, test.ConfigFile, &test)
 		}
+		if test.Name == "testVolumeSnapshotExternalPlugin" {
+			res = regtest.TestVolumeSnapshotExternalPlugin(cl, test.ConfigFile, &test)
+		}
 		if test.Name == "testAppSecretVersionsVault" {
 			res = regtest.TestAppSecretVersionsVault(cl, test.ConfigFile, &test)
 		}

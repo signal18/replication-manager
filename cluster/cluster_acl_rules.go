@@ -154,6 +154,9 @@ var pricingACLRules = []ACLRule{
 	// the volume snapshot script (#2443) is a program run on the replication-manager host
 	// for every snapshot action: the instance admin's, never a cluster owner's
 	{"/settings/actions/set/backup-snapshot-script", nil, []string{config.GrantGlobalSettings}},
+	// the settings of an external snapshot plugin (#2456) point a program on the
+	// replication-manager host at a storage system and hand it a credential: the same grant
+	{"/volume-snapshot-plugin-actions/set/", nil, []string{config.GrantGlobalSettings}},
 }
 
 // appACLRules defines ACL rules for application endpoints
@@ -197,6 +200,9 @@ var appACLRules = []ACLRule{
 
 // clusterACLRules defines ACL rules for general cluster-level endpoints
 var clusterACLRules = []ACLRule{
+	// the snapshot plugins of the cluster and their settings, never a secret (#2456): read
+	// as the volume snapshots are
+	{"/volume-snapshot-plugins", nil, []string{config.GrantClusterShowBackups, config.GrantDBBackup, config.GrantGlobalSettings}},
 	// Sharding
 	{"/actions/monitor-schemas", nil, []string{config.GrantClusterSharding}},
 	{"/schema", nil, []string{config.GrantClusterSharding}},

@@ -1127,6 +1127,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.BackupSnapshotLVMSize, "backup-snapshot-lvm-size", "20%ORIGIN", "Copy-on-write space of an LVM snapshot of a thick volume: a size (10G) or extents (20%ORIGIN); a thin volume takes none")
 	flags.StringVar(&conf.BackupSnapshotScript, "backup-snapshot-script", "", "Client script run on the replication-manager host for every volume snapshot action, in place of the plugin: action as first argument, context in REPMAN_SNAPSHOT_* variables")
 	flags.IntVar(&conf.BackupSnapshotTimeout, "backup-snapshot-timeout", 1800, "Seconds a volume snapshot action may run before it is stopped")
+	flags.BoolVar(&conf.BackupSnapshotUnmount, "backup-snapshot-unmount", true, "Unmount the server's file systems on the database host around the snapback of an external snapshot plugin (off: the plugin or a client handles them)")
 	flags.StringVar(&conf.BackupMyDumperPath, "backup-mydumper-path", "", "Path to mydumper binary")
 	flags.StringVar(&conf.BackupMyLoaderPath, "backup-myloader-path", "", "Path to myloader binary")
 	flags.StringVar(&conf.BackupMyLoaderOptions, "backup-myloader-options", config.DefaultBackupMyLoaderOptions, "Extra options")

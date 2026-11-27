@@ -9,7 +9,8 @@
 # orchestrator), piped into sh: it is POSIX sh, it needs no file of its own on the host.
 #
 # Contract (the same for a client's backup-snapshot-script and an external plugin):
-#   argument 1                 the action: take, list, delete, snapback
+#   argument 1                 the action: take, list, delete, snapback; or, for an external
+#                              plugin, a host action: devices, unmount, mount (#2456)
 #   REPMAN_SNAPSHOT_TYPE       zfs or lvm
 #   REPMAN_SNAPSHOT_TARGET     the volume (pool/dataset, vg/lv); empty: the one holding the paths
 #   REPMAN_SNAPSHOT_PATHS      the server's file directories, colon separated (datadir, redo...)
@@ -21,6 +22,11 @@
 #   TARGET <volume>            the volume resolved
 #   SNAPSHOT <name> <created, unix time> <size, bytes>
 #   CHANGED                    a snapback changed the volume (an error after it is half-way)
+#   DEVICE <path> <fstype> <source> <id>   devices: what holds a server path, id its WWN (block)
+#                              or its NFS export; UNRESOLVED <path> when it can not be told
+#   MOUNT <target> <source>    unmount: a mount point it unmounted, for mount to put back
+# A host action reads REPMAN_SNAPSHOT_MOUNTS (mount: the MOUNT records of unmount, one
+# "target|source" per line).
 # An error is one line on standard error and exit status 1. Nothing here starts or stops the
 # database: replication-manager stops it before a snapback and starts it after.
 
@@ -377,21 +383,12 @@ lvm_snapback() {
     no_blank_mounts "$mnts"
     # shellcheck disable=SC2086
     wait_unused $mnts $(server_paths)
-    done_mnts=""
+    pairs=""
     for m in $mnts; do
-        if ! x umount "$m"; then
-            # put back what this run unmounted: the volume as it was, or say it is not
-            # parents first: one word per line, then sorted
-            for d in $(printf '%s\n' $done_mnts | sort); do
-                if ! { x mount "$d" 2>/dev/null || x mount "$dev" "$d"; }; then
-                    printf 'CHANGED\n'
-                    die "umount $m failed, and $d could not be mounted again: the volume is half unmounted"
-                fi
-            done
-            die "umount $m failed (still in use?): nothing was changed"
-        fi
-        done_mnts="$done_mnts $m"
+        pairs="$pairs $m|$dev"
     done
+    # shellcheck disable=SC2086
+    unmount_pairs $pairs
     seg=$(q lvs --noheadings -o segtype "$TARGET" | tr -d ' ')
     printf 'CHANGED\n'
     if [ "$seg" = "thin" ]; then
@@ -409,9 +406,145 @@ lvm_snapback() {
     done
 }
 
+# unmount_pairs TARGET|SOURCE...: unmounts each, in the order given (deepest first). A failure
+# puts back what this run unmounted (parents first) and dies with nothing changed; when one can
+# not be put back, CHANGED: the volume is half unmounted. Shared by the LVM snapback and the
+# unmount host action.
+unmount_pairs() {
+    done_pairs=""
+    for pr in "$@"; do
+        m="${pr%%|*}"
+        if ! x umount "$m"; then
+            # one word per line, sorted on the mount point alone: parents first ('/' sorts
+            # before '|', a whole-pair sort would put a child before its parent)
+            for dp in $(printf '%s\n' $done_pairs | sort -t '|' -k 1,1); do
+                d="${dp%%|*}"
+                if ! { x mount "$d" 2>/dev/null || x mount "${dp#*|}" "$d"; }; then
+                    printf 'CHANGED\n'
+                    die "umount $m failed, and $d could not be mounted again: the volume is half unmounted"
+                fi
+            done
+            die "umount $m failed (still in use?): nothing was changed"
+        fi
+        done_pairs="$done_pairs $pr"
+    done
+}
+
+##########
+# Host   #
+##########
+
+# The host actions of an external plugin (#2456): the plugin runs on the replication-manager
+# host and drives a storage system; what only the database host knows is asked here.
+
+# host_devices: for each server path, what holds it: DEVICE records, the WWN of every disk
+# under its mount source (a multipath device, a partition, an LVM volume on several LUNs), or
+# the NFS export; UNRESOLVED when neither (a ZFS dataset, an overlay, no lsblk).
+host_devices() {
+    command -v findmnt >/dev/null 2>&1 || die "findmnt not found on the database host"
+    oldifs=$IFS
+    IFS=:
+    for p in $PATHS; do
+        IFS=$oldifs
+        [ -n "$p" ] || continue
+        src=$(mount_source "$p") || exit 1
+        set -- $src
+        source="${1:-}"
+        fstype="${2:-}"
+        case "$fstype" in
+        nfs | nfs4)
+            printf 'DEVICE\t%s\t%s\t%s\t%s\n' "$p" "$fstype" "$source" "$source"
+            IFS=:
+            continue ;;
+        esac
+        wwns=""
+        case "$source" in
+        /dev/*)
+            if command -v lsblk >/dev/null 2>&1; then
+                wwns=$(lsblk -s -n -r -o WWN,TYPE "$source" </dev/null 2>/dev/null | awk '$2 == "disk" && $1 != "" { print $1 }' | sort -u)
+            fi ;;
+        esac
+        if [ -z "$wwns" ]; then
+            printf 'UNRESOLVED\t%s\n' "$p"
+        else
+            for w in $wwns; do
+                printf 'DEVICE\t%s\t%s\t%s\t%s\n' "$p" "$fstype" "$source" "$w"
+            done
+        fi
+        IFS=:
+    done
+    IFS=$oldifs
+}
+
+# system_mount MOUNTPOINT: a mount point of the system, never unmounted for a snapback
+system_mount() {
+    case "$1" in
+    / | /usr | /var | /etc | /boot | /home | /opt | /tmp | /root | /proc | /sys | /dev | /run | /srv | /mnt | /media) return 0 ;;
+    esac
+    return 1
+}
+
+# host_unmount: unmounts the file systems holding the server paths (and those mounted under
+# them), deepest first, once no process uses them; MOUNT records for host_mount. A system mount
+# point (the server's files not on a file system of their own) is refused: nothing changed.
+host_unmount() {
+    command -v findmnt >/dev/null 2>&1 || die "findmnt not found on the database host"
+    tops=""
+    for p in $(server_paths); do
+        t=$(findmnt -n -o TARGET -T "$p" </dev/null | head -n 1)
+        [ -n "$t" ] || die "no mount point found for $p: nothing was changed"
+        system_mount "$t" && die "$p is on $t, a system file system: its storage is not the server's own, nothing is unmounted (set backup-snapshot-unmount off if the plugin handles it): nothing was changed"
+        tops="$tops
+$t"
+    done
+    # the mount points and the ones under them, deepest first, with their source
+    lines=""
+    for t in $(printf '%s\n' "$tops" | sort -u); do
+        lines="$lines
+$(findmnt -n -l -o TARGET,SOURCE -R "$t" </dev/null)"
+    done
+    # deepest first: sorted on the mount point alone, reversed
+    lines=$(printf '%s\n' "$lines" | awk 'NF' | sort -u -r -k 1,1)
+    [ -n "$lines" ] || die "no mount point found for the server's files: nothing was changed"
+    targets=$(printf '%s\n' "$lines" | awk '{ print $1 }')
+    no_blank_mounts "$targets"
+    # shellcheck disable=SC2086
+    wait_unused $targets $(server_paths)
+    pairs=$(printf '%s\n' "$lines" | awk '{ print $1 "|" $2 }')
+    # shellcheck disable=SC2086
+    unmount_pairs $pairs
+    for pr in $pairs; do
+        printf 'MOUNT\t%s\t%s\n' "${pr%%|*}" "${pr#*|}"
+    done
+}
+
+# host_mount: puts back what host_unmount unmounted (REPMAN_SNAPSHOT_MOUNTS), parents first,
+# after the block devices' buffers are dropped: the storage below them was restored.
+host_mount() {
+    mounts="${REPMAN_SNAPSHOT_MOUNTS:-}"
+    [ -n "$mounts" ] || die "nothing to mount (REPMAN_SNAPSHOT_MOUNTS empty)"
+    for pr in $(printf '%s\n' "$mounts" | sort -u -t '|' -k 1,1); do
+        case "${pr#*|}" in
+        /dev/*) x blockdev --flushbufs "${pr#*|}" || echo "blockdev --flushbufs ${pr#*|} failed: mounted anyway" ;;
+        esac
+    done
+    # parents first: sorted on the mount point alone
+    for pr in $(printf '%s\n' "$mounts" | sort -u -t '|' -k 1,1); do
+        d="${pr%%|*}"
+        x mount "$d" 2>/dev/null || x mount "${pr#*|}" "$d" || die "mount $d failed: the server's files are not mounted"
+    done
+}
+
 ##########
 # Main   #
 ##########
+
+# a host action of an external plugin: whatever the type
+case "$ACTION" in
+devices | unmount | mount)
+    "host_${ACTION}"
+    exit 0 ;;
+esac
 
 case "$TYPE" in
 zfs | lvm) ;;

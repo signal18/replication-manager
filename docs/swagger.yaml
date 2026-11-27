@@ -1961,6 +1961,69 @@ definitions:
       status:
         type: string
     type: object
+  cluster.VolumeSnapshotPluginInfo:
+    properties:
+      actions:
+        description: the ConstSnapshotAction* it implements
+        items:
+          type: string
+        type: array
+      allowed:
+        description: 'Allowed: the plan lets the cluster use it (an enterprise one
+          needs an enterprise plan)'
+        type: boolean
+      description:
+        type: string
+      entry:
+        allOf:
+        - $ref: '#/definitions/config.SnapshotPluginEntry'
+        description: 'Entry: the settings held, a secret never (SnapshotPluginEntry.MarshalJSON)'
+      external:
+        type: boolean
+      name:
+        type: string
+      run:
+        description: ConstSnapshotRun*
+        type: string
+      settings:
+        description: |-
+          Settings: what an external plugin needs set (#2456), stored per cluster in its
+          [[snapshot-plugin]] entry, a secret encrypted; passed in its environment
+        items:
+          $ref: '#/definitions/config.PluginSetting'
+        type: array
+      tested:
+        description: 'Tested: false when the plugin says it has not run against the
+          real storage it drives'
+        type: boolean
+      tier:
+        description: ConstArchiveTierEnterprise, "" for every plan
+        type: string
+    type: object
+  cluster.VolumeSnapshotPluginList:
+    properties:
+      pinned:
+        description: |-
+          Pinned: a config file sets the plugin settings ([[snapshot-plugin]]): the API can not
+          change them
+        type: boolean
+      plugins:
+        items:
+          $ref: '#/definitions/cluster.VolumeSnapshotPluginInfo'
+        type: array
+      selected:
+        type: string
+    type: object
+  cluster.VolumeSnapshotPluginSettingsSpec:
+    properties:
+      settings:
+        additionalProperties: true
+        type: object
+      unset:
+        items:
+          type: string
+        type: array
+    type: object
   cluster.backupCandidateSet:
     properties:
       candidates:
@@ -2525,6 +2588,14 @@ definitions:
           $ref: '#/definitions/config.Task'
         type: array
     type: object
+  config.SnapshotPluginEntry:
+    properties:
+      plugin:
+        type: string
+      settings:
+        additionalProperties: true
+        type: object
+    type: object
   config.SnapshotPluginManifest:
     properties:
       actions:
@@ -2541,6 +2612,17 @@ definitions:
       run:
         description: ConstSnapshotRun*
         type: string
+      settings:
+        description: |-
+          Settings: what an external plugin needs set (#2456), stored per cluster in its
+          [[snapshot-plugin]] entry, a secret encrypted; passed in its environment
+        items:
+          $ref: '#/definitions/config.PluginSetting'
+        type: array
+      tested:
+        description: 'Tested: false when the plugin says it has not run against the
+          real storage it drives'
+        type: boolean
       tier:
         description: ConstArchiveTierEnterprise, "" for every plan
         type: string
@@ -3063,6 +3145,8 @@ definitions:
         type: string
       backupSnapshotTimeout:
         type: integer
+      backupSnapshotUnmount:
+        type: boolean
       backupSplitMysqlUser:
         type: boolean
       backupSplitdumpCreateDatabases:
@@ -3606,6 +3690,12 @@ definitions:
       httpSessionLifetime:
         type: integer
       injectTrafficMode:
+        type: string
+      installLayout:
+        description: package|tarball|embed, resolved at start, not a key (#2444)
+        type: string
+      installProfile:
+        description: osc|tst|pro, resolved at start, not a key (#2444)
         type: string
       interactive:
         type: boolean
@@ -4805,6 +4895,12 @@ definitions:
         type: string
       slaposSphinxPartitions:
         type: string
+      snapshotPlugins:
+        description: 'SnapshotPluginEntries: the settings of the external snapshot
+          plugins (#2456)'
+        items:
+          $ref: '#/definitions/config.SnapshotPluginEntry'
+        type: array
       sphinx:
         type: boolean
       sphinxConfig:
@@ -23410,6 +23506,97 @@ paths:
       summary: Update a cluster user
       tags:
       - User
+  /api/clusters/{clusterName}/volume-snapshot-plugin-actions/set/{pluginName}:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        Stores the settings its manifest declares, each checked against its type; a secret is encrypted with the replication-manager key before it is saved (refused without a key) and never returned; an empty secret keeps the one held; unset removes settings. The plugin gets them in its environment at its next run: REPMAN_SNAPSHOT_SETTING_<NAME>, and the secret decrypted as REPMAN_SNAPSHOT_SECRET_<NAME>.
+        Required grant: global-settings (the settings direct a program on the replication-manager host)
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Plugin Name
+        in: path
+        name: pluginName
+        required: true
+        type: string
+      - description: the settings
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/cluster.VolumeSnapshotPluginSettingsSpec'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: The settings held, without the secrets
+          schema:
+            $ref: '#/definitions/config.SnapshotPluginEntry'
+        "400":
+          description: Invalid setting
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "404":
+          description: Cluster Not Found
+          schema:
+            type: string
+        "409":
+          description: The settings are set by a config file
+          schema:
+            type: string
+      summary: Set the settings of an external snapshot plugin
+      tags:
+      - DatabaseBackup
+  /api/clusters/{clusterName}/volume-snapshot-plugins:
+    get:
+      description: |-
+        The snapshot plugins known (built-in, the client's script, the external plugins found beside the other plugins), each with the settings its manifest declares, the values the cluster holds for it (a secret never: only its name in secretsSet), whether the plan allows it and whether it says it has been tested on the storage it drives.
+        Required grant: cluster-show-backups, db-backup or global-settings
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: The plugins
+          schema:
+            $ref: '#/definitions/cluster.VolumeSnapshotPluginList'
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "404":
+          description: Cluster Not Found
+          schema:
+            type: string
+      summary: List the volume snapshot plugins and their settings
+      tags:
+      - DatabaseBackup
   /api/clusters/actions/add/{clusterName}:
     post:
       consumes:

@@ -77,8 +77,73 @@ without it the time shows as unknown, the retention still orders the snapshots b
 | `backup-snapshot-lvm-size` | `20%ORIGIN` | Copy-on-write space of an LVM snapshot of a thick volume (`10G`, `20%ORIGIN`); a thin volume takes none |
 | `backup-snapshot-script` | empty | Your script, run for every action in place of the plugin (instance admin only) |
 | `backup-snapshot-timeout` | `1800` | Seconds an action may run before it is stopped |
+| `backup-snapshot-unmount` | `true` | External plugin: unmount the server's file systems on the database host around its snapback |
+| `[[snapshot-plugin]]` | none | The settings of each external plugin (below) |
 
 In the GUI: cluster settings, Backups, Volume Snapshots.
+
+## External plugins
+
+An external plugin is a signed program `snapshotplugin-<name>` installed beside
+replication-manager's other plugins. It runs on the replication-manager host and drives a
+storage system (a storage array, a NAS) through its management API or command line. It
+speaks the same contract as the built-in backends. Its manifest gives its tier: an enterprise
+plugin needs an enterprise plan. Choose it in `backup-snapshot-plugin`.
+
+**Its settings.** In the GUI: cluster settings, Backups, Volume Snapshots, Plugin Settings.
+They are the ones the plugin's manifest declares (the address of the storage system, a user,
+a credential, ...), and only the instance admin (global-settings grant) sets them. The cluster
+configuration keeps them as one `[[snapshot-plugin]]` entry per plugin:
+
+```toml
+[[snapshot-plugin]]
+plugin = "<name>"
+url = "https://storage.example"
+user = "repman"
+token = "hash_..."     # a secret: encrypted with the replication-manager key
+```
+
+- A secret is encrypted with the replication-manager key before it is saved, and replication-manager
+  refuses to store one when it has no key. It is never returned by the API: the GUI shows only
+  whether it is set.
+- The plugin gets each setting in its environment as `REPMAN_SNAPSHOT_SETTING_<NAME>`, and each
+  secret, decrypted only there, as `REPMAN_SNAPSHOT_SECRET_<NAME>` (`api-version` becomes
+  `REPMAN_SNAPSHOT_SETTING_API_VERSION`).
+- An entry set in a configuration file under /etc can not be changed through the API.
+
+**The server's devices.** When the orchestrator gives access to the database host (on-premise
+over SSH, localhost), replication-manager asks it what holds each server directory before
+every action. The answer is the WWN of every disk under the mount (through multipath devices,
+partitions and LVM volumes), or the NFS export. The plugin gets it as
+`REPMAN_SNAPSHOT_DEVICES`, one `<path>\t<fstype>\t<source>\t<id>` line per device, and uses it
+to find its volume and to check that it holds only the server's files. When one directory can
+not be told (a ZFS dataset, an overlay file system), the variable is empty. A plugin may then
+refuse a snapback unless the target is named and trusted: see its own documentation.
+
+**Snapback.** A storage system restored under a mounted file system corrupts it, so with
+`backup-snapshot-unmount` on (the default), the snapback of an external plugin runs in this
+order:
+
+1. The server is stopped, as for every snapback.
+2. On the database host, the file systems holding the server's directories (and those mounted
+   under them) are unmounted, deepest first, once no process uses them. A system mount point
+   (`/`, `/var`, `/home`, ...) is never unmounted: the server's files must be on file systems of
+   their own. A busy or failed unmount puts back what it unmounted and ends the snapback with
+   nothing changed.
+3. The plugin restores, with `REPMAN_SNAPSHOT_UNMOUNTED=1` in its environment.
+4. The block devices' buffers are dropped (`blockdev --flushbufs`), and the file systems are
+   mounted again, parents first. A restore that fails before it changed anything is mounted
+   back too.
+5. The server is started.
+
+A restore that fails after it changed the storage, or a mount that fails, leaves the server
+stopped, its file systems as they are, in maintenance, with ERR00123: check by hand before you
+start it.
+
+The user of the on-premise SSH connection needs, through sudo, `umount`, `mount` and
+`blockdev` beside `fuser`, and `lsblk` and `findmnt` to run. Switch `backup-snapshot-unmount` off
+when the plugin, or your script, handles the file systems itself (an NFS export restored by the
+storage system, for instance).
 
 ## Consistency
 

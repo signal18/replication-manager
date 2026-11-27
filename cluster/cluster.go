@@ -2508,6 +2508,16 @@ func (cluster *Cluster) SaveConfigFile() (bool, error) {
 		buf.WriteString(stores)
 	}
 
+	// the settings of the external snapshot plugins, unless a config file pins them (#2456)
+	if _, pinned := cluster.Conf.GetImmuableFlag("snapshot-plugin"); !pinned {
+		entries, err := cluster.Conf.SnapshotPluginEntriesToml("saved-" + cluster.Name)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Error rendering the snapshot plugin settings: %s", err)
+			return false, err
+		}
+		buf.WriteString(entries)
+	}
+
 	// the S3 provider list, unless the config does not keep it (#2155)
 	providersInConfig := cluster.s3ProvidersInConfig()
 	if providersInConfig {
