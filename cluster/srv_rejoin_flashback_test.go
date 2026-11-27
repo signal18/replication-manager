@@ -1,6 +1,7 @@
 package cluster
 
 import (
+	"database/sql"
 	"errors"
 	"os"
 	"path/filepath"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/backupmgr"
+	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/gtid"
 	"github.com/signal18/replication-manager/utils/state"
 	"github.com/signal18/replication-manager/utils/version"
@@ -253,5 +255,20 @@ func TestCrashNotFlashbackable(t *testing.T) {
 	}
 	if why := ddl.notFlashbackable(); !strings.Contains(why, "4 DDL") {
 		t.Fatalf("4 DDL among the lost events: refused, got %q", why)
+	}
+}
+
+// The failover records where the elected replica stopped applying, a transaction boundary, not
+// what it received (possibly inside a transaction it never applied).
+func TestFailoverSourcePosition(t *testing.T) {
+	ns := func(s string) sql.NullString { return sql.NullString{String: s, Valid: s != ""} }
+	ms := &dbhelper.SlaveStatus{MasterLogFile: ns("binlog.000004"), ReadMasterLogPos: ns("1026991999"),
+		RelayMasterLogFile: ns("binlog.000004"), ExecMasterLogPos: ns("1026336652")}
+	if f, p := failoverSourcePosition(ms); f != "binlog.000004" || p != "1026336652" {
+		t.Fatalf("the executed position, got %s:%s", f, p)
+	}
+	ms.RelayMasterLogFile, ms.ExecMasterLogPos = ns(""), ns("")
+	if f, p := failoverSourcePosition(ms); f != "binlog.000004" || p != "1026991999" {
+		t.Fatalf("no executed position: the received one, got %s:%s", f, p)
 	}
 }

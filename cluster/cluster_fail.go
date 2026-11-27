@@ -187,8 +187,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	crash.UnixTimestamp = time.Now().Unix()
 	crash.URL = cluster.oldMaster.URL
 	crash.ElectedMasterURL = cluster.master.URL
-	crash.FailoverMasterLogFile = ms.MasterLogFile.String
-	crash.FailoverMasterLogPos = ms.ReadMasterLogPos.String
+	crash.FailoverMasterLogFile, crash.FailoverMasterLogPos = failoverSourcePosition(ms)
 	crash.NewMasterLogFile = cluster.master.BinaryLogFile
 	crash.NewMasterLogPos = cluster.master.BinaryLogPos
 	if cluster.master.DBVersion.IsMariaDB() {
@@ -1457,8 +1456,7 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 		//		cluster.master.FailoverMasterLogPos = cluster.master.MasterLogPos
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO ", "Save crash information")
 
-		crash.FailoverMasterLogFile = ms.MasterLogFile.String
-		crash.FailoverMasterLogPos = ms.ReadMasterLogPos.String
+		crash.FailoverMasterLogFile, crash.FailoverMasterLogPos = failoverSourcePosition(ms)
 		if cluster.master.DBVersion.IsMariaDB() {
 			if cluster.Conf.MxsBinlogOn {
 				//	cluster.master.FailoverIOGtid = cluster.master.CurrentGtid
@@ -1651,4 +1649,21 @@ func openNewMaster(link Replication, reason string, promote, refresh bool, refre
 		refreshServer()
 	}
 	return setReadWrite()
+}
+
+// failoverSourcePosition is where, in the old master's binary log, the elected replica stopped:
+// the end of the last transaction it applied (Relay_Master_Log_File, Exec_Master_Log_Pos), read
+// once its relay log is applied (ReadAllRelayLogs). Not what it received (Master_Log_File,
+// Read_Master_Log_Pos): that can be inside a transaction it received in part and never applied,
+// and the lost events captured from there missed that transaction's start (its GTID event):
+// on a test failover 4 transactions saved for 5 past the rejoin GTID, the first one rewound in
+// part only. The received position is the fallback when the executed one is not reported.
+func failoverSourcePosition(ms *dbhelper.SlaveStatus) (string, string) {
+	if ms == nil {
+		return "", ""
+	}
+	if ms.RelayMasterLogFile.String != "" && ms.ExecMasterLogPos.String != "" {
+		return ms.RelayMasterLogFile.String, ms.ExecMasterLogPos.String
+	}
+	return ms.MasterLogFile.String, ms.ReadMasterLogPos.String
 }
