@@ -5198,7 +5198,12 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "replication-plugin-tables":
 		mycluster.Conf.ReplicationPluginTables = strings.TrimSpace(value)
 	case "replication-plugin-feed-source-cluster":
-		mycluster.Conf.ReplicationPluginFeedSourceCluster = strings.TrimSpace(value)
+		v := strings.TrimSpace(value)
+		if v != "" && v == mycluster.Name {
+			// a feed from the cluster into itself would apply its own changes again, without end
+			return fmt.Errorf("invalid value for %s: %q is this cluster, a feed reads another cluster", name, v)
+		}
+		mycluster.Conf.ReplicationPluginFeedSourceCluster = v
 	case "replication-plugin-feed-database":
 		mycluster.Conf.ReplicationPluginFeedDatabase = strings.TrimSpace(value)
 	case "replication-plugin-feed-tables":
