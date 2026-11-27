@@ -34,15 +34,15 @@ A replication is between two servers, often of two clusters. A link carries both
 type Link struct {
     Plugin        ReplicationPlugin
     SourceCluster *Cluster        // the cluster read; nil for an external source repman does not manage
-    Source        Endpoint        // the server read: a server of a cluster, or an external address
+    SourceServer  Endpoint        // the server read: a server of a cluster, or an external address
     TargetCluster *Cluster        // the cluster written into
-    Target        *ServerMonitor  // the server written into
+    TargetServer  *ServerMonitor  // the server written into
     Name          string          // the link's identity on the target: the channel, the subscription, the feed
     Settings      PluginSettings  // its settings, declared by the plugin (see "Settings: per plugin")
 }
 
 type Endpoint struct {
-    Server *ServerMonitor // set when repman manages the source
+    Server *ServerMonitor // set when repman manages the source server
     Host   string         // otherwise its address, and the account read from the credential chain
     Port   string
 }
@@ -56,6 +56,8 @@ type Endpoint struct {
   cluster's topology. Stopping every link of a server before a reseed is `Stop` on each of its links
   (a plugin may send one `STOP ALL SLAVES` for them when the engine allows it: its own business, not a
   verb).
+- The four ends are named the same way everywhere: `SourceCluster`, `SourceServer`, `TargetCluster`,
+  `TargetServer` (T19: one concept, one name, in Go, TOML, JSON, the API and the GUI).
 - **A failover is two edge operations**: `Promote` on the candidate's link to the old master (that
   edge ends, its target becomes a source), then `ChangeSource` of the other replicas' links to the
   new master.
@@ -282,7 +284,7 @@ interface. A function is a verb of every plugin, or the bootstrap of one plugin.
 | Step | What changes |
 |---|---|
 | 2 | (done) `ReplicationLink` becomes `ReplicationPlugin` + `Link`; the verbs renamed (`StopCopyEvents`, `StopApplyEvents`) and `StartCopyEvents`, `StartApplyEvents` added; the manifest; the registry of plugins (as `newOrchestratorList`) |
-| 2b | `Link` carries both ends (`SourceCluster`, `Source`, `TargetCluster`, `Target`); `Promote`, `SetPosition`, `WaitCaughtUp`, `Configure`, `RotateCredential` added; the failover, switchover, reseed and rejoin calls moved onto them; `StopCopyEvents`, `StopApplyEvents` and `ChangeSource` record the link change once their statement succeeded, as `Stop` |
+| 2b | `Link` carries both ends (`SourceCluster`, `SourceServer`, `TargetCluster`, `TargetServer`); `Promote`, `SetPosition`, `WaitCaughtUp`, `Configure`, `RotateCredential` added; the failover, switchover, reseed and rejoin calls moved onto them; `StopCopyEvents`, `StopApplyEvents` and `ChangeSource` record the link change once their statement succeeded, as `Stop` |
 | 3 | The native code split into the built-in plugins: binlog (three manifests), galera, group replication, postgresql, columnstore |
 | 4 | `replication_cdc.go` becomes the external adapter; the `replication-plugin-*` keys become the plugins' own settings; the CDC binaries renamed (`replplugin-innodb` → `repl-mariadb-mariadb-cdc`, `replplugin-columnstore` → `repl-mariadb-columnstore-cdc`, `replplugin-duckdb` → `repl-mariadb-duckdb-cdc`, `replplugin-postgresql` → `repl-postgresql-mariadb-cdc`) with their manifests |
 | 5 | `Bootstrap` and `Create` moved from `prov.go` into the plugins, topology by topology |
