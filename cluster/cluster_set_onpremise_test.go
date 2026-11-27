@@ -119,7 +119,7 @@ func TestOnPremiseSSHPrivateKeyContent(t *testing.T) {
 	if err := cl.SetOnPremiseSSHPrivateKey(key); err != nil {
 		t.Fatalf("set key content: %v", err)
 	}
-	path := cl.OnPremiseSSHKeyFile()
+	path := cl.GetOnPremiseSSHKeyFile()
 	if cl.Conf.OnPremiseSSHPrivateKey != path {
 		t.Fatalf("setting is %q, want %q", cl.Conf.OnPremiseSSHPrivateKey, path)
 	}

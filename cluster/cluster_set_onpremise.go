@@ -16,11 +16,11 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
-// OnPremiseSSHKeyFile is where a private key received as content through the settings API is
+// GetOnPremiseSSHKeyFile is where a private key received as content through the settings API is
 // kept: in the cluster's working directory, 0600, a file the config git never stages (it stages
 // <cluster>/*.toml and a few named json files), so the key never reaches the config repository
 // (F9). onpremise-ssh-private-key then holds this path.
-func (cluster *Cluster) OnPremiseSSHKeyFile() string {
+func (cluster *Cluster) GetOnPremiseSSHKeyFile() string {
 	return filepath.Join(cluster.WorkingDir, ".ssh", "onpremise_ssh_key")
 }
 
@@ -44,7 +44,7 @@ func (cluster *Cluster) SetOnPremiseSSHCredential(cred string) error {
 // SetOnPremiseSSHPrivateKey sets onpremise-ssh-private-key. The setting is the path of the key
 // on the replication-manager host, as before; value is either that path (absolute, an existing
 // file; empty: the user's ~/.ssh/id_rsa) or the key itself (PEM / OpenSSH, beginning with
-// -----BEGIN). A key is checked, written to OnPremiseSSHKeyFile 0600 and the setting set to that
+// -----BEGIN). A key is checked, written to GetOnPremiseSSHKeyFile 0600 and the setting set to that
 // path: the key content is never in the config, in git or in a log.
 func (cluster *Cluster) SetOnPremiseSSHPrivateKey(value string) error {
 	trimmed := strings.TrimSpace(value)
@@ -60,7 +60,7 @@ func (cluster *Cluster) SetOnPremiseSSHPrivateKey(value string) error {
 			// the parser's error never quotes the key
 			return fmt.Errorf("onpremise-ssh-private-key is not a private key: %v", err)
 		}
-		path := cluster.OnPremiseSSHKeyFile()
+		path := cluster.GetOnPremiseSSHKeyFile()
 		if err := misc.WriteFileDurable(path, []byte(trimmed+"\n"), 0o600, ".onpremise_ssh_key-*.tmp"); err != nil {
 			return fmt.Errorf("onpremise-ssh-private-key: cannot write the key file: %v", err)
 		}
