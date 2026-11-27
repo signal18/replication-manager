@@ -52,7 +52,8 @@ arguments). Keys and settings are unchanged. What changes is where the send runs
 - each send runs in a goroutine of its own under the channel's `Timeout()` (`registry.send`):
   a panic is a failed send and the worker goes on; a send that ignores its context (the mail,
   a hook with its own client) is counted failed at its timeout, and while it still runs the
-  channel's next events fail at once (`inFlight`): one stuck goroutine per channel at most;
+  channel's next events fail at once (`inFlight`): one stuck goroutine per channel at most.
+  A send counted failed at its timeout may still be delivered later: alerting is at least once;
 - the alert script is killed after `alert-script-timeout` (default 300 s; it had no limit),
   in a process group of its own so its children die with it, with `WaitDelay` so a child
   holding the output does not hold the worker; its output is a bounded tail (`capBuffer`); a
@@ -60,7 +61,7 @@ arguments). Keys and settings are unchanged. What changes is where the send runs
 - Teams honours `alert-send-timeout` (default 10 s) through `SendWithContext`;
 - Pushover, whose client has no deadline, runs one send at a time: a send past the timeout is
   reported failed and the next waits for it to end, so a hung API never piles up goroutines.
-- a mail failure keeps `failSendCount` (now atomic: the worker writes it, the tick reads it) and WARN0138 as before.
+- a mail failure keeps `failSendCount` (now atomic: the worker writes it, the tick reads it) and WARN0138 as before; the failed send is also the channel's failure (WARN0361).
 
 ### Queue, drops, failures (T18)
 

@@ -12,7 +12,8 @@ import (
 )
 
 // snapshotCmdOwnGroup runs cmd in a process group of its own, killed whole at its deadline:
-// a zfs rollback or an lvconvert started by the helper stops with it, not only its sh.
+// a zfs rollback or an lvconvert started by the snapshot helper, or the children of the alert
+// script, stop with it, not only the process started.
 func snapshotCmdOwnGroup(cmd *exec.Cmd) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Cancel = func() error {
