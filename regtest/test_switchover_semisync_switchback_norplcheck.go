@@ -39,15 +39,7 @@ func (regtest *RegTest) TestSwitchover2TimesReplicationOkSemiSyncNoRplCheck(clus
 			return false
 		}
 	}
-	// The monitor sees the new topology a tick or two after the switchover ends: read the
-	// replicas live (CheckSlavesRunning: SHOW SLAVE STATUS, threads and Master_Server_Id)
-	// until they all replicate from the new master, for at most 30 seconds (#2169).
-	for deadline := time.Now().Add(30 * time.Second); !cluster.CheckSlavesRunning(); {
-		if time.Now().After(deadline) {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Replicas do not replicate from the new master %s 30s after the switchover", cluster.GetMaster().URL)
-			return false
-		}
-		time.Sleep(500 * time.Millisecond)
-	}
-	return true
+	// The monitor sees the new topology a tick or two after the switchover ends: wait until
+	// every replica replicates from the new master, 30 seconds at most (#2169).
+	return cluster.WaitSlavesRunning(30 * time.Second)
 }

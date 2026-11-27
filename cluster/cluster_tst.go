@@ -598,6 +598,26 @@ func (cluster *Cluster) CheckSlavesRunning() bool {
 	return true
 }
 
+// WaitSlavesRunning polls CheckSlavesRunning, the monitor's view of the replicas (their
+// threads and Master_Server_Id against the master it sees), until every replica replicates from
+// the master, timeout at most: the monitor sees a new topology a tick or two after a switchover
+// ends, so a check right after it reads the old one (F5: wait for the observed state, never a
+// blind sleep). False, logged, at the timeout.
+func (cluster *Cluster) WaitSlavesRunning(timeout time.Duration) bool {
+	for deadline := time.Now().Add(timeout); !cluster.CheckSlavesRunning(); {
+		if time.Now().After(deadline) {
+			master := ""
+			if m := cluster.GetMaster(); m != nil {
+				master = m.URL
+			}
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Replicas do not replicate from the master %s %s after the switchover", master, timeout)
+			return false
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	return true
+}
+
 // BenchTable is the table the cluster's benchmark writes, the one the regtests check for
 // consistency: sysbench writes replication_manager_schema.sbtest1 (--mysql-db, one table),
 // the table benchmark replication_manager_schema.bench. The regtests checked test.sbtest,
