@@ -59,7 +59,8 @@ type replPluginRunner struct {
 	gen   int64          // the process started, counted
 
 	stmtMu      sync.Mutex
-	loggedStmts []string // the statements of a capture source on its source, logged (F11)
+	loggedStmts int64 // the statements of a capture source on its source logged, counted (F11)
+	loggedGen   int64 // the process they were counted in
 }
 
 // replFeed is a restore feeding a plugin's stdin (#2015): the process it started with, so a
@@ -540,17 +541,22 @@ func (cluster *Cluster) checkReplPluginStates(runners []*replPluginRunner, errs 
 	}
 }
 
-// capBuffer keeps the last replPluginStderrMax bytes written to it.
+// capBuffer keeps the last max bytes written to it (replPluginStderrMax when 0).
 type capBuffer struct {
 	mu  sync.Mutex
 	buf []byte
+	max int
 }
 
 func (b *capBuffer) Write(p []byte) (int, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.buf = append(b.buf, p...)
-	if over := len(b.buf) - replPluginStderrMax; over > 0 {
+	limit := b.max
+	if limit <= 0 {
+		limit = replPluginStderrMax
+	}
+	if over := len(b.buf) - limit; over > 0 {
 		b.buf = b.buf[over:]
 	}
 	return len(p), nil

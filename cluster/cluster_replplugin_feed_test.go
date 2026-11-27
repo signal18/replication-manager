@@ -11,30 +11,51 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/BurntSushi/toml"
 	"github.com/signal18/replication-manager/cluster/replplugin/wire"
 )
 
 func TestFeedObjectName(t *testing.T) {
 	for in, want := range map[string]string{"dev3": "repman_dev3", "Shop-EU.1": "repman_shop_eu_1", strings.Repeat("a", 80): "repman_" + strings.Repeat("a", 56)} {
-		if got := feedObjectName(in); got != want {
+		if got := FeedObjectName(in); got != want {
 			t.Errorf("%q: got %q, want %q", in, got, want)
 		}
 	}
 }
 
-// Each statement a capture source ran on its source is logged once, across status lines that
-// keep only the last ones.
+// Each statement a capture source ran on its source is logged once, a repeated one included,
+// across status lines that keep only the last ones.
 func TestLogSourceStatements(t *testing.T) {
 	r := &replPluginRunner{}
 	var logged []string
 	log := func(q string) { logged = append(logged, q) }
-	r.logSourceStatements([]string{"a"}, log)
-	r.logSourceStatements([]string{"a"}, log)
-	r.logSourceStatements([]string{"a", "b"}, log)
-	r.logSourceStatements([]string{"b", "c"}, log) // "a" fell out of the bounded list
-	r.logSourceStatements([]string{"d"}, log)      // a new process
-	if want := []string{"a", "b", "c", "d"}; !reflect.DeepEqual(logged, want) {
+	r.logSourceStatements([]string{"a"}, 1, log)
+	r.logSourceStatements([]string{"a"}, 1, log)
+	r.logSourceStatements([]string{"a", "a"}, 2, log) // the same statement run again
+	r.logSourceStatements([]string{"a", "c"}, 3, log) // the list keeps the last two
+	r.gen++                                           // a new process, which ran 3 statements already
+	r.logSourceStatements([]string{"d", "e", "f"}, 3, log)
+	if want := []string{"a", "a", "c", "d", "e", "f"}; !reflect.DeepEqual(logged, want) {
 		t.Fatalf("logged %v, want %v", logged, want)
+	}
+}
+
+// A feed TOML read back is the same as the one written: no rewrite (no restart) every tick,
+// with no table selected too.
+func TestSameReplPluginConfigReadBack(t *testing.T) {
+	path := filepath.Join(t.TempDir(), feedTOMLName)
+	for _, tables := range []string{"", "app.*,app.t"} {
+		want := wire.Config{Plugin: "postgresql", Enabled: true, SourceKind: "postgresql", Rules: analyticRules(tables), SourceOptions: map[string]string{"slot": "s"}}
+		if err := writeReplPluginConfig(path, want); err != nil {
+			t.Fatal(err)
+		}
+		var got wire.Config
+		if _, err := toml.DecodeFile(path, &got); err != nil {
+			t.Fatal(err)
+		}
+		if !sameReplPluginConfig(got, want) {
+			t.Fatalf("tables %q: the TOML read back differs from the one written", tables)
+		}
 	}
 }
 

@@ -3834,6 +3834,9 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.SwitchMonitoringScheduler()
 	case "monitoring-schema-change":
 		mycluster.SwitchMonitoringSchemaChange()
+	case "replication-plugin-feed-enabled":
+		// the feed's start and stop: the single switch, its TOML follows it (syncReplicationFeed)
+		mycluster.Conf.ReplicationPluginFeedEnabled = !mycluster.Conf.ReplicationPluginFeedEnabled
 	case "replication-plugin-feed-create-source-objects":
 		// the feed may create its publication and slot on the source: a change of the client's database (F1)
 		mycluster.Conf.ReplicationPluginFeedCreateSourceObjects = !mycluster.Conf.ReplicationPluginFeedCreateSourceObjects

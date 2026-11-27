@@ -5,13 +5,13 @@
 package cluster
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -40,9 +40,9 @@ func (cluster *Cluster) replFeedPath() string {
 	return filepath.Join(cluster.replPluginDir(), feedTOMLName)
 }
 
-// feedObjectName: the publication and the slot of the feed on the source, from the cluster's
+// FeedObjectName is the publication and the slot of the feed on the source, from the cluster's
 // name (lower case letters, digits and _: never an identifier that needs quoting)
-func feedObjectName(cluster string) string {
+func FeedObjectName(cluster string) string {
 	var b strings.Builder
 	b.WriteString("repman_")
 	for _, r := range strings.ToLower(cluster) {
@@ -81,7 +81,7 @@ func (cluster *Cluster) replFeedConfig() (wire.Config, bool) {
 		return wire.Config{}, false // the source follows the master: none known yet
 	}
 	sourceKind := "postgresql"
-	obj := feedObjectName(cluster.Name)
+	obj := FeedObjectName(cluster.Name)
 	retained := cluster.Conf.ReplicationPluginFeedRetainedMax
 	if retained <= 0 {
 		retained = 10240
@@ -106,8 +106,11 @@ func (cluster *Cluster) replFeedConfig() (wire.Config, bool) {
 
 // syncReplicationFeed keeps the feed's TOML on the settings, every tick before the supervisor:
 // rewritten when a setting or a master changed (the supervisor restarts the plugin from its
-// State), disabled when the feed is switched off (its State and what it created on the source
-// stay: a feed switched on again resumes; DropReplicationFeedSourceObjects removes them).
+// State), disabled when the feed is stopped (replication-plugin-feed-enabled off) or has no
+// source (its State and what it created on the source stay: a feed started again resumes;
+// DropReplicationFeedSourceObjects removes them). It is the only writer of the feed TOML's
+// enabled: a stop or a start (the GUI, the replication interface) changes the setting, never
+// the file.
 func (cluster *Cluster) syncReplicationFeed() {
 	path := cluster.replFeedPath()
 	var cur wire.Config
@@ -119,16 +122,21 @@ func (cluster *Cluster) syncReplicationFeed() {
 		}
 	}
 	want, ok := cluster.replFeedConfig()
-	if !ok {
-		if exists && cur.Enabled && strings.TrimSpace(cluster.Conf.ReplicationPluginFeedSourceCluster) == "" {
+	off := strings.TrimSpace(cluster.Conf.ReplicationPluginFeedSourceCluster) == "" || !cluster.Conf.ReplicationPluginFeedEnabled
+	if !ok || off {
+		if exists && cur.Enabled && off {
 			cur.Enabled = false
+			if ok {
+				cur = want // the settings changed while stopped: written, not run
+				cur.Enabled = false
+			}
 			if err := writeReplFeedConfig(path, cur); err == nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "CDC feed of %s switched off: the plugin stops, its position and what it created on the source are kept", cluster.Name)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "CDC feed of %s stopped: the plugin stops, its position and what it created on the source are kept", cluster.Name)
 			}
 		}
 		return
 	}
-	if exists && reflect.DeepEqual(cur, want) {
+	if exists && sameReplPluginConfig(cur, want) {
 		return
 	}
 	if err := writeReplFeedConfig(path, want); err != nil {
@@ -136,6 +144,17 @@ func (cluster *Cluster) syncReplicationFeed() {
 		return
 	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "CDC feed of %s from %s (%s:%d, database %s) written to %s", cluster.Name, want.SourceCluster, want.Source.Host, want.Source.Port, want.Source.Database, path)
+}
+
+// sameReplPluginConfig compares two plugin TOMLs as they are written: a slice or map empty on
+// one side and nil on the other (a TOML read back) is the same file, never a rewrite (which
+// would restart the plugin every tick).
+func sameReplPluginConfig(a, b wire.Config) bool {
+	var ea, eb bytes.Buffer
+	if toml.NewEncoder(&ea).Encode(a) != nil || toml.NewEncoder(&eb).Encode(b) != nil {
+		return false
+	}
+	return bytes.Equal(ea.Bytes(), eb.Bytes())
 }
 
 func writeReplFeedConfig(path string, cfg wire.Config) error {
@@ -166,7 +185,9 @@ func (cluster *Cluster) replPluginPathOf(plugin string) (string, wire.Config, er
 	return "", wire.Config{}, fmt.Errorf("%w: %s", ErrNoReplicationPlugin, plugin)
 }
 
-// stopReplPluginAt stops the runner of the TOML at path and waits for it.
+// stopReplPluginAt stops the runner of the TOML at path and waits for its process to end (a
+// SIGTERM, then the grace period). The stop-wait of the rebuild and of the removal; it never
+// touches the source, nor the TOML (the next tick starts it again when the TOML is enabled).
 func (cluster *Cluster) stopReplPluginAt(path string) {
 	cluster.replPluginsMu.Lock()
 	r := cluster.replPlugins[path]
@@ -179,8 +200,9 @@ func (cluster *Cluster) stopReplPluginAt(path string) {
 	}
 }
 
-// ReinitReplicationPlugin makes a feed with a capture source start again from a new initial
-// load (the rejoin of a feed whose source lost its position): the plugin stopped, its
+// ReinitReplicationPlugin is the rebuild of a feed with a capture source, the one implementation
+// (the API, and the replication interface's CDC link rejoin when the source lost the position):
+// a new initial load. It never touches the source: the plugin stopped, its
 // position, applied file, checkpoints and merges removed; what it created on the source
 // (State.Owned) is kept, so the new initial load replaces its own slot and never another. The
 // next tick starts it.
@@ -197,7 +219,10 @@ func (cluster *Cluster) ReinitReplicationPlugin(plugin string) error {
 	if err != nil {
 		return err
 	}
-	os.RemoveAll(wire.CheckpointDir(path))
+	// a checkpoint left behind would be applied after the new initial load
+	if err := os.RemoveAll(wire.CheckpointDir(path)); err != nil {
+		return err
+	}
 	for _, f := range []string{wire.AppliedPath(path), wire.MergedPath(path)} {
 		if err := os.Remove(f); err != nil && !os.IsNotExist(err) {
 			return err
@@ -210,8 +235,11 @@ func (cluster *Cluster) ReinitReplicationPlugin(plugin string) error {
 	return nil
 }
 
-// replPluginDropTimeout bounds a plugin run with -drop
-const replPluginDropTimeout = 2 * time.Minute
+// replPluginDropTimeout bounds a plugin run with -drop, replPluginDropStdoutMax what it prints
+const (
+	replPluginDropTimeout   = 2 * time.Minute
+	replPluginDropStdoutMax = 64 * 1024
+)
 
 // DropReplicationFeedSourceObjects removes what the cluster's feed plugin created on its source
 // (State.Owned: its replication slot, its publication; never anything else), on the operator's
@@ -226,7 +254,7 @@ func (cluster *Cluster) DropReplicationFeedSourceObjects(plugin string) ([]strin
 		return nil, fmt.Errorf("replication plugin %s created nothing on its source", plugin)
 	}
 	if cfg.Enabled {
-		return nil, fmt.Errorf("the feed %s is on: switch it off first (replication-plugin-feed-source-cluster empty)", plugin)
+		return nil, fmt.Errorf("the feed %s runs: stop it first (replication-plugin-feed-enabled off)", plugin)
 	}
 	cluster.stopReplPluginAt(path)
 	bin, err := cluster.verifiedReplPlugin(plugin)
@@ -238,10 +266,11 @@ func (cluster *Cluster) DropReplicationFeedSourceObjects(plugin string) ([]strin
 	cmd := exec.CommandContext(ctx, bin, "-config", path, "-drop")
 	cmd.Env = cluster.replPluginEnv(cfg)
 	var stderr capBuffer
-	cmd.Stderr = &stderr
-	out, err := cmd.Output()
+	stdout := capBuffer{max: replPluginDropStdoutMax}
+	cmd.Stderr, cmd.Stdout = &stderr, &stdout
+	err = cmd.Run()
 	var ran []string
-	for _, l := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+	for _, l := range strings.Split(strings.TrimSpace(stdout.String()), "\n") {
 		if l = strings.TrimSpace(l); l != "" {
 			ran = append(ran, l)
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Replication plugin %s of %s ran on its source %s:%d: %s", plugin, cluster.Name, cfg.Source.Host, cfg.Source.Port, l)
@@ -273,25 +302,30 @@ func (cluster *Cluster) checkReplPluginSourceStates(r *replPluginRunner, st *wir
 	if st.SourceWarning != "" {
 		cluster.SetState("WARN0360", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0360"], name, cluster.Name, src, st.SourceWarning), ErrFrom: "REPL"})
 	}
-	r.logSourceStatements(st.SourceStatements, func(q string) {
+	r.logSourceStatements(st.SourceStatements, st.SourceStatementsTotal, func(q string) {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Replication plugin %s of %s ran on its source %s: %s", name, cluster.Name, src, q)
 	})
 }
 
-// logSourceStatements logs the statements of stmts not logged yet: the status keeps the last
-// wire.MaxSourceStatements, so the ones already logged are their prefix.
-func (r *replPluginRunner) logSourceStatements(stmts []string, log func(string)) {
+// logSourceStatements logs the statements of stmts not logged yet. total counts every statement
+// the process ran (the status keeps the last wire.MaxSourceStatements of them): the new ones are
+// the last total-logged of stmts. A new process of the plugin (its generation, or a total lower
+// than the one logged) starts the count again.
+func (r *replPluginRunner) logSourceStatements(stmts []string, total int64, log func(string)) {
+	r.inMu.Lock()
+	gen := r.gen
+	r.inMu.Unlock()
 	r.stmtMu.Lock()
 	defer r.stmtMu.Unlock()
-	start := 0
-	for i := len(r.loggedStmts); i > 0; i-- {
-		if i <= len(stmts) && reflect.DeepEqual(r.loggedStmts[len(r.loggedStmts)-i:], stmts[:i]) {
-			start = i
-			break
-		}
+	if gen != r.loggedGen || total < r.loggedStmts {
+		r.loggedGen, r.loggedStmts = gen, 0
 	}
-	for _, q := range stmts[start:] {
+	n := total - r.loggedStmts
+	if n > int64(len(stmts)) {
+		n = int64(len(stmts)) // more than the status keeps: the older ones are lost, said by the count
+	}
+	for _, q := range stmts[int64(len(stmts))-n:] {
 		log(q)
 	}
-	r.loggedStmts = append([]string(nil), stmts...)
+	r.loggedStmts = total
 }

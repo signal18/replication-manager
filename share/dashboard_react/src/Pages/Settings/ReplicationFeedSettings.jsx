@@ -55,7 +55,10 @@ function ReplicationFeedSettings({ selectedCluster, user }) {
     }
   }
 
+  const hEnabled = `**Feed Running**\n\nStarts and stops the feed (the replication interface's start and stop of the cdc link set the same switch). Stopped, its position and what it created on the source are kept, and it resumes from its slot when started again.\n\nConfig: \`replication-plugin-feed-enabled\``
+
   const dataObject = [
+    { clusterSetting: 'replication-plugin-feed-enabled', key: 'Feed Running', help: h(hEnabled, 'Feed Running'), value: (<RMSwitch isChecked={conf.replicationPluginFeedEnabled} isDisabled={readOnly} confirmTitle={'Confirm switch settings for replication-plugin-feed-enabled?'} onChange={() => dispatch(switchSetting({ clusterName: name, setting: 'replication-plugin-feed-enabled' }))} />) },
     { clusterSetting: 'replication-plugin-feed-source-cluster', key: 'Source Cluster', help: h(hSource, 'Source Cluster'), value: (<TextForm value={conf.replicationPluginFeedSourceCluster} regexPattern={'^[A-Za-z0-9_.-]*$'} confirmTitle={'Confirm replication-plugin-feed-source-cluster to '} onSave={(v) => dispatch(setSetting({ clusterName: name, setting: 'replication-plugin-feed-source-cluster', value: v }))} />) },
     { clusterSetting: 'replication-plugin-feed-database', key: 'Source Database', help: h(hDatabase, 'Source Database'), value: (<TextForm value={conf.replicationPluginFeedDatabase} confirmTitle={'Confirm replication-plugin-feed-database to '} onSave={(v) => dispatch(setSetting({ clusterName: name, setting: 'replication-plugin-feed-database', value: v }))} />) },
     { clusterSetting: 'replication-plugin-feed-tables', key: 'Carried Tables', help: h(hTables, 'Carried Tables'), value: (<TextForm value={conf.replicationPluginFeedTables} regexPattern={'^([^.,\\s]+\\.[^.,\\s]+)(\\s*,\\s*[^.,\\s]+\\.[^.,\\s]+)*$'} confirmTitle={'Confirm replication-plugin-feed-tables to '} onSave={(v) => dispatch(setSetting({ clusterName: name, setting: 'replication-plugin-feed-tables', value: v }))} />) },
@@ -70,7 +73,7 @@ function ReplicationFeedSettings({ selectedCluster, user }) {
       </Flex>
       <Flex gap='2' mt='2' align='center' wrap='wrap'>
         <RMButton isDisabled={noReplication} onClick={() => setConfirm('reinit')}>New Initial Load</RMButton>
-        <RMButton isDisabled={noReplication || !!conf.replicationPluginFeedSourceCluster} onClick={() => setConfirm('drop')}>Drop Slot and Publication on Source</RMButton>
+        <RMButton isDisabled={noReplication || (!!conf.replicationPluginFeedSourceCluster && conf.replicationPluginFeedEnabled)} onClick={() => setConfirm('drop')}>Drop Slot and Publication on Source</RMButton>
         {result && <Text fontSize='sm'>{result}</Text>}
       </Flex>
       {confirm && (

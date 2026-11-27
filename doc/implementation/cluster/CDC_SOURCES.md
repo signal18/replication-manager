@@ -49,13 +49,18 @@ plugin reuses it.
 
 - Settings of the destination cluster (T16, T14): `replication-plugin-feed-source-cluster` (a
   PostgreSQL cluster of this replication-manager; empty is the off switch),
+  `replication-plugin-feed-enabled` (true: the feed's start and stop, the single switch the GUI and
+  the replication interface's cdc link set; only `syncReplicationFeed` writes the TOML's
+  `enabled`),
   `replication-plugin-feed-database`, `replication-plugin-feed-tables`,
   `replication-plugin-feed-create-source-objects` (false by default),
   `replication-plugin-feed-retained-max` (MB, 10240). GUI: Settings, High Availability, CDC Feed.
 - `syncReplicationFeed` writes the feed's TOML (`replication-plugins/feed.toml`) from them every
   tick, the source being the source cluster's master and the target this cluster's master; the
   usual supervisor runs it (`replplugin-<plugin>`, signature, manifest tier gate ERR00132).
-  Switched off, the TOML is disabled and the position and the source objects are kept.
+  Stopped (or without source), the TOML is disabled and the position and the source objects
+  are kept. `ReinitReplicationPlugin` (the rebuild) and `stopReplPluginAt` (the stop-wait) are the
+  one implementation the replication interface's cdc link calls; neither touches the source.
 - States (HA domain of the destination cluster): **CINF0040** what the source keeps for the feed
   and its bound (and the initial load's progress); **WARN0360** a warning about the source
   (`max_slot_wal_keep_size` unset, a slot over the bound that is not the feed's); **ERR00140** the
