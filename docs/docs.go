@@ -32164,6 +32164,9 @@ const docTemplate = `{
                 "autorejoinAsyncFlashbackDropBinlog": {
                     "type": "boolean"
                 },
+                "autorejoinAsyncFlashbackDropBinlogMaxTransactions": {
+                    "type": "integer"
+                },
                 "autorejoinBackupBinlog": {
                     "type": "boolean"
                 },

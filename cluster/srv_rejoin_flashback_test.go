@@ -12,6 +12,7 @@ import (
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/backupmgr"
+	"github.com/signal18/replication-manager/utils/gtid"
 	"github.com/signal18/replication-manager/utils/state"
 	"github.com/signal18/replication-manager/utils/version"
 )
@@ -56,7 +57,7 @@ func TestPositionAfterFlashbackOrder(t *testing.T) {
 		mock.ExpectExec("SET GLOBAL gtid_binlog_state = '" + target + "'").WillReturnResult(sqlmock.NewResult(0, 0))
 		mock.ExpectExec("SET GLOBAL gtid_slave_pos").WithArgs(target).WillReturnResult(sqlmock.NewResult(0, 0))
 		server.BinaryLogFileOldest, server.BinaryLogFile = "mariadb-bin.000010", "mariadb-bin.000014"
-		if err := server.positionAfterFlashback(target, true); err != nil {
+		if err := server.positionAfterFlashback(target, &flashbackDropFacts{Saved: make([]gtid.Gtid, 133), Copy: "/backup/copy"}); err != nil {
 			t.Fatal(err)
 		}
 		if err := mock.ExpectationsWereMet(); err != nil {
@@ -92,7 +93,7 @@ func TestPositionAfterFlashbackOrder(t *testing.T) {
 		mock.ExpectQuery("global_variables").WithArgs("GTID_BINLOG_POS").
 			WillReturnRows(sqlmock.NewRows([]string{"Value"}).AddRow(target))
 		mock.ExpectExec("SET GLOBAL gtid_slave_pos").WithArgs(target).WillReturnResult(sqlmock.NewResult(0, 0))
-		if err := server.positionAfterFlashback(target, true); err != nil {
+		if err := server.positionAfterFlashback(target, &flashbackDropFacts{Saved: make([]gtid.Gtid, 133), Copy: "/backup/copy"}); err != nil {
 			t.Fatal(err)
 		}
 		if err := mock.ExpectationsWereMet(); err != nil {
@@ -105,7 +106,7 @@ func TestPositionAfterFlashbackOrder(t *testing.T) {
 		mock.ExpectQuery("global_variables").WithArgs("GTID_BINLOG_POS").
 			WillReturnRows(sqlmock.NewRows([]string{"Value"}).AddRow("1-11626367-1204112"))
 		mock.ExpectExec("SET GLOBAL gtid_slave_pos").WithArgs(target).WillReturnResult(sqlmock.NewResult(0, 0))
-		if err := server.positionAfterFlashback(target, false); err != nil {
+		if err := server.positionAfterFlashback(target, nil); err != nil {
 			t.Fatal(err)
 		}
 		if err := mock.ExpectationsWereMet(); err != nil {
@@ -121,7 +122,7 @@ func TestPositionAfterFlashbackOrder(t *testing.T) {
 		mock.ExpectQuery("global_variables").WithArgs("GTID_BINLOG_POS").
 			WillReturnRows(sqlmock.NewRows([]string{"Value"}).AddRow("1-11626367-1204112"))
 		mock.ExpectExec("RESET MASTER").WillReturnError(errors.New("denied"))
-		if err := server.positionAfterFlashback(target, true); err == nil {
+		if err := server.positionAfterFlashback(target, &flashbackDropFacts{Saved: make([]gtid.Gtid, 133), Copy: "/backup/copy"}); err == nil {
 			t.Fatal("a binary log that cannot be reset leaves the position as it was")
 		}
 		if server.flashbackBinlogReset.Load() != nil {
@@ -133,29 +134,94 @@ func TestPositionAfterFlashbackOrder(t *testing.T) {
 	})
 }
 
-// The drop is decided before it runs: the switch, an asynchronous old master at the failover,
-// and its lost events copied first.
-func TestFlashbackDropsBinlog(t *testing.T) {
-	c, server := newStagingTestServer(t)
-	copy := filepath.Join(t.TempDir(), "dev-server1-binlog.000001")
-	if err := os.WriteFile(copy, []byte("binlog"), 0600); err != nil {
+// Every guard, observed values in, refuses alone; all of them pass on the dev case.
+func TestFlashbackDropGuards(t *testing.T) {
+	saved := func(from, to uint64) []gtid.Gtid {
+		var out []gtid.Gtid
+		for n := from; n <= to; n++ {
+			out = append(out, gtid.Gtid{DomainID: 1, ServerID: 11626367, SeqNo: n})
+		}
+		return out
+	}
+	ok := func() *flashbackDropFacts {
+		return &flashbackDropFacts{Copy: "/w/dev-server11626367-binlog.000002", CopySize: 138875361, Target: "1-11626367-1354480",
+			OwnServerID: 11626367, BinlogState: "1-79736947-1261024,1-31684549-1308315,1-11626367-1354615",
+			Saved: saved(1354481, 1354615), Replayed: 135, MaxTransactions: 10000}
+	}
+	if g, v := ok().check(); g != "" {
+		t.Fatalf("every guard holds, refused by %s: %s", g, v)
+	}
+	cases := map[string]func(f *flashbackDropFacts){
+		flashbackGuardSemiSync:        func(f *flashbackDropFacts) { f.SemiSyncMaster = true },
+		flashbackGuardCopy:            func(f *flashbackDropFacts) { f.CopySize = 0 },
+		flashbackGuardReplay:          func(f *flashbackDropFacts) { f.Replayed = 134 },
+		flashbackGuardMaxTransactions: func(f *flashbackDropFacts) { f.MaxTransactions = 100 },
+		flashbackGuardDomain:          func(f *flashbackDropFacts) { f.BinlogState += ",2-5-10" },
+		flashbackGuardReaders:         func(f *flashbackDropFacts) { f.Readers = []string{"db9.child:3306 (bench)"} },
+		"readers (dump thread)":       func(f *flashbackDropFacts) { f.DumpThreads = 1 },
+		// a test failover: the copy started one transaction late, 134 saved for 135 past the target
+		"lost-transactions (one missing)": func(f *flashbackDropFacts) { f.Saved, f.Replayed = saved(1354482, 1354615), 134 },
+		"lost-transactions (other server)": func(f *flashbackDropFacts) {
+			f.BinlogState = "1-31684549-1354500,1-11626367-1354615"
+		},
+		"lost-transactions (unreadable)": func(f *flashbackDropFacts) { f.SavedErr = errors.New("no decoded copy") },
+	}
+	for name, mutate := range cases {
+		f := ok()
+		mutate(f)
+		g, v := f.check()
+		if g != strings.Fields(name)[0] {
+			t.Errorf("%s: refused by %q (%s)", name, g, v)
+		}
+	}
+}
+
+// The saved lost transactions are the GTID events of the decoded copy, a long annotated line
+// skipped.
+func TestSavedLostGTIDs(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "copy.sql")
+	body := "#261127 19:54:50 server id 11626367  end_log_pos 261982468 CRC32 0x475763b7 \tGTID 1-11626367-1203981 trans\n" +
+		"#Q> INSERT INTO sbtest2 VALUES " + strings.Repeat("(1, 'GTID 9-9-9'),", 200000) + "\n" +
+		"#261127 19:54:50 server id 11626367  end_log_pos 263018133 CRC32 0x7d5bbb82 \tGTID 1-11626367-1203982 trans\n"
+	if err := os.WriteFile(path, []byte(body), 0600); err != nil {
 		t.Fatal(err)
 	}
-	async, semisync := &Crash{FailoverSemiSyncSlaveStatus: true}, &Crash{FailoverSemiSyncMasterStatus: true, FailoverSemiSyncSlaveStatus: true}
+	got, err := savedLostGTIDs(path)
+	if err != nil || len(got) != 2 || got[0].SeqNo != 1203981 || got[1].SeqNo != 1203982 || got[1].ServerID != 11626367 {
+		t.Fatalf("got %+v %v", got, err)
+	}
+	if _, err := savedLostGTIDs(""); err == nil {
+		t.Fatal("no decoded copy is an error")
+	}
+}
 
-	c.Conf.AutorejoinAsyncFlashbackDropBinlog = true
-	if drop, why := server.flashbackDropsBinlog(async, copy); !drop {
-		t.Fatalf("switch on, async, copied: dropped, got kept (%s)", why)
+// The replay counts the row transactions it received, not the empty block at the end, across
+// writes that split lines.
+func TestFlashbackTxCounter(t *testing.T) {
+	out := "/*!50530 SET @@SESSION.PSEUDO_SLAVE_MODE=1*/;\nSTART TRANSACTION\n/*!*/;\nBINLOG '\nabc\n'/*!*/;\nCOMMIT\n/*!*/;\n" +
+		"START TRANSACTION\n/*!*/;\nBINLOG '\ndef\n'/*!*/;\nCOMMIT\n/*!*/;\nSTART TRANSACTION/*!*/;\nCOMMIT\n/*!*/;\n"
+	c := &flashbackTxCounter{}
+	for i := 0; i < len(out); i += 7 {
+		end := i + 7
+		if end > len(out) {
+			end = len(out)
+		}
+		c.Write([]byte(out[i:end]))
 	}
-	if drop, _ := server.flashbackDropsBinlog(semisync, copy); drop {
-		t.Fatal("an old master in semi-sync at the failover is never dropped")
+	if c.Transactions() != 2 {
+		t.Fatalf("2 row transactions, got %d", c.Transactions())
 	}
-	if drop, _ := server.flashbackDropsBinlog(async, copy+".missing"); drop {
-		t.Fatal("no copy of the lost events, no drop")
+}
+
+// The cap is never unbounded: 0 is the default.
+func TestFlashbackDropMaxTransactions(t *testing.T) {
+	c := &Cluster{Conf: &config.Config{}}
+	if c.flashbackDropMaxTransactions() != flashbackDropMaxTransactionsDefault {
+		t.Fatal("0 falls back to the default")
 	}
-	c.Conf.AutorejoinAsyncFlashbackDropBinlog = false
-	if drop, _ := server.flashbackDropsBinlog(async, copy); drop {
-		t.Fatal("switch off: the binary log is kept")
+	c.Conf.AutorejoinAsyncFlashbackDropBinlogMaxTransactions = 50
+	if c.flashbackDropMaxTransactions() != 50 {
+		t.Fatal("the setting is the cap")
 	}
 }
 

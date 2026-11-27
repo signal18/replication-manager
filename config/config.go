@@ -1244,6 +1244,10 @@ type Config struct {
 
 	// SnapshotPluginEntries: the settings of the external snapshot plugins (#2456)
 	SnapshotPluginEntries []SnapshotPluginEntry `mapstructure:"snapshot-plugin" toml:"snapshot-plugin" json:"snapshotPlugins"`
+
+	// AutorejoinAsyncFlashbackDropBinlogMaxTransactions: the cap of the binlog drop of the flashback
+	// rejoin (cluster/srv_rejoin_flashback_drop.go), 0 = 10000
+	AutorejoinAsyncFlashbackDropBinlogMaxTransactions int `mapstructure:"autorejoin-async-flashback-drop-binlog-max-transactions" toml:"autorejoin-async-flashback-drop-binlog-max-transactions" json:"autorejoinAsyncFlashbackDropBinlogMaxTransactions"`
 }
 
 func init() {

@@ -4605,6 +4605,12 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "failover-limit":
 		val, _ := strconv.Atoi(value)
 		mycluster.SetFailLimit(val)
+	case "autorejoin-async-flashback-drop-binlog-max-transactions":
+		val, err := strconv.Atoi(value)
+		if err != nil || val < 0 {
+			return fmt.Errorf("autorejoin-async-flashback-drop-binlog-max-transactions: %q is not a count of transactions", value)
+		}
+		mycluster.Conf.AutorejoinAsyncFlashbackDropBinlogMaxTransactions = val
 	case "backup-keep-last":
 		err = mycluster.SetBackupKeepLastN(value)
 		if err != nil {

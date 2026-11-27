@@ -37,20 +37,35 @@ Two facts, both checked on the saved crash binlog and on a throwaway MariaDB 11.
    `flashbackReplayArgs`). Always, whatever the switch below: it deletes nothing. The
    `mariadb-binlog` process is waited for; a decoder that died half-way fed the client part of the
    rewind and the server is never positioned after it.
-2. **Drop the binary log of an asynchronous old master** (`flashbackDropsBinlog`,
-   `positionAfterFlashback`), only after the replay ended complete, and only when:
-   - `autorejoin-async-flashback-drop-binlog` is true (default);
-   - the old master was **not** in semi-sync at the failover: `Crash.FailoverSemiSyncMasterStatus`,
-     its `Rpl_semi_sync_master_status` as the monitor last read it before the failover. The
-     elected replica's `Rpl_semi_sync_slave_status` (`FailoverSemiSyncSlaveStatus`) is not used: it
-     stays ON until the replica's IO thread restarts after the master's semi-sync was turned off;
-   - its lost events were copied first (`autorejoin-backup-binlog`, the file the flashback read,
-     not empty);
-   - `gtid_binlog_pos` is past the target in a domain (`parentBackupBehind`).
-   Then `RESET MASTER` (`server.ResetMaster`) and `SET GLOBAL gtid_binlog_state = '<target>'`
-   (`dbhelper.SetGTIDBinlogState`), and only then `SET GLOBAL gtid_slave_pos = '<target>'`
-   (`ReplicationLink().SetPosition`). The server's next binlogged event follows the target in
-   strict mode.
+2. **Drop the binary log of an asynchronous old master** (`flashbackDropPlan` in
+   `cluster/srv_rejoin_flashback_drop.go`, then `positionAfterFlashback`), only after the replay
+   ended complete (both processes exited 0), with `autorejoin-async-flashback-drop-binlog` true
+   (default), when `gtid_binlog_state` is past the target, and only when **every guard** holds,
+   each observed right before the drop (F5). The decision (`flashbackDropFacts.check`) reads only
+   the facts gathered:
+
+   | Guard | Holds when | Observed from |
+   | ----- | ---------- | ------------- |
+   | `semi-sync` | the old master was not in semi-sync at the failover | `Crash.FailoverSemiSyncMasterStatus`: its `Rpl_semi_sync_master_status` as last read before the failover (the elected replica's `Rpl_semi_sync_slave_status` stays ON until its IO thread restarts after the master's semi-sync was turned off: not used) |
+   | `copy` | the lost events were copied first | the copy the flashback read (`autorejoin-backup-binlog`), not empty |
+   | `replay` | the replay applied exactly the saved transactions | the row transactions counted on the replay's input (`flashbackTxCounter`) equal the saved GTIDs |
+   | `max-transactions` | no more lost transactions than the cap | `autorejoin-async-flashback-drop-binlog-max-transactions`, default 10000 (0 = default, never unbounded): a failover under load loses hundreds; beyond ten thousand a reseed is the repair. The binlog size is not read: the transaction count bounds the replay, the size of a binlog says little about it |
+   | `domain` | one GTID domain | `gtid_binlog_state` (live) and the target carry one domain (no multi-source, no other cluster's writes) |
+   | `lost-transactions` | past the target, only what was rewound | in `gtid_binlog_state` only the old master's `server_id` is past the target; the saved GTIDs (the GTID events of the decoded copy, `Crash.DeltaDecoded`) are exactly target+1 .. head of that server, their count the head minus the target |
+   | `readers` | nobody reads that binary log | no binlog dump thread on the old master (live), no replication of any monitored cluster (native channel, CDC feed, child cluster) whose source is it |
+
+   A guard that fails keeps the binary log, logs it and opens **WARN0365** (server, guard,
+   values) for a day; the rejoin goes on as before (with `gtid_strict_mode` the position is refused
+   and the rejoin falls back to a reseed). When all hold: `RESET MASTER` (`server.ResetMaster`)
+   and `SET GLOBAL gtid_binlog_state = '<target>'` (`dbhelper.SetGTIDBinlogState`), and only then
+   `SET GLOBAL gtid_slave_pos = '<target>'` (`ReplicationLink().SetPosition`). The server's next
+   binlogged event follows the target in strict mode.
+
+   Seen on a test failover: target `-1354480`, binary log head `-1354615`, the copy (from the
+   failover's binlog position) held `-1354482` to `-1354615`: 134 saved for 135 past the target,
+   `-1354481` in neither the copy nor the new master. The `lost-transactions` guard refuses that
+   drop: the transaction left out of the copy was not rewound either. Why the failover position
+   and its GTID disagree by one transaction is still to be found.
 3. **Then the link**, as before: `SetReplicationGTIDSlavePosFromServer` (stop, `CHANGE MASTER` to
    the elected master with `MASTER_USE_GTID=SLAVE_POS`), start.
 
@@ -66,8 +81,9 @@ position. If it still is, the binary log is kept and the rejoin falls back.
 
 ## State and binlog chain (F7, F12)
 
-The drop deletes that server's binlogs. It opens **WARN0364** on the server (the time, the GTID it
-was set to, the binlogs that were there), checked every tick by
+The drop deletes that server's binlogs. It opens **WARN0364** on the server (the time, the
+number of lost transactions, the GTID it was set to, where their copy is, the binlogs that were
+there), checked every tick by
 `checkFlashbackBinlogResetState` and closed by the server's next completed backup (logical or
 physical) started after the drop. When a backup archive is attached, the drop is also a
 **binlog gap** (`noteBinlogGap`, WARN0259, persisted in `binlog-gaps.json`), cleared by the next
@@ -93,7 +109,8 @@ repointed by the same code as before, after the positioning.
 ## Tests
 
 `cluster/srv_rejoin_flashback_test.go`: the replay arguments carry `sql_log_bin=0` and log
-redacted; the drop decision (switch, semi-sync, copy); the order binlog position read, drop,
+redacted; each guard passing and refusing alone; the saved GTIDs read from a decoded copy; the
+replay's transaction count; the cap's default; the order binlog position read, drop,
 `gtid_binlog_state`, `gtid_slave_pos`; no drop keeps the binlog; a refused `RESET MASTER` never
 positions; WARN0364 opens and the next backup closes it. Regtests:
 `testFailoverAssyncAutoRejoinFlashback`, `testFailoverSemisyncAutoRejoinFlashback`.

@@ -50,6 +50,8 @@ import (
 type ServerMonitor struct {
 	// the binary log the flashback rejoin reset (positionAfterFlashback): WARN0364 until the server's next backup
 	flashbackBinlogReset atomic.Pointer[flashbackBinlogReset]
+	// the last binlog drop the flashback rejoin refused, with the guard that failed: WARN0365 for a day
+	flashbackDropRefused atomic.Pointer[flashbackDropRefusal]
 
 	legacyJobLoginAt int64        // unix time of the last legacy job body (OpenJobBody), read atomically; 0 never
 	jobBodyAt        int64        // unix time of the last job body accepted from this server's jobs (OpenJobBody), read atomically; 0 never (WARN0324)

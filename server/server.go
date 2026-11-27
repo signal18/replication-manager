@@ -742,6 +742,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.AutorejoinNoSemisync, "autorejoin-flashback-on-unsync", false, "Automatic rejoin failed leader flashback if semisync NOT SYNC ")
 	flags.BoolVar(&conf.AutorejoinFlashback, "autorejoin-flashback", false, "Automatic rejoin ahead failed leader via binlog flashback")
 	flags.BoolVar(&conf.AutorejoinAsyncFlashbackDropBinlog, "autorejoin-async-flashback-drop-binlog", true, "After the flashback of an asynchronous failed leader, drop its binary log (its lost events copied first) and set its gtid_binlog_state to the rejoin position; false keeps it, and with gtid_strict_mode the rejoin position is then refused (error 1947)")
+	flags.IntVar(&conf.AutorejoinAsyncFlashbackDropBinlogMaxTransactions, "autorejoin-async-flashback-drop-binlog-max-transactions", 10000, "Most lost transactions the flashback rejoin drops the binary log for; above it the binary log is kept and the rejoin falls back to a reseed (0 = the default, 10000)")
 	flags.BoolVar(&conf.AutorejoinZFSFlashback, "autorejoin-zfs-flashback", false, "Automatic rejoin ahead failed leader via previous ZFS snapshot")
 	flags.BoolVar(&conf.AutorejoinMysqldump, "autorejoin-mysqldump", false, "Automatic rejoin ahead failed leader via direct current master dump")
 	flags.BoolVar(&conf.AutorejoinPhysicalBackup, "autorejoin-physical-backup", false, "Automatic rejoin ahead failed leader via reseed previous phyiscal backup")

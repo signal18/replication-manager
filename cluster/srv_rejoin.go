@@ -14,6 +14,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"sort"
@@ -513,11 +514,14 @@ func (server *ServerMonitor) rejoinMasterFlashBack(crash *Crash) error {
 	// F11: the replay as one shell pipeline the operator can run by hand, password redacted.
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "FlashBack: %s | %s", redactedCommandLine(binlogCmd.Args), redactedCommandLine(clientCmd.Args))
 
-	clientCmd.Stdin, err = binlogCmd.StdoutPipe()
+	decoded, err := binlogCmd.StdoutPipe()
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Error opening pipe: %s", err)
 		return err
 	}
+	// the transactions the replay received, counted on the way (guard "replay")
+	replayed := &flashbackTxCounter{}
+	clientCmd.Stdin = io.TeeReader(decoded, replayed)
 	if err := binlogCmd.Start(); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Failed mysqlbinlog command: %s at %s", err, binlogCmd.Path)
 		return err
@@ -531,9 +535,9 @@ func (server *ServerMonitor) rejoinMasterFlashBack(crash *Crash) error {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Failed mysqlbinlog command: %s at %s", err, binlogCmd.Path)
 		return err
 	}
-	drop, why := server.flashbackDropsBinlog(crash, binlogArgs[len(binlogArgs)-1])
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rejoin flashback %s: binary log %s (%s)", server.URL, map[bool]string{true: "dropped if past the rejoin position", false: "kept"}[drop], why)
-	if err := server.positionAfterFlashback(crash.FailoverIOGtid.Sprint(), drop); err != nil {
+	target := crash.FailoverIOGtid.Sprint()
+	plan := server.flashbackDropPlan(crash, binlogArgs[len(binlogArgs)-1], target, replayed.Transactions())
+	if err := server.positionAfterFlashback(target, plan); err != nil {
 		return err
 	}
 	var logs string
@@ -582,38 +586,6 @@ func redactedCommandLine(args []string) string {
 	return strings.Join(words, " ")
 }
 
-// flashbackBinlogReset is the binary log the flashback rejoin dropped on a rewound old master:
-// the GTID it was reset to, when, and the binlogs that were on the server (WARN0364).
-type flashbackBinlogReset struct {
-	GTID     string
-	At       time.Time
-	From, To string
-}
-
-// flashbackDropsBinlog tells whether the rewound old master's binary log is dropped after the
-// flashback (autorejoin-async-flashback-drop-binlog), with why:
-//   - only for an old master that replicated asynchronously at the failover: the crash's
-//     FailoverSemiSyncMasterStatus, the old master's Rpl_semi_sync_master_status as last read
-//     before the failover (the elected replica's slave status stays ON after the master's
-//     semi-sync was turned off: it does not say the master waited). In semi-sync, MariaDB
-//     truncates the transactions no replica acknowledged at the old master's restart as a
-//     semi-sync replica, its binary log is not past the position;
-//   - only when its lost events were copied first (autorejoin-backup-binlog: copy, the file the
-//     flashback read, not empty). Without the copy the binlog is never dropped.
-func (server *ServerMonitor) flashbackDropsBinlog(crash *Crash, copy string) (bool, string) {
-	cluster := server.ClusterGroup
-	switch {
-	case !cluster.Conf.AutorejoinAsyncFlashbackDropBinlog:
-		return false, "autorejoin-async-flashback-drop-binlog is off"
-	case crash.FailoverSemiSyncMasterStatus:
-		return false, "the old master was in semi-sync at the failover"
-	}
-	if st, err := os.Stat(copy); err != nil || st.Size() == 0 {
-		return false, "its lost events were not copied (" + copy + ")"
-	}
-	return true, "asynchronous old master, lost events copied to " + copy
-}
-
 // positionAfterFlashback sets the rewound old master's apply position, target (what the new
 // master had received from it at the failover), once the flashback replay ended complete.
 //
@@ -622,22 +594,22 @@ func (server *ServerMonitor) flashbackDropsBinlog(crash *Crash, copy string) (bo
 // before the crash, past target in the master's domain: with gtid_strict_mode, MariaDB refuses
 // the gtid_slave_pos (error 1947; a warning only without strict mode) and then refuses to log
 // the new master's events with those sequences (1950); without strict mode gtid_current_pos
-// stays on them and a CURRENT_POS link would skip the new master's. With drop
-// (flashbackDropsBinlog), when gtid_binlog_pos is past target in a domain, the binary log is
+// stays on them and a CURRENT_POS link would skip the new master's. With a plan (flashbackDropPlan:
+// every guard passed), when gtid_binlog_pos is past target in a domain, the binary log is
 // dropped and brought back to target: RESET MASTER, then SET GLOBAL gtid_binlog_state = target.
 // The lost transactions stay saved by repman with the crash; the binlog continuity of the server
 // is lost until its next backup (WARN0364, and a binlog gap in the archive when one is attached,
-// F12). Without drop the binary log is kept (the behaviour before). No replication channel is
+// F12). Without a plan the binary log is kept (the behaviour before). No replication channel is
 // touched here: the caller repoints the link (SetReplicationGTIDSlavePosFromServer: stop,
 // CHANGE MASTER to the new master with SLAVE_POS, then start).
-func (server *ServerMonitor) positionAfterFlashback(target string, drop bool) error {
+func (server *ServerMonitor) positionAfterFlashback(target string, plan *flashbackDropFacts) error {
 	cluster := server.ClusterGroup
 	binlogPos, logs, err := dbhelper.GetVariableByName(server.Conn, "GTID_BINLOG_POS", server.DBVersion)
 	cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Could not read gtid_binlog_pos on %s: %s", server.URL, err)
 	if err != nil {
 		return err
 	}
-	if ahead := parentBackupBehind(target, binlogPos); ahead != "" && !drop {
+	if ahead := parentBackupBehind(target, binlogPos); ahead != "" && plan == nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
 			"Rejoin flashback %s: binary log at %s past %s (%s) kept: with gtid_strict_mode the position is refused", server.URL, binlogPos, target, ahead)
 	} else if ahead != "" {
@@ -654,7 +626,8 @@ func (server *ServerMonitor) positionAfterFlashback(target string, drop bool) er
 		if err != nil {
 			return err
 		}
-		server.flashbackBinlogReset.Store(&flashbackBinlogReset{GTID: target, At: time.Now(), From: oldest, To: newest})
+		server.flashbackBinlogReset.Store(&flashbackBinlogReset{GTID: target, At: time.Now(), From: oldest, To: newest, Transactions: len(plan.Saved), Copy: plan.Copy})
+		server.flashbackDropRefused.Store(nil)
 		reason := "binary log dropped by the flashback rejoin, gtid_binlog_state set to " + target
 		cluster.noteBinlogGap(server, oldest, reason)
 		cluster.noteBinlogGap(server, newest, reason)
@@ -662,24 +635,6 @@ func (server *ServerMonitor) positionAfterFlashback(target string, drop bool) er
 	logs, err = server.ReplicationLink().SetPosition(Position{GTID: target}, LinkByRejoin)
 	cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed SET GLOBAL gtid_slave_pos = \"%s\" on %s: %s", target, server.URL, err)
 	return err
-}
-
-// checkFlashbackBinlogResetState, every tick: WARN0364 while the binary log the flashback rejoin
-// reset has no backup of the server after it (a completed one, logical or physical, started
-// after the reset).
-func (server *ServerMonitor) checkFlashbackBinlogResetState() {
-	r := server.flashbackBinlogReset.Load()
-	if r == nil {
-		return
-	}
-	for _, method := range []string{"logical", "physical"} {
-		if _, meta := server.GetLatestBackupMeta(method, false); meta != nil && meta.Completed && meta.StartTime.After(r.At) {
-			server.flashbackBinlogReset.CompareAndSwap(r, nil)
-			return
-		}
-	}
-	cluster := server.ClusterGroup
-	cluster.SetState("WARN0364", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0364"], server.URL, r.At.Format(time.RFC3339), r.GTID, r.From, r.To), ErrFrom: "JOB", ServerUrl: server.URL})
 }
 
 func (server *ServerMonitor) RejoinDirectDump() error {
