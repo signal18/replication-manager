@@ -57,7 +57,13 @@ catch-up (`ReadAllRelayLogs`), the rejoin and `MASTER_AUTO_POSITION`; the failov
   more advanced one; an ineligible replica that is strictly the most advanced now gives "no candidate"
   (`ERR00032`, automatic failover blocked) where a less advanced replica was promoted; a candidate without
   status under `failover-restart-unsafe` makes the election refuse instead of electing.
-- A dotted binlog basename ranks correctly (MariaDB positional ranking too).
+- A valid binlog file name whose basename contains dots (`db1.example.com-bin.000007`) ranks correctly (MariaDB positional
+  ranking too): the suffix is read after the last dot. This could not be reproduced on MySQL 8.4.13 or Percona 8.4: with
+  `--log-bin=db1.example.com-bin` the server reports `@@GLOBAL.log_bin_basename` as `/var/lib/mysql/db1`, and
+  `SHOW BINARY LOGS`, `SHOW BINARY LOG STATUS` and the replica's `Source_Log_File` all show `db1.example`, a name without a
+  numeric suffix that every rotation reuses (the documentation says a numeric suffix is appended; this was not observed
+  for that basename). The election ranks 0 on that name before and after the change. The correction is therefore
+  defensive and covered by the unit test only.
 - MariaDB GTID sequence ranking and PostgreSQL are unchanged.
 
 ## Limits (unchanged by this fix)
