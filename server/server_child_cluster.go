@@ -13,7 +13,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"slices"
 	"strings"
 	"time"
 
@@ -23,6 +22,7 @@ import (
 	"github.com/signal18/replication-manager/cluster/replplugin/wire"
 	"github.com/signal18/replication-manager/config"
 	repmanmcp "github.com/signal18/replication-manager/mcp"
+	"github.com/signal18/replication-manager/utils/version"
 )
 
 // Child cluster creation (#1988 staging, #1997 child): a cluster seeded from a parent
@@ -428,7 +428,8 @@ func (repman *ReplicationManager) CreateChildCluster(parent *cluster.Cluster, pl
 				return
 			}
 			if time.Now().After(deadline) {
-				fail(fmt.Errorf("no master after %s", childMasterWait))
+				// a release the registry has no image for fails its pull here: the image said
+				fail(fmt.Errorf("no master after %s: no database came up from the image %s (a tag the registry does not have fails its pull)", childMasterWait, cl.Conf.ProvDbImg))
 				return
 			}
 			time.Sleep(time.Second)
@@ -556,8 +557,10 @@ func (repman *ReplicationManager) CreateChildClusterAs(p *repmanmcp.Principal, p
 }
 
 // childDestinationImage is the default image of a child of a destination plugin: its
-// manifest's image, "{version}" replaced by the parent master's release, refused when the
-// manifest lists the releases it exists for and the parent's is not one of them.
+// manifest's image, "{version}" replaced by the parent master's release as the monitor parsed
+// it (DBVersion, X.Y.Z): the child runs the parent's exact release, its engine package built
+// for it. No list of releases: when the registry has no such tag, the child's provisioning
+// fails on the pull, with its state.
 func childDestinationImage(m wire.PluginManifest, parent *cluster.Cluster) (string, error) {
 	if !strings.Contains(m.Image, "{version}") {
 		return m.Image, nil
@@ -566,15 +569,10 @@ func childDestinationImage(m wire.PluginManifest, parent *cluster.Cluster) (stri
 	if pm == nil || pm.DBVersion == nil {
 		return "", fmt.Errorf("the image of the destination %s follows the parent's release, and %s has no master to read it from", m.Name, parent.Name)
 	}
-	return destinationImageFor(m, parent.Name, pm.DBVersion.ToString())
+	return destinationImageFor(m, pm.DBVersion), nil
 }
 
 // destinationImageFor is the image of manifest m for the parent release v.
-func destinationImageFor(m wire.PluginManifest, parent, v string) (string, error) {
-	if len(m.ImageVersions) > 0 {
-		if !slices.Contains(m.ImageVersions, v) {
-			return "", fmt.Errorf("the destination %s has no image for %s's release %s (%s exists for %s): upgrade the parent to one of them, or give dbImage", m.Name, parent, v, m.Image, strings.Join(m.ImageVersions, ", "))
-		}
-	}
-	return strings.ReplaceAll(m.Image, "{version}", v), nil
+func destinationImageFor(m wire.PluginManifest, v *version.Version) string {
+	return strings.ReplaceAll(m.Image, "{version}", v.ToString())
 }

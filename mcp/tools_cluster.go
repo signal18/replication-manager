@@ -33,6 +33,7 @@ func (s *MCPServer) registerWriteTools() {
 	s.registerDatabaseWriteTools()
 	s.registerBackupWriteTools()
 	s.registerProxyWriteTools()
+	s.registerAnalyticChildTools()
 }
 
 // registerClusterReadTools registers read-only cluster tools.
@@ -325,7 +326,7 @@ func (s *MCPServer) registerClusterWriteTools() {
 				mcp.WithString("db_image", mcp.Description("Database image of the new cluster; default the parent's (prov-db-image). A newer release is fine: the new cluster keeps its own system tables")),
 				mcp.WithNumber("db_count", mcp.Description("Number of databases, default "+dbCountDefault+", max 5")),
 				mcp.WithString("topology", mcp.Description("child only: the new cluster's topology-target, default the usual; columnstore makes a ColumnStore child, its tables converted at the seed, image signal18/mariadb-columnstore:11.8 and 1 database by default")),
-				mcp.WithString("destination", mcp.Description("child only: an analytic child, the destination plugin (replplugin-<name>) that makes and feeds the copies of tables at the seed; its manifest gives the default image")),
+				mcp.WithString("destination", mcp.Description("child only: an analytic child, the destination plugin (replplugin-<name>) that makes and feeds the copies of tables at the seed; its manifest gives the default image. duckdb makes a DuckDB analytic child: the tables become MariaDB DuckDB-engine tables, image ghcr.io/mariadb/duckdb at the parent's exact release, 1 database (an enterprise plugin)")),
 				mcp.WithString("tables", mcp.Description("child only, with destination: the tables to copy, schema.table or schema.*, comma separated")),
 				mcp.WithBoolean("confirm", mcp.Description("false (default): plan only; true: create")),
 			),
