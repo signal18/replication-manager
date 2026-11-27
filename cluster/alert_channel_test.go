@@ -113,6 +113,13 @@ func TestAlertFailureState(t *testing.T) {
 	if strings.Contains(st.ErrDesc, "MARKER") {
 		t.Fatalf("the bot token in a state: %s", st.ErrDesc)
 	}
+	// switched off, the channel sends nothing more: WARN0363 closes at the next tick
+	c.Conf.AlertTelegram = false
+	c.StateMachine.ClearState()
+	c.CheckAlertChannels()
+	if _, ok := (*c.StateMachine.CurState)["WARN0363"]; ok {
+		t.Fatal("WARN0363 must not stay open for a channel switched off")
+	}
 }
 
 func alertQueueOf(t *testing.T, c *Cluster, name string) *alertQueue {

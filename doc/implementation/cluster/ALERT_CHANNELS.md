@@ -72,7 +72,7 @@ copied into a fresh array so the dropped events are freed, and the drop is count
 
 - **WARN0362** while a channel dropped alerts in the last 5 minutes (held, so it does not flap),
   naming the channels and their drop counts;
-- **WARN0363** while a channel's last 3 sends or more failed, with its last error (the channels
+- **WARN0363** while an enabled channel's last 3 sends or more failed, with its last error (the channels
   redact their secrets from errors).
 
 The first 3 consecutive failures of a channel are logged; after that the state carries it.

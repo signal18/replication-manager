@@ -332,7 +332,8 @@ func (cluster *Cluster) CheckAlertChannels() {
 		if last := q.lastDropUnix.Load(); last > 0 && now.Sub(time.Unix(0, last)) < alertDropStateHold {
 			dropping = append(dropping, fmt.Sprintf("%s (%d dropped)", q.channel.Name(), q.dropped.Load()))
 		}
-		if q.failures.Load() >= alertFailureThreshold {
+		// a channel switched off sends nothing more: its last failures no longer hold WARN0363
+		if q.failures.Load() >= alertFailureThreshold && q.channel.Enabled() {
 			msg, _ := q.lastErr.Load().(string)
 			failing = append(failing, fmt.Sprintf("%s: %s", q.channel.Name(), msg))
 		}
