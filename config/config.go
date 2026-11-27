@@ -418,6 +418,23 @@ type Config struct {
 	TeamsUrl                                 string                       `mapstructure:"alert-teams-url" toml:"alert-teams-url" json:"alertTeamsUrl"`
 	TeamsProxyUrl                            string                       `mapstructure:"alert-teams-proxy-url" toml:"alert-teams-proxy-url" json:"alertTeamsProxyUrl"`
 	TeamsAlertState                          string                       `mapstructure:"alert-teams-state" toml:"alert-teams-state" json:"alertTeamsState"`
+	AlertQueueLimit                          int                          `mapstructure:"alert-queue-limit" toml:"alert-queue-limit" json:"alertQueueLimit"`
+	AlertSendTimeout                         int                          `mapstructure:"alert-send-timeout" toml:"alert-send-timeout" json:"alertSendTimeout"`
+	AlertScriptTimeout                       int                          `mapstructure:"alert-script-timeout" toml:"alert-script-timeout" json:"alertScriptTimeout"`
+	AlertAlertmanager                        bool                         `mapstructure:"alert-alertmanager" toml:"alert-alertmanager" json:"alertAlertmanager"`
+	AlertAlertmanagerURL                     string                       `mapstructure:"alert-alertmanager-url" toml:"alert-alertmanager-url" json:"alertAlertmanagerUrl"`
+	AlertAlertmanagerUser                    string                       `mapstructure:"alert-alertmanager-user" toml:"alert-alertmanager-user" json:"alertAlertmanagerUser"`
+	AlertAlertmanagerPassword                string                       `secret:"true" mapstructure:"alert-alertmanager-password" toml:"alert-alertmanager-password" json:"alertAlertmanagerPassword"`
+	AlertAlertmanagerBearerToken             string                       `secret:"true" mapstructure:"alert-alertmanager-bearer-token" toml:"alert-alertmanager-bearer-token" json:"alertAlertmanagerBearerToken"`
+	AlertAlertmanagerTLSSkipVerify           bool                         `mapstructure:"alert-alertmanager-tls-skip-verify" toml:"alert-alertmanager-tls-skip-verify" json:"alertAlertmanagerTlsSkipVerify"`
+	AlertAlertmanagerTimeout                 int                          `mapstructure:"alert-alertmanager-timeout" toml:"alert-alertmanager-timeout" json:"alertAlertmanagerTimeout"`
+	AlertAlertmanagerResendInterval          int                          `mapstructure:"alert-alertmanager-resend-interval" toml:"alert-alertmanager-resend-interval" json:"alertAlertmanagerResendInterval"`
+	AlertTelegram                            bool                         `mapstructure:"alert-telegram" toml:"alert-telegram" json:"alertTelegram"`
+	AlertTelegramBotToken                    string                       `secret:"true" mapstructure:"alert-telegram-bot-token" toml:"alert-telegram-bot-token" json:"alertTelegramBotToken"`
+	AlertTelegramChatID                      string                       `mapstructure:"alert-telegram-chat-id" toml:"alert-telegram-chat-id" json:"alertTelegramChatId"`
+	AlertTelegramParseMode                   string                       `mapstructure:"alert-telegram-parse-mode" toml:"alert-telegram-parse-mode" json:"alertTelegramParseMode"`
+	AlertTelegramAPIURL                      string                       `mapstructure:"alert-telegram-api-url" toml:"alert-telegram-api-url" json:"alertTelegramApiUrl"`
+	AlertTelegramTimeout                     int                          `mapstructure:"alert-telegram-timeout" toml:"alert-telegram-timeout" json:"alertTelegramTimeout"`
 	Heartbeat                                bool                         `mapstructure:"heartbeat-table" toml:"heartbeat-table" json:"heartbeatTable"`
 	ExtProxyOn                               bool                         `mapstructure:"extproxy" toml:"extproxy" json:"extproxy"`
 	ExtProxyVIP                              string                       `mapstructure:"extproxy-address" toml:"extproxy-address" json:"extproxyAddress"`

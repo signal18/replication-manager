@@ -3969,6 +3969,12 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.SwitchBackupVerificationRegisteredProven()
 	case "mail-smtp-tls-skip-verify":
 		mycluster.Conf.SwitchMailSmtpTlsSkipVerify()
+	case "alert-alertmanager":
+		mycluster.Conf.AlertAlertmanager = !mycluster.Conf.AlertAlertmanager
+	case "alert-alertmanager-tls-skip-verify":
+		mycluster.Conf.AlertAlertmanagerTLSSkipVerify = !mycluster.Conf.AlertAlertmanagerTLSSkipVerify
+	case "alert-telegram":
+		mycluster.Conf.AlertTelegram = !mycluster.Conf.AlertTelegram
 	case "cloud18-shared":
 		mycluster.Conf.SwitchCloud18Shared()
 	case "cloud18-marketplace-bau-client-storage":
@@ -4398,7 +4404,7 @@ var base64LogValueSettings = map[string]struct{}{
 
 func GetApiChangeLogFormat(name, value string) (string, []interface{}) {
 	switch name {
-	case "replication-credential", "db-servers-credential", "proxysql-servers-credential", "proxy-servers-backend-max-connections", "proxy-servers-backend-max-replication-lag", "maxscale-servers-credential", "shardproxy-servers-credential", "mail-smtp-password", "mail-smtp-user", "mail-to", "mail-from", "cloud18-gitlab-user", "cloud18-gitlab-password", "cloud18-domain-secret", "backup-restic-aws-access-key-id", "backup-restic-aws-access-secret", "backup-restic-password", "cloud18-dba-user-credentials", "cloud18-sponsor-user-credentials", "haproxy-password", "backup-verification-credential", "alert-slack-url", "cloud18-alert-slack-url", "alert-teams-url", "alert-teams-proxy-url", "proxmox-api-token", "onpremise-ssh-credential", "onpremise-ssh-private-key":
+	case "replication-credential", "db-servers-credential", "proxysql-servers-credential", "proxy-servers-backend-max-connections", "proxy-servers-backend-max-replication-lag", "maxscale-servers-credential", "shardproxy-servers-credential", "mail-smtp-password", "mail-smtp-user", "mail-to", "mail-from", "cloud18-gitlab-user", "cloud18-gitlab-password", "cloud18-domain-secret", "backup-restic-aws-access-key-id", "backup-restic-aws-access-secret", "backup-restic-password", "cloud18-dba-user-credentials", "cloud18-sponsor-user-credentials", "haproxy-password", "backup-verification-credential", "alert-slack-url", "cloud18-alert-slack-url", "alert-teams-url", "alert-teams-proxy-url", "proxmox-api-token", "alert-alertmanager-password", "alert-alertmanager-bearer-token", "alert-telegram-bot-token", "onpremise-ssh-credential", "onpremise-ssh-private-key":
 		return "API receive set setting %s to ****", []interface{}{name}
 	default:
 		logValue := value
@@ -5541,6 +5547,31 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.SetAlertTeamsUrl(string(val))
 	case "monitoring-alert-trigger":
 		mycluster.SetMonitoringAlertTriggerl(value)
+	case "alert-queue-limit", "alert-send-timeout", "alert-script-timeout", "alert-alertmanager-timeout", "alert-alertmanager-resend-interval", "alert-telegram-timeout":
+		if err := mycluster.SetAlertChannelInt(name, value); err != nil {
+			return err
+		}
+	case "alert-alertmanager-user", "alert-telegram-chat-id", "alert-telegram-parse-mode":
+		if err := mycluster.SetAlertChannelSetting(name, value); err != nil {
+			return err
+		}
+	case "alert-alertmanager-url", "alert-telegram-api-url":
+		// base64 like every value that may hold a slash
+		val, err := base64.StdEncoding.DecodeString(value)
+		if err != nil {
+			return errors.New("unable to decode")
+		}
+		if err := mycluster.SetAlertChannelSetting(name, string(val)); err != nil {
+			return err
+		}
+	case "alert-alertmanager-password", "alert-alertmanager-bearer-token", "alert-telegram-bot-token":
+		val, err := base64.StdEncoding.DecodeString(value)
+		if err != nil {
+			return errors.New("unable to decode")
+		}
+		if err := mycluster.SetAlertChannelSecret(name, string(val)); err != nil {
+			return err
+		}
 	case "mail-smtp-addr":
 		mycluster.Conf.SetMailSmtpAddr(value)
 	case "mail-smtp-password":
@@ -6642,6 +6673,12 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.BackupVerificationRegisteredProven = applyIsActive(mycluster.Conf.BackupVerificationRegisteredProven, isactive)
 	case "mail-smtp-tls-skip-verify":
 		mycluster.Conf.MailSMTPTLSSkipVerify = applyIsActive(mycluster.Conf.MailSMTPTLSSkipVerify, isactive)
+	case "alert-alertmanager":
+		mycluster.Conf.AlertAlertmanager = applyIsActive(mycluster.Conf.AlertAlertmanager, isactive)
+	case "alert-alertmanager-tls-skip-verify":
+		mycluster.Conf.AlertAlertmanagerTLSSkipVerify = applyIsActive(mycluster.Conf.AlertAlertmanagerTLSSkipVerify, isactive)
+	case "alert-telegram":
+		mycluster.Conf.AlertTelegram = applyIsActive(mycluster.Conf.AlertTelegram, isactive)
 	case "cloud18-shared":
 		mycluster.Conf.Cloud18Shared = applyIsActive(mycluster.Conf.Cloud18Shared, isactive)
 	case "cloud18-marketplace-bau-client-storage":
@@ -10746,9 +10783,7 @@ func (repman *ReplicationManager) handlerMuxSendAlert(w http.ResponseWriter, r *
 			return
 		}
 
-		if mycluster.LogSlack.IsHookActive(hooktype) {
-			mycluster.LogSlack.WithFields(post.Fields).Warn(post.Message)
-		} else {
+		if !mycluster.SendAlertHookMessage(hooktype, post.Fields, post.Message) {
 			http.Error(w, "No slack hook", http.StatusInternalServerError)
 			return
 		}

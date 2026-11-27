@@ -31897,14 +31897,47 @@ const docTemplate = `{
                 "ExternalScript": {
                     "type": "boolean"
                 },
+                "alertAlertmanager": {
+                    "type": "boolean"
+                },
+                "alertAlertmanagerBearerToken": {
+                    "type": "string"
+                },
+                "alertAlertmanagerPassword": {
+                    "type": "string"
+                },
+                "alertAlertmanagerResendInterval": {
+                    "type": "integer"
+                },
+                "alertAlertmanagerTimeout": {
+                    "type": "integer"
+                },
+                "alertAlertmanagerTlsSkipVerify": {
+                    "type": "boolean"
+                },
+                "alertAlertmanagerUrl": {
+                    "type": "string"
+                },
+                "alertAlertmanagerUser": {
+                    "type": "string"
+                },
                 "alertPushoverAppToken": {
                     "type": "string"
                 },
                 "alertPushoverUserToken": {
                     "type": "string"
                 },
+                "alertQueueLimit": {
+                    "type": "integer"
+                },
                 "alertScript": {
                     "type": "string"
+                },
+                "alertScriptTimeout": {
+                    "type": "integer"
+                },
+                "alertSendTimeout": {
+                    "type": "integer"
                 },
                 "alertSlackChannel": {
                     "type": "string"
@@ -31923,6 +31956,24 @@ const docTemplate = `{
                 },
                 "alertTeamsUrl": {
                     "type": "string"
+                },
+                "alertTelegram": {
+                    "type": "boolean"
+                },
+                "alertTelegramApiUrl": {
+                    "type": "string"
+                },
+                "alertTelegramBotToken": {
+                    "type": "string"
+                },
+                "alertTelegramChatId": {
+                    "type": "string"
+                },
+                "alertTelegramParseMode": {
+                    "type": "string"
+                },
+                "alertTelegramTimeout": {
+                    "type": "integer"
                 },
                 "analyzeUsePersistent": {
                     "type": "boolean"

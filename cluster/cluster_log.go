@@ -15,8 +15,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"runtime/debug"
@@ -24,9 +22,6 @@ import (
 	"time"
 
 	"github.com/signal18/replication-manager/utils/sqlmask"
-
-	teams "github.com/atc0005/go-teams-notify/v2"
-	"github.com/atc0005/go-teams-notify/v2/messagecard"
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/s18log"
@@ -132,55 +127,6 @@ func (cluster *Cluster) LogUpdate(line int, level string, format string, args ..
 	return line
 }
 
-func (cluster *Cluster) sendMsTeams(level string, format string, args ...interface{}) error {
-	// init the client
-	mstClient := teams.NewTeamsClient()
-
-	// setup webhook url
-	webhookUrl := cluster.Conf.TeamsUrl
-	webhookProxyUrl := cluster.Conf.TeamsProxyUrl
-
-	proxyUrl, err := url.Parse(webhookProxyUrl)
-
-	// Create a copy of the default mstClient.HTTPClient
-	httpClient := mstClient.HTTPClient()
-
-	if webhookProxyUrl != "" {
-		if err == nil {
-			httpClient.Transport = &http.Transport{Proxy: http.ProxyURL(proxyUrl)}
-		} else {
-			// the proxy URL may carry credentials: log the parse error only
-			cluster.Logrus.Printf("Failed to parse alert-teams-proxy-url. Using the default HTTP client without a proxy.")
-		}
-	} else {
-		cluster.Logrus.Printf("Proxy URL is empty. Using the default HTTP client without a proxy.")
-	}
-
-	// setup message card
-	msgCard := messagecard.NewMessageCard()
-	msgCard.Title = "Replication-Manager alert. Monitor: " + cluster.Conf.MonitorAddress
-	switch level {
-	case "ERROR":
-		msgCard.ThemeColor = "#4169e1"
-	case "ALERT":
-		msgCard.ThemeColor = "#b22222"
-	case "WARN":
-		msgCard.ThemeColor = "#112233"
-	}
-
-	msgCard.Text = fmt.Sprintf(format, args...)
-	// send
-	if err := mstClient.Send(webhookUrl, msgCard); err != nil {
-		// the client's errors quote the webhook URL, the credential
-		msg := err.Error()
-		if webhookUrl != "" {
-			msg = strings.ReplaceAll(msg, webhookUrl, "<alert-teams-url>")
-		}
-		cluster.Logrus.Printf("failed to send MSTeams alert message: %s", msg)
-	}
-	return nil
-}
-
 /*
 This function is for printing log based on module log level
 set forcingLog = true if you want to force print
@@ -267,17 +213,26 @@ func (cluster *Cluster) LogModuleWithFieldsPrintf(forcingLog bool, module int, l
 				targetLogger = cluster.MaintenanceLogrus
 			}
 
+			// the line as the alert channels forward it (alert_channel_chat.go): each channel's
+			// Accepts keeps its rule, the intervention check stays here
+			logLine := func(fields log.Fields, slack log.Fields) AlertEvent {
+				return AlertEvent{
+					Kind:        AlertLogLine,
+					Level:       level,
+					Message:     fmt.Sprintf(cliformat, args...),
+					TeamsText:   fmt.Sprintf(format, args...),
+					Fields:      copyFields(fields),
+					SlackFields: copyFields(slack),
+					Maintenance: isMaintenance,
+				}
+			}
+
 			// wrap logrus levels
 			switch level {
 			case "ERROR":
 				targetLogger.WithFields(printfields).Errorf(cliformat, args...)
 				if !isMaintenance && !cluster.IsIntervention {
-					if cluster.Conf.SlackURL != "" {
-						cluster.LogSlack.WithFields(slackFields).Errorf(cliformat, args...)
-					}
-					if cluster.Conf.TeamsUrl != "" {
-						go cluster.sendMsTeams(level, format, args...)
-					}
+					cluster.dispatchAlert(logLine(nil, slackFields))
 				} else if cluster.IsIntervention {
 					cluster.IncrementSuppressedAlerts()
 				}
@@ -288,12 +243,7 @@ func (cluster *Cluster) LogModuleWithFieldsPrintf(forcingLog bool, module int, l
 			case "WARN":
 				targetLogger.WithFields(printfields).Warnf(cliformat, args...)
 				if !isMaintenance && !cluster.IsIntervention {
-					if cluster.Conf.SlackURL != "" {
-						cluster.LogSlack.WithFields(slackFields).Warnf(cliformat, args...)
-					}
-					if cluster.Conf.TeamsUrl != "" {
-						go cluster.sendMsTeams(level, format, args...)
-					}
+					cluster.dispatchAlert(logLine(nil, slackFields))
 				} else if cluster.IsIntervention {
 					cluster.IncrementSuppressedAlerts()
 				}
@@ -310,16 +260,9 @@ func (cluster *Cluster) LogModuleWithFieldsPrintf(forcingLog bool, module int, l
 				printfields["channel"] = "StdOut"
 				cluster.Logrus.WithFields(printfields).Errorf(cliformat, args...)
 				if !cluster.IsIntervention {
-					if cluster.Conf.Cloud18Alert && cluster.Conf.Cloud18SubscriptionPlan != "free" {
-						cluster.LogSlack.WithFields(slackFields).Errorf(cliformat, args...)
-					}
-					if cluster.Conf.PushoverAppToken != "" && cluster.Conf.PushoverUserToken != "" {
-						printfields["channel"] = "Pushover"
-						cluster.LogPushover.WithFields(printfields).Errorf(cliformat, args...)
-					}
-					if cluster.Conf.TeamsUrl != "" {
-						go cluster.sendMsTeams(level, format, args...)
-					}
+					pushoverFields := copyFields(printfields)
+					pushoverFields["channel"] = "Pushover"
+					cluster.dispatchAlert(logLine(pushoverFields, slackFields))
 				} else {
 					cluster.IncrementSuppressedAlerts()
 				}
@@ -328,18 +271,12 @@ func (cluster *Cluster) LogModuleWithFieldsPrintf(forcingLog bool, module int, l
 				printfields["channel"] = "StdOut"
 				cluster.Logrus.WithFields(printfields).Warnf(cliformat, args...)
 				if !cluster.IsIntervention {
-					if cluster.LogSlack.HasActiveHook() {
-						slackFields["type"] = "start"
-						cluster.LogSlack.WithFields(slackFields).Warnf(cliformat, args...)
-					}
-					if cluster.Conf.PushoverAppToken != "" && cluster.Conf.PushoverUserToken != "" {
-						printfields["type"] = "start"
-						printfields["channel"] = "Pushover"
-						cluster.LogPushover.WithFields(printfields).Warnf(cliformat, args...)
-					}
-					if cluster.Conf.TeamsUrl != "" {
-						go cluster.sendMsTeams(level, format, args...)
-					}
+					startSlack := copyFields(slackFields)
+					startSlack["type"] = "start"
+					pushoverFields := copyFields(printfields)
+					pushoverFields["type"] = "start"
+					pushoverFields["channel"] = "Pushover"
+					cluster.dispatchAlert(logLine(pushoverFields, startSlack))
 				} else {
 					cluster.IncrementSuppressedAlerts()
 				}
@@ -348,15 +285,7 @@ func (cluster *Cluster) LogModuleWithFieldsPrintf(forcingLog bool, module int, l
 				printfields["channel"] = "StdOut"
 				cluster.Logrus.WithFields(printfields).Infof(cliformat, args...)
 				if !cluster.IsIntervention {
-					if cluster.Conf.Cloud18Alert && cluster.Conf.Cloud18SubscriptionPlan != "free" {
-						cluster.LogSlack.WithFields(slackFields).Infof(cliformat, args...)
-					}
-					if cluster.Conf.PushoverAppToken != "" && cluster.Conf.PushoverUserToken != "" {
-						cluster.LogPushover.WithFields(printfields).Infof(cliformat, args...)
-					}
-					if cluster.Conf.TeamsUrl != "" {
-						go cluster.sendMsTeams(level, format, args...)
-					}
+					cluster.dispatchAlert(logLine(printfields, slackFields))
 				} else {
 					cluster.IncrementSuppressedAlerts()
 				}
@@ -578,32 +507,27 @@ func (cluster *Cluster) logPrintStateTo(st state.State, resolved bool, buf *s18l
 
 	if cluster.Conf.Daemon {
 		// wrap logrus levels
+		status := "OPENED"
 		if resolved {
-			daemon.WithFields(log.Fields{"cluster": cluster.Name, "type": "state", "status": "RESOLV", "code": st.ErrKey, "channel": "StdOut"}).Warn(logDesc)
-			if !cluster.IsIntervention && strings.Contains(cluster.Conf.MonitoringAlertTrigger, st.ErrKey) {
-				if cluster.LogSlack.HasActiveHook() {
-					slackFields["status"] = "RESOLV"
-					cluster.LogSlack.WithFields(slackFields).Info(logDesc)
-				}
-			}
-		} else {
-			daemon.WithFields(log.Fields{"cluster": cluster.Name, "type": "state", "status": "OPENED", "code": st.ErrKey, "channel": "StdOut"}).Warn(logDesc)
-			if !cluster.IsIntervention && strings.Contains(cluster.Conf.MonitoringAlertTrigger, st.ErrKey) {
-				if cluster.LogSlack.HasActiveHook() {
-					slackFields["status"] = "OPENED"
-					cluster.LogSlack.WithFields(slackFields).Error(logDesc)
-				}
-			}
+			status = "RESOLV"
 		}
+		daemon.WithFields(log.Fields{"cluster": cluster.Name, "type": "state", "status": status, "code": st.ErrKey, "channel": "StdOut"}).Warn(logDesc)
 
-		if !cluster.IsIntervention && cluster.Conf.TeamsUrl != "" && cluster.Conf.TeamsAlertState != "" {
-			stateList := strings.Split(cluster.Conf.TeamsAlertState, ",")
-			for _, alertcode := range stateList {
-				if strings.Contains(st.ErrKey, alertcode) {
-					go cluster.sendMsTeams(level, logformat, logargs...)
-					break
-				}
-			}
+		// the state line to the alert channels: Slack for a state of monitoring-alert-trigger,
+		// Teams for one of alert-teams-state (alert_channel_chat.go)
+		if !cluster.IsIntervention {
+			stateSlack := copyFields(slackFields)
+			stateSlack["status"] = status
+			cluster.dispatchAlert(AlertEvent{
+				Kind:        AlertStateLine,
+				State:       st,
+				Domain:      alertDomainOfLog(cluster, buf),
+				Resolved:    resolved,
+				Level:       level,
+				Message:     logDesc,
+				TeamsText:   fmt.Sprintf(logformat, logargs...),
+				SlackFields: stateSlack,
+			})
 		}
 
 		if cluster.IsIntervention && (strings.Contains(cluster.Conf.MonitoringAlertTrigger, st.ErrKey) || (cluster.Conf.TeamsUrl != "" && cluster.Conf.TeamsAlertState != "")) {
@@ -612,6 +536,19 @@ func (cluster *Cluster) logPrintStateTo(st state.State, resolved bool, buf *s18l
 	}
 
 	return line
+}
+
+// alertDomainOfLog is the domain (T3) of a state printed to buf.
+func alertDomainOfLog(cluster *Cluster, buf *s18log.HttpLog) string {
+	switch buf {
+	case &cluster.LogWorkload:
+		return ConstAlertDomainWorkload
+	case &cluster.LogSecurity:
+		return ConstAlertDomainSecurity
+	case &cluster.LogSchema:
+		return ConstAlertDomainSchema
+	}
+	return ConstAlertDomainHA
 }
 
 func (cluster *Cluster) CopyLogs(r io.Reader, module int, level string, name string) {

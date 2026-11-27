@@ -17,25 +17,10 @@ import (
 	"time"
 
 	"github.com/signal18/replication-manager/config"
-	"github.com/signal18/replication-manager/utils/alert"
 	"github.com/signal18/replication-manager/utils/backupmgr"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/state"
 )
-
-func (cluster *Cluster) BashScriptAlert(alert alert.Alert) error {
-	if cluster.Conf.AlertScript != "" {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Calling alert script")
-		var out []byte
-		out, err := exec.Command(cluster.Conf.AlertScript, alert.Cluster, alert.Host, alert.PrevState, alert.State).CombinedOutput()
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "%s", err)
-		}
-
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Alert script complete: %s", string(out))
-	}
-	return nil
-}
 
 // Cloud18ManagedSuffix returns the exact FQDN suffix that marks a hostname as
 // managed by this cluster (e.g. ".mycluster.ovh-fr-2.signal18.cloud18.io").

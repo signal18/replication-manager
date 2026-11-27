@@ -313,6 +313,8 @@ var ClusterError = map[string]string{
 	"WARN0189": "Restore in progress on %s: %s — restoring backup %s",
 	"WARN0190": "No logical backup available for rejoin in the catalog (any node/repo/location)",
 	"WARN0191": "No physical backup available for rejoin in the catalog (any node/repo/location)",
+	"WARN0360": "Alert channels dropping alerts, their queue full (alert-queue-limit %d): %s -- the channel does not keep up (down, slow, refused); check its settings",
+	"WARN0361": "Alert channels failing: %s",
 	"WARN0192": "Graphite metrics queue exceeded limit (%d) for %d consecutive flush cycles; %d metric(s) dropped total (carbon sink slow/unreachable)",
 	// Split-brain simulator states (VSPLIT namespace, ErrType WARNING) — each axis of
 	// the simulated partition tracked open/close in the state timeline.
