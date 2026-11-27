@@ -246,6 +246,7 @@ func (s *Sink) Ran(stmt string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.st.SourceStatements = append(c.st.SourceStatements, stmt)
+	c.st.SourceStatementsTotal++
 	if over := len(c.st.SourceStatements) - wire.MaxSourceStatements; over > 0 {
 		c.st.SourceStatements = append([]string(nil), c.st.SourceStatements[over:]...)
 	}
@@ -305,7 +306,9 @@ func emptyOrMake(ctx context.Context, db *sqlx.DB, conn *sqlx.Conn, dest Destina
 	existing, _, _ := dbhelper.GetColumnNamesConn(ctx, conn, schemaName, table)
 	if len(existing) > 0 && strings.Join(existing, ",") == strings.Join(columns, ",") {
 		if tr, ok := dest.(Truncater); ok {
-			return "TRUNCATE TABLE " + schemaName + "." + table, tr.Truncate(ctx, conn, schemaName, table)
+			// the destination quotes its own statement (cdc.InnoDB: dbhelper.TruncateTable)
+			q, _ := dbhelper.QuoteMySQLTableIdentifier(schemaName + "." + table)
+			return "TRUNCATE TABLE " + q, tr.Truncate(ctx, conn, schemaName, table)
 		}
 		return dbhelper.DeleteAllRows(ctx, conn, schemaName, table)
 	}
@@ -352,7 +355,8 @@ func runSource(c *capture, ap *applier, src Source, sig <-chan os.Signal, tick f
 	}
 	c.mu.Unlock()
 	if err := src.Prepare(ctx, sink); err != nil {
-		stopSource(c, err)
+		stopSource(c, err) // exits
+		return
 	}
 	applyCtx, stopApply := context.WithCancel(context.Background())
 	defer stopApply()
@@ -374,7 +378,8 @@ func runSource(c *capture, ap *applier, src Source, sig <-chan os.Signal, tick f
 			if err == nil {
 				err = fmt.Errorf("the source stream ended")
 			}
-			stopSource(c, err)
+			stopSource(c, err) // exits
+			return
 		}
 	}
 }

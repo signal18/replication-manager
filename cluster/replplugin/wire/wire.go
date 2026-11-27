@@ -219,6 +219,9 @@ type Status struct {
 	// that change it (a publication, a slot created or dropped), oldest first, at most
 	// MaxSourceStatements: replication-manager logs each one (F11)
 	SourceStatements []string `json:"sourceStatements,omitempty"`
+	// SourceStatementsTotal counts every such statement the process ran: replication-manager
+	// logs each one once, a repeated statement included
+	SourceStatementsTotal int64 `json:"sourceStatementsTotal,omitempty"`
 }
 
 // MaxSourceStatements bounds Status.SourceStatements.

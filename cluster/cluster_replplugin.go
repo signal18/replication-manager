@@ -59,7 +59,8 @@ type replPluginRunner struct {
 	gen   int64          // the process started, counted
 
 	stmtMu      sync.Mutex
-	loggedStmts []string // the statements of a capture source on its source, logged (F11)
+	loggedStmts int64 // the statements of a capture source on its source logged, counted (F11)
+	loggedGen   int64 // the process they were counted in
 }
 
 // replFeed is a restore feeding a plugin's stdin (#2015): the process it started with, so a
@@ -167,7 +168,14 @@ func (cluster *Cluster) CheckReplicationPlugins() {
 				continue
 			}
 			// a feed whose source lost its position waits for a new initial load (ERR00140)
-			if why, wait := replFeedNeedsInit(path); wait {
+			why, wait, serr := replFeedNeedsInit(path)
+			if serr != nil {
+				cluster.SetState("ERR00132", state.State{ErrType: config.LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00132"], c.Plugin, cluster.Name, "its State file can not be read: "+serr.Error()), ErrFrom: "REPL"})
+				c.Enabled = false
+				cfgs[path] = c
+				continue
+			}
+			if wait {
 				cluster.SetState("ERR00140", state.State{ErrType: config.LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00140"], c.Plugin, cluster.Name, why), ErrFrom: "REPL"})
 				c.Enabled = false
 				cfgs[path] = c
@@ -196,7 +204,8 @@ func (cluster *Cluster) CheckReplicationPlugins() {
 	}
 	if active {
 		for path, c := range cfgs {
-			if _, running := cluster.replPlugins[path]; running || !c.Enabled {
+			// a rebuild or a removal holds it (holdReplPluginAt): its files are changing
+			if _, running := cluster.replPlugins[path]; running || !c.Enabled || cluster.replPluginsHeld[path] {
 				continue
 			}
 			cluster.startReplPluginLocked(path, c, mods[path])
@@ -557,17 +566,22 @@ func cdcMergeLate(next string, interval time.Duration, now time.Time) time.Durat
 	return 0
 }
 
-// capBuffer keeps the last replPluginStderrMax bytes written to it.
+// capBuffer keeps the last max bytes written to it (replPluginStderrMax when 0).
 type capBuffer struct {
 	mu  sync.Mutex
 	buf []byte
+	max int
 }
 
 func (b *capBuffer) Write(p []byte) (int, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.buf = append(b.buf, p...)
-	if over := len(b.buf) - replPluginStderrMax; over > 0 {
+	limit := b.max
+	if limit <= 0 {
+		limit = replPluginStderrMax
+	}
+	if over := len(b.buf) - limit; over > 0 {
 		b.buf = b.buf[over:]
 	}
 	return len(p), nil

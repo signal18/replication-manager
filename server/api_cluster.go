@@ -3834,6 +3834,9 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.SwitchMonitoringScheduler()
 	case "monitoring-schema-change":
 		mycluster.SwitchMonitoringSchemaChange()
+	case "replication-plugin-feed-enabled":
+		// the feed's start and stop: the single switch, its TOML follows it (syncReplicationFeed)
+		mycluster.Conf.ReplicationPluginFeedEnabled = !mycluster.Conf.ReplicationPluginFeedEnabled
 	case "replication-plugin-feed-create-source-objects":
 		// the feed may create its publication and slot on the source: a change of the client's database (F1)
 		mycluster.Conf.ReplicationPluginFeedCreateSourceObjects = !mycluster.Conf.ReplicationPluginFeedCreateSourceObjects
@@ -5195,7 +5198,12 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "replication-plugin-tables":
 		mycluster.Conf.ReplicationPluginTables = strings.TrimSpace(value)
 	case "replication-plugin-feed-source-cluster":
-		mycluster.Conf.ReplicationPluginFeedSourceCluster = strings.TrimSpace(value)
+		v := strings.TrimSpace(value)
+		if v != "" && v == mycluster.Name {
+			// a feed from the cluster into itself would apply its own changes again, without end
+			return fmt.Errorf("invalid value for %s: %q is this cluster, a feed reads another cluster", name, v)
+		}
+		mycluster.Conf.ReplicationPluginFeedSourceCluster = v
 	case "replication-plugin-feed-database":
 		mycluster.Conf.ReplicationPluginFeedDatabase = strings.TrimSpace(value)
 	case "replication-plugin-feed-tables":

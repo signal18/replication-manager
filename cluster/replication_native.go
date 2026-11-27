@@ -52,8 +52,12 @@ func (l *nativeLink) Stop(reason string) (string, error) {
 	if l.server.Conn == nil {
 		return "", errors.New("No database connection pool")
 	}
-	l.server.recordLinkChange(l.channel, linkOpStop, reason)
-	return dbhelper.StopSlave(l.server.Conn, l.channel, l.server.DBVersion)
+	// recorded once the statement ran: a failed stop leaves no WARN0352 on a link still running
+	logs, err := dbhelper.StopSlave(l.server.Conn, l.channel, l.server.DBVersion)
+	if err == nil {
+		l.server.recordLinkChange(l.channel, linkOpStop, reason)
+	}
+	return logs, err
 }
 
 func (l *nativeLink) Start(reason string) (string, error) {
@@ -86,14 +90,23 @@ func (l *nativeLink) StopApply(reason string) (string, error) {
 // ResetPositions clears the channel's positions and relay logs and keeps the link (RESET
 // SLAVE without ALL): what a reseed may do, never delete the link (law T27, #2093).
 func (l *nativeLink) ResetPositions(reason string) (string, error) {
-	l.server.recordLinkChange(l.channel, linkOpResetPositions, reason)
-	return dbhelper.ResetSlave(l.server.Conn, false, l.channel, l.server.DBVersion)
+	if l.server.Conn == nil {
+		return "", errors.New("No database connection pool")
+	}
+	logs, err := dbhelper.ResetSlave(l.server.Conn, false, l.channel, l.server.DBVersion)
+	if err == nil {
+		l.server.recordLinkChange(l.channel, linkOpResetPositions, reason)
+	}
+	return logs, err
 }
 
 // Remove is RESET SLAVE ALL on the channel. Not recorded, and its earlier record (the stop
 // before a promotion) is dropped: the link no longer exists, the promotion that removed it
-// (failover, switchover) has its own states.
+// (failover, switchover) has its own states, so reason is not used.
 func (l *nativeLink) Remove(reason string) (string, error) {
+	if l.server.Conn == nil {
+		return "", errors.New("No database connection pool")
+	}
 	logs, err := dbhelper.ResetSlave(l.server.Conn, true, l.channel, l.server.DBVersion)
 	if err == nil {
 		l.server.clearLinkChange(l.channel)
@@ -120,7 +133,12 @@ func (l *nativeLink) ChangeSource(opt dbhelper.ChangeMasterOpt, reason string) (
 	return dbhelper.ChangeMaster(server.Conn, opt, server.DBVersion)
 }
 
+// SkipEvent skips one event; reason is not used: the skip runs between a stop and a start,
+// which record and clear the link's state.
 func (l *nativeLink) SkipEvent(reason string) (string, error) {
+	if l.server.Conn == nil {
+		return "", errors.New("No database connection pool")
+	}
 	return dbhelper.SkipBinlogEvent(l.server.Conn, l.channel, l.server.DBVersion)
 }
 
@@ -133,10 +151,17 @@ func (l *nativeLink) Rejoin() error {
 // SkipReplicationEvent stops the managed link, skips the next event of its apply and starts it
 // again.
 func (server *ServerMonitor) SkipReplicationEvent(reason string) {
+	cluster := server.ClusterGroup
 	link := server.ReplicationLink()
-	link.Stop(reason)
-	link.SkipEvent(reason)
-	link.Start(reason)
+	// the same three statements as before, each error now logged
+	for _, step := range []struct {
+		what string
+		run  func(string) (string, error)
+	}{{"stop", link.Stop}, {"skip of the event", link.SkipEvent}, {"start", link.Start}} {
+		if _, err := step.run(reason); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlErr, "Skip of a replication event on %s: the %s failed: %s", server.URL, step.what, err)
+		}
+	}
 }
 
 // StopAllSlaves stops every channel of the monitor's last status, one by one.
@@ -181,14 +206,18 @@ func (server *ServerMonitor) StopAllExtraSourceSlaves(reason string) (string, er
 // stopEveryChannel is STOP ALL SLAVES (MariaDB): every channel the server has, whatever the
 // monitor's last status. Recorded on the channels of that status.
 func (server *ServerMonitor) stopEveryChannel(reason string) (string, error) {
-	for _, rep := range server.Replications {
-		server.recordLinkChange(rep.ConnectionName.String, linkOpStop, reason)
+	logs, err := dbhelper.StopAllSlaves(server.Conn, server.DBVersion)
+	if err == nil {
+		for _, rep := range server.Replications {
+			server.recordLinkChange(rep.ConnectionName.String, linkOpStop, reason)
+		}
 	}
-	return dbhelper.StopAllSlaves(server.Conn, server.DBVersion)
+	return logs, err
 }
 
 // removeEveryChannel is the replication bootstrap's wipe of every channel (RESET SLAVE ALL
-// on each): an explicit operator request, which sets up the whole topology again.
+// on each): an explicit operator request, which sets up the whole topology again; reason is not
+// used, the bootstrap logs itself.
 func (server *ServerMonitor) removeEveryChannel(reason string) (string, error) {
 	return dbhelper.ResetAllSlaves(server.Conn, server.DBVersion)
 }

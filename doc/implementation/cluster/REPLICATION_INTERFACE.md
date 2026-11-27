@@ -37,7 +37,8 @@ Each change method takes the reason, the action that did it (`LinkByFailover`, `
 (`srv_link_change.go`) and stays a state until the link runs again: **WARN0352** names the
 server, each channel, the action (stopped, read stopped, apply stopped, positions reset,
 repointed) and the reason. A reseed's stops keep their own text, **WARN0252** (the same tracker).
-A `Start` that succeeds drops the record at once, so a failover or a switchover, which stops,
+A change is recorded once its statement succeeded: a failed stop or reset leaves no record on
+a link that did not change. A `Start` that succeeds drops the record at once, so a failover or a switchover, which stops,
 repoints and starts in one go, leaves nothing open. A `Remove` drops it too: the link is gone,
 the promotion has its own states. A record leaves the list once its channel runs again, or once
 the channel is gone from a server that answers (F3/F4); within two ticks of the record it stays

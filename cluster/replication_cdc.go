@@ -211,7 +211,11 @@ func (l *cdcLink) SkipEvent(reason string) (string, error) {
 func (l *cdcLink) Rejoin() error {
 	cluster := l.cluster
 	if l.cfg.SourceKind != "" {
-		if why, needs := replFeedNeedsInit(l.path); needs {
+		why, needs, err := replFeedNeedsInit(l.path)
+		if err != nil {
+			return fmt.Errorf("state of %s: %w", l.Name(), err)
+		}
+		if needs {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rejoin of feed %s on %s: a new initial load (%s)", l.Name(), l.server.URL, why)
 			if err := cluster.ReinitReplicationPlugin(l.cfg.Plugin); err != nil {
 				l.server.recordLinkChange(l.Name(), linkOpStop, "rejoin: "+err.Error())

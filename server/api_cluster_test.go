@@ -2344,3 +2344,20 @@ func TestSecretKvPruneHistoryRoute_PostOnly(t *testing.T) {
 		}
 	}
 }
+
+// a CDC feed never reads the cluster it writes into: its own changes would come back without end
+func TestFeedSourceClusterNotItself(t *testing.T) {
+	cl := newTestClusterForAPI(t)
+	cl.Conf.Secrets = config.NewSecrets(nil)
+	cl.ConfigManager = newConfigManagerForTest()
+	repman := newTestRepmanWithCluster(t, cl.Name, cl)
+	if err := repman.setClusterSetting(cl, "replication-plugin-feed-source-cluster", " "+cl.Name+" "); err == nil || cl.Conf.ReplicationPluginFeedSourceCluster != "" {
+		t.Fatalf("the cluster itself as its feed's source: %v, set to %q", err, cl.Conf.ReplicationPluginFeedSourceCluster)
+	}
+	if err := repman.setClusterSetting(cl, "replication-plugin-feed-source-cluster", "pg-source"); err != nil || cl.Conf.ReplicationPluginFeedSourceCluster != "pg-source" {
+		t.Fatalf("another cluster: %v, set to %q", err, cl.Conf.ReplicationPluginFeedSourceCluster)
+	}
+	if err := repman.setClusterSetting(cl, "replication-plugin-feed-source-cluster", ""); err != nil || cl.Conf.ReplicationPluginFeedSourceCluster != "" {
+		t.Fatalf("cleared: %v, set to %q", err, cl.Conf.ReplicationPluginFeedSourceCluster)
+	}
+}

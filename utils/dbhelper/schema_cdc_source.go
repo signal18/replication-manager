@@ -7,6 +7,7 @@ package dbhelper
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/jmoiron/sqlx"
@@ -46,6 +47,19 @@ func CreateTableFromColumns(ctx context.Context, conn *sqlx.Conn, schema, table 
 }
 
 // CreateTableFromColumnsSQL is the CREATE TABLE statement of CreateTableFromColumns.
+// columnTypeWord is a MariaDB column type made of words and an optional (n) or (p,s):
+// BIGINT, DECIMAL(65,30), VARCHAR(49), TINYINT(1), DOUBLE PRECISION, INT UNSIGNED.
+var columnTypeWord = regexp.MustCompile(`^[A-Za-z]+( [A-Za-z]+)*(\([0-9]+( *, *[0-9]+)?\))?( [A-Za-z]+)*$`)
+
+// columnTypeList is ENUM or SET with its labels, each quoted with '' and \ escaped.
+var columnTypeList = regexp.MustCompile(`^(?i:ENUM|SET)\('(?:[^'\\]|''|\\.)*'(?:,'(?:[^'\\]|''|\\.)*')*\)$`)
+
+// validColumnType is the allowlist of the column types a CREATE takes from a source's
+// catalogue: a type word, or an ENUM/SET; never a comment, a statement or a stray parenthesis.
+func validColumnType(t string) bool {
+	return columnTypeWord.MatchString(t) || columnTypeList.MatchString(t)
+}
+
 func CreateTableFromColumnsSQL(schema, table string, cols []ColumnDef, key []string) (string, error) {
 	quoted, err := QuoteMySQLTableIdentifier(schema + "." + table)
 	if err != nil {
@@ -59,7 +73,7 @@ func CreateTableFromColumnsSQL(schema, table string, cols []ColumnDef, key []str
 	}
 	parts := make([]string, 0, len(cols)+1)
 	for _, c := range cols {
-		if strings.ContainsAny(c.Type, ";`") {
+		if !validColumnType(c.Type) {
 			return "", fmt.Errorf("column %s: invalid type %q", c.Name, c.Type)
 		}
 		null := " NOT NULL"
