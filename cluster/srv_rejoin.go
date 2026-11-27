@@ -750,6 +750,10 @@ func (server *ServerMonitor) rejoinMasterIncremental(crash *Crash) error {
 	} else {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Old server GTID for flashback not found")
 	}
+	if why := crash.notFlashbackable(); why != "" {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "No flashback rejoin of %s: %s", server.URL, why)
+		return errors.New("Flashback refused: " + why)
+	}
 	if crash.FailoverIOGtid != nil && cluster.canFlashBack && cluster.Conf.AutorejoinFlashback && cluster.Conf.AutorejoinBackupBinlog {
 		err := server.rejoinMasterFlashBack(crash)
 		if err == nil {

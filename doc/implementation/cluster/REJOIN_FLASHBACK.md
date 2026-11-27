@@ -32,6 +32,11 @@ Two facts, both checked on the saved crash binlog and on a throwaway MariaDB 11.
 
 ## The fix
 
+0. **Never a flashback of lost events it cannot reverse.** When the lost-events analysis found DDL
+   or statement-format DML (`Crash.notFlashbackable`), the flashback is not run: the rejoin goes
+   to the other methods. Before, the replay rewound the row events and left the rest (seen on a
+   test failover whose lost events held 4 DDL of a sysbench prepare: 212 of 215 rewound).
+
 1. **Replay out of the binary log.** The client of the replay runs
    `--init-command='SET SESSION sql_log_bin=0'` (`dbhelper.SessionNoBinlog`,
    `flashbackReplayArgs`). Always, whatever the switch below: it deletes nothing. The

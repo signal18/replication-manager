@@ -241,3 +241,17 @@ func TestRelayLogStatusNamedChannel(t *testing.T) {
 		t.Fatalf("the managed channel's row must be read: %+v", ss)
 	}
 }
+
+// Lost events holding DDL or statement-format DML are never flashed back: the replay would rewind
+// the row events and leave the rest.
+func TestCrashNotFlashbackable(t *testing.T) {
+	rows := &Crash{DeltaAnalyzed: true, DeltaRowEvents: 848, DeltaFlashable: true}
+	ddl := &Crash{DeltaAnalyzed: true, DeltaRowEvents: 848, DeltaDDL: 4}
+	unknown := &Crash{}
+	if rows.notFlashbackable() != "" || unknown.notFlashbackable() != "" {
+		t.Fatal("row events only, or not analysed: the flashback runs as before")
+	}
+	if why := ddl.notFlashbackable(); !strings.Contains(why, "4 DDL") {
+		t.Fatalf("4 DDL among the lost events: refused, got %q", why)
+	}
+}

@@ -12,6 +12,7 @@ package cluster
 
 import (
 	"encoding/json"
+	"fmt"
 	"maps"
 	"os"
 	"path/filepath"
@@ -126,6 +127,18 @@ func RejoinMethodClass(method string) string {
 		return RejoinClassUnsafeShort
 	}
 	return ""
+}
+
+// notFlashbackable says why the lost events must not be flashed back, "" when they may: the
+// analysis found DDL or statement-format DML among them, which mariadb-binlog --flashback does
+// not reverse. Replayed anyway, the row events are rewound and the rest stays: a test failover
+// whose lost events held 4 DDL rewound 212 of 215 transactions. Not analysed: as before, the
+// flashback runs (a rejoin re-armed from an archive).
+func (crash *Crash) notFlashbackable() string {
+	if !crash.DeltaAnalyzed || !crash.Diverged() || crash.DeltaFlashable {
+		return ""
+	}
+	return fmt.Sprintf("the lost events hold %d DDL and %d statement-format DML, flashback reverses row events only", crash.DeltaDDL, crash.DeltaStatementDML)
 }
 
 // Rejoin result codes (Crash.RejoinResult). "" = not yet attempted.
