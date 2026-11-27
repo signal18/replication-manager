@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -102,6 +103,27 @@ func TestSetOnPremiseSSHSettingsThroughAPI(t *testing.T) {
 	}
 }
 
+// A value sent as the POST body (the path ending at the setting name): the key never sits in
+// the URL. The path's value wins; a body above the bound is refused.
+func TestSettingValueFromBody(t *testing.T) {
+	post := func(body string) *http.Request {
+		return httptest.NewRequest(http.MethodPost, "/api/clusters/c/settings/actions/set/onpremise-ssh-private-key/", strings.NewReader(body))
+	}
+	if v, err := settingValueFromBody(httptest.NewRecorder(), post(" "+b64("MARKER")+"\n"), ""); err != nil || v != b64("MARKER") {
+		t.Fatalf("body value: %q, %v", v, err)
+	}
+	if v, _ := settingValueFromBody(httptest.NewRecorder(), post("body"), "path"); v != "path" {
+		t.Fatalf("the path value lost to the body: %q", v)
+	}
+	get := httptest.NewRequest(http.MethodGet, "/x", strings.NewReader("body"))
+	if v, _ := settingValueFromBody(httptest.NewRecorder(), get, ""); v != "" {
+		t.Fatalf("a GET body read: %q", v)
+	}
+	if _, err := settingValueFromBody(httptest.NewRecorder(), post(strings.Repeat("a", maxSettingBodyBytes+1)), ""); err == nil {
+		t.Fatalf("a body above %d bytes accepted", maxSettingBodyBytes)
+	}
+}
+
 // The credential and the key are never written in a log line; the scripts are logged decoded.
 func TestOnPremiseSSHChangeLogMasked(t *testing.T) {
 	for _, name := range []string{"onpremise-ssh-credential", "onpremise-ssh-private-key"} {
@@ -120,6 +142,18 @@ func TestOnPremiseSSHChangeLogMasked(t *testing.T) {
 // T16: an on-premise SSH setting set in the configuration under /etc is refused by the API (409),
 // set and switch; the credential follows the credential chain instead.
 func TestOnPremiseSSHImmutableRefused(t *testing.T) {
+	// every on-premise SSH setting but the credential, set or switched, is refused when pinned
+	for name := range onPremiseSSHSettings {
+		pinned := newOnPremiseSSHTestCluster(t)
+		pinned.Conf.ImmuableFlagMap[name] = "pinned"
+		if err := (&ReplicationManager{}).setClusterSetting(pinned, name, b64("/tmp/x")); !errors.Is(err, errImmutableGlobalSetting) {
+			t.Errorf("pinned %s set: %v", name, err)
+		}
+	}
+	if _, ok := onPremiseSSHSettings["onpremise-ssh-credential"]; ok {
+		t.Errorf("the credential is refused when pinned: it follows the credential chain (T16)")
+	}
+
 	cl := newOnPremiseSSHTestCluster(t)
 	repman := &ReplicationManager{}
 	for _, name := range []string{"onpremise-ssh", "onpremise-ssh-port", "onpremise-ssh-private-key", "onpremise-ssh-db-job-script"} {

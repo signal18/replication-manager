@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/misc"
 	"golang.org/x/crypto/ssh"
 )
@@ -30,7 +31,7 @@ func (cluster *Cluster) GetOnPremiseSSHKeyFile() string {
 // saved config (F9), never logged (F10); refused when the chain refuses it.
 func (cluster *Cluster) SetOnPremiseSSHCredential(cred string) error {
 	user, _, found := strings.Cut(cred, ":")
-	if !found || strings.TrimSpace(user) == "" {
+	if !found || strings.TrimSpace(user) == "" || user != strings.TrimSpace(user) {
 		return errors.New("onpremise-ssh-credential must be user:password, the password empty to use the private key")
 	}
 	if err := cluster.CredentialChain().Set("onpremise-ssh-credential", cred); err != nil {
@@ -101,7 +102,9 @@ func (cluster *Cluster) SetOnPremiseSSHPrivateKey(value string) error {
 	}
 	if cluster.Conf.OnPremiseSSHPrivateKey != managed {
 		// the key received earlier is no longer named by the setting
-		os.Remove(managed)
+		if err := os.Remove(managed); err != nil && !os.IsNotExist(err) {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "onpremise-ssh-private-key: cannot remove the former key file %s: %s", managed, err)
+		}
 	}
 	// the key check (WARN0169) runs again with the new key
 	cluster.HaveSSHKeyChecked = false

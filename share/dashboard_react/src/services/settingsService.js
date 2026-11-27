@@ -17,6 +17,7 @@ export const settingsService = {
   switchSettings,
   changeTopology,
   setSetting,
+  setSettingInBody,
   changePlanUnits,
   clearSetting,
   updateGraphiteWhiteList,
@@ -50,6 +51,12 @@ function setSetting(clusterName, setting, value, baseURL) {
   } else {
     return getApi(baseURL).get(`clusters/${clusterName}/settings/actions/set/${setting}/${encodeURIComponent(value)}`)
   }
+}
+
+// the value as the POST body, the URL ending at the setting name: for a value that must not sit in
+// a URL (a private key), which proxies log
+function setSettingInBody(clusterName, setting, value, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/settings/actions/set/${setting}/`, value, { headers: { 'Content-Type': 'text/plain' } })
 }
 
 function changePlanUnits(clusterName, unit, delta, baseURL) {

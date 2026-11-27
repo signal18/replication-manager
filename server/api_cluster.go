@@ -4007,11 +4007,29 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 	return nil
 }
 
+// maxSettingBodyBytes bounds a setting value sent as the request body (a private key is a few KiB).
+const maxSettingBodyBytes = 64 << 10
+
+// settingValueFromBody returns the value of a set-setting request: the path's value, or, when it
+// is empty and the request a POST, the request body (maxSettingBodyBytes at most). A private key
+// or a long secret then never sits in a URL, which proxies and the panic recovery log (F10).
+func settingValueFromBody(w http.ResponseWriter, r *http.Request, value string) (string, error) {
+	if value != "" || r.Method != http.MethodPost || r.Body == nil {
+		return value, nil
+	}
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxSettingBodyBytes))
+	if err != nil {
+		return "", errors.New("setting value in the body: too large or unreadable")
+	}
+	return strings.TrimSpace(string(body)), nil
+}
+
 // handlerMuxSetSettings handles the setting of settings for a given cluster.
 // @Summary Set settings for a specific cluster
 // @Description This endpoint sets the settings for the specified cluster.
 // @Description A credential setting is user:password, with a user and a password: in clear for db-servers-credential, replication-credential, proxysql-servers-credential, maxscale-servers-credential and shardproxy-servers-credential; encoded in base64 for backup-verification-credential, cloud18-dba-user-credentials and cloud18-sponsor-user-credentials (an empty value clears the verification and sponsor credentials). Any other value is refused with 400, the value never echoed.
-// @Description On-premise SSH: onpremise-ssh-credential is user:password in base64, the password may be empty to connect with the private key; onpremise-ssh-private-key is in base64 either the absolute path of the key on the replication-manager host or the key itself (PEM / OpenSSH, no passphrase), which is written 0600 under the cluster's working directory, never in the config git, the setting then holding that path; onpremise-ssh-port is the port; the onpremise-ssh-*-script settings are in base64 the absolute path of a local script. An on-premise SSH setting set in the configuration file under /etc, on the command line or in the environment is refused with 409.
+// @Description With an empty settingValue (the path ending in a slash), a POST takes the value from the request body (64 KiB at most), for a value that must not sit in a URL.
+// @Description On-premise SSH: onpremise-ssh-credential is user:password in base64, the password may be empty to connect with the private key; onpremise-ssh-private-key is in base64 either the absolute path of the key on the replication-manager host or the key itself (PEM / OpenSSH, no passphrase), which is written 0600 under the cluster's working directory, never in the config git, the setting then holding that path (send it as the POST body to .../set/onpremise-ssh-private-key/ so the key never sits in a URL); onpremise-ssh-port is the port; the onpremise-ssh-*-script settings are in base64 the absolute path of a local script. An on-premise SSH setting set in the configuration file under /etc, on the command line or in the environment is refused with 409.
 // @Tags ClusterSettings
 // @Accept json
 // @Produce json
@@ -4037,6 +4055,11 @@ func (repman *ReplicationManager) handlerMuxSetSettings(w http.ResponseWriter, r
 			settingValue = ""
 		}
 		value = settingValue
+	}
+	value, err := settingValueFromBody(w, r, value)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
 	}
 
 	// Should be handled with global settings

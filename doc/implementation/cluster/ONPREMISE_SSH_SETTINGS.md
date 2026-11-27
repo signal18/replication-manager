@@ -20,6 +20,13 @@ All go through the existing endpoints, no new route:
 | `onpremise-ssh-private-key` | base64 of a path or of the key | `SetOnPremiseSSHPrivateKey` | see below |
 | `onpremise-ssh-start-db-script`, `-start-proxy-script`, `-stop-proxy-script`, `-db-job-script`, `-upgrade-db-script` | base64 of a path | `SetOnPremiseSSHSetting` | absolute path of an existing file; empty: the built-in command |
 
+**A value in the request body.** A set request whose path ends at the setting name and a slash
+(`.../settings/actions/set/onpremise-ssh-private-key/`), sent as a POST, takes its value from the
+body (64 KiB at most, `settingValueFromBody`). The GUI sends the private key that way: a key never
+sits in a URL, which reverse proxies log and the panic recovery middleware logs (F10). The path
+form still works for every setting, so existing clients are unchanged; the credential, a short
+`user:password` like the other credentials, keeps the path form for now.
+
 The setters are in `cluster/cluster_set_onpremise.go`, the API cases in
 `server/api_cluster.go` `setClusterSetting`, next to the proxmox ones.
 
@@ -66,7 +73,8 @@ replication-manager user can read and have it run on those hosts: the same power
 already gives through the other script settings (`prov-db-host-upgrade-script`, the backup and
 alert scripts, which run on the replication-manager host itself) and that the cluster file gave.
 The API adds no new power, so the scripts are not restricted to a directory; the check is an
-absolute path of an existing regular file (`os.Stat` follows a symlink to its target).
+absolute path of an existing regular file (`os.Stat` follows a symlink to its target). The check is made when the setting is set: the file is read when the script runs, and may have
+changed in between, as with every other script setting.
 
 Not covered: the key file lives on the instance that received it. A peer that takes the cluster
 over from the config git gets the path, not the file: give the key to each instance, or use a

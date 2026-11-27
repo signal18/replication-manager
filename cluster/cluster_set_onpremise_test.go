@@ -207,6 +207,9 @@ func TestOnPremiseSSHPrivateKeyContent(t *testing.T) {
 	if err := cl.SetOnPremiseSSHCredential(" :pass"); err == nil {
 		t.Errorf("a blank user accepted")
 	}
+	if err := cl.SetOnPremiseSSHCredential(" root:pass"); err == nil {
+		t.Errorf("a user with spaces around accepted")
+	}
 }
 
 func TestOnPremiseSSHSettings(t *testing.T) {

@@ -413,7 +413,7 @@ function OrchestratorDbVM({ selectedCluster, user, scope }) {
       {isSSHKeyOpen && (
         <SSHPrivateKeyModal isOpen={isSSHKeyOpen} closeModal={() => setIsSSHKeyOpen(false)}
           currentPath={selectedCluster?.config?.onpremiseSshPrivateKey}
-          onSave={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'onpremise-ssh-private-key', value: btoa(value) }))} />
+          onSave={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'onpremise-ssh-private-key', value: value ? btoa(value) : '', inBody: true }))} />
       )}
     </VStack>
   )
