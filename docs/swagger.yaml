@@ -2891,6 +2891,8 @@ definitions:
         type: array
       autorejoin:
         type: boolean
+      autorejoinAsyncFlashbackDropBinlog:
+        type: boolean
       autorejoinBackupBinlog:
         type: boolean
       autorejoinBackupSelectorLogical:

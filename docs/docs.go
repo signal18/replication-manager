@@ -32161,6 +32161,9 @@ const docTemplate = `{
                 "autorejoin": {
                     "type": "boolean"
                 },
+                "autorejoinAsyncFlashbackDropBinlog": {
+                    "type": "boolean"
+                },
                 "autorejoinBackupBinlog": {
                     "type": "boolean"
                 },

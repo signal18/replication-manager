@@ -390,6 +390,7 @@ var ClusterError = map[string]string{
 	"WARN0341":  "Replication plugin %s of %s: a DDL on the source is not applied to the destination, whose table keeps its structure: %s; apply it on %s out of the binlog, or seed the child again",
 	"CINF0031":  "Analytic child %s: the destination plugin %s is making the chosen tables, for %s (the seed waits for it)",
 	"ERR00140":  "Replication plugin %s of %s is stopped until a new initial load: %s -- rejoin the feed (a new initial load from the source)",
+	"WARN0364":  "Binary log of %s dropped by the flashback rejoin at %s (rewound to %s, gtid_binlog_state set to it): its binlogs %s to %s are gone from the server, a point-in-time restore from a backup before the reset cannot replay them; its next backup closes this",
 	"WARN0360":  "Replication plugin %s of %s: its source %s: %s",
 	"CINF0040":  "Replication plugin %s of %s: its source %s keeps %d MB of log for the feed (bound %d MB)%s",
 	"CINF0030":  "Replication plugin %s of %s: staging merged into the destination up to checkpoint %d (GTID %s) at %s in %d ms, %d checkpoints staged since, next merge in %s",

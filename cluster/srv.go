@@ -48,6 +48,9 @@ import (
 
 // ServerMonitor defines a server to monitor.
 type ServerMonitor struct {
+	// the binary log the flashback rejoin reset (positionAfterFlashback): WARN0364 until the server's next backup
+	flashbackBinlogReset atomic.Pointer[flashbackBinlogReset]
+
 	legacyJobLoginAt int64        // unix time of the last legacy job body (OpenJobBody), read atomically; 0 never
 	jobBodyAt        int64        // unix time of the last job body accepted from this server's jobs (OpenJobBody), read atomically; 0 never (WARN0324)
 	jobsRunningSince time.Time    // when CheckJobsSilent first saw this server running on the active monitor (zero: not running); the tick only

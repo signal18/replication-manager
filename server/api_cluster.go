@@ -3608,6 +3608,8 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.SwitchRejoinBackupBinlog()
 	case "autorejoin-flashback":
 		mycluster.SwitchRejoinFlashback()
+	case "autorejoin-async-flashback-drop-binlog":
+		mycluster.SwitchRejoinAsyncFlashbackDropBinlog()
 	case "autorejoin-flashback-on-sync":
 		mycluster.SwitchRejoinSemisync()
 	case "autorejoin-flashback-on-unsync": //?????
@@ -6113,6 +6115,8 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.AutorejoinBackupBinlog = applyIsActive(mycluster.Conf.AutorejoinBackupBinlog, isactive)
 	case "autorejoin-flashback":
 		mycluster.Conf.AutorejoinFlashback = applyIsActive(mycluster.Conf.AutorejoinFlashback, isactive)
+	case "autorejoin-async-flashback-drop-binlog":
+		mycluster.Conf.AutorejoinAsyncFlashbackDropBinlog = applyIsActive(mycluster.Conf.AutorejoinAsyncFlashbackDropBinlog, isactive)
 	case "autorejoin-flashback-on-sync":
 		mycluster.Conf.AutorejoinSemisync = applyIsActive(mycluster.Conf.AutorejoinSemisync, isactive)
 	case "autorejoin-slave-positional-heartbeat":
