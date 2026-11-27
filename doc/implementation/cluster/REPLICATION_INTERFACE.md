@@ -98,6 +98,7 @@ type ReplicationTopology struct {
 | `repl-mariadb-redis-cdc`, `-memcached-cdc`, `-rabbitmq-cdc` | cdc | keys, messages | external | free |
 | `repl-mariadb-clickhouse-cdc`, `-postgresql-cdc`, `-sphinx-cdc` | cdc | copy, denormalize | external | enterprise |
 | `repl-postgresql-mariadb-cdc` | cdc | migration (bidirectional designed, not coded) | external | enterprise |
+| `repl-<source>-<target>-trigger` | trigger | a source whose log can not be read | external | enterprise |
 
 The CDC destinations, their apply and their position are the private CDC design
 (`doc/enterprise-denormalize-plugin.md` in the plugin-signer repository): one plugin per
@@ -181,7 +182,7 @@ Today `BootstrapReplication` (`prov.go`) holds the topologies as branches per en
 |---|---|
 | 2 | `ReplicationLink` becomes `ReplicationPlugin` + `Link`; the verbs renamed (`StopCopyEvents`, `StopApplyEvents`) and `StartCopyEvents`, `StartApplyEvents` added; the manifest; the registry of plugins (as `newOrchestratorList`) |
 | 3 | The native code split into the built-in plugins: binlog (three manifests), galera, group replication, postgresql, columnstore |
-| 4 | `replication_cdc.go` becomes the external adapter; the CDC binaries renamed (`replplugin-innodb` → `repl-mariadb-mariadb-cdc`, `replplugin-columnstore` → `repl-mariadb-columnstore-cdc`, `replplugin-duckdb` → `repl-mariadb-duckdb-cdc`, `replplugin-postgresql` → `repl-postgresql-mariadb-cdc`) with their manifests |
+| 4 | `replication_cdc.go` becomes the external adapter; the `replication-plugin-*` keys become the plugins' own settings; the CDC binaries renamed (`replplugin-innodb` → `repl-mariadb-mariadb-cdc`, `replplugin-columnstore` → `repl-mariadb-columnstore-cdc`, `replplugin-duckdb` → `repl-mariadb-duckdb-cdc`, `replplugin-postgresql` → `repl-postgresql-mariadb-cdc`) with their manifests |
 | 5 | `Bootstrap` and `Create` moved from `prov.go` into the plugins, topology by topology |
 | 6 | GUI: the links of a server grouped by plugin, the actions from the manifest; API and MCP the same |
 
@@ -189,11 +190,25 @@ Each step keeps the statements sent and is tested on dev3 before the next (T13):
 switchover, failover, rejoin and reseed regtests for steps 2 and 3, the CDC regtests for step 4,
 the bootstrap of each topology for step 5.
 
-## Questions for the maintainer
+## Settings: per plugin
 
-1. The `replication-plugin-*` settings keep their names for the CDC links, or move to the plugin's
-   own settings (`Settings` of the manifest, as the snapshot plugins)?
-2. The tier of the `trigger` plugins.
+Decided by the maintainer (2026-11-27): each plugin declares its own settings and secrets in its
+manifest (`Settings`), as the snapshot and archive plugins do; the settings of a link are stored per
+plugin, never as keys of the repman core:
+
+```toml
+[[repl-plugin]]
+plugin  = "repl-mariadb-kafka-cdc"
+brokers = "..."
+```
+
+- A new plugin brings its settings without a change to repman; the GUI builds the form from the
+  manifest, the API sets them (global-settings ACL for a secret, as the snapshot plugins), a secret is
+  encrypted with the local key (F9) and never logged (F10).
+- The `replication-plugin-*` keys of today's CDC feeds move into the settings of their plugin in step
+  4; repman reads the old keys once and writes them as the plugin's settings, so a running feed keeps
+  its configuration.
+- The `trigger` plugins do not exist yet: enterprise, by the maintainer's rule of 2026-11-26.
 
 ## T27: what each moved path stops, repoints or resets (step 1)
 
