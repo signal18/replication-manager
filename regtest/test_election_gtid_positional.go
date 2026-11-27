@@ -107,6 +107,9 @@ func (r *electionRun) finish(ok bool) bool {
 	}
 	switch electionVerdict(ok, r.failed, r.skipped) {
 	case "FAIL":
+		// the runner reports SKIP whenever test.SkipReason is set, whatever the returned result: a failure after an
+		// earlier skip (a premise that was not built, then a cleanup that failed) must not be hidden
+		r.test.SkipReason = ""
 		r.logf("SUMMARY result=FAIL%s failed=%s passed=%s", class, strings.Join(r.failed, ","), strings.Join(r.passed, ","))
 		return false
 	case "SKIP":
@@ -114,6 +117,7 @@ func (r *electionRun) finish(ok bool) bool {
 		r.test.SkipReason = reason
 		r.logf("SUMMARY result=SKIP%s reason=%q passed=%s", class, reason, strings.Join(r.passed, ","))
 	default:
+		r.test.SkipReason = ""
 		note := ""
 		if len(r.control) > 0 {
 			note = fmt.Sprintf(" control=%q", strings.Join(r.control, "; "))
@@ -338,23 +342,47 @@ func (r *electionRun) parsedSeq(srv *cluster.ServerMonitor, failedPath bool) (ui
 	return sum, nil
 }
 
-// receivedAhead tells whether a has received more of the primary's binlog than b (same file name
-// width: file name then position).
+// electionRank is the number the production election compares (cluster.binlogRank): the numeric suffix after the last
+// dot of the binlog file name followed by the position padded to 12 digits. Unlike the election, which ignores the parse
+// error and ranks 0, it returns the error: a name without a numeric suffix or a position that is not a number is not a
+// measure of anything and must not establish a premise. A test never orders two servers by their file names: two sources
+// may have different basenames.
+func electionRank(file, pos string) (uint64, error) {
+	if !strings.Contains(file, ".") {
+		return 0, fmt.Errorf("binlog file %q has no numeric suffix", file)
+	}
+	for len(pos) < 12 {
+		pos = "0" + pos
+	}
+	v, err := strconv.ParseUint(file[strings.LastIndex(file, ".")+1:]+pos, 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("binlog coordinates %q %q do not parse as the election reads them: %w", file, pos, err)
+	}
+	return v, nil
+}
+
+// electionServerRank is the election's rank of a server from the replication status the monitor holds (the inputs the
+// election reads: Master_Log_File and Read_Master_Log_Pos).
+func electionServerRank(srv *cluster.ServerMonitor) (uint64, error) {
+	ss, err := srv.GetSlaveStatus(srv.ReplicationSourceName)
+	if err != nil {
+		return 0, fmt.Errorf("replication status of %s: %w", srv.URL, err)
+	}
+	return electionRank(ss.MasterLogFile.String, ss.ReadMasterLogPos.String)
+}
+
+// electionReceivedAhead tells whether a ranks above b for the election: by the production rank, not by the file names.
+// A status that cannot be read or ranked is an error, never "not ahead".
 func electionReceivedAhead(a, b *cluster.ServerMonitor) (bool, error) {
-	sa, err := a.GetSlaveStatus(a.ReplicationSourceName)
+	ra, err := electionServerRank(a)
 	if err != nil {
 		return false, err
 	}
-	sb, err := b.GetSlaveStatus(b.ReplicationSourceName)
+	rb, err := electionServerRank(b)
 	if err != nil {
 		return false, err
 	}
-	if sa.MasterLogFile.String != sb.MasterLogFile.String {
-		return sa.MasterLogFile.String > sb.MasterLogFile.String, nil
-	}
-	pa, _ := strconv.ParseUint(sa.ReadMasterLogPos.String, 10, 64)
-	pb, _ := strconv.ParseUint(sb.ReadMasterLogPos.String, 10, 64)
-	return pa > pb, nil
+	return ra > rb, nil
 }
 
 func (r *electionRun) insert(master *cluster.ServerMonitor, tag string) bool {
@@ -376,6 +404,20 @@ func (r *electionRun) count(srv *cluster.ServerMonitor) (int, error) {
 }
 
 // subset is GTID_SUBSET(executed, the server's gtid_executed): every transaction of the set is on the server.
+// electionErrantGTID is a GTID no server has: a UUID of the form ffffffff-2451-2451-2451-<12 random hex digits>, sequence 1.
+func electionErrantGTID() string {
+	return "ffffffff-2451-2451-2451-" + electionSuffix() + electionSuffix()[:4] + ":1"
+}
+
+// electionHasGTID says whether a GTID is in the server's gtid_executed; a query error is an error, never "absent".
+func electionHasGTID(srv *cluster.ServerMonitor, gtid string) (bool, error) {
+	v, err := electionQuery(srv, "SELECT GTID_SUBSET(?, @@global.gtid_executed)", gtid)
+	if err != nil {
+		return false, err
+	}
+	return v == "1", nil
+}
+
 func electionSubset(srv *cluster.ServerMonitor, executed string) bool {
 	v, err := electionQuery(srv, "SELECT GTID_SUBSET(?, @@global.gtid_executed)", executed)
 	return err == nil && v == "1"
@@ -488,14 +530,22 @@ func (r *electionRun) candidates() (a, b *cluster.ServerMonitor) {
 
 // premise records the decimal-UUID premise of a scenario: the parsed value of both candidates is the
 // same and positive. Without it the scenario is a CONTROL.
-func (r *electionRun) premise(name string, a, b *cluster.ServerMonitor, failedPath bool) {
+func (r *electionRun) premise(name string, a, b *cluster.ServerMonitor, failedPath bool) bool {
 	r.premiseUsed = true
 	sa, ea := r.parsedSeq(a, failedPath)
 	sb, eb := r.parsedSeq(b, failedPath)
 	r.logf("%s premise: parsed sequence A(%s)=%d(%v) B(%s)=%d(%v) failedPath=%v", name, a.URL, sa, ea, b.URL, sb, eb, failedPath)
-	if ea != nil || eb != nil || sa != sb || sa == 0 {
+	if ea != nil || eb != nil {
+		// unavailable or erroneous status information is not a control: nothing is established, the scenario stops
+		reason := fmt.Sprintf("premise not established: %s replication status unavailable (%v, %v)", name, ea, eb)
+		r.test.SkipReason = reason
+		r.skipped = append(r.skipped, reason)
+		return false
+	}
+	if sa != sb || sa == 0 {
 		r.control = append(r.control, name+": defect premise not established (parsed sequence of A and B is not equal and positive), run as control")
 	}
+	return true
 }
 
 // stopped says whether a server's replica threads are what the scenario needs.
@@ -527,12 +577,14 @@ func (r *electionRun) scenarioFailover() {
 	nA, _ := r.count(a)
 	nB, _ := r.count(b)
 	// the monitor reads the status on its tick: wait until its view shows B ahead of A
-	ahead := electionWait(electionSyncWait, func() bool { v, _ := electionReceivedAhead(b, a); return v })
+	ahead := electionWait(electionSyncWait, func() bool { v, err := electionReceivedAhead(b, a); return err == nil && v })
 	if !r.check("F-premise", bOK && nA < r.rows && nB == r.rows && ahead && r.ioStopSQLRunning(a), "A behind (%d of %d rows, I/O stopped), B current (%d rows), B received ahead of A=%v", nA, r.rows, nB, ahead) {
 		r.dump("F-premise")
 		return
 	}
-	r.premise("F", a, b, true)
+	if !r.premise("F", a, b, true) {
+		return
+	}
 	ctr := cl.GetFailoverCtr()
 
 	wg := new(sync.WaitGroup)
@@ -607,7 +659,9 @@ func (r *electionRun) scenarioRefusal() {
 	want, _ := electionGTIDExecuted(master)
 	var ahead bool
 	received := electionWait(electionSyncWait, func() bool {
-		ahead, _ = electionReceivedAhead(b, a)
+		var aerr error
+		ahead, aerr = electionReceivedAhead(b, a)
+		ahead = ahead && aerr == nil
 		ss, err := b.GetSlaveStatus(b.ReplicationSourceName)
 		return err == nil && ahead && ss.SlaveIORunning.String == "Yes" && ss.SlaveSQLRunning.String == "No"
 	})
@@ -615,7 +669,9 @@ func (r *electionRun) scenarioRefusal() {
 		r.dump("R-premise")
 		return
 	}
-	r.premise("R", a, b, true)
+	if !r.premise("R", a, b, true) {
+		return
+	}
 	ctr := cl.GetFailoverCtr()
 	r.stop(master)
 
@@ -663,13 +719,15 @@ func (r *electionRun) scenarioSwitchover() {
 	nA, _ := r.count(a)
 	nB, _ := r.count(b)
 	// the monitor reads the status on its tick: wait until its view shows B ahead of A
-	ahead := electionWait(electionSyncWait, func() bool { v, _ := electionReceivedAhead(b, a); return v })
+	ahead := electionWait(electionSyncWait, func() bool { v, err := electionReceivedAhead(b, a); return err == nil && v })
 	first := cl.GetSlaves()[0].URL == a.URL
 	if !r.check("S-premise", bOK && nA < r.rows && nB == r.rows && ahead && first && !a.IsPrefered() && !b.IsPrefered(), "A first in the list=%v, A behind (%d of %d rows), B current (%d), B received ahead=%v, no preferred host", first, nA, r.rows, nB, ahead) {
 		r.dump("S-premise")
 		return
 	}
-	r.premise("S", a, b, false)
+	if !r.premise("S", a, b, false) {
+		return
+	}
 	ctr := cl.GetFailoverCtr()
 	cl.SwitchoverWaitTest()
 	electionWait(electionSwitchWait, func() bool { m := cl.GetMaster(); return m != nil && m.URL != master.URL })
@@ -944,7 +1002,16 @@ func (r *electionRun) scenarioErrant() {
 		r.check("E-premise", false, "replicas did not execute e1")
 		return
 	}
-	const errant = "bbbbbbbb-2451-2451-2451-bbbbbbbbbbbb:1"
+	// a GTID no server has: unique per execution (the cleanup commits it on the primary, so a fixed one could not be
+	// injected as an errant transaction a second time); its absence is verified on every server first
+	errant := electionErrantGTID()
+	for _, s := range cl.Servers {
+		has, err := electionHasGTID(s, errant)
+		if err != nil || has {
+			r.check("E-premise", false, "the GTID %s must be absent on %s before the injection (present=%v, err=%v)", errant, s.URL, has, err)
+			return
+		}
+	}
 	if err := electionEmptyTransaction(a, errant); err != nil {
 		r.check("E-premise", false, "errant transaction on %s: %s", a.URL, err)
 		return

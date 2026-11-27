@@ -149,7 +149,9 @@ func (r *electionRun) multiTier() bool {
 		}
 		time.Sleep(time.Second)
 	}
-	ahead := electionWait(electionSyncWait, func() bool { v, _ := electionReceivedAhead(d, relay); return v })
+	ahead := electionWait(electionSyncWait, func() bool { v, err := electionReceivedAhead(d, relay); return err == nil && v })
+	rankD, errD := electionServerRank(d)
+	rankRelay, errRelay := electionServerRank(relay)
 	for _, s := range below {
 		if _, err := s.StopSlaveIOThread(); err != nil {
 			return r.check("mt-premise", false, "stop the I/O thread of %s: %s", s.URL, err)
@@ -164,10 +166,16 @@ func (r *electionRun) multiTier() bool {
 	if !r.tagsOn("mt-premise-relay", relay, tags) {
 		return false
 	}
-	if _, n := r.hasTags(d, tags); !ahead || n >= len(tags) {
-		return r.unestablished("the replica %s below the relay is not ahead of the relay in file number (%v) or already holds the new markers (%d of %d)", d.URL, ahead, n, len(tags))
+	if errD != nil || errRelay != nil {
+		return r.unestablished("the election's rank cannot be computed from the replication status (%v, %v)", errD, errRelay)
 	}
-	r.premise("MT", relay, d, true)
+	r.logf("mt-premise: election rank of the relay %s = %d, of the replica below it %s = %d", relay.URL, rankRelay, d.URL, rankD)
+	if _, n := r.hasTags(d, tags); !ahead || rankD <= rankRelay || n >= len(tags) {
+		return r.unestablished("the replica %s below the relay does not rank above the relay by the election's own number (%d vs %d, ahead=%v) or already holds the new markers (%d of %d)", d.URL, rankD, rankRelay, ahead, n, len(tags))
+	}
+	if !r.premise("MT", relay, d, true) {
+		return true
+	}
 	r.dump("mt-before-failover")
 
 	ctr := cl.GetFailoverCtr()

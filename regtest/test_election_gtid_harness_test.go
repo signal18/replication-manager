@@ -16,6 +16,7 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/state"
 	"github.com/signal18/replication-manager/utils/version"
 	"github.com/sirupsen/logrus"
@@ -336,6 +337,126 @@ func TestElectionFinishClass(t *testing.T) {
 		got := r.finish(c.ok)
 		if got != c.want || (r.test.SkipReason != "") != c.skip {
 			t.Errorf("%s: finish=%v skipReason=%q, want %v skip=%v", c.name, got, r.test.SkipReason, c.want, c.skip)
+		}
+	}
+}
+
+// The rank the tests compare is the production election's number (last-dot suffix then the padded position), never a
+// comparison of file names: two sources may have different basenames.
+func TestElectionRank(t *testing.T) {
+	for _, c := range []struct {
+		file, pos string
+		want      uint64
+		ok        bool
+	}{
+		{"mysql-bin.000001", "1857", 1000000001857, true},
+		{"db1.example.com-bin.000007", "1857", 7000000001857, true},
+		{"mysql-bin.000001", "123456789012", 1123456789012, true},
+		{"a.1.000003", "5", 3000000000005, true},
+		{"mysql-bin.index", "10", 0, false}, // not a number: an error here, rank 0 in the election
+		{"db1.example", "10", 0, false},     // the name MySQL really creates for a dotted --log-bin basename
+		{"nodot", "10", 0, false},
+		{"", "", 0, false},
+		{"mysql-bin.99999999", "1", 0, false}, // overflow
+	} {
+		got, err := electionRank(c.file, c.pos)
+		if (err == nil) != c.ok || (c.ok && got != c.want) {
+			t.Errorf("electionRank(%q, %q) = %d, %v; want %d ok=%v", c.file, c.pos, got, err, c.want, c.ok)
+		}
+	}
+	// two sources with different basenames: the lexicographic order of the names says the opposite of the rank
+	relay := &cluster.ServerMonitor{URL: "relay", Replications: statusFor("mysql-bin.000001", "100")}
+	below := &cluster.ServerMonitor{URL: "below", Replications: statusFor("relay-bin.000005", "10")}
+	if ahead, err := electionReceivedAhead(below, relay); err != nil || !ahead {
+		t.Errorf("relay-bin.000005 must rank above mysql-bin.000001 by the election's number: ahead=%v err=%v", ahead, err)
+	}
+	if ahead, err := electionReceivedAhead(relay, below); err != nil || ahead {
+		t.Errorf("mysql-bin.000001 must not rank above relay-bin.000005: ahead=%v err=%v", ahead, err)
+	}
+	// a status that cannot be read or ranked is an error, never "not ahead"
+	if _, err := electionReceivedAhead(&cluster.ServerMonitor{URL: "none"}, relay); err == nil {
+		t.Errorf("a server without a replication status must give an error")
+	}
+	if _, err := electionReceivedAhead(&cluster.ServerMonitor{URL: "bad", Replications: statusFor("db1.example", "10")}, relay); err == nil {
+		t.Errorf("a name without a numeric suffix must give an error")
+	}
+}
+
+func statusFor(file, pos string) []dbhelper.SlaveStatus {
+	return []dbhelper.SlaveStatus{{
+		ConnectionName:   sql.NullString{String: "", Valid: true},
+		MasterLogFile:    sql.NullString{String: file, Valid: true},
+		ReadMasterLogPos: sql.NullString{String: pos, Valid: true},
+	}}
+}
+
+// An unreadable status is an unestablished premise (a SKIP that stops the scenario), never a control.
+func TestElectionPremiseStatusUnavailable(t *testing.T) {
+	r := newElectionRun(harnessCluster(), &cluster.Test{}, "unit")
+	a := &cluster.ServerMonitor{URL: "a"}
+	b := &cluster.ServerMonitor{URL: "b"}
+	if r.premise("X", a, b, true) {
+		t.Fatalf("the premise must not be established without a status")
+	}
+	if len(r.control) != 0 || len(r.skipped) != 1 || r.test.SkipReason == "" {
+		t.Fatalf("control=%v skipped=%v reason=%q: an unreadable status is UNESTABLISHED, not a control", r.control, r.skipped, r.test.SkipReason)
+	}
+}
+
+// The runner reports SKIP whenever test.SkipReason is set, whatever the result: a failure after an earlier skip (a premise
+// not built, then a failed cleanup) must come out as FAIL with no skip reason.
+func TestElectionFailureClearsSkipReason(t *testing.T) {
+	r := newElectionRun(harnessCluster(), &cluster.Test{}, "unit")
+	r.test.SkipReason = "premise not established: earlier"
+	r.skipped = []string{"premise not established: earlier"}
+	r.failed = []string{"cleanup-replication@s"}
+	if r.finish(true) {
+		t.Fatalf("a failed check must fail the test")
+	}
+	if r.test.SkipReason != "" {
+		t.Fatalf("a FAIL must not carry a skip reason (the runner would report SKIP): %q", r.test.SkipReason)
+	}
+	// and the reverse: a SKIP keeps its reason, a PASS has none
+	s := newElectionRun(harnessCluster(), &cluster.Test{}, "unit")
+	s.skipped = []string{"x"}
+	if !s.finish(true) || s.test.SkipReason == "" {
+		t.Fatalf("a SKIP keeps its reason")
+	}
+	p := newElectionRun(harnessCluster(), &cluster.Test{}, "unit")
+	if !p.finish(true) || p.test.SkipReason != "" {
+		t.Fatalf("a PASS has no skip reason")
+	}
+}
+
+// The errant GTID is unique per execution and its absence is checked through a query whose error is never "absent".
+func TestElectionErrantGTID(t *testing.T) {
+	seen := map[string]bool{}
+	for i := 0; i < 200; i++ {
+		g := electionErrantGTID()
+		if seen[g] || !strings.HasPrefix(g, "ffffffff-2451-2451-2451-") || !strings.HasSuffix(g, ":1") || len(g) != len("ffffffff-2451-2451-2451-")+12+2 {
+			t.Fatalf("errant GTID %q repeated or malformed", g)
+		}
+		seen[g] = true
+	}
+	for _, c := range []struct {
+		val  string
+		err  error
+		want bool
+		bad  bool
+	}{{"1", nil, true, false}, {"0", nil, false, false}, {"", sql.ErrConnDone, false, true}} {
+		db, m := indMock(t)
+		_ = db
+		srv, mock := mockServer(t, "s")
+		_ = m
+		q := mock.ExpectQuery("GTID_SUBSET")
+		if c.err != nil {
+			q.WillReturnError(c.err)
+		} else {
+			q.WillReturnRows(sqlmock.NewRows([]string{"x"}).AddRow(c.val))
+		}
+		has, err := electionHasGTID(srv, "g:1")
+		if (err != nil) != c.bad || has != c.want {
+			t.Errorf("val=%q err=%v: has=%v err=%v", c.val, c.err, has, err)
 		}
 	}
 }
