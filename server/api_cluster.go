@@ -845,6 +845,10 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterSchemaChecksumAllTable)),
 	))
+	router.Handle("/api/clusters/{clusterName}/actions/checksum-cancel", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterSchemaChecksumCancel)),
+	))
 	router.Handle("/api/clusters/{clusterName}/actions/checksum-repair-all-tables", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterSchemaChecksumRepairAllTable)),
@@ -8236,6 +8240,34 @@ func (repman *ReplicationManager) handlerMuxClusterSchemaChecksumTable(w http.Re
 		if !writeChecksumTableUnavailable(w, mycluster, vars["schemaName"], vars["tableName"]) {
 			go mycluster.CheckTableChecksum(vars["schemaName"], vars["tableName"])
 		}
+	} else {
+		http.Error(w, "No cluster", http.StatusInternalServerError)
+	}
+}
+
+// handlerMuxClusterSchemaChecksumCancel cancels the table checksums running in a given cluster.
+// @Summary Cancel the running table checksums of a specific cluster
+// @Description Each running table checksum ends NA before its next chunk or at its next wait turn for a replica (30 s at most); a checksum of all tables or of a schema stops its loop. A checksum started after the cancel runs.
+// @Tags ClusterSchema
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Success 200 {string} string "Cancel sent to the running table checksums"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster"
+// @Router /api/clusters/{clusterName}/actions/checksum-cancel [post]
+func (repman *ReplicationManager) handlerMuxClusterSchemaChecksumCancel(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", http.StatusForbidden)
+			return
+		}
+		mycluster.CancelTableChecksum()
 	} else {
 		http.Error(w, "No cluster", http.StatusInternalServerError)
 	}

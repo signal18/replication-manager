@@ -7112,6 +7112,43 @@ paths:
       summary: Calculate checksum for all tables in a specific cluster
       tags:
       - ClusterSchema
+  /api/clusters/{clusterName}/actions/checksum-cancel:
+    post:
+      consumes:
+      - application/json
+      description: Each running table checksum ends NA before its next chunk or at
+        its next wait turn for a replica (30 s at most); a checksum of all tables
+        or of a schema stops its loop. A checksum started after the cancel runs.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Cancel sent to the running table checksums
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Cancel the running table checksums of a specific cluster
+      tags:
+      - ClusterSchema
   /api/clusters/{clusterName}/actions/checksum-repair-all-tables:
     post:
       consumes:

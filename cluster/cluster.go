@@ -360,6 +360,7 @@ type Cluster struct {
 	RepMgrHostname              string               `json:"-"`
 	exitMsg                     string               `json:"-"`
 	exit                        atomic.Bool          `json:"-"`
+	checksumCancel              atomic.Uint64        `json:"-"` // bumped by CancelTableChecksum: a running table checksum started before ends NA (#2465)
 	backupSlotsHeld             atomic.Int32         `json:"-"` // global backup slots taken by this cluster's backups
 	stopOnce                    sync.Once            `json:"-"`
 	backupEncryptionCleanupOnce sync.Once            `json:"-"`

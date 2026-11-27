@@ -362,6 +362,7 @@ type ServerMonitor struct {
 	reseedLinksMu               sync.Mutex                         // guards reseedLinks: the reseed records, the refresh drops (#2093)
 	reseedLinks                 reseedStoppedLinks                 // the channels a reseed stopped and has not started again, WARN0252 while one does not run
 	logicalRestoreGate          atomic.Pointer[logicalRestoreGate] // the pause of a restore writing to the binlog, WARN0254 while paused (#2124)
+	checksumWait                atomic.Pointer[string]             // what a table checksum waits for on this replica, WARN0086 while set (#2465)
 	restoreKeptMu               sync.Mutex                         // guards restoreKept
 	restoreKept                 []string                           // the tables the last logical restore kept as the server has them (MySQL refuses their DDL), WARN0280 while any
 	logicalRestoreGatePurging   atomic.Bool                        // a binlog rotation of that restore is being handled
@@ -1762,6 +1763,7 @@ func (server *ServerMonitor) Refresh() error {
 	server.ReplicationHealth = server.CheckReplication()
 	server.checkReseedStoppedLinks() // WARN0252: links a reseed stopped and that do not run (#2093)
 	server.checkLogicalRestoreGate() // WARN0254: a restore with the binlog on paused for its replicas (#2124)
+	server.checkChecksumWait()       // WARN0086: a table checksum waiting for this replica (#2465)
 	server.checkRestoreKeptTables()  // WARN0280: tables the last restore kept as the server has them
 
 	if server.IsSlave {

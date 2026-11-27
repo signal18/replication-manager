@@ -152,9 +152,9 @@ func (server *ServerMonitor) startLogicalRestoreGate(ctx context.Context) (stop 
 // server's position read once when the restore wrote its last transaction (WaitSyncToTarget,
 // 30 s turns); WARN0254 names the replica it waits for. Not server's current position: a child or
 // staging master keeps writing its parent's transactions, a moving target is never reached. An
-// SQL error of the wait, or no progress of the replica's applied position for
-// replicaNoProgressFor, ends it for that replica, logged. A cancel of the restore ends it
-// after the turn running.
+// SQL error of the wait, or the replica's replication stopped or in error (replicaWaitStopped),
+// ends it for that replica, logged; a still position never does (a long transaction, parallel
+// retries). A cancel of the restore ends it after the turn running.
 func (server *ServerMonitor) waitReplicasAppliedAll(ctx context.Context, gate *logicalRestoreGate) {
 	cluster := server.ClusterGroup
 	target, err := server.ReadReplicationTarget()

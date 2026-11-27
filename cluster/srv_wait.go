@@ -78,32 +78,6 @@ func (server *ServerMonitor) ReadReplicationTarget() (ReplicationTarget, error) 
 	return ReplicationTarget{File: ms.File, Pos: strconv.FormatUint(uint64(ms.Position), 10)}, err
 }
 
-// replicaNoProgressFor is how long a replica's applied position may stay still before a wait gives
-// up on it: one transaction of a restore (~290 MB) kept db3.belair-staging-test's position still
-// for about 40 s while it applied it. Measured in time, not in WaitSyncToTarget turns: a turn that
-// answers at once would count for nothing.
-const replicaNoProgressFor = 90 * time.Second
-
-// replicaProgressClock is the time a replicaProgress reads, replaced in tests.
-var replicaProgressClock = time.Now
-
-// replicaProgress follows a replica's applied position (AppliedPosition) between the turns of a wait.
-type replicaProgress struct {
-	applied string
-	since   time.Time
-}
-
-// stalled records applied: true once it has not moved for replicaNoProgressFor, with how long.
-func (p *replicaProgress) stalled(applied string) (bool, time.Duration) {
-	now := replicaProgressClock()
-	if p.since.IsZero() || applied != p.applied {
-		p.applied, p.since = applied, now
-		return false, 0
-	}
-	still := now.Sub(p.since)
-	return still >= replicaNoProgressFor, still
-}
-
 // AppliedPosition is where the replica's SQL thread is, from its last replication status: the
 // master binlog file and position it executed up to, and its gtid_slave_pos on MariaDB. Equal
 // between two turns: no progress.
@@ -118,6 +92,49 @@ func (server *ServerMonitor) AppliedPosition() string {
 	return pos
 }
 
+// ReadPosition is where the replica's IO thread is, from its last replication status: the master
+// binlog file and position it read up to, and its Gtid_IO_Pos on MariaDB.
+func (server *ServerMonitor) ReadPosition() string {
+	if server.SlaveStatus == nil {
+		return ""
+	}
+	pos := server.SlaveStatus.MasterLogFile.String + ":" + server.SlaveStatus.ReadMasterLogPos.String
+	if server.SlaveStatus.GtidIOPos.String != "" {
+		pos += " " + server.SlaveStatus.GtidIOPos.String
+	}
+	return pos
+}
+
+// replicaWaitStopped is why a wait for the replica sl can no longer end, from its last
+// replication status, or "" while it can. The engine's own state decides, never a timer nor a
+// still position: one transaction can take longer than any timer, a MASTER_DELAY replica stays
+// still on purpose, and parallel replication workers roll back and retry with the position still.
+// Those retries are bounded (slave_transaction_retries): past them the engine stops the SQL thread
+// with an error, and that is the exit. So the wait ends when:
+//   - there is no replication status (no longer a replica);
+//   - the SQL thread is not running (stopped, or stopped on an error: Last_SQL_Error says which);
+//   - the IO thread is stopped (No). Connecting is not stopped: the IO thread retries the
+//     connection itself (master_retry_count) and stops once it gives up.
+func replicaWaitStopped(sl *ServerMonitor) string {
+	ss := sl.SlaveStatus
+	if ss == nil {
+		return "no replication status"
+	}
+	if ss.SlaveSQLRunning.String != "Yes" {
+		if ss.LastSQLError.String != "" {
+			return "SQL thread stopped on an error: " + ss.LastSQLError.String
+		}
+		return "SQL thread stopped"
+	}
+	if io := ss.SlaveIORunning.String; io == "" || io == "No" {
+		if ss.LastIOError.String != "" {
+			return "IO thread stopped on an error: " + ss.LastIOError.String
+		}
+		return "IO thread stopped"
+	}
+	return ""
+}
+
 // WaitSyncToTarget is a copy of WaitSyncToMaster, kept apart on purpose:
 //   - WaitSyncToMaster reads the master's position again at each call: looped on, its target
 //     moves, and a master that keeps writing (a child or staging master replicating its parent,
@@ -130,8 +147,9 @@ func (server *ServerMonitor) AppliedPosition() string {
 //
 // Same SQL per flavor: MASTER_GTID_WAIT on MariaDB, MASTER_POS_WAIT / SOURCE_POS_WAIT on the
 // cluster's channel otherwise. Used where a replica must hold all of a master's writes before
-// the next step, with no timer around it: the end of a restore with the binary log on
-// (logical_restore_gate.go) and the staging refresh before it detaches a replica (#2124).
+// the next step, with no timer around it (waitReplicaReachTarget): the end of a restore with the
+// binary log on (logical_restore_gate.go), the staging refresh before it detaches a replica
+// (#2124), the regtest consistency check and the table checksum before it compares the chunks.
 func (server *ServerMonitor) WaitSyncToTarget(target ReplicationTarget, timeout int) (bool, error) {
 	cluster := server.ClusterGroup
 	if server.DBVersion.IsMariaDB() {
@@ -145,16 +163,33 @@ func (server *ServerMonitor) WaitSyncToTarget(target ReplicationTarget, timeout 
 }
 
 // waitReplicaReachTarget waits, with no timer, for the replica url to reach target in
-// WaitSyncToTarget turns of 30 s: true once reached. It ends without it (false, nil) when the
-// replica is gone or keepWaiting says so before a turn, and with an error on an SQL error of the
-// wait or when the replica's applied position did not move for replicaNoProgressFor. Read by URL
-// at each turn: a configuration reload rebuilds the ServerMonitor.
+// WaitSyncToTarget turns of 30 s: true once reached. It never gives up on a timer or on a position
+// that does not move (replicaWaitStopped says why). Before each turn it ends:
+//   - without reaching it, (false, nil), when the replica is gone (no server, no connection) or
+//     keepWaiting says stop (the caller's reasons: a cancel, the master changed, the cluster
+//     stopping, a replica that does not take part);
+//   - with an error when the replica's replication is stopped or in error (replicaWaitStopped,
+//     from its last status, refreshed by the monitor between the turns);
+//
+// and after a turn, with an error, on an SQL error of the wait. Read by URL at each turn: a
+// configuration reload rebuilds the ServerMonitor. keepWaiting also gets each turn's replica to
+// report its positions (AppliedPosition, ReadPosition) in a state.
+//
+// MariaDB, MySQL and Percona only: the wait is MASTER_GTID_WAIT / MASTER_POS_WAIT. A PostgreSQL
+// replica answers an error at once; it is waited for by postgresWaitSync (WaitSyncToMaster). No
+// caller passes one today: the restore gate is MariaDB's, the staging refresh and the table
+// checksum send MariaDB/MySQL SQL.
 func (cluster *Cluster) waitReplicaReachTarget(url string, target ReplicationTarget, keepWaiting func(sl *ServerMonitor) bool) (bool, error) {
-	var progress replicaProgress
 	for {
 		sl := cluster.GetServerFromURL(url)
 		if sl == nil || sl.Conn == nil || !keepWaiting(sl) {
 			return false, nil
+		}
+		if sl.IsPostgreSQLHost() {
+			return false, fmt.Errorf("%s is a PostgreSQL replica: not waited for by position", url)
+		}
+		if stopped := replicaWaitStopped(sl); stopped != "" {
+			return false, fmt.Errorf("%s (applied %s, read %s)", stopped, sl.AppliedPosition(), sl.ReadPosition())
 		}
 		reached, err := sl.WaitSyncToTarget(target, 30)
 		if err != nil {
@@ -162,9 +197,6 @@ func (cluster *Cluster) waitReplicaReachTarget(url string, target ReplicationTar
 		}
 		if reached {
 			return true, nil
-		}
-		if stalled, still := progress.stalled(sl.AppliedPosition()); stalled {
-			return false, fmt.Errorf("no progress (still at %s for %s)", progress.applied, still.Round(time.Second))
 		}
 	}
 }

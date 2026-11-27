@@ -5,10 +5,15 @@
 package cluster
 
 import (
+	"database/sql"
 	"errors"
+	"strings"
 	"testing"
 
+	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/jmoiron/sqlx"
 	"github.com/signal18/replication-manager/utils/dbhelper"
+	"github.com/signal18/replication-manager/utils/version"
 )
 
 // newChecksumTestCluster builds a cluster whose master knows the given tables
@@ -124,5 +129,118 @@ func TestChecksumHelpersMissingTable(t *testing.T) {
 	}
 	if got := srv.GetTableColumDef("app", "gone", "id"); got != "" {
 		t.Fatalf("GetTableColumDef: want empty, got %q", got)
+	}
+}
+
+// newChecksumWaitCluster is a MariaDB master and one running replica, the master's position
+// read once (GTID_BINLOG_POS) and the replica's waits in mock.
+func newChecksumWaitCluster(t *testing.T) (*Cluster, *ServerMonitor, *ServerMonitor, sqlmock.Sqlmock) {
+	mariadb := &version.Version{Flavor: "MariaDB", Major: 11, Minor: 8, Release: 6}
+	master, masterMock := newMyLoaderPositionServer(t, mariadb, true)
+	c := master.ClusterGroup
+	c.master = master
+	masterMock.ExpectQuery("global_variables").WithArgs("GTID_BINLOG_POS").
+		WillReturnRows(sqlmock.NewRows([]string{"Value"}).AddRow("5-11130737-726"))
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	status := runningReplicaStatus("binlog.000010", "692538834")
+	replica := &ServerMonitor{Host: "db2", Port: "3306", URL: "db2:3306", ClusterGroup: c, DBVersion: mariadb,
+		Conn: sqlx.NewDb(db, "sqlmock"), State: stateSlave, SlaveStatus: status,
+		Replications: []dbhelper.SlaveStatus{*status}}
+	c.Servers = []*ServerMonitor{master, replica}
+	c.slaves = []*ServerMonitor{replica}
+	t.Cleanup(func() { checksumWaitTurn = func(*ServerMonitor) {} })
+	return c, master, replica, mock
+}
+
+func expectGTIDWait(mock sqlmock.Sqlmock, turns int, last int) {
+	for i := 0; i < turns; i++ {
+		mock.ExpectQuery("MASTER_GTID_WAIT").WithArgs("5-11130737-726", 30).
+			WillReturnRows(sqlmock.NewRows([]string{"r"}).AddRow(-1))
+	}
+	if last >= 0 {
+		mock.ExpectQuery("MASTER_GTID_WAIT").WithArgs("5-11130737-726", 30).
+			WillReturnRows(sqlmock.NewRows([]string{"r"}).AddRow(last))
+	}
+}
+
+// The checksum's wait for its replicas no longer loops forever (#2465): a long transaction is
+// waited for (position still, SQL thread running), WARN0086 says what it waits for, and the wait
+// ends, naming the replica and the reason, when the SQL thread stops, the master changes or an
+// operator cancels.
+func TestChecksumWaitReplicas(t *testing.T) {
+	// a long transaction: 12 turns still, then reached
+	c, master, replica, mock := newChecksumWaitCluster(t)
+	expectGTIDWait(mock, 12, 0)
+	var desc string
+	checksumWaitTurn = func(sl *ServerMonitor) {
+		if d := sl.checksumWait.Load(); d != nil {
+			desc = *d
+		}
+	}
+	if err := c.checksumWaitReplicas(master, "app", "t1", c.checksumCancel.Load()); err != nil {
+		t.Fatalf("a long transaction is waited for: %v", err)
+	}
+	if !strings.Contains(desc, "table app.t1, waiting for") || !strings.Contains(desc, "applied binlog.000010:692538834, read binlog.000010:692538834, target 5-11130737-726") {
+		t.Fatalf("WARN0086 description: %q", desc)
+	}
+	if replica.checksumWait.Load() != nil {
+		t.Fatal("WARN0086 must close once the wait ends")
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("waits: %s", err)
+	}
+
+	// never reaches the target, then the SQL thread stops on an error: the wait ends
+	c, master, replica, mock = newChecksumWaitCluster(t)
+	expectGTIDWait(mock, 3, -1)
+	turns := 0
+	checksumWaitTurn = func(sl *ServerMonitor) {
+		turns++
+		if turns == 3 {
+			sl.SlaveStatus.SlaveSQLRunning = sql.NullString{String: "No", Valid: true}
+			sl.SlaveStatus.LastSQLError = sql.NullString{String: "Duplicate entry", Valid: true}
+		}
+	}
+	err := c.checksumWaitReplicas(master, "app", "t1", c.checksumCancel.Load())
+	if err == nil || !strings.Contains(err.Error(), "replica db2:3306 cannot be waited for: SQL thread stopped on an error: Duplicate entry") {
+		t.Fatalf("a stopped SQL thread ends the checksum's wait: %v", err)
+	}
+
+	// the master changed during the wait
+	c, master, _, mock = newChecksumWaitCluster(t)
+	expectGTIDWait(mock, 1, -1)
+	checksumWaitTurn = func(sl *ServerMonitor) {
+		c.master = &ServerMonitor{URL: "db3:3306"}
+	}
+	err = c.checksumWaitReplicas(master, "app", "t1", c.checksumCancel.Load())
+	if err == nil || !strings.Contains(err.Error(), "stopped waiting for replica db2:3306: the master changed") {
+		t.Fatalf("a master change ends the wait: %v", err)
+	}
+
+	// an operator cancel during the wait
+	c, master, _, mock = newChecksumWaitCluster(t)
+	expectGTIDWait(mock, 1, -1)
+	checksumWaitTurn = func(sl *ServerMonitor) { c.CancelTableChecksum() }
+	err = c.checksumWaitReplicas(master, "app", "t1", c.checksumCancel.Load())
+	if err == nil || !strings.Contains(err.Error(), "cancelled by an operator") {
+		t.Fatalf("a cancel ends the wait: %v", err)
+	}
+}
+
+// A cancel sent before a loop over the tables starts does not stop it: only the checksums running
+// when it is sent end.
+func TestCheckAllTableChecksumCancelled(t *testing.T) {
+	a := dbhelper.Table{TableSchema: "app", TableName: "a"}
+	b := dbhelper.Table{TableSchema: "app", TableName: "b"}
+	cl := newChecksumTestCluster(t, []dbhelper.Table{a, b}, []dbhelper.Table{a, b})
+	cl.Conf.MonitorChecksumIgnoreTables = "app.a,app.b"
+	cl.CancelTableChecksum() // before the loop starts: the loop's generation is the new one
+	cl.CheckAllTableChecksum()
+	if got := cl.master.DictTables.Get("app.b").TableSync; got != "NA" {
+		t.Fatalf("a cancel before the start does not stop a later checksum: %q", got)
 	}
 }

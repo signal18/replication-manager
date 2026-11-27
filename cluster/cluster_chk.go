@@ -727,7 +727,12 @@ func (cluster *Cluster) CheckAllTableChecksum() bool {
 	}
 	cluster.ChecksumCleanResult()
 	hasErrors := false
+	cancelGen := cluster.checksumCancel.Load()
 	for _, t := range master.Tables {
+		if cluster.checksumCancel.Load() != cancelGen {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Checksum of the tables cancelled before %s.%s", t.TableSchema, t.TableName)
+			break
+		}
 		res := cluster.CheckTableChecksum(t.TableSchema, t.TableName)
 		if res == "ER" {
 			hasErrors = true
@@ -745,7 +750,12 @@ func (cluster *Cluster) CheckAllTableChecksumSchema(name string) bool {
 	}
 	cluster.ChecksumCleanResult()
 	hasErrors := false
+	cancelGen := cluster.checksumCancel.Load()
 	for _, t := range master.Tables {
+		if cluster.checksumCancel.Load() != cancelGen {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Checksum of the tables cancelled before %s.%s", t.TableSchema, t.TableName)
+			break
+		}
 		if t.TableSchema == name {
 			res := cluster.CheckTableChecksum(t.TableSchema, t.TableName)
 			if res == "ER" {
@@ -763,6 +773,7 @@ func (cluster *Cluster) CheckAllTableChecksumSchema(name string) bool {
 // with a log line and leaves the monitor running (#2465). The master is read
 // once: a failover during the checksum does not turn it nil under our feet.
 func (cluster *Cluster) CheckTableChecksum(schema string, table string) string {
+	cancelGen := cluster.checksumCancel.Load()
 	master, t, err := cluster.ChecksumTableEntry(schema, table)
 	if err == ErrChecksumNoMaster {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Checksum master table %s.%s, master not discovered", schema, table)
@@ -934,6 +945,12 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) string {
 	tm.TableChunksCount = int64(len(chunks))
 	master.DictTables.Set(schema+"."+table, tm)
 	for i, chunk := range chunks {
+		if cluster.checksumCancel.Load() != cancelGen {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Checksum table %s.%s cancelled at chunk %d/%d", schema, table, i, len(chunks))
+			tm.TableSync = "NA"
+			master.DictTables.Set(schema+"."+table, tm)
+			return "NA"
+		}
 		tm.TableChunksCurrent = int64(i)
 		master.DictTables.Set(schema+"."+table, tm)
 		_, err := stmt.Exec(chunk.ChunkId)
@@ -951,24 +968,13 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) string {
 				}
 			}*/
 	}
-	master.Refresh()
-	masterSeq := master.CurrentGtid.GetSeqServerIdNos(uint64(master.ServerID))
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Wait sync: Master sequence %d", masterSeq)
-
-	for _, s := range cluster.slaves {
-		if !s.IsFailed() && !s.IsReplicationBroken() {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Wait sync on slave %s", s.URL)
-			for {
-				slaveSeq := s.SlaveGtid.GetSeqServerIdNos(uint64(master.ServerID))
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Wait sync on slave %s sequence %d", s.URL, slaveSeq)
-				if slaveSeq >= masterSeq {
-					break
-				} else {
-					cluster.SetState("WARN0086", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0086"], s.URL), ErrFrom: "MON", ServerUrl: s.URL})
-				}
-				time.Sleep(1 * time.Second)
-			}
-		}
+	// the replicas apply every chunk before the chunks are compared: the master's position read
+	// live now, waited for with no timer (waitReplicaReachTarget)
+	if err := cluster.checksumWaitReplicas(master, schema, table, cancelGen); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Checksum table %s.%s not compared: %s", schema, table, err)
+		tm.TableSync = "NA"
+		master.DictTables.Set(schema+"."+table, tm)
+		return "NA"
 	}
 	// check slave result
 	masterChecksums, logs, err := dbhelper.GetTableChecksumResult(master.Conn)
@@ -1012,6 +1018,82 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) string {
 	}
 	master.DictTables.Set(schema+"."+table, tm)
 	return tm.TableSync
+}
+
+// checksumWaitTurn runs at each turn of a checksum's wait for a replica, replaced in tests.
+var checksumWaitTurn = func(sl *ServerMonitor) {}
+
+// checksumWaitReplicas waits for every replica of the checksum taking part (not failed, its
+// replication not broken when the wait starts) to reach master's position read live now, with
+// no timer (waitReplicaReachTarget: it ends on the replica's threads stopped or in error, never
+// on a still position). It ends early when the master changed, the cluster stops, or an operator
+// cancelled the checksum (CancelTableChecksum, a cancel generation other than cancelGen). WARN0086
+// names the replica waited for, how long, its applied and read positions. The error names the
+// replica and the reason; nil once all reached the position (#2465).
+func (cluster *Cluster) checksumWaitReplicas(master *ServerMonitor, schema string, table string, cancelGen uint64) error {
+	target, err := master.ReadReplicationTarget()
+	if err != nil {
+		return fmt.Errorf("could not read the position of %s to wait for the replicas: %w", master.URL, err)
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Checksum table %s.%s: waiting for the replicas to reach %s", schema, table, target)
+	for _, s := range cluster.slaves {
+		if s == nil || s.IsFailed() || s.IsReplicationBroken() {
+			continue
+		}
+		url := s.URL
+		start := time.Now()
+		stop := ""
+		var seen []*ServerMonitor
+		reached, err := cluster.waitReplicaReachTarget(url, target, func(sl *ServerMonitor) bool {
+			switch cur := cluster.GetMaster(); {
+			case cluster.exit.Load():
+				stop = "the cluster is stopping"
+			case cluster.checksumCancel.Load() != cancelGen:
+				stop = "cancelled by an operator"
+			case cur == nil || cur.URL != master.URL:
+				stop = "the master changed"
+			}
+			if stop != "" {
+				return false
+			}
+			desc := fmt.Sprintf("table %s.%s, waiting for %s, applied %s, read %s, target %s", schema, table,
+				time.Since(start).Round(time.Second), sl.AppliedPosition(), sl.ReadPosition(), target)
+			sl.checksumWait.Store(&desc)
+			seen = append(seen, sl)
+			checksumWaitTurn(sl)
+			return true
+		})
+		for _, sl := range seen {
+			sl.checksumWait.Store(nil)
+		}
+		switch {
+		case err != nil:
+			return fmt.Errorf("replica %s cannot be waited for: %w", url, err)
+		case stop != "":
+			return fmt.Errorf("stopped waiting for replica %s: %s", url, stop)
+		case !reached:
+			return fmt.Errorf("replica %s is gone", url)
+		}
+	}
+	return nil
+}
+
+// checkChecksumWait raises WARN0086 tick after tick while a table checksum waits for server.
+func (server *ServerMonitor) checkChecksumWait() {
+	desc := server.checksumWait.Load()
+	if desc == nil {
+		return
+	}
+	cluster := server.ClusterGroup
+	cluster.SetState("WARN0086", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0086"], server.URL, *desc), ErrFrom: "MON", ServerUrl: server.URL})
+}
+
+// CancelTableChecksum cancels the table checksums running: each ends NA before its next chunk or
+// at its next wait turn for a replica (30 s at most), and a loop over the tables stops. A
+// checksum started after the cancel runs (#2465).
+func (cluster *Cluster) CancelTableChecksum() {
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "API receive cancel table checksum")
+	cluster.checksumCancel.Add(1)
 }
 
 func (cluster *Cluster) RepairTableChecksum(schema string, table string) {
