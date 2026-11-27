@@ -740,51 +740,60 @@ func checksumChunkTableDDL(schema string, table string, shardListPredicate strin
 var checksumOneTable = (*Cluster).CheckTableChecksum
 
 func (cluster *Cluster) CheckAllTableChecksum() bool {
+	return cluster.checksumTables("")
+}
+
+func (cluster *Cluster) CheckAllTableChecksumSchema(name string) bool {
+	return cluster.checksumTables(name)
+}
+
+// checksumTables checksums every table of schema on the master, every table when schema is "":
+// true when one differs on a replica (ER). Only the tables it will process are marked waiting
+// (WA): a schema checksum marked every table of every schema and checksummed only its own, the
+// other tables stayed WA, ChecksumIsRunning stayed true and no later run reset the results. A
+// cancel stops the loop before the next table, and the tables it did not reach are set NA, not
+// left WA (#2465).
+func (cluster *Cluster) checksumTables(schema string) bool {
 	master := cluster.GetMaster()
 	if master == nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Checksum all tables, master not discovered")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Checksum of the tables of %q, master not discovered", schema)
 		return false
 	}
-	cluster.ChecksumCleanResult()
+	cluster.ChecksumCleanResult(schema)
 	hasErrors := false
 	cancelGen := cluster.checksumCancel.Load()
 	for _, t := range master.Tables {
+		if schema != "" && t.TableSchema != schema {
+			continue
+		}
 		if cluster.checksumCancel.Load() != cancelGen {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Checksum of the tables cancelled before %s.%s", t.TableSchema, t.TableName)
 			break
 		}
-		res := checksumOneTable(cluster, t.TableSchema, t.TableName)
-		if res == "ER" {
+		if checksumOneTable(cluster, t.TableSchema, t.TableName) == "ER" {
 			hasErrors = true
 		}
 	}
+	cluster.checksumSetNotReached(master, schema)
 	cluster.ChecksumSetResultOnSlave()
 	return hasErrors
 }
 
-func (cluster *Cluster) CheckAllTableChecksumSchema(name string) bool {
-	master := cluster.GetMaster()
-	if master == nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Checksum schema %s, master not discovered", name)
-		return false
+// checksumSetNotReached sets NA on the tables of schema ("" every one) still waiting (WA) once
+// a loop over the tables ended: a cancel stopped it before them.
+func (cluster *Cluster) checksumSetNotReached(master *ServerMonitor, schema string) {
+	if master.DictTables == nil {
+		return
 	}
-	cluster.ChecksumCleanResult()
-	hasErrors := false
-	cancelGen := cluster.checksumCancel.Load()
 	for _, t := range master.Tables {
-		if cluster.checksumCancel.Load() != cancelGen {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Checksum of the tables cancelled before %s.%s", t.TableSchema, t.TableName)
-			break
+		if schema != "" && t.TableSchema != schema {
+			continue
 		}
-		if t.TableSchema == name {
-			res := checksumOneTable(cluster, t.TableSchema, t.TableName)
-			if res == "ER" {
-				hasErrors = true
-			}
+		if tm := master.DictTables.Get(t.TableSchema + "." + t.TableName); tm != nil && tm.TableSync == "WA" {
+			tm.TableSync = "NA"
+			master.DictTables.Set(t.TableSchema+"."+t.TableName, tm)
 		}
 	}
-	cluster.ChecksumSetResultOnSlave()
-	return hasErrors
 }
 
 // CheckTableChecksum checksums schema.table on the master and compares the
@@ -818,10 +827,7 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) string {
 	}
 	Conn, err := master.GetNewDBConn()
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error connection in exec query no log %s", err)
-		t.TableSync = "NA"
-		master.DictTables.Set(schema+"."+table, t)
-		return "NA"
+		return cluster.checksumFailed(master, t, schema, table, fmt.Sprintf("Error connection in exec query no log %s", err))
 	}
 	defer Conn.Close()
 
@@ -848,10 +854,7 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) string {
 	var md5Sum string
 	err = Conn.QueryRowx("SELECT CONCAT( \"SUM(CRC32(CONCAT(\" , GROUP_CONCAT( CONCAT( \"IFNULL(\" , COLUMN_NAME, \",'N')\")),\")))\") as fields FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA ='" + schema + "' AND TABLE_NAME='" + table + "'").Scan(&md5Sum)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "ERROR: Could not get SQL md5Sum: %v", err)
-		t.TableSync = "NA"
-		master.DictTables.Set(schema+"."+table, t)
-		return "NA"
+		return cluster.checksumFailed(master, t, schema, table, fmt.Sprintf("ERROR: Could not get SQL md5Sum: %v", err))
 	}
 
 	// build predicate iterating over each pk columns
@@ -895,37 +898,25 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) string {
 
 	_, err = Conn.Exec(checksumResultTableDDL(columnDefPredicate))
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error creating checksum table: %s", err)
-		t.TableSync = "NA"
-		master.DictTables.Set(schema+"."+table, t)
-		return "NA"
+		return cluster.checksumFailed(master, t, schema, table, fmt.Sprintf("Error creating checksum table: %s", err))
 	}
 	chunkSize := 2000
 	query := checksumChunkTableDDL(schema, table, shardListPredicate, chunkSize)
 
 	_, err = Conn.Exec(query)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error creating chunk table: %s", err)
-		t.TableSync = "NA"
-		master.DictTables.Set(schema+"."+table, t)
-		return "NA"
+		return cluster.checksumFailed(master, t, schema, table, fmt.Sprintf("Error creating chunk table: %s", err))
 	}
 	rows, err := Conn.Queryx("SELECT chunkId FROM replication_manager_schema.table_chunk")
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "ERROR: Could not load chunks %s", err)
-		t.TableSync = "NA"
-		master.DictTables.Set(schema+"."+table, t)
-		return "NA"
+		return cluster.checksumFailed(master, t, schema, table, fmt.Sprintf("ERROR: Could not load chunks %s", err))
 	}
 	var chunks []dbhelper.Chunk
 	for rows.Next() {
 		var c dbhelper.Chunk
 		if err := rows.Scan(&c.ChunkId); err != nil {
 			rows.Close()
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "ERROR: Could not scan chunk %s", err)
-			t.TableSync = "NA"
-			master.DictTables.Set(schema+"."+table, t)
-			return "NA"
+			return cluster.checksumFailed(master, t, schema, table, fmt.Sprintf("ERROR: Could not scan chunk %s", err))
 		}
 		chunks = append(chunks, c)
 	}
@@ -938,19 +929,13 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) string {
 	}
 	_, err = Conn.Exec("SET SESSION binlog_format = STATEMENT")
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "ERROR: Could not switch to statement based %s", err)
-		t.TableSync = "NA"
-		master.DictTables.Set(schema+"."+table, t)
-		return "NA"
+		return cluster.checksumFailed(master, t, schema, table, fmt.Sprintf("ERROR: Could not switch to statement based %s", err))
 	}
 	query = "INSERT INTO replication_manager_schema.table_checksum SELECT chunkId, CONCAT(" + rangeCondition + ") as chunkRangeCondition," + bColumnListPredicate + " ," + md5Sum + " as chunkCheckSum FROM " + schema + "." + table + " A inner join (select * from replication_manager_schema.table_chunk WHERE chunkId=? ) B on " + wherePredicate + " GROUP BY chunkId HAVING chunkId IS NOT NULL"
 	stmt, err := Conn.Prepare(query)
 
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "ERROR: Could not prepare chunck %s %s", query, err)
-		t.TableSync = "NA"
-		master.DictTables.Set(schema+"."+table, t)
-		return "NA"
+		return cluster.checksumFailed(master, t, schema, table, fmt.Sprintf("ERROR: Could not prepare chunck %s %s", query, err))
 	}
 	defer stmt.Close()
 	tm.TableChunksCount = int64(len(chunks))
@@ -966,10 +951,7 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) string {
 		master.DictTables.Set(schema+"."+table, tm)
 		_, err := stmt.Exec(chunk.ChunkId)
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "ERROR: Could not process chunck %s %s", query, err)
-			t.TableSync = "NA"
-			master.DictTables.Set(schema+"."+table, t)
-			return "NA"
+			return cluster.checksumFailed(master, t, schema, table, fmt.Sprintf("ERROR: Could not process chunck %s %s", query, err))
 		}
 		/*
 			slave := cluster.GetFirstWorkingSlave()
@@ -1022,13 +1004,52 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) string {
 		ts.TableChunksError = freshErrors // atomic swap: either full new list or nil
 		s.DictTables.Set(schema+"."+table, ts)
 	} // End for each slave
-	if allslavecheckok {
+	return cluster.checksumSetResult(master, tm, schema, table, allslavecheckok)
+}
+
+// checksumSetResult records the result of a checksum that compared its chunks: OK when every
+// replica matched, ER otherwise. A result closes WARN0342 for the table (#2465).
+func (cluster *Cluster) checksumSetResult(master *ServerMonitor, tm *dbhelper.Table, schema string, table string, same bool) string {
+	if same {
 		tm.TableSync = "OK"
 	} else {
 		tm.TableSync = "ER"
 	}
 	master.DictTables.Set(schema+"."+table, tm)
+	cluster.checksumFailures.Delete(schema + "." + table)
 	return tm.TableSync
+}
+
+// checksumFailed ends the checksum of schema.table NA for a technical reason (a connection, a
+// statement of the checksum that failed): logged, and kept so that WARN0342 says it, in the
+// schema domain, until the next checksum of the table gives a result (F7: a broken checksum is
+// a state, not only a log line). Not for a cancel, a replica that cannot be waited for, an
+// ignored table or one without a primary key (#2465).
+func (cluster *Cluster) checksumFailed(master *ServerMonitor, t *dbhelper.Table, schema string, table string, reason string) string {
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Checksum table %s.%s failed: %s", schema, table, reason)
+	t.TableSync = "NA"
+	master.DictTables.Set(schema+"."+table, t)
+	cluster.checksumFailures.Store(schema+"."+table, reason)
+	return "NA"
+}
+
+// assertChecksumFailureStates raises WARN0342 in the schema state machine, tick after tick, for
+// each table whose last checksum failed (checksumFailed). A table gone from the master's
+// dictionary is forgotten: the map holds at most one entry per table (F4).
+func (cluster *Cluster) assertChecksumFailureStates() {
+	master := cluster.GetMaster()
+	cluster.checksumFailures.Range(func(k, v any) bool {
+		key := k.(string)
+		if master == nil || master.DictTables == nil || master.DictTables.Get(key) == nil {
+			cluster.checksumFailures.Delete(key)
+			return true
+		}
+		if cluster.SchemaStateMachine != nil {
+			cluster.SchemaStateMachine.AddState("WARN0342@"+key, state.State{ErrType: "WARNING", ErrKey: "WARN0342",
+				ErrDesc: fmt.Sprintf(clusterError["WARN0342"], key, v.(string)), ErrFrom: "SCHEMA"})
+		}
+		return true
+	})
 }
 
 // checksumWaitTurn runs at each turn of a checksum's wait for a replica, replaced in tests.
@@ -1208,8 +1229,9 @@ func (cluster *Cluster) RepairOneTableChecksum(schema string, table string) {
 	cluster.ChecksumSetResultOnSlave()
 }
 
-// ChecksumCleanResult cleanup all checksum result before re run checksum all table
-func (cluster *Cluster) ChecksumCleanResult() {
+// ChecksumCleanResult marks waiting (WA) the tables of schema ("" every table) a checksum loop is
+// about to process, unless a checksum is already running.
+func (cluster *Cluster) ChecksumCleanResult(schema string) {
 	if cluster.ChecksumIsRunning() {
 		return
 	}
@@ -1218,6 +1240,9 @@ func (cluster *Cluster) ChecksumCleanResult() {
 		return
 	}
 	for _, t := range master.Tables {
+		if schema != "" && t.TableSchema != schema {
+			continue
+		}
 		tm := master.DictTables.Get(t.TableSchema + "." + t.TableName)
 		if tm == nil {
 			// Not in the dictionary yet: CheckTableChecksum skips it.

@@ -377,6 +377,7 @@ var ClusterError = map[string]string{
 	"ERR00132":  "Replication plugin %s of %s does not run: %s",
 	"WARN0340":  "Analytic child %s: table %s stays %s, not made a %s table: %s",
 	"WARN0341":  "Replication plugin %s of %s: a DDL on the source is not applied to the destination, whose table keeps its structure: %s; apply it on %s out of the binlog, or seed the child again",
+	"WARN0342":  "Checksum of table %s ended without a result: %s",
 	"CINF0031":  "Analytic child %s: the destination plugin %s is making the chosen tables, for %s (the seed waits for it)",
 	"CINF0030":  "Replication plugin %s of %s: staging merged into the destination up to checkpoint %d (GTID %s) at %s in %d ms, %d checkpoints staged since, next merge in %s",
 	"WARN0245":  "ColumnStore replica %s has no schema and the oldest binary log of the master %s, %s, starts after GTID %s: the DDL before it is gone, the replica cannot get its schema by replication (a dump would drop the tables every server shares)",

@@ -13,6 +13,7 @@ import (
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/jmoiron/sqlx"
 	"github.com/signal18/replication-manager/utils/dbhelper"
+	"github.com/signal18/replication-manager/utils/state"
 	"github.com/signal18/replication-manager/utils/version"
 )
 
@@ -68,7 +69,7 @@ func TestCheckTableChecksumNilMaster(t *testing.T) {
 	if cl.ChecksumIsRunning() {
 		t.Fatal("ChecksumIsRunning: want false without a master")
 	}
-	cl.ChecksumCleanResult()
+	cl.ChecksumCleanResult("")
 	cl.RepairTableChecksum("app", "t1")
 	cl.RepairAllTableChecksum()
 }
@@ -281,5 +282,91 @@ func TestChecksumWorkTablesHavePrimaryKey(t *testing.T) {
 	if !strings.Contains(chunk, "table_chunk (chunkId BIGINT NOT NULL, PRIMARY KEY (chunkId)) ENGINE=INNODB SELECT FLOOR((@rows:=@rows+1/2000)) as chunkId,") ||
 		!strings.Contains(chunk, " FROM app.t1 FORCE INDEX(PRIMARY)") {
 		t.Fatalf("table_chunk without its primary key: %s", chunk)
+	}
+}
+
+// A schema checksum marks only its own tables waiting: the other schemas' tables keep their
+// result, nothing is left WA, so ChecksumIsRunning is false after it and the next run resets
+// the results. A cancel leaves the tables it did not reach NA, not WA.
+func TestChecksumSchemaMarksOnlyItsTables(t *testing.T) {
+	app := dbhelper.Table{TableSchema: "app", TableName: "a"}
+	app2 := dbhelper.Table{TableSchema: "app", TableName: "b"}
+	other := dbhelper.Table{TableSchema: "other", TableName: "x"}
+	cl := newChecksumTestCluster(t, []dbhelper.Table{app, app2, other}, []dbhelper.Table{app, app2, other})
+	cl.master.DictTables.Get("other.x").TableSync = "OK"
+	defer func() { checksumOneTable = (*Cluster).CheckTableChecksum }()
+	var ran []string
+	checksumOneTable = func(c *Cluster, schema, table string) string {
+		ran = append(ran, schema+"."+table)
+		if got := c.master.DictTables.Get("other.x").TableSync; got != "OK" {
+			t.Fatalf("another schema's table marked %q during a schema checksum", got)
+		}
+		c.master.DictTables.Get(schema + "." + table).TableSync = "OK"
+		return "OK"
+	}
+	cl.CheckAllTableChecksumSchema("app")
+	if len(ran) != 2 || cl.ChecksumIsRunning() {
+		t.Fatalf("ran %v, running %t: want the two app tables and nothing left running", ran, cl.ChecksumIsRunning())
+	}
+
+	// cancelled during the first table: the second is NA, not WA
+	checksumOneTable = func(c *Cluster, schema, table string) string {
+		c.CancelTableChecksum()
+		c.master.DictTables.Get(schema + "." + table).TableSync = "NA"
+		return "NA"
+	}
+	cl.CheckAllTableChecksumSchema("app")
+	if got := cl.master.DictTables.Get("app.b").TableSync; got != "NA" {
+		t.Fatalf("a table the cancel did not reach: %q, want NA", got)
+	}
+	if cl.ChecksumIsRunning() {
+		t.Fatal("nothing must be left running after a cancel")
+	}
+}
+
+// A checksum that ends NA for a technical reason opens WARN0342 in the schema domain, with the
+// table and the error, tick after tick; the next result of the table (OK or ER) closes it, and a
+// table gone from the dictionary is forgotten (F7, #2465).
+func TestChecksumFailureState(t *testing.T) {
+	tbl := dbhelper.Table{TableSchema: "app", TableName: "t1"}
+	cl := newChecksumTestCluster(t, []dbhelper.Table{tbl}, []dbhelper.Table{tbl})
+	cl.SchemaStateMachine = new(state.StateMachine)
+	cl.SchemaStateMachine.Init()
+	entry := cl.master.DictTables.Get("app.t1")
+	open := func() string {
+		cl.assertChecksumFailureStates()
+		if st, ok := (*cl.SchemaStateMachine.CurState)["WARN0342@app.t1"]; ok {
+			return st.ErrDesc
+		}
+		return ""
+	}
+	if got := cl.checksumFailed(cl.master, entry, "app", "t1", "Error creating checksum table: Error 1173"); got != "NA" || entry.TableSync != "NA" {
+		t.Fatalf("checksumFailed: %q %q", got, entry.TableSync)
+	}
+	if desc := open(); !strings.Contains(desc, "Checksum of table app.t1 ended without a result: Error creating checksum table: Error 1173") {
+		t.Fatalf("WARN0342 not open with the table and the error: %q", desc)
+	}
+	// the next tick keeps it open
+	cl.SchemaStateMachine.ClearState()
+	if open() == "" {
+		t.Fatal("WARN0342 must stay open tick after tick")
+	}
+	// a result closes it
+	if got := cl.checksumSetResult(cl.master, entry, "app", "t1", true); got != "OK" {
+		t.Fatalf("result %q", got)
+	}
+	cl.SchemaStateMachine.ClearState()
+	if desc := open(); desc != "" {
+		t.Fatalf("WARN0342 must close on the next result: %q", desc)
+	}
+	// ER is a result too; a table dropped from the dictionary is forgotten
+	cl.checksumFailed(cl.master, entry, "app", "t1", "x")
+	cl.master.DictTables.Delete("app.t1")
+	cl.SchemaStateMachine.ClearState()
+	if open() != "" {
+		t.Fatal("a table gone from the dictionary keeps no WARN0342")
+	}
+	if _, ok := cl.checksumFailures.Load("app.t1"); ok {
+		t.Fatal("a table gone from the dictionary must be forgotten")
 	}
 }
