@@ -364,15 +364,20 @@ func TestElectionRank(t *testing.T) {
 			t.Errorf("electionRank(%q, %q) = %d, %v; want %d ok=%v", c.file, c.pos, got, err, c.want, c.ok)
 		}
 	}
-	// two sources with different basenames: the lexicographic order of the names says the opposite of the rank
-	relay := &cluster.ServerMonitor{URL: "relay", Replications: statusFor("mysql-bin.000001", "100")}
-	below := &cluster.ServerMonitor{URL: "below", Replications: statusFor("relay-bin.000005", "10")}
-	if ahead, err := electionReceivedAhead(below, relay); err != nil || !ahead {
-		t.Errorf("relay-bin.000005 must rank above mysql-bin.000001 by the election's number: ahead=%v err=%v", ahead, err)
+	// two sources with different basenames whose names order OPPOSITE to their election rank: by name "zz-bin.000001" is
+	// above "aa-bin.000005", by the election's number (file number then position) "aa-bin.000005" is above "zz-bin.000001"
+	low := &cluster.ServerMonitor{URL: "low", Replications: statusFor("zz-bin.000001", "100")}
+	high := &cluster.ServerMonitor{URL: "high", Replications: statusFor("aa-bin.000005", "10")}
+	if !("zz-bin.000001" > "aa-bin.000005") {
+		t.Fatalf("the fixture must order the names opposite to the rank")
 	}
-	if ahead, err := electionReceivedAhead(relay, below); err != nil || ahead {
-		t.Errorf("mysql-bin.000001 must not rank above relay-bin.000005: ahead=%v err=%v", ahead, err)
+	if ahead, err := electionReceivedAhead(high, low); err != nil || !ahead {
+		t.Errorf("aa-bin.000005 must rank above zz-bin.000001 by the election's number although its name sorts below: ahead=%v err=%v", ahead, err)
 	}
+	if ahead, err := electionReceivedAhead(low, high); err != nil || ahead {
+		t.Errorf("zz-bin.000001 must not rank above aa-bin.000005 although its name sorts above: ahead=%v err=%v", ahead, err)
+	}
+	relay := low
 	// a status that cannot be read or ranked is an error, never "not ahead"
 	if _, err := electionReceivedAhead(&cluster.ServerMonitor{URL: "none"}, relay); err == nil {
 		t.Errorf("a server without a replication status must give an error")
