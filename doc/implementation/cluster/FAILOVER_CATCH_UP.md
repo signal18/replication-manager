@@ -1,6 +1,18 @@
 # Failover by catch-up: the new master takes what the old one had
 
-Status: **design, not coded**. To be validated by the maintainer before any code.
+Status: **REJECTED by the maintainer (2026-11-27). Not to be coded.** Kept so the idea does not come back without this reason.
+
+**Why it is rejected:** replaying the old master's transactions into a database that kept living is
+dangerous. Example, a payment: the client pays, the old master commits and dies before any replica
+received it; the client gets an error or no answer and pays again on the new master; the catch-up
+then brings the first payment back: the client is charged twice. Only the application or a human
+knows whether a lost transaction was already redone, compensated or cancelled. A partitioned old
+master that is not dead may also keep writing, and the catch-up would merge both sides.
+
+repman's rule stays the one of UNIFIED_REJOIN_DESIGN.md: the new master is the truth; the old master
+rejoins by rewinding what no one else has (flashback, or reseed); the lost transactions are captured
+before the rejoin (autorejoin-backup-binlog), shown in the lost-events viewer with the exact command to
+replay them by hand (F11), and the operator decides (F1). REJOIN_FLASHBACK.md is that rule.
 
 ## The problem
 
