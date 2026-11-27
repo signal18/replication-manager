@@ -758,6 +758,24 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.TeamsProxyUrl, "alert-teams-proxy-url", "", "Proxy url for Teams Webhook")
 	flags.StringVar(&conf.TeamsAlertState, "alert-teams-state", "", "State Code for Teams Alert : ERR|WARN|INFO")
 
+	flags.IntVar(&conf.AlertQueueLimit, "alert-queue-limit", 1000, "Max alerts waiting to be sent, per alert channel. When a channel does not keep up (down, slow), the oldest waiting alert is dropped and counted (WARN0360). <= 0 falls back to this default, never unbounded")
+	flags.IntVar(&conf.AlertSendTimeout, "alert-send-timeout", 10, "Timeout in seconds of one alert send to Teams or Pushover")
+	flags.IntVar(&conf.AlertScriptTimeout, "alert-script-timeout", 300, "Timeout in seconds of one run of alert-script, killed after it")
+	flags.BoolVar(&conf.AlertAlertmanager, "alert-alertmanager", false, "Send the alerts of monitoring-alert-trigger to Prometheus Alertmanager")
+	flags.StringVar(&conf.AlertAlertmanagerURL, "alert-alertmanager-url", "", "Prometheus Alertmanager URLs, comma separated (http://am1:9093,http://am2:9093): every peer gets the alerts")
+	flags.StringVar(&conf.AlertAlertmanagerUser, "alert-alertmanager-user", "", "Prometheus Alertmanager basic auth user")
+	flags.StringVar(&conf.AlertAlertmanagerPassword, "alert-alertmanager-password", "", "Prometheus Alertmanager basic auth password (a secret: encrypted in the config, never logged)")
+	flags.StringVar(&conf.AlertAlertmanagerBearerToken, "alert-alertmanager-bearer-token", "", "Prometheus Alertmanager bearer token, wins over basic auth (a secret: encrypted in the config, never logged)")
+	flags.BoolVar(&conf.AlertAlertmanagerTLSSkipVerify, "alert-alertmanager-tls-skip-verify", false, "Do not verify the TLS certificate of Prometheus Alertmanager")
+	flags.IntVar(&conf.AlertAlertmanagerTimeout, "alert-alertmanager-timeout", 10, "Timeout in seconds of one post to Prometheus Alertmanager")
+	flags.IntVar(&conf.AlertAlertmanagerResendInterval, "alert-alertmanager-resend-interval", 60, "Interval in seconds at which the firing alerts are posted again to Prometheus Alertmanager, shorter than its resolve_timeout (default 5m)")
+	flags.BoolVar(&conf.AlertTelegram, "alert-telegram", false, "Send the alerts of monitoring-alert-trigger and the server state changes to Telegram")
+	flags.StringVar(&conf.AlertTelegramBotToken, "alert-telegram-bot-token", "", "Telegram bot token (a secret: encrypted in the config, never logged)")
+	flags.StringVar(&conf.AlertTelegramChatID, "alert-telegram-chat-id", "", "Telegram chat ids, comma separated (a user or group id, -100... for a channel, or @channelname)")
+	flags.StringVar(&conf.AlertTelegramParseMode, "alert-telegram-parse-mode", "", "Telegram message format: empty for plain text, or MarkdownV2")
+	flags.StringVar(&conf.AlertTelegramAPIURL, "alert-telegram-api-url", "https://api.telegram.org", "Telegram Bot API base URL")
+	flags.IntVar(&conf.AlertTelegramTimeout, "alert-telegram-timeout", 10, "Timeout in seconds of one Telegram send")
+
 	conf.CheckType = "tcp"
 	flags.BoolVar(&conf.CheckReplFilter, "check-replication-filters", true, "Check that possible master have equal replication filters")
 	flags.BoolVar(&conf.CheckBinFilter, "check-binlog-filters", true, "Check that possible master have equal binlog filters")
@@ -4896,6 +4914,8 @@ func (repman *ReplicationManager) GetEncryptedValueFromMemory(key string) string
 		return repman.Conf.GetStableEncryptedValue("alert-pushover-user-token", repman.Conf.GetDecryptedValue("alert-pushover-user-token"))
 	case "alert-pushover-app-token":
 		return repman.Conf.GetStableEncryptedValue("alert-pushover-app-token", repman.Conf.GetDecryptedValue("alert-pushover-app-token"))
+	case "alert-alertmanager-password", "alert-alertmanager-bearer-token", "alert-telegram-bot-token":
+		return repman.Conf.GetStableEncryptedValue(key, repman.Conf.GetDecryptedValue(key))
 	case "mail-smtp-password":
 		return repman.Conf.GetStableEncryptedValue("mail-smtp-password", repman.Conf.GetDecryptedValue("mail-smtp-password"))
 	case "api-oauth-client-secret":

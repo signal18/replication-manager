@@ -478,6 +478,8 @@ type Cluster struct {
 	rollingReprovMutex     sync.Mutex               `json:"-"`
 	openSVCCert            openSVCCertState         `json:"-"`
 	Mailer                 *mailer.Mailer           `json:"-"`
+	alertChannelsOnce      sync.Once                // alertChannels(): the registry, built at first use
+	alertChannelReg        *alertChannelRegistry    // the alert channels and their queues (alert_channel_registry.go)
 	ResticManager          *backupmgr.ResticManager `json:"-"`
 	resolvedS3Mode         string                   // probe-resolved S3 mode during auto startup; "" if not yet probed
 	MessageChan            chan sharedlog.Message   `json:"-"`
@@ -1794,6 +1796,7 @@ func (cluster *Cluster) StateProcessing() {
 	}
 
 	cluster.CheckSendMail()
+	cluster.CheckAlertChannels()
 }
 
 // dispatchPhysicalJob streams the backup of a physical reseed or flashback, once per reseed, off
@@ -1943,6 +1946,8 @@ func (cluster *Cluster) Stop() {
 		phase("saveConfig", func() {
 			cluster.ConfigManager.SaveConfig(cluster, true)
 		})
+		// last: the phases above may still alert
+		phase("alertChannels", cluster.stopAlertChannels)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Stop[%s] done, total %s", cluster.Name, time.Since(stopStart))
 	})
 }
@@ -2705,6 +2710,8 @@ func (cluster *Cluster) GetEncryptedValueFromMemory(key string) string {
 		return cluster.Conf.GetStableEncryptedValue("alert-pushover-user-token", cluster.Conf.GetDecryptedValue("alert-pushover-user-token"))
 	case "alert-pushover-app-token":
 		return cluster.Conf.GetStableEncryptedValue("alert-pushover-app-token", cluster.Conf.GetDecryptedValue("alert-pushover-app-token"))
+	case "alert-alertmanager-password", "alert-alertmanager-bearer-token", "alert-telegram-bot-token":
+		return cluster.Conf.GetStableEncryptedValue(key, cluster.Conf.GetDecryptedValue(key))
 	case "mail-smtp-password":
 		return cluster.Conf.GetStableEncryptedValue("mail-smtp-password", cluster.Conf.GetDecryptedValue("mail-smtp-password"))
 	case "api-oauth-client-secret":

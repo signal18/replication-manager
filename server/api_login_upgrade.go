@@ -393,15 +393,14 @@ func (repman *ReplicationManager) emitSSOLoginSecurityAlert(username, email, rem
 	// Cloud18 / Slack — concise operational message with structured fields.
 	cloudMsg := fmt.Sprintf("Local user login detected with user: %s", username)
 	for _, cl := range repman.Clusters {
-		if cl.LogSlack != nil && cl.LogSlack.IsHookActive("cloud18") {
-			cl.LogSlack.WithFields(map[string]interface{}{
-				"event":        "api_login_local_sso_mismatch",
-				"username":     username,
-				"user_email":   email,
-				"source_ip":    remoteAddr,
-				"instance_uri": uri,
-				"timestamp":    time.Now().UTC().Format(time.RFC3339),
-			}).Warn(cloudMsg)
+		if cl.SendAlertHookMessage("cloud18", map[string]interface{}{
+			"event":        "api_login_local_sso_mismatch",
+			"username":     username,
+			"user_email":   email,
+			"source_ip":    remoteAddr,
+			"instance_uri": uri,
+			"timestamp":    time.Now().UTC().Format(time.RFC3339),
+		}, cloudMsg) {
 			break
 		}
 	}

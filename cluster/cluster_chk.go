@@ -621,28 +621,44 @@ func (cluster *Cluster) CheckCapture(st state.State) {
 	}
 }
 
-func (cluster *Cluster) CheckAlert(state state.State, resolved bool) {
+// CheckAlert sends a state of monitoring-alert-trigger that opened or cleared in the HA
+// state machine to the alert channels (T5).
+func (cluster *Cluster) CheckAlert(st state.State, resolved bool) {
 	if cluster.Conf.MonitoringAlertTrigger == "" {
 		return
 	}
 
-	if strings.Contains(cluster.Conf.MonitoringAlertTrigger, state.ErrKey) {
-		a := alert.Alert{
-			Instance: cluster.GetInstanceAddress(),
-			Cluster:  cluster.Name,
-			State:    state.ErrDesc,
-			Resolved: resolved,
+	if strings.Contains(cluster.Conf.MonitoringAlertTrigger, st.ErrKey) {
+		kind := AlertStateOpened
+		if resolved {
+			kind = AlertStateResolved
 		}
-
-		err := cluster.SendAlert(a)
-		if err != nil {
+		ev := AlertEvent{
+			Kind:     kind,
+			State:    st,
+			Domain:   ConstAlertDomainHA,
+			Resolved: resolved,
+			Alert: alert.Alert{
+				Instance: cluster.GetInstanceAddress(),
+				Cluster:  cluster.Name,
+				State:    st.ErrDesc,
+				Resolved: resolved,
+			},
+		}
+		if err := cluster.sendAlertEvent(ev); err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Could not send alert: %s ", err)
 		}
-
 	}
 }
 
-func (cluster *Cluster) SendAlert(alert alert.Alert) error {
+// SendAlert sends a server state change to the alert channels.
+func (cluster *Cluster) SendAlert(a alert.Alert) error {
+	return cluster.sendAlertEvent(AlertEvent{Kind: AlertServerStateChange, Alert: a})
+}
+
+// sendAlertEvent hands a state alert to the channels (mail, script, Alertmanager, Telegram),
+// on the active monitor, outside an intervention and the alert-disable window.
+func (cluster *Cluster) sendAlertEvent(ev AlertEvent) error {
 	if cluster.Status != ConstMonitorActif && cluster.IsDiscovered() {
 		return nil
 	}
@@ -657,30 +673,7 @@ func (cluster *Cluster) SendAlert(alert alert.Alert) error {
 		return nil
 	}
 
-	if to := cluster.GetAlertRecipients(AlertRecipient{To: cluster.Conf.MailTo, All: true}); to != "" {
-		if cluster.Mailer == nil {
-			if err := cluster.InitMailer(); err != nil {
-				return err
-			}
-		}
-
-		go func() {
-			err := alert.EmailMessage(to, cluster.Mailer)
-			if err != nil {
-				if cluster.failSendCount < 3 {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModMailer, config.LvlErr, "Could not send mail alert: %s", err)
-				}
-				cluster.failSendCount++
-			} else {
-				cluster.failSendCount = 0
-			}
-		}()
-	}
-
-	if cluster.Conf.AlertScript != "" {
-		cluster.BashScriptAlert(alert)
-	}
-
+	cluster.dispatchAlert(ev)
 	return nil
 }
 
