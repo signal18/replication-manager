@@ -286,7 +286,7 @@ interface. A function is a verb of every plugin, or the bootstrap of one plugin.
 | 2 | (done) `ReplicationLink` becomes `ReplicationPlugin` + `Link`; the verbs renamed (`StopCopyEvents`, `StopApplyEvents`) and `StartCopyEvents`, `StartApplyEvents` added; the manifest; the registry of plugins (as `newOrchestratorList`) |
 | 2b | `Link` carries both ends (`SourceCluster`, `SourceServer`, `TargetCluster`, `TargetServer`); `Promote`, `SetPosition`, `WaitCaughtUp`, `Configure`, `RotateCredential` added; the failover, switchover, reseed and rejoin calls moved onto them; `StopCopyEvents`, `StopApplyEvents` and `ChangeSource` record the link change once their statement succeeded, as `Stop` |
 | 3 | The native code split into the built-in plugins: binlog (three manifests), galera, group replication, postgresql, columnstore |
-| 4 | `replication_cdc.go` becomes the external adapter; the `replication-plugin-*` keys become the plugins' own settings; the CDC binaries renamed (`replplugin-innodb` → `repl-mariadb-mariadb-cdc`, `replplugin-columnstore` → `repl-mariadb-columnstore-cdc`, `replplugin-duckdb` → `repl-mariadb-duckdb-cdc`, `replplugin-postgresql` → `repl-postgresql-mariadb-cdc`) with their manifests |
+| 4 | `replication_cdc.go` becomes the external adapter; the CDC plugins declare their settings in their manifests (the `replication-plugin-*` keys stay valid as their cluster level); the CDC binaries renamed (`replplugin-innodb` → `repl-mariadb-mariadb-cdc`, `replplugin-columnstore` → `repl-mariadb-columnstore-cdc`, `replplugin-duckdb` → `repl-mariadb-duckdb-cdc`, `replplugin-postgresql` → `repl-postgresql-mariadb-cdc`) with their manifests |
 | 5 | `Bootstrap` and `Create` moved from `prov.go` into the plugins, topology by topology |
 | 6 | GUI: the links of a server grouped by plugin, the actions from the manifest; API and MCP the same |
 
@@ -309,9 +309,31 @@ brokers = "..."
 - A new plugin brings its settings without a change to repman; the GUI builds the form from the
   manifest, the API sets them (global-settings ACL for a secret, as the snapshot plugins), a secret is
   encrypted with the local key (F9) and never logged (F10).
-- The `replication-plugin-*` keys of today's CDC feeds move into the settings of their plugin in step
-  4; repman reads the old keys once and writes them as the plugin's settings, so a running feed keeps
-  its configuration.
+- **Nothing existing breaks: no key is removed, renamed or rewritten** (T16: many are set under
+  `/etc`, immutable). Today's keys (`force-slave-*`, `replication-delayed-hosts`,
+  `replication-delayed-time`, `replication-source-name`, `replication-master-connect-retry`,
+  `replication-use-ssl`, `replication-credential`, `replication-plugin-*`, ...) stay valid as they are
+  and **are** the cluster level of their plugin's settings; the plugin reads them as repman does today.
+- Three levels, the most specific wins: the plugin's default (its manifest), the cluster's value (the
+  existing keys, or a new plugin setting), the link's value. The link level is the only addition:
+
+  ```toml
+  [[repl-link]]
+  target-server = "db3:3306"
+  name          = ""        # the channel
+  delay         = 3600
+  semisync      = false
+  ```
+
+  Without a `[[repl-link]]` the behaviour is today's, unchanged. `replication-delayed-hosts` keeps
+  working (a listed host gets `replication-delayed-time`); a `delay` on a link only overrides it for
+  that link. A key set under `/etc` keeps winning and stays refused by the API.
+- Wanted versus observed (F5): the monitor reads each property in the link's status (`SQL_Delay`, the
+  semi-sync state, the heartbeat, the GTID and exec modes) and calls `Configure` when they differ, as
+  the `force-slave-*` keys do today; a lasting difference is a state of the config domain (T3).
+  `Configure` sets the source side too when a property needs it (semi-sync on the master).
+- A deprecation of an old key, if the maintainer ever wants one, comes later and with an alias for at
+  least one major version.
 - The `trigger` plugins do not exist yet: enterprise, by the maintainer's rule of 2026-11-26.
 
 ## T27: what each moved path stops, repoints or resets (step 1)
