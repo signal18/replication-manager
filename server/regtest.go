@@ -251,6 +251,33 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 		if test.Name == "testFailoverNoRplChecksNoSemiSync" {
 			res = regtest.TestFailoverNoRplChecksNoSemiSync(cl, test.ConfigFile, &test)
 		}
+		if test.Name == "testElectionGTIDPositionalFailover" {
+			res = regtest.TestElectionGTIDPositionalFailover(cl, test.ConfigFile, &test)
+		}
+		if test.Name == "testElectionGTIDPositionalRefusal" {
+			res = regtest.TestElectionGTIDPositionalRefusal(cl, test.ConfigFile, &test)
+		}
+		if test.Name == "testElectionGTIDPositionalSwitchover" {
+			res = regtest.TestElectionGTIDPositionalSwitchover(cl, test.ConfigFile, &test)
+		}
+		if test.Name == "testElectionGTIDPositionalErrant" {
+			res = regtest.TestElectionGTIDPositionalErrant(cl, test.ConfigFile, &test)
+		}
+		if test.Name == "testElectionMMSwitchSingleWriter" {
+			res = regtest.TestElectionMMSwitchSingleWriter(cl, test.ConfigFile, &test)
+		}
+		if test.Name == "testElectionMMSwitchConcurrent" {
+			res = regtest.TestElectionMMSwitchConcurrent(cl, test.ConfigFile, &test)
+		}
+		if test.Name == "testElectionMMFailover" {
+			res = regtest.TestElectionMMFailover(cl, test.ConfigFile, &test)
+		}
+		if test.Name == "testElectionRing" {
+			res = regtest.TestElectionRing(cl, test.ConfigFile, &test)
+		}
+		if test.Name == "testElectionMultiTier" {
+			res = regtest.TestElectionMultiTier(cl, test.ConfigFile, &test)
+		}
 		if test.Name == "testFailoverAllSlavesDelayNoRplChecksNoSemiSync" {
 			res = regtest.TestFailoverAllSlavesDelayNoRplChecksNoSemiSync(cl, test.ConfigFile, &test)
 		}
