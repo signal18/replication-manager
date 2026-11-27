@@ -163,11 +163,19 @@ func columnstoreCarried(tables []dbhelper.EngineTable) []string {
 }
 
 func writeReplPluginConfig(path string, cfg wire.Config) error {
+	if cfg.SourceKind != "" {
+		return writeReplFeedConfig(path, cfg)
+	}
+	return writeReplPluginTOML(path, cfg, "# replication-manager: written at the seed of the child (#2015, CDC_CORE.md); its tables are in its state once the restore is done\n")
+}
+
+// writeReplPluginTOML writes a plugin's TOML at path, header first.
+func writeReplPluginTOML(path string, cfg wire.Config, header string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		return err
 	}
 	var b bytes.Buffer
-	b.WriteString("# replication-manager: written at the seed of the child (#2015, CDC_CORE.md); its tables are in its state once the restore is done\n")
+	b.WriteString(header)
 	if err := toml.NewEncoder(&b).Encode(cfg); err != nil {
 		return err
 	}

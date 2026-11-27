@@ -552,6 +552,11 @@ type Config struct {
 	ReplicationPluginCheckpointInterval      int                          `mapstructure:"replication-plugin-checkpoint-interval" toml:"replication-plugin-checkpoint-interval" json:"replicationPluginCheckpointInterval"`
 	ReplicationPluginMergeInterval           int                          `mapstructure:"replication-plugin-merge-interval" toml:"replication-plugin-merge-interval" json:"replicationPluginMergeInterval"`
 	ReplicationPluginIndexes                 []ReplicationPluginIndex     `mapstructure:"replication-plugin-index" toml:"replication-plugin-index" json:"replicationPluginIndexes"`
+	ReplicationPluginFeedSourceCluster       string                       `mapstructure:"replication-plugin-feed-source-cluster" toml:"replication-plugin-feed-source-cluster" json:"replicationPluginFeedSourceCluster"`
+	ReplicationPluginFeedDatabase            string                       `mapstructure:"replication-plugin-feed-database" toml:"replication-plugin-feed-database" json:"replicationPluginFeedDatabase"`
+	ReplicationPluginFeedTables              string                       `mapstructure:"replication-plugin-feed-tables" toml:"replication-plugin-feed-tables" json:"replicationPluginFeedTables"`
+	ReplicationPluginFeedCreateSourceObjects bool                         `mapstructure:"replication-plugin-feed-create-source-objects" toml:"replication-plugin-feed-create-source-objects" json:"replicationPluginFeedCreateSourceObjects"`
+	ReplicationPluginFeedRetainedMax         int                          `mapstructure:"replication-plugin-feed-retained-max" toml:"replication-plugin-feed-retained-max" json:"replicationPluginFeedRetainedMax"`
 	StagingProxyHosts                        string                       `mapstructure:"staging-proxy-hosts" toml:"staging-proxy-hosts" json:"stagingProxyHosts"`
 	StagingServerHost                        string                       `mapstructure:"staging-server-host" toml:"staging-server-host" json:"stagingServerHost"`
 	GraphiteMetrics                          bool                         `scope:"server" mapstructure:"graphite-metrics" toml:"graphite-metrics" json:"graphiteMetrics"`

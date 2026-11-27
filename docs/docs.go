@@ -10369,6 +10369,130 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/replication-plugin-actions/drop-source-objects/{pluginName}": {
+            "post": {
+                "description": "With the feed switched off: its replication slot and its publication are dropped on the source, only those the feed created (its state lists them), never another. The statements run are returned and logged.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterReplicationPlugins"
+                ],
+                "summary": "Remove what a CDC feed created on its source",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Plugin Name",
+                        "name": "pluginName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/server.ReplicationFeedDropResult"
+                        }
+                    },
+                    "400": {
+                        "description": "The feed is on, or created nothing",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "No such plugin",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/replication-plugin-actions/reinit/{pluginName}": {
+            "post": {
+                "description": "The rejoin of a feed whose source can no longer give its changes (ERR00140: its slot dropped at its bound, or lost): the plugin stops, its position and checkpoints are removed, and it starts again with a new initial load (its tables on the destination emptied, then copied from a new snapshot). What the feed created on the source is kept and replaced by the new initial load.",
+                "produces": [
+                    "text/plain"
+                ],
+                "tags": [
+                    "ClusterReplicationPlugins"
+                ],
+                "summary": "Start a CDC feed again from a new initial load",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Plugin Name",
+                        "name": "pluginName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "New initial load requested",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Not a feed with a capture source",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "No such plugin",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/replication-plugin-index-actions/put": {
             "post": {
                 "description": "Stores the index (name, sql, slave-schema, slave-table, max-keys-per-batch) and writes it into the analytic child's plugin configuration: the plugin restarts and a new or changed index starts with its init (the denormalized table made from the query's result, then filled on a consistent snapshot of the source). The query returns the primary key columns of every table it reads.",
@@ -32966,6 +33090,14 @@ const docTemplate = `{
                 "injectTrafficMode": {
                     "type": "string"
                 },
+                "installLayout": {
+                    "description": "package|tarball|embed, resolved at start, not a key (#2444)",
+                    "type": "string"
+                },
+                "installProfile": {
+                    "description": "osc|tst|pro, resolved at start, not a key (#2444)",
+                    "type": "string"
+                },
                 "interactive": {
                     "type": "boolean"
                 },
@@ -34463,6 +34595,21 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "replicationPluginDestination": {
+                    "type": "string"
+                },
+                "replicationPluginFeedCreateSourceObjects": {
+                    "type": "boolean"
+                },
+                "replicationPluginFeedDatabase": {
+                    "type": "string"
+                },
+                "replicationPluginFeedRetainedMax": {
+                    "type": "integer"
+                },
+                "replicationPluginFeedSourceCluster": {
+                    "type": "string"
+                },
+                "replicationPluginFeedTables": {
                     "type": "string"
                 },
                 "replicationPluginIndexes": {
@@ -35979,6 +36126,17 @@ const docTemplate = `{
             "properties": {
                 "download": {
                     "type": "boolean"
+                }
+            }
+        },
+        "server.ReplicationFeedDropResult": {
+            "type": "object",
+            "properties": {
+                "statements": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 }
             }
         },

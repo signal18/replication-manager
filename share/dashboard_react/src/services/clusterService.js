@@ -62,6 +62,8 @@ export const clusterService = {
   getReplicationPluginIndexList,
   putReplicationPluginIndex,
   removeReplicationPluginIndex,
+  reinitReplicationPlugin,
+  dropReplicationFeedSourceObjects,
   putSecretKv,
   switchSecretKv,
   removeSecretKv,
@@ -1201,6 +1203,15 @@ function putReplicationPluginIndex(clusterName, index, baseURL) {
 
 function removeReplicationPluginIndex(clusterName, indexName, baseURL) {
   return getApi(baseURL).post(`clusters/${clusterName}/replication-plugin-index-actions/remove/${encodeURIComponent(indexName)}`)
+}
+
+// the CDC feed of a source of another engine (CDC_SOURCES.md)
+function reinitReplicationPlugin(clusterName, pluginName, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/replication-plugin-actions/reinit/${encodeURIComponent(pluginName)}`)
+}
+
+function dropReplicationFeedSourceObjects(clusterName, pluginName, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/replication-plugin-actions/drop-source-objects/${encodeURIComponent(pluginName)}`)
 }
 
 // credential store entries, the vault entries (#2227): secrets go in through add and edit and

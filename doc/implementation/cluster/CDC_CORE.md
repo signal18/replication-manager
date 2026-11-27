@@ -293,6 +293,8 @@ The ColumnStore destination stays open source, maintained as a community destina
 - `cluster/replplugin/cdc/`: the core (capture `capture.go`, checkpoints `checkpoint.go`, apply
   `apply.go`, staging `staging.go`, destination interface `destination.go`, create `create.go`).
 - `cluster/replplugin/cdc/denormalize.go`: the denormalize mode (indexes, pack, unpack, init).
+- `cluster/replplugin/cdc/source.go`, `innodb.go`: the capture sources of other engines and the
+  InnoDB destination they reuse (`CDC_SOURCES.md`).
 - `cluster/replplugin/plugins/columnstore/main.go`: the ColumnStore destination.
 - `cluster/replplugin/plugins/innodb/main.go`: the InnoDB destination.
 - `config/replplugin_index.go`, `cluster/cluster_replplugin_index.go`,

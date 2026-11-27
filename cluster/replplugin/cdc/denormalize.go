@@ -499,31 +499,10 @@ func scanRows(rows *sql.Rows, meta *indexMeta, fn func(r, k []interface{}, out [
 // the description of the empty query result, the destination then makes it its own; an
 // existing table of the same columns is emptied instead (Truncater, or a DELETE).
 func initIndex(ctx context.Context, src, tdb *sqlx.DB, tconn *sqlx.Conn, dest Destination, meta *indexMeta, apply func(wire.TableFiles, map[string][]byte) error) error {
-	existing, _, _ := dbhelper.GetColumnNamesConn(ctx, tconn, meta.idx.Schema, meta.idx.Table)
-	if len(existing) > 0 && strings.Join(existing, ",") == strings.Join(meta.columns, ",") {
-		var err error
-		if tr, ok := dest.(Truncater); ok {
-			err = tr.Truncate(ctx, tconn, meta.idx.Schema, meta.idx.Table)
-		} else {
-			_, err = dbhelper.DeleteAllRows(ctx, tconn, meta.idx.Schema, meta.idx.Table)
-		}
-		if err != nil {
-			return fmt.Errorf("index %s: emptying %s.%s: %w", meta.idx.Name, meta.idx.Schema, meta.idx.Table, err)
-		}
-	} else {
-		if q, err := dbhelper.CreateDenormalizedTable(ctx, tconn, meta.idx.Schema, meta.idx.Table, meta.idx.SQL, meta.key, meta.lookups()); err != nil {
-			return fmt.Errorf("index %s: the denormalized table: %w (%s)", meta.idx.Name, err, q)
-		}
-		d, err := ReadTableDesc(tdb, meta.idx.Schema, meta.idx.Table)
-		if err != nil {
-			return err
-		}
-		if why := dest.Refuse(d); why != "" {
-			return fmt.Errorf("index %s: the destination refuses %s.%s: %s", meta.idx.Name, meta.idx.Schema, meta.idx.Table, why)
-		}
-		if err := dest.Create(ctx, tconn, d); err != nil && !isMadeByRestore(err) {
-			return fmt.Errorf("index %s: the destination's table: %w", meta.idx.Name, err)
-		}
+	if _, err := emptyOrMake(ctx, tdb, tconn, dest, meta.idx.Schema, meta.idx.Table, meta.columns, func([]string) (string, error) {
+		return dbhelper.CreateDenormalizedTable(ctx, tconn, meta.idx.Schema, meta.idx.Table, meta.idx.SQL, meta.key, meta.lookups())
+	}); err != nil {
+		return fmt.Errorf("index %s: the denormalized table %s.%s: %w", meta.idx.Name, meta.idx.Schema, meta.idx.Table, err)
 	}
 	sconn, err := src.Connx(ctx)
 	if err != nil {

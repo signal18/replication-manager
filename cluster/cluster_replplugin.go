@@ -57,6 +57,9 @@ type replPluginRunner struct {
 	inMu  sync.Mutex     // one frame at a time on stdin
 	stdin io.WriteCloser // the running process's, nil when none
 	gen   int64          // the process started, counted
+
+	stmtMu      sync.Mutex
+	loggedStmts []string // the statements of a capture source on its source, logged (F11)
 }
 
 // replFeed is a restore feeding a plugin's stdin (#2015): the process it started with, so a
@@ -151,13 +154,23 @@ func (cluster *Cluster) readReplPluginConfigs() (map[string]wire.Config, map[str
 // runner per enabled TOML on the active replication-manager, restarted when its TOML
 // changes; none on a standby or on a stopping cluster. Then the states.
 func (cluster *Cluster) CheckReplicationPlugins() {
-	cfgs, mods, errs := cluster.readReplPluginConfigs()
 	active := cluster.IsActive() && !cluster.exit.Load()
+	if active {
+		cluster.syncReplicationFeed() // the CDC feed's TOML from its settings (cluster_replplugin_feed.go)
+	}
+	cfgs, mods, errs := cluster.readReplPluginConfigs()
 	if active {
 		// the source the plugin reads (cluster_repl_source.go): followed after a switchover,
 		// a plugin without a valid source does not run
 		for path, c := range cfgs {
 			if !c.Enabled {
+				continue
+			}
+			// a feed whose source lost its position waits for a new initial load (ERR00140)
+			if why, wait := replFeedNeedsInit(path); wait {
+				cluster.SetState("ERR00140", state.State{ErrType: config.LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00140"], c.Plugin, cluster.Name, why), ErrFrom: "REPL"})
+				c.Enabled = false
+				cfgs[path] = c
 				continue
 			}
 			// a plugin missing, or that the plan does not grant, never runs (ERR00132)
@@ -496,6 +509,7 @@ func (cluster *Cluster) checkReplPluginStates(runners []*replPluginRunner, errs 
 		if st == nil {
 			continue
 		}
+		cluster.checkReplPluginSourceStates(r, st)
 		if st.ApplyError != "" {
 			cluster.SetState("WARN0243", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0243"], name, cluster.Name, st.ApplyError), ErrFrom: "REPL"})
 		}
