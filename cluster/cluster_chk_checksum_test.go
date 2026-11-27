@@ -269,3 +269,17 @@ func TestCheckAllTableChecksumCancelMidLoop(t *testing.T) {
 		t.Fatalf("CheckAllTableChecksumSchema after a cancel on the first table ran %v, want [a]", ran)
 	}
 }
+
+// The two work tables of a checksum carry their primary key in their CREATE: a server with
+// innodb_force_primary_key refused them (1173) and every checksum ended NA (#2465, dev3).
+func TestChecksumWorkTablesHavePrimaryKey(t *testing.T) {
+	res := checksumResultTableDDL(" Min_id INT, Max_id INT")
+	if !strings.Contains(res, "chunkId BIGINT NOT NULL") || !strings.Contains(res, "PRIMARY KEY (chunkId)") {
+		t.Fatalf("table_checksum without its primary key: %s", res)
+	}
+	chunk := checksumChunkTableDDL("app", "t1", " MIN(id) AS  Min_id , MAX(id) AS Max_id ", 2000)
+	if !strings.Contains(chunk, "table_chunk (chunkId BIGINT NOT NULL, PRIMARY KEY (chunkId)) ENGINE=INNODB SELECT FLOOR((@rows:=@rows+1/2000)) as chunkId,") ||
+		!strings.Contains(chunk, " FROM app.t1 FORCE INDEX(PRIMARY)") {
+		t.Fatalf("table_chunk without its primary key: %s", chunk)
+	}
+}

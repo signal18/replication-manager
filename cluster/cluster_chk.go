@@ -719,6 +719,23 @@ func (cluster *Cluster) ChecksumTableEntry(schema string, table string) (*Server
 	return master, t, nil
 }
 
+// checksumResultTableDDL creates the table of the chunks' checksums. It carries its primary key
+// from the start: a server with innodb_force_primary_key refuses a table without one (1173), and
+// the checksum ended NA before its first chunk.
+func checksumResultTableDDL(columnDefPredicate string) string {
+	return "/* replication-manager */ CREATE OR REPLACE TABLE replication_manager_schema.table_checksum(chunkId BIGINT NOT NULL,chunkRangeCondition varchar(8000) , " +
+		columnDefPredicate + ",chunkCheckSum BIGINT UNSIGNED, PRIMARY KEY (chunkId) ) ENGINE=INNODB"
+}
+
+// checksumChunkTableDDL creates the table of the chunks of schema.table (chunkSize rows each,
+// their primary key bounds). The primary key is declared in the CREATE ... SELECT itself, not
+// added after: innodb_force_primary_key refuses the table before an ALTER could add it (1173).
+func checksumChunkTableDDL(schema string, table string, shardListPredicate string, chunkSize int) string {
+	return "CREATE OR REPLACE TABLE replication_manager_schema.table_chunk (chunkId BIGINT NOT NULL, PRIMARY KEY (chunkId)) ENGINE=INNODB " +
+		"SELECT FLOOR((@rows:=@rows+1/" + fmt.Sprintf("%d", chunkSize) + ")) as chunkId, " +
+		shardListPredicate + " FROM " + schema + "." + table + " FORCE INDEX(PRIMARY), (SELECT @rows:=0 FROM DUAL) A group by chunkId"
+}
+
 // checksumOneTable is the checksum of one table run by the loops over the tables, replaced in tests.
 var checksumOneTable = (*Cluster).CheckTableChecksum
 
@@ -876,7 +893,7 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) string {
 		shardListPredicate = shardListPredicate + " MIN(" + p + ") AS  Min_" + p + " , MAX(" + p + ") AS Max_" + p + " "
 	}
 
-	_, err = Conn.Exec("/* replication-manager */ CREATE OR REPLACE TABLE replication_manager_schema.table_checksum(chunkId BIGINT,chunkRangeCondition varchar(8000) , " + columnDefPredicate + ",chunkCheckSum BIGINT UNSIGNED ) ENGINE=INNODB")
+	_, err = Conn.Exec(checksumResultTableDDL(columnDefPredicate))
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error creating checksum table: %s", err)
 		t.TableSync = "NA"
@@ -884,9 +901,7 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) string {
 		return "NA"
 	}
 	chunkSize := 2000
-	query := "CREATE OR REPLACE TABLE replication_manager_schema.table_chunk ENGINE=INNODB " +
-		"SELECT FLOOR((@rows:=@rows+1/" + fmt.Sprintf("%d", chunkSize) + ")) as chunkId, "
-	query = query + shardListPredicate + " FROM " + schema + "." + table + " FORCE INDEX(PRIMARY), (SELECT @rows:=0 FROM DUAL) A group by chunkId"
+	query := checksumChunkTableDDL(schema, table, shardListPredicate, chunkSize)
 
 	_, err = Conn.Exec(query)
 	if err != nil {
@@ -917,13 +932,6 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) string {
 	rows.Close()
 	if len(chunks) == 0 {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Finished checksum table %s.%s (no chunks)", schema, table)
-		t.TableSync = "NA"
-		master.DictTables.Set(schema+"."+table, t)
-		return "NA"
-	}
-	_, err = Conn.Exec("ALTER TABLE replication_manager_schema.table_chunk ADD PRIMARY KEY (chunkId)")
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "ERROR: Could not add primary key on table_chunk %s", err)
 		t.TableSync = "NA"
 		master.DictTables.Set(schema+"."+table, t)
 		return "NA"
