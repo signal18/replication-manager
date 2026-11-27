@@ -124,7 +124,7 @@ func (regtest *RegTest) TestBackupArchiveRemoveOriginal(cl *clusterpkg.Cluster, 
 
 	// diverge stops replication on the replica and commits rows it misses.
 	diverge := func(from, to int) bool {
-		if _, err := slave.StopSlave(); err != nil {
+		if _, err := slave.ReplicationLink().Stop(clusterpkg.LinkByTest); err != nil {
 			return fail("cannot stop replication: %s", err)
 		}
 		if err := insert(from, to); err != nil {

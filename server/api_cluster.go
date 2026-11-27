@@ -12387,7 +12387,7 @@ func (repman *ReplicationManager) handlerMuxClusterRejoin(w http.ResponseWriter,
 	status := "armed"
 	if mycluster.IsActive() {
 		if srv := mycluster.GetServerFromURL(target); srv != nil {
-			go srv.RejoinMaster()
+			go srv.ReplicationLink().Rejoin()
 			status = "running"
 		}
 	}

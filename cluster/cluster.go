@@ -3777,7 +3777,7 @@ func (cluster *Cluster) LostArbitration(realmasterurl string) {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Arbitration failed master script complete: %s", string(out))
 	} else {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Arbitration failed attaching failed master %s to electected master :%s", master.URL, realmaster.URL)
-		logs, err := master.SetReplicationGTIDCurrentPosFromServer(realmaster)
+		logs, err := master.SetReplicationGTIDCurrentPosFromServer(realmaster, LinkByArbitration)
 		cluster.LogSQL(logs, err, realmaster.URL, "Arbitration", config.LvlErr, "Failed in GTID rejoin lost master to winner master %s", err)
 
 	}

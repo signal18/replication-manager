@@ -76,14 +76,14 @@ func TestReseedStoppedLinksState(t *testing.T) {
 	sv.Replications = []dbhelper.SlaveStatus{channel("belair", "db2.belair", "No", "No"), channel("crm", "db1.crm", "No", "No")}
 	sv.markReseedStoppedLinks(sv.replicationChannels(), "restore of /backup")
 
-	sv.checkReseedStoppedLinks()
+	sv.checkLinkChanges()
 	if !warn0252Open(c) {
 		t.Fatal("WARN0252 while the stopped channels do not run")
 	}
 
 	c.StateMachine.ClearState()
 	sv.Replications = []dbhelper.SlaveStatus{channel("belair", "db2.belair", "Yes", "Yes"), channel("crm", "db1.crm", "No", "No")}
-	sv.checkReseedStoppedLinks()
+	sv.checkLinkChanges()
 	if got := sv.reseedStoppedLinkList(); len(got) != 1 || got[0] != "crm" {
 		t.Fatalf("the running channel leaves the list: %v", got)
 	}
@@ -93,7 +93,7 @@ func TestReseedStoppedLinksState(t *testing.T) {
 
 	c.StateMachine.ClearState()
 	sv.Replications = []dbhelper.SlaveStatus{channel("belair", "db2.belair", "Yes", "Yes"), channel("crm", "db1.crm", "Yes", "Yes")}
-	sv.checkReseedStoppedLinks()
+	sv.checkLinkChanges()
 	if len(sv.reseedStoppedLinkList()) != 0 || warn0252Open(c) {
 		t.Fatal("every stopped channel runs again: WARN0252 closes")
 	}
@@ -107,14 +107,14 @@ func TestReseedStoppedLinkRemovedChannel(t *testing.T) {
 	sv.markReseedStoppedLinks([]string{"belair", "crm"}, "restore of /backup")
 	sv.Replications = []dbhelper.SlaveStatus{channel("belair", "db2.belair", "No", "No")}
 
-	sv.checkReseedStoppedLinks()
+	sv.checkLinkChanges()
 	if got := sv.reseedStoppedLinkList(); len(got) != 2 {
 		t.Fatalf("a server that does not answer keeps the list: %v", got)
 	}
 
 	c.StateMachine.ClearState()
 	sv.Conn = &sqlx.DB{}
-	sv.checkReseedStoppedLinks()
+	sv.checkLinkChanges()
 	if got := sv.reseedStoppedLinkList(); len(got) != 1 || got[0] != "belair" {
 		t.Fatalf("the removed channel leaves the list, the stopped one stays: %v", got)
 	}
@@ -130,7 +130,7 @@ func TestReseedStoppedLinksGraceAndConcurrency(t *testing.T) {
 	c.Conf.MonitoringTicker = 2
 	sv.Replications = []dbhelper.SlaveStatus{channel("belair", "db2.belair", "Yes", "Yes")}
 	sv.markReseedStoppedLinks([]string{"belair"}, "restore of /backup")
-	sv.checkReseedStoppedLinks()
+	sv.checkLinkChanges()
 	if got := sv.reseedStoppedLinkList(); len(got) != 1 || !warn0252Open(c) {
 		t.Fatalf("a running status read before the stop does not clear a fresh record: %v", got)
 	}
@@ -144,7 +144,7 @@ func TestReseedStoppedLinksGraceAndConcurrency(t *testing.T) {
 		close(done)
 	}()
 	for i := 0; i < 500; i++ {
-		sv.checkReseedStoppedLinks()
+		sv.checkLinkChanges()
 	}
 	<-done
 }

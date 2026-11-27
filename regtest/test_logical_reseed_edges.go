@@ -225,8 +225,8 @@ func (regtest *RegTest) TestLogicalReseedEdgeCases(cl *clusterpkg.Cluster, conf 
 				// replica with parallel replication that applied them with GTID replication, rewound
 				// and positional, never applies them again (lab, MariaDB 10.11). That is a switch of
 				// the cluster from GTID to positional, not what this test covers
-				_, serr := e.r.StopSlave()
-				_, rerr := e.r.ResetSlave()
+				_, serr := e.r.ReplicationLink().Stop(clusterpkg.LinkByTest)
+				_, rerr := e.r.ReplicationLink().Remove(clusterpkg.LinkByTest)
 				if !e.check(name+" replica reset", serr == nil && rerr == nil, fmt.Sprintf("stop %v, reset %v", serr, rerr)) {
 					continue
 				}
@@ -270,8 +270,8 @@ func (regtest *RegTest) TestLogicalReseedEdgeCases(cl *clusterpkg.Cluster, conf 
 	// R7: a replica with no replication configured
 	e.seed()
 	if _, ok := e.backup("R7 local backup", false); ok {
-		_, _ = e.r.StopSlave()
-		_, err := e.r.ResetSlave()
+		_, _ = e.r.ReplicationLink().Stop(clusterpkg.LinkByTest)
+		_, err := e.r.ReplicationLink().Remove(clusterpkg.LinkByTest)
 		if e.check("R7 RESET SLAVE ALL on the replica", err == nil, fmt.Sprint(err)) {
 			e.reseedAndCheck("R7 reseed of a replica without replication", gtid)
 		}
@@ -675,7 +675,7 @@ func (e *edgeRun) breakReplication(name string) bool {
 		if err := e.r.Conn.QueryRowx("SELECT SERVICE_STATE FROM performance_schema.replication_applier_status WHERE CHANNEL_NAME=?", e.r.ReplicationSourceName).Scan(&running); err == nil && running == "OFF" {
 			return e.check(name, true, "")
 		}
-		if ss, _, err := dbhelper.GetSlaveStatus(e.r.Conn, e.r.ReplicationSourceName, e.r.DBVersion); err == nil && ss.SlaveSQLRunning.String == "No" {
+		if ss, _, err := e.r.ReplicationChannelLink(e.r.ReplicationSourceName).ReadStatus(); err == nil && ss.SlaveSQLRunning.String == "No" {
 			return e.check(name, true, "")
 		}
 		time.Sleep(2 * time.Second)
@@ -750,7 +750,7 @@ func (e *edgeRun) checkReplica(name string, wantGTID bool) bool {
 	}
 	// read on the replica: the monitor's status lags a tick behind a reseed, and is empty
 	// right after its RESET SLAVE ALL
-	ss, _, err := dbhelper.GetSlaveStatus(e.r.Conn, e.r.ReplicationSourceName, e.r.DBVersion)
+	ss, _, err := e.r.ReplicationChannelLink(e.r.ReplicationSourceName).ReadStatus()
 	if err != nil {
 		return e.check(name, false, "replication status: "+err.Error())
 	}
@@ -791,7 +791,7 @@ func (e *edgeRun) waitCaughtUp() string {
 	var last string
 	deadline := time.Now().Add(caughtUpLimit)
 	for {
-		ss, _, err := dbhelper.GetSlaveStatus(e.r.Conn, e.r.ReplicationSourceName, e.r.DBVersion)
+		ss, _, err := e.r.ReplicationChannelLink(e.r.ReplicationSourceName).ReadStatus()
 		if err != nil {
 			last = "replication status: " + err.Error()
 		} else {
@@ -830,7 +830,7 @@ func (e *edgeRun) replicaDiff() string {
 	var io, sql string
 	q := "SELECT IFNULL((SELECT SERVICE_STATE FROM performance_schema.replication_connection_status WHERE CHANNEL_NAME=?),'OFF'), IFNULL((SELECT SERVICE_STATE FROM performance_schema.replication_applier_status WHERE CHANNEL_NAME=?),'OFF')"
 	if e.r.IsMariaDB() {
-		ss, _, err := dbhelper.GetSlaveStatus(e.r.Conn, e.r.ReplicationSourceName, e.r.DBVersion)
+		ss, _, err := e.r.ReplicationChannelLink(e.r.ReplicationSourceName).ReadStatus()
 		if err != nil {
 			return "replication status: " + err.Error()
 		}

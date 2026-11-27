@@ -805,7 +805,7 @@ func (cluster *Cluster) K8SRestartDatabaseServiceWaitRejoin(server *ServerMonito
 func (cluster *Cluster) DelayAllSlaves() error {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "BENCH", "Stopping slaves, injecting data & long transaction")
 	for _, s := range cluster.slaves {
-		_, err := s.StopSlaveSQLThread()
+		_, err := s.ReplicationLink().StopApply(LinkByTest)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Stopping slave on %s %s", s.URL, err)
 		}
@@ -823,7 +823,7 @@ func (cluster *Cluster) DelayAllSlaves() error {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "%s %s", err.Error(), result)
 	}
 	for _, s := range cluster.slaves {
-		_, err := s.StartSlave()
+		_, err := s.ReplicationLink().Start(LinkByTest)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Staring slave on %s %s", s.URL, err)
 		}
@@ -927,7 +927,7 @@ func (cluster *Cluster) EnableSemisync() error {
 func (cluster *Cluster) StopSlaves() error {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "BENCH", "Stopping replication")
 	for _, s := range cluster.slaves {
-		_, err := s.StopSlave()
+		_, err := s.ReplicationLink().Stop(LinkByTest)
 		if err != nil {
 			return err
 		}
@@ -938,7 +938,7 @@ func (cluster *Cluster) StopSlaves() error {
 func (cluster *Cluster) StartSlaves() error {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "BENCH", "Sarting replication")
 	for _, s := range cluster.slaves {
-		_, err := s.StartSlave()
+		_, err := s.ReplicationLink().Start(LinkByTest)
 		if err != nil {
 			return err
 		}

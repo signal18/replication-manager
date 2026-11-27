@@ -356,6 +356,43 @@ function DBServerGrid({
                     }
                   />
                 )}
+                {rowData.replicationFeeds?.length > 0 &&
+                  rowData.replicationFeeds.map((feed, index) => {
+                    const running = (v) =>
+                      v == 'Yes' ? <CustomIcon icon={HiCheck} color='green' /> : <CustomIcon icon={HiX} color='red' />
+                    return (
+                      <AccordionComponent
+                        key={`feed-${index}`}
+                        headerClassName={`${styles.accordionHeader} ${styles[gridColor]}`}
+                        panelClassName={styles.accordionPanel}
+                        isOpen={isReplicationStatusOpen}
+                        onToggle={onReplicationStatusToggle}
+                        heading={`Replication Status (${feed.connectionName?.String}, ${feed.kind || 'cdc'})`}
+                        body={
+                          <Flex direction='column' mt={1}>
+                            <TableType2
+                              dataArray={[
+                                { key: 'Kind', value: <TagPill colorScheme='blue' text={(feed.kind || 'cdc').toUpperCase()} /> },
+                                { key: 'Source', value: `${feed.masterHost?.String} ${feed.masterPort?.String}` },
+                                { key: 'Capture', value: running(feed.slaveIoRunning?.String) },
+                                { key: 'Apply', value: running(feed.slaveSqlRunning?.String) },
+                                { key: 'Delay', value: feed.secondsBehindMaster?.Valid ? feed.secondsBehindMaster.Int64 : '' },
+                                { key: 'GTID captured', value: <CopyToClipboard text={feed.gtidIoPos?.String || ''} textType='GTID' /> },
+                                { key: 'GTID applied', value: <CopyToClipboard text={feed.gtidSlavePos?.String || ''} textType='GTID' /> },
+                                { key: 'State', value: feed.slaveSQLRunningState?.String },
+                                { key: 'Capture error', value: feed.lastIoError?.String },
+                                { key: 'Apply error', value: feed.lastSqlError?.String }
+                              ]}
+                              templateColumns='30% auto'
+                              className={parentStyles.table}
+                              labelClassName={`${parentStyles.rowLabel} ${parentStyles[gridColor]}`}
+                              valueClassName={parentStyles.rowValue}
+                            />
+                          </Flex>
+                        }
+                      />
+                    )
+                  })}
                 <AccordionComponent
                   heading={'Server Information'}
                   headerClassName={`${styles.accordionHeader} ${styles[gridColor]}`}

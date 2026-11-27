@@ -95,7 +95,7 @@ func rejoinBackupAheadScenario(cl *cluster.Cluster, newPrimaryBackup bool) bool 
 		logf("mydumper backup of %s taken before the 100 rows: the one a rejoin may restore", replicas[0].URL)
 	}
 	for _, sl := range replicas {
-		logs, err := sl.StopSlaveIOThread()
+		logs, err := sl.ReplicationLink().StopRead(cluster.LinkByTest)
 		cl.LogSQL(logs, err, sl.URL, "Rejoin", config.LvlErr, "STOP SLAVE IO_THREAD on %s: %s", sl.URL, err)
 		if err != nil {
 			return fail("STOP SLAVE IO_THREAD on %s: %s", sl.URL, err)
@@ -127,7 +127,7 @@ func rejoinBackupAheadScenario(cl *cluster.Cluster, newPrimaryBackup bool) bool 
 	}
 	logf("failover: %s is the new primary, rows there: %s", newMaster.URL, count(newMaster))
 	for _, sl := range cl.GetSlaves() {
-		sl.StartSlave()
+		sl.ReplicationLink().Start(cluster.LinkByTest)
 	}
 	if newPrimaryBackup {
 		for i := 1001; i <= 1010; i++ {

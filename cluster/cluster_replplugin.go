@@ -532,12 +532,29 @@ func (cluster *Cluster) checkReplPluginStates(runners []*replPluginRunner, errs 
 				at = "never"
 			}
 			cluster.SetState("CINF0030", state.State{ErrType: config.LvlInfo, ErrDesc: fmt.Sprintf(clusterError["CINF0030"], name, cluster.Name, st.MergedSeq, st.MergedGTID, at, st.MergeTookMs, st.AppliedSeq-st.MergedSeq, next), ErrFrom: "REPL"})
+			// the merge is a throughput fact of the child, not its HA: the workload domain (T3)
+			if late := cdcMergeLate(st.NextMergeAt, time.Duration(r.cfg.MergeIntervalMs)*time.Millisecond, time.Now()); late > 0 {
+				cluster.WorkloadStateMachine.AddState("WARN0353@"+name, state.State{ErrType: "WARNING", ErrKey: "WARN0353", ErrDesc: fmt.Sprintf(clusterError["WARN0353"], name, cluster.Name, late, time.Duration(r.cfg.MergeIntervalMs)*time.Millisecond, at), ErrFrom: "REPL"})
+			}
 		}
 	}
 	cluster.checkAnalyticChildStates()
 	for path, err := range errs {
 		cluster.SetState("WARN0242", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0242"], filepath.Base(path), cluster.Name, "its TOML does not parse: "+err.Error(), time.Duration(0)), ErrFrom: "REPL"})
 	}
+}
+
+// cdcMergeLate is how late the merge due at next (RFC 3339) is at now, once it is due since more
+// than one merge interval more; 0 while it is not.
+func cdcMergeLate(next string, interval time.Duration, now time.Time) time.Duration {
+	t, err := time.Parse(time.RFC3339, next)
+	if err != nil || interval <= 0 {
+		return 0
+	}
+	if late := now.Sub(t); late > interval {
+		return late.Round(time.Second)
+	}
+	return 0
 }
 
 // capBuffer keeps the last replPluginStderrMax bytes written to it.

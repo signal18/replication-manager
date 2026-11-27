@@ -147,7 +147,7 @@ func (cluster *Cluster) LocalhostProvisionDatabaseService(server *ServerMonitor)
 }
 
 func (cluster *Cluster) LocalhostStopDatabaseService(server *ServerMonitor) error {
-	server.StopSlave()
+	server.ReplicationLink().Stop(LinkByServiceStop)
 	return server.Shutdown()
 }
 

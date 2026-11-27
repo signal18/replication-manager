@@ -111,7 +111,7 @@ func TestServerChangeMasterReplicationTLS(t *testing.T) {
 	opt := dbhelper.ChangeMasterOpt{Host: "db1", Port: "3306", User: "repl", Password: "pw", Retry: "10", Heartbeat: "1", Mode: "SLAVE_POS", SSL: true}
 
 	mock.ExpectExec("CHANGE").WillReturnResult(sqlmock.NewResult(0, 0))
-	cm, err := replica.ChangeMaster(opt)
+	cm, err := replica.ReplicationLink().ChangeSource(opt, LinkByTest)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -121,7 +121,7 @@ func TestServerChangeMasterReplicationTLS(t *testing.T) {
 
 	opt.SSL = false
 	mock.ExpectExec("CHANGE").WillReturnResult(sqlmock.NewResult(0, 0))
-	if cm, _ = replica.ChangeMaster(opt); strings.Contains(cm, "SSL") {
+	if cm, _ = replica.ReplicationLink().ChangeSource(opt, LinkByTest); strings.Contains(cm, "SSL") {
 		t.Fatalf("configured certificate without replication-use-ssl: channel kept: %s", cm)
 	}
 }

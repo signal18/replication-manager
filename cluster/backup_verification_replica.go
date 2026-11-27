@@ -68,7 +68,7 @@ func (replica *ServerMonitor) beginVerificationReseed() (bool, error) {
 	if setMaintenance {
 		replica.SetMaintenance()
 	}
-	logs, err := replica.StopAllSlaves()
+	logs, err := replica.StopAllSlaves(LinkByBackupVerification)
 	cluster.LogSQL(logs, err, replica.URL, "BackupVerification", config.LvlInfo, "Backup verification could not stop the replication of %s: %s", replica.URL, err)
 	if err == nil {
 		// StopAllSlaves stops the channels the monitor knows: an empty or stale list stops none
@@ -121,7 +121,7 @@ func (replica *ServerMonitor) endVerificationReseed(setMaintenance, resumed, tou
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlErr, "Backup verification left %s in maintenance, its replication stopped: its data is the partial test restore, reseed it", replica.URL)
 		return
 	default:
-		logs, err := replica.StartSlave()
+		logs, err := replica.ReplicationLink().Start(LinkByBackupVerification)
 		cluster.LogSQL(logs, err, replica.URL, "BackupVerification", config.LvlErr, "Backup verification could not restart the replication of %s: %s", replica.URL, err)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlErr, "Backup verification left %s in maintenance: nothing was loaded, but its replication did not restart, start it", replica.URL)
@@ -148,27 +148,13 @@ func (replica *ServerMonitor) checkVerificationResumable(meta *backupmgr.BackupM
 		return fmt.Errorf("backup %d is older than the binary logs of the primary %s (%s): %s could not replicate from its position; verify it on an external server", meta.Id, primary.URL, why, replica.URL)
 	}
 	switch {
-	case replica.HasMySQLGTID():
-		ok, query, err := dbhelper.GtidPurgedSubsetOf(primary.Conn, primary.DBVersion, gtid)
-		cluster.LogSQL(query, err, primary.URL, "BackupVerification", config.LvlErr, "Backup verification could not read the purged GTIDs of %s: %s", primary.URL, err)
-		if err != nil {
-			return fmt.Errorf("purged GTIDs of %s: %w", primary.URL, err)
-		}
-		if !ok {
-			return refused("it purged GTIDs the backup lacks")
-		}
-	case replica.IsMariaDB() && gtid != "" && replica.HasGTIDReplication():
-		oldest, err := oldestBinaryLog(primary)
+	case replica.HasMySQLGTID() || (replica.IsMariaDB() && gtid != "" && replica.HasGTIDReplication()):
+		ok, why, err := primary.gtidRetained(gtid, replica.HasMySQLGTID(), "BackupVerification", "Backup verification")
 		if err != nil {
 			return err
 		}
-		start, query, err := dbhelper.BinlogGtidPos(primary.Conn, primary.DBVersion, oldest)
-		cluster.LogSQL(query, err, primary.URL, "BackupVerification", config.LvlErr, "Backup verification could not read the GTID position of %s on %s: %s", oldest, primary.URL, err)
-		if err != nil {
-			return fmt.Errorf("GTID position of %s on %s: %w", oldest, primary.URL, err)
-		}
-		if domain, ok := mariadbGtidCovers(gtid, start); !ok {
-			return refused(fmt.Sprintf("its oldest binary log %s starts at %s, past the backup in domain %s", oldest, start, domain))
+		if !ok {
+			return refused(why)
 		}
 	case file != "":
 		oldest, err := oldestBinaryLog(primary)
@@ -184,6 +170,38 @@ func (replica *ServerMonitor) checkVerificationResumable(meta *backupmgr.BackupM
 		}
 	}
 	return nil
+}
+
+// gtidRetained tells whether primary still has every binary log after gtid, so that a server
+// at gtid can resume from it: mysqlGTID, a MySQL/Percona GTID set against gtid_purged; else a
+// MariaDB GTID position against the start of the oldest binary log (BINLOG_GTID_POS). why says
+// what is purged when it is not. Reads only (F1). module and what name the log lines.
+func (primary *ServerMonitor) gtidRetained(gtid string, mysqlGTID bool, module, what string) (bool, string, error) {
+	cluster := primary.ClusterGroup
+	if mysqlGTID {
+		ok, query, err := dbhelper.GtidPurgedSubsetOf(primary.Conn, primary.DBVersion, gtid)
+		cluster.LogSQL(query, err, primary.URL, module, config.LvlErr, "%s could not read the purged GTIDs of %s: %s", what, primary.URL, err)
+		if err != nil {
+			return false, "", fmt.Errorf("purged GTIDs of %s: %w", primary.URL, err)
+		}
+		if !ok {
+			return false, "it purged GTIDs the backup lacks", nil
+		}
+		return true, "", nil
+	}
+	oldest, err := oldestBinaryLog(primary)
+	if err != nil {
+		return false, "", err
+	}
+	start, query, err := dbhelper.BinlogGtidPos(primary.Conn, primary.DBVersion, oldest)
+	cluster.LogSQL(query, err, primary.URL, module, config.LvlErr, "%s could not read the GTID position of %s on %s: %s", what, oldest, primary.URL, err)
+	if err != nil {
+		return false, "", fmt.Errorf("GTID position of %s on %s: %w", oldest, primary.URL, err)
+	}
+	if domain, ok := mariadbGtidCovers(gtid, start); !ok {
+		return false, fmt.Sprintf("its oldest binary log %s starts at %s, past the backup in domain %s", oldest, start, domain), nil
+	}
+	return true, "", nil
 }
 
 // oldestBinaryLog returns the oldest binary log file of server.
@@ -325,11 +343,7 @@ func (replica *ServerMonitor) stopLiveReplication() error {
 	cluster := replica.ClusterGroup
 	for attempt := 0; attempt < 2; attempt++ {
 		// as the monitor reads them: every channel of MariaDB, MySQL's channels
-		read := dbhelper.GetChannelSlaveStatus
-		if replica.DBVersion.IsMariaDB() {
-			read = dbhelper.GetAllSlavesStatus
-		}
-		channels, query, err := read(replica.Conn, replica.DBVersion)
+		channels, query, err := replica.readNativeLinks(replica.DBVersion.IsMariaDB())
 		cluster.LogSQL(query, err, replica.URL, "BackupVerification", config.LvlDbg, "Backup verification could not read the replication of %s: %s", replica.URL, err)
 		if err != nil {
 			return fmt.Errorf("replication status: %w", err)
@@ -341,7 +355,7 @@ func (replica *ServerMonitor) stopLiveReplication() error {
 			}
 			running = append(running, "'"+ch.ConnectionName.String+"'")
 			if attempt == 0 {
-				logs, err := dbhelper.StopSlave(replica.Conn, ch.ConnectionName.String, replica.DBVersion)
+				logs, err := replica.ReplicationChannelLink(ch.ConnectionName.String).Stop(LinkByBackupVerification)
 				cluster.LogSQL(logs, err, replica.URL, "BackupVerification", config.LvlInfo, "Backup verification could not stop the channel %s of %s: %s", ch.ConnectionName.String, replica.URL, err)
 			}
 		}

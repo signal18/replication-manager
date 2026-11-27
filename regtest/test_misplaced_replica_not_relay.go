@@ -58,11 +58,11 @@ func (regtest *RegTest) TestMisplacedReplicaNotRelay(cl *cluster.Cluster, conf s
 		cl.Crashes = saved
 		cl.SetReplicationNoRelay(noRelay)
 		if m := cl.GetMaster(); m != nil && !isUnder(misplaced, m) {
-			if _, err := misplaced.SetReplicationGTIDSlavePosFromServer(m); err != nil {
+			if _, err := misplaced.SetReplicationGTIDSlavePosFromServer(m, cluster.LinkByTest); err != nil {
 				cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Cleanup: cannot point %s back to %s: %s", misplaced.URL, m.URL, err)
 			}
 		}
-		if _, err := misplaced.StartSlave(); err != nil {
+		if _, err := misplaced.ReplicationLink().Start(cluster.LinkByTest); err != nil {
 			cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Cleanup: cannot start replication on %s: %s", misplaced.URL, err)
 		}
 	}()
@@ -70,16 +70,16 @@ func (regtest *RegTest) TestMisplacedReplicaNotRelay(cl *cluster.Cluster, conf s
 	// 1. master <- upper <- misplaced
 	cl.SetReplicationNoRelay(false)
 	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Pointing %s to replica %s", misplaced.URL, upper.URL)
-	if _, err := misplaced.SetReplicationGTIDSlavePosFromServer(upper); err != nil {
+	if _, err := misplaced.SetReplicationGTIDSlavePosFromServer(upper, cluster.LinkByTest); err != nil {
 		return fail("cannot point %s to %s: %s", misplaced.URL, upper.URL, err)
 	}
-	misplaced.StartSlave()
+	misplaced.ReplicationLink().Start(cluster.LinkByTest)
 	if !waitFor(30*time.Second, func() bool { return isUnder(misplaced, upper) && inState("ERR00064", misplaced) }) {
 		return fail("%s under %s not detected (under=%t ERR00064=%t)", misplaced.URL, upper.URL, isUnder(misplaced, upper), inState("ERR00064", misplaced))
 	}
 
 	// 2. upper stays a plain, electable Slave.
-	misplaced.StopSlave()
+	misplaced.ReplicationLink().Stop(cluster.LinkByTest)
 	ticks := time.Duration(3*cl.Conf.MonitoringTicker) * time.Second
 	if waitFor(ticks, func() bool {
 		return upper.IsRelay || cl.StateMachine.IsInState("ERR00032") || inState("ERR00036", upper)
@@ -96,7 +96,7 @@ func (regtest *RegTest) TestMisplacedReplicaNotRelay(cl *cluster.Cluster, conf s
 		}
 	}
 	cl.Crashes = kept
-	misplaced.StartSlave()
+	misplaced.ReplicationLink().Start(cluster.LinkByTest)
 	cl.SetReplicationNoRelay(true)
 	if !waitFor(60*time.Second, func() bool { return isUnder(misplaced, master) }) {
 		return fail("%s still under %s without a crash electing %s (ERR00065=%t)", misplaced.URL, upper.URL, master.URL, cl.StateMachine.IsInState("ERR00065"))

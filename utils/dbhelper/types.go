@@ -530,6 +530,9 @@ type MasterStatus struct {
 
 // SlaveStatus represents slave/replica replication status (MariaDB and older MySQL)
 type SlaveStatus struct {
+	// Kind: the backend of the link this row describes, "native" (read from the server) or
+	// "cdc" (a replication plugin's feed, cluster/replication_cdc.go); never read from SQL
+	Kind                     string         `db:"-" json:"kind"`
 	ConnectionName           sql.NullString `db:"Connection_name" json:"connectionName"`
 	ChannelName              sql.NullString `db:"Channel_Name" json:"channelName"`
 	MasterHost               sql.NullString `db:"Master_Host" json:"masterHost"`

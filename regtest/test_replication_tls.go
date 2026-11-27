@@ -51,7 +51,7 @@ func tlsChannel(cl *cluster.Cluster, s *cluster.ServerMonitor) (dbhelper.SlaveSt
 	if s.Conn == nil {
 		return dbhelper.SlaveStatus{}, fmt.Errorf("no connection to %s", s.URL)
 	}
-	st, _, err := dbhelper.GetSlaveStatus(s.Conn, cl.Conf.MasterConn, s.DBVersion)
+	st, _, err := s.ReplicationLink().ReadStatus()
 	return st, err
 }
 
@@ -223,11 +223,11 @@ func (regtest *RegTest) TestReplicationTLSStaleCAEmptied(cl *cluster.Cluster, co
 		tlsLogf(cl, "FAIL ReplicationTLSStaleCAEmptied: the failed handshake is not reported: %s", err)
 		return false
 	}
-	if _, err := slave.SetReplicationGTIDSlavePosFromServer(master); err != nil {
+	if _, err := slave.SetReplicationGTIDSlavePosFromServer(master, cluster.LinkByTest); err != nil {
 		tlsLogf(cl, "FAIL ReplicationTLSStaleCAEmptied: re-point: %s", err)
 		return false
 	}
-	slave.StartSlave()
+	slave.ReplicationLink().Start(cluster.LinkByTest)
 	if err := tlsSlavesReplicate(cl, 60*time.Second, func(ca string) bool { return ca == "" }); err != nil {
 		tlsLogf(cl, "FAIL ReplicationTLSStaleCAEmptied: the CHANGE MASTER did not empty the stale CA: %s", err)
 		return false

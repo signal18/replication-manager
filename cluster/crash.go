@@ -571,7 +571,7 @@ func (cluster *Cluster) ProcessArmedRejoins() {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Operator-armed rejoin of %s via %q — running", server.URL, cr.RejoinMethod)
 			// async: a reseed can run for hours/days; never block the monitor loop.
 			// RejoinMaster's rejoinInProgress guard makes the per-tick spawn safe.
-			go server.RejoinMaster()
+			go server.ReplicationLink().Rejoin()
 		}
 	}
 }

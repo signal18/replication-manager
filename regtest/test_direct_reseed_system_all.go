@@ -563,7 +563,7 @@ func (regtest *RegTest) TestDirectReseedSystemAllRetainsArtifactOnPhaseTwoFailur
 		// permanently unusable) retry state.
 		var slaveStartErrs []string
 		for _, rep := range slave.Replications {
-			if _, err := slave.StartSlaveChannel(rep.ConnectionName.String); err != nil {
+			if _, err := slave.ReplicationChannelLink(rep.ConnectionName.String).Start(clusterpkg.LinkByTest); err != nil {
 				slaveStartErrs = append(slaveStartErrs, fmt.Sprintf("%s: %s", rep.ConnectionName.String, err))
 			}
 		}
