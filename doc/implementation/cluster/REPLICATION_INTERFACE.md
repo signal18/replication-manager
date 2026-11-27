@@ -1,6 +1,6 @@
 # Replication plugins: one interface for every link
 
-Issue #2453. Status: **design validated by the maintainer (2026-11-27)**. Steps 1 and 2 (below,
+Issue #2453. Status: **design validated by the maintainer (2026-11-27)**. Steps 1, 2 and 2b (below,
 "Where the code is today") are coded and tested; the rest of this document is the target.
 
 ## The rule
@@ -33,11 +33,12 @@ The object already exists: every `ServerMonitor` holds its replications in `serv
 
 1. `Cluster.TopologyDiscover` (`cluster_topo.go`) starts `server.Ping` for each server;
 2. `ServerMonitor.Ping` (`srv.go`) calls `server.Refresh()`;
-3. `ServerMonitor.Refresh` calls `server.refreshNativeLinks()`, then fills `server.ReplicationFeeds`
-   from `cluster.cdcFeedStatus(server)` (the CDC feeds, in a second list since step 1);
-4. `refreshNativeLinks` (`replication_native.go`) stores the rows of `readNativeLinks`
-   (`SHOW ALL SLAVES STATUS`, or the channels one by one, or the PostgreSQL subscriptions) in
-   `server.Replications`;
+3. `ServerMonitor.Refresh` calls `server.refreshNativeLinks()` and `cluster.cdcFeedsOf(server)`
+   and stores both, in that order, in `server.Replications` (one assignment);
+4. `refreshNativeLinks` (`replication_native.go`) builds one native `Replication` per row of
+   `readNativeLinks` (`SHOW ALL SLAVES STATUS`, or the channels one by one, or the PostgreSQL
+   subscriptions); `cdcFeedsOf` (`replication_cdc.go`) one CDC `Replication` per feed whose target
+   is the server;
 5. back in `TopologyDiscover`, once every `Ping` is done, the graph is built: the master, the
    replicas, who replicates from whom.
 
@@ -257,29 +258,69 @@ interface. A function is a verb of every plugin, or the bootstrap of one plugin.
   `replication-plugin-feed-create-source-objects` for the PostgreSQL slot), and a `remove` that takes
   every trigger and table it created away.
 
-## Where the code is today (steps 1 and 2, coded and tested)
+## Where the code is today (steps 1, 2 and 2b, coded and tested)
 
-- `cluster/replication.go`: the `ReplicationPlugin` interface, `ReplicationManifest`,
-  `ReplicationTopology`, the `ReplicationAction*` names (the external contract's: `start-copy`,
-  `stop-apply`, ...), and `Link` (the plugin, the server it writes into, the channel or feed name,
-  the plugin's configuration of it). `Link`'s methods check the manifest, then call the plugin with
-  the link: an action the manifest does not list answers `ErrReplicationNotSupported` before any
-  call. `server.ReplicationLink()`, `ReplicationChannelLink(name)` and `ReplicationLinks()` return
-  `Link` values.
-- `cluster/replication_registry.go`: the registry, built as the orchestrators'
-  (`newReplicationPluginList` beside `newOrchestratorList`, `cluster.ReplicationPlugin(name)` never
-  nil: a null plugin with no action for an unknown name), and `unsupportedReplicationPlugin`, which
-  each plugin embeds for the actions it does not implement.
-- `cluster/replication_native.go`: the native plugin, one manifest (`repl-mariadb-mariadb-native`)
-  for every engine until step 3, the code moved from `srv.go`, `srv_set.go` and the status read,
-  the statements unchanged. `StartCopyEvents` and `StartApplyEvents` are new (`START SLAVE
-  IO_THREAD` / `SQL_THREAD` of the channel, `dbhelper.StartSlaveIOThread` / `StartSlaveSQLThread`;
-  PostgreSQL has no separate thread: an error, no statement). The lock test
-  `TestNoReplicationLinkSQLOutsideBackend` keeps the link SQL there.
-- `cluster/replication_cdc.go`: the CDC plugin, one generic manifest (`repl-cdc`) for every binary
-  until step 4: status, start, stop, rejoin, over the feed's TOML, State and status line.
-- Bootstrap and Create are in the interface; both plugins answer `ErrReplicationNotSupported`
-  ("step 5") and the bootstrap stays in `prov.go`.
+- `cluster/replication.go`: the `Replication` interface of the design, plus **`Row()`**: the row of
+  the monitor's last read, no statement, what the code that only reads a field uses (`Status()`
+  reads the server again, as before). `ReplicationPlugin` keeps `Manifest`, `Create` and
+  `Bootstrap` (both still `ErrReplicationNotSupported`, step 5). `Endpoint`, `Position` (an alias
+  of `ReplicationTarget`, the type the waits already used: a GTID, else a file and a position),
+  `ChangeSourceOpt` (an alias of `dbhelper.ChangeMasterOpt`: the rest of the definition) and
+  `LinkOptions` (the properties `Configure` sets). `replicationBase` holds what every object
+  holds and answers `ErrReplicationNotSupported` to every verb; each plugin's type embeds it and
+  declares the verbs its manifest lists, as `unsupportedOrchestrator`.
+- `server.Replications` and `LastSeenReplications` are a `ReplicationList` (`[]Replication`):
+  `OfKind`, `Rows`, `Named`. `server.NativeReplications()` is the native channels only: what the
+  code that acts on the engine's channels iterates (the multi-source failover, the reseed, the stop
+  of every channel, the checks), so a CDC feed in the list changes none of them.
+  `server.ReplicationLink()` / `ReplicationChannelLink(name)` return the object of the last read,
+  or a new one with an empty row for a channel not defined yet (the `CHANGE MASTER` of a new
+  replica).
+- **The ends**: `TargetServer` the server, `TargetCluster` its cluster; `SourceServer` from the
+  row's `Master_Host`/`Master_Port` (a feed: its TOML's source) matched against this cluster's
+  servers, then the other clusters' (`serverOfAnyCluster`, the lookup `replPluginSourcePass` used,
+  without the cluster lock), else an external `Endpoint{Host, Port}` with `SourceCluster` nil.
+- **The JSON**: each entry is the row with today's keys, then `plugin`, `sourceCluster`,
+  `sourceServer`, `targetCluster`, `targetServer` (the clusters' names, the servers' URLs);
+  `replicationFeeds` is gone, the GUI reads the feeds from `replications` by `kind`. The list
+  decodes back (the CLI, the gRPC API's double marshal) as objects detached from any server, whose
+  verbs answer an error. `serverstate.json`, the staging's `replications.json` and the
+  `slave-status` API keep writing the native rows only, as before.
+- `cluster/replication_native.go`: the native object, every verb of the manifest, the statements
+  unchanged. The new verbs took over the existing code:
+  - `Promote`: the failover and switchover's promotion of the candidate (`cluster_fail.go`): on
+    MySQL and Percona the stop of the channel, `RESET SLAVE ALL` on it, then `SetReadWrite`, each
+    step logged as before; PostgreSQL `PostgresPromote` (`cluster_fail_postgres.go`: the
+    failover, the switchover and its rollback).
+  - `SetPosition`: `SetGTIDSlavePos` on MariaDB (the failover's copy of the old leader's GTID, the
+    flashback rejoin, the ColumnStore rebootstrap, the seed of a child, the bootstrap cleanup),
+    `SetGtidPurged` on MySQL (the backup verification); PostgreSQL not supported.
+  - `WaitCaughtUp`: `MasterWaitGTIDReached` / `MasterPosWaitReached` (the same `MASTER_GTID_WAIT`
+    and `MASTER_POS_WAIT` statements as `MasterWaitGTID` / `MasterPosWait`), for
+    `WaitSyncToMaster` (switchover, rolling operations), `WaitSyncToTarget` and the positional
+    rejoin of a relay. A timeout is `ErrReplicationNotCaughtUp`, a NULL result
+    `dbhelper.ErrWaitAborted`; the callers that ignored both before still do. PostgreSQL not
+    supported here yet (`postgresWaitSync` reads the primary: step 3).
+  - `Configure`: the setters of the `force-slave-*` enforcement (`CheckSlaveSettings`: GTID mode,
+    gtid_strict_mode, exec mode, parallel mode) and of `force-slave-heartbeat`
+    (`checkReplicationHeartbeatPeriod`); the decision and the states stay the monitor's, no key
+    changed (T16). PostgreSQL not supported.
+  - `RotateCredential`: `ChangeReplicationPassword` with the cluster's replication account (the
+    rejoin after a rotation). PostgreSQL not supported.
+- `StopCopyEvents`, `StopApplyEvents` and `ChangeSource` record the link change (WARN0352) once
+  their statement succeeded, as `Stop` and `ResetPositions`; a CDC `Stop` once the TOML says so.
+- The failover's extra multi-source loop (`FailoverExtraMultiSource`) takes only the replications
+  whose manifest lists `promote` and `change-source` (`CanFailover`): never a CDC feed.
+- `cluster/replication_cdc.go`: the CDC object (`cdcReplication`, its feed and its row), status,
+  start, stop, rejoin, as before.
+- The lock test `TestNoReplicationLinkSQLOutsideBackend` now covers the moved helpers too
+  (`PostgresPromote`, `SetGTIDSlavePos`, `SetGtidPurged`, the four waits, the five setters,
+  `ChangeReplicationPassword`): `cluster/replication_native.go` only.
+- Decided while coding (2b): the switchover's `Refresh` of the new master ("fresh GTID pos before
+  open traffic") runs right after `Promote`, so after `read_only` off instead of just before it:
+  the statements sent and their order are the same, no traffic reaches the new master before
+  `failoverProxies`, and `SetReadWrite` reads `read_only` from the last tick as the failover always
+  did. The `[[repl-link]]` level of the settings is not coded (later).
 - `cluster/srv_link_change.go`: the link changes as states (WARN0352).
 - Tested on dev3 (2026-11-27), each step: switchover with stopped replicas, failover, mysqldump
   reseed; no regression against release/4.0.1 (details in the pull request).
@@ -289,7 +330,7 @@ interface. A function is a verb of every plugin, or the bootstrap of one plugin.
 | Step | What changes |
 |---|---|
 | 2 | (done) `ReplicationLink` becomes `ReplicationPlugin` + `Link`; the verbs renamed (`StopCopyEvents`, `StopApplyEvents`) and `StartCopyEvents`, `StartApplyEvents` added; the manifest; the registry of plugins (as `newOrchestratorList`) |
-| 2b | The `Link` of step 2 replaced by the `Replication` object: each entry of `server.Replications` (and `LastSeenReplications`) a `Replication` of its plugin, filled where `Refresh` stores the rows today, `ReplicationFeeds` merged into the list, the JSON kept; its four ends (`SourceCluster`, `SourceServer`, `TargetCluster`, `TargetServer`); `Promote`, `SetPosition`, `WaitCaughtUp`, `Configure`, `RotateCredential` added; the failover, switchover, reseed and rejoin calls moved onto them; `StopCopyEvents`, `StopApplyEvents` and `ChangeSource` record the link change once their statement succeeded, as `Stop` |
+| 2b | (done) The `Link` of step 2 replaced by the `Replication` object: each entry of `server.Replications` (and `LastSeenReplications`) a `Replication` of its plugin, filled where `Refresh` stores the rows today, `ReplicationFeeds` merged into the list, the JSON kept; its four ends (`SourceCluster`, `SourceServer`, `TargetCluster`, `TargetServer`); `Promote`, `SetPosition`, `WaitCaughtUp`, `Configure`, `RotateCredential` added; the failover, switchover, reseed and rejoin calls moved onto them; `StopCopyEvents`, `StopApplyEvents` and `ChangeSource` record the link change once their statement succeeded, as `Stop` |
 | 3 | The native code split into the built-in plugins: binlog (three manifests), galera, group replication, postgresql, columnstore |
 | 4 | `replication_cdc.go` becomes the external adapter; the CDC plugins declare their settings in their manifests (the `replication-plugin-*` keys stay valid as their cluster level); the CDC binaries renamed (`replplugin-innodb` → `repl-mariadb-mariadb-cdc`, `replplugin-columnstore` → `repl-mariadb-columnstore-cdc`, `replplugin-duckdb` → `repl-mariadb-duckdb-cdc`, `replplugin-postgresql` → `repl-postgresql-mariadb-cdc`) with their manifests |
 | 5 | `Bootstrap` and `Create` moved from `prov.go` into the plugins, topology by topology |
