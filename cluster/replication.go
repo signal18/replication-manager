@@ -67,8 +67,8 @@ type Replication interface {
 
 	// ResetPositions clears the positions and keeps the link (RESET SLAVE without ALL, T27).
 	ResetPositions(reason string) (string, error)
-	// SetPosition sets where the target's apply resumes (native: gtid_slave_pos on MariaDB,
-	// GTID_PURGED on MySQL).
+	// SetPosition sets where the target's apply resumes (native: gtid_slave_pos on MariaDB, the
+	// link's; GTID_PURGED on MySQL, the server's GTID state, only right after a restore).
 	SetPosition(at Position, reason string) (string, error)
 	// SkipEvent skips the next event of the apply (sql_slave_skip_counter); the caller stops
 	// and starts the link around it.
@@ -77,8 +77,8 @@ type Replication interface {
 	// rejoin code only, under their guards. opt carries the rest of the definition; opt.Channel
 	// names the native channel, as dbhelper.ChangeMaster reads it.
 	ChangeSource(to Endpoint, opt ChangeSourceOpt, reason string) (string, error)
-	// Promote ends this edge and makes its target a source (native: RESET SLAVE ALL then
-	// read_only off; PostgreSQL pg_promote()).
+	// Promote ends this edge so its target can become a source (native: RESET SLAVE ALL on the
+	// channel; PostgreSQL pg_promote()). read_only is the server's: the caller sets it.
 	Promote(reason string) (string, error)
 	// Remove deletes the replication's definition (native: RESET SLAVE ALL): the promotion of a
 	// replica, and a request of the operator only (T27).
@@ -242,6 +242,10 @@ func CanFailover(r Replication) bool {
 // a repoint of a feed whose source follows replication-plugin-source, a bootstrap not moved
 // into the plugins yet). Wrapped with the action and the replication: errors.Is tests it.
 var ErrReplicationNotSupported = errors.New("operation not supported by this replication link")
+
+// ErrReplicationPositionNotEmpty: SetPosition on MySQL refused, the server already has a GTID
+// state (gtid_executed not empty): GTID_PURGED is set only right after a restore.
+var ErrReplicationPositionNotEmpty = errors.New("the server's GTID state is not empty")
 
 // ErrReplicationNotCaughtUp: WaitCaughtUp's timeout came before the position.
 var ErrReplicationNotCaughtUp = errors.New("replication did not reach the position before the timeout")

@@ -262,20 +262,11 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	cluster.ConfigManager.SaveConfig(cluster, true)
 
 	if !cluster.Conf.MultiMaster && !cluster.Conf.MultiMasterGrouprep {
-		// the promotion of the candidate's managed replication: stop it on MySQL, RESET SLAVE
-		// ALL, read_only off; each step logged by Promote
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Resetting slave on new master and set read/write mode on")
-		_, err = cluster.master.ReplicationLink().Promote(failoverOrSwitchover(fail))
-	} else {
-		err = cluster.master.SetReadWrite()
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could not set new master as read-write")
-		}
 	}
-	if !fail {
-		// Get Fresh GTID pos (read_only is off since the promotion: no traffic is routed to the
-		// new master before failoverProxies)
-		cluster.master.Refresh()
+	err = openNewMaster(cluster.master.ReplicationLink(), failoverOrSwitchover(fail), !cluster.Conf.MultiMaster && !cluster.Conf.MultiMasterGrouprep, !fail, cluster.master.Refresh, cluster.master.SetReadWrite)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could not set new master as read-write")
 	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Failover proxies")
 	cluster.failoverProxies()
@@ -1640,4 +1631,22 @@ func (cluster *Cluster) CloseRing(oldMaster *ServerMonitor) error {
 	cluster.LogSQL(logs, err, child.URL, "MasterFailover", config.LvlErr, "Could not start slave on server %s, %s", child.URL, err)
 
 	return nil
+}
+
+// openNewMaster is the order the promotion of a MariaDB/MySQL candidate keeps, on purpose: the
+// link ends first (Promote: RESET SLAVE ALL, when promote), then on a switchover (refresh) the new
+// master's position is read, then read_only goes off. The position read is the one the other
+// replicas are repointed to: read after read_only off, a write of an application connected
+// directly could slip in before it, and positional replicas would skip it (F5: nothing proves no
+// traffic reaches the new master before the proxies switch). Returns SetReadWrite's error;
+// Promote logs its own.
+func openNewMaster(link Replication, reason string, promote, refresh bool, refreshServer func() error, setReadWrite func() error) error {
+	if promote {
+		link.Promote(reason)
+	}
+	if refresh {
+		// Get Fresh GTID pos before open traffic
+		refreshServer()
+	}
+	return setReadWrite()
 }

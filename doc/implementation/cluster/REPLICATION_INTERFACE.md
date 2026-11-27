@@ -71,7 +71,7 @@ type Replication interface {
     SetPosition(at Position, reason string) (string, error)
     SkipEvent(reason string) (string, error)
     ChangeSource(to Endpoint, opt ChangeSourceOpt, reason string) (string, error) // failover, switchover, rejoin only
-    Promote(reason string) (string, error)            // this edge ends, its target becomes a source
+    Promote(reason string) (string, error)            // this edge ends, so its target can become a source
     Remove(reason string) (string, error)             // promotion or operator only (T27)
     Rejoin() error                                    // resume, or rebuild from a new initial load
 
@@ -109,8 +109,9 @@ type Endpoint struct {
   master, then `ChangeSource` of the other replicas' replications to the new master.
 - `Position` is the engine's position (a GTID set, a binlog file and offset, a PostgreSQL LSN), read
   and written by the plugin; repman compares positions only through it.
-- `Promote` by engine: MariaDB and MySQL `RESET SLAVE ALL` on that replication then `read_only` off;
-  PostgreSQL `pg_promote()`; Group Replication `group_replication_set_as_primary`; Galera nothing to do
+- `Promote` by engine: MariaDB and MySQL `RESET SLAVE ALL` on that replication (on MySQL the channel
+  stopped first); `read_only` is the server's, not the link's, and stays the failover's, after it read
+  the new master's position (below); PostgreSQL `pg_promote()`; Group Replication `group_replication_set_as_primary`; Galera nothing to do
   (every member writes); a CDC feed is never promoted (a child never replaces its parent).
 
 - The verbs name what the link does whatever the engine: it **copies** the source's events, then
@@ -285,16 +286,27 @@ interface. A function is a verb of every plugin, or the bootstrap of one plugin.
   `replicationFeeds` is gone, the GUI reads the feeds from `replications` by `kind`. The list
   decodes back (the CLI, the gRPC API's double marshal) as objects detached from any server, whose
   verbs answer an error. `serverstate.json`, the staging's `replications.json` and the
-  `slave-status` API keep writing the native rows only, as before.
+  `slave-status` API keep writing the native rows only, as before: unchanged on purpose (the
+  maintainer's decision, 2026-11-27).
 - `cluster/replication_native.go`: the native object, every verb of the manifest, the statements
   unchanged. The new verbs took over the existing code:
-  - `Promote`: the failover and switchover's promotion of the candidate (`cluster_fail.go`): on
-    MySQL and Percona the stop of the channel, `RESET SLAVE ALL` on it, then `SetReadWrite`, each
-    step logged as before; PostgreSQL `PostgresPromote` (`cluster_fail_postgres.go`: the
-    failover, the switchover and its rollback).
-  - `SetPosition`: `SetGTIDSlavePos` on MariaDB (the failover's copy of the old leader's GTID, the
-    flashback rejoin, the ColumnStore rebootstrap, the seed of a child, the bootstrap cleanup),
-    `SetGtidPurged` on MySQL (the backup verification); PostgreSQL not supported.
+  - `Promote`: the link part of the failover and switchover's promotion of the candidate
+    (`cluster_fail.go`): on MySQL and Percona the stop of the channel, then `RESET SLAVE ALL` on
+    it, each step logged as before; PostgreSQL `PostgresPromote` (`cluster_fail_postgres.go`: the
+    failover, the switchover and its rollback, each at the place it was). `read_only` is not the
+    link's: `openNewMaster` (`cluster_fail.go`) keeps the order of before, `Promote`, then on a
+    switchover the new master's `Refresh` ("fresh GTID pos before open traffic"), then
+    `SetReadWrite`. The position that refresh reads is the one the other replicas are repointed
+    to; read after `read_only` off, a write of an application connected directly could slip in
+    before it and positional replicas would skip it (F5: nothing proves no traffic reaches the
+    new master before the proxies switch). `TestOpenNewMasterOrder` holds the order.
+  - `SetPosition`: on MariaDB the link's resume position, `SetGTIDSlavePos` (the failover's copy
+    of the old leader's GTID, the flashback rejoin, the ColumnStore rebootstrap, the seed of a
+    child, the bootstrap cleanup). On MySQL it is `GTID_PURGED`, the server's whole GTID state,
+    valid only right after a restore (after `RESET MASTER`): refused
+    (`ErrReplicationPositionNotEmpty`, nothing sent) when `gtid_executed` is not empty, read
+    through `dbhelper.GetVariableByName` (the backup verification, its one caller, resets the
+    binary logs first). PostgreSQL not supported.
   - `WaitCaughtUp`: `MasterWaitGTIDReached` / `MasterPosWaitReached` (the same `MASTER_GTID_WAIT`
     and `MASTER_POS_WAIT` statements as `MasterWaitGTID` / `MasterPosWait`), for
     `WaitSyncToMaster` (switchover, rolling operations), `WaitSyncToTarget` and the positional
@@ -316,11 +328,7 @@ interface. A function is a verb of every plugin, or the bootstrap of one plugin.
 - The lock test `TestNoReplicationLinkSQLOutsideBackend` now covers the moved helpers too
   (`PostgresPromote`, `SetGTIDSlavePos`, `SetGtidPurged`, the four waits, the five setters,
   `ChangeReplicationPassword`): `cluster/replication_native.go` only.
-- Decided while coding (2b): the switchover's `Refresh` of the new master ("fresh GTID pos before
-  open traffic") runs right after `Promote`, so after `read_only` off instead of just before it:
-  the statements sent and their order are the same, no traffic reaches the new master before
-  `failoverProxies`, and `SetReadWrite` reads `read_only` from the last tick as the failover always
-  did. The `[[repl-link]]` level of the settings is not coded (later).
+- The `[[repl-link]]` level of the settings is not coded (later).
 - `cluster/srv_link_change.go`: the link changes as states (WARN0352).
 - Tested on dev3 (2026-11-27), each step: switchover with stopped replicas, failover, mysqldump
   reseed; no regression against release/4.0.1 (details in the pull request).

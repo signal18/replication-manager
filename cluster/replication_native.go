@@ -7,6 +7,7 @@ package cluster
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/signal18/replication-manager/config"
@@ -209,12 +210,13 @@ func (r *nativeReplication) Remove(reason string) (string, error) {
 	return logs, err
 }
 
-// Promote is the failover and switchover's promotion of the candidate, moved from
-// cluster_fail.go with its statements and its log lines: on MySQL and Percona the channel is
-// stopped first (a reset needs every thread stopped), then RESET SLAVE ALL on the channel
-// (Remove), then read_only off (SetReadWrite), each step tried whatever the previous one gave,
-// as before. PostgreSQL: pg_promote() (PostgresPromote), the standby leaves recovery. Each
-// failure is logged here; the error joins them.
+// Promote ends this edge, the link part of the failover and switchover's promotion of the
+// candidate, moved from cluster_fail.go with its statements and its log lines: on MySQL and
+// Percona the channel is stopped first (a reset needs every thread stopped), then RESET SLAVE ALL
+// on the channel (Remove), the reset tried whatever the stop gave, as before. read_only is the
+// server's, not the link's: the failover sets it off itself (SetReadWrite) after reading the new
+// master's position (openNewMaster). PostgreSQL: pg_promote() (PostgresPromote), the standby
+// leaves recovery. Each failure is logged here; the error joins them.
 func (r *nativeReplication) Promote(reason string) (string, error) {
 	server, err := r.conn()
 	if err != nil {
@@ -237,18 +239,16 @@ func (r *nativeReplication) Promote(reason string) (string, error) {
 	cluster.LogSQL(logs, err, server.URL, "MasterFailover", config.LvlErr, "Failed reset slave on new master %s %s", server.URL, err)
 	all += logs
 	errs = append(errs, err)
-	if err := server.SetReadWrite(); err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could not set new master as read-write")
-		errs = append(errs, err)
-	}
 	return all, errors.Join(errs...)
 }
 
-// SetPosition sets where the apply resumes: gtid_slave_pos on MariaDB (SetGTIDSlavePos, every
-// caller's statement until now), GTID_PURGED on MySQL and Percona (SetGtidPurged, the backup
-// verification's). A global of the server, not of the channel; not recorded (the callers stop
-// the link around it). PostgreSQL: a subscription's position is its replication origin, which
-// repman does not set: ErrReplicationNotSupported.
+// SetPosition sets where the apply resumes. MariaDB: gtid_slave_pos, the link's resume position
+// (SetGTIDSlavePos, every caller's statement until now). MySQL and Percona: GTID_PURGED
+// (SetGtidPurged, the backup verification's), which is the server's whole GTID state, not the
+// link's: valid only right after a restore, once RESET MASTER emptied gtid_executed; on a server
+// whose gtid_executed is not empty it is refused (ErrReplicationPositionNotEmpty), never
+// attempted. Not recorded (the callers stop the link around it). PostgreSQL: a subscription's
+// position is its replication origin, which repman does not set: ErrReplicationNotSupported.
 func (r *nativeReplication) SetPosition(at Position, reason string) (string, error) {
 	server, err := r.conn()
 	if err != nil {
@@ -258,6 +258,13 @@ func (r *nativeReplication) SetPosition(at Position, reason string) (string, err
 	case server.DBVersion.IsPostgreSQL():
 		return "", r.notSupported(ReplicationActionSetPosition + " on PostgreSQL")
 	case server.DBVersion.IsMySQLOrPercona():
+		executed, logs, err := dbhelper.GetVariableByName(server.Conn, "GTID_EXECUTED", server.DBVersion)
+		if err != nil {
+			return logs, err
+		}
+		if strings.TrimSpace(executed) != "" {
+			return logs, fmt.Errorf("%w: gtid_executed of %s is %q, GTID_PURGED is set only on a server just reset (RESET MASTER after a restore)", ErrReplicationPositionNotEmpty, server.URL, executed)
+		}
 		return dbhelper.SetGtidPurged(server.Conn, server.DBVersion, at.GTID)
 	}
 	return dbhelper.SetGTIDSlavePos(server.Conn, at.GTID)
