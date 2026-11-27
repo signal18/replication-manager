@@ -1070,9 +1070,14 @@ func (server *ServerMonitor) SetDataDiverge() {
 		server.IsDataDiverge = false
 		return
 	}
+	if server.DictTables == nil {
+		server.IsDataDiverge = false
+		return
+	}
 	for _, t := range server.Tables {
 		td := server.DictTables.Get(t.TableSchema + "." + t.TableName)
-		if len(td.TableChunksError) > 0 {
+		// A table not in the dictionary yet has no checksum result (#2465).
+		if td != nil && len(td.TableChunksError) > 0 {
 			server.IsDataDiverge = true
 			return
 		}

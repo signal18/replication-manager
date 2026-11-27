@@ -1544,7 +1544,14 @@ func (server *ServerMonitor) GetTablePK(schema string, table string) (string, er
 }
 
 func (server *ServerMonitor) GetTableColumDef(schema string, table string, column string) string {
+	if server.DictTables == nil {
+		return ""
+	}
 	t := server.DictTables.Get(schema + "." + table)
+	if t == nil {
+		// Not in the dictionary (#2465): no type known.
+		return ""
+	}
 	for _, c := range t.TableColumns {
 		if c.Name == column {
 			return c.Type

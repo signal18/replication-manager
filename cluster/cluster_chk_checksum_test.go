@@ -101,3 +101,28 @@ func TestCheckAllTableChecksumSchemaSkipsMissingTable(t *testing.T) {
 		t.Fatalf("CheckAllTableChecksum: want NA on the known table, got %q", kept.TableSync)
 	}
 }
+
+// TestChecksumHelpersMissingTable: the two ServerMonitor helpers on the
+// checksum path (the divergence flag set after a checksum, the PK column type
+// read during one) handle a table missing from the dictionary.
+func TestChecksumHelpersMissingTable(t *testing.T) {
+	cl, srv := newTestClusterServer(t)
+	cl.Conf.MonitorChecksumScheduler = true
+	srv.Tables = []dbhelper.Table{{TableSchema: "app", TableName: "gone"}}
+
+	srv.DictTables = nil
+	srv.SetDataDiverge()
+	if got := srv.GetTableColumDef("app", "gone", "id"); got != "" {
+		t.Fatalf("GetTableColumDef with no dictionary: want empty, got %q", got)
+	}
+
+	srv.DictTables = dbhelper.NewTablesMap()
+	srv.IsDataDiverge = true
+	srv.SetDataDiverge()
+	if srv.IsDataDiverge {
+		t.Fatal("SetDataDiverge: a table missing from the dictionary has no divergence")
+	}
+	if got := srv.GetTableColumDef("app", "gone", "id"); got != "" {
+		t.Fatalf("GetTableColumDef: want empty, got %q", got)
+	}
+}
