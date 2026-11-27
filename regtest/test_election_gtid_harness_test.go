@@ -1,17 +1,23 @@
 package regtest
 
 import (
+	"context"
 	"database/sql"
+	"fmt"
 	"io"
 	"os"
+	"strings"
 	"testing"
 	"time"
+
+	mysqldrv "github.com/go-sql-driver/mysql"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/jmoiron/sqlx"
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/state"
+	"github.com/signal18/replication-manager/utils/version"
 	"github.com/sirupsen/logrus"
 )
 
@@ -89,15 +95,16 @@ func indMock(t *testing.T) (*sql.DB, sqlmock.Sqlmock) {
 	return db, mock
 }
 
-func finalChecksRun(t *testing.T, writeErr error, holders int, dropDelay time.Duration) *electionRun {
+func finalChecksRun(t *testing.T, writeErr error, holders int, dropDelay time.Duration, replicaIO string) *electionRun {
 	t.Helper()
 	withTimeout(t, 150*time.Millisecond)
-	r := &electionRun{cl: harnessCluster(), name: "unit", schema: "regtest_election_2451", prefered: map[string]bool{}}
+	r := &electionRun{cl: harnessCluster(), name: "unit", schema: "regtest_election_2451_ab12cd34", prefered: map[string]bool{}, schemaOwned: true}
 	primary, pmock := mockServer(t, "p")
 	replica, _ := mockServer(t, "r")
 	writeDB, w := indMock(t)
 	pLockDB, pl := indMock(t)
 	rLockDB, rl := indMock(t)
+	rThreadsDB, rt := indMock(t)
 	w.ExpectExec("SET SESSION lock_wait_timeout").WillReturnResult(sqlmock.NewResult(0, 0))
 	if writeErr != nil {
 		w.ExpectExec("INSERT INTO").WillReturnError(writeErr)
@@ -106,7 +113,8 @@ func finalChecksRun(t *testing.T, writeErr error, holders int, dropDelay time.Du
 	}
 	pl.ExpectQuery("performance_schema.metadata_locks").WillReturnRows(sqlmock.NewRows([]string{"n"}).AddRow(holders))
 	rl.ExpectQuery("performance_schema.metadata_locks").WillReturnRows(sqlmock.NewRows([]string{"n"}).AddRow(0))
-	useIndependent(t, map[string][]*sql.DB{"p": {writeDB, pLockDB}, "r": {rLockDB}})
+	rt.ExpectQuery("SHOW REPLICA STATUS").WillReturnRows(sqlmock.NewRows([]string{"Replica_IO_Running", "Replica_SQL_Running"}).AddRow(replicaIO, "Yes"))
+	useIndependent(t, map[string][]*sql.DB{"p": {writeDB, pLockDB}, "r": {rLockDB, rThreadsDB}})
 	e := pmock.ExpectExec("DROP DATABASE")
 	if dropDelay > 0 {
 		e.WillDelayFor(dropDelay)
@@ -125,16 +133,19 @@ func TestElectionFinalChecks(t *testing.T) {
 		}
 		return false
 	}
-	if r := finalChecksRun(t, nil, 0, 0); len(r.failed) != 0 {
+	if r := finalChecksRun(t, nil, 0, 0, "Yes"); len(r.failed) != 0 {
 		t.Fatalf("clean end: failed=%v, want none", r.failed)
 	}
-	if r := finalChecksRun(t, nil, 1, 0); !has(r, "cleanup-global-lock") {
+	if r := finalChecksRun(t, nil, 1, 0, "Yes"); !has(r, "cleanup-global-lock") {
 		t.Fatalf("a global read lock held by an idle session: failed=%v, want cleanup-global-lock", r.failed)
 	}
-	if r := finalChecksRun(t, sql.ErrConnDone, 0, 0); !has(r, "cleanup-writable") {
+	if r := finalChecksRun(t, sql.ErrConnDone, 0, 0, "Yes"); !has(r, "cleanup-writable") {
 		t.Fatalf("a refused independent write: failed=%v, want cleanup-writable", r.failed)
 	}
-	r := finalChecksRun(t, nil, 0, 3*time.Second)
+	if r := finalChecksRun(t, nil, 0, 0, "No"); !has(r, "cleanup-replication") {
+		t.Fatalf("a replica whose I/O thread is not running at the end: failed=%v, want cleanup-replication", r.failed)
+	}
+	r := finalChecksRun(t, nil, 0, 3*time.Second, "Yes")
 	if !has(r, "cleanup-drop") {
 		t.Fatalf("a DROP that never returns: failed=%v, want cleanup-drop", r.failed)
 	}
@@ -235,6 +246,96 @@ func TestElectionReplicaThreads(t *testing.T) {
 		io, sqlRun, err := electionReplicaThreads(&cluster.ServerMonitor{URL: "s"})
 		if err != nil || io != c.io || sqlRun != c.sqlRun {
 			t.Fatalf("columns %v: io=%q sql=%q err=%v", c.cols, io, sqlRun, err)
+		}
+	}
+}
+
+// Only the exact read-only refusal counts as a rejected write: not a connection, an authentication or any other error.
+func TestElectionReadOnlyRejection(t *testing.T) {
+	for _, c := range []struct {
+		err  error
+		want bool
+	}{
+		{&mysqldrv.MySQLError{Number: 1290, Message: "The MySQL server is running with the --read-only option"}, true},
+		{fmt.Errorf("wrapped: %w", &mysqldrv.MySQLError{Number: 1290}), true},
+		{&mysqldrv.MySQLError{Number: 1045, Message: "Access denied"}, false},
+		{&mysqldrv.MySQLError{Number: 1142, Message: "INSERT command denied"}, false},
+		{context.DeadlineExceeded, false},
+		{sql.ErrConnDone, false},
+		{nil, false},
+	} {
+		if got := isReadOnlyRejection(c.err); got != c.want {
+			t.Errorf("isReadOnlyRejection(%v) = %v, want %v", c.err, got, c.want)
+		}
+	}
+}
+
+// The temporary schema and the application account of a run never collide with an object of a user.
+func TestElectionNamesAreUnique(t *testing.T) {
+	seen := map[string]bool{}
+	for i := 0; i < 200; i++ {
+		r := newElectionRun(harnessCluster(), &cluster.Test{}, "unit")
+		if seen[r.schema] || !strings.HasPrefix(r.schema, "regtest_election_2451_") || len(r.schema) > 40 {
+			t.Fatalf("schema name %q repeated or malformed", r.schema)
+		}
+		seen[r.schema] = true
+	}
+}
+
+// A test run by name only declares no TestTarget: it gates itself and says why.
+func TestElectionRequireTarget(t *testing.T) {
+	newRun := func(target string, versions ...*version.Version) *electionRun {
+		cl := harnessCluster()
+		cl.Conf.TopologyTarget = target
+		for i, v := range versions {
+			cl.Servers = append(cl.Servers, &cluster.ServerMonitor{URL: fmt.Sprintf("s%d", i), DBVersion: v})
+		}
+		return newElectionRun(cl, &cluster.Test{}, "unit")
+	}
+	my := &version.Version{Flavor: "MySQL", Major: 8, Minor: 4}
+	mdb := &version.Version{Flavor: "MariaDB", Major: 11, Minor: 8}
+	for _, c := range []struct {
+		name string
+		r    *electionRun
+		want bool
+	}{
+		{"matches", newRun("multi-tier-slave", my, my, my), true},
+		{"other topology", newRun("master-slave", my, my, my), false},
+		{"too few servers", newRun("multi-tier-slave", my, my), false},
+		{"another engine", newRun("multi-tier-slave", my, my, mdb), false},
+	} {
+		if got := c.r.requireTarget("multi-tier-slave", 3); got != c.want {
+			t.Errorf("%s: requireTarget = %v, want %v (skip reason %q)", c.name, got, c.want, c.r.test.SkipReason)
+		}
+		if !c.want && (c.r.test.SkipReason == "" || len(c.r.skipped) == 0) {
+			t.Errorf("%s: a miss must set a skip reason", c.name)
+		}
+	}
+}
+
+// The class of a run is explicit: a failure fails, a control or an unestablished premise is a SKIP, never a PASS.
+func TestElectionFinishClass(t *testing.T) {
+	for _, c := range []struct {
+		name  string
+		setup func(*electionRun)
+		ok    bool
+		want  bool
+		skip  bool
+	}{
+		{"reproduced pass", func(r *electionRun) { r.premiseUsed = true }, true, true, false},
+		{"control pass is a skip", func(r *electionRun) { r.premiseUsed = true; r.control = []string{"MT: premise absent"} }, true, true, true},
+		{"control failure fails", func(r *electionRun) {
+			r.premiseUsed = true
+			r.control = []string{"MT: premise absent"}
+			r.failed = []string{"mt-selection"}
+		}, false, false, false},
+		{"unestablished is a skip", func(r *electionRun) { r.skipped = []string{"premise not established"} }, true, true, true},
+	} {
+		r := newElectionRun(harnessCluster(), &cluster.Test{}, "unit")
+		c.setup(r)
+		got := r.finish(c.ok)
+		if got != c.want || (r.test.SkipReason != "") != c.skip {
+			t.Errorf("%s: finish=%v skipReason=%q, want %v skip=%v", c.name, got, r.test.SkipReason, c.want, c.skip)
 		}
 	}
 }

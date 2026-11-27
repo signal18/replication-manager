@@ -6,7 +6,6 @@ package regtest
 
 import (
 	"fmt"
-	"strings"
 	"sync"
 	"time"
 
@@ -14,33 +13,38 @@ import (
 	"github.com/signal18/replication-manager/config"
 )
 
-// TestElectionMultiTier (#2451): in a multi-tier cluster the election compares binlog coordinates of replicas
-// that read DIFFERENT servers' binlogs: the relay reads the primary's, the replicas below it read the relay's.
-// File numbers and positions of two different servers are not a measure of replication progress. The test
-// builds that state on a cluster declared multi-tier-slave and bootstrapped by the supported lifecycle
-// (the relay replicates from the primary, the other servers replicate from the relay):
+// TestElectionMultiTier (#2451), run by name only: it deliberately builds a state in which the election compares
+// binlog coordinates of replicas that read DIFFERENT servers' binlogs, and it may expose an unresolved limitation.
+// It is not in the ALL list and declares no TestTarget; it checks its own applicability (topology-target
+// multi-tier-slave, three servers or more, MySQL or Percona) and starts only from a healthy cluster (SKIP otherwise).
 //
-//   - the relay's own binary log is rotated several times, so the replicas below it read a higher file number
-//     than the relay reads from the primary;
-//   - the replicas below the relay stop receiving; markers are committed on the primary and reach the relay;
-//   - the primary is stopped.
+// The relay reads the primary's binlog and the replicas below it read the relay's. File numbers and positions of two
+// different servers are not a measure of replication progress, so a positional ranking across them can pick a replica
+// that is behind. This is a limit of the ranking that existed before the patch and that the patch does not remove;
+// what the patch changes is its operational impact: on a cluster whose parsed sequence was positive (decimal-only
+// third UUID group) develop tied the candidates and kept the list order or the preferred host, and the corrected
+// ranking now compares the coordinates across the two streams. The test therefore records which of three
+// situations it ran, in the SUMMARY class:
 //
-// Expected (what a safe election does): the promoted server is the relay, the most advanced one, and it holds every
-// committed marker. A replica below the relay, behind it, must not be promoted.
+//	REPRODUCED   the parsed sequence of the relay and of a replica below it is equal and positive (the case develop
+//	             tied), the preferred hosts are cleared and the relay is the first candidate: the result of the two
+//	             builds can be compared;
+//	CONTROL      the parsed sequence is not equal and positive (for instance a UUID with a letter): the positional path
+//	             applies on both builds, a failure fails, a pass is a SKIP (it proves nothing about the fix);
+//	UNESTABLISHED a premise of the state could not be built (the replica below the relay is not ahead in file number,
+//	             it already holds the markers, the candidate order is not the relay first): SKIP, nothing is proven.
 //
-// This is a characterisation of the comparability limit, not an acceptance criterion of #2451: both builds are
-// run and the result is classified by comparing them (a pre-existing limitation fails on both; a decimal-UUID
-// cluster, whose parsed sequence tied the candidates on develop, can differ). The premise (equal positive parsed
-// sequence for the relay and a replica below it, and the replica below it ahead in file number) is recorded.
+// State built: the relay's own binary log is rotated, so the replicas below it read a higher file number than the relay
+// reads from the primary; they stop receiving; markers are committed on the primary and reach the relay; the primary is
+// stopped. A safe election promotes the relay, the most advanced server, and it holds every committed marker.
+//
+// Recovery (the product's own, nothing reset or re-created): the stopped primary is started and rejoins, the stopped
+// receiver threads are started, and the end of the test requires every replica to run both threads and the primary to
+// accept writes; a divergence created by a wrong promotion stays visible and fails the cleanup checks. The original
+// primary is not promoted back.
 func (regtest *RegTest) TestElectionMultiTier(cl *cluster.Cluster, conf string, test *cluster.Test) bool {
-	r := &electionRun{cl: cl, test: test, name: "testElectionMultiTier", schema: "regtest_election_2451", prefered: map[string]bool{}}
-	ok := r.multiTier() && len(r.failed) == 0
-	if ok {
-		r.logf("SUMMARY result=PASS checks=%s", strings.Join(r.passed, ","))
-	} else {
-		r.logf("SUMMARY result=FAIL failed=%s passed=%s", strings.Join(r.failed, ","), strings.Join(r.passed, ","))
-	}
-	return ok
+	r := newElectionRun(cl, test, "testElectionMultiTier")
+	return r.finish(r.multiTier())
 }
 
 func (r *electionRun) sourceHost(s *cluster.ServerMonitor) string {
@@ -50,11 +54,23 @@ func (r *electionRun) sourceHost(s *cluster.ServerMonitor) string {
 	return ""
 }
 
+func (r *electionRun) unestablished(format string, args ...interface{}) bool {
+	reason := "premise not established: " + fmt.Sprintf(format, args...)
+	r.test.SkipReason = reason
+	r.skipped = append(r.skipped, reason)
+	r.logf("%s", reason)
+	r.restorePrefered()
+	return true
+}
+
 func (r *electionRun) multiTier() bool {
 	cl := r.cl
+	if !r.requireTarget(config.TopoMultiTierSlave, 3) {
+		return true
+	}
 	master := cl.GetMaster()
-	if master == nil || len(cl.Servers) < 3 {
-		return r.check("setup", false, "a multi-tier cluster needs a primary, a relay and a replica below it; found master=%s servers=%d", urlOf(master), len(cl.Servers))
+	if master == nil {
+		return r.check("setup", false, "no primary discovered")
 	}
 	if cl.GetTopology() != config.TopoMultiTierSlave {
 		return r.check("setup", false, "topology-target %s but the discovered topology is %s", cl.GetTopologyTarget(), cl.GetTopology())
@@ -63,10 +79,7 @@ func (r *electionRun) multiTier() bool {
 	var relay *cluster.ServerMonitor
 	var below []*cluster.ServerMonitor
 	for _, s := range cl.Servers {
-		if s.URL == master.URL {
-			continue
-		}
-		if r.sourceHost(s) == master.Host {
+		if s.URL != master.URL && r.sourceHost(s) == master.Host {
 			relay = s
 		}
 	}
@@ -81,12 +94,25 @@ func (r *electionRun) multiTier() bool {
 	if len(below) == 0 {
 		return r.check("setup", false, "no server replicates from the relay %s", relay.URL)
 	}
+	if !r.requireHealthy(master) {
+		return true
+	}
 	d := below[0]
 	r.orig = master
 	for _, s := range cl.Servers {
 		r.prefered[s.URL] = s.IsPrefered()
 	}
-	r.logf("multi-tier: primary %s, relay %s, replicas below the relay %d (first %s)", master.URL, relay.URL, len(below), d.URL)
+	// the comparison of the two builds needs controlled inputs: no preferred host, and the relay first in the candidate list
+	cl.SetPrefMaster("")
+	time.Sleep(2 * time.Second)
+	order := ""
+	for _, s := range cl.GetSlaves() {
+		order += s.URL + " "
+	}
+	r.logf("multi-tier: primary %s, relay %s, replicas below the relay %d (first %s); preferred hosts cleared; candidate order: %s", master.URL, relay.URL, len(below), d.URL, order)
+	if sl := cl.GetSlaves(); len(sl) == 0 || sl[0].URL != relay.URL {
+		return r.unestablished("the candidate order is not controlled: the first candidate is not the relay %s (order: %s)", relay.URL, order)
+	}
 	cl.SetInteractive(false)
 	cl.SetCheckFalsePositiveHeartbeat(false)
 	cl.SetFailSync(false)
@@ -96,10 +122,12 @@ func (r *electionRun) multiTier() bool {
 	cl.SetRplChecks(true)
 	defer r.cleanup()
 
+	if err := r.createSchema(master); err != nil {
+		return r.check("setup", false, "create schema %s: %s", r.schema, err)
+	}
 	for _, q := range []string{
-		"CREATE DATABASE IF NOT EXISTS " + r.schema,
-		"CREATE TABLE IF NOT EXISTS " + r.schema + ".marker (tag VARCHAR(64) PRIMARY KEY) ENGINE=InnoDB",
-		"CREATE TABLE IF NOT EXISTS " + r.schema + ".probe (id INT AUTO_INCREMENT PRIMARY KEY, who VARCHAR(80)) ENGINE=InnoDB",
+		"CREATE TABLE " + r.schema + ".marker (tag VARCHAR(64) PRIMARY KEY) ENGINE=InnoDB",
+		"CREATE TABLE " + r.schema + ".probe (id INT AUTO_INCREMENT PRIMARY KEY, who VARCHAR(80)) ENGINE=InnoDB",
 		"INSERT INTO " + r.schema + ".marker(tag) VALUES('w0')",
 	} {
 		if err := electionExec(master, q); err != nil {
@@ -135,10 +163,8 @@ func (r *electionRun) multiTier() bool {
 	if !r.tagsOn("mt-premise-relay", relay, tags) {
 		return false
 	}
-	_, n := r.hasTags(d, tags)
-	if !r.check("mt-premise", ahead && n < len(tags), "the replica %s below the relay reads a higher file number than the relay does from the primary (%v) and lacks the new markers (%d of %d)", d.URL, ahead, n, len(tags)) {
-		r.dump("mt-premise")
-		return false
+	if _, n := r.hasTags(d, tags); !ahead || n >= len(tags) {
+		return r.unestablished("the replica %s below the relay is not ahead of the relay in file number (%v) or already holds the new markers (%d of %d)", d.URL, ahead, n, len(tags))
 	}
 	r.premise("MT", relay, d, true)
 	r.dump("mt-before-failover")
@@ -147,7 +173,7 @@ func (r *electionRun) multiTier() bool {
 	wg := new(sync.WaitGroup)
 	wg.Add(1)
 	go cl.WaitFailover(wg)
-	cl.StopDatabaseService(master)
+	r.stop(master)
 	wg.Wait()
 	time.Sleep(5 * time.Second)
 	nm := cl.GetMaster()
@@ -157,7 +183,7 @@ func (r *electionRun) multiTier() bool {
 	if !promoted {
 		return false
 	}
-	r.check("mt-selection", nm.URL == relay.URL, "promoted %s, the most advanced is the relay %s (replicas below the relay: %s)", nm.URL, relay.URL, fmt.Sprint(len(below)))
+	r.check("mt-selection", nm.URL == relay.URL, "promoted %s, the most advanced is the relay %s (replicas below the relay: %d)", nm.URL, relay.URL, len(below))
 	all, got := r.hasTags(nm, tags)
 	r.check("mt-consistency", all, "the promoted server holds %d of the %d committed markers", got, len(tags))
 	r.independentWrite("mt-writable", nm)

@@ -5,7 +5,6 @@
 package regtest
 
 import (
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -32,14 +31,8 @@ import (
 // The stopped server is started again and its rejoin is observed, not asserted (ring reintegration is not
 // part of #2451). Name length: the runner formats "<cluster>/<test>" in 60 columns, so the name stays short.
 func (regtest *RegTest) TestElectionRing(cl *cluster.Cluster, conf string, test *cluster.Test) bool {
-	r := &electionRun{cl: cl, test: test, name: "testElectionRing", schema: "regtest_election_2451", prefered: map[string]bool{}}
-	ok := r.ring() && len(r.failed) == 0
-	if ok {
-		r.logf("SUMMARY result=PASS checks=%s", strings.Join(r.passed, ","))
-	} else {
-		r.logf("SUMMARY result=FAIL failed=%s passed=%s", strings.Join(r.failed, ","), strings.Join(r.passed, ","))
-	}
-	return ok
+	r := newElectionRun(cl, test, "testElectionRing")
+	return r.finish(r.ring())
 }
 
 // ringEdges says whether each server replicates from its predecessor in the server list (the ring the
@@ -60,6 +53,9 @@ func (r *electionRun) ringEdges(servers []*cluster.ServerMonitor, live func(*clu
 
 func (r *electionRun) ring() bool {
 	cl := r.cl
+	if !r.requireTarget(config.TopoMultiMasterRing, 3) {
+		return true
+	}
 	servers := append([]*cluster.ServerMonitor{}, cl.Servers...)
 	vm := cl.GetMaster()
 	if len(servers) != 3 || vm == nil {
@@ -67,6 +63,9 @@ func (r *electionRun) ring() bool {
 	}
 	if cl.GetTopology() != config.TopoMultiMasterRing {
 		return r.check("setup", false, "topology-target %s but the discovered topology is %s", cl.GetTopologyTarget(), cl.GetTopology())
+	}
+	if !r.requireHealthy(vm) {
+		return true
 	}
 	r.orig = vm
 	for _, s := range servers {
@@ -83,13 +82,13 @@ func (r *electionRun) ring() bool {
 	cl.SetRplChecks(true)
 	defer r.cleanup()
 
-	if err := electionExec(vm, "CREATE DATABASE IF NOT EXISTS "+r.schema); err != nil {
-		return r.check("setup", false, "create schema: %s", err)
+	if err := r.createSchema(vm); err != nil {
+		return r.check("setup", false, "create schema %s: %s", r.schema, err)
 	}
-	if err := electionExec(vm, "CREATE TABLE IF NOT EXISTS "+r.schema+".marker (tag VARCHAR(64) PRIMARY KEY) ENGINE=InnoDB"); err != nil {
+	if err := electionExec(vm, "CREATE TABLE "+r.schema+".marker (tag VARCHAR(64) PRIMARY KEY) ENGINE=InnoDB"); err != nil {
 		return r.check("setup", false, "create table: %s", err)
 	}
-	if err := electionExec(vm, "CREATE TABLE IF NOT EXISTS "+r.schema+".probe (id INT AUTO_INCREMENT PRIMARY KEY, who VARCHAR(80)) ENGINE=InnoDB"); err != nil {
+	if err := electionExec(vm, "CREATE TABLE "+r.schema+".probe (id INT AUTO_INCREMENT PRIMARY KEY, who VARCHAR(80)) ENGINE=InnoDB"); err != nil {
 		return r.check("setup", false, "create probe table: %s", err)
 	}
 	tags := []string{"w0"}
@@ -153,7 +152,7 @@ func (r *electionRun) ring() bool {
 	fw := new(sync.WaitGroup)
 	fw.Add(1)
 	go cl.WaitFailover(fw)
-	cl.StopDatabaseService(failed)
+	r.stop(failed)
 	fw.Wait()
 	time.Sleep(5 * time.Second)
 	np := cl.GetMaster()

@@ -62,11 +62,12 @@ var tests = []string{
 	"testElectionGTIDPositionalRefusal",
 	"testElectionGTIDPositionalSwitchover",
 	"testElectionGTIDPositionalErrant",
-	"testElectionMMSwitchSingleWriter",
-	"testElectionMMSwitchConcurrent",
-	"testElectionMMFailover",
-	"testElectionRing",
-	"testElectionMultiTier",
+	// testElectionMMSwitchSingleWriter, testElectionMMSwitchConcurrent, testElectionMMFailover, testElectionRing and
+	// testElectionMultiTier (#2451) are not in this list either: they switch over, stop and rejoin servers of a
+	// multi-master pair, a multi-master ring or a multi-tier cluster (the last one deliberately builds a state that can
+	// expose an unresolved limit). They check their own applicability (topology-target, servers, engine) and a healthy
+	// start, and are SKIP otherwise. Run them by name:
+	// /api/clusters/<cluster>/tests/actions/run/<testName>
 	"testSlaReplAllSlavesStopNoSemiSync",
 	"testSlaReplAllSlavesDelayNoSemiSync",
 	"testMasterSuspect",
@@ -285,11 +286,6 @@ var testTargets = map[string][]TestTarget{
 	"testElectionGTIDPositionalRefusal": {{TopologyTarget: []string{config.TopoMasterSlave}, NumberNodesTarget: 3, FlavorTarget: []string{"mysql", "percona"}, ConfigVariableMustSet: map[string]string{"check-replication-state": "true"}}},
 	"testElectionGTIDPositionalSwitchover": {{TopologyTarget: []string{config.TopoMasterSlave}, NumberNodesTarget: 3, FlavorTarget: []string{"mysql", "percona"}, ConfigVariableMustSet: map[string]string{"check-replication-state": "false"}}},
 	"testElectionGTIDPositionalErrant": {{TopologyTarget: []string{config.TopoMasterSlave}, NumberNodesTarget: 3, FlavorTarget: []string{"mysql", "percona"}, ConfigVariableMustHave: map[string]string{"check-replication-errant-trx": "true"}, ConfigVariableMustSet: map[string]string{"check-replication-state": "true"}}},
-	"testElectionMMSwitchSingleWriter": {{TopologyTarget: []string{config.TopoMultiMaster}, NumberNodesTarget: 2, FlavorTarget: []string{"mysql", "percona"}}},
-	"testElectionMMSwitchConcurrent": {{TopologyTarget: []string{config.TopoMultiMaster}, NumberNodesTarget: 2, FlavorTarget: []string{"mysql", "percona"}}},
-	"testElectionMMFailover": {{TopologyTarget: []string{config.TopoMultiMaster}, NumberNodesTarget: 2, FlavorTarget: []string{"mysql", "percona"}}},
-	"testElectionRing": {{TopologyTarget: []string{config.TopoMultiMasterRing}, NumberNodesTarget: 3, FlavorTarget: []string{"mysql", "percona"}}},
-	"testElectionMultiTier": {{TopologyTarget: []string{config.TopoMultiTierSlave}, NumberNodesTarget: 3, FlavorTarget: []string{"mysql", "percona"}}},
 	"testFailoverNoRplChecksNoSemiSyncMasterHeartbeat":             anyCluster,
 	"testFailoverNumberFailureLimitReach":                          anyCluster,
 	"testFailoverTimeNotReach":                                     anyCluster,

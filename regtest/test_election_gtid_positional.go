@@ -6,7 +6,9 @@ package regtest
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"strconv"
@@ -64,55 +66,169 @@ const (
 // /api/clusters/<cluster>/tests/actions/run/testElectionGTIDPositionalFailover (Refusal, Switchover, Errant),
 // or all of them with ALL.
 func (regtest *RegTest) TestElectionGTIDPositionalFailover(cl *cluster.Cluster, conf string, test *cluster.Test) bool {
-	return runElectionScenario(cl, test, "testElectionGTIDPositionalFailover", (*electionRun).scenarioFailover)
+	return runElectionScenario(cl, test, "testElectionGTIDPositionalFailover", "F", (*electionRun).scenarioFailover)
 }
 
 // TestElectionGTIDPositionalRefusal: the most advanced replica is ineligible; nothing may be promoted.
 func (regtest *RegTest) TestElectionGTIDPositionalRefusal(cl *cluster.Cluster, conf string, test *cluster.Test) bool {
-	return runElectionScenario(cl, test, "testElectionGTIDPositionalRefusal", (*electionRun).scenarioRefusal)
+	return runElectionScenario(cl, test, "testElectionGTIDPositionalRefusal", "R", (*electionRun).scenarioRefusal)
 }
 
 // TestElectionGTIDPositionalSwitchover: switchover on the non-preferred ranking path.
 func (regtest *RegTest) TestElectionGTIDPositionalSwitchover(cl *cluster.Cluster, conf string, test *cluster.Test) bool {
-	return runElectionScenario(cl, test, "testElectionGTIDPositionalSwitchover", (*electionRun).scenarioSwitchover)
+	return runElectionScenario(cl, test, "testElectionGTIDPositionalSwitchover", "S", (*electionRun).scenarioSwitchover)
 }
 
 // TestElectionGTIDPositionalErrant: an errant transaction on a replica still holds the automatic failover.
 func (regtest *RegTest) TestElectionGTIDPositionalErrant(cl *cluster.Cluster, conf string, test *cluster.Test) bool {
-	return runElectionScenario(cl, test, "testElectionGTIDPositionalErrant", (*electionRun).scenarioErrant)
+	return runElectionScenario(cl, test, "testElectionGTIDPositionalErrant", "E", (*electionRun).scenarioErrant)
 }
 
-func runElectionScenario(cl *cluster.Cluster, test *cluster.Test, name string, scenario func(*electionRun)) bool {
-	r := &electionRun{cl: cl, test: test, name: name, scenario: scenario, schema: "regtest_election_2451", prefered: map[string]bool{}}
-	ok := r.run()
+func runElectionScenario(cl *cluster.Cluster, test *cluster.Test, name, step string, scenario func(*electionRun)) bool {
+	r := newElectionRun(cl, test, name)
+	r.step, r.scenario = step, scenario
+	return r.finish(r.run())
+}
+
+// finish logs the SUMMARY and returns the verdict. The class says what the run established: REPRODUCED (the defect
+// premise was established and the assertions ran), CONTROL (the premise is absent: the scenario ran as a control,
+// a failure still fails, a pass is a SKIP, never evidence of the fix) or UNESTABLISHED (a premise of the scenario
+// could not be established: SKIP, nothing was proven).
+func (r *electionRun) finish(ok bool) bool {
 	notExercised := append(append([]string{}, r.control...), r.skipped...)
+	class := ""
+	switch {
+	case len(r.skipped) > 0:
+		class = " class=UNESTABLISHED"
+	case len(r.control) > 0:
+		class = " class=CONTROL"
+	case r.premiseUsed:
+		class = " class=REPRODUCED"
+	}
 	switch electionVerdict(ok, r.failed, notExercised) {
 	case "FAIL":
-		ok = false
-		r.logf("SUMMARY result=FAIL failed=%s passed=%s", strings.Join(r.failed, ","), strings.Join(r.passed, ","))
+		r.logf("SUMMARY result=FAIL%s failed=%s passed=%s", class, strings.Join(r.failed, ","), strings.Join(r.passed, ","))
+		return false
 	case "SKIP":
 		reason := strings.Join(notExercised, "; ")
-		test.SkipReason = reason
-		r.logf("SUMMARY result=SKIP reason=%q passed=%s", reason, strings.Join(r.passed, ","))
+		r.test.SkipReason = reason
+		r.logf("SUMMARY result=SKIP%s reason=%q passed=%s", class, reason, strings.Join(r.passed, ","))
 	default:
-		r.logf("SUMMARY result=PASS checks=%s", strings.Join(r.passed, ","))
+		r.logf("SUMMARY result=PASS%s checks=%s", class, strings.Join(r.passed, ","))
 	}
-	return ok
+	return true
 }
 
 type electionRun struct {
-	name     string
-	scenario func(*electionRun)
-	cl       *cluster.Cluster
-	test     *cluster.Test
-	schema   string
-	orig     *cluster.ServerMonitor
-	prefered map[string]bool
-	passed   []string
-	failed   []string
-	control  []string // scenarios that ran without the defect premise
-	skipped  []string // scenarios that could not run
-	rows     int
+	name        string
+	step        string // label of the scenario in the check names (F, R, S, E)
+	scenario    func(*electionRun)
+	recovered   bool                     // the scenario recovery ran
+	stopped     []*cluster.ServerMonitor // servers this test stopped: started again at the end, whatever the verdict
+	schemaOwned bool                     // the schema was created by this run: only then it is dropped
+	cl          *cluster.Cluster
+	test        *cluster.Test
+	schema      string
+	orig        *cluster.ServerMonitor
+	prefered    map[string]bool
+	passed      []string
+	failed      []string
+	control     []string // scenarios that ran without the defect premise
+	skipped     []string // scenarios that could not run
+	rows        int
+	premiseUsed bool // the test established a defect premise (r.premise)
+}
+
+// electionSuffix is a random suffix, so that the temporary schema and the application account of a run can
+// never collide with an object a user already has.
+func electionSuffix() string {
+	b := make([]byte, 4)
+	rand.Read(b)
+	return hex.EncodeToString(b)
+}
+
+func newElectionRun(cl *cluster.Cluster, test *cluster.Test, name string) *electionRun {
+	return &electionRun{cl: cl, test: test, name: name, schema: "regtest_election_2451_" + electionSuffix(), prefered: map[string]bool{}}
+}
+
+// createSchema creates the temporary schema; it fails when the name already exists (never IF NOT EXISTS), so that a
+// run only ever drops what it created.
+func (r *electionRun) createSchema(primary *cluster.ServerMonitor) error {
+	if err := electionExec(primary, "CREATE DATABASE "+r.schema); err != nil {
+		return err
+	}
+	r.schemaOwned = true
+	return nil
+}
+
+// stop stops a database service and remembers it: the cleanup starts it again whatever the verdict.
+func (r *electionRun) stop(srv *cluster.ServerMonitor) {
+	r.stopped = append(r.stopped, srv)
+	r.cl.StopDatabaseService(srv)
+}
+
+// requireTarget is the applicability gate of a test that is run by name only (not in the ALL list, so without
+// a TestTarget): the declared topology-target, the number of servers and the engine. A miss is a SKIP with the
+// reason, before anything is changed.
+func (r *electionRun) requireTarget(target string, nodes int) bool {
+	cl := r.cl
+	reason := ""
+	switch {
+	case cl.GetTopologyTarget() != target:
+		reason = fmt.Sprintf("topology-target %s, cluster is %s", target, cl.GetTopologyTarget())
+	case len(cl.Servers) < nodes:
+		reason = fmt.Sprintf("number-nodes-target %d, cluster has %d", nodes, len(cl.Servers))
+	default:
+		for _, s := range cl.Servers {
+			if s.DBVersion == nil || !s.DBVersion.IsMySQLOrPercona() {
+				reason = "flavor-target mysql, percona: " + s.URL + " is another engine"
+				break
+			}
+		}
+	}
+	if reason != "" {
+		r.test.SkipReason = reason
+		r.skipped = append(r.skipped, reason)
+		return false
+	}
+	return true
+}
+
+// requireHealthy is healthyStart as a SKIP: a destructive test does not start from a cluster that is not healthy.
+func (r *electionRun) requireHealthy(primary *cluster.ServerMonitor) bool {
+	if ok, why := r.healthyStart(primary); !ok {
+		reason := "prerequisite not established, the cluster is not healthy at the start: " + why
+		r.test.SkipReason = reason
+		r.skipped = append(r.skipped, reason)
+		return false
+	}
+	return true
+}
+
+// restoreStopped puts back what the test stopped, whatever the verdict: stopped servers are started (and rejoin by
+// the product's own rejoin), replication threads that are not running are started. It resets and re-creates
+// nothing: a divergence the scenario caused stays visible and fails the cleanup check.
+func (r *electionRun) restoreStopped() {
+	for _, s := range r.stopped {
+		if s.IsFailed() {
+			r.logf("cleanup: starting %s", s.URL)
+			r.cl.StartDatabaseWaitRejoin(s)
+		}
+	}
+	electionWait(electionHealthWait, func() bool {
+		all := true
+		primary := r.cl.GetMaster()
+		for _, s := range r.cl.Servers {
+			if primary != nil && s.URL == primary.URL {
+				continue
+			}
+			if io, sqlThread, err := electionReplicaThreads(s); err != nil || io != "Yes" || sqlThread != "Yes" {
+				all = false
+				s.StartSlave()
+			}
+		}
+		return all
+	})
 }
 
 func (r *electionRun) logf(format string, args ...interface{}) {
@@ -317,19 +433,26 @@ func (r *electionRun) run() bool {
 	cl.SetRejoinDump(false)
 
 	defer r.cleanup()
-	if err := electionExec(master, "CREATE DATABASE IF NOT EXISTS "+r.schema); err != nil {
-		return r.check("setup", false, "create schema: %s", err)
+	if err := r.createSchema(master); err != nil {
+		return r.check("setup", false, "create schema %s: %s", r.schema, err)
 	}
-	if err := electionExec(master, "CREATE TABLE IF NOT EXISTS "+r.schema+".marker (id INT AUTO_INCREMENT PRIMARY KEY, tag VARCHAR(64)) ENGINE=InnoDB"); err != nil {
+	if err := electionExec(master, "CREATE TABLE "+r.schema+".marker (id INT AUTO_INCREMENT PRIMARY KEY, tag VARCHAR(64)) ENGINE=InnoDB"); err != nil {
 		return r.check("setup", false, "create table: %s", err)
 	}
-	if err := electionExec(master, "CREATE TABLE IF NOT EXISTS "+r.schema+".probe (id INT AUTO_INCREMENT PRIMARY KEY, who VARCHAR(80)) ENGINE=InnoDB"); err != nil {
+	if err := electionExec(master, "CREATE TABLE "+r.schema+".probe (id INT AUTO_INCREMENT PRIMARY KEY, who VARCHAR(80)) ENGINE=InnoDB"); err != nil {
 		return r.check("setup", false, "create probe table: %s", err)
 	}
 	if !r.syncAll(master, "setup") {
 		return false
 	}
 	r.scenario(r)
+	// the failure evidence is kept before any recovery, and a recovery never changes the verdict
+	if len(r.failed) > 0 {
+		r.dump("failure-state")
+	}
+	if !r.recovered {
+		r.recover(r.step)
+	}
 	return len(r.failed) == 0
 }
 
@@ -362,6 +485,7 @@ func (r *electionRun) candidates() (a, b *cluster.ServerMonitor) {
 // premise records the decimal-UUID premise of a scenario: the parsed value of both candidates is the
 // same and positive. Without it the scenario is a CONTROL.
 func (r *electionRun) premise(name string, a, b *cluster.ServerMonitor, failedPath bool) {
+	r.premiseUsed = true
 	sa, ea := r.parsedSeq(a, failedPath)
 	sb, eb := r.parsedSeq(b, failedPath)
 	r.logf("%s premise: parsed sequence A(%s)=%d(%v) B(%s)=%d(%v) failedPath=%v", name, a.URL, sa, ea, b.URL, sb, eb, failedPath)
@@ -410,7 +534,7 @@ func (r *electionRun) scenarioFailover() {
 	wg := new(sync.WaitGroup)
 	wg.Add(1)
 	go cl.WaitFailover(wg)
-	cl.StopDatabaseService(master)
+	r.stop(master)
 	wg.Wait()
 	time.Sleep(5 * time.Second)
 
@@ -489,7 +613,7 @@ func (r *electionRun) scenarioRefusal() {
 	}
 	r.premise("R", a, b, true)
 	ctr := cl.GetFailoverCtr()
-	cl.StopDatabaseService(master)
+	r.stop(master)
 
 	refused := electionWait(electionRefusalWait, func() bool { return cl.GetStateMachine().IsInState("ERR00032") })
 	r.check("R-refusal-state", refused, "ERR00032 (no candidate, automatic failover blocked) raised while the primary %s is down", master.URL)
@@ -569,6 +693,7 @@ func (r *electionRun) scenarioSwitchover() {
 // recover puts the servers back after a scenario: failed servers started, replicas started, the
 // original primary promoted again.
 func (r *electionRun) recover(step string) {
+	r.recovered = true
 	cl := r.cl
 	for _, s := range cl.Servers {
 		if s.IsFailed() {
@@ -738,12 +863,24 @@ func (r *electionRun) finalChecks(primary *cluster.ServerMonitor, all []*cluster
 		r.check("cleanup-primary", false, "no primary at the end of the test")
 		return
 	}
-	r.independentWrite("cleanup-writable", primary)
+	if r.schemaOwned {
+		r.independentWrite("cleanup-writable", primary)
+	}
 	for _, s := range all {
 		n, err := electionGlobalLockHolders(s)
 		r.check("cleanup-global-lock@"+s.URL, err == nil && n == 0, "idle sessions holding a global read lock on %s: %d (err=%v)", s.URL, n, err)
 	}
-	if err := electionExec(primary, "DROP DATABASE IF EXISTS "+r.schema); err != nil {
+	for _, s := range all {
+		if s.URL == primary.URL {
+			continue
+		}
+		io, sqlThread, err := electionReplicaThreads(s)
+		r.check("cleanup-replication@"+s.URL, err == nil && io == "Yes" && sqlThread == "Yes", "%s replicates with both threads running (I/O=%q SQL=%q err=%v)", s.URL, io, sqlThread, err)
+	}
+	if !r.schemaOwned {
+		return
+	}
+	if err := electionExec(primary, "DROP DATABASE "+r.schema); err != nil {
 		r.check("cleanup-drop", false, "drop %s on %s: %s", r.schema, primary.URL, err)
 	} else {
 		r.check("cleanup-drop", true, "dropped %s on %s", r.schema, primary.URL)
@@ -753,13 +890,24 @@ func (r *electionRun) finalChecks(primary *cluster.ServerMonitor, all []*cluster
 // cleanup runs the final checks and restores the preferred flags; the configuration itself is restored by
 // the runner (RestoreConf).
 func (r *electionRun) cleanup() {
+	if len(r.failed) > 0 {
+		r.dump("failure-state-at-cleanup")
+	}
+	r.restoreStopped()
 	primary := r.cl.GetMaster()
 	if primary == nil {
 		primary = r.orig
 	}
 	r.finalChecks(primary, r.cl.Servers)
+	r.restorePrefered()
+}
+
+// restorePrefered puts the preferred flags back as the test found them.
+func (r *electionRun) restorePrefered() {
 	for _, s := range r.cl.Servers {
-		s.SetPrefered(r.prefered[s.URL])
+		if was, ok := r.prefered[s.URL]; ok {
+			s.SetPrefered(was)
+		}
 	}
 }
 
@@ -804,7 +952,7 @@ func (r *electionRun) scenarioErrant() {
 		return
 	}
 	ctr := cl.GetFailoverCtr()
-	cl.StopDatabaseService(master)
+	r.stop(master)
 	promoted := false
 	for i := 0; i < electionNoPromoteFor+30 && !promoted; i++ {
 		if m := cl.GetMaster(); m == nil || m.URL != master.URL || cl.GetFailoverCtr() != ctr {

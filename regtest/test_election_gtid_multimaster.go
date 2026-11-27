@@ -6,14 +6,13 @@ package regtest
 
 import (
 	"context"
-	"crypto/rand"
 	"database/sql"
-	"encoding/hex"
+	"errors"
 	"fmt"
-	"strings"
 	"sync"
 	"time"
 
+	mysqldrv "github.com/go-sql-driver/mysql"
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
 )
@@ -32,9 +31,11 @@ import (
 //	failover    the designated primary is stopped, the survivor is promoted and writable for an independent
 //	            session, its transactions are kept, the stopped server is started, rejoins and holds them.
 //
-// Observed, not asserted (the same on develop): the promotion resets the replication channel of the new
-// primary ("Resetting slave on new master"), so a pair becomes master-slave after a switchover and a failover
-// is then held by the topology guard ERR00092; SUPER accounts are not bound by read_only. The concurrent-write
+// Both replication channels and the multi-master topology are asserted after each operation. They hold when the
+// topology is declared the supported way (the legacy flag Conf.MultiMaster is set by BootstrapTopology, reached
+// through the settings API); a target written only in the TOML leaves the flag false and MasterFailover then
+// takes its master-slave branch ("Resetting slave on new master"), on develop as on this fix. SUPER accounts are
+// not bound by read_only, so the single-writer policy is observed through a non-privileged account. The concurrent-write
 // setting follows the implementation: replication-multi-master-concurrent-write leaves the old primary writable
 // after a switchover only when failover-readonly-state is false (MasterFailover tests ReadOnly first), so the
 // concurrent variant sets both (the settings API case is named multi-master-concurrent-write, not the TOML key,
@@ -52,14 +53,8 @@ func (regtest *RegTest) TestElectionMMFailover(cl *cluster.Cluster, conf string,
 }
 
 func runElectionMultiMaster(cl *cluster.Cluster, test *cluster.Test, name string, concurrent bool, phase string) bool {
-	r := &electionRun{cl: cl, test: test, name: name, schema: "regtest_election_2451", prefered: map[string]bool{}}
-	ok := r.multiMaster(concurrent, phase) && len(r.failed) == 0
-	if ok {
-		r.logf("SUMMARY result=PASS checks=%s", strings.Join(r.passed, ","))
-	} else {
-		r.logf("SUMMARY result=FAIL failed=%s passed=%s", strings.Join(r.failed, ","), strings.Join(r.passed, ","))
-	}
-	return ok
+	r := newElectionRun(cl, test, name)
+	return r.finish(r.multiMaster(concurrent, phase))
 }
 
 // appAccount is a non-privileged account created for the test (SELECT and INSERT on the test schema only):
@@ -69,11 +64,9 @@ type appAccount struct {
 }
 
 func (r *electionRun) createAppAccount(primary *cluster.ServerMonitor, replicas ...*cluster.ServerMonitor) (*appAccount, bool) {
-	b := make([]byte, 8)
-	rand.Read(b)
-	a := &appAccount{user: "rt2451app", pass: hex.EncodeToString(b)}
+	a := &appAccount{user: "rt2451app_" + electionSuffix(), pass: electionSuffix() + electionSuffix() + electionSuffix()}
 	for _, q := range []string{
-		fmt.Sprintf("CREATE USER IF NOT EXISTS '%s'@'%%' IDENTIFIED BY '%s'", a.user, a.pass),
+		fmt.Sprintf("CREATE USER '%s'@'%%' IDENTIFIED BY '%s'", a.user, a.pass),
 		fmt.Sprintf("GRANT SELECT, INSERT ON %s.* TO '%s'@'%%'", r.schema, a.user),
 	} {
 		if err := electionExec(primary, q); err != nil {
@@ -106,11 +99,32 @@ func (r *electionRun) appWrite(a *appAccount, srv *cluster.ServerMonitor, tag st
 	return err
 }
 
+// appReadable proves that the account, its password and the connection are valid on a server: a session of the
+// account reads the test table. Without it a refused write could be an authentication or connection failure.
+func (r *electionRun) appReadable(a *appAccount, srv *cluster.ServerMonitor) error {
+	db, err := sql.Open("mysql", fmt.Sprintf("%s:%s@tcp(%s:%s)/?timeout=5s", a.user, a.pass, srv.Host, srv.Port))
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), electionSQLTimeout)
+	defer cancel()
+	var n int
+	return db.QueryRowContext(ctx, "SELECT COUNT(*) FROM "+r.schema+".marker").Scan(&n)
+}
+
+// isReadOnlyRejection: the server refused the statement because of read_only or super_read_only
+// (ER_OPTION_PREVENTS_STATEMENT, 1290); an authentication, connection, timeout or any other SQL error is not one.
+func isReadOnlyRejection(err error) bool {
+	var me *mysqldrv.MySQLError
+	return errors.As(err, &me) && me.Number == 1290
+}
+
 func (r *electionRun) dropAppAccount(a *appAccount, primary *cluster.ServerMonitor) {
 	if a == nil {
 		return
 	}
-	err := electionExec(primary, fmt.Sprintf("DROP USER IF EXISTS '%s'@'%%'", a.user))
+	err := electionExec(primary, fmt.Sprintf("DROP USER '%s'@'%%'", a.user))
 	r.check("cleanup-app-account", err == nil, "dropped the application account on %s (err=%v)", urlOf(primary), err)
 }
 
@@ -159,6 +173,9 @@ func (r *electionRun) mmChannels(step string, a, b *cluster.ServerMonitor) bool 
 
 func (r *electionRun) multiMaster(concurrent bool, phase string) bool {
 	cl := r.cl
+	if !r.requireTarget(config.TopoMultiMaster, 2) {
+		return true
+	}
 	master := cl.GetMaster()
 	if master == nil || len(cl.Servers) != 2 {
 		return r.check("setup", false, "a multi-master pair needs a master and one other server, found master=%s servers=%d", urlOf(master), len(cl.Servers))
@@ -184,6 +201,9 @@ func (r *electionRun) multiMaster(concurrent bool, phase string) bool {
 		r.prefered[s.URL] = s.IsPrefered()
 	}
 	r.logf("pair: primary %s, other %s, concurrent-write=%v failover-readonly-state=%v", master.URL, other.URL, cl.Conf.MultiMasterConcurrentWrite, cl.Conf.ReadOnly)
+	if !r.requireHealthy(master) {
+		return true
+	}
 	cl.SetInteractive(false)
 	cl.SetCheckFalsePositiveHeartbeat(false)
 	cl.SetFailSync(false)
@@ -193,13 +213,13 @@ func (r *electionRun) multiMaster(concurrent bool, phase string) bool {
 	cl.SetRplChecks(true)
 	defer r.cleanup()
 
-	if err := electionExec(master, "CREATE DATABASE IF NOT EXISTS "+r.schema); err != nil {
-		return r.check("setup", false, "create schema: %s", err)
+	if err := r.createSchema(master); err != nil {
+		return r.check("setup", false, "create schema %s: %s", r.schema, err)
 	}
-	if err := electionExec(master, "CREATE TABLE IF NOT EXISTS "+r.schema+".marker (tag VARCHAR(64) PRIMARY KEY) ENGINE=InnoDB"); err != nil {
+	if err := electionExec(master, "CREATE TABLE "+r.schema+".marker (tag VARCHAR(64) PRIMARY KEY) ENGINE=InnoDB"); err != nil {
 		return r.check("setup", false, "create table: %s", err)
 	}
-	if err := electionExec(master, "CREATE TABLE IF NOT EXISTS "+r.schema+".probe (id INT AUTO_INCREMENT PRIMARY KEY, who VARCHAR(80)) ENGINE=InnoDB"); err != nil {
+	if err := electionExec(master, "CREATE TABLE "+r.schema+".probe (id INT AUTO_INCREMENT PRIMARY KEY, who VARCHAR(80)) ENGINE=InnoDB"); err != nil {
 		return r.check("setup", false, "create probe table: %s", err)
 	}
 	if !electionWait(electionSyncWait, func() bool { _, err := r.count(other); return err == nil }) {
@@ -226,7 +246,12 @@ func (r *electionRun) multiMaster(concurrent bool, phase string) bool {
 		time.Sleep(5 * time.Second)
 		nm := cl.GetMaster()
 		r.dump("switchover-after")
-		if !r.check("switchover-selection", nm != nil && nm.URL == other.URL, "designated primary is %s, want the other server %s", urlOf(nm), other.URL) {
+		if concurrent {
+			// with both servers writable the monitor designates the writable server it detects first (ERR00011 / WARN0003),
+			// so the designated primary two seconds after the switchover is not the target: observed on develop as on this
+			// fix. That the switchover ran is shown by the writer states below (the old primary was made writable).
+			r.observe("designated primary after the switchover: %s (target %s, concurrent writes: both servers writable)", urlOf(nm), other.URL)
+		} else if !r.check("switchover-selection", nm != nil && nm.URL == other.URL, "designated primary is %s, want the other server %s", urlOf(nm), other.URL) {
 			return false
 		}
 		roNew, _ := electionQuery(other, "SELECT @@global.read_only")
@@ -244,30 +269,34 @@ func (r *electionRun) multiMaster(concurrent bool, phase string) bool {
 		// what a client sees: the transactions of the new primary reach the old one
 		r.tagsOn("switchover-propagation", master, tags)
 		r.tagsOn("switchover-new-primary-complete", other, tags)
-		// writer policy, observed as a client does (a non-privileged account)
-		if err := r.appWrite(app, other, "app-new"); err != nil {
-			r.check("switchover-app-write-new", false, "application write on the new primary %s: %s", other.URL, err)
-		} else {
-			tags = append(tags, "app-new")
-			r.check("switchover-app-write-new", true, "application write on the new primary %s committed", other.URL)
-		}
-		err := r.appWrite(app, master, "app-old")
-		if concurrent {
-			if err == nil {
-				tags = append(tags, "app-old")
+		// writer policy, observed as a client does (a non-privileged account whose validity is proven on both servers)
+		okNew := r.check("switchover-app-session-new", r.appReadable(app, other) == nil, "the application account reads on the new primary %s", other.URL)
+		okOld := r.check("switchover-app-session-old", r.appReadable(app, master) == nil, "the application account reads on the old primary %s", master.URL)
+		if okNew {
+			if err := r.appWrite(app, other, "app-new"); err != nil {
+				r.check("switchover-app-write-new", false, "application write on the new primary %s: %s", other.URL, err)
+			} else {
+				tags = append(tags, "app-new")
+				r.check("switchover-app-write-new", true, "application write on the new primary %s committed", other.URL)
 			}
-			r.check("switchover-app-write-old", err == nil, "application write on the old primary %s under concurrent-write (err=%v)", master.URL, err)
-		} else {
-			r.check("switchover-app-write-old", err != nil, "application write on the old primary %s is refused (err=%v)", master.URL, err)
 		}
-		// channels are an observation: the promotion resets the replication of the new primary
-		// (MasterFailover: "Resetting slave on new master"), on develop as on this fix
-		// transactions of the application account on the new primary reach the old one; the old primary's own
-		// (concurrent) write is compared by marker on both servers
+		if okOld {
+			err := r.appWrite(app, master, "app-old")
+			if concurrent {
+				if err == nil {
+					tags = append(tags, "app-old")
+				}
+				r.check("switchover-app-write-old", err == nil, "application write on the old primary %s under concurrent-write (err=%v)", master.URL, err)
+			} else {
+				r.check("switchover-app-write-old", isReadOnlyRejection(err), "application write on the old primary %s is refused by read_only, error 1290 (err=%v)", master.URL, err)
+			}
+		}
+		// both replication channels of the pair survive the switchover and the topology stays multi-master
+		bothWays := electionWait(electionHealthWait, func() bool { return r.replicating(master, other) && r.replicating(other, master) })
+		r.check("switchover-channels", bothWays, "%s replicates from %s and %s from %s with both threads running", master.URL, other.URL, other.URL, master.URL)
+		r.check("switchover-topology", cl.GetTopology() == config.TopoMultiMaster, "discovered topology after the switchover is %s", cl.GetTopology())
 		r.tagsOn("switchover-markers-old", master, tags)
 		r.tagsOn("switchover-markers-new", other, tags)
-		r.observe("channels after the switchover: old primary replicates from the new one=%v, new primary replicates from the old one=%v, discovered topology=%s",
-			r.replicating(master, other), r.replicating(other, master), cl.GetTopology())
 		r.check("switchover-counter", cl.GetFailoverCtr() >= ctr, "failover counter %d->%d", ctr, cl.GetFailoverCtr())
 		r.recoverPair(other, master)
 		return len(r.failed) == 0
@@ -280,7 +309,7 @@ func (r *electionRun) multiMaster(concurrent bool, phase string) bool {
 	wg := new(sync.WaitGroup)
 	wg.Add(1)
 	go cl.WaitFailover(wg)
-	cl.StopDatabaseService(failed)
+	r.stop(failed)
 	wg.Wait()
 	time.Sleep(5 * time.Second)
 	nm := cl.GetMaster()
@@ -305,8 +334,9 @@ func (r *electionRun) multiMaster(concurrent bool, phase string) bool {
 	r.tagsOn("failover-new-primary-complete", survivor, tags)
 	r.recoverPair(failed, survivor)
 	r.tagsOn("failover-rejoined-complete", failed, tags)
-	r.observe("channels after the rejoin: old primary replicates from the survivor=%v, survivor replicates from the old primary=%v, discovered topology=%s",
-		r.replicating(failed, survivor), r.replicating(survivor, failed), cl.GetTopology())
+	bothWays := electionWait(electionHealthWait, func() bool { return r.replicating(failed, survivor) && r.replicating(survivor, failed) })
+	r.check("failover-channels", bothWays, "after the rejoin %s replicates from %s and %s from %s with both threads running", failed.URL, survivor.URL, survivor.URL, failed.URL)
+	r.check("failover-topology", cl.GetTopology() == config.TopoMultiMaster, "discovered topology after the failover and the rejoin is %s", cl.GetTopology())
 	return len(r.failed) == 0
 }
 

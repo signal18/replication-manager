@@ -23,7 +23,8 @@ The parsed value is used on two paths:
 `cluster/cluster_fail.go`:
 
 - `electionSeqNos(sl, ss, errss)`, shared by both election functions. A MySQL or Percona candidate with a
-  replication status contributes no scalar sequence (`Seq` 0), so the existing positional ranking decides.
+  replication status contributes no scalar sequence (`Seq` 0). When no candidate has a positive sequence, the
+  existing positional ranking decides (see Behaviour for the cases where it does not).
   MariaDB and PostgreSQL keep the sequence of the master's GTID domain. A candidate without status keeps
   the synthetic default (`1-1-1`, `failover-restart-unsafe`).
 - `binlogRank(file, pos)`, shared by both functions: the numeric suffix of the binlog file name is read
@@ -42,9 +43,16 @@ catch-up (`ReadAllRelayLogs`), the rejoin and `MASTER_AUTO_POSITION`; the failov
 
 ## Behaviour
 
-- MySQL and Percona election ranks by received coordinates (failed master) or executed-statement
-  coordinates (`Read_Master_Log_Pos` of the source stream the replica reads) on every cluster, whatever
-  the UUID: this is what a cluster whose UUID has a letter already did.
+- The positional rank is the same on both election paths, failed primary or not: it is built from
+  `Master_Log_File` and `Read_Master_Log_Pos` of the candidate's replication channel, the **received**
+  coordinate in the binlog of the server the candidate reads (the I/O thread position, not the position the SQL
+  thread has applied). It is not an executed-statement coordinate. The parsed sequence that is removed for MySQL and
+  Percona was the only input that read the failed-primary received set (`Gtid_IO_Pos`) or the executed set (`SlaveGtid`).
+- When every candidate is a MySQL or Percona server with a replication status, nobody has a positive sequence and the
+  election ranks by that positional value, whatever the UUID: this is what a cluster whose UUID has a letter already did.
+  It is not true of every election: a candidate without a replication status under `failover-restart-unsafe` keeps the
+  synthetic default (sequence 1) and MariaDB or PostgreSQL candidates in the same list keep their sequence, so a positive
+  sequence can still decide the branch.
 - On a decimal-UUID cluster the selected candidate can change: a preferred replica no longer wins over a
   more advanced one; an ineligible replica that is strictly the most advanced now gives "no candidate"
   (`ERR00032`, automatic failover blocked) where a less advanced replica was promoted; a candidate without
@@ -55,8 +63,13 @@ catch-up (`ReadAllRelayLogs`), the rejoin and `MASTER_AUTO_POSITION`; the failov
 ## Limits (unchanged by this fix)
 
 - Received coordinates measure progress through one source's binlog stream. They are comparable only for
-  replicas of the same source. A multi-tier cluster compares streams of different servers; the election
-  still takes the largest value (see the regtest characterisation).
+  replicas of the same source. A multi-tier cluster has replicas that read different servers' binlogs (the relay
+  reads the primary's, the replicas below it read the relay's) and the election still compares their file numbers and
+  positions. That limit exists before the patch for every cluster that ranked positionally; it is not removed by it, and
+  it is not harmless: the election can promote a replica that is behind. What the patch changes is its operational
+  impact on a cluster whose parsed sequence used to tie the candidates (decimal-only third UUID group): develop kept
+  the preferred host or the list order, the corrected ranking compares the coordinates across the two streams. The
+  multi-tier regtest characterises it.
 - The refresh before the election is attempted, not guaranteed; a replica that cannot be read keeps its
   last status.
 - A received transaction may be partial or unapplied. The catch-up waits for the SQL thread to reach the
@@ -81,9 +94,15 @@ catch-up (`ReadAllRelayLogs`), the rejoin and `MASTER_AUTO_POSITION`; the failov
   | `testElectionGTIDPositionalRefusal` | same | the most advanced replica is ineligible: nothing is promoted |
   | `testElectionGTIDPositionalSwitchover` | same | switchover on the non-preferred ranking path |
   | `testElectionGTIDPositionalErrant` | same, `check-replication-errant-trx` | an errant transaction still holds the automatic failover |
-  | `testElectionMMSwitchSingleWriter`, `testElectionMMSwitchConcurrent`, `testElectionMMFailover` | multi-master, 2 nodes | one-candidate election, writer policy through a non-privileged account, marker propagation |
-  | `testElectionRing` | multi-master-ring, 3 nodes | the virtual election and the shared `FoundCandidateMaster` gate |
-  | `testElectionMultiTier` | multi-tier-slave, 3 nodes | election among replicas that read different servers' binlogs (a limitation, characterised) |
+  | `testElectionMMSwitchSingleWriter`, `testElectionMMSwitchConcurrent`, `testElectionMMFailover` (by name) | multi-master, 2 nodes | one-candidate election, writer policy through a non-privileged account, marker propagation |
+  | `testElectionRing` (by name) | multi-master-ring, 3 nodes | the virtual election and the shared `FoundCandidateMaster` gate |
+  | `testElectionMultiTier` (by name) | multi-tier-slave, 3 nodes | election among replicas that read different servers' binlogs (a limitation, characterised) |
+
+  The four master-slave tests are in the ALL list. The multi-master, ring and multi-tier tests are run by name only
+  (not in ALL, no TestTarget): they switch over, stop and rejoin servers and the multi-tier one may expose a limit; each
+  checks its own applicability (topology-target, servers, engine) and a healthy start and is SKIP otherwise. The
+  temporary schema and the application account carry a random suffix, are created without IF NOT EXISTS, and only what a
+  run created is dropped.
 
   The master-slave tests need a primary whose `server_uuid` has a decimal-only third group; otherwise they are
   SKIP before any change. A scenario whose parsed-sequence premise is absent runs as a control and the test is SKIP,
