@@ -938,6 +938,7 @@ type Config struct {
 	BackupSnapshotLVMSize                     string            `mapstructure:"backup-snapshot-lvm-size" toml:"backup-snapshot-lvm-size" json:"backupSnapshotLvmSize"`
 	BackupSnapshotScript                      string            `mapstructure:"backup-snapshot-script" toml:"backup-snapshot-script" json:"backupSnapshotScript"`
 	BackupSnapshotTimeout                     int               `mapstructure:"backup-snapshot-timeout" toml:"backup-snapshot-timeout" json:"backupSnapshotTimeout"`
+	BackupSnapshotUnmount                     bool              `mapstructure:"backup-snapshot-unmount" toml:"backup-snapshot-unmount" json:"backupSnapshotUnmount"`
 	BackupKeepWithin                          string            `mapstructure:"backup-keep-within" toml:"backup-keep-within" json:"backupKeepWithin"`
 	BackupKeepWithinHourly                    string            `mapstructure:"backup-keep-within-hourly" toml:"backup-keep-within-hourly" json:"backupKeepWithinHourly"`
 	BackupKeepWithinDaily                     string            `mapstructure:"backup-keep-within-daily" toml:"backup-keep-within-daily" json:"backupKeepWithinDaily"`
@@ -1222,6 +1223,9 @@ type Config struct {
 	//OAuthRedirectURL                          string                 `mapstructure:"api-oauth-redirect-url" toml:"git-url" json:"-"`
 	//	BackupResticStoragePolicy                  string `mapstructure:"backup-restic-storage-policy"  toml:"backup-restic-storage-policy" json:"backupResticStoragePolicy"`
 	//ProvMode                           string `mapstructure:"prov-mode" toml:"prov-mode" json:"provMode"` //InitContainer vs API
+
+	// SnapshotPluginEntries: the settings of the external snapshot plugins (#2456)
+	SnapshotPluginEntries []SnapshotPluginEntry `mapstructure:"snapshot-plugin" toml:"snapshot-plugin" json:"snapshotPlugins"`
 }
 
 func init() {

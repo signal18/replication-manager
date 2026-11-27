@@ -16,6 +16,8 @@ import { HiQuestionMarkCircle } from 'react-icons/hi'
 import RMIconButton from '../../components/RMIconButton'
 import remarkGfm from 'remark-gfm'
 import NumberInput from '../../components/NumberInput'
+import SnapshotPluginSettings from '../../components/SnapshotPluginSettings'
+import { clusterService } from '../../services/clusterService'
 import RMButton from '../../components/RMButton'
 import SetCredentialsModal from '../../components/Modals/SetCredentialsModal'
 import ConfirmModal from '../../components/Modals/ConfirmModal'
@@ -56,6 +58,21 @@ function BackupSettings({ selectedCluster, user }) {
 
   const { globalClusters: { monitor } } = useSelector((state) => state)
   const s3Providers = useSelector(selectClusterS3Providers)
+  // the snapshot plugins known and the settings of the external ones (#2456)
+  const [snapshotPluginList, setSnapshotPluginList] = useState(null)
+  const loadSnapshotPlugins = () => {
+    if (!selectedCluster?.name) return
+    clusterService
+      .getVolumeSnapshotPlugins(selectedCluster.name)
+      .then((res) => setSnapshotPluginList(res.data))
+      .catch(() => setSnapshotPluginList(null))
+  }
+  useEffect(() => {
+    if (selectedCluster?.config?.backupSnapshot) loadSnapshotPlugins()
+  }, [selectedCluster?.name, selectedCluster?.config?.backupSnapshot])
+  const snapshotPlugins = snapshotPluginList?.plugins || []
+  const snapshotPluginsPinned = !!snapshotPluginList?.pinned
+  const selectedSnapshotPlugin = snapshotPlugins.find((p) => p.name === selectedCluster?.config?.backupSnapshotPlugin)
   const mountProvider = s3Providers.find((p) => p.name === selectedCluster?.config?.backupStreamingProvider)
   const backupMount = selectedCluster?.backupMount
   // the bucket's folder: the cluster name, under the instance's URI on Cloud18
@@ -262,6 +279,8 @@ function BackupSettings({ selectedCluster, user }) {
   const hVolumeSnapshotTarget = `**Snapshot Volume**\n\nThe ZFS dataset (pool/dataset) or the LVM volume (vg/lv) to snapshot. Empty: the one holding the server's files is found from its datadir, redo, undo and binary log directories.\n\nConfig: \`backup-snapshot-target\``
   const hVolumeSnapshotKeep = `**Snapshots Kept**\n\nThe snapshots replication-manager took (named repman-*) kept per server: the oldest beyond it are deleted after each new one. Snapshots of another origin are never deleted. 1 to 64.\n\nConfig: \`backup-snapshot-keep\``
   const hVolumeSnapshotLvmSize = `**LVM Snapshot Size**\n\nThe copy-on-write space of an LVM snapshot of a thick volume: a size (10G) or extents (20%ORIGIN). A thin volume takes none.\n\nConfig: \`backup-snapshot-lvm-size\``
+  const hVolumeSnapshotPluginSettings = `**Plugin Settings**\n\nThe settings an external snapshot plugin declares: where its storage system is, who to log in as, its credential. A secret is encrypted with the replication-manager key before it is saved and never shown again; the plugin gets it in its environment only. Set by the instance admin only.\n\nConfig: \`[[snapshot-plugin]]\``
+  const hVolumeSnapshotUnmount = `**Unmount Around Snapback**\n\nFor an external plugin: before its snapback, the file systems holding the server's files are unmounted on the database host (once no process uses them), and mounted again after it, so the storage is never restored under a mounted file system. A system mount point is never unmounted. Off: the plugin, or your script, handles them.\n\nConfig: \`backup-snapshot-unmount\``
   const hVolumeSnapshotScript = `**Snapshot Script**\n\nYour own program, run on the replication-manager host for every action in place of the plugin: the action (take, list, delete, snapback) as its first argument, the context in REPMAN_SNAPSHOT_* variables, records on its output (CMD, TARGET, SNAPSHOT, CHANGED), see the documentation. Set by the instance admin only.\n\nConfig: \`backup-snapshot-script\``
 
   const dataObject = [
@@ -876,13 +895,17 @@ function BackupSettings({ selectedCluster, user }) {
           {
             clusterSetting: 'backup-snapshot-plugin', key: 'Snapshot Plugin', help: h(hVolumeSnapshotPlugin, 'Snapshot Plugin'), value: (
               <Flex className={styles.dropdownContainer}>
-                <Dropdown options={convertObjectToArrayForDropdown(Array.from(new Set(['zfs', 'lvm', selectedCluster?.config?.backupSnapshotPlugin].filter(Boolean))))} className={styles.dropdownButton}
+                <Dropdown options={convertObjectToArrayForDropdown(Array.from(new Set(['zfs', 'lvm', ...snapshotPlugins.filter((p) => p.name !== 'script').map((p) => p.name), selectedCluster?.config?.backupSnapshotPlugin].filter(Boolean))))} className={styles.dropdownButton}
                   selectedValue={selectedCluster?.config?.backupSnapshotPlugin} confirmTitle={`Confirm snapshot plugin to`}
                   isDisabled={user?.grants['cluster-settings'] == false || !!selectedCluster?.config?.backupSnapshotScript}
                   onChange={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'backup-snapshot-plugin', value }))} />
               </Flex>
             )
           },
+          ...(selectedSnapshotPlugin?.external ? [
+            { clusterSetting: 'snapshot-plugin', key: 'Plugin Settings', help: h(hVolumeSnapshotPluginSettings, 'Plugin Settings'), value: (<SnapshotPluginSettings clusterName={selectedCluster?.name} plugin={selectedSnapshotPlugin} canEdit={!!user?.grants?.['global-settings'] && !snapshotPluginsPinned} onChanged={loadSnapshotPlugins} />) },
+            { clusterSetting: 'backup-snapshot-unmount', key: 'Unmount Around Snapback', help: h(hVolumeSnapshotUnmount, 'Unmount Around Snapback'), value: (<RMSwitch isChecked={selectedCluster?.config?.backupSnapshotUnmount} isDisabled={user?.grants['cluster-settings'] == false} confirmTitle={'Confirm switch settings for backup-snapshot-unmount?'} onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'backup-snapshot-unmount' }))} />) },
+          ] : []),
           { clusterSetting: 'backup-snapshot-target', key: 'Snapshot Volume', help: h(hVolumeSnapshotTarget, 'Snapshot Volume'), value: (<TextForm value={selectedCluster?.config?.backupSnapshotTarget} confirmTitle={`Confirm backup-snapshot-target to `} maxLength={255} className={styles.textbox} onSave={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'backup-snapshot-target', value }))} />) },
           { clusterSetting: 'backup-snapshot-keep', key: 'Snapshots Kept', help: h(hVolumeSnapshotKeep, 'Snapshots Kept'), value: (<NumberInput min={1} max={64} value={selectedCluster?.config?.backupSnapshotKeep} showEditButton={true} showConfirmModal={true} confirmTitle={`Confirm change 'backup-snapshot-keep' to: `} onConfirm={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'backup-snapshot-keep', value }))} />) },
           { clusterSetting: 'backup-snapshot-lvm-size', key: 'LVM Snapshot Size', help: h(hVolumeSnapshotLvmSize, 'LVM Snapshot Size'), value: (<TextForm value={selectedCluster?.config?.backupSnapshotLvmSize} confirmTitle={`Confirm backup-snapshot-lvm-size to `} maxLength={32} className={styles.textbox} onSave={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'backup-snapshot-lvm-size', value }))} />) },

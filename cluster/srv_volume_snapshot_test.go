@@ -731,3 +731,15 @@ func TestVolumeSnapshotHelperZFSNamedTargetChecked(t *testing.T) {
 		t.Fatalf("named target holding the server's files: %v %+v", err, run)
 	}
 }
+
+// the SSH executor's quoting keeps a value with line breaks (the mount pairs) and quotes whole
+func TestShellQuoteKeepsLineBreaks(t *testing.T) {
+	if _, err := exec.LookPath("sh"); err != nil {
+		t.Skip("no sh")
+	}
+	v := "/srv/mysql|/dev/mapper/mpatha\n/srv/mysql/binlog|/dev/mapper/mpathb\nit's"
+	out, err := exec.Command("sh", "-c", "printf %s "+shellQuote(v)).Output()
+	if err != nil || string(out) != v {
+		t.Fatalf("%q -> %q %v", v, out, err)
+	}
+}

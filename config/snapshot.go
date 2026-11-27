@@ -78,6 +78,11 @@ type SnapshotPluginManifest struct {
 	External    bool     `json:"external,omitempty"`
 	Binary      string   `json:"-"`       // the external plugin's program
 	Actions     []string `json:"actions"` // the ConstSnapshotAction* it implements
+	// Settings: what an external plugin needs set (#2456), stored per cluster in its
+	// [[snapshot-plugin]] entry, a secret encrypted; passed in its environment
+	Settings PluginSettings `json:"settings,omitempty"`
+	// Tested: false when the plugin says it has not run against the real storage it drives
+	Tested *bool `json:"tested,omitempty"`
 }
 
 // Can tells whether the plugin implements the action.
@@ -127,6 +132,9 @@ func RegisterSnapshotPlugin(m SnapshotPluginManifest, binary string) error {
 	}
 	if len(m.Actions) == 0 {
 		m.Actions = snapshotAllActions
+	}
+	if err := validSnapshotPluginSettings(m); err != nil {
+		return err
 	}
 	m.External, m.Binary, m.Run = true, binary, ConstSnapshotRunMonitorHost
 	snapshotPlugins[m.Name] = m

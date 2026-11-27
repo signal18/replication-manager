@@ -34,6 +34,8 @@ export const clusterService = {
   getQueryRules,
   getServerLostEvents,
   getVolumeSnapshots,
+  getVolumeSnapshotPlugins,
+  setVolumeSnapshotPluginSettings,
   takeVolumeSnapshot,
   deleteVolumeSnapshot,
   snapbackVolume,
@@ -410,6 +412,15 @@ function getResticStats(clusterName, baseURL) {
 // Volume snapshots of a server's data volume (#2443)
 function getVolumeSnapshots(clusterName, serverId, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/servers/${serverId}/volume-snapshots`)
+}
+
+// The snapshot plugins of a cluster and the settings of the external ones (#2456)
+function getVolumeSnapshotPlugins(clusterName, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/volume-snapshot-plugins`)
+}
+
+function setVolumeSnapshotPluginSettings(clusterName, plugin, body, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/volume-snapshot-plugin-actions/set/${encodeURIComponent(plugin)}`, body)
 }
 
 function takeVolumeSnapshot(clusterName, serverId, baseURL) {
