@@ -51,7 +51,7 @@ func tlsChannel(cl *cluster.Cluster, s *cluster.ServerMonitor) (dbhelper.SlaveSt
 	if s.Conn == nil {
 		return dbhelper.SlaveStatus{}, fmt.Errorf("no connection to %s", s.URL)
 	}
-	st, _, err := s.ReplicationLink().ReadStatus()
+	st, _, err := s.ReplicationLink().Status()
 	return st, err
 }
 

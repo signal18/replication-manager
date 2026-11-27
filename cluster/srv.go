@@ -1046,7 +1046,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 	}
 	//	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlInfo, "niac %s: %s", server.URL, server.DBVersion)
 	var ss dbhelper.SlaveStatus
-	ss, _, errss := server.ReplicationLink().ReadStatus()
+	ss, _, errss := server.ReplicationLink().Status()
 	// We have no replicatieon can this be the old master
 	//  1617 is no multi source channel found
 	noChannel := false
@@ -1922,7 +1922,7 @@ func (server *ServerMonitor) ReadAllRelayLogs() error {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Waiting sync IO_Pos:%s, Slave_Pos:%s", myGtid_IO_Pos.Sprint(), myGtid_Slave_Pos.Sprint())
 		}
 	} else {
-		ss, logs, err := server.ReplicationLink().ReadStatus()
+		ss, logs, err := server.ReplicationLink().Status()
 		cluster.LogSQL(logs, err, server.URL, "ReadAllRelayLogs", config.LvlInfo, "Could not get slave status %s %s", server.URL, err)
 		if err != nil {
 			return err
@@ -1932,7 +1932,7 @@ func (server *ServerMonitor) ReadAllRelayLogs() error {
 			if ss.MasterLogFile == ss.RelayMasterLogFile && ss.ReadMasterLogPos == ss.ExecMasterLogPos {
 				break
 			}
-			ss, logs, err = server.ReplicationLink().ReadStatus()
+			ss, logs, err = server.ReplicationLink().Status()
 			cluster.LogSQL(logs, err, server.URL, "ReadAllRelayLogs", config.LvlErr, "Could not get slave status %s %s", server.URL, err)
 			if err != nil {
 				return err

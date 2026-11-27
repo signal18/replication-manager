@@ -103,6 +103,10 @@ type Cluster struct {
 	// read through Orchestrator() and orchestrator(server), never directly.
 	Orchestrators      map[string]Orchestrator `json:"-"`
 	orchestratorsMutex sync.RWMutex            `json:"-"`
+	// ReplicationPlugins are the cluster's replication plugins by name
+	// (newReplicationPluginList); read through ReplicationPlugin(name), never directly.
+	ReplicationPlugins      map[string]ReplicationPlugin `json:"-"`
+	replicationPluginsMutex sync.RWMutex                 `json:"-"`
 	// hostStepDeadlines: server URL -> the one deadline of a rolling host step (the reboot
 	// and the wait for the host share it, cluster_roll_host.go)
 	hostStepDeadlines sync.Map `json:"-"`
@@ -1079,6 +1083,10 @@ func (cluster *Cluster) InitFromConf() {
 	err = cluster.newOrchestratorList()
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could not set orchestrator list %s", err)
+	}
+	err = cluster.newReplicationPluginList()
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could not set replication plugin list %s", err)
 	}
 	// Proxies were just rebuilt with no knowledge of maintenance restored onto
 	// Servers above (see newServerMonitor) -- replay the notification so

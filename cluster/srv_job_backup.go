@@ -7588,7 +7588,7 @@ func (server *ServerMonitor) pointLogicalReseedReplica(meta *backupmgr.BackupMet
 	// as it is; stopped, set back and started again, what it executed meanwhile would be applied
 	// twice. Without that dump, a running channel is positioned as any other.
 	if start && dumpStarted {
-		ss, _, serr := server.ReplicationChannelLink(server.ReplicationSourceName).ReadStatus()
+		ss, _, serr := server.ReplicationChannelLink(server.ReplicationSourceName).Status()
 		if serr != nil && !errors.Is(serr, sql.ErrNoRows) {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Reseed of %s: replication status after the restore: %s", server.URL, serr)
 		} else if serr == nil && reseedChannelActive(ss.SlaveIORunning.String, ss.SlaveSQLRunning.String) {
@@ -7623,7 +7623,7 @@ func (server *ServerMonitor) pointLogicalReseedReplica(meta *backupmgr.BackupMet
 		// pointed before the restore (an older MySQL/Percona backup), the dump's START SLAVE may
 		// have started replication at the dump's position already: what it executed since is
 		// kept, set back to the dump's position it would be applied twice
-		if ss, _, err := server.ReplicationChannelLink(server.ReplicationSourceName).ReadStatus(); pointedBeforeRestore && err == nil {
+		if ss, _, err := server.ReplicationChannelLink(server.ReplicationSourceName).Status(); pointedBeforeRestore && err == nil {
 			exec, _ := strconv.ParseUint(ss.ExecMasterLogPos.String, 10, 64)
 			if f := ss.RelayMasterLogFile.String; f > file || (f == file && exec > pos) {
 				file, pos = f, exec

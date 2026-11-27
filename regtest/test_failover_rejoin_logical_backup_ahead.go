@@ -95,7 +95,7 @@ func rejoinBackupAheadScenario(cl *cluster.Cluster, newPrimaryBackup bool) bool 
 		logf("mydumper backup of %s taken before the 100 rows: the one a rejoin may restore", replicas[0].URL)
 	}
 	for _, sl := range replicas {
-		logs, err := sl.ReplicationLink().StopRead(cluster.LinkByTest)
+		logs, err := sl.ReplicationLink().StopCopyEvents(cluster.LinkByTest)
 		cl.LogSQL(logs, err, sl.URL, "Rejoin", config.LvlErr, "STOP SLAVE IO_THREAD on %s: %s", sl.URL, err)
 		if err != nil {
 			return fail("STOP SLAVE IO_THREAD on %s: %s", sl.URL, err)

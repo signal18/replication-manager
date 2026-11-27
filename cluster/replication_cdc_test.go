@@ -41,7 +41,7 @@ func cdcFixture(t *testing.T) (*Cluster, *ServerMonitor, string) {
 func TestCDCFeedIsALinkOfItsTarget(t *testing.T) {
 	c, sv, path := cdcFixture(t)
 	feeds := c.cdcFeedsOf(sv)
-	if len(feeds) != 1 || feeds[0].Name() != "cdc:analytic" || feeds[0].Kind() != ReplicationKindCDC {
+	if len(feeds) != 1 || feeds[0].Name != "cdc:analytic" || feeds[0].Kind() != ReplicationKindCDC {
 		t.Fatalf("one feed, cdc:analytic: %+v", feeds)
 	}
 	sv.ReplicationFeeds = c.cdcFeedStatus(sv)
@@ -60,7 +60,7 @@ func TestCDCFeedIsALinkOfItsTarget(t *testing.T) {
 	r := &replPluginRunner{path: path, done: make(chan struct{})}
 	r.status.Store(&wire.Status{State: wire.StateRunning, GTID: "0-1-20", AppliedGTID: "0-1-18", LagSeconds: 3, ApplyError: "Lock wait timeout"})
 	c.replPlugins = map[string]*replPluginRunner{path: r}
-	row = feeds[0].row()
+	row = cdcRow(feeds[0])
 	if row.SlaveIORunning.String != "Yes" || row.SlaveSQLRunning.String != "No" || row.LastSQLError.String != "Lock wait timeout" {
 		t.Fatalf("capture runs, the apply fails: %+v", row)
 	}
@@ -68,7 +68,7 @@ func TestCDCFeedIsALinkOfItsTarget(t *testing.T) {
 		t.Fatalf("GTIDs and lag: %+v", row)
 	}
 	r.stopped.Store(&replPluginStop{Reason: "exited", Restart: time.Now()})
-	if row = feeds[0].row(); row.SlaveIORunning.String != "No" || row.LastIOError.String != "exited" {
+	if row = cdcRow(feeds[0]); row.SlaveIORunning.String != "No" || row.LastIOError.String != "exited" {
 		t.Fatalf("a stopped process: %+v", row)
 	}
 }
@@ -108,16 +108,22 @@ func TestCDCFeedUnsupported(t *testing.T) {
 	c, sv, _ := cdcFixture(t)
 	link := c.cdcFeedsOf(sv)[0]
 	for name, op := range map[string]func() (string, error){
-		"StopRead":       func() (string, error) { return link.StopRead(LinkByTest) },
-		"StopApply":      func() (string, error) { return link.StopApply(LinkByTest) },
-		"ResetPositions": func() (string, error) { return link.ResetPositions(LinkByTest) },
-		"Remove":         func() (string, error) { return link.Remove(LinkByTest) },
-		"ChangeSource":   func() (string, error) { return link.ChangeSource(dbhelper.ChangeMasterOpt{}, LinkByTest) },
-		"SkipEvent":      func() (string, error) { return link.SkipEvent(LinkByTest) },
+		"StartCopyEvents":  func() (string, error) { return link.StartCopyEvents(LinkByTest) },
+		"StopCopyEvents":   func() (string, error) { return link.StopCopyEvents(LinkByTest) },
+		"StartApplyEvents": func() (string, error) { return link.StartApplyEvents(LinkByTest) },
+		"StopApplyEvents":  func() (string, error) { return link.StopApplyEvents(LinkByTest) },
+		"Create":           func() (string, error) { return link.Create(LinkByTest) },
+		"ResetPositions":   func() (string, error) { return link.ResetPositions(LinkByTest) },
+		"Remove":           func() (string, error) { return link.Remove(LinkByTest) },
+		"ChangeSource":     func() (string, error) { return link.ChangeSource(dbhelper.ChangeMasterOpt{}, LinkByTest) },
+		"SkipEvent":        func() (string, error) { return link.SkipEvent(LinkByTest) },
 	} {
 		if _, err := op(); !errors.Is(err, ErrReplicationNotSupported) {
 			t.Errorf("%s: want ErrReplicationNotSupported, got %v", name, err)
 		}
+	}
+	if err := link.Plugin.Bootstrap(c, "feed", sv); !errors.Is(err, ErrReplicationNotSupported) {
+		t.Errorf("Bootstrap: want ErrReplicationNotSupported (step 5), got %v", err)
 	}
 	if len(sv.linkChangeList()) != 0 {
 		t.Fatal("a refused operation records nothing")

@@ -6,96 +6,149 @@ package cluster
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 )
 
-// The native backend of ReplicationLink: a channel of the server's own replication, MariaDB
-// and MySQL/Percona channels, PostgreSQL subscriptions and the standby's WAL receiver (the
-// engine branches are dbhelper's, T1/T23). It is the code that was spread over srv.go
-// (StopSlave, StartSlave, ResetSlave, ...), srv_set.go (ChangeMaster) and the monitor's status
-// read, moved here without a change of what it sends: this file is the only one of the
-// cluster, server, mcp and regtest packages that calls dbhelper's replication link helpers
-// (TestNoReplicationLinkSQLOutsideBackend).
+// The native plugin: a channel of the server's own replication, MariaDB and MySQL/Percona
+// channels, PostgreSQL subscriptions and the standby's WAL receiver (the engine branches are
+// dbhelper's, T1/T23). It is the code that was spread over srv.go (StopSlave, StartSlave,
+// ResetSlave, ...), srv_set.go (ChangeMaster) and the monitor's status read, moved here without a
+// change of what it sends: this file is the only one of the cluster, server, mcp and regtest
+// packages that calls dbhelper's replication link helpers (TestNoReplicationLinkSQLOutsideBackend).
+// One manifest for every engine until step 3 of the design splits it.
+
+type nativeReplicationPlugin struct {
+	unsupportedReplicationPlugin
+}
+
+// nativeTopologies are the topologies the native code sets up today (BootstrapReplication).
+var nativeTopologies = []ReplicationTopology{
+	{Name: config.TopoMasterSlave, Transport: ReplicationTransportLogical, Consistency: ReplicationConsistencyAsync},
+	{Name: config.TopoMasterSlave, Transport: ReplicationTransportLogical, Consistency: ReplicationConsistencySemiSync},
+	{Name: config.TopoMultiTierSlave, Transport: ReplicationTransportLogical, Consistency: ReplicationConsistencyAsync},
+	{Name: config.TopoMultiMaster, Transport: ReplicationTransportLogical, Consistency: ReplicationConsistencyAsync},
+	{Name: config.TopoMultiMasterRing, Transport: ReplicationTransportLogical, Consistency: ReplicationConsistencyAsync},
+	{Name: config.TopoActivePassive, Transport: ReplicationTransportLogical, Consistency: ReplicationConsistencyAsync},
+	{Name: config.TopoBinlogServer, Transport: ReplicationTransportLogical, Consistency: ReplicationConsistencyAsync},
+	{Name: config.TopoMultiMasterWsrep, Transport: ReplicationTransportLogical, Consistency: ReplicationConsistencyGroup},
+	{Name: config.TopoMultiMasterGrouprep, Transport: ReplicationTransportLogical, Consistency: ReplicationConsistencyGroup},
+	{Name: config.TopoMasterSlavePgStream, Transport: ReplicationTransportPhysical, Consistency: ReplicationConsistencyAsync},
+	{Name: config.TopoMasterSlavePgLog, Transport: ReplicationTransportLogical, Consistency: ReplicationConsistencyAsync},
+	{Name: config.TopoColumnstore, Transport: ReplicationTransportLogical, Consistency: ReplicationConsistencyAsync},
+}
+
+// Manifest: every action but the bootstrap and the creation of a link, which stay in prov.go
+// until step 5.
+func (p *nativeReplicationPlugin) Manifest() ReplicationManifest {
+	return ReplicationManifest{
+		Name:       ReplicationPluginNative,
+		Type:       string(ReplicationKindNative),
+		Source:     []string{"MariaDB", "MySQL", "Percona", "PostgreSQL"},
+		Target:     []string{"MariaDB", "MySQL", "Percona", "PostgreSQL"},
+		Topologies: nativeTopologies,
+		Actions: []string{
+			ReplicationActionRemove, ReplicationActionStatus,
+			ReplicationActionStart, ReplicationActionStop,
+			ReplicationActionStartCopyEvents, ReplicationActionStopCopyEvents,
+			ReplicationActionStartApplyEvents, ReplicationActionStopApplyEvents,
+			ReplicationActionResetPositions, ReplicationActionChangeSource,
+			ReplicationActionSkipEvent, ReplicationActionRejoin,
+		},
+	}
+}
 
 // nativeLink is one channel of the server; "" the default (unnamed) channel.
-type nativeLink struct {
-	server  *ServerMonitor
-	channel string
+func (server *ServerMonitor) nativeLink(channel string) Link {
+	return Link{Plugin: server.ClusterGroup.ReplicationPlugin(ReplicationPluginNative), Server: server, Name: channel}
 }
 
-func (server *ServerMonitor) nativeLink(channel string) *nativeLink {
-	return &nativeLink{server: server, channel: channel}
+// Bootstrap: step 5 of the design moves BootstrapReplication (prov.go) here; until then the
+// bootstrap runs from prov.go.
+func (p *nativeReplicationPlugin) Bootstrap(c *Cluster, topology string, master *ServerMonitor) error {
+	return fmt.Errorf("%w: %s of topology %q by %s (step 5)", ErrReplicationNotSupported, ReplicationActionBootstrap, topology, ReplicationPluginNative)
 }
 
-func (l *nativeLink) Kind() ReplicationKind { return ReplicationKindNative }
-func (l *nativeLink) Name() string          { return l.channel }
-
-func (l *nativeLink) Status() (dbhelper.SlaveStatus, bool) {
-	ss, err := l.server.GetSlaveStatus(l.channel)
-	if err != nil || ss == nil {
-		return dbhelper.SlaveStatus{}, false
-	}
-	return *ss, true
+// Create: step 5, with the bootstrap.
+func (p *nativeReplicationPlugin) Create(l Link, reason string) (string, error) {
+	return "", replicationNotSupported(ReplicationActionCreate+" (step 5)", l)
 }
 
-// ReadStatus reads the channel's status from the server now (SHOW SLAVE '<channel>' STATUS),
-// not the monitor's last read.
-func (l *nativeLink) ReadStatus() (dbhelper.SlaveStatus, string, error) {
-	ss, logs, err := dbhelper.GetSlaveStatus(l.server.Conn, l.channel, l.server.DBVersion)
+// Status reads the channel's status from the server now (SHOW SLAVE '<channel>' STATUS), not the
+// monitor's last read.
+func (p *nativeReplicationPlugin) Status(l Link) (dbhelper.SlaveStatus, string, error) {
+	ss, logs, err := dbhelper.GetSlaveStatus(l.Server.Conn, l.Name, l.Server.DBVersion)
 	ss.Kind = string(ReplicationKindNative)
 	return ss, logs, err
 }
 
-func (l *nativeLink) Stop(reason string) (string, error) {
-	if l.server.Conn == nil {
+func (p *nativeReplicationPlugin) Stop(l Link, reason string) (string, error) {
+	if l.Server.Conn == nil {
 		return "", errors.New("No database connection pool")
 	}
 	// recorded once the statement ran: a failed stop leaves no WARN0352 on a link still running
-	logs, err := dbhelper.StopSlave(l.server.Conn, l.channel, l.server.DBVersion)
+	logs, err := dbhelper.StopSlave(l.Server.Conn, l.Name, l.Server.DBVersion)
 	if err == nil {
-		l.server.recordLinkChange(l.channel, linkOpStop, reason)
+		l.Server.recordLinkChange(l.Name, linkOpStop, reason)
 	}
 	return logs, err
 }
 
-func (l *nativeLink) Start(reason string) (string, error) {
-	if l.server.Conn == nil {
+func (p *nativeReplicationPlugin) Start(l Link, reason string) (string, error) {
+	if l.Server.Conn == nil {
 		return "", errors.New("No database connection")
 	}
-	logs, err := dbhelper.StartSlave(l.server.Conn, l.channel, l.server.DBVersion)
+	logs, err := dbhelper.StartSlave(l.Server.Conn, l.Name, l.Server.DBVersion)
 	if err == nil {
-		l.server.clearLinkChange(l.channel)
+		l.Server.clearLinkChange(l.Name)
 	}
 	return logs, err
 }
 
-func (l *nativeLink) StopRead(reason string) (string, error) {
-	if l.server.Conn == nil {
+// StartCopyEvents starts the IO thread. The record of a stop stays until the tick sees both
+// threads run (checkLinkChanges): half a link started is not a link running.
+func (p *nativeReplicationPlugin) StartCopyEvents(l Link, reason string) (string, error) {
+	if l.Server.Conn == nil {
 		return "", errors.New("No database connection pool")
 	}
-	l.server.recordLinkChange(l.channel, linkOpStopRead, reason)
-	return dbhelper.StopSlaveIOThread(l.server.Conn, l.channel, l.server.DBVersion)
+	return dbhelper.StartSlaveIOThread(l.Server.Conn, l.Name, l.Server.DBVersion)
 }
 
-func (l *nativeLink) StopApply(reason string) (string, error) {
-	if l.server.Conn == nil {
+func (p *nativeReplicationPlugin) StopCopyEvents(l Link, reason string) (string, error) {
+	if l.Server.Conn == nil {
 		return "", errors.New("No database connection pool")
 	}
-	l.server.recordLinkChange(l.channel, linkOpStopApply, reason)
-	return dbhelper.StopSlaveSQLThread(l.server.Conn, l.channel, l.server.DBVersion)
+	l.Server.recordLinkChange(l.Name, linkOpStopCopyEvents, reason)
+	return dbhelper.StopSlaveIOThread(l.Server.Conn, l.Name, l.Server.DBVersion)
+}
+
+// StartApplyEvents starts the SQL thread; the record stays as for StartCopyEvents.
+func (p *nativeReplicationPlugin) StartApplyEvents(l Link, reason string) (string, error) {
+	if l.Server.Conn == nil {
+		return "", errors.New("No database connection pool")
+	}
+	return dbhelper.StartSlaveSQLThread(l.Server.Conn, l.Name, l.Server.DBVersion)
+}
+
+func (p *nativeReplicationPlugin) StopApplyEvents(l Link, reason string) (string, error) {
+	if l.Server.Conn == nil {
+		return "", errors.New("No database connection pool")
+	}
+	l.Server.recordLinkChange(l.Name, linkOpStopApplyEvents, reason)
+	return dbhelper.StopSlaveSQLThread(l.Server.Conn, l.Name, l.Server.DBVersion)
 }
 
 // ResetPositions clears the channel's positions and relay logs and keeps the link (RESET
 // SLAVE without ALL): what a reseed may do, never delete the link (law T27, #2093).
-func (l *nativeLink) ResetPositions(reason string) (string, error) {
-	if l.server.Conn == nil {
+func (p *nativeReplicationPlugin) ResetPositions(l Link, reason string) (string, error) {
+	if l.Server.Conn == nil {
 		return "", errors.New("No database connection pool")
 	}
-	logs, err := dbhelper.ResetSlave(l.server.Conn, false, l.channel, l.server.DBVersion)
+	logs, err := dbhelper.ResetSlave(l.Server.Conn, false, l.Name, l.Server.DBVersion)
 	if err == nil {
-		l.server.recordLinkChange(l.channel, linkOpResetPositions, reason)
+		l.Server.recordLinkChange(l.Name, linkOpResetPositions, reason)
 	}
 	return logs, err
 }
@@ -103,13 +156,13 @@ func (l *nativeLink) ResetPositions(reason string) (string, error) {
 // Remove is RESET SLAVE ALL on the channel. Not recorded, and its earlier record (the stop
 // before a promotion) is dropped: the link no longer exists, the promotion that removed it
 // (failover, switchover) has its own states, so reason is not used.
-func (l *nativeLink) Remove(reason string) (string, error) {
-	if l.server.Conn == nil {
+func (p *nativeReplicationPlugin) Remove(l Link, reason string) (string, error) {
+	if l.Server.Conn == nil {
 		return "", errors.New("No database connection pool")
 	}
-	logs, err := dbhelper.ResetSlave(l.server.Conn, true, l.channel, l.server.DBVersion)
+	logs, err := dbhelper.ResetSlave(l.Server.Conn, true, l.Name, l.Server.DBVersion)
 	if err == nil {
-		l.server.clearLinkChange(l.channel)
+		l.Server.clearLinkChange(l.Name)
 	}
 	return logs, err
 }
@@ -117,8 +170,8 @@ func (l *nativeLink) Remove(reason string) (string, error) {
 // ChangeSource points this server's replication at opt's primary. Every CHANGE MASTER of
 // a cluster goes through it, so the replication TLS material is decided in one place,
 // from the primary's live certificate (ReplicationTLSFor, #1933).
-func (l *nativeLink) ChangeSource(opt dbhelper.ChangeMasterOpt, reason string) (string, error) {
-	server := l.server
+func (p *nativeReplicationPlugin) ChangeSource(l Link, opt dbhelper.ChangeMasterOpt, reason string) (string, error) {
+	server := l.Server
 	if opt.SSLCa == "" && !opt.SSLCaClear && !opt.SSLOff {
 		tls := server.ReplicationTLSFor(opt.Host, opt.Port, opt.SSL)
 		opt.SSLCa, opt.SSLCaClear, opt.SSLOff = tls.CA, tls.ClearCA, tls.SSLOff
@@ -135,17 +188,17 @@ func (l *nativeLink) ChangeSource(opt dbhelper.ChangeMasterOpt, reason string) (
 
 // SkipEvent skips one event; reason is not used: the skip runs between a stop and a start,
 // which record and clear the link's state.
-func (l *nativeLink) SkipEvent(reason string) (string, error) {
-	if l.server.Conn == nil {
+func (p *nativeReplicationPlugin) SkipEvent(l Link, reason string) (string, error) {
+	if l.Server.Conn == nil {
 		return "", errors.New("No database connection pool")
 	}
-	return dbhelper.SkipBinlogEvent(l.server.Conn, l.channel, l.server.DBVersion)
+	return dbhelper.SkipBinlogEvent(l.Server.Conn, l.Name, l.Server.DBVersion)
 }
 
 // Rejoin is the rejoin family of srv_rejoin.go (flashback, reseed, dump, SST, script, ...):
 // the server rejoins the cluster's master, whatever the channel the link names.
-func (l *nativeLink) Rejoin() error {
-	return l.server.rejoinMaster()
+func (p *nativeReplicationPlugin) Rejoin(l Link) error {
+	return l.Server.rejoinMaster()
 }
 
 // SkipReplicationEvent stops the managed link, skips the next event of its apply and starts it

@@ -675,7 +675,7 @@ func (e *edgeRun) breakReplication(name string) bool {
 		if err := e.r.Conn.QueryRowx("SELECT SERVICE_STATE FROM performance_schema.replication_applier_status WHERE CHANNEL_NAME=?", e.r.ReplicationSourceName).Scan(&running); err == nil && running == "OFF" {
 			return e.check(name, true, "")
 		}
-		if ss, _, err := e.r.ReplicationChannelLink(e.r.ReplicationSourceName).ReadStatus(); err == nil && ss.SlaveSQLRunning.String == "No" {
+		if ss, _, err := e.r.ReplicationChannelLink(e.r.ReplicationSourceName).Status(); err == nil && ss.SlaveSQLRunning.String == "No" {
 			return e.check(name, true, "")
 		}
 		time.Sleep(2 * time.Second)
@@ -750,7 +750,7 @@ func (e *edgeRun) checkReplica(name string, wantGTID bool) bool {
 	}
 	// read on the replica: the monitor's status lags a tick behind a reseed, and is empty
 	// right after its RESET SLAVE ALL
-	ss, _, err := e.r.ReplicationChannelLink(e.r.ReplicationSourceName).ReadStatus()
+	ss, _, err := e.r.ReplicationChannelLink(e.r.ReplicationSourceName).Status()
 	if err != nil {
 		return e.check(name, false, "replication status: "+err.Error())
 	}
@@ -791,7 +791,7 @@ func (e *edgeRun) waitCaughtUp() string {
 	var last string
 	deadline := time.Now().Add(caughtUpLimit)
 	for {
-		ss, _, err := e.r.ReplicationChannelLink(e.r.ReplicationSourceName).ReadStatus()
+		ss, _, err := e.r.ReplicationChannelLink(e.r.ReplicationSourceName).Status()
 		if err != nil {
 			last = "replication status: " + err.Error()
 		} else {
@@ -830,7 +830,7 @@ func (e *edgeRun) replicaDiff() string {
 	var io, sql string
 	q := "SELECT IFNULL((SELECT SERVICE_STATE FROM performance_schema.replication_connection_status WHERE CHANNEL_NAME=?),'OFF'), IFNULL((SELECT SERVICE_STATE FROM performance_schema.replication_applier_status WHERE CHANNEL_NAME=?),'OFF')"
 	if e.r.IsMariaDB() {
-		ss, _, err := e.r.ReplicationChannelLink(e.r.ReplicationSourceName).ReadStatus()
+		ss, _, err := e.r.ReplicationChannelLink(e.r.ReplicationSourceName).Status()
 		if err != nil {
 			return "replication status: " + err.Error()
 		}

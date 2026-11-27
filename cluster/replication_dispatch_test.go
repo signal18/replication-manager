@@ -1,6 +1,7 @@
 package cluster
 
 import (
+	"errors"
 	"fmt"
 	"go/ast"
 	"go/parser"
@@ -15,7 +16,7 @@ import (
 // The lock of the replication link interface (doc/implementation/cluster/REPLICATION_INTERFACE.md):
 // dbhelper's replication link helpers (the status read, start, stop, reset, CHANGE MASTER, skip)
 // are called from the native backend only, cluster/replication_native.go. Every other caller goes
-// through a ReplicationLink (server.ReplicationLink(), ReplicationChannelLink, ReplicationLinks),
+// through a Link of a ReplicationPlugin (server.ReplicationLink(), ReplicationChannelLink, ReplicationLinks),
 // so a link change is recorded as a state (T27) and a CDC feed is a link like any other.
 //
 // replicationLinkSQL are the helpers the interface covers. replicationLinkSQLLater are the link
@@ -28,6 +29,8 @@ var replicationLinkSQL = map[string]bool{
 	"GetSlaveStatus":        true,
 	"StartSlave":            true,
 	"StopSlave":             true,
+	"StartSlaveIOThread":    true,
+	"StartSlaveSQLThread":   true,
 	"StopSlaveIOThread":     true,
 	"StopSlaveSQLThread":    true,
 	"StopAllSlaves":         true,
@@ -136,7 +139,7 @@ func TestNoReplicationLinkSQLOutsideBackend(t *testing.T) {
 		want, ok := replicationLinkSQLLater[rel]
 		switch {
 		case !ok:
-			problems = append(problems, fmt.Sprintf("%s: %d lines call a replication link helper not behind the interface yet, not in the allowed list: add the operation to ReplicationLink instead", rel, got))
+			problems = append(problems, fmt.Sprintf("%s: %d lines call a replication link helper not behind the interface yet, not in the allowed list: add the operation to ReplicationPlugin instead", rel, got))
 		case got > want:
 			problems = append(problems, fmt.Sprintf("%s: %d lines call a replication link helper not behind the interface yet, %d allowed", rel, got, want))
 		case got < want:
@@ -159,8 +162,8 @@ func TestNoReplicationLinkSQLOutsideBackend(t *testing.T) {
 func TestNativeLinkRecordsChanges(t *testing.T) {
 	c, sv := reseedLinkFixture()
 	link := sv.ReplicationChannelLink("belair")
-	if link.Kind() != ReplicationKindNative || link.Name() != "belair" {
-		t.Fatalf("kind %s name %q", link.Kind(), link.Name())
+	if link.Kind() != ReplicationKindNative || link.Name != "belair" {
+		t.Fatalf("kind %s name %q", link.Kind(), link.Name)
 	}
 	// no connection: Stop refuses before any SQL, and records nothing
 	if _, err := link.Stop(LinkBySwitchover); err == nil {
@@ -195,4 +198,49 @@ func stateOpen(c *Cluster, key string) bool {
 		}
 	}
 	return false
+}
+
+// The registry gives the two built-in plugins, a null plugin for an unknown name (never nil), and
+// a Link refuses an action its plugin's manifest does not list, before any call.
+func TestReplicationPluginRegistry(t *testing.T) {
+	c, sv := reseedLinkFixture()
+	if err := c.newReplicationPluginList(); err != nil {
+		t.Fatal(err)
+	}
+	for name, kind := range map[string]ReplicationKind{ReplicationPluginNative: ReplicationKindNative, ReplicationPluginCDC: ReplicationKindCDC} {
+		m := c.ReplicationPlugin(name).Manifest()
+		if m.Name != name || ReplicationKind(m.Type) != kind || len(m.Topologies) == 0 || len(m.Actions) == 0 {
+			t.Errorf("%s: manifest %+v", name, m)
+		}
+	}
+	native := c.ReplicationPlugin(ReplicationPluginNative).Manifest()
+	for _, a := range []string{ReplicationActionStartCopyEvents, ReplicationActionStopCopyEvents, ReplicationActionStartApplyEvents, ReplicationActionStopApplyEvents, ReplicationActionChangeSource, ReplicationActionRejoin} {
+		if !native.Can(a) {
+			t.Errorf("native: %s not in its manifest", a)
+		}
+	}
+	for _, a := range []string{ReplicationActionBootstrap, ReplicationActionCreate} {
+		if native.Can(a) {
+			t.Errorf("native: %s listed before step 5", a)
+		}
+	}
+	if err := c.ReplicationPlugin(ReplicationPluginNative).Bootstrap(c, "master-slave", sv); !errors.Is(err, ErrReplicationNotSupported) {
+		t.Errorf("native Bootstrap: want ErrReplicationNotSupported (step 5), got %v", err)
+	}
+	if _, err := sv.ReplicationLink().Create(LinkByTest); !errors.Is(err, ErrReplicationNotSupported) {
+		t.Errorf("native Create: want ErrReplicationNotSupported (step 5), got %v", err)
+	}
+	unknown := Link{Plugin: c.ReplicationPlugin("repl-nowhere-nowhere-native"), Server: sv, Name: "x"}
+	if unknown.Plugin == nil || unknown.Plugin.Manifest().Name != "repl-nowhere-nowhere-native" {
+		t.Fatalf("unknown plugin: %+v", unknown.Plugin)
+	}
+	if _, err := unknown.Stop(LinkByTest); !errors.Is(err, ErrReplicationNotSupported) {
+		t.Errorf("unknown plugin Stop: want ErrReplicationNotSupported, got %v", err)
+	}
+	if err := unknown.Rejoin(); !errors.Is(err, ErrReplicationNotSupported) {
+		t.Errorf("unknown plugin Rejoin: want ErrReplicationNotSupported, got %v", err)
+	}
+	if (*Cluster)(nil).ReplicationPlugin(ReplicationPluginNative).Manifest().Name != ReplicationPluginNative {
+		t.Error("a nil cluster still resolves a built-in plugin")
+	}
 }

@@ -19,7 +19,7 @@ import (
 	"github.com/signal18/replication-manager/utils/dbhelper"
 )
 
-// The CDC backend of ReplicationLink: a replication plugin's feed (cluster_replplugin.go, the
+// The CDC plugin: a replication plugin's feed (cluster_replplugin.go, the
 // CDC core cluster/replplugin/cdc) is a link of the server it writes into, its target. Its
 // surface is the plugin TOML (<cluster>/replication-plugins/<name>.toml), its State and applied
 // files, and the status line the supervisor keeps: nothing else, so that any destination plugin
@@ -33,22 +33,69 @@ import (
 //     applied, else a new initial load through ReinitReplicationPlugin (Rejoin);
 //   - it never writes to the source: it reads its binary log list and positions only (F1).
 //
-// The other operations (separate read or apply stop, reset of positions, removal, change of
-// source, skip) are ErrReplicationNotSupported: the source follows replication-plugin-source
+// One generic manifest for every CDC binary until step 4 of the design gives each its own. The
+// other actions (a separate start or stop of the copy or the apply, reset of positions, removal,
+// change of source, skip, bootstrap, creation) are not in its manifest: ErrReplicationNotSupported: the source follows replication-plugin-source
 // (cluster_repl_source.go), the definition is the child's seed.
 
 // cdcLinkPrefix names a feed among the links of a server: "cdc:<TOML name>".
 const cdcLinkPrefix = "cdc:"
 
-type cdcLink struct {
-	cluster *Cluster       // the cluster whose supervisor runs the feed (the child)
-	server  *ServerMonitor // its target
-	path    string         // its TOML
+// cdcFeed is a feed link's configuration (Link.Config).
+type cdcFeed struct {
+	cluster *Cluster // the cluster whose supervisor runs the feed (the child)
+	path    string   // its TOML
 	cfg     wire.Config
 }
 
+type cdcReplicationPlugin struct {
+	unsupportedReplicationPlugin
+}
+
+func (p *cdcReplicationPlugin) Manifest() ReplicationManifest {
+	return ReplicationManifest{
+		Name:   ReplicationPluginCDC,
+		Type:   string(ReplicationKindCDC),
+		Source: []string{"MariaDB", "MySQL", "Percona", "PostgreSQL"},
+		Target: []string{"MariaDB", "ColumnStore", "DuckDB"},
+		Topologies: []ReplicationTopology{
+			{Name: "feed", Transport: ReplicationTransportLogical, Consistency: ReplicationConsistencyAsync},
+		},
+		Actions: []string{ReplicationActionStatus, ReplicationActionStart, ReplicationActionStop, ReplicationActionRejoin},
+	}
+}
+
+// Bootstrap: step 5 of the design moves the seed of the child here.
+func (p *cdcReplicationPlugin) Bootstrap(c *Cluster, topology string, master *ServerMonitor) error {
+	return fmt.Errorf("%w: %s of topology %q by %s (step 5)", ErrReplicationNotSupported, ReplicationActionBootstrap, topology, ReplicationPluginCDC)
+}
+
+// Create: step 5, with the bootstrap.
+func (p *cdcReplicationPlugin) Create(l Link, reason string) (string, error) {
+	return "", replicationNotSupported(ReplicationActionCreate+" (step 5)", l)
+}
+
+// cdcFeedOf is the link's configuration; links are built by cdcFeedLink.
+func cdcFeedOf(l Link) *cdcFeed {
+	f, _ := l.Config.(*cdcFeed)
+	if f == nil {
+		f = &cdcFeed{}
+	}
+	return f
+}
+
+// cdcFeedLink is the link of one feed into server.
+func (cluster *Cluster) cdcFeedLink(server *ServerMonitor, path string, cfg wire.Config) Link {
+	return Link{
+		Plugin: cluster.ReplicationPlugin(ReplicationPluginCDC),
+		Server: server,
+		Name:   cdcLinkPrefix + strings.TrimSuffix(filepath.Base(path), filepath.Ext(path)),
+		Config: &cdcFeed{cluster: cluster, path: path, cfg: cfg},
+	}
+}
+
 // cdcFeedsOf are the feeds of the cluster whose target is server, by TOML path.
-func (cluster *Cluster) cdcFeedsOf(server *ServerMonitor) []*cdcLink {
+func (cluster *Cluster) cdcFeedsOf(server *ServerMonitor) []Link {
 	if cluster == nil || server == nil {
 		return nil
 	}
@@ -58,11 +105,11 @@ func (cluster *Cluster) cdcFeedsOf(server *ServerMonitor) []*cdcLink {
 		paths = append(paths, p)
 	}
 	sort.Strings(paths)
-	var out []*cdcLink
+	var out []Link
 	for _, p := range paths {
 		c := cfgs[p]
 		if c.Target.Host == server.Host && c.Target.Port == atoiPort(server.Port) {
-			out = append(out, &cdcLink{cluster: cluster, server: server, path: p, cfg: c})
+			out = append(out, cluster.cdcFeedLink(server, p, c))
 		}
 	}
 	return out
@@ -72,15 +119,9 @@ func (cluster *Cluster) cdcFeedsOf(server *ServerMonitor) []*cdcLink {
 func (cluster *Cluster) cdcFeedStatus(server *ServerMonitor) []dbhelper.SlaveStatus {
 	var out []dbhelper.SlaveStatus
 	for _, l := range cluster.cdcFeedsOf(server) {
-		out = append(out, l.row())
+		out = append(out, cdcRow(l))
 	}
 	return out
-}
-
-func (l *cdcLink) Kind() ReplicationKind { return ReplicationKindCDC }
-
-func (l *cdcLink) Name() string {
-	return cdcLinkPrefix + strings.TrimSuffix(filepath.Base(l.path), filepath.Ext(l.path))
 }
 
 func cdcNull(s string) sql.NullString { return sql.NullString{String: s, Valid: s != ""} }
@@ -92,18 +133,19 @@ func yesNo(b bool) sql.NullString {
 	return cdcNull("No")
 }
 
-// row is the feed as a status row, from the supervisor's last status line.
-func (l *cdcLink) row() dbhelper.SlaveStatus {
+// cdcRow is the feed as a status row, from the supervisor's last status line.
+func cdcRow(l Link) dbhelper.SlaveStatus {
+	f := cdcFeedOf(l)
 	ss := dbhelper.SlaveStatus{
 		Kind:           string(ReplicationKindCDC),
-		ConnectionName: cdcNull(l.Name()),
-		MasterHost:     cdcNull(l.cfg.Source.Host),
-		MasterUser:     cdcNull(l.cfg.Source.User),
-		MasterPort:     cdcNull(fmt.Sprint(l.cfg.Source.Port)),
+		ConnectionName: cdcNull(l.Name),
+		MasterHost:     cdcNull(f.cfg.Source.Host),
+		MasterUser:     cdcNull(f.cfg.Source.User),
+		MasterPort:     cdcNull(fmt.Sprint(f.cfg.Source.Port)),
 	}
-	st, stop, running := l.cluster.replPluginRuntime(l.path)
+	st, stop, running := f.cluster.replPluginRuntime(f.path)
 	switch {
-	case !l.cfg.Enabled:
+	case !f.cfg.Enabled:
 		ss.SlaveIORunning, ss.SlaveSQLRunning = cdcNull("No"), cdcNull("No")
 		ss.SlaveSQLRunningState = cdcNull("disabled")
 	case stop != nil:
@@ -140,65 +182,49 @@ func (cluster *Cluster) replPluginRuntime(path string) (*wire.Status, *replPlugi
 	return r.status.Load(), r.stopped.Load(), true
 }
 
-func (l *cdcLink) Status() (dbhelper.SlaveStatus, bool) { return l.row(), true }
-
-func (l *cdcLink) ReadStatus() (dbhelper.SlaveStatus, string, error) { return l.row(), "", nil }
+// Status is the feed's row from the supervisor's last status line: no statement.
+func (p *cdcReplicationPlugin) Status(l Link) (dbhelper.SlaveStatus, string, error) {
+	return cdcRow(l), "", nil
+}
 
 // setEnabled writes the TOML's enabled flag; the supervisor follows it at once.
-func (l *cdcLink) setEnabled(on bool) error {
-	if err := rewriteReplPluginConfigs([]string{l.path}, func(c *wire.Config) { c.Enabled = on }); err != nil {
+func (f *cdcFeed) setEnabled(on bool) error {
+	if err := rewriteReplPluginConfigs([]string{f.path}, func(c *wire.Config) { c.Enabled = on }); err != nil {
 		return err
 	}
-	l.cfg.Enabled = on
-	l.cluster.CheckReplicationPlugins()
+	f.cfg.Enabled = on
+	f.cluster.CheckReplicationPlugins()
 	return nil
 }
 
 // settingDriven: the feed of the replication-plugin-feed-* settings, whose TOML the tick writes
 // from them (syncReplicationFeed): one source of truth, never written here.
-func (l *cdcLink) settingDriven() bool {
-	return l.path == l.cluster.replFeedPath()
+func (f *cdcFeed) settingDriven() bool {
+	return f.path == f.cluster.replFeedPath()
 }
 
-func (l *cdcLink) Start(reason string) (string, error) {
-	if l.settingDriven() {
+func (p *cdcReplicationPlugin) Start(l Link, reason string) (string, error) {
+	f := cdcFeedOf(l)
+	if f.settingDriven() {
 		return "", replicationNotSupported("start of a feed driven by its settings (replication-plugin-feed-source-cluster)", l)
 	}
-	if err := l.setEnabled(true); err != nil {
+	if err := f.setEnabled(true); err != nil {
 		return "", err
 	}
-	l.server.clearLinkChange(l.Name())
-	return "enabled = true in " + l.path, nil
+	l.Server.clearLinkChange(l.Name)
+	return "enabled = true in " + f.path, nil
 }
 
-func (l *cdcLink) Stop(reason string) (string, error) {
-	if l.settingDriven() {
+func (p *cdcReplicationPlugin) Stop(l Link, reason string) (string, error) {
+	f := cdcFeedOf(l)
+	if f.settingDriven() {
 		return "", replicationNotSupported("stop of a feed driven by its settings (replication-plugin-feed-source-cluster)", l)
 	}
-	l.server.recordLinkChange(l.Name(), linkOpStop, reason)
-	if err := l.setEnabled(false); err != nil {
+	l.Server.recordLinkChange(l.Name, linkOpStop, reason)
+	if err := f.setEnabled(false); err != nil {
 		return "", err
 	}
-	return "enabled = false in " + l.path, nil
-}
-
-func (l *cdcLink) StopRead(reason string) (string, error) {
-	return "", replicationNotSupported("stop of the read alone", l)
-}
-func (l *cdcLink) StopApply(reason string) (string, error) {
-	return "", replicationNotSupported("stop of the apply alone", l)
-}
-func (l *cdcLink) ResetPositions(reason string) (string, error) {
-	return "", replicationNotSupported("reset of positions (Rejoin rebuilds)", l)
-}
-func (l *cdcLink) Remove(reason string) (string, error) {
-	return "", replicationNotSupported("removal (seed the child again)", l)
-}
-func (l *cdcLink) ChangeSource(opt dbhelper.ChangeMasterOpt, reason string) (string, error) {
-	return "", replicationNotSupported("change of source (replication-plugin-source)", l)
-}
-func (l *cdcLink) SkipEvent(reason string) (string, error) {
-	return "", replicationNotSupported("skip of an event", l)
+	return "enabled = false in " + f.path, nil
 }
 
 // Rejoin resumes the feed when it can, else asks for a new initial load through
@@ -208,59 +234,61 @@ func (l *cdcLink) SkipEvent(reason string) (string, error) {
 //   - a MariaDB/MySQL binlog: the GTID applied is checked against the source's binary logs
 //     (gtidRetained); purged, ReinitReplicationPlugin refuses with the reason (the copies' new
 //     start is the child's seed) and the feed stays recorded, WARN0352 saying why.
-func (l *cdcLink) Rejoin() error {
-	cluster := l.cluster
-	if l.cfg.SourceKind != "" {
-		why, needs, err := replFeedNeedsInit(l.path)
+func (p *cdcReplicationPlugin) Rejoin(l Link) error {
+	f := cdcFeedOf(l)
+	cluster := f.cluster
+	if f.cfg.SourceKind != "" {
+		why, needs, err := replFeedNeedsInit(f.path)
 		if err != nil {
-			return fmt.Errorf("state of %s: %w", l.Name(), err)
+			return fmt.Errorf("state of %s: %w", l.Name, err)
 		}
 		if needs {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rejoin of feed %s on %s: a new initial load (%s)", l.Name(), l.server.URL, why)
-			if err := cluster.ReinitReplicationPlugin(l.cfg.Plugin); err != nil {
-				l.server.recordLinkChange(l.Name(), linkOpStop, "rejoin: "+err.Error())
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rejoin of feed %s on %s: a new initial load (%s)", l.Name, l.Server.URL, why)
+			if err := cluster.ReinitReplicationPlugin(f.cfg.Plugin); err != nil {
+				l.Server.recordLinkChange(l.Name, linkOpStop, "rejoin: "+err.Error())
 				return err
 			}
 		}
-		return l.resume()
+		return p.resume(l)
 	}
-	st, err := wire.ReadState(wire.StatePath(l.path))
+	st, err := wire.ReadState(wire.StatePath(f.path))
 	if err != nil {
-		return fmt.Errorf("state of %s: %w", l.Name(), err)
+		return fmt.Errorf("state of %s: %w", l.Name, err)
 	}
 	from := st.GTID
-	if a, err := readReplPluginApplied(wire.AppliedPath(l.path)); err == nil && a.GTID != "" {
+	if a, err := readReplPluginApplied(wire.AppliedPath(f.path)); err == nil && a.GTID != "" {
 		from = a.GTID
 	}
-	source := cluster.resolveReplPluginSource(l.cfg)
+	source := cluster.resolveReplPluginSource(f.cfg)
 	if source == nil || source.Conn == nil {
-		return fmt.Errorf("feed %s: no source to read (see its state)", l.Name())
+		return fmt.Errorf("feed %s: no source to read (see its state)", l.Name)
 	}
 	if from != "" {
-		ok, why, err := source.gtidRetained(from, !source.IsMariaDB(), "CDC", "Rejoin of feed "+l.Name())
+		ok, why, err := source.gtidRetained(from, !source.IsMariaDB(), "CDC", "Rejoin of feed "+l.Name)
 		if err != nil {
 			return err
 		}
 		if !ok {
-			err := cluster.ReinitReplicationPlugin(l.cfg.Plugin)
+			err := cluster.ReinitReplicationPlugin(f.cfg.Plugin)
 			if err == nil {
-				return l.resume()
+				return p.resume(l)
 			}
-			err = fmt.Errorf("feed %s: %s lost the binary logs from %s (%s): %w", l.Name(), source.URL, from, why, err)
-			l.server.recordLinkChange(l.Name(), linkOpStop, "rejoin: "+err.Error())
+			err = fmt.Errorf("feed %s: %s lost the binary logs from %s (%s): %w", l.Name, source.URL, from, why, err)
+			l.Server.recordLinkChange(l.Name, linkOpStop, "rejoin: "+err.Error())
 			return err
 		}
 	}
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rejoin of feed %s on %s: %s still has the binary logs from %s, the feed resumes from its State", l.Name(), l.server.URL, source.URL, from)
-	return l.resume()
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rejoin of feed %s on %s: %s still has the binary logs from %s, the feed resumes from its State", l.Name, l.Server.URL, source.URL, from)
+	return p.resume(l)
 }
 
 // resume starts the feed again: Start, or for a setting-driven feed the next tick, which
 // writes its TOML from the settings.
-func (l *cdcLink) resume() error {
-	if l.settingDriven() {
-		l.server.clearLinkChange(l.Name())
-		l.cluster.CheckReplicationPlugins()
+func (p *cdcReplicationPlugin) resume(l Link) error {
+	f := cdcFeedOf(l)
+	if f.settingDriven() {
+		l.Server.clearLinkChange(l.Name)
+		f.cluster.CheckReplicationPlugins()
 		return nil
 	}
 	_, err := l.Start(LinkByRejoin)

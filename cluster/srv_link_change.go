@@ -14,7 +14,7 @@ import (
 )
 
 // The changes repman made to a server's replication links (law T27): every stop, reset of
-// positions or repoint through a ReplicationLink is recorded with the reason the caller gave,
+// positions or repoint through a Link (ReplicationPlugin) is recorded with the reason the caller gave,
 // and stays a state, tick after tick, until the link runs again: the GUI tells why a link is
 // down instead of a log line. A reseed's stops are WARN0252 (their own text, srv_reseed_link.go),
 // every other change WARN0352. A Start through the link that succeeds drops the record at once.

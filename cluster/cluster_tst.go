@@ -805,7 +805,7 @@ func (cluster *Cluster) K8SRestartDatabaseServiceWaitRejoin(server *ServerMonito
 func (cluster *Cluster) DelayAllSlaves() error {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "BENCH", "Stopping slaves, injecting data & long transaction")
 	for _, s := range cluster.slaves {
-		_, err := s.ReplicationLink().StopApply(LinkByTest)
+		_, err := s.ReplicationLink().StopApplyEvents(LinkByTest)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Stopping slave on %s %s", s.URL, err)
 		}

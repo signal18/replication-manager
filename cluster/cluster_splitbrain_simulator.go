@@ -189,7 +189,7 @@ func (cluster *Cluster) SimulateSlaveIOThreadStop(server *ServerMonitor, duratio
 	if server == nil {
 		return
 	}
-	if logs, err := server.ReplicationLink().StopRead(LinkByTest); err != nil {
+	if logs, err := server.ReplicationLink().StopCopyEvents(LinkByTest); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "SPLITBRAIN SIMULATION: could not stop io_thread on %s: %s (%s)", server.URL, err, logs)
 		return
 	}

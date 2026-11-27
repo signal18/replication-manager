@@ -1,7 +1,7 @@
 # Replication plugins: one interface for every link
 
-Issue #2453. Status: **design, to be validated by the maintainer before the code**. Step 1 (below,
-"Where the code is today") is coded and tested; the rest of this document is the target.
+Issue #2453. Status: **design validated by the maintainer (2026-11-27)**. Steps 1 and 2 (below,
+"Where the code is today") are coded and tested; the rest of this document is the target.
 
 ## The rule
 
@@ -36,7 +36,7 @@ type ReplicationPlugin interface {
     Create(l Link, reason string) (string, error)                       // adds one link (bootstrap, operator)
     Remove(l Link, reason string) (string, error)                       // promotion or operator only (T27)
 
-    Status(l Link) (dbhelper.SlaveStatus, error)                         // one row shape, Kind = the plugin
+    Status(l Link) (dbhelper.SlaveStatus, string, error)                 // one row shape, Kind = the plugin; the statement (F11)
 
     Start(l Link, reason string) (string, error)                         // copy + apply
     Stop(l Link, reason string) (string, error)
@@ -57,7 +57,8 @@ type ReplicationPlugin interface {
 - An action the manifest does not list answers `ErrReplicationNotSupported`, never nil; the GUI,
   the API and MCP hide it.
 - `Status` gives every link the same `SlaveStatus` row; a field with no meaning for the type stays
-  empty.
+  empty. It returns the statement it ran beside the row, as every other verb (law F11: the caller
+  logs it, the operator can replay it).
 
 ### The manifest
 
@@ -164,19 +165,34 @@ Today `BootstrapReplication` (`prov.go`) holds the topologies as branches per en
   `replication-plugin-feed-create-source-objects` for the PostgreSQL slot), and a `remove` that takes
   every trigger and table it created away.
 
-## Where the code is today (step 1, coded and tested)
+## Where the code is today (steps 1 and 2, coded and tested)
 
-- `cluster/replication.go`: `ReplicationLink`, the per-link half of the interface above (status,
-  start, stop, read and apply stop, reset, remove, change source, skip, rejoin).
-- `cluster/replication_native.go`: the native code moved from `srv.go`, `srv_set.go` and the status
-  read, the statements unchanged. The lock test `TestNoReplicationLinkSQLOutsideBackend` keeps the
-  link SQL there.
-- `cluster/replication_cdc.go`: a CDC feed as a link, over its TOML, State and status line.
+- `cluster/replication.go`: the `ReplicationPlugin` interface, `ReplicationManifest`,
+  `ReplicationTopology`, the `ReplicationAction*` names (the external contract's: `start-copy`,
+  `stop-apply`, ...), and `Link` (the plugin, the server it writes into, the channel or feed name,
+  the plugin's configuration of it). `Link`'s methods check the manifest, then call the plugin with
+  the link: an action the manifest does not list answers `ErrReplicationNotSupported` before any
+  call. `server.ReplicationLink()`, `ReplicationChannelLink(name)` and `ReplicationLinks()` return
+  `Link` values.
+- `cluster/replication_registry.go`: the registry, built as the orchestrators'
+  (`newReplicationPluginList` beside `newOrchestratorList`, `cluster.ReplicationPlugin(name)` never
+  nil: a null plugin with no action for an unknown name), and `unsupportedReplicationPlugin`, which
+  each plugin embeds for the actions it does not implement.
+- `cluster/replication_native.go`: the native plugin, one manifest (`repl-mariadb-mariadb-native`)
+  for every engine until step 3, the code moved from `srv.go`, `srv_set.go` and the status read,
+  the statements unchanged. `StartCopyEvents` and `StartApplyEvents` are new (`START SLAVE
+  IO_THREAD` / `SQL_THREAD` of the channel, `dbhelper.StartSlaveIOThread` / `StartSlaveSQLThread`;
+  PostgreSQL has no separate thread: an error, no statement). The lock test
+  `TestNoReplicationLinkSQLOutsideBackend` keeps the link SQL there.
+- `cluster/replication_cdc.go`: the CDC plugin, one generic manifest (`repl-cdc`) for every binary
+  until step 4: status, start, stop, rejoin, over the feed's TOML, State and status line.
+- Bootstrap and Create are in the interface; both plugins answer `ErrReplicationNotSupported`
+  ("step 5") and the bootstrap stays in `prov.go`.
 - `cluster/srv_link_change.go`: the link changes as states (WARN0352).
-- Tested on dev3 (2026-11-27): switchover with stopped replicas, failover, mysqldump reseed; no
-  regression against release/4.0.1 (details in the pull request).
+- Tested on dev3 (2026-11-27), each step: switchover with stopped replicas, failover, mysqldump
+  reseed; no regression against release/4.0.1 (details in the pull request).
 
-## From step 1 to the target
+## From step 2 to the target
 
 | Step | What changes |
 |---|---|
