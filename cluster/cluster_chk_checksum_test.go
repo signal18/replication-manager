@@ -7,6 +7,7 @@ package cluster
 import (
 	"database/sql"
 	"errors"
+	"os"
 	"strings"
 	"testing"
 
@@ -390,5 +391,35 @@ func TestChecksumRepairChunkSQL(t *testing.T) {
 		if strings.Contains(s, " AS SELECT") {
 			t.Fatalf("a table created AS SELECT has no primary key: %s", s)
 		}
+	}
+}
+
+// A status left running or waiting (by an earlier process, or by a loop of the old code) no
+// longer blocks the reset of a new run: ChecksumIsRunning counts the checksums of this process,
+// and a reload of the saved dictionary clears PR and WA (#2465).
+func TestChecksumStaleStatusDoesNotBlock(t *testing.T) {
+	app := dbhelper.Table{TableSchema: "app", TableName: "a"}
+	stale := dbhelper.Table{TableSchema: "other", TableName: "x", TableSync: "WA"}
+	cl := newChecksumTestCluster(t, []dbhelper.Table{app, stale}, []dbhelper.Table{app, stale})
+	if cl.ChecksumIsRunning() {
+		t.Fatal("a stale WA is not a running checksum")
+	}
+	cl.ChecksumCleanResult("app")
+	if got := cl.master.DictTables.Get("app.a").TableSync; got != "WA" {
+		t.Fatalf("the reset is blocked by a stale status: app.a is %q", got)
+	}
+
+	srv := cl.master
+	srv.Datadir = t.TempDir()
+	if err := os.WriteFile(srv.Datadir+"/dicttables.json", []byte(`{"app.a":{"table_schema":"app","table_name":"a","table_sync":"PR"},"other.x":{"table_schema":"other","table_name":"x","table_sync":"OK"}}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	srv.DictTables = dbhelper.NewTablesMap()
+	srv.ReloadDictTables(nil)
+	if got := srv.DictTables.Get("app.a").TableSync; got != "" {
+		t.Fatalf("a reloaded PR must be cleared, got %q", got)
+	}
+	if got := srv.DictTables.Get("other.x").TableSync; got != "OK" {
+		t.Fatalf("a reloaded result is kept, got %q", got)
 	}
 }

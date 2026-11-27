@@ -2363,6 +2363,11 @@ func (server *ServerMonitor) ReloadDictTables(legacyTables map[string]*dbhelper.
 	}
 	var tottablesize, totindexsize int64
 	for k, v := range tables {
+		// no checksum survives a restart: one saved running (PR) or waiting (WA) never
+		// ends, and kept ChecksumIsRunning true for good (#2465)
+		if v != nil && (v.TableSync == "PR" || v.TableSync == "WA") {
+			v.TableSync = ""
+		}
 		server.DictTables.Set(k, v)
 		tottablesize += v.DataLength
 		totindexsize += v.IndexLength

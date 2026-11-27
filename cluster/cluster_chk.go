@@ -761,6 +761,8 @@ func (cluster *Cluster) checksumTables(schema string) bool {
 		return false
 	}
 	cluster.ChecksumCleanResult(schema)
+	cluster.checksumRunning.Add(1)
+	defer cluster.checksumRunning.Add(-1)
 	hasErrors := false
 	cancelGen := cluster.checksumCancel.Load()
 	for _, t := range master.Tables {
@@ -817,6 +819,8 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) string {
 	if t.TableSync == "PR" {
 		return "PR"
 	}
+	cluster.checksumRunning.Add(1)
+	defer cluster.checksumRunning.Add(-1)
 	t.TableSync = "PR"
 	master.DictTables.Set(schema+"."+table, t)
 
@@ -1267,21 +1271,12 @@ func (cluster *Cluster) ChecksumSetResultOnSlave() {
 	}
 }
 
+// ChecksumIsRunning is true while a table checksum or a loop over the tables runs in this
+// process. Counted, not read from the tables' status: a status saved running or waiting by an
+// earlier process, or left waiting by a loop that never reached the table, kept it true for good
+// and no later run reset the results (#2465).
 func (cluster *Cluster) ChecksumIsRunning() bool {
-	master := cluster.GetMaster()
-	if master == nil || master.DictTables == nil {
-		return false
-	}
-	for _, t := range master.Tables {
-		tm := master.DictTables.Get(t.TableSchema + "." + t.TableName)
-		if tm == nil {
-			continue
-		}
-		if tm.TableSync == "PR" || tm.TableSync == "WA" {
-			return true
-		}
-	}
-	return false
+	return cluster.checksumRunning.Load() > 0
 }
 
 // CheckSameServerID Check against the servers that all server id are differents
