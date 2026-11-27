@@ -22744,7 +22744,7 @@
         },
         "/api/clusters/{clusterName}/settings/actions/set/{settingName}/{settingValue}": {
             "post": {
-                "description": "This endpoint sets the settings for the specified cluster.\nA credential setting is user:password, with a user and a password: in clear for db-servers-credential, replication-credential, proxysql-servers-credential, maxscale-servers-credential and shardproxy-servers-credential; encoded in base64 for backup-verification-credential, cloud18-dba-user-credentials and cloud18-sponsor-user-credentials (an empty value clears the verification and sponsor credentials). Any other value is refused with 400, the value never echoed.",
+                "description": "This endpoint sets the settings for the specified cluster.\nA credential setting is user:password, with a user and a password: in clear for db-servers-credential, replication-credential, proxysql-servers-credential, maxscale-servers-credential and shardproxy-servers-credential; encoded in base64 for backup-verification-credential, cloud18-dba-user-credentials and cloud18-sponsor-user-credentials (an empty value clears the verification and sponsor credentials). Any other value is refused with 400, the value never echoed.\nWith an empty settingValue (the path ending in a slash), a POST takes the value from the request body (64 KiB at most), for a value that must not sit in a URL.\nOn-premise SSH: onpremise-ssh-credential is user:password in base64, the password may be empty to connect with the private key; onpremise-ssh-private-key is in base64 either the absolute path of the key on the replication-manager host or the key itself (PEM / OpenSSH, no passphrase), which is written 0600 under the cluster's working directory, never in the config git, the setting then holding that path (send it as the POST body to .../set/onpremise-ssh-private-key/ so the key never sits in a URL); onpremise-ssh-port is the port; the onpremise-ssh-*-script settings are in base64 the absolute path of a local script. An on-premise SSH setting set in the configuration file under /etc, on the command line or in the environment is refused with 409.",
                 "consumes": [
                     "application/json"
                 ],
@@ -22806,7 +22806,7 @@
                         }
                     },
                     "409": {
-                        "description": "A credential change refused (no store keeps versions)",
+                        "description": "A credential change refused (no store keeps versions), or an on-premise SSH setting set in the immutable configuration",
                         "schema": {
                             "type": "string"
                         }
@@ -32953,6 +32953,14 @@
                     "type": "integer"
                 },
                 "injectTrafficMode": {
+                    "type": "string"
+                },
+                "installLayout": {
+                    "description": "package|tarball|embed, resolved at start, not a key (#2444)",
+                    "type": "string"
+                },
+                "installProfile": {
+                    "description": "osc|tst|pro, resolved at start, not a key (#2444)",
                     "type": "string"
                 },
                 "interactive": {

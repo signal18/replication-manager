@@ -37,7 +37,9 @@ function SetCredentialsModal({ clusterName, isOpen, closeModal, type }) {
       return
     }
 
-    if (!password) {
+    // the on-premise SSH user may have no password: it connects with the private key
+    const passwordOptional = type.toLowerCase() === 'onpremise-ssh-credential'
+    if (!password && !passwordOptional) {
       setPasswordError('Password is required')
       return
     }
@@ -82,6 +84,15 @@ function SetCredentialsModal({ clusterName, isOpen, closeModal, type }) {
           setCredentials({
             clusterName,
             credentialType: 'backup-verification-credential',
+            credential: btoa(`${userName}:${password}`)
+          })
+        )
+        break
+      case 'onpremise-ssh-credential':
+        dispatch(
+          setCredentials({
+            clusterName,
+            credentialType: 'onpremise-ssh-credential',
             credential: btoa(`${userName}:${password}`)
           })
         )
@@ -142,6 +153,8 @@ function SetCredentialsModal({ clusterName, isOpen, closeModal, type }) {
         return 'Set Sponsor DB Credentials'
       case 'backup-verification-credential':
         return 'Set Backup Verification Credentials'
+      case 'onpremise-ssh-credential':
+        return 'Set On-Premise SSH Credentials (empty password: the private key)'
       case 'proxysql-servers-credential':
         return 'Set ProxySQL Credentials'
       case 'maxscale-servers-credential':

@@ -33,11 +33,16 @@ export const changeTopology = createAsyncThunk(
   }
 )
 
-export const setSetting = createAsyncThunk('settings/setSetting', async ({ clusterName, setting, value }, thunkAPI) => {
+export const setSetting = createAsyncThunk('settings/setSetting', async ({ clusterName, setting, value, inBody = false }, thunkAPI) => {
   try {
     // showLoaderBanner(`${setting} `, thunkAPI)
     const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
-    const { data, status } = value !== "" ? await settingsService.setSetting(clusterName, setting, value, baseURL) : await settingsService.clearSetting(clusterName, setting, baseURL)
+    // inBody: the value goes as the POST body, never in the URL (a private key)
+    const { data, status } = value === ""
+      ? await settingsService.clearSetting(clusterName, setting, baseURL)
+      : inBody
+        ? await settingsService.setSettingInBody(clusterName, setting, value, baseURL)
+        : await settingsService.setSetting(clusterName, setting, value, baseURL)
     if (status === 200) {
       showSuccessBanner(`${setting} changed successfully!`, status, thunkAPI)
       return { data, status }
