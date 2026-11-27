@@ -1,117 +1,201 @@
-# The replication link interface
+# Replication plugins: one interface for every link
 
-Issue #2453. A server's replication links go through one Go interface with several backends
-(law T7), as the orchestrator (`ORCHESTRATOR_INTERFACE.md`) and the proxies (`DatabaseProxy`).
+Issue #2453. Status: **design, to be validated by the maintainer before the code**. Step 1 (below,
+"Where the code is today") is coded and tested; the rest of this document is the target.
+
+## The rule
+
+- **One interface, `ReplicationPlugin`.** Failover, switchover, rejoin, reseed, bootstrap, the
+  monitor, the GUI, the API and MCP call it and nothing else (law T7, as the orchestrators and the
+  proxies).
+- **A link type is a plugin; a link of a cluster is an instance of one** (a `Link`: the plugin, the
+  server it writes into, its source, its settings). A cluster with three MariaDB channels and a feed
+  into DuckDB has four links of two plugins.
+- **A plugin name is never a copy of code (T2).** Plugins that share a mechanism share its
+  implementation; the engine differences stay in dbhelper (T1, T23).
+
+## Names: `repl-<source>-<target>-<type>`
+
+- `<source>`, `<target>`: the engines. The target is always named, even when it is the source's
+  engine (`repl-mariadb-mariadb-native`). A storage engine inside MariaDB is not a target, except
+  where it writes in its own way (ColumnStore, DuckDB, S3).
+- `<type>`: who applies the changes.
+  - `native`: the engine replicates by itself; repman drives it.
+  - `cdc`: repman reads the source's log (binlog, PostgreSQL logical decoding) and applies it.
+  - `trigger`: triggers on the source record the changes (a source whose log can not be read). To come.
+- Never in a name: physical or logical, async, semi-sync or group (properties of a topology), and a
+  mode (copy, denormalize, S3 partition or table: settings of the link).
 
 ## The interface
 
-`cluster/replication.go`, `ReplicationLink`: one replication link of a server.
+```go
+type ReplicationPlugin interface {
+    Manifest() ReplicationManifest
 
-| method | native | cdc |
-|---|---|---|
-| `Kind()` | `native` | `cdc` |
-| `Name()` | the channel (`""` the default one) | `cdc:<TOML name>` |
-| `Status()` | the row of the monitor's last read | the feed's row from its last status line |
-| `ReadStatus()` | `SHOW SLAVE '<channel>' STATUS` now | the same row (in memory) |
-| `Start`, `Stop` | `START/STOP SLAVE '<channel>'` | the TOML's `enabled`, followed by the supervisor |
-| `StopRead`, `StopApply` | the IO, the SQL thread | not supported |
-| `ResetPositions` | `RESET SLAVE '<channel>'` (keeps the link) | not supported (`Rejoin` rebuilds) |
-| `Remove` | `RESET SLAVE '<channel>' ALL` | not supported (the child's seed) |
-| `ChangeSource` | `CHANGE MASTER` with the TLS decision (#1933) | not supported (`replication-plugin-source`) |
-| `SkipEvent` | `sql_slave_skip_counter` | not supported |
-| `Rejoin` | the rejoin family of `srv_rejoin.go` | resume, or rebuild (below) |
+    Bootstrap(c *Cluster, topology string, master *ServerMonitor) error // sets up the cluster's replication
+    Create(l Link, reason string) (string, error)                       // adds one link (bootstrap, operator)
+    Remove(l Link, reason string) (string, error)                       // promotion or operator only (T27)
 
-Not supported is `ErrReplicationNotSupported`, never nil. Every status row carries its kind,
-`SlaveStatus.Kind` (`db:"-"`, never read from SQL). A field with no meaning for a backend stays
-empty: a feed has no binlog file, no `Using_Gtid`, no TLS.
+    Status(l Link) (dbhelper.SlaveStatus, error)                         // one row shape, Kind = the plugin
 
-Accessors on the server: `ReplicationLink()` (the managed channel, `replication-source-name`, what
-the old `StopSlave()`/`StartSlave()` used), `ReplicationChannelLink(name)`, `ReplicationLinks()`
-(native channels then feeds) and `ReplicationLinkStatus()` (their rows: what the GUI, the API and
-the MCP `get-database-replication` read).
+    Start(l Link, reason string) (string, error)                         // copy + apply
+    Stop(l Link, reason string) (string, error)
+    StartCopyEvents(l Link, reason string) (string, error)
+    StopCopyEvents(l Link, reason string) (string, error)
+    StartApplyEvents(l Link, reason string) (string, error)
+    StopApplyEvents(l Link, reason string) (string, error)
 
-## Link changes are states (law T27)
+    ResetPositions(l Link, reason string) (string, error)                // the link stays (T27)
+    ChangeSource(l Link, opt dbhelper.ChangeMasterOpt, reason string) (string, error) // failover, switchover, rejoin only
+    SkipEvent(l Link, reason string) (string, error)
+    Rejoin(l Link) error                                                 // resume, or rebuild from a new initial load
+}
+```
 
-Each change method takes the reason, the action that did it (`LinkByFailover`, `LinkBySwitchover`,
-`LinkByRejoin`, `LinkByReseed`, `LinkByOperator`, ...). The change is recorded on the server
-(`srv_link_change.go`) and stays a state until the link runs again: **WARN0352** names the
-server, each channel, the action (stopped, read stopped, apply stopped, positions reset,
-repointed) and the reason. A reseed's stops keep their own text, **WARN0252** (the same tracker).
-A change is recorded once its statement succeeded: a failed stop or reset leaves no record on
-a link that did not change. A `Start` that succeeds drops the record at once, so a failover or a switchover, which stops,
-repoints and starts in one go, leaves nothing open. A `Remove` drops it too: the link is gone,
-the promotion has its own states. A record leaves the list once its channel runs again, or once
-the channel is gone from a server that answers (F3/F4); within two ticks of the record it stays
-(a status read before the STOP).
+- The verbs name what the link does whatever the engine: it **copies** the source's events, then
+  **applies** them (for MariaDB the IO and SQL threads; for a CDC feed the capture and the apply).
+- An action the manifest does not list answers `ErrReplicationNotSupported`, never nil; the GUI,
+  the API and MCP hide it.
+- `Status` gives every link the same `SlaveStatus` row; a field with no meaning for the type stays
+  empty.
 
-## The native backend
+### The manifest
 
-`cluster/replication_native.go` is the code that was in `srv.go` (`StopSlave`, `StopSlaveChannel`,
-`StartSlave`, `StartSlaveChannel`, `StopSlaveIOThread`, `StopSlaveSQLThread`, `ResetSlave`,
-`ResetSlavePositions`, `SkipReplicationEvent`, `StopAllSlaves`, `StopAllExtraSourceSlaves`), in
-`srv_set.go` (`ChangeMaster`) and in the monitor's status read, moved without a change of the
-statements sent. MariaDB, MySQL/Percona and PostgreSQL: the engine branches are dbhelper's (T1,
-T23). The rejoin family stays in `srv_rejoin.go`; its entry `RejoinMaster` became the unexported
-`rejoinMaster`, which only the native link's `Rejoin` calls.
+```go
+type ReplicationManifest struct {
+    Name       string               // repl-<source>-<target>-<type>
+    Type       string               // native | cdc | trigger
+    Tier       string               // free | enterprise
+    Source     []string             // engines it reads (with versions, utils/version)
+    Target     []string             // engines it writes
+    Topologies []ReplicationTopology
+    Actions    []string             // the verbs it implements
+    Settings   PluginSettings       // its settings and secrets, as the snapshot and archive plugins
+}
 
-The helpers that point a replica (`ChangeMasterTo`, `SetReplicationGTIDSlavePosFromServer`,
-`SetReplicationGTIDCurrentPosFromServer`, `SetReplicationFromMaxscaleServer`,
-`pointSlaveToMaster*`) take the reason of their caller.
+type ReplicationTopology struct {
+    Name        string // master-slave, galera, stream, ...
+    Transport   string // physical | logical
+    Consistency string // async | semi-sync | group
+}
+```
 
-**The lock** (`replication_dispatch_test.go`, `TestNoReplicationLinkSQLOutsideBackend`): in the
-cluster, server, mcp and regtest packages, only `replication_native.go` names dbhelper's
-`GetAllSlavesStatus`, `GetChannelSlaveStatus`, `GetSlaveStatus`, `StartSlave`, `StopSlave`,
-`StopSlaveIOThread`, `StopSlaveSQLThread`, `StopAllSlaves`, `ResetSlave`, `ResetAllSlaves`,
-`ChangeMaster`, `SkipBinlogEvent`. The link helpers not behind the interface yet (the replication
-password, the exec and GTID modes, the heartbeat, the filters, `default_master_connection`, the
-Spider multi-source) are listed per file with their count, a list that only shrinks.
+## The plugins
 
-## The CDC backend
+| Plugin | Type | Topologies | Implementation | Tier |
+|---|---|---|---|---|
+| `repl-mariadb-mariadb-native` | native | master-slave, multi-tier-slave, multi-master, multi-master-ring, active-passive, binlog-server (logical; async or semi-sync); galera (logical, group); multi-source between clusters | binlog, galera (built in) | free |
+| `repl-mysql-mysql-native` | native | the binlog topologies; group-replication (logical, group) | binlog, group replication (built in) | free |
+| `repl-mysql-mariadb-native` | native | external source, multi-source (logical, async) | binlog (built in) | free |
+| `repl-postgresql-postgresql-native` | native | stream (physical), logical (publication and subscription) | postgresql (built in) | free |
+| `repl-columnstore-columnstore-native` | native | columnstore | columnstore (built in) | free |
+| `repl-mariadb-mariadb-cdc` | cdc | copy, denormalize; engine a parameter (InnoDB, Aria) | external | free |
+| `repl-mariadb-columnstore-cdc` | cdc | copy, denormalize | external | free (community-maintained) |
+| `repl-mariadb-duckdb-cdc` | cdc | copy, denormalize | external | enterprise |
+| `repl-mariadb-s3-cdc` | cdc | S3 by partition or by whole table | external | enterprise |
+| `repl-mariadb-s3files-cdc` | cdc | Parquet files in a bucket (also the migration path) | external | enterprise |
+| `repl-mariadb-kafka-cdc` | cdc | a topic per index | external | enterprise |
+| `repl-mariadb-redis-cdc`, `-memcached-cdc`, `-rabbitmq-cdc` | cdc | keys, messages | external | free |
+| `repl-mariadb-clickhouse-cdc`, `-postgresql-cdc`, `-sphinx-cdc` | cdc | copy, denormalize | external | enterprise |
+| `repl-postgresql-mariadb-cdc` | cdc | migration (bidirectional designed, not coded) | external | enterprise |
 
-`cluster/replication_cdc.go`: a replication plugin's feed (`cluster_replplugin.go`, the CDC core
-`cluster/replplugin/cdc`) is a link of the server it writes into, its target
-(`wire.Config.Target`). Its surface is small so that every destination plugin is a link without
-code here: the TOML, the State and applied files, and the supervisor's last status line.
+The CDC destinations, their apply and their position are the private CDC design
+(`doc/enterprise-denormalize-plugin.md` in the plugin-signer repository): one plugin per
+destination, each in copy and denormalize mode, S3 by periodic partition injection or by whole-table
+rebuild and swap. Tiers: the maintainer's decision of 2026-11-26.
 
-- **Status** (`server.ReplicationFeeds`, refreshed with the server, never in `server.Replications`
-  which the failover, rejoin and reseed act on): capture = read (`Slave_IO_Running`), apply = apply
-  (`Slave_SQL_Running`, No while an apply fails), `Seconds_Behind_Master` = the lag, `Gtid_IO_Pos`
-  = the GTID captured, `Gtid_Slave_Pos` = the GTID applied, `Last_IO_Error` = the plugin's error or
-  its stop reason, `Last_SQL_Error` = the apply error, `Slave_SQL_Running_State` = the plugin's
-  description (a pause) or disabled / stopped / not started.
-- **Start, stop**: the TOML's `enabled`, then `CheckReplicationPlugins`. The feed of the
-  `replication-plugin-feed-*` settings (`CDC_SOURCES.md`) has its TOML written every tick from
-  those settings, one source of truth: its link refuses start and stop
-  (`ErrReplicationNotSupported`, naming `replication-plugin-feed-source-cluster`) until the feed
-  has a setting of its own for it; the link never writes that TOML.
-- **Rejoin**: one implementation of the new start, `ReinitReplicationPlugin`
-  (`cluster_replplugin_feed.go`: the plugin stopped and waited for, its position, applied file,
-  checkpoints and merges dropped, what it owns on the source kept).
-  - A capture source of another engine (`SourceKind`, PostgreSQL): when its State says it needs a
-    new initial load (`NeedsInit`), `ReinitReplicationPlugin`; then it resumes.
-  - A MariaDB/MySQL binlog: the GTID applied (`applied.json`, else the State) is checked against
-    the source's binary logs (`gtidRetained`, shared with the backup verification: MySQL
-    `gtid_purged`, MariaDB `BINLOG_GTID_POS` of the oldest binary log). Still there: the feed
-    resumes from its State. Purged: `ReinitReplicationPlugin`, which refuses a binlog feed with the
-    reason (its copies' new start is the child's seed): the feed stays recorded (WARN0352) with
-    that reason, and the operator reseeds the child master from its parent.
-- The source is read only: its binary log list, its positions (F1).
-- **States**: the feed's health stays where it was, in the child's HA domain (WARN0242 stopped,
-  WARN0243 apply failing, ERR00130/ERR00131 source, CINF0017): the copies stop until someone acts.
-  The merge of the staging late by more than one merge interval is a throughput fact, in the
-  workload domain: **WARN0353** (T3, T4: never in the HA view).
+## Two ways to implement the same contract
 
-A DuckDB or any other destination, and any capture source of another engine, plugs in by being a
-replication plugin: its feed is a CDC link with no code in this file.
+### Built in: the native plugins
 
-## Consumers
+- Built into the repman binary, never an external process: a failover never waits on one (F2).
+- **Binlog native** is one Go type registered three times (`repl-mariadb-mariadb-native`,
+  `repl-mysql-mysql-native`, `repl-mysql-mariadb-native`) with three manifests. The manifest decides
+  the engines and the topologies (Galera for MariaDB only, Group Replication for MySQL only); the SQL
+  differences are dbhelper's. No `if mariadb` in the plugin.
+- **Galera**, **Group Replication**, **PostgreSQL** and **ColumnStore** are their own code where the
+  mechanism differs (SST/IST, group membership, publication/subscription, recovery configuration),
+  each through dbhelper.
 
-- GUI, the server grid (`DBServerGrid`): a block per CDC feed after the native channels, with its
-  kind, source, capture, apply, delay, GTID captured and applied, state and errors.
-- MCP `get-database-replication`: `replications` lists every link with its kind.
-- The API's server JSON: `replications` (native, as before) and `replicationFeeds` (cdc).
+### External: one adapter for every plugin binary
 
-## T27: what each moved path stops, repoints or resets
+- One adapter in repman (`replicationPluginAdapter`) drives every external plugin. Adding a link type
+  is shipping a signed plugin, with no change to repman.
+- **The contract** is the one the snapshot and archive plugins already speak (T2): the action as the
+  first argument (`status`, `start`, `stop`, `start-copy`, `stop-copy`, `start-apply`, `stop-apply`,
+  `create`, `remove`, `rejoin`, `bootstrap`), the context in `REPMAN_REPL_*` variables (settings,
+  decrypted secrets only into its environment), tab-separated records on stdout, the error as the
+  last line of stderr with a non-zero exit, a deadline on every call.
+- **`run`**: the long-running capture and apply, started and supervised by repman as today
+  (`superviseReplPlugin`: one process per link, restarted when its configuration changes, stopped on
+  a standby). Start and stop of a CDC link are the supervisor's: `Start` sets the link enabled and the
+  next tick starts `run`.
+- The files stay the exchange with `run`: the link's TOML (written by the save callback only, T25),
+  its State, its checkpoints, its status line.
+- The CDC core (`cluster/replplugin/cdc`: checkpoints, initial load, resume, position, `Source` and
+  `Destination`) is a **library** the CDC plugins are built with, an SDK. repman never sees `Source`
+  or `Destination`.
+- The plugins are signed and verified before they run, with their tier checked against the plan
+  (ERR00132), as today.
+
+## Bootstrap
+
+Today `BootstrapReplication` (`prov.go`) holds the topologies as branches per engine. Target:
+
+1. repman reads the cluster's plugin (from its engine, or the setting that names it) and the
+   topology asked (`topology-target`).
+2. The topology must be in the plugin's manifest; otherwise the bootstrap is refused with the
+   topologies the plugin offers.
+3. The cleanup before a bootstrap (every channel removed) stays an explicit operator request, as today.
+4. `plugin.Bootstrap(cluster, topology, master)` sets the links up: for the binlog plugin, the
+   `CHANGE MASTER` of each replica on the managed channel; for PostgreSQL logical, the publication
+   then each subscription; for a CDC plugin, the feed and its initial load (today's seed of the child).
+5. `Create` is the same step for one link: an operator adding a channel or a feed.
+
+## Links are the client's (T27, F1)
+
+- `Remove` only for a promotion (failover, switchover) or an operator request, never in another path.
+- `ChangeSource` only from the failover, switchover and rejoin code, under their guards.
+- Every change of a link opens a state naming the server, the link, the action and the reason
+  (**WARN0352**; a reseed keeps **WARN0252**), recorded once the statement succeeded, closed when
+  the link runs again.
+- A `trigger` plugin changes the client's database: off by default, an explicit switch (as
+  `replication-plugin-feed-create-source-objects` for the PostgreSQL slot), and a `remove` that takes
+  every trigger and table it created away.
+
+## Where the code is today (step 1, coded and tested)
+
+- `cluster/replication.go`: `ReplicationLink`, the per-link half of the interface above (status,
+  start, stop, read and apply stop, reset, remove, change source, skip, rejoin).
+- `cluster/replication_native.go`: the native code moved from `srv.go`, `srv_set.go` and the status
+  read, the statements unchanged. The lock test `TestNoReplicationLinkSQLOutsideBackend` keeps the
+  link SQL there.
+- `cluster/replication_cdc.go`: a CDC feed as a link, over its TOML, State and status line.
+- `cluster/srv_link_change.go`: the link changes as states (WARN0352).
+- Tested on dev3 (2026-11-27): switchover with stopped replicas, failover, mysqldump reseed; no
+  regression against release/4.0.1 (details in the pull request).
+
+## From step 1 to the target
+
+| Step | What changes |
+|---|---|
+| 2 | `ReplicationLink` becomes `ReplicationPlugin` + `Link`; the verbs renamed (`StopCopyEvents`, `StopApplyEvents`) and `StartCopyEvents`, `StartApplyEvents` added; the manifest; the registry of plugins (as `newOrchestratorList`) |
+| 3 | The native code split into the built-in plugins: binlog (three manifests), galera, group replication, postgresql, columnstore |
+| 4 | `replication_cdc.go` becomes the external adapter; the CDC binaries renamed (`replplugin-innodb` → `repl-mariadb-mariadb-cdc`, `replplugin-columnstore` → `repl-mariadb-columnstore-cdc`, `replplugin-duckdb` → `repl-mariadb-duckdb-cdc`, `replplugin-postgresql` → `repl-postgresql-mariadb-cdc`) with their manifests |
+| 5 | `Bootstrap` and `Create` moved from `prov.go` into the plugins, topology by topology |
+| 6 | GUI: the links of a server grouped by plugin, the actions from the manifest; API and MCP the same |
+
+Each step keeps the statements sent and is tested on dev3 before the next (T13): the
+switchover, failover, rejoin and reseed regtests for steps 2 and 3, the CDC regtests for step 4,
+the bootstrap of each topology for step 5.
+
+## Questions for the maintainer
+
+1. The `replication-plugin-*` settings keep their names for the CDC links, or move to the plugin's
+   own settings (`Settings` of the manifest, as the snapshot plugins)?
+2. The tier of the `trigger` plugins.
+
+## T27: what each moved path stops, repoints or resets (step 1)
 
 Nothing changed: each path sends the statements it sent before, on the same channels. For review:
 
