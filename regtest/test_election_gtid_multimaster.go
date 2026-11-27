@@ -242,16 +242,29 @@ func (r *electionRun) multiMaster(concurrent bool, phase string) bool {
 		time.Sleep(2 * time.Second)
 		ctr := cl.GetFailoverCtr()
 		cl.SwitchoverWaitTest()
-		electionWait(electionSwitchWait, func() bool { m := cl.GetMaster(); return m != nil && m.URL == other.URL })
-		time.Sleep(5 * time.Second)
+		// The election result of the operation is the designated primary as the switchover ends, before the monitor's next
+		// topology pass; the timeline then shows what the rediscovery does with it.
+		elected := cl.GetMaster()
+		timeline := []string{urlOf(elected)}
+		for i := 0; i < 40; i++ {
+			time.Sleep(100 * time.Millisecond)
+			if u := urlOf(cl.GetMaster()); u != timeline[len(timeline)-1] {
+				timeline = append(timeline, u)
+			}
+		}
+		time.Sleep(3 * time.Second)
 		nm := cl.GetMaster()
 		r.dump("switchover-after")
+		r.observe("designated primary: at the end of the switchover, then each change over the next 4 seconds %v, after 7 seconds %s (target %s)", timeline, urlOf(nm), other.URL)
+		if !r.check("switchover-election", elected != nil && elected.URL == other.URL, "the switchover elected %s as designated primary (target %s)", urlOf(elected), other.URL) {
+			r.recoverPair(other, master)
+			return false
+		}
 		if concurrent {
-			// with both servers writable the monitor designates the writable server it detects first (ERR00011 / WARN0003),
-			// so the designated primary two seconds after the switchover is not the target: observed on develop as on this
-			// fix. That the switchover ran is shown by the writer states below (the old primary was made writable).
-			r.observe("designated primary after the switchover: %s (target %s, concurrent writes: both servers writable)", urlOf(nm), other.URL)
-		} else if !r.check("switchover-selection", nm != nil && nm.URL == other.URL, "designated primary is %s, want the other server %s", urlOf(nm), other.URL) {
+			// with both servers writable the topology pass that follows designates the writable server it finds first
+			// (fallback of the discovery, ERR00011 / WARN0003): the designation can move back, the election result above cannot
+			r.observe("concurrent writes: designated primary after the rediscovery is %s", urlOf(nm))
+		} else if !r.check("switchover-selection", nm != nil && nm.URL == other.URL, "designated primary after the rediscovery is %s, want the other server %s", urlOf(nm), other.URL) {
 			return false
 		}
 		roNew, _ := electionQuery(other, "SELECT @@global.read_only")

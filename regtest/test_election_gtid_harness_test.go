@@ -323,7 +323,7 @@ func TestElectionFinishClass(t *testing.T) {
 		skip  bool
 	}{
 		{"reproduced pass", func(r *electionRun) { r.premiseUsed = true }, true, true, false},
-		{"control pass is a skip", func(r *electionRun) { r.premiseUsed = true; r.control = []string{"MT: premise absent"} }, true, true, true},
+		{"control pass is a PASS (compatibility control)", func(r *electionRun) { r.premiseUsed = true; r.control = []string{"MT: premise absent"} }, true, true, false},
 		{"control failure fails", func(r *electionRun) {
 			r.premiseUsed = true
 			r.control = []string{"MT: premise absent"}

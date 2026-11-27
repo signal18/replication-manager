@@ -30,7 +30,8 @@ import (
 //	             tied), the preferred hosts are cleared and the relay is the first candidate: the result of the two
 //	             builds can be compared;
 //	CONTROL      the parsed sequence is not equal and positive (for instance a UUID with a letter): the positional path
-//	             applies on both builds, a failure fails, a pass is a SKIP (it proves nothing about the fix);
+//	             applies on both builds; a failure fails, a pass is a PASS recorded as a control (the expected result
+//	             on both builds), not evidence about the fix;
 //	UNESTABLISHED a premise of the state could not be built (the replica below the relay is not ahead in file number,
 //	             it already holds the markers, the candidate order is not the relay first): SKIP, nothing is proven.
 //

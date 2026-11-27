@@ -91,11 +91,11 @@ func runElectionScenario(cl *cluster.Cluster, test *cluster.Test, name, step str
 }
 
 // finish logs the SUMMARY and returns the verdict. The class says what the run established: REPRODUCED (the defect
-// premise was established and the assertions ran), CONTROL (the premise is absent: the scenario ran as a control,
-// a failure still fails, a pass is a SKIP, never evidence of the fix) or UNESTABLISHED (a premise of the scenario
-// could not be established: SKIP, nothing was proven).
+// premise was established and the assertions ran: the result compares the builds), CONTROL (the defect premise is absent,
+// for instance a failed-primary election on MySQL or Percona below 8.4 where the received set is empty: the path is
+// positional on both builds and the expected result is PASS on both, a compatibility control, not evidence of the fix)
+// or UNESTABLISHED (a premise of the scenario could not be built: SKIP, nothing was proven).
 func (r *electionRun) finish(ok bool) bool {
-	notExercised := append(append([]string{}, r.control...), r.skipped...)
 	class := ""
 	switch {
 	case len(r.skipped) > 0:
@@ -105,16 +105,20 @@ func (r *electionRun) finish(ok bool) bool {
 	case r.premiseUsed:
 		class = " class=REPRODUCED"
 	}
-	switch electionVerdict(ok, r.failed, notExercised) {
+	switch electionVerdict(ok, r.failed, r.skipped) {
 	case "FAIL":
 		r.logf("SUMMARY result=FAIL%s failed=%s passed=%s", class, strings.Join(r.failed, ","), strings.Join(r.passed, ","))
 		return false
 	case "SKIP":
-		reason := strings.Join(notExercised, "; ")
+		reason := strings.Join(r.skipped, "; ")
 		r.test.SkipReason = reason
 		r.logf("SUMMARY result=SKIP%s reason=%q passed=%s", class, reason, strings.Join(r.passed, ","))
 	default:
-		r.logf("SUMMARY result=PASS%s checks=%s", class, strings.Join(r.passed, ","))
+		note := ""
+		if len(r.control) > 0 {
+			note = fmt.Sprintf(" control=%q", strings.Join(r.control, "; "))
+		}
+		r.logf("SUMMARY result=PASS%s%s checks=%s", class, note, strings.Join(r.passed, ","))
 	}
 	return true
 }

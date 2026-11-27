@@ -111,8 +111,10 @@ catch-up (`ReadAllRelayLogs`), the rejoin and `MASTER_AUTO_POSITION`; the failov
   run created is dropped.
 
   The master-slave tests need a primary whose `server_uuid` has a decimal-only third group; otherwise they are
-  SKIP before any change. A scenario whose parsed-sequence premise is absent runs as a control and the test is SKIP,
-  never PASS. Every statement of the tests is bounded by a deadline; the end of each test checks, through sessions of
+  SKIP before any change. A scenario whose parsed-sequence premise is absent (for example the failed-primary metric of MySQL or Percona below
+  8.4, where the received set is empty) runs as a CONTROL: the path is positional on both builds, the expected result is PASS
+  on both, and the SUMMARY says `class=CONTROL`. A premise that cannot be built (for example the replica below a relay is not
+  ahead, or the candidate order is not controlled) is `class=UNESTABLISHED` and a SKIP.
   its own, that the primary accepts writes and that no server holds a global read lock, and any failure there fails the
   test; a test refuses to start from a cluster that is not healthy (SKIP with the reason). The test names stay short:
   the runner formats `<cluster>/<test>` in 60 columns.
