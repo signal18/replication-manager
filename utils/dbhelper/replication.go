@@ -1149,6 +1149,12 @@ func SetSlaveParallelMode(db *sqlx.DB, mode string, Channel string, myver *versi
 	return logs, err
 }
 
+// SessionNoBinlog keeps a session's writes out of the server's binary log (MariaDB, MySQL,
+// Percona; it needs SUPER or BINLOG ADMIN). A statement for a client session that repman does
+// not hold itself, a mariadb client's --init-command (the flashback replay of a rejoin).
+// PostgreSQL has no binary log: no PostgreSQL caller uses it.
+const SessionNoBinlog = "SET SESSION sql_log_bin=0"
+
 func SetGTIDSlavePos(db *sqlx.DB, gtid string) (string, error) {
 	query := "SET GLOBAL gtid_slave_pos = ?"
 	_, err := db.Exec(query, gtid)

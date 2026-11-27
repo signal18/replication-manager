@@ -508,12 +508,10 @@ func (server *ServerMonitor) rejoinMasterFlashBack(crash *Crash) error {
 	binlogArgs = append(binlogArgs, "--flashback", "--to-last-log", cluster.Conf.WorkingDir+"/"+cluster.Name+"-server"+strconv.FormatUint(uint64(server.ServerID), 10)+"-"+crash.FailoverMasterLogFile)
 	binlogCmd := exec.Command(cluster.GetMysqlBinlogPath(), misc.RemoveEmptyString(binlogArgs)...)
 
-	cliParams := make([]string, 0)
-	cliParams = append(cliParams, "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--user="+cluster.GetDbUser(), "--password="+cluster.GetDbPass())
-	cliParams = append(cliParams, server.GetSSLClientParam("client")...)
-	clientCmd := exec.Command(cluster.GetMysqlclientPath(), misc.RemoveEmptyString(cliParams)...)
+	clientCmd := exec.Command(cluster.GetMysqlclientPath(), server.flashbackReplayArgs()...)
 
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "FlashBack: %s %s", cluster.GetMysqlBinlogPath(), strings.ReplaceAll(strings.Join(binlogCmd.Args, " "), cluster.GetRplPass(), "XXXX"))
+	// F11: the replay as one shell pipeline the operator can run by hand, password redacted.
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "FlashBack: %s | %s", redactedCommandLine(binlogCmd.Args), redactedCommandLine(clientCmd.Args))
 
 	clientCmd.Stdin, err = binlogCmd.StdoutPipe()
 	if err != nil {
@@ -521,18 +519,22 @@ func (server *ServerMonitor) rejoinMasterFlashBack(crash *Crash) error {
 		return err
 	}
 	if err := binlogCmd.Start(); err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Failed mysqlbinlog command: %s at %s", err, strings.ReplaceAll(binlogCmd.Path, cluster.GetRplPass(), "XXXX"))
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Failed mysqlbinlog command: %s at %s", err, binlogCmd.Path)
 		return err
 	}
 	if err := clientCmd.Run(); err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Error starting client: %s at %s", err, strings.ReplaceAll(clientCmd.Path, cluster.GetRplPass(), "XXXX"))
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Error starting client: %s at %s", err, clientCmd.Path)
 		return err
 	}
-	logs, err := server.ReplicationLink().SetPosition(Position{GTID: crash.FailoverIOGtid.Sprint()}, LinkByRejoin)
-	cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlInfo, "SET GLOBAL gtid_slave_pos = \"%s\"", crash.FailoverIOGtid.Sprint())
-	if err != nil {
+	// a mariadb-binlog that died half-way fed the client part of the rewind: never position it
+	if err := binlogCmd.Wait(); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Failed mysqlbinlog command: %s at %s", err, binlogCmd.Path)
 		return err
 	}
+	if err := server.positionAfterFlashback(crash.FailoverIOGtid.Sprint()); err != nil {
+		return err
+	}
+	var logs string
 	var err2 error
 	if server.MxsHaveGtid || !server.IsMaxscale {
 		logs, err2 = server.SetReplicationGTIDSlavePosFromServer(realmaster, LinkByRejoin)
@@ -547,6 +549,69 @@ func (server *ServerMonitor) rejoinMasterFlashBack(crash *Crash) error {
 	cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlInfo, "Failed stop slave on %s: %s", server.URL, err)
 
 	return nil
+}
+
+// flashbackReplayArgs are the mariadb client arguments of the flashback replay: the monitoring
+// user (GetDumpCredentials), the server's TLS, and sql_log_bin=0 as the session's init command.
+// The rewind is not written to the old master's binary log: written there, it took new GTIDs
+// in the master's domain (132 reversed transactions took 1204113 to 1204244 on a test cluster,
+// 2026-11-27), past the position the rejoin sets, and gtid_strict_mode refused the
+// gtid_slave_pos (1947). The rewound events are not replication: the new master never had them.
+func (server *ServerMonitor) flashbackReplayArgs() []string {
+	args := server.ClusterGroup.GetDumpCredentials(server)
+	args = append(args, server.GetSSLClientParam("client")...)
+	args = append(args, "--init-command="+dbhelper.SessionNoBinlog)
+	return misc.RemoveEmptyString(args)
+}
+
+// redactedCommandLine is a command as the operator types it again (F11): each word quoted for a
+// POSIX shell, the password replaced with XXXX (F10).
+func redactedCommandLine(args []string) string {
+	words := make([]string, 0, len(args))
+	for _, a := range args {
+		if strings.HasPrefix(a, "--password=") {
+			a = "--password=XXXX"
+		}
+		if strings.ContainsAny(a, " \t'\"$`\\;|&<>()*?") {
+			a = shellSingleQuote(a)
+		}
+		words = append(words, a)
+	}
+	return strings.Join(words, " ")
+}
+
+// positionAfterFlashback sets the rewound old master's apply position, target (what the new
+// master had received from it at the failover), after the flashback replay.
+//
+// The binary log still holds the events the flashback reversed (the replay itself is not
+// logged): they are past target in the master's domain. While they are there, gtid_strict_mode
+// refuses the gtid_slave_pos (error 1947) and then refuses to log the new master's events
+// with those sequences (1950); without strict mode, gtid_current_pos stays on the reversed
+// events and a CURRENT_POS link would skip the new master's. So when gtid_binlog_pos is past
+// target in a domain, the server's binary log is reset first (RESET MASTER): it describes
+// transactions the rewind removed. The reversed events stay saved by repman (the crash's
+// binlog, its .sql and .flashback.sql). No replication channel is touched here: the link is
+// repointed by the caller (SetReplicationGTIDSlavePosFromServer: stop, CHANGE MASTER to the new
+// master with SLAVE_POS, then start).
+func (server *ServerMonitor) positionAfterFlashback(target string) error {
+	cluster := server.ClusterGroup
+	binlogPos, logs, err := dbhelper.GetVariableByName(server.Conn, "GTID_BINLOG_POS", server.DBVersion)
+	cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Could not read gtid_binlog_pos on %s: %s", server.URL, err)
+	if err != nil {
+		return err
+	}
+	if ahead := parentBackupBehind(target, binlogPos); ahead != "" {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+			"Rejoin flashback %s: binary log at %s holds the reversed events past %s (%s), resetting it", server.URL, binlogPos, target, ahead)
+		logs, err = server.ResetMaster()
+		cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed to reset the binary log of %s after the flashback: %s", server.URL, err)
+		if err != nil {
+			return err
+		}
+	}
+	logs, err = server.ReplicationLink().SetPosition(Position{GTID: target}, LinkByRejoin)
+	cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed SET GLOBAL gtid_slave_pos = \"%s\" on %s: %s", target, server.URL, err)
+	return err
 }
 
 func (server *ServerMonitor) RejoinDirectDump() error {
