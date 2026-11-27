@@ -12096,10 +12096,28 @@ const docTemplate = `{
                             "type": "string"
                         }
                     },
+                    "404": {
+                        "description": "Table not in the master's table dictionary; schema monitoring triggered; retry after the next schema refresh",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
                     "500": {
                         "description": "No cluster",
                         "schema": {
                             "type": "string"
+                        }
+                    },
+                    "503": {
+                        "description": "Master not discovered",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     }
                 }
@@ -12162,10 +12180,28 @@ const docTemplate = `{
                             "type": "string"
                         }
                     },
+                    "404": {
+                        "description": "Table not in the master's table dictionary; schema monitoring triggered; retry after the next schema refresh",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
                     "500": {
                         "description": "No cluster",
                         "schema": {
                             "type": "string"
+                        }
+                    },
+                    "503": {
+                        "description": "Master not discovered",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     }
                 }

@@ -690,10 +690,44 @@ func (cluster *Cluster) CheckSendMail() {
 	}
 }
 
+// ErrChecksumNoMaster is returned when a table checksum is asked while the
+// cluster has no known master.
+var ErrChecksumNoMaster = errors.New("master not discovered")
+
+// ErrChecksumTableUnknown is returned when a table checksum is asked for a table
+// missing from the master's table dictionary (dropped, or created after the
+// last schema refresh).
+var ErrChecksumTableUnknown = errors.New("table not in the master's table dictionary: retry after the next schema refresh")
+
+// ChecksumTableEntry returns the master and its dictionary entry for
+// schema.table, the two things a table checksum needs. It never panics: a nil
+// master gives ErrChecksumNoMaster, a table missing from the dictionary gives
+// ErrChecksumTableUnknown (#2465). The API calls it before starting a checksum
+// so that the caller gets a clear answer.
+func (cluster *Cluster) ChecksumTableEntry(schema string, table string) (*ServerMonitor, *dbhelper.Table, error) {
+	master := cluster.GetMaster()
+	if master == nil {
+		return nil, nil, ErrChecksumNoMaster
+	}
+	if master.DictTables == nil {
+		return master, nil, ErrChecksumTableUnknown
+	}
+	t := master.DictTables.Get(schema + "." + table)
+	if t == nil {
+		return master, nil, ErrChecksumTableUnknown
+	}
+	return master, t, nil
+}
+
 func (cluster *Cluster) CheckAllTableChecksum() bool {
+	master := cluster.GetMaster()
+	if master == nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Checksum all tables, master not discovered")
+		return false
+	}
 	cluster.ChecksumCleanResult()
 	hasErrors := false
-	for _, t := range cluster.master.Tables {
+	for _, t := range master.Tables {
 		res := cluster.CheckTableChecksum(t.TableSchema, t.TableName)
 		if res == "ER" {
 			hasErrors = true
@@ -704,9 +738,14 @@ func (cluster *Cluster) CheckAllTableChecksum() bool {
 }
 
 func (cluster *Cluster) CheckAllTableChecksumSchema(name string) bool {
+	master := cluster.GetMaster()
+	if master == nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Checksum schema %s, master not discovered", name)
+		return false
+	}
 	cluster.ChecksumCleanResult()
 	hasErrors := false
-	for _, t := range cluster.master.Tables {
+	for _, t := range master.Tables {
 		if t.TableSchema == name {
 			res := cluster.CheckTableChecksum(t.TableSchema, t.TableName)
 			if res == "ER" {
@@ -718,44 +757,49 @@ func (cluster *Cluster) CheckAllTableChecksumSchema(name string) bool {
 	return hasErrors
 }
 
+// CheckTableChecksum checksums schema.table on the master and compares the
+// chunks on every replica. It returns the table sync status (OK, ER, PR, NA).
+// A nil master or a table missing from the master's dictionary returns "NA"
+// with a log line and leaves the monitor running (#2465). The master is read
+// once: a failover during the checksum does not turn it nil under our feet.
 func (cluster *Cluster) CheckTableChecksum(schema string, table string) string {
-
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Checksum master table %s.%s %s", schema, table, cluster.master.URL)
-	t := cluster.master.DictTables.Get(schema + "." + table)
+	master, t, err := cluster.ChecksumTableEntry(schema, table)
+	if err == ErrChecksumNoMaster {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Checksum master table %s.%s, master not discovered", schema, table)
+		return "NA"
+	}
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Checksum master table %s.%s skipped: %s", schema, table, err)
+		return "NA"
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Checksum master table %s.%s %s", schema, table, master.URL)
 	if t.TableSync == "PR" {
 		return "PR"
 	}
 	t.TableSync = "PR"
-	cluster.master.DictTables.Set(schema+"."+table, t)
+	master.DictTables.Set(schema+"."+table, t)
 
-	master := cluster.GetMaster()
-	if master == nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Checksum master table %s.%s, master not discovered", schema, table)
-		t.TableSync = "NA"
-		cluster.master.DictTables.Set(schema+"."+table, t)
-		return "NA"
-	}
 	if cluster.IsInSchemaTableList(cluster.Conf.MonitorChecksumIgnoreTables, schema, table) {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Ignore master table %s.%s found in Monitor-checksum-ignore-tables", schema, table)
 		t.TableSync = "NA"
-		cluster.master.DictTables.Set(schema+"."+table, t)
+		master.DictTables.Set(schema+"."+table, t)
 		return "NA"
 	}
 	Conn, err := master.GetNewDBConn()
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error connection in exec query no log %s", err)
 		t.TableSync = "NA"
-		cluster.master.DictTables.Set(schema+"."+table, t)
+		master.DictTables.Set(schema+"."+table, t)
 		return "NA"
 	}
 	defer Conn.Close()
 
 	Conn.SetConnMaxLifetime(3595 * time.Second)
-	pk, _ := cluster.master.GetTablePK(schema, table)
+	pk, _ := master.GetTablePK(schema, table)
 	if pk == "" {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Checksum, no primary key for table %s.%s", schema, table)
 		t.TableSync = "NA"
-		cluster.master.DictTables.Set(schema+"."+table, t)
+		master.DictTables.Set(schema+"."+table, t)
 		return "NA"
 	}
 
@@ -775,7 +819,7 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) string {
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "ERROR: Could not get SQL md5Sum: %v", err)
 		t.TableSync = "NA"
-		cluster.master.DictTables.Set(schema+"."+table, t)
+		master.DictTables.Set(schema+"."+table, t)
 		return "NA"
 	}
 
@@ -789,10 +833,15 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) string {
 	if len(pks) == 0 {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Table %s.%s has no primary key, cannot create chunk table", schema, table)
 		t.TableSync = "NA"
-		cluster.master.DictTables.Set(schema+"."+table, t)
+		master.DictTables.Set(schema+"."+table, t)
 		return "NA"
 	}
-	tm := cluster.master.DictTables.Get(schema + "." + table)
+	// Re-read the entry: a schema refresh may have replaced it since the start
+	// (or removed it, then keep ours).
+	tm := master.DictTables.Get(schema + "." + table)
+	if tm == nil {
+		tm = t
+	}
 
 	//	var ftype string
 	for _, p := range pks {
@@ -804,7 +853,7 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) string {
 			shardListPredicate += " , "
 			rangeCondition += " ,' AND ', "
 		}
-		columnType := cluster.master.GetTableColumDef(schema, table, p)
+		columnType := master.GetTableColumDef(schema, table, p)
 		columnDefPredicate = columnDefPredicate + " Min_" + p + " " + columnType + ", Max_" + p + " " + columnType
 		wherePredicate = wherePredicate + " A." + p + " >= B.Min_" + p + " AND A." + p + "<= B.Max_" + p + " "
 		columnListPredicate = columnListPredicate + p + " "
@@ -817,7 +866,7 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) string {
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error creating checksum table: %s", err)
 		t.TableSync = "NA"
-		cluster.master.DictTables.Set(schema+"."+table, t)
+		master.DictTables.Set(schema+"."+table, t)
 		return "NA"
 	}
 	chunkSize := 2000
@@ -829,14 +878,14 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) string {
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error creating chunk table: %s", err)
 		t.TableSync = "NA"
-		cluster.master.DictTables.Set(schema+"."+table, t)
+		master.DictTables.Set(schema+"."+table, t)
 		return "NA"
 	}
 	rows, err := Conn.Queryx("SELECT chunkId FROM replication_manager_schema.table_chunk")
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "ERROR: Could not load chunks %s", err)
 		t.TableSync = "NA"
-		cluster.master.DictTables.Set(schema+"."+table, t)
+		master.DictTables.Set(schema+"."+table, t)
 		return "NA"
 	}
 	var chunks []dbhelper.Chunk
@@ -846,7 +895,7 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) string {
 			rows.Close()
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "ERROR: Could not scan chunk %s", err)
 			t.TableSync = "NA"
-			cluster.master.DictTables.Set(schema+"."+table, t)
+			master.DictTables.Set(schema+"."+table, t)
 			return "NA"
 		}
 		chunks = append(chunks, c)
@@ -855,21 +904,21 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) string {
 	if len(chunks) == 0 {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Finished checksum table %s.%s (no chunks)", schema, table)
 		t.TableSync = "NA"
-		cluster.master.DictTables.Set(schema+"."+table, t)
+		master.DictTables.Set(schema+"."+table, t)
 		return "NA"
 	}
 	_, err = Conn.Exec("ALTER TABLE replication_manager_schema.table_chunk ADD PRIMARY KEY (chunkId)")
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "ERROR: Could not add primary key on table_chunk %s", err)
 		t.TableSync = "NA"
-		cluster.master.DictTables.Set(schema+"."+table, t)
+		master.DictTables.Set(schema+"."+table, t)
 		return "NA"
 	}
 	_, err = Conn.Exec("SET SESSION binlog_format = STATEMENT")
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "ERROR: Could not switch to statement based %s", err)
 		t.TableSync = "NA"
-		cluster.master.DictTables.Set(schema+"."+table, t)
+		master.DictTables.Set(schema+"."+table, t)
 		return "NA"
 	}
 	query = "INSERT INTO replication_manager_schema.table_checksum SELECT chunkId, CONCAT(" + rangeCondition + ") as chunkRangeCondition," + bColumnListPredicate + " ," + md5Sum + " as chunkCheckSum FROM " + schema + "." + table + " A inner join (select * from replication_manager_schema.table_chunk WHERE chunkId=? ) B on " + wherePredicate + " GROUP BY chunkId HAVING chunkId IS NOT NULL"
@@ -878,20 +927,20 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) string {
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "ERROR: Could not prepare chunck %s %s", query, err)
 		t.TableSync = "NA"
-		cluster.master.DictTables.Set(schema+"."+table, t)
+		master.DictTables.Set(schema+"."+table, t)
 		return "NA"
 	}
 	defer stmt.Close()
 	tm.TableChunksCount = int64(len(chunks))
-	cluster.master.DictTables.Set(schema+"."+table, tm)
+	master.DictTables.Set(schema+"."+table, tm)
 	for i, chunk := range chunks {
 		tm.TableChunksCurrent = int64(i)
-		cluster.master.DictTables.Set(schema+"."+table, tm)
+		master.DictTables.Set(schema+"."+table, tm)
 		_, err := stmt.Exec(chunk.ChunkId)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "ERROR: Could not process chunck %s %s", query, err)
 			t.TableSync = "NA"
-			cluster.master.DictTables.Set(schema+"."+table, t)
+			master.DictTables.Set(schema+"."+table, t)
 			return "NA"
 		}
 		/*
@@ -902,15 +951,15 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) string {
 				}
 			}*/
 	}
-	cluster.master.Refresh()
-	masterSeq := cluster.master.CurrentGtid.GetSeqServerIdNos(uint64(cluster.master.ServerID))
+	master.Refresh()
+	masterSeq := master.CurrentGtid.GetSeqServerIdNos(uint64(master.ServerID))
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Wait sync: Master sequence %d", masterSeq)
 
 	for _, s := range cluster.slaves {
 		if !s.IsFailed() && !s.IsReplicationBroken() {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Wait sync on slave %s", s.URL)
 			for {
-				slaveSeq := s.SlaveGtid.GetSeqServerIdNos(uint64(cluster.master.ServerID))
+				slaveSeq := s.SlaveGtid.GetSeqServerIdNos(uint64(master.ServerID))
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Wait sync on slave %s sequence %d", s.URL, slaveSeq)
 				if slaveSeq >= masterSeq {
 					break
@@ -922,15 +971,23 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) string {
 		}
 	}
 	// check slave result
-	masterChecksums, logs, err := dbhelper.GetTableChecksumResult(cluster.master.Conn)
-	cluster.LogSQL(logs, err, cluster.master.URL, "CheckTableChecksum", config.LvlDbg, "GetTableChecksumResult")
+	masterChecksums, logs, err := dbhelper.GetTableChecksumResult(master.Conn)
+	cluster.LogSQL(logs, err, master.URL, "CheckTableChecksum", config.LvlDbg, "GetTableChecksumResult")
 	allslavecheckok := true
 	for _, s := range cluster.slaves {
 		slaveChecksums, logs, err := dbhelper.GetTableChecksumResult(s.Conn)
 		cluster.LogSQL(logs, err, s.URL, "CheckTableChecksum", config.LvlDbg, "GetTableChecksumResult")
 		checkok := true
 		// Empty the chunks in Errors
+		if s.DictTables == nil {
+			s.DictTables = dbhelper.NewTablesMap()
+		}
 		ts := s.DictTables.Get(schema + "." + table)
+		if ts == nil {
+			// The replica's dictionary has not seen this table yet: keep the
+			// chunk errors in a fresh entry so that a repair can use them.
+			ts = &dbhelper.Table{TableSchema: schema, TableName: table}
+		}
 		ts.TableChunksError = nil
 		var freshErrors []dbhelper.Chunk
 		for _, chunk := range masterChecksums {
@@ -953,18 +1010,17 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) string {
 	} else {
 		tm.TableSync = "ER"
 	}
-	cluster.master.DictTables.Set(schema+"."+table, tm)
+	master.DictTables.Set(schema+"."+table, tm)
 	return tm.TableSync
 }
 
 func (cluster *Cluster) RepairTableChecksum(schema string, table string) {
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Repair table %s.%s %s", schema, table, cluster.master.URL)
-
 	master := cluster.GetMaster()
 	if master == nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Repair table %s.%s, master not discovered", schema, table)
 		return
 	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Repair table %s.%s %s", schema, table, master.URL)
 	Conn, err := master.GetNewDBConn()
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error connection in exec query no log %s", err)
@@ -981,12 +1037,18 @@ func (cluster *Cluster) RepairTableChecksum(schema string, table string) {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Repair table %s.%s", schema, table)
 
 	for _, s := range cluster.slaves {
+		if s.DictTables == nil {
+			continue
+		}
 		ts := s.DictTables.Get(schema + "." + table)
 		// Reset the master table dictionary to reflect the new unkown sync status
-		if len(ts.TableChunksError) > 0 {
-			t := master.DictTables.Get(schema + "." + table)
-			t.TableSync = ""
-			cluster.master.DictTables.Set(schema+"."+table, t)
+		if ts != nil && len(ts.TableChunksError) > 0 {
+			if master.DictTables != nil {
+				if t := master.DictTables.Get(schema + "." + table); t != nil {
+					t.TableSync = ""
+					master.DictTables.Set(schema+"."+table, t)
+				}
+			}
 			for i, chunk := range ts.TableChunksError {
 				query := "start transaction "
 				_, err = Conn.Exec(query)
@@ -1037,7 +1099,12 @@ func (cluster *Cluster) RepairTableChecksum(schema string, table string) {
 }
 
 func (cluster *Cluster) RepairAllTableChecksum() {
-	for _, t := range cluster.master.Tables {
+	master := cluster.GetMaster()
+	if master == nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Repair all tables, master not discovered")
+		return
+	}
+	for _, t := range master.Tables {
 		cluster.RepairTableChecksum(t.TableSchema, t.TableName)
 	}
 	cluster.ChecksumSetResultOnSlave()
@@ -1053,10 +1120,18 @@ func (cluster *Cluster) ChecksumCleanResult() {
 	if cluster.ChecksumIsRunning() {
 		return
 	}
-	for _, t := range cluster.master.Tables {
-		tm := cluster.master.DictTables.Get(t.TableSchema + "." + t.TableName)
+	master := cluster.GetMaster()
+	if master == nil || master.DictTables == nil {
+		return
+	}
+	for _, t := range master.Tables {
+		tm := master.DictTables.Get(t.TableSchema + "." + t.TableName)
+		if tm == nil {
+			// Not in the dictionary yet: CheckTableChecksum skips it.
+			continue
+		}
 		tm.TableSync = "WA"
-		cluster.master.DictTables.Set(t.TableSchema+"."+t.TableName, tm)
+		master.DictTables.Set(t.TableSchema+"."+t.TableName, tm)
 	}
 }
 
@@ -1068,8 +1143,15 @@ func (cluster *Cluster) ChecksumSetResultOnSlave() {
 }
 
 func (cluster *Cluster) ChecksumIsRunning() bool {
-	for _, t := range cluster.master.Tables {
-		tm := cluster.master.DictTables.Get(t.TableSchema + "." + t.TableName)
+	master := cluster.GetMaster()
+	if master == nil || master.DictTables == nil {
+		return false
+	}
+	for _, t := range master.Tables {
+		tm := master.DictTables.Get(t.TableSchema + "." + t.TableName)
+		if tm == nil {
+			continue
+		}
 		if tm.TableSync == "PR" || tm.TableSync == "WA" {
 			return true
 		}

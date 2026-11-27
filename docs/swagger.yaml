@@ -13881,10 +13881,23 @@ paths:
           description: No valid ACL
           schema:
             type: string
+        "404":
+          description: Table not in the master's table dictionary; schema monitoring
+            triggered; retry after the next schema refresh
+          schema:
+            additionalProperties:
+              type: string
+            type: object
         "500":
           description: No cluster
           schema:
             type: string
+        "503":
+          description: Master not discovered
+          schema:
+            additionalProperties:
+              type: string
+            type: object
       summary: Repair checksum error for a specific table in a specific cluster
       tags:
       - ClusterSchema
@@ -13927,10 +13940,23 @@ paths:
           description: No valid ACL
           schema:
             type: string
+        "404":
+          description: Table not in the master's table dictionary; schema monitoring
+            triggered; retry after the next schema refresh
+          schema:
+            additionalProperties:
+              type: string
+            type: object
         "500":
           description: No cluster
           schema:
             type: string
+        "503":
+          description: Master not discovered
+          schema:
+            additionalProperties:
+              type: string
+            type: object
       summary: Calculate checksum for a specific table in a specific cluster
       tags:
       - ClusterSchema
