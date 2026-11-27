@@ -9,6 +9,13 @@ then brings the first payment back: the client is charged twice. Only the applic
 knows whether a lost transaction was already redone, compensated or cancelled. A partitioned old
 master that is not dead may also keep writing, and the catch-up would merge both sides.
 
+Acknowledged transactions are no exception. A failover is the AP choice (availability over the
+transactions not replicated yet), and repman cannot know, transaction by transaction, whether the
+client received its OK: it sees the servers, never the answer sent to the application. Even an
+acknowledged payment, missing on the new master, can be paid again by a user who sees it unpaid.
+Holding all traffic until the old master returns would no longer be a failover (it gives up the A).
+So no automatic replay, before or after traffic resumes.
+
 repman's rule stays the one of UNIFIED_REJOIN_DESIGN.md: the new master is the truth; the old master
 rejoins by rewinding what no one else has (flashback, or reseed); the lost transactions are captured
 before the rejoin (autorejoin-backup-binlog), shown in the lost-events viewer with the exact command to
