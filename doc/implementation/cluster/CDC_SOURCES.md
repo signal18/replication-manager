@@ -59,8 +59,18 @@ plugin reuses it.
   tick, the source being the source cluster's master and the target this cluster's master; the
   usual supervisor runs it (`replplugin-<plugin>`, signature, manifest tier gate ERR00132).
   Stopped (or without source), the TOML is disabled and the position and the source objects
-  are kept. `ReinitReplicationPlugin` (the rebuild) and `stopReplPluginAt` (the stop-wait) are the
+  are kept. `ReinitReplicationPlugin` (the rebuild) and `holdReplPluginAt` (the stop-wait) are the
   one implementation the replication interface's cdc link calls; neither touches the source.
+  - The hold keeps the supervisor from starting the plugin again while its files and State
+    change (`replPluginsHeld`, under `replPluginsMu`); the drop checks again, once held, that the
+    feed was not switched on meanwhile.
+  - The rebuild does not need the feed switched off: once released, the next tick starts it on
+    the new initial load.
+  - A new initial load from the start (no restore done, no checkpoint) sets the position a
+    transactional destination keeps on the target (`replplugin_position`) back to zero before it
+    applies anything: the old position would skip the new checkpoints as applied.
+  - A State that can not be read is ERR00132, the plugin not started, never "no new initial load
+    needed".
 - States (HA domain of the destination cluster): **CINF0040** what the source keeps for the feed
   and its bound (and the initial load's progress); **WARN0360** a warning about the source
   (`max_slot_wal_keep_size` unset, a slot over the bound that is not the feed's); **ERR00140** the

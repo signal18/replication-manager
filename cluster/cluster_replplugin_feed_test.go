@@ -63,13 +63,13 @@ func TestSameReplPluginConfigReadBack(t *testing.T) {
 func TestReplFeedNeedsInit(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, feedTOMLName)
-	if _, wait := replFeedNeedsInit(path); wait {
+	if _, wait, _ := replFeedNeedsInit(path); wait {
 		t.Fatal("no State: no wait")
 	}
 	if err := wire.WriteState(wire.StatePath(path), wire.State{NeedsInit: true, Reason: "slot dropped", Owned: []string{"publication:p"}}); err != nil {
 		t.Fatal(err)
 	}
-	why, wait := replFeedNeedsInit(path)
+	why, wait, _ := replFeedNeedsInit(path)
 	if !wait || why != "slot dropped" {
 		t.Fatalf("%q %v", why, wait)
 	}
@@ -79,5 +79,36 @@ func TestReplFeedNeedsInit(t *testing.T) {
 	b, _ := os.ReadFile(path)
 	if !strings.Contains(string(b), "replication-plugin-feed") || !strings.Contains(string(b), `source_kind = "postgresql"`) {
 		t.Fatalf("feed TOML:\n%s", b)
+	}
+}
+
+// An unreadable State is an error, never "no new initial load needed": the supervisor says why
+// the plugin does not start (ERR00132).
+func TestReplFeedNeedsInitUnreadableState(t *testing.T) {
+	path := filepath.Join(t.TempDir(), feedTOMLName)
+	if err := os.WriteFile(wire.StatePath(path), []byte("{not json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, wait, err := replFeedNeedsInit(path); err == nil || wait {
+		t.Fatalf("corrupt State read as %v, %v", wait, err)
+	}
+}
+
+// A rebuild or a removal holds the plugin stopped: the supervisor's start skips a held TOML
+// until release.
+func TestHoldReplPluginAt(t *testing.T) {
+	cl := &Cluster{}
+	release := cl.holdReplPluginAt("/x/feed.toml")
+	cl.replPluginsMu.Lock()
+	held := cl.replPluginsHeld["/x/feed.toml"]
+	cl.replPluginsMu.Unlock()
+	if !held {
+		t.Fatal("not held")
+	}
+	release()
+	cl.replPluginsMu.Lock()
+	defer cl.replPluginsMu.Unlock()
+	if cl.replPluginsHeld["/x/feed.toml"] {
+		t.Fatal("still held after release")
 	}
 }

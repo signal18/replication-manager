@@ -168,7 +168,14 @@ func (cluster *Cluster) CheckReplicationPlugins() {
 				continue
 			}
 			// a feed whose source lost its position waits for a new initial load (ERR00140)
-			if why, wait := replFeedNeedsInit(path); wait {
+			why, wait, serr := replFeedNeedsInit(path)
+			if serr != nil {
+				cluster.SetState("ERR00132", state.State{ErrType: config.LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00132"], c.Plugin, cluster.Name, "its State file can not be read: "+serr.Error()), ErrFrom: "REPL"})
+				c.Enabled = false
+				cfgs[path] = c
+				continue
+			}
+			if wait {
 				cluster.SetState("ERR00140", state.State{ErrType: config.LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00140"], c.Plugin, cluster.Name, why), ErrFrom: "REPL"})
 				c.Enabled = false
 				cfgs[path] = c
@@ -197,7 +204,8 @@ func (cluster *Cluster) CheckReplicationPlugins() {
 	}
 	if active {
 		for path, c := range cfgs {
-			if _, running := cluster.replPlugins[path]; running || !c.Enabled {
+			// a rebuild or a removal holds it (holdReplPluginAt): its files are changing
+			if _, running := cluster.replPlugins[path]; running || !c.Enabled || cluster.replPluginsHeld[path] {
 				continue
 			}
 			cluster.startReplPluginLocked(path, c, mods[path])

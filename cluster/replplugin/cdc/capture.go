@@ -501,7 +501,7 @@ func MainSource(dest Destination, src Source) {
 		cfg.Rules = wire.RulesOf(state.Tables)
 	}
 
-	ap := &applier{dest: dest, cfg: cfg, path: *configPath}
+	ap := &applier{dest: dest, cfg: cfg, path: *configPath, fresh: !state.RestoreDone && state.Seq == 0}
 	c := &capture{cfg: cfg, statePath: statePath, state: state, bufs: map[string]*tableBuf{}, keyErrs: map[string]bool{}, gtid: state.GTID, opened: time.Now(), ap: ap,
 		maxSize: sizeBytes(cfg.BatchMB), maxAge: time.Duration(cfg.BatchTimeoutMs) * time.Millisecond, packs: map[string]*packBuf{}}
 	if len(cfg.Indexes) > 0 {

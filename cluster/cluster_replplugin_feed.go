@@ -162,13 +162,17 @@ func writeReplFeedConfig(path string, cfg wire.Config) error {
 }
 
 // replFeedNeedsInit reads the State of the plugin TOML at path: the reason when the feed
-// waits for a new initial load.
-func replFeedNeedsInit(path string) (string, bool) {
+// waits for a new initial load; the error when the State can not be read (the plugin would
+// fail on it: the supervisor says why instead of starting it).
+func replFeedNeedsInit(path string) (string, bool, error) {
 	st, err := wire.ReadState(wire.StatePath(path))
-	if err != nil || !st.NeedsInit {
-		return "", false
+	if err != nil {
+		return "", false, err
 	}
-	return st.Reason, true
+	if !st.NeedsInit {
+		return "", false, nil
+	}
+	return st.Reason, true, nil
 }
 
 // ErrNoReplicationPlugin: no plugin TOML of that name in the cluster.
@@ -185,11 +189,17 @@ func (cluster *Cluster) replPluginPathOf(plugin string) (string, wire.Config, er
 	return "", wire.Config{}, fmt.Errorf("%w: %s", ErrNoReplicationPlugin, plugin)
 }
 
-// stopReplPluginAt stops the runner of the TOML at path and waits for its process to end (a
-// SIGTERM, then the grace period). The stop-wait of the rebuild and of the removal; it never
-// touches the source, nor the TOML (the next tick starts it again when the TOML is enabled).
-func (cluster *Cluster) stopReplPluginAt(path string) {
+// holdReplPluginAt stops the runner of the TOML at path, waits for its process to end (a
+// SIGTERM, then the grace period) and keeps the supervisor from starting it again until
+// release is called: the stop-wait of the rebuild and of the removal, whose files and State
+// must not change under a running plugin. It never touches the source, nor the TOML (after
+// release, the next tick starts it again when the TOML is enabled).
+func (cluster *Cluster) holdReplPluginAt(path string) (release func()) {
 	cluster.replPluginsMu.Lock()
+	if cluster.replPluginsHeld == nil {
+		cluster.replPluginsHeld = map[string]bool{}
+	}
+	cluster.replPluginsHeld[path] = true
 	r := cluster.replPlugins[path]
 	if r != nil {
 		cluster.stopReplPluginLocked(path, r)
@@ -197,6 +207,11 @@ func (cluster *Cluster) stopReplPluginAt(path string) {
 	cluster.replPluginsMu.Unlock()
 	if r != nil {
 		<-r.done
+	}
+	return func() {
+		cluster.replPluginsMu.Lock()
+		delete(cluster.replPluginsHeld, path)
+		cluster.replPluginsMu.Unlock()
 	}
 }
 
@@ -214,7 +229,8 @@ func (cluster *Cluster) ReinitReplicationPlugin(plugin string) error {
 	if cfg.SourceKind == "" {
 		return fmt.Errorf("replication plugin %s reads a MariaDB binlog: its new start is a new seed of the child", plugin)
 	}
-	cluster.stopReplPluginAt(path)
+	release := cluster.holdReplPluginAt(path)
+	defer release()
 	st, err := wire.ReadState(wire.StatePath(path))
 	if err != nil {
 		return err
@@ -256,7 +272,12 @@ func (cluster *Cluster) DropReplicationFeedSourceObjects(plugin string) ([]strin
 	if cfg.Enabled {
 		return nil, fmt.Errorf("the feed %s runs: stop it first (replication-plugin-feed-enabled off)", plugin)
 	}
-	cluster.stopReplPluginAt(path)
+	release := cluster.holdReplPluginAt(path)
+	defer release()
+	// switched on between the check and the hold: the feed would run on what is dropped
+	if _, now, err := cluster.replPluginPathOf(plugin); err != nil || now.Enabled {
+		return nil, fmt.Errorf("the feed %s was switched on: stop it first (replication-plugin-feed-enabled off)", plugin)
+	}
 	bin, err := cluster.verifiedReplPlugin(plugin)
 	if err != nil {
 		return nil, err

@@ -37,6 +37,10 @@ type applier struct {
 	dest Destination
 	cfg  wire.Config
 	path string // the plugin's TOML
+	// a new initial load from the start (no restore done, no checkpoint): the position a
+	// Positioner destination committed belongs to the feed's previous life (a rebuild) and is
+	// set back to zero, never taken (its checkpoints 1..N would be skipped as applied)
+	fresh bool
 
 	// the denormalize mode: the source the unpack queries, the indexes
 	src     *sqlx.DB
@@ -152,7 +156,13 @@ func (a *applier) runOnce(ctx context.Context) {
 		a.setErr(err)
 		return
 	}
-	if p, ok := a.dest.(Positioner); ok {
+	if p, ok := a.dest.(Positioner); ok && a.fresh {
+		if err := a.resetPosition(ctx, db, p); err != nil {
+			a.setErr(err)
+			return
+		}
+		a.fresh = false
+	} else if ok {
 		// committed with the rows: past applied.json after a crash between the two
 		if pos, err := a.position(ctx, db, p); err != nil {
 			a.setErr(err)
@@ -286,6 +296,20 @@ func (a *applier) applyOne(ctx context.Context, db *sqlx.DB, path string) (strin
 // plugin is the plugin's name, its TOML's: what a Positioner keys its position by.
 func (a *applier) plugin() string {
 	return strings.TrimSuffix(filepath.Base(a.path), filepath.Ext(a.path))
+}
+
+// resetPosition sets the position a Positioner destination committed back to zero, at the
+// start of a new initial load.
+func (a *applier) resetPosition(ctx context.Context, db *sqlx.DB, p Positioner) error {
+	conn, err := a.session(ctx, db)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	if err := p.SavePosition(ctx, conn, a.plugin(), wire.Applied{}); err != nil {
+		return fmt.Errorf("the position in the destination, set back for a new initial load: %w", err)
+	}
+	return nil
 }
 
 // position reads the position a Positioner destination committed.

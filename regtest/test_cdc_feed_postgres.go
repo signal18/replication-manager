@@ -27,7 +27,8 @@ import (
 //  3. the feed switched off, rows written on PostgreSQL, switched on again: the catch-up from
 //     the slot;
 //  4. the slot's retained WAL reported (CINF0040's numbers in the status), the slot the feed's;
-//  5. at the end: the feed switched off, its slot and publication dropped through the API, the
+//  5. a rebuild (a new initial load) then writes: equal on MariaDB, none skipped;
+//  6. at the end: the feed switched off, its slot and publication dropped through the API, the
 //     test tables dropped on both sides.
 //
 // Not in the ALL list: it needs a PostgreSQL cluster. Run it by name:
@@ -242,6 +243,21 @@ func (regtest *RegTest) TestCDCFeedPostgres(cl *cluster.Cluster, conf string, te
 	}
 	st := cl.ReplicationPluginStatuses()[cdcPgPlugin]
 	step("status: position %s applied %s, lag %d s, the slot keeps %d MB of %d MB; source warning %q", st.GTID, st.AppliedGTID, st.LagSeconds, st.SourceRetainedMB, st.SourceRetainedMaxMB, st.SourceWarning)
+
+	// 5. a rebuild (a new initial load), then writes: the target's stored position is set back,
+	// so the new load's checkpoints are applied, never skipped as already applied
+	if err := cl.ReinitReplicationPlugin(cdcPgPlugin); err != nil {
+		return fail("rebuild: %s", err)
+	}
+	if err := pgExec("INSERT INTO "+cdcPgSchema+"."+cdcPgTable+" (amount, created, uid, payload, mood, flag) SELECT g, now(), gen_random_uuid(), '\\x02', 'ok', true FROM generate_series(1, 30) g",
+		"DELETE FROM "+cdcPgSchema+"."+cdcPgTable+" WHERE id % 13 = 0"); err != nil {
+		return fail("writes after the rebuild: %s", err)
+	}
+	start = time.Now()
+	if err := same("after the rebuild", 5*time.Minute); err != nil {
+		return fail("%s", err)
+	}
+	step("rebuild: new initial load, then 30 inserts and the deletes, equal on MariaDB after %s", time.Since(start).Round(time.Second))
 	return true
 }
 
