@@ -8,7 +8,7 @@ Issue #2453. Status: **design validated by the maintainer (2026-11-27)**. Steps 
 - **One interface, `ReplicationPlugin`.** Failover, switchover, rejoin, reseed, bootstrap, the
   monitor, the GUI, the API and MCP call it and nothing else (law T7, as the orchestrators and the
   proxies).
-- **A link type is a plugin; a link of a cluster is an instance of one** (a `Link`: the plugin, the
+- **A link type is a plugin; a replication of a cluster is an instance of one** (an entry of `server.Replications`, the `Replication` object below: the plugin, the
   server it writes into, its source, its settings). A cluster with three MariaDB channels and a feed
   into DuckDB has four links of two plugins.
 - **A plugin name is never a copy of code (T2).** Plugins that share a mechanism share its
@@ -26,19 +26,53 @@ Issue #2453. Status: **design validated by the maintainer (2026-11-27)**. Steps 
 - Never in a name: physical or logical, async, semi-sync or group (properties of a topology), and a
   mode (copy, denormalize, S3 partition or table: settings of the link).
 
-## A link: an edge between two servers
+## The object: each entry of `server.Replications` is a `Replication`, given by a plugin
 
-A replication is between two servers, often of two clusters. A link carries both ends:
+The object already exists: every `ServerMonitor` holds its replications in `server.Replications`
+(and `LastSeenReplications` while it is down), filled by its `Refresh` (`readNativeLinks`) during
+`TopologyDiscover`, which then builds the graph (who is the master, who replicates from whom). Nothing
+new is added beside it (T2): each entry becomes an interface, `Replication`, implemented by the
+plugin of that link. The discovery stays `TopologyDiscover`'s: where `Refresh` stores the rows it
+read, it stores them as `Replication` objects of their plugin.
+
+A replication is between two servers, often of two clusters:
 
 ```go
-type Link struct {
-    Plugin        ReplicationPlugin
-    SourceCluster *Cluster        // the cluster read; nil for an external source repman does not manage
-    SourceServer  Endpoint        // the server read: a server of a cluster, or an external address
-    TargetCluster *Cluster        // the cluster written into
-    TargetServer  *ServerMonitor  // the server written into
-    Name          string          // the link's identity on the target: the channel, the subscription, the feed
-    Settings      PluginSettings  // its settings, declared by the plugin (see "Settings: per plugin")
+type Replication interface {
+    Plugin() ReplicationManifest
+    SourceCluster() *Cluster        // nil for an external source repman does not manage
+    SourceServer() Endpoint         // a server of a cluster, or an external address
+    TargetCluster() *Cluster
+    TargetServer() *ServerMonitor   // the server whose server.Replications holds it
+    Name() string                   // its identity on the target: the channel, the subscription, the feed
+
+    Status() (dbhelper.SlaveStatus, string, error)   // its row (as today) and the statement (F11)
+    WaitCaughtUp(until Position, timeout time.Duration) (string, error)
+
+    Start(reason string) (string, error)              // copy + apply
+    Stop(reason string) (string, error)
+    StartCopyEvents(reason string) (string, error)
+    StopCopyEvents(reason string) (string, error)
+    StartApplyEvents(reason string) (string, error)
+    StopApplyEvents(reason string) (string, error)
+
+    ResetPositions(reason string) (string, error)     // the link stays (T27)
+    SetPosition(at Position, reason string) (string, error)
+    SkipEvent(reason string) (string, error)
+    ChangeSource(to Endpoint, opt ChangeSourceOpt, reason string) (string, error) // failover, switchover, rejoin only
+    Promote(reason string) (string, error)            // this edge ends, its target becomes a source
+    Remove(reason string) (string, error)             // promotion or operator only (T27)
+    Rejoin() error                                    // resume, or rebuild from a new initial load
+
+    Configure(opts LinkOptions, reason string) (string, error) // the options its manifest declares
+    RotateCredential(reason string) (string, error)
+}
+
+// The plugin keeps only what the code does not already do: describe itself, create an edge, set up a topology.
+type ReplicationPlugin interface {
+    Manifest() ReplicationManifest
+    Create(source Endpoint, target *ServerMonitor, name, reason string) (Replication, error) // its checks first
+    Bootstrap(c *Cluster, topology string, master *ServerMonitor) error
 }
 
 type Endpoint struct {
@@ -48,62 +82,23 @@ type Endpoint struct {
 }
 ```
 
-- **The topology of a cluster is a graph of links.** Master-slave: one link from the master to each
-  replica. Multi-tier: a chain, a server the target of one link and the source of the next. Ring: a
-  cycle. Multi-source: several links into one target. A child cluster, a staging or a CDC feed: a
-  link whose `SourceCluster` is another cluster.
-- **Nothing is "on a server"** in the interface: every verb takes a link; only `Bootstrap` takes the
-  cluster's topology. Stopping every link of a server before a reseed is `Stop` on each of its links
-  (a plugin may send one `STOP ALL SLAVES` for them when the engine allows it: its own business, not a
-  verb).
 - The four ends are named the same way everywhere: `SourceCluster`, `SourceServer`, `TargetCluster`,
   `TargetServer` (T19: one concept, one name, in Go, TOML, JSON, the API and the GUI).
-- **A failover is two edge operations**: `Promote` on the candidate's link to the old master (that
-  edge ends, its target becomes a source), then `ChangeSource` of the other replicas' links to the
-  new master.
-- **Status belongs to the link**: read on the target for the native plugins, from the plugin for a
-  CDC feed; it always describes the relation between the two servers.
-
-## The interface
-
-```go
-type ReplicationPlugin interface {
-    Manifest() ReplicationManifest
-
-    // the graph
-    Bootstrap(c *Cluster, topology string, master *ServerMonitor) error // sets up the cluster's links; checks first
-    Create(l Link, reason string) (string, error)                       // adds one edge; its checks first (prerequisites, account, filters)
-    Remove(l Link, reason string) (string, error)                       // promotion or operator only (T27)
-    Promote(l Link, reason string) (string, error)                      // the edge ends, its target becomes a source
-    ChangeSource(l Link, to Endpoint, opt ChangeSourceOpt, reason string) (string, error) // failover, switchover, rejoin only
-
-    // the state
-    Status(l Link) (dbhelper.SlaveStatus, string, error)                 // one row shape, Kind = the plugin; the statement (F11)
-    WaitCaughtUp(l Link, until Position, timeout time.Duration) (string, error) // switchover: the target has applied up to until
-
-    // run
-    Start(l Link, reason string) (string, error)                         // copy + apply
-    Stop(l Link, reason string) (string, error)
-    StartCopyEvents(l Link, reason string) (string, error)
-    StopCopyEvents(l Link, reason string) (string, error)
-    StartApplyEvents(l Link, reason string) (string, error)
-    StopApplyEvents(l Link, reason string) (string, error)
-
-    // position
-    ResetPositions(l Link, reason string) (string, error)                // the link stays (T27)
-    SetPosition(l Link, at Position, reason string) (string, error)      // reseed, rejoin: the GTID the target resumes from
-    SkipEvent(l Link, reason string) (string, error)
-    Rejoin(l Link) error                                                 // resume, or rebuild from a new initial load
-
-    // configuration
-    Configure(l Link, opts LinkOptions, reason string) (string, error)   // heartbeat, exec mode, GTID mode, parallelism, filters, semi-sync: the options its manifest declares
-    RotateCredential(l Link, reason string) (string, error)              // the replication account of the link (rotation, T16)
-}
-```
-
-- `Position` is the engine's position (a GTID set, a binlog file and offset, a PostgreSQL LSN), as the
-  plugin reads and writes it; repman compares positions only through the plugin.
-- `Promote` by engine: MariaDB and MySQL `RESET SLAVE ALL` on the edge then `read_only` off;
+- **One list**: the CDC feeds writing into a server are entries of its `server.Replications`, with
+  their plugin; `ReplicationFeeds` (added in step 1) goes away. The failover only takes the
+  replications whose plugin can `Promote` and `ChangeSource`, so never a CDC feed.
+- **The JSON does not break**: each entry of `replications` keeps every field of today's row, and adds
+  its plugin and its four ends beside them; the GUI and the API clients read what they read today.
+- **The topology of a cluster is the graph of these objects.** Master-slave: one replication from the
+  master into each replica. Multi-tier: a chain. Ring: a cycle. Multi-source: several into one
+  target. A child cluster, a staging or a CDC feed: one whose `SourceCluster` is another cluster.
+- **Nothing is "on a server"**: stopping every replication of a server before a reseed is `Stop` on
+  each entry of its list (a plugin may send one `STOP ALL SLAVES` for them: its own business).
+- **A failover is two operations on the graph**: `Promote` on the candidate's replication of the old
+  master, then `ChangeSource` of the other replicas' replications to the new master.
+- `Position` is the engine's position (a GTID set, a binlog file and offset, a PostgreSQL LSN), read
+  and written by the plugin; repman compares positions only through it.
+- `Promote` by engine: MariaDB and MySQL `RESET SLAVE ALL` on that replication then `read_only` off;
   PostgreSQL `pg_promote()`; Group Replication `group_replication_set_as_primary`; Galera nothing to do
   (every member writes); a CDC feed is never promoted (a child never replaces its parent).
 
@@ -284,7 +279,7 @@ interface. A function is a verb of every plugin, or the bootstrap of one plugin.
 | Step | What changes |
 |---|---|
 | 2 | (done) `ReplicationLink` becomes `ReplicationPlugin` + `Link`; the verbs renamed (`StopCopyEvents`, `StopApplyEvents`) and `StartCopyEvents`, `StartApplyEvents` added; the manifest; the registry of plugins (as `newOrchestratorList`) |
-| 2b | `Link` carries both ends (`SourceCluster`, `SourceServer`, `TargetCluster`, `TargetServer`); `Promote`, `SetPosition`, `WaitCaughtUp`, `Configure`, `RotateCredential` added; the failover, switchover, reseed and rejoin calls moved onto them; `StopCopyEvents`, `StopApplyEvents` and `ChangeSource` record the link change once their statement succeeded, as `Stop` |
+| 2b | The `Link` of step 2 replaced by the `Replication` object: each entry of `server.Replications` (and `LastSeenReplications`) a `Replication` of its plugin, filled where `Refresh` stores the rows today, `ReplicationFeeds` merged into the list, the JSON kept; its four ends (`SourceCluster`, `SourceServer`, `TargetCluster`, `TargetServer`); `Promote`, `SetPosition`, `WaitCaughtUp`, `Configure`, `RotateCredential` added; the failover, switchover, reseed and rejoin calls moved onto them; `StopCopyEvents`, `StopApplyEvents` and `ChangeSource` record the link change once their statement succeeded, as `Stop` |
 | 3 | The native code split into the built-in plugins: binlog (three manifests), galera, group replication, postgresql, columnstore |
 | 4 | `replication_cdc.go` becomes the external adapter; the CDC plugins declare their settings in their manifests (the `replication-plugin-*` keys stay valid as their cluster level); the CDC binaries renamed (`replplugin-innodb` → `repl-mariadb-mariadb-cdc`, `replplugin-columnstore` → `repl-mariadb-columnstore-cdc`, `replplugin-duckdb` → `repl-mariadb-duckdb-cdc`, `replplugin-postgresql` → `repl-postgresql-mariadb-cdc`) with their manifests |
 | 5 | `Bootstrap` and `Create` moved from `prov.go` into the plugins, topology by topology |
