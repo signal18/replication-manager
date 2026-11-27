@@ -963,6 +963,52 @@ func StopSlaveSQLThread(db *sqlx.DB, Channel string, myver *version.Version) (st
 	return cmd, err
 }
 
+// ErrNoReplicationThread: the engine has no separate thread to start (PostgreSQL: a
+// subscription or a WAL receiver is enabled or disabled whole, StartSlave and StopSlave).
+var ErrNoReplicationThread = errors.New("no separate replication thread on this engine")
+
+// startSlaveThreadStatement is START SLAVE <thread> of one channel ("" the default one):
+// MariaDB names the connection before the thread, MySQL/Percona the channel after it, 8.4 says
+// REPLICA. PostgreSQL has no such thread: ErrNoReplicationThread, no statement.
+func startSlaveThreadStatement(thread string, Channel string, myver *version.Version) (string, error) {
+	if myver.IsPostgreSQL() {
+		return "", ErrNoReplicationThread
+	}
+	cmd := "START SLAVE " + thread
+	if myver.IsMySQLOrPerconaGreater84() {
+		cmd = "START REPLICA " + thread
+	}
+	if myver.IsMariaDB() && Channel != "" {
+		cmd = "START SLAVE '" + Channel + "' " + thread
+	}
+	if myver.IsMySQLOrPercona() && Channel != "" {
+		cmd += " FOR CHANNEL '" + Channel + "'"
+	}
+	return cmd, nil
+}
+
+// StartSlaveIOThread starts the IO thread of one channel (the copy of the source's events).
+// PostgreSQL: ErrNoReplicationThread, no statement sent.
+func StartSlaveIOThread(db *sqlx.DB, Channel string, myver *version.Version) (string, error) {
+	cmd, err := startSlaveThreadStatement("IO_THREAD", Channel, myver)
+	if err != nil {
+		return cmd, err
+	}
+	_, err = db.Exec(cmd)
+	return cmd, err
+}
+
+// StartSlaveSQLThread starts the SQL thread of one channel (the apply of the events copied).
+// PostgreSQL: ErrNoReplicationThread, no statement sent.
+func StartSlaveSQLThread(db *sqlx.DB, Channel string, myver *version.Version) (string, error) {
+	cmd, err := startSlaveThreadStatement("SQL_THREAD", Channel, myver)
+	if err != nil {
+		return cmd, err
+	}
+	_, err = db.Exec(cmd)
+	return cmd, err
+}
+
 // SetSlaveHeartbeat sets the heartbeat period (seconds) of one channel ("" for the default
 // one): STOP SLAVE, the CHANGE MASTER naming that channel, START SLAVE. The statement named
 // no channel before #2208, so on a named MariaDB connection it went to the default one.
