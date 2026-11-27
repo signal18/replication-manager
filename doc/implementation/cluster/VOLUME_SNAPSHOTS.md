@@ -19,10 +19,13 @@ a server's *backup directory* back to an archive snapshot. Every identifier here
 |---|---|
 | `config/snapshot.go` | Plugin manifests and registry, tier check, keep bounds, validators |
 | `cluster/srv_volume_snapshot.go` | The interface, the executors, the actions, the states |
-| `cluster/srv_volume_snapshot_plugin.go` | Loading of the external plugins (`snapshotplugin-*`) |
-| `share/scripts/volume_snapshot.sh` | The helper that runs the zfs and lvm commands (embedded) |
-| `server/api_volume_snapshot.go` | The four endpoints |
+| `config/snapshot_plugin_settings.go` | The settings of the external plugins (`[[snapshot-plugin]]`), their environment |
+| `cluster/srv_volume_snapshot_plugin.go` | Loading of the external plugins (`snapshotplugin-*`), their settings for the API |
+| `cluster/srv_volume_snapshot_host.go` | The host steps of an external plugin: devices, unmount and mount around its snapback |
+| `share/scripts/volume_snapshot.sh` | The helper that runs the zfs and lvm commands and the host steps (embedded) |
+| `server/api_volume_snapshot.go` | The endpoints |
 | `share/dashboard_react/src/components/Modals/VolumeSnapshotsModal` | The GUI |
+| `share/dashboard_react/src/components/SnapshotPluginSettings` | The settings form of an external plugin |
 
 ## Design
 
@@ -152,6 +155,78 @@ half-way, WARN0331 left in maintenance, WARN0332 the plugin can not run. Cluster
   the API needs the global-settings grant (exclusive ACL rule), not cluster-settings.
 - Snapback needs both db-restore and db-maintenance.
 
+### External plugins: settings, devices, unmount (#2456)
+
+What an external plugin needs from replication-manager to drive a storage system, beyond the
+4.0.1 contract:
+
+- **Settings.** `SnapshotPluginManifest.Settings` is the archive plugins' `PluginSettings`
+  (T2), read from `--manifest` and checked by `RegisterSnapshotPlugin`
+  (`validSnapshotPluginSettings`: names the environment carries, known types).
+  `Tested *bool` is shown in the GUI when false.
+- **Storage (T16, F9, T25).** `config/snapshot_plugin_settings.go`: `[[snapshot-plugin]]`
+  entries (`SnapshotPluginEntry`: plugin, settings by name), one per plugin, so switching
+  `backup-snapshot-plugin` keeps each one's settings.
+  - `PutSnapshotPluginSettings` applies a change with the shared `applyEntrySpec`: typed values,
+    the secret encrypted by `typedSettingValue`, an empty secret kept. It refuses a secret when
+    no key is loaded, so it is never stored in clear.
+  - The save callback renders the entries with `writeEntryToml` (`SnapshotPluginEntriesToml`),
+    unless a config file pins `snapshot-plugin`.
+  - `MarshalJSON` uses `splitSecretSettings`: the API gets the names of the secrets only. A value
+    held encrypted is hidden even when the plugin is not loaded.
+- **Environment.** `SnapshotPluginEnv`: `REPMAN_SNAPSHOT_SETTING_<NAME>` and the decrypted
+  `REPMAN_SNAPSHOT_SECRET_<NAME>`, added in `contractSnapshotter.runCtx` for an external plugin
+  only (the client's script keeps `GetExecEnv`). The environment is never logged. The change
+  log names the settings changed, never a value.
+- **Devices.** `contractSnapshotter.host` is the helper's executor on the database host
+  (`volumeSnapshotHostExecutor`: SSH or local, the same rules as the built-in plugins), nil
+  without access.
+  - The helper's `devices` action prints `DEVICE` records (`lsblk -s` from the mount source:
+    every disk's WWN) or `UNRESOLVED`.
+  - `hostDevices` passes them as `REPMAN_SNAPSHOT_DEVICES`, or nothing when one path is
+    unresolved: never a partial list, which would let a plugin's "holds only the server's
+    files" check pass on an incomplete set.
+  - Devices are computed before every action, `list` and `delete` included: a plugin resolves
+    its target from them on each run (one host round trip, read-only, under the action's
+    deadline). The GUI asks for the list when its snapshot window opens and once after each action, never on a timer. Empty means unknown: the plugin contract says it is never read as "no
+    restriction".
+- **Unmount (T14: `backup-snapshot-unmount`).** `snapbackUnmounted` wraps the plugin's
+  snapback in the helper's `unmount` and `mount` actions, under the action's deadline.
+  - The mount gets a deadline of its own (`volumeSnapshotDownTimeout`): an unchanged volume is
+    never left unmounted because the plugin used the whole deadline.
+  - `unmount` refuses a system mount point (an exact list: `/`, `/usr`, `/var`, ... ; a dedicated
+    `/srv` or `/data` is accepted) and a mount point or source holding a blank or a `|` (the
+    pairs are `target|source` words; the values come from the host, never trusted); `mount`
+    checks the pairs it is given the same way.
+  - The settings' values go into the plugin's environment: a null setting is refused (a null
+    secret is kept), a NUL or a line break refused. It waits for the volume to be unused (`wait_unused`),
+    unmounts deepest first through `unmount_pairs` (shared with the LVM snapback, T2: on a
+    failure it puts back what it unmounted, or says CHANGED), and prints the `MOUNT` records the
+    `mount` action replays after `blockdev --flushbufs`. A source with a subvolume suffix
+    (`/dev/sda1[/subvol]`, as `findmnt` prints it) is not a block device: its flush fails, is
+    logged, and the mount goes on (`mount <dir>` is tried first).
+  - A host step whose end is not seen (its deadline passed, its output cut) counts as changed
+    (`hostRun`): an unmount killed half-way may have unmounted some file systems, so the snapback
+    is half-way and the server is never started on them. The mount step's deadline message
+    names its own limit, not `backup-snapshot-timeout`.
+  - The settings API refuses an unknown field (400), and a value with a NUL or a line break
+    written by hand in the TOML is left out of the plugin's environment.
+  - Outcomes: an unchanged plugin failure is mounted back and unchanged. A changed failure is
+    left unmounted, half-way. A failed mount counts as changed (ERR00123), so the server is not
+    started.
+- **API, ACL (T6).** `GET /api/clusters/{c}/volume-snapshot-plugins` (show-backups, db-backup or
+  global-settings) lists the plugins with their entries and `allowed`.
+  `POST .../volume-snapshot-plugin-actions/set/{plugin}` sets them: an exclusive rule
+  (`pricingACLRules`) on global-settings, the grant of `backup-snapshot-script`, since the
+  settings point a program on this host at a storage system and give it a credential.
+- **GUI.** `components/SnapshotPluginSettings`: one field per declared setting, the secret a
+  password field with its own Save (never in a confirmation text), badges for enterprise,
+  "needs an enterprise plan" and "untested". BackupSettings lists the loaded plugins in the
+  plugin dropdown.
+
+The links (T27): the host steps unmount and mount file systems; they stop, repoint or reset no
+replication channel.
+
 ## Not in this step
 
 - Running the zfs/lvm backends on OpenSVC or Kubernetes services: needs a host-side runner (an
@@ -159,7 +234,8 @@ half-way, WARN0331 left in maintenance, WARN0332 the plugin can not run. Cluster
   meanwhile.
 - A schedule for snapshots; snapshots as entries of the backup catalogue (`BackupMetaMap`), with
   the GTID read around the take.
-- Storage-array plugins (enterprise, private repository).
+- Storage-array plugins: an enterprise, private plugin speaks this contract with the
+  settings, devices and unmount above (#2456).
 
 ## Tests
 
@@ -169,3 +245,14 @@ half-way, WARN0331 left in maintenance, WARN0332 the plugin can not run. Cluster
   executor choice per orchestrator, refusals, one action per server, the states, and the
   embedded helper end to end against fake `zfs`/`findmnt` (common dataset, recursive take,
   snapback refusal when a child lacks the snapshot, half-way detection, delete, prune).
+- `config/snapshot_plugin_settings_test.go`: manifest settings checked, a round trip through
+  the saved TOML (the secret encrypted, read back, decrypted only into the environment), the
+  API JSON without the secret, a secret refused without a key, a secret hidden for a plugin
+  not loaded.
+- `cluster/srv_volume_snapshot_host_test.go`: the helper's host steps against fake
+  `findmnt`/`lsblk`/`umount`/`mount`/`blockdev`/`fuser` and a fake external plugin: settings,
+  secret and devices in its environment (none when a path is unresolved), the order unmount,
+  restore, flush, mount, every refusal before a change (system mount point, busy, a failed
+  unmount put back, a plugin refusal mounted back), the half-way cases, the switch off.
+- `regtest/test_volume_snapshot_external_plugin.go`: a fake external plugin end to end
+  through the API on a real cluster (T13).

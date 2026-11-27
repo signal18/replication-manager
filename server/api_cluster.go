@@ -3805,6 +3805,8 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.Conf.BackupCheckFreeSpace = !mycluster.Conf.BackupCheckFreeSpace
 	case "backup-snapshot":
 		mycluster.Conf.BackupSnapshot = !mycluster.Conf.BackupSnapshot
+	case "backup-snapshot-unmount":
+		mycluster.Conf.BackupSnapshotUnmount = !mycluster.Conf.BackupSnapshotUnmount
 	case "backup-estimate-size":
 		mycluster.Conf.BackupEstimateSize = !mycluster.Conf.BackupEstimateSize
 	case "backup-restic-purge-oldest-on-disk-space":
@@ -6278,6 +6280,8 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.BackupCheckFreeSpace = applyIsActive(mycluster.Conf.BackupCheckFreeSpace, isactive)
 	case "backup-snapshot":
 		mycluster.Conf.BackupSnapshot = applyIsActive(mycluster.Conf.BackupSnapshot, isactive)
+	case "backup-snapshot-unmount":
+		mycluster.Conf.BackupSnapshotUnmount = applyIsActive(mycluster.Conf.BackupSnapshotUnmount, isactive)
 	case "backup-estimate-size":
 		mycluster.Conf.BackupEstimateSize = applyIsActive(mycluster.Conf.BackupEstimateSize, isactive)
 	case "backup-encryption":

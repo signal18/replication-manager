@@ -51,6 +51,7 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 	regtest.GetPeerFailoverMode = repman.PeerFailoverMode
 	regtest.SetPeerFailoverMode = repman.SetPeerFailoverMode
 	regtest.APIToken = repman.regtestAPIToken
+	regtest.APITokenOf = repman.regtestAPITokenOf
 	regtest.APIRequest = repman.regtestAPIRequest
 	regtest.APIRequestBody = repman.regtestAPIRequestBody
 	regtest.LoadClusterConfigFromDisk = repman.regtestLoadClusterConfigFromDisk
@@ -472,6 +473,9 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 		}
 		if test.Name == "testAppSecretVersions" {
 			res = regtest.TestAppSecretVersions(cl, test.ConfigFile, &test)
+		}
+		if test.Name == "testVolumeSnapshotExternalPlugin" {
+			res = regtest.TestVolumeSnapshotExternalPlugin(cl, test.ConfigFile, &test)
 		}
 		if test.Name == "testAppSecretVersionsVault" {
 			res = regtest.TestAppSecretVersionsVault(cl, test.ConfigFile, &test)
