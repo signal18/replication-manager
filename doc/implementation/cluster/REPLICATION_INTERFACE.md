@@ -1,6 +1,6 @@
 # Replication plugins: one interface for every link
 
-Issue #2453. Status: **design validated by the maintainer (2026-11-27)**. Steps 1, 2 and 2b (below,
+Issue #2453. Status: **design validated by the maintainer (2026-11-27)**. Steps 1, 2, 2b and 3 (below,
 "Where the code is today") are coded and tested; the rest of this document is the target.
 
 ## The rule
@@ -174,7 +174,8 @@ rebuild and swap. Tiers: the maintainer's decision of 2026-11-26.
 
 - Built into the repman binary, never an external process: a failover never waits on one (F2).
 - **Binlog native** is one Go type registered three times (`repl-mariadb-mariadb-native`,
-  `repl-mysql-mysql-native`, `repl-mysql-mariadb-native`) with three manifests. The manifest decides
+  `repl-mysql-mysql-native`, `repl-mysql-mariadb-native`) with three manifests, and a fourth time
+  for ColumnStore (`repl-columnstore-columnstore-native`), whose servers replicate their binlog. The manifest decides
   the engines and the topologies (Galera for MariaDB only, Group Replication for MySQL only); the SQL
   differences are dbhelper's. No `if mariadb` in the plugin.
 - **Galera**, **Group Replication**, **PostgreSQL** and **ColumnStore** are their own code where the
@@ -259,7 +260,7 @@ interface. A function is a verb of every plugin, or the bootstrap of one plugin.
   `replication-plugin-feed-create-source-objects` for the PostgreSQL slot), and a `remove` that takes
   every trigger and table it created away.
 
-## Where the code is today (steps 1, 2 and 2b, coded and tested)
+## Where the code is today (steps 1, 2, 2b and 3, coded and tested)
 
 - `cluster/replication.go`: the `Replication` interface of the design, plus **`Row()`**: the row of
   the monitor's last read, no statement, what the code that only reads a field uses (`Status()`
@@ -333,13 +334,62 @@ interface. A function is a verb of every plugin, or the bootstrap of one plugin.
 - Tested on dev3 (2026-11-27), each step: switchover with stopped replicas, failover, mysqldump
   reseed; no regression against release/4.0.1 (details in the pull request).
 
+### Step 3: the native plugins
+
+- **The plugins, built in** (`nativePlugins`, `replication_native.go`), each with its manifest:
+  - binlog (`replication_binlog.go`): one Go type, `binlogReplicationPlugin`, registered four
+    times: `repl-mariadb-mariadb-native` (MariaDB into MariaDB; the binlog topologies and
+    `multi-master-wsrep`, logical, group), `repl-mysql-mysql-native` (MySQL and Percona; the
+    binlog topologies and `multi-master-grprep`, logical, group), `repl-mysql-mariadb-native`
+    (MySQL or Percona into MariaDB; the binlog topologies), `repl-columnstore-columnstore-native`
+    (`columnstore`, logical, async). The binlog topologies: `master-slave` (async and semi-sync),
+    `multi-tier-slave`, `multi-master`, `multi-master-ring`, `active-passive`, `binlog-server`,
+    all logical. Every verb but `bootstrap` and `create` (step 5). The engine branches it had
+    moved to dbhelper (`replication_position.go`): `ReplicaWaitReached` (MASTER_GTID_WAIT on
+    MariaDB, MASTER_POS_WAIT / SOURCE_POS_WAIT otherwise), `SetReplicaPosition` (gtid_slave_pos,
+    or GTID_PURGED on a server whose gtid_executed is empty), `ResetAllNeedsStop` (MySQL stops
+    the channel before RESET SLAVE ALL); each refuses PostgreSQL, nothing sent (T23).
+  - `repl-postgresql-postgresql-native` (`replication_postgres.go`): `master-slave-pg-stream`
+    (physical, async) and `master-slave-pg-logical` (logical, async). Actions: status, start,
+    stop, reset-positions, remove, change-source, promote (`pg_promote()`), rejoin. No copy or
+    apply apart, no skip of an event, no position, no wait, no option, no credential: those
+    answer `ErrReplicationNotSupported`, nothing sent (before, the copy, apply and skip verbs
+    sent MariaDB statements a PostgreSQL server refused).
+  - Group Replication (`replication_group.go`), under the MySQL plugin's manifest: a member's
+    membership of the group, not a channel the monitor reads, so it is not in
+    `server.Replications`: `server.GroupReplication()`, `Start` (the allowlist then
+    START GROUP_REPLICATION: the rejoin, the bootstrap of the other members), `Promote`
+    (group_replication_set_as_primary: the switchover), the bootstrap of the first member.
+    The statements and log lines of srv.go and srv_set.go, moved.
+  - Galera: a topology of the MariaDB plugin only. Its members send no link statement on a
+    failover (every member writes) and its SST account is the configurator's: no object of
+    its own until its bootstrap moves into the plugin (step 5).
+  - ColumnStore: the binlog object under its manifest (its servers replicate their binlog as a
+    MariaDB master-slave); its rebootstrap stays `cluster_columnstore_replica.go` until step 5.
+- **The plugin of a replication** (`nativePluginName`), where `refreshNativeLinks` builds each
+  entry and for a channel not read yet (`ReplicationChannelLink`): a PostgreSQL server (its
+  engine, or a PostgreSQL topology declared) `repl-postgresql-postgresql-native`; a MySQL or
+  Percona server `repl-mysql-mysql-native`; a server of a `columnstore` cluster
+  `repl-columnstore-columnstore-native`; a MariaDB server whose source is a monitored MySQL or
+  Percona server `repl-mysql-mariadb-native`; otherwise (and an engine not known yet)
+  `repl-mariadb-mariadb-native`. No new discovery: the rows are the ones read before. A MariaDB
+  source into a MySQL server keeps the MySQL plugin (there is no native `repl-mariadb-mysql`).
+- **Unchanged**: every statement and its order (the promotion: `Promote`, the switchover's
+  `Refresh`, then `SetReadWrite`), the JSON keys; `plugin` now names each replication's plugin,
+  and a decoded entry is an object of that plugin.
+- The lock test covers the three new files and the moved helpers (`ReplicaWaitReached`,
+  `SetReplicaPosition`, the four group replication helpers).
+- Regtests made a gate: the two-switchover test waits (30 s at most) until the monitor sees
+  every replica on the new master (`WaitSlavesRunning`, shared with its semi-sync twin); the
+  flashback rejoin test waits for the load to end before its checksum.
+
 ## From step 2 to the target
 
 | Step | What changes |
 |---|---|
 | 2 | (done) `ReplicationLink` becomes `ReplicationPlugin` + `Link`; the verbs renamed (`StopCopyEvents`, `StopApplyEvents`) and `StartCopyEvents`, `StartApplyEvents` added; the manifest; the registry of plugins (as `newOrchestratorList`) |
 | 2b | (done) The `Link` of step 2 replaced by the `Replication` object: each entry of `server.Replications` (and `LastSeenReplications`) a `Replication` of its plugin, filled where `Refresh` stores the rows today, `ReplicationFeeds` merged into the list, the JSON kept; its four ends (`SourceCluster`, `SourceServer`, `TargetCluster`, `TargetServer`); `Promote`, `SetPosition`, `WaitCaughtUp`, `Configure`, `RotateCredential` added; the failover, switchover, reseed and rejoin calls moved onto them; `StopCopyEvents`, `StopApplyEvents` and `ChangeSource` record the link change once their statement succeeded, as `Stop` |
-| 3 | The native code split into the built-in plugins: binlog (three manifests), galera, group replication, postgresql, columnstore |
+| 3 | (done) The native code split into the built-in plugins: binlog (four manifests: MariaDB, MySQL, MySQL into MariaDB, ColumnStore; Galera and Group Replication topologies), group replication, postgresql; each replication gets its plugin from its engine, the topology and its source |
 | 4 | `replication_cdc.go` becomes the external adapter; the CDC plugins declare their settings in their manifests (the `replication-plugin-*` keys stay valid as their cluster level); the CDC binaries renamed (`replplugin-innodb` → `repl-mariadb-mariadb-cdc`, `replplugin-columnstore` → `repl-mariadb-columnstore-cdc`, `replplugin-duckdb` → `repl-mariadb-duckdb-cdc`, `replplugin-postgresql` → `repl-postgresql-mariadb-cdc`) with their manifests |
 | 5 | `Bootstrap` and `Create` moved from `prov.go` into the plugins, topology by topology |
 | 6 | GUI: the links of a server grouped by plugin, the actions from the manifest; API and MCP the same |
