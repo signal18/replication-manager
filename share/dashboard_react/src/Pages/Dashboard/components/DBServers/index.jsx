@@ -6,7 +6,7 @@ import { createColumnHelper } from '@tanstack/react-table'
 import ServerMenu from './ServerMenu'
 import DBServerGrid from '../DBServers/DBServerGrid'
 import CompareModal from '../../../../components/Modals/CompareModal'
-import { getCurrentGtid, getDelay, getFailCount, getServerDisplayName, getSlaveGtid, getUsingGtid } from './utils'
+import { channelsOf, getCurrentGtid, getDelay, getFailCount, getServerDisplayName, getSlaveGtid, getUsingGtid } from './utils'
 import CheckOrCrossIcon from '../../../../components/Icons/CheckOrCrossIcon'
 import DBFlavourIcon from '../../../../components/Icons/DBFlavourIcon'
 import ServerName from '../../../../components/ServerName'
@@ -171,7 +171,7 @@ function DBServers({ selectedCluster, user }) {
       columnHelper.accessor(
         (row) => (
           <CheckOrCrossIcon
-            isValid={row.replications?.length > 0 && row.replications[0].slaveIoRunning.String == 'Yes'}
+            isValid={channelsOf(row).length > 0 && channelsOf(row)[0].slaveIoRunning.String == 'Yes'}
           />
         ),
         {
@@ -184,7 +184,7 @@ function DBServers({ selectedCluster, user }) {
       columnHelper.accessor(
         (row) => (
           <CheckOrCrossIcon
-            isValid={row.replications?.length > 0 && row.replications[0].slaveSqlRunning.String == 'Yes'}
+            isValid={channelsOf(row).length > 0 && channelsOf(row)[0].slaveSqlRunning.String == 'Yes'}
           />
         ),
         {

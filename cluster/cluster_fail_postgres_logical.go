@@ -82,7 +82,7 @@ func (cluster *Cluster) postgresLogicalSubscribe(server *ServerMonitor, primary 
 	// the DDL replication objects before the subscription: the log table must exist here
 	// for its rows to be applied, and the apply trigger with it
 	cluster.postgresInstallDDLReplication(server)
-	if err := server.ChangeMasterTo(primary, "SLAVE_POS"); err != nil {
+	if err := server.ChangeMasterTo(primary, "SLAVE_POS", LinkByRejoin); err != nil {
 		return err
 	}
 	logs, err := server.SetReadOnly()

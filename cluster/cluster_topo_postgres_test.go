@@ -12,7 +12,7 @@ import (
 func pgReplica(connection string) *ServerMonitor {
 	return &ServerMonitor{
 		DBVersion:    &version.Version{Flavor: "PostgreSQL", Major: 17},
-		Replications: []dbhelper.SlaveStatus{{ConnectionName: sql.NullString{String: connection, Valid: true}}},
+		Replications: nativeRows([]dbhelper.SlaveStatus{{ConnectionName: sql.NullString{String: connection, Valid: true}}}...),
 	}
 }
 

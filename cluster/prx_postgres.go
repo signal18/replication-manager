@@ -136,7 +136,7 @@ func (cluster *Cluster) postgresEnsureTrafficTable() error {
 		if err := dbhelper.PostgresExecReadWrite(s.Conn, ddl...); err != nil {
 			return fmt.Errorf("traffic marker table on %s: %w", s.URL, err)
 		}
-		for _, r := range s.Replications {
+		for _, r := range s.NativeReplications().Rows() {
 			if name := r.ConnectionName.String; name != "" && name != dbhelper.PostgresStandbyConnectionName {
 				// a subscriber: tables created after the subscription need a refresh
 				if _, err := dbhelper.PostgresRefreshSubscription(s.Conn, name); err != nil {

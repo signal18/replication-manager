@@ -51,8 +51,8 @@ func (regtest *RegTest) TestRejoinRefusesNodeWithData(cl *cluster.Cluster, conf 
 	// wiped): no replication channel, no rejoin history (ForgetInstance, as after an
 	// unprovision), then a restart. The node comes back StandAlone with no crash record:
 	// the autoseed path, where the rejoin is one-shot per event and this one is new.
-	slave.StopSlave()
-	if _, err := slave.ResetSlave(); err != nil {
+	slave.ReplicationLink().Stop(cluster.LinkByTest)
+	if _, err := slave.ReplicationLink().Remove(cluster.LinkByTest); err != nil {
 		tlsLogf(cl, "FAIL RejoinRefusesNodeWithData: reset slave: %s", err)
 		return false
 	}
@@ -78,10 +78,10 @@ func (regtest *RegTest) TestRejoinRefusesNodeWithData(cl *cluster.Cluster, conf 
 
 	// Whatever happened, put the replica back under the master.
 	defer func() {
-		if _, err := slave.SetReplicationGTIDSlavePosFromServer(master); err != nil {
+		if _, err := slave.SetReplicationGTIDSlavePosFromServer(master, cluster.LinkByTest); err != nil {
 			tlsLogf(cl, "RejoinRefusesNodeWithData: re-attach %s: %s", slave.URL, err)
 		}
-		slave.StartSlave()
+		slave.ReplicationLink().Start(cluster.LinkByTest)
 	}()
 	if refused != nil {
 		tlsLogf(cl, "FAIL RejoinRefusesNodeWithData: the automatic restore was not refused: %s", refused)

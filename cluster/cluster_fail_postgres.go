@@ -74,7 +74,7 @@ func (cluster *Cluster) postgresFailover(fail bool) bool {
 	// Phase 2: promotion. Nothing was changed before this point: a failed promotion
 	// leaves the standby a standby, so the previous primary is restored.
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Promoting %s", candidate.URL)
-	logs, err := dbhelper.PostgresPromote(candidate.Conn, postgresPromoteWaitSeconds)
+	logs, err := candidate.ReplicationLink().Promote(failoverOrSwitchover(fail))
 	cluster.LogSQL(logs, err, candidate.URL, "MasterFailover", config.LvlErr, "Could not promote %s: %s", candidate.URL, err)
 	if err != nil {
 		cluster.master = cluster.oldMaster
@@ -208,7 +208,7 @@ func (cluster *Cluster) postgresSwitchover() bool {
 
 	// 3. promote
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Promoting %s", candidate.URL)
-	logs, err = dbhelper.PostgresPromote(candidate.Conn, postgresPromoteWaitSeconds)
+	logs, err = candidate.ReplicationLink().Promote(LinkBySwitchover)
 	cluster.LogSQL(logs, err, candidate.URL, "MasterFailover", config.LvlErr, "Could not promote %s: %s", candidate.URL, err)
 	if err != nil {
 		cluster.postgresSwitchoverRollback(old)
@@ -313,7 +313,7 @@ func (cluster *Cluster) postgresSwitchoverRollback(old *ServerMonitor) {
 		if !inRecovery {
 			return
 		}
-		logs, err := dbhelper.PostgresPromote(old.Conn, postgresPromoteWaitSeconds)
+		logs, err := old.ReplicationLink().Promote(LinkBySwitchover)
 		cluster.LogSQL(logs, err, old.URL, "MasterFailover", config.LvlErr, "Could not promote %s back: %s", old.URL, err)
 		if err == nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "%s is primary again", old.URL)

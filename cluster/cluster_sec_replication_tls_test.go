@@ -111,7 +111,7 @@ func TestServerChangeMasterReplicationTLS(t *testing.T) {
 	opt := dbhelper.ChangeMasterOpt{Host: "db1", Port: "3306", User: "repl", Password: "pw", Retry: "10", Heartbeat: "1", Mode: "SLAVE_POS", SSL: true}
 
 	mock.ExpectExec("CHANGE").WillReturnResult(sqlmock.NewResult(0, 0))
-	cm, err := replica.ChangeMaster(opt)
+	cm, err := replica.ReplicationLink().ChangeSource(SourceOf(opt), opt, LinkByTest)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -121,7 +121,7 @@ func TestServerChangeMasterReplicationTLS(t *testing.T) {
 
 	opt.SSL = false
 	mock.ExpectExec("CHANGE").WillReturnResult(sqlmock.NewResult(0, 0))
-	if cm, _ = replica.ChangeMaster(opt); strings.Contains(cm, "SSL") {
+	if cm, _ = replica.ReplicationLink().ChangeSource(SourceOf(opt), opt, LinkByTest); strings.Contains(cm, "SSL") {
 		t.Fatalf("configured certificate without replication-use-ssl: channel kept: %s", cm)
 	}
 }
@@ -132,8 +132,8 @@ func TestCheckReplicationTLS(t *testing.T) {
 	ns := func(v string) sql.NullString { return sql.NullString{String: v, Valid: true} }
 	maria, _ := version.NewVersionFromString("MariaDB", "12.3.3-MariaDB")
 	old, _ := version.NewVersionFromString("MariaDB", "10.11.9-MariaDB")
-	rep := func(allowed, ca, verify string) []dbhelper.SlaveStatus {
-		return []dbhelper.SlaveStatus{{MasterHost: ns("db1"), MasterPort: ns("3306"), MasterSSLAllowed: ns(allowed), MasterSSLCAFile: ns(ca), MasterSSLVerifyServerCert: ns(verify)}}
+	rep := func(allowed, ca, verify string) ReplicationList {
+		return nativeRows([]dbhelper.SlaveStatus{{MasterHost: ns("db1"), MasterPort: ns("3306"), MasterSSLAllowed: ns(allowed), MasterSSLCAFile: ns(ca), MasterSSLVerifyServerCert: ns(verify)}}...)
 	}
 	servers := []*ServerMonitor{
 		{URL: "zeroconf:3306", State: stateSlave, DBVersion: maria, Replications: rep("Yes", "", "Yes")},
@@ -162,7 +162,7 @@ func TestCheckReplicationTLS(t *testing.T) {
 func TestCheckReplicationTLSHandshakeFailure(t *testing.T) {
 	ns := func(v string) sql.NullString { return sql.NullString{String: v, Valid: true} }
 	maria, _ := version.NewVersionFromString("MariaDB", "12.3.3-MariaDB")
-	s := &ServerMonitor{URL: "db2:3306", State: stateSlaveErr, DBVersion: maria, Replications: []dbhelper.SlaveStatus{{MasterHost: ns("db1"), MasterPort: ns("3306"), MasterSSLAllowed: ns("Yes"), MasterSSLCAFile: ns("/etc/mysql/ssl/ca-cert.pem"), MasterSSLVerifyServerCert: ns("Yes"), LastIOErrno: ns("2026")}}}
+	s := &ServerMonitor{URL: "db2:3306", State: stateSlaveErr, DBVersion: maria, Replications: nativeRows([]dbhelper.SlaveStatus{{MasterHost: ns("db1"), MasterPort: ns("3306"), MasterSSLAllowed: ns("Yes"), MasterSSLCAFile: ns("/etc/mysql/ssl/ca-cert.pem"), MasterSSLVerifyServerCert: ns("Yes"), LastIOErrno: ns("2026")}}...)}
 	c := &Cluster{Name: "c1", Conf: &config.Config{}, Servers: []*ServerMonitor{s}}
 	c.SecurityStateMachine = new(state.StateMachine)
 	c.SecurityStateMachine.Init()

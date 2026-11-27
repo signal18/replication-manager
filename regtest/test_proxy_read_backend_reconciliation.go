@@ -187,12 +187,12 @@ func (regtest *RegTest) TestProxyReadBackendReconciliation(cl *cluster.Cluster, 
 	}
 
 	// --- Phase 1: stop slave -> drained everywhere, restart -> restored. ---
-	if _, err := slave.StopSlave(); err != nil {
+	if _, err := slave.ReplicationLink().Stop(cluster.LinkByTest); err != nil {
 		logf(config.LvlErr, "TEST proxy-read-backend-reconciliation: FAIL could not STOP SLAVE on %s: %s", slave.URL, err)
 		return false
 	}
 	stopOK := checkAll(slave.Host, slave.Port, false, 30*time.Second)
-	if _, err := slave.StartSlave(); err != nil {
+	if _, err := slave.ReplicationLink().Start(cluster.LinkByTest); err != nil {
 		logf(config.LvlErr, "TEST proxy-read-backend-reconciliation: FAIL could not START SLAVE on %s during cleanup: %s", slave.URL, err)
 		return false
 	}

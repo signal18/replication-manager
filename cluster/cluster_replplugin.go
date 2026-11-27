@@ -57,6 +57,10 @@ type replPluginRunner struct {
 	inMu  sync.Mutex     // one frame at a time on stdin
 	stdin io.WriteCloser // the running process's, nil when none
 	gen   int64          // the process started, counted
+
+	stmtMu      sync.Mutex
+	loggedStmts int64 // the statements of a capture source on its source logged, counted (F11)
+	loggedGen   int64 // the process they were counted in
 }
 
 // replFeed is a restore feeding a plugin's stdin (#2015): the process it started with, so a
@@ -151,13 +155,30 @@ func (cluster *Cluster) readReplPluginConfigs() (map[string]wire.Config, map[str
 // runner per enabled TOML on the active replication-manager, restarted when its TOML
 // changes; none on a standby or on a stopping cluster. Then the states.
 func (cluster *Cluster) CheckReplicationPlugins() {
-	cfgs, mods, errs := cluster.readReplPluginConfigs()
 	active := cluster.IsActive() && !cluster.exit.Load()
+	if active {
+		cluster.syncReplicationFeed() // the CDC feed's TOML from its settings (cluster_replplugin_feed.go)
+	}
+	cfgs, mods, errs := cluster.readReplPluginConfigs()
 	if active {
 		// the source the plugin reads (cluster_repl_source.go): followed after a switchover,
 		// a plugin without a valid source does not run
 		for path, c := range cfgs {
 			if !c.Enabled {
+				continue
+			}
+			// a feed whose source lost its position waits for a new initial load (ERR00140)
+			why, wait, serr := replFeedNeedsInit(path)
+			if serr != nil {
+				cluster.SetState("ERR00132", state.State{ErrType: config.LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00132"], c.Plugin, cluster.Name, "its State file can not be read: "+serr.Error()), ErrFrom: "REPL"})
+				c.Enabled = false
+				cfgs[path] = c
+				continue
+			}
+			if wait {
+				cluster.SetState("ERR00140", state.State{ErrType: config.LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00140"], c.Plugin, cluster.Name, why), ErrFrom: "REPL"})
+				c.Enabled = false
+				cfgs[path] = c
 				continue
 			}
 			// a plugin missing, or that the plan does not grant, never runs (ERR00132)
@@ -183,7 +204,8 @@ func (cluster *Cluster) CheckReplicationPlugins() {
 	}
 	if active {
 		for path, c := range cfgs {
-			if _, running := cluster.replPlugins[path]; running || !c.Enabled {
+			// a rebuild or a removal holds it (holdReplPluginAt): its files are changing
+			if _, running := cluster.replPlugins[path]; running || !c.Enabled || cluster.replPluginsHeld[path] {
 				continue
 			}
 			cluster.startReplPluginLocked(path, c, mods[path])
@@ -496,6 +518,7 @@ func (cluster *Cluster) checkReplPluginStates(runners []*replPluginRunner, errs 
 		if st == nil {
 			continue
 		}
+		cluster.checkReplPluginSourceStates(r, st)
 		if st.ApplyError != "" {
 			cluster.SetState("WARN0243", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0243"], name, cluster.Name, st.ApplyError), ErrFrom: "REPL"})
 		}
@@ -518,6 +541,10 @@ func (cluster *Cluster) checkReplPluginStates(runners []*replPluginRunner, errs 
 				at = "never"
 			}
 			cluster.SetState("CINF0030", state.State{ErrType: config.LvlInfo, ErrDesc: fmt.Sprintf(clusterError["CINF0030"], name, cluster.Name, st.MergedSeq, st.MergedGTID, at, st.MergeTookMs, st.AppliedSeq-st.MergedSeq, next), ErrFrom: "REPL"})
+			// the merge is a throughput fact of the child, not its HA: the workload domain (T3)
+			if late := cdcMergeLate(st.NextMergeAt, time.Duration(r.cfg.MergeIntervalMs)*time.Millisecond, time.Now()); late > 0 {
+				cluster.WorkloadStateMachine.AddState("WARN0353@"+name, state.State{ErrType: "WARNING", ErrKey: "WARN0353", ErrDesc: fmt.Sprintf(clusterError["WARN0353"], name, cluster.Name, late, time.Duration(r.cfg.MergeIntervalMs)*time.Millisecond, at), ErrFrom: "REPL"})
+			}
 		}
 	}
 	cluster.checkAnalyticChildStates()
@@ -526,17 +553,35 @@ func (cluster *Cluster) checkReplPluginStates(runners []*replPluginRunner, errs 
 	}
 }
 
-// capBuffer keeps the last replPluginStderrMax bytes written to it.
+// cdcMergeLate is how late the merge due at next (RFC 3339) is at now, once it is due since more
+// than one merge interval more; 0 while it is not.
+func cdcMergeLate(next string, interval time.Duration, now time.Time) time.Duration {
+	t, err := time.Parse(time.RFC3339, next)
+	if err != nil || interval <= 0 {
+		return 0
+	}
+	if late := now.Sub(t); late > interval {
+		return late.Round(time.Second)
+	}
+	return 0
+}
+
+// capBuffer keeps the last max bytes written to it (replPluginStderrMax when 0).
 type capBuffer struct {
 	mu  sync.Mutex
 	buf []byte
+	max int
 }
 
 func (b *capBuffer) Write(p []byte) (int, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.buf = append(b.buf, p...)
-	if over := len(b.buf) - replPluginStderrMax; over > 0 {
+	limit := b.max
+	if limit <= 0 {
+		limit = replPluginStderrMax
+	}
+	if over := len(b.buf) - limit; over > 0 {
 		b.buf = b.buf[over:]
 	}
 	return len(p), nil

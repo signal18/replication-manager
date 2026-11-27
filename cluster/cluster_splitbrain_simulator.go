@@ -189,7 +189,7 @@ func (cluster *Cluster) SimulateSlaveIOThreadStop(server *ServerMonitor, duratio
 	if server == nil {
 		return
 	}
-	if logs, err := server.StopSlaveIOThread(); err != nil {
+	if logs, err := server.ReplicationLink().StopCopyEvents(LinkByTest); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "SPLITBRAIN SIMULATION: could not stop io_thread on %s: %s (%s)", server.URL, err, logs)
 		return
 	}
@@ -240,7 +240,7 @@ func (cluster *Cluster) RestoreSimulatedSlaveIOThreads(forceAll bool) {
 		if sv == nil {
 			continue
 		}
-		if logs, err := sv.StartSlave(); err != nil {
+		if logs, err := sv.ReplicationLink().Start(LinkByTest); err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "SPLITBRAIN SIMULATION: could not restart io_thread on %s: %s (%s)", url, err, logs)
 		} else {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "SPLITBRAIN SIMULATION: io_thread restarted on %s (simulated cut resolved)", url)

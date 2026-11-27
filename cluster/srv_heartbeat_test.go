@@ -39,12 +39,12 @@ func heartbeatTestCluster(t *testing.T) (*Cluster, *ServerMonitor, *ServerMonito
 // setHeartbeatStatus is what SHOW ALL SLAVES STATUS gave the tick for the managed channel.
 func setHeartbeatStatus(slave *ServerMonitor, received int64, gtidIOPos string, period float64) {
 	yes := sql.NullString{String: "Yes", Valid: true}
-	slave.Replications = []dbhelper.SlaveStatus{{
+	slave.Replications = slave.replicationsOfRows([]dbhelper.SlaveStatus{{
 		ConnectionName: sql.NullString{String: "bench", Valid: true}, MasterHost: sql.NullString{String: "db1", Valid: true},
 		MasterPort: sql.NullString{String: "3306", Valid: true}, MasterServerID: 1, SlaveIORunning: yes, SlaveSQLRunning: yes,
 		GtidIOPos: sql.NullString{String: gtidIOPos, Valid: true}, SlaveHeartbeatPeriod: period,
 		SlaveReceivedHeartbeats: sql.NullInt64{Int64: received, Valid: true},
-	}}
+	}}...)
 }
 
 // MariaDB keeps no last received time: the tick that sees the channel's heartbeat counter or
@@ -78,7 +78,7 @@ func TestRefreshReplicationLastReceivedMariaDB(t *testing.T) {
 	}
 	slave.ReplicationLastReceivedAt = time.Now().Add(-time.Minute)
 	setHeartbeatStatus(slave, 1, "1-1-12", 3)
-	slave.Replications[0].MasterHost = sql.NullString{String: "db3", Valid: true} // repointed by a failover
+	mutableRow(slave.Replications[0]).MasterHost = sql.NullString{String: "db3", Valid: true} // repointed by a failover
 	slave.refreshReplicationLastReceived()
 	if _, ok := slave.GetReplicationLastReceivedAge(); ok {
 		t.Fatal("a repoint to another source is not a receive")
@@ -191,6 +191,7 @@ func TestCheckReplicationHeartbeatPeriodEnforces(t *testing.T) {
 	setup := func() (*Cluster, *ServerMonitor) {
 		cl, _, slave := heartbeatTestCluster(t)
 		cl.Conf.ForceSlaveHeartbeat = true
+		slave.Conn = &sqlx.DB{} // Configure refuses a server without a pool; the setter is stubbed
 		slave.replicationHeartbeatKnown = true
 		slave.ReplicationHeartbeatPeriod = 30
 		return cl, slave
@@ -206,7 +207,7 @@ func TestCheckReplicationHeartbeatPeriodEnforces(t *testing.T) {
 
 	calls = stubSetSlaveHeartbeat(t, nil)
 	cl, slave = setup()
-	slave.Replications[0].SlaveSQLRunning = sql.NullString{String: "No", Valid: true}
+	mutableRow(slave.Replications[0]).SlaveSQLRunning = sql.NullString{String: "No", Valid: true}
 	slave.checkReplicationHeartbeatPeriod()
 	if len(*calls) != 0 || !cl.StateMachine.IsInState(key("WARN0050", slave)) {
 		t.Fatalf("a stopped SQL thread: warn, no change; calls %v", *calls)

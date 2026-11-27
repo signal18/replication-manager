@@ -433,11 +433,18 @@ func fail(c *capture, err error) {
 	os.Exit(1)
 }
 
-// Main runs a destination plugin: -config its TOML; with -create, the tables of its rules are
-// made the destination's on the target, one CreateResult JSON line each, and it exits.
-func Main(dest Destination) {
+// Main runs a destination plugin of a MariaDB source (its binlog): -config its TOML; with
+// -create, the tables of its rules are made the destination's on the target, one CreateResult
+// JSON line each, and it exits.
+func Main(dest Destination) { MainSource(dest, nil) }
+
+// MainSource runs a destination plugin with a capture source of its own (source.go), or the
+// core's binlog capture when src is nil. With -drop, a source that is a Dropper removes what it
+// created on the source server for the feed (State.Owned), and the plugin exits.
+func MainSource(dest Destination, src Source) {
 	configPath := flag.String("config", "", "the plugin's TOML (<cluster datadir>/replication-plugins/<name>.toml)")
 	create := flag.Bool("create", false, "make the tables of the rules the destination's on the target, print one JSON line per table, exit")
+	drop := flag.Bool("drop", false, "remove what the capture source created on the source server for this feed (its State's owned objects), exit")
 	flag.Parse()
 	if *configPath == "" {
 		fail(nil, fmt.Errorf("-config is required"))
@@ -449,8 +456,23 @@ func Main(dest Destination) {
 	if v := os.Getenv(wire.EnvWireVersion); v != "" && v != strconv.Itoa(wire.WireVersion) {
 		fail(nil, fmt.Errorf("replication-manager speaks wire %s, this plugin wire %d", v, wire.WireVersion))
 	}
+	switch {
+	case src == nil && cfg.SourceKind != "":
+		fail(nil, fmt.Errorf("source_kind %q: this plugin reads a MariaDB binlog only", cfg.SourceKind))
+	case src != nil && cfg.SourceKind != src.Kind():
+		fail(nil, fmt.Errorf("source_kind %q: this plugin captures %q", cfg.SourceKind, src.Kind()))
+	case src != nil && len(cfg.Indexes) > 0:
+		fail(nil, fmt.Errorf("the denormalize mode needs a MariaDB source"))
+	}
+	statePath := wire.StatePath(*configPath)
 	if *create {
+		if src != nil {
+			fail(nil, fmt.Errorf("-create is the seed of an analytic child: a capture source makes its tables at its initial load"))
+		}
 		os.Exit(runCreate(cfg, dest))
+	}
+	if *drop {
+		os.Exit(runDrop(cfg, statePath, src))
 	}
 	if cfg.BatchTimeoutMs <= 0 {
 		cfg.BatchTimeoutMs = 10000
@@ -458,12 +480,17 @@ func Main(dest Destination) {
 	if cfg.RestoreBatchTimeoutMs <= 0 {
 		cfg.RestoreBatchTimeoutMs = 30000
 	}
-	statePath := wire.StatePath(*configPath)
 	state, err := wire.ReadState(statePath)
 	if err != nil {
 		fail(nil, fmt.Errorf("state %s: %w", statePath, err))
 	}
-	if !state.RestoreDone && state.Seq > 0 {
+	if state.NeedsInit {
+		// replication-manager does not start it then; run by hand, it says so and stops
+		b, _ := json.Marshal(wire.Status{Wire: wire.WireVersion, Time: time.Now().UTC().Format(time.RFC3339), State: wire.StateNeedsInit, Error: state.Reason, GTID: state.GTID, SourceKind: cfg.SourceKind})
+		fmt.Println(string(b))
+		os.Exit(3)
+	}
+	if src == nil && !state.RestoreDone && state.Seq > 0 {
 		fail(nil, fmt.Errorf("a restore was interrupted after %d checkpoints: the child must be seeded again", state.Seq))
 	}
 	// a crash between a checkpoint's file and the State that records it: the next checkpoint
@@ -474,7 +501,7 @@ func Main(dest Destination) {
 		cfg.Rules = wire.RulesOf(state.Tables)
 	}
 
-	ap := &applier{dest: dest, cfg: cfg, path: *configPath}
+	ap := &applier{dest: dest, cfg: cfg, path: *configPath, fresh: !state.RestoreDone && state.Seq == 0}
 	c := &capture{cfg: cfg, statePath: statePath, state: state, bufs: map[string]*tableBuf{}, keyErrs: map[string]bool{}, gtid: state.GTID, opened: time.Now(), ap: ap,
 		maxSize: sizeBytes(cfg.BatchMB), maxAge: time.Duration(cfg.BatchTimeoutMs) * time.Millisecond, packs: map[string]*packBuf{}}
 	if len(cfg.Indexes) > 0 {
@@ -493,31 +520,6 @@ func Main(dest Destination) {
 	c.w = &checkpointWriter{dir: wire.CheckpointDir(*configPath), maxPending: mbBytes(cfg.MaxPendingMB), paused: func(p int64) {
 		c.pausedMB.Store(p >> 20) // c.mu is held by the caller: never taken here
 	}}
-
-	ccfg := canal.NewDefaultConfig()
-	ccfg.Addr = fmt.Sprintf("%s:%d", cfg.Source.Host, cfg.Source.Port)
-	ccfg.User = cfg.Source.User
-	ccfg.Password = os.Getenv(wire.EnvSourcePassword)
-	ccfg.Flavor = mysql.MariaDBFlavor
-	if cfg.ServerID > 0 {
-		ccfg.ServerID = cfg.ServerID
-	}
-	ccfg.Dump.ExecutionPath = "" // no dump: the restore's rows come on stdin
-	// the tables carried are known at the restore's end: filtered in OnRow. canal keeps only
-	// a table an include matches, the excludes then removing some: an exclude alone
-	// excludes every table
-	ccfg.IncludeTableRegex = []string{`^.*\..*$`}
-	ccfg.ExcludeTableRegex = []string{`^mysql\..*$`} // replication_manager_schema's load-test tables are carried (#2015)
-	cc, err := canal.NewCanal(ccfg)
-	if err != nil {
-		fail(c, fmt.Errorf("source %s: %w", ccfg.Addr, err))
-	}
-	c.c = cc
-	cc.SetEventHandler(c)
-
-	applyCtx, stopApply := context.WithCancel(context.Background())
-	defer stopApply()
-	go ap.run(applyCtx)
 
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGTERM, syscall.SIGINT)
@@ -544,6 +546,40 @@ func Main(dest Destination) {
 			c.status(wire.StateRunning, "")
 		}
 	}
+	if src != nil {
+		runSource(c, ap, src, sig, tick, ticker)
+		return
+	}
+	runBinlog(c, ap, cfg, state, sig, tick, ticker)
+}
+
+// runBinlog is the core's own capture: the source's MariaDB binlog, from the State's GTID, or
+// after the seed's restore read on stdin.
+func runBinlog(c *capture, ap *applier, cfg wire.Config, state wire.State, sig <-chan os.Signal, tick func(), ticker *time.Ticker) {
+	ccfg := canal.NewDefaultConfig()
+	ccfg.Addr = fmt.Sprintf("%s:%d", cfg.Source.Host, cfg.Source.Port)
+	ccfg.User = cfg.Source.User
+	ccfg.Password = os.Getenv(wire.EnvSourcePassword)
+	ccfg.Flavor = mysql.MariaDBFlavor
+	if cfg.ServerID > 0 {
+		ccfg.ServerID = cfg.ServerID
+	}
+	ccfg.Dump.ExecutionPath = "" // no dump: the restore's rows come on stdin
+	// the tables carried are known at the restore's end: filtered in OnRow. canal keeps only
+	// a table an include matches, the excludes then removing some: an exclude alone
+	// excludes every table
+	ccfg.IncludeTableRegex = []string{`^.*\..*$`}
+	ccfg.ExcludeTableRegex = []string{`^mysql\..*$`} // replication_manager_schema's load-test tables are carried (#2015)
+	cc, err := canal.NewCanal(ccfg)
+	if err != nil {
+		fail(c, fmt.Errorf("source %s: %w", ccfg.Addr, err))
+	}
+	c.c = cc
+	cc.SetEventHandler(c)
+
+	applyCtx, stopApply := context.WithCancel(context.Background())
+	defer stopApply()
+	go ap.run(applyCtx)
 
 	started := make(chan struct{})
 	if state.RestoreDone {

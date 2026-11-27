@@ -51,19 +51,19 @@ func TestReseedLinkPointsToPrimary(t *testing.T) {
 	if ok, why := sv.reseedLinkPointsToPrimary(); !ok {
 		t.Fatalf("no channel yet (a new replica): may be positioned, got %q", why)
 	}
-	sv.Replications = []dbhelper.SlaveStatus{channel("belair", "db2.belair", "No", "No")}
+	sv.Replications = sv.replicationsOfRows([]dbhelper.SlaveStatus{channel("belair", "db2.belair", "No", "No")}...)
 	if ok, _ := sv.reseedLinkPointsToPrimary(); !ok {
 		t.Fatal("a link to the primary by host is positioned")
 	}
-	sv.Replications = []dbhelper.SlaveStatus{channel("belair", "10.0.0.2", "No", "No")}
+	sv.Replications = sv.replicationsOfRows([]dbhelper.SlaveStatus{channel("belair", "10.0.0.2", "No", "No")}...)
 	if ok, _ := sv.reseedLinkPointsToPrimary(); !ok {
 		t.Fatal("a link to the primary by IP is positioned")
 	}
-	sv.Replications = []dbhelper.SlaveStatus{channel("belair", "external.client", "No", "No")}
+	sv.Replications = sv.replicationsOfRows([]dbhelper.SlaveStatus{channel("belair", "external.client", "No", "No")}...)
 	if ok, why := sv.reseedLinkPointsToPrimary(); ok || why == "" {
 		t.Fatal("a link to another source is never moved by a restore")
 	}
-	sv.Replications = []dbhelper.SlaveStatus{channel("other", "external.client", "Yes", "Yes")}
+	sv.Replications = sv.replicationsOfRows([]dbhelper.SlaveStatus{channel("other", "external.client", "Yes", "Yes")}...)
 	if ok, _ := sv.reseedLinkPointsToPrimary(); !ok {
 		t.Fatal("only the managed channel decides; another channel is not positioned anyway")
 	}
@@ -73,17 +73,17 @@ func TestReseedLinkPointsToPrimary(t *testing.T) {
 // again, whoever starts it.
 func TestReseedStoppedLinksState(t *testing.T) {
 	c, sv := reseedLinkFixture()
-	sv.Replications = []dbhelper.SlaveStatus{channel("belair", "db2.belair", "No", "No"), channel("crm", "db1.crm", "No", "No")}
+	sv.Replications = sv.replicationsOfRows([]dbhelper.SlaveStatus{channel("belair", "db2.belair", "No", "No"), channel("crm", "db1.crm", "No", "No")}...)
 	sv.markReseedStoppedLinks(sv.replicationChannels(), "restore of /backup")
 
-	sv.checkReseedStoppedLinks()
+	sv.checkLinkChanges()
 	if !warn0252Open(c) {
 		t.Fatal("WARN0252 while the stopped channels do not run")
 	}
 
 	c.StateMachine.ClearState()
-	sv.Replications = []dbhelper.SlaveStatus{channel("belair", "db2.belair", "Yes", "Yes"), channel("crm", "db1.crm", "No", "No")}
-	sv.checkReseedStoppedLinks()
+	sv.Replications = sv.replicationsOfRows([]dbhelper.SlaveStatus{channel("belair", "db2.belair", "Yes", "Yes"), channel("crm", "db1.crm", "No", "No")}...)
+	sv.checkLinkChanges()
 	if got := sv.reseedStoppedLinkList(); len(got) != 1 || got[0] != "crm" {
 		t.Fatalf("the running channel leaves the list: %v", got)
 	}
@@ -92,8 +92,8 @@ func TestReseedStoppedLinksState(t *testing.T) {
 	}
 
 	c.StateMachine.ClearState()
-	sv.Replications = []dbhelper.SlaveStatus{channel("belair", "db2.belair", "Yes", "Yes"), channel("crm", "db1.crm", "Yes", "Yes")}
-	sv.checkReseedStoppedLinks()
+	sv.Replications = sv.replicationsOfRows([]dbhelper.SlaveStatus{channel("belair", "db2.belair", "Yes", "Yes"), channel("crm", "db1.crm", "Yes", "Yes")}...)
+	sv.checkLinkChanges()
 	if len(sv.reseedStoppedLinkList()) != 0 || warn0252Open(c) {
 		t.Fatal("every stopped channel runs again: WARN0252 closes")
 	}
@@ -105,16 +105,16 @@ func TestReseedStoppedLinksState(t *testing.T) {
 func TestReseedStoppedLinkRemovedChannel(t *testing.T) {
 	c, sv := reseedLinkFixture()
 	sv.markReseedStoppedLinks([]string{"belair", "crm"}, "restore of /backup")
-	sv.Replications = []dbhelper.SlaveStatus{channel("belair", "db2.belair", "No", "No")}
+	sv.Replications = sv.replicationsOfRows([]dbhelper.SlaveStatus{channel("belair", "db2.belair", "No", "No")}...)
 
-	sv.checkReseedStoppedLinks()
+	sv.checkLinkChanges()
 	if got := sv.reseedStoppedLinkList(); len(got) != 2 {
 		t.Fatalf("a server that does not answer keeps the list: %v", got)
 	}
 
 	c.StateMachine.ClearState()
 	sv.Conn = &sqlx.DB{}
-	sv.checkReseedStoppedLinks()
+	sv.checkLinkChanges()
 	if got := sv.reseedStoppedLinkList(); len(got) != 1 || got[0] != "belair" {
 		t.Fatalf("the removed channel leaves the list, the stopped one stays: %v", got)
 	}
@@ -128,9 +128,9 @@ func TestReseedStoppedLinkRemovedChannel(t *testing.T) {
 func TestReseedStoppedLinksGraceAndConcurrency(t *testing.T) {
 	c, sv := reseedLinkFixture()
 	c.Conf.MonitoringTicker = 2
-	sv.Replications = []dbhelper.SlaveStatus{channel("belair", "db2.belair", "Yes", "Yes")}
+	sv.Replications = sv.replicationsOfRows([]dbhelper.SlaveStatus{channel("belair", "db2.belair", "Yes", "Yes")}...)
 	sv.markReseedStoppedLinks([]string{"belair"}, "restore of /backup")
-	sv.checkReseedStoppedLinks()
+	sv.checkLinkChanges()
 	if got := sv.reseedStoppedLinkList(); len(got) != 1 || !warn0252Open(c) {
 		t.Fatalf("a running status read before the stop does not clear a fresh record: %v", got)
 	}
@@ -144,7 +144,7 @@ func TestReseedStoppedLinksGraceAndConcurrency(t *testing.T) {
 		close(done)
 	}()
 	for i := 0; i < 500; i++ {
-		sv.checkReseedStoppedLinks()
+		sv.checkLinkChanges()
 	}
 	<-done
 }

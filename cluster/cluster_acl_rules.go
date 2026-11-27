@@ -240,6 +240,8 @@ var clusterACLRules = []ACLRule{
 	{"/replication-plugin-index-list", nil, []string{config.GrantClusterSettings}},
 	{"/replication-plugin-index-actions/put", nil, []string{config.GrantClusterSettings}},
 	{"/replication-plugin-index-actions/remove/", nil, []string{config.GrantClusterSettings}},
+	{"/replication-plugin-actions/reinit/", nil, []string{config.GrantClusterReplication}},
+	{"/replication-plugin-actions/drop-source-objects/", nil, []string{config.GrantClusterReplication}},
 	{"/secret-kv-list", nil, []string{config.GrantClusterSettings, config.GrantDBConfigFlag}},
 	{"/secret-kv-actions/add", nil, []string{config.GrantClusterSettings}},
 	{"/secret-kv-actions/edit/", nil, []string{config.GrantClusterSettings}},

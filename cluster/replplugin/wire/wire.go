@@ -43,6 +43,9 @@ type Endpoint struct {
 	Host string `toml:"host" json:"host"`
 	Port int    `toml:"port" json:"port"`
 	User string `toml:"user" json:"user"`
+	// Database: the database a source of another engine is read from (a PostgreSQL source
+	// streams one database); "" for a MariaDB source, which carries every schema
+	Database string `toml:"database" json:"database,omitempty"`
 }
 
 // Rule selects the tables a plugin carries: a schema and its tables ("*" or empty: every
@@ -94,6 +97,13 @@ type Config struct {
 	// Indexes: the denormalize mode (CDC_CORE.md "Denormalize"), one index per denormalized
 	// table kept up to date from its denormalizing query; none: copy mode only
 	Indexes []Index `toml:"index" json:"indexes,omitempty"`
+	// SourceKind: the capture of the source. "" reads a MariaDB binlog (the core's own
+	// capture); any other value names a capture source the plugin brings (cdc.Source), whose
+	// position is its own (State.GTID then holds that source's position, e.g. a log sequence
+	// number)
+	SourceKind string `toml:"source_kind" json:"sourceKind,omitempty"`
+	// SourceOptions: the settings of a capture source, by name, read by that source only
+	SourceOptions map[string]string `toml:"source_options" json:"sourceOptions,omitempty"`
 }
 
 // Index is one denormalization: the denormalizing query, run on the source, and the
@@ -156,6 +166,10 @@ const (
 	StateStarting = "starting"
 	StateRunning  = "running"
 	StateError    = "error"
+	// StateNeedsInit: the source can no longer give the changes from the feed's position (its
+	// retained log was released, or dropped at its bound): the feed stays stopped until a new
+	// initial load (State.NeedsInit)
+	StateNeedsInit = "needs_init"
 )
 
 // Status is one line of a plugin's stdout, printed every batch period and on an error.
@@ -191,7 +205,27 @@ type Status struct {
 	MergedAt    string `json:"mergedAt,omitempty"`
 	MergeTookMs int64  `json:"mergeTookMs,omitempty"`
 	NextMergeAt string `json:"nextMergeAt,omitempty"`
+	// a capture source (Config.SourceKind): its kind, what it makes the source server keep
+	// for the feed (a PostgreSQL slot's retained WAL) and its bound, and a warning about the
+	// source's settings ("" none)
+	SourceKind          string `json:"sourceKind,omitempty"`
+	SourceRetainedMB    int64  `json:"sourceRetainedMb,omitempty"`
+	SourceRetainedMaxMB int64  `json:"sourceRetainedMaxMb,omitempty"`
+	SourceWarning       string `json:"sourceWarning,omitempty"`
+	// InitialLoad: the initial load runs (a capture source), the tables it copied so far
+	InitialLoad       bool  `json:"initialLoad,omitempty"`
+	InitialLoadTables int64 `json:"initialLoadTables,omitempty"`
+	// SourceStatements: the last statements the capture source ran on the source server
+	// that change it (a publication, a slot created or dropped), oldest first, at most
+	// MaxSourceStatements: replication-manager logs each one (F11)
+	SourceStatements []string `json:"sourceStatements,omitempty"`
+	// SourceStatementsTotal counts every such statement the process ran: replication-manager
+	// logs each one once, a repeated statement included
+	SourceStatementsTotal int64 `json:"sourceStatementsTotal,omitempty"`
 }
+
+// MaxSourceStatements bounds Status.SourceStatements.
+const MaxSourceStatements = 20
 
 // CreateResult is one line of a plugin run with -create: a table of its rules, made the
 // destination's on the target (Created), or left as it is with the Reason.
@@ -237,6 +271,14 @@ type State struct {
 	RestoreDone bool     `json:"restoreDone"`
 	Tables      []string `json:"tables,omitempty"`
 	Seq         int64    `json:"seq"`
+	// a capture source (Config.SourceKind): NeedsInit, the source cannot give the changes
+	// from GTID any more (Reason says why), the feed runs again only after a new initial load
+	// (the State, applied file and checkpoints removed); Owned, what the source created on
+	// the source server for this feed and may remove (e.g. "slot:<name>",
+	// "publication:<name>"), never anything else
+	NeedsInit bool     `json:"needsInit,omitempty"`
+	Reason    string   `json:"reason,omitempty"`
+	Owned     []string `json:"owned,omitempty"`
 }
 
 // What replication-manager writes on a plugin's stdin (#2015): the restore sends the rows of

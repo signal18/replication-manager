@@ -118,7 +118,7 @@ func (server *ServerMonitor) RecoverPhysicalRestore(restoreMeta *PhysicalRestore
 	}
 
 	hasGTID, isPositional := physicalRestoreRecoveryMode(server.DBVersion, restoreMeta)
-	isMultiSource := len(server.Replications) > 1
+	isMultiSource := len(server.NativeReplications()) > 1
 
 	// Relay topology stays fully blocked: a relay's risk is a downstream
 	// dependent's continuity, a different problem from a multi-source
@@ -160,7 +160,7 @@ func (server *ServerMonitor) RecoverPhysicalRestore(restoreMeta *PhysicalRestore
 	// later milestone.
 	var slaveStartErrs []string
 	var pausedChannels []string
-	for _, rep := range server.Replications {
+	for _, rep := range server.NativeReplications().Rows() {
 		channel := rep.ConnectionName.String
 		if (hasGTID || isPositional) && isMultiSource && channel != server.ReplicationSourceName {
 			label := channel
@@ -170,7 +170,7 @@ func (server *ServerMonitor) RecoverPhysicalRestore(restoreMeta *PhysicalRestore
 			pausedChannels = append(pausedChannels, fmt.Sprintf("%s (source %s:%s)", label, rep.MasterHost.String, rep.MasterPort.String))
 			continue
 		}
-		if _, err := server.StartSlaveChannel(channel); err != nil {
+		if _, err := server.ReplicationChannelLink(channel).Start(LinkByReseed); err != nil {
 			slaveStartErrs = append(slaveStartErrs, fmt.Sprintf("%s: %s", channel, err.Error()))
 		}
 	}
@@ -266,7 +266,7 @@ func (server *ServerMonitor) applyPhysicalRestorePositional(meta *PhysicalRestor
 	changemasteropt.Logfile = meta.BinLogFile
 	changemasteropt.Logpos = meta.BinLogPos
 	changemasteropt.Mode = "POSITIONAL"
-	if _, err := server.ChangeMaster(changemasteropt); err != nil {
+	if _, err := server.ReplicationLink().ChangeSource(SourceOf(changemasteropt), changemasteropt, LinkByReseed); err != nil {
 		return fmt.Errorf("apply restore-confirmed binlog position: %s", err)
 	}
 	return nil
@@ -689,8 +689,8 @@ func (server *ServerMonitor) JobReseedPhysicalBackup(backtype string) error {
 
 	// If reset failed, better to stop PITR
 	if server.PointInTimeMeta.IsInPITR {
-		server.StopSlave()
-		_, err := server.ResetSlave()
+		server.ReplicationLink().Stop(LinkByReseed)
+		_, err := server.ReplicationLink().Remove(LinkByReseed)
 		if err != nil {
 			if mysqlErr, ok := err.(*mysql.MySQLError); ok && mysqlErr.Number != 1617 {
 				if server.HasReseedingState(task) {
@@ -731,12 +731,12 @@ func (server *ServerMonitor) JobReseedPhysicalBackup(backtype string) error {
 	// same datadir while it's being restored. Symmetric with the restart
 	// loop in AfterJobProcess.
 	if !server.PointInTimeMeta.IsInPITR {
-		logs, err := server.StopAllSlaves()
+		logs, err := server.StopAllSlaves(LinkByReseed)
 		if err != nil {
 			cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed stop slave on server: %s %s", server.URL, err)
 		}
 
-		logs, err = cluster.pointSlaveToMasterAutoDetect(server)
+		logs, err = cluster.pointSlaveToMasterAutoDetect(server, LinkByReseed)
 		if err != nil {
 			cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Reseed can't changing master for physical backup %s request for server: %s %s", backtype, server.URL, err)
 			return err
@@ -806,8 +806,8 @@ func (server *ServerMonitor) JobReseedPhysicalBackupWithPayload(backtype, backup
 
 	// If reset failed, better to stop PITR
 	if server.PointInTimeMeta.IsInPITR {
-		server.StopSlave()
-		_, err := server.ResetSlave()
+		server.ReplicationLink().Stop(LinkByReseed)
+		_, err := server.ReplicationLink().Remove(LinkByReseed)
 		if err != nil {
 			if mysqlErr, ok := err.(*mysql.MySQLError); ok && mysqlErr.Number != 1617 {
 				if server.HasReseedingState(task) {
@@ -859,12 +859,12 @@ func (server *ServerMonitor) JobReseedPhysicalBackupWithPayload(backtype, backup
 	// channel (not just the managed one) before the hot partial-restore
 	// window opens -- see the matching comment in JobReseedPhysicalBackup.
 	if !server.PointInTimeMeta.IsInPITR {
-		logs, err := server.StopAllSlaves()
+		logs, err := server.StopAllSlaves(LinkByReseed)
 		if err != nil {
 			cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed stop slave on server: %s %s", server.URL, err)
 		}
 
-		logs, err = cluster.pointSlaveToMasterAutoDetect(server)
+		logs, err = cluster.pointSlaveToMasterAutoDetect(server, LinkByReseed)
 		if err != nil {
 			cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Reseed can't changing master for physical backup %s request for server: %s %s", backtype, server.URL, err)
 			return err
@@ -952,12 +952,12 @@ func (server *ServerMonitor) JobFlashbackPhysicalBackup() error {
 	// Stop every channel (not just the managed one) before the hot
 	// partial-restore window opens -- see the matching comment in
 	// JobReseedPhysicalBackup.
-	logs, err := server.StopAllSlaves()
+	logs, err := server.StopAllSlaves(LinkByRejoin)
 	if err != nil {
 		cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed stop slave on server: %s %s", server.URL, err)
 	}
 
-	logs, err = cluster.pointSlaveToMasterAutoDetect(server)
+	logs, err = cluster.pointSlaveToMasterAutoDetect(server, LinkByRejoin)
 	if err != nil {
 		cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Flashback can't changing master for physical backup %s request for server: %s %s", cluster.Conf.BackupPhysicalType, server.URL, err)
 		if server.HasReseedingState(task) {
@@ -1372,8 +1372,8 @@ func (server *ServerMonitor) JobReseedLogicalBackupPrepare(ctx context.Context, 
 
 	// If reset failed, better to stop PITR
 	if isPITR {
-		server.StopSlave()
-		_, err := server.ResetSlave()
+		server.ReplicationLink().Stop(LinkByReseed)
+		_, err := server.ReplicationLink().Remove(LinkByReseed)
 		if err != nil {
 			if mysqlErr, ok := err.(*mysql.MySQLError); ok && mysqlErr.Number != 1617 {
 				resetReseed()
@@ -1382,18 +1382,18 @@ func (server *ServerMonitor) JobReseedLogicalBackupPrepare(ctx context.Context, 
 			}
 		}
 		server.SetState(stateUnconn)
-	} else if backtype == config.ConstBackupLogicalTypeMysqldump && len(server.Replications) <= 1 {
+	} else if backtype == config.ConstBackupLogicalTypeMysqldump && len(server.NativeReplications()) <= 1 {
 		// The replica's positions are cleared when the reseed is requested, not only right
 		// before the restore: cleared there, a MariaDB replica with parallel replication that
 		// was replicating with GTID stayed idle after the positional START SLAVE, with no
 		// error (lab, MariaDB 10.11). RESET SLAVE without ALL: the positions and relay logs
 		// go, the link stays (law T27, #2093). With several channels it is skipped, as in
 		// ProcessReseedLogical.
-		if logs, err := server.StopSlave(); err != nil && !noReplicationChannel(err) {
+		if logs, err := server.ReplicationLink().Stop(LinkByReseed); err != nil && !noReplicationChannel(err) {
 			cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed stop slave on server: %s %s", server.URL, err)
 		}
 		server.markReseedStoppedLinks([]string{cluster.Conf.MasterConn}, "reseed requested from "+backupfile)
-		if logs, err := server.ResetSlavePositions(); err != nil && !noReplicationChannel(err) {
+		if logs, err := server.ReplicationLink().ResetPositions(LinkByReseed); err != nil && !noReplicationChannel(err) {
 			cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed reset slave positions on server: %s %s", server.URL, err)
 		}
 	}
@@ -1608,8 +1608,8 @@ func (server *ServerMonitor) JobReseedLogicalBackupFromPathPrepare(ctx context.C
 
 	// If reset failed, better to stop PITR
 	if isPITR {
-		server.StopSlave()
-		_, err := server.ResetSlave()
+		server.ReplicationLink().Stop(LinkByReseed)
+		_, err := server.ReplicationLink().Remove(LinkByReseed)
 		if err != nil {
 			if mysqlErr, ok := err.(*mysql.MySQLError); ok && mysqlErr.Number != 1617 {
 				resetReseed()
@@ -3422,19 +3422,19 @@ func (server *ServerMonitor) JobFlashbackLogicalBackup() error {
 	// ERROR 1198 "you have a running slave ... run STOP SLAVE '<name>' first".
 	// StopAllSlaves iterates server.Replications and stops each by its real
 	// ConnectionName, so every named channel is stopped.
-	logs, err := server.StopAllSlaves()
+	logs, err := server.StopAllSlaves(LinkByRejoin)
 	if err != nil {
 		cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed stop all slaves on server: %s %s", server.URL, err)
 	}
 
 	if server.DBVersion.IsMySQLOrPerconaGreater57() {
 		if server.HasMySQLGTID() {
-			logs, err = cluster.pointSlaveToMasterWithMode(server, "MASTER_AUTO_POSITION")
+			logs, err = cluster.pointSlaveToMasterWithMode(server, "MASTER_AUTO_POSITION", LinkByRejoin)
 		} else {
-			logs, err = cluster.pointSlaveToMasterPositional(server)
+			logs, err = cluster.pointSlaveToMasterPositional(server, LinkByRejoin)
 		}
 	} else {
-		logs, err = cluster.pointSlaveToMasterWithMode(server, "SLAVE_POS")
+		logs, err = cluster.pointSlaveToMasterWithMode(server, "SLAVE_POS", LinkByRejoin)
 	}
 	if err != nil {
 		cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "flashback can't changing master for logical backup %s request for server: %s %s", cluster.Conf.BackupLogicalType, server.URL, err)
@@ -3480,8 +3480,8 @@ func (server *ServerMonitor) JobFlashbackLogicalBackup() error {
 			// does not leave its extra source connections stopped.
 			if server.IsSlave {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Start slave after dump on %s", server.URL)
-				for _, rep := range server.Replications {
-					if logs, e := server.StartSlaveChannel(rep.ConnectionName.String); e != nil {
+				for _, rep := range server.NativeReplications().Rows() {
+					if logs, e := server.ReplicationChannelLink(rep.ConnectionName.String).Start(LinkByRejoin); e != nil {
 						cluster.LogSQL(logs, e, server.URL, "Rejoin", config.LvlErr, "Failed start slave channel '%s' after flashback on %s: %s", rep.ConnectionName.String, server.URL, e)
 					}
 				}
@@ -3513,8 +3513,8 @@ func (server *ServerMonitor) JobFlashbackLogicalBackup() error {
 				if err == nil {
 					// Symmetric with StopAllSlaves above (multi-source safe):
 					// restart every connection by its real ConnectionName.
-					for _, rep := range server.Replications {
-						if logs, e := server.StartSlaveChannel(rep.ConnectionName.String); e != nil {
+					for _, rep := range server.NativeReplications().Rows() {
+						if logs, e := server.ReplicationChannelLink(rep.ConnectionName.String).Start(LinkByRejoin); e != nil {
 							cluster.LogSQL(logs, e, server.URL, "Rejoin", config.LvlErr, "Failed start slave channel '%s' after flashback on %s: %s", rep.ConnectionName.String, server.URL, e)
 						}
 					}
@@ -3588,7 +3588,7 @@ func (server *ServerMonitor) applyMyLoaderReplicaPosition(meta config.MyDumperMe
 		}
 		opt := cluster.GetChangeMasterBaseOptForSlave(server, cluster.master, server.IsDelayed)
 		opt.Logfile, opt.Logpos, opt.Mode = meta.BinLogFileName, strconv.FormatUint(meta.BinLogFilePos, 10), "POSITIONAL"
-		logs, err := server.ChangeMaster(opt)
+		logs, err := server.ReplicationLink().ChangeSource(SourceOf(opt), opt, LinkByReseed)
 		cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed to point %s at the mydumper backup's position: %s", server.URL, err)
 		if err != nil {
 			return fmt.Errorf("point %s at the mydumper backup's position %s:%d: %w", server.URL, meta.BinLogFileName, meta.BinLogFilePos, err)
@@ -3758,7 +3758,7 @@ func (server *ServerMonitor) JobReseedMysqldump(ctx context.Context, backupfile 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Logical restore (mysqldump) started at %s for: %s", start.Format(time.RFC3339), server.URL)
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Sending logical backup to reseed %s", server.URL)
 
-	server.StopSlave()
+	server.ReplicationLink().Stop(LinkByReseed)
 
 	// openRestoreArtifactStream transparently decrypts as it streams when
 	// only an encrypted "<backupfile>.enc" sibling exists on disk; it never
@@ -6771,7 +6771,7 @@ func (cluster *Cluster) JobRejoinMysqldumpFromSource(source *ServerMonitor, dest
 	// keeps running and RESET MASTER fails with ERROR 1198 "run STOP SLAVE
 	// '<name>' first". StopAllSlaves iterates dest.Replications and stops each by
 	// its real ConnectionName.
-	if logs, err := dest.StopAllSlaves(); err != nil {
+	if logs, err := dest.StopAllSlaves(LinkByRejoin); err != nil {
 		cluster.LogSQL(logs, err, dest.URL, "Rejoin", config.LvlErr, "Failed stop all slaves before direct dump reseed on %s: %s", dest.URL, err)
 	}
 
@@ -7238,8 +7238,8 @@ func (cluster *Cluster) JobRejoinMysqldumpFromSource(source *ServerMonitor, dest
 	// of a failed or skipped catalogue replay.
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Start slave after dump on %s", dest.URL)
 	var slaveStartErrs []string
-	for _, rep := range dest.Replications {
-		if logs, err := dest.StartSlaveChannel(rep.ConnectionName.String); err != nil {
+	for _, rep := range dest.NativeReplications().Rows() {
+		if logs, err := dest.ReplicationChannelLink(rep.ConnectionName.String).Start(LinkByRejoin); err != nil {
 			cluster.LogSQL(logs, err, dest.URL, "Rejoin", config.LvlErr, "Failed start slave channel '%s' after direct dump reseed on %s: %s", rep.ConnectionName.String, dest.URL, err)
 			slaveStartErrs = append(slaveStartErrs, fmt.Sprintf("%s: %s", rep.ConnectionName.String, err.Error()))
 		}
@@ -7588,7 +7588,7 @@ func (server *ServerMonitor) pointLogicalReseedReplica(meta *backupmgr.BackupMet
 	// as it is; stopped, set back and started again, what it executed meanwhile would be applied
 	// twice. Without that dump, a running channel is positioned as any other.
 	if start && dumpStarted {
-		ss, _, serr := dbhelper.GetSlaveStatus(server.Conn, server.ReplicationSourceName, server.DBVersion)
+		ss, _, serr := server.ReplicationChannelLink(server.ReplicationSourceName).Status()
 		if serr != nil && !errors.Is(serr, sql.ErrNoRows) {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Reseed of %s: replication status after the restore: %s", server.URL, serr)
 		} else if serr == nil && reseedChannelActive(ss.SlaveIORunning.String, ss.SlaveSQLRunning.String) {
@@ -7599,13 +7599,13 @@ func (server *ServerMonitor) pointLogicalReseedReplica(meta *backupmgr.BackupMet
 	gtid, file, pos := logicalReseedPosition(server.logicalRestorePosition.Load(), meta)
 	// an older backup (--apply-slave-statements) restarts replication at the end of its own load
 	// (START SLAVE / START ALL SLAVES): the position is set on stopped channels only
-	if logs, err := server.StopAllSlaves(); err != nil {
+	if logs, err := server.StopAllSlaves(LinkByReseed); err != nil {
 		cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed stop all slaves on server: %s %s", server.URL, err)
 	}
 	// the managed channel the dump's START SLAVE started: StopAllSlaves stops the channels of
 	// the monitor's last status, which has none since the RESET SLAVE ALL of the reseed
 	if pointedBeforeRestore {
-		if logs, err := server.StopSlave(); err != nil {
+		if logs, err := server.ReplicationLink().Stop(LinkByReseed); err != nil {
 			cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed stop slave on server: %s %s", server.URL, err)
 		}
 	}
@@ -7613,17 +7613,17 @@ func (server *ServerMonitor) pointLogicalReseedReplica(meta *backupmgr.BackupMet
 	var err error
 	switch {
 	case server.HasMySQLGTID():
-		logs, err = cluster.pointSlaveToMasterWithMode(server, "MASTER_AUTO_POSITION")
+		logs, err = cluster.pointSlaveToMasterWithMode(server, "MASTER_AUTO_POSITION", LinkByReseed)
 	case server.IsMariaDB() && gtid != "" && server.HasGTIDReplication():
 		if err = server.ExecQueryNoBinLog("SET GLOBAL gtid_slave_pos='"+strings.ReplaceAll(gtid, "'", "''")+"'", time.Second); err != nil {
 			return fmt.Errorf("point %s after the restore: set gtid_slave_pos: %w", server.URL, err)
 		}
-		logs, err = cluster.pointSlaveToMasterWithMode(server, "SLAVE_POS")
+		logs, err = cluster.pointSlaveToMasterWithMode(server, "SLAVE_POS", LinkByReseed)
 	case file != "":
 		// pointed before the restore (an older MySQL/Percona backup), the dump's START SLAVE may
 		// have started replication at the dump's position already: what it executed since is
 		// kept, set back to the dump's position it would be applied twice
-		if ss, _, err := dbhelper.GetSlaveStatus(server.Conn, server.ReplicationSourceName, server.DBVersion); pointedBeforeRestore && err == nil {
+		if ss, _, err := server.ReplicationChannelLink(server.ReplicationSourceName).Status(); pointedBeforeRestore && err == nil {
 			exec, _ := strconv.ParseUint(ss.ExecMasterLogPos.String, 10, 64)
 			if f := ss.RelayMasterLogFile.String; f > file || (f == file && exec > pos) {
 				file, pos = f, exec
@@ -7631,9 +7631,9 @@ func (server *ServerMonitor) pointLogicalReseedReplica(meta *backupmgr.BackupMet
 		}
 		opt := cluster.GetChangeMasterBaseOptForSlave(server, cluster.master, server.IsDelayed)
 		opt.Logfile, opt.Logpos, opt.Mode = file, strconv.FormatUint(pos, 10), "POSITIONAL"
-		logs, err = server.ChangeMaster(opt)
+		logs, err = server.ReplicationLink().ChangeSource(SourceOf(opt), opt, LinkByReseed)
 	default:
-		logs, err = cluster.pointSlaveToMasterAutoDetect(server)
+		logs, err = cluster.pointSlaveToMasterAutoDetect(server, LinkByReseed)
 	}
 	if err != nil {
 		cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed to point %s to the primary after the restore: %s", server.URL, err)
@@ -7643,12 +7643,12 @@ func (server *ServerMonitor) pointLogicalReseedReplica(meta *backupmgr.BackupMet
 		return nil
 	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Start slave after dump on %s", server.URL)
-	if logs, err := server.StartSlave(); err != nil {
+	if logs, err := server.ReplicationLink().Start(LinkByReseed); err != nil {
 		cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed start slave after dump on %s: %s", server.URL, err)
 		return fmt.Errorf("start replication of %s after the restore: %w", server.URL, err)
 	}
 	var paused, pausedChannels []string
-	for _, rep := range server.Replications {
+	for _, rep := range server.NativeReplications().Rows() {
 		if channel := rep.ConnectionName.String; channel != server.ReplicationSourceName {
 			paused = append(paused, fmt.Sprintf("%s (source %s:%s)", channel, rep.MasterHost.String, rep.MasterPort.String))
 			pausedChannels = append(pausedChannels, channel)
@@ -7897,19 +7897,19 @@ func (server *ServerMonitor) ProcessReseedLogical(task string) error {
 		server.JobsUpdateStateRuntimeOnly(task, "processing", 1, 0)
 
 		if !isPITR {
-			logs, err := server.StopSlave()
+			logs, err := server.ReplicationLink().Stop(LinkByReseed)
 			if err != nil {
 				cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed stop slave on server: %s %s", server.URL, err)
 			}
 
 			if server.DBVersion.IsMySQLOrPercona() {
 				if server.HasMySQLGTID() {
-					cluster.pointSlaveToMasterWithMode(server, "MASTER_AUTO_POSITION")
+					cluster.pointSlaveToMasterWithMode(server, "MASTER_AUTO_POSITION", LinkByReseed)
 				} else {
-					cluster.pointSlaveToMasterPositional(server)
+					cluster.pointSlaveToMasterPositional(server, LinkByReseed)
 				}
 			} else {
-				cluster.pointSlaveToMasterWithMode(server, "SLAVE_POS")
+				cluster.pointSlaveToMasterWithMode(server, "SLAVE_POS", LinkByReseed)
 			}
 		}
 
@@ -8050,15 +8050,15 @@ func (server *ServerMonitor) ProcessReseedLogical(task string) error {
 		// every channel: the restore replaces the data all of them apply to. STOP is not DROP
 		// (law T27): each channel stopped is recorded, WARN0252 until it runs again.
 		server.markReseedStoppedLinks(server.replicationChannels(), "restore of "+backupfile)
-		if logs, err := server.StopAllSlaves(); err != nil {
+		if logs, err := server.StopAllSlaves(LinkByReseed); err != nil {
 			cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed stop all slaves on server: %s %s", server.URL, err)
 		}
 		// The positions and relay logs are cleared, the link kept (RESET SLAVE without ALL,
 		// #2093): an older backup (--master-data=1, --apply-slave-statements) carries its own
 		// CHANGE MASTER and START SLAVE, which must not start replication from an old position
 		// before the position is set below. With several channels it is skipped.
-		if len(server.Replications) <= 1 {
-			if logs, err := server.ResetSlavePositions(); err != nil && !noReplicationChannel(err) {
+		if len(server.NativeReplications()) <= 1 {
+			if logs, err := server.ReplicationLink().ResetPositions(LinkByReseed); err != nil && !noReplicationChannel(err) {
 				cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed reset slave positions on server: %s %s", server.URL, err)
 			}
 			// MySQL/Percona: an older backup's own START SLAVE fails on a replica without a
@@ -8070,7 +8070,7 @@ func (server *ServerMonitor) ProcessReseedLogical(task string) error {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Can not read the replication statements of %s: %s", backupfile, err)
 				} else if active {
 					opt := cluster.GetChangeMasterBaseOptForSlave(server, cluster.master, server.IsDelayed)
-					if logs, err := server.ChangeMaster(opt); err != nil {
+					if logs, err := server.ReplicationLink().ChangeSource(SourceOf(opt), opt, LinkByReseed); err != nil {
 						cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed to point %s to the primary before the restore: %s", server.URL, err)
 					} else {
 						pointedBeforeRestore = true
@@ -8080,7 +8080,7 @@ func (server *ServerMonitor) ProcessReseedLogical(task string) error {
 			}
 		}
 	} else if !isPITR {
-		logs, err := server.StopSlave()
+		logs, err := server.ReplicationLink().Stop(LinkByReseed)
 		if err != nil && !noReplicationChannel(err) {
 			cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed stop slave on server: %s %s", server.URL, err)
 		}
@@ -8094,12 +8094,12 @@ func (server *ServerMonitor) ProcessReseedLogical(task string) error {
 			server.markReseedStoppedLinks([]string{cluster.Conf.MasterConn}, why+": the reseed does not move a link, rejoin the server")
 		} else if server.DBVersion.IsMySQLOrPercona() {
 			if server.HasMySQLGTID() {
-				pointLogs, pointErr = cluster.pointSlaveToMasterWithMode(server, "MASTER_AUTO_POSITION")
+				pointLogs, pointErr = cluster.pointSlaveToMasterWithMode(server, "MASTER_AUTO_POSITION", LinkByReseed)
 			} else {
-				pointLogs, pointErr = cluster.pointSlaveToMasterPositional(server)
+				pointLogs, pointErr = cluster.pointSlaveToMasterPositional(server, LinkByReseed)
 			}
 		} else {
-			pointLogs, pointErr = cluster.pointSlaveToMasterWithMode(server, "SLAVE_POS")
+			pointLogs, pointErr = cluster.pointSlaveToMasterWithMode(server, "SLAVE_POS", LinkByReseed)
 		}
 		if pointErr != nil {
 			cluster.LogSQL(pointLogs, pointErr, server.URL, "Rejoin", config.LvlErr, "Failed to point %s to the primary before the restore: %s", server.URL, pointErr)
@@ -8168,7 +8168,7 @@ func (server *ServerMonitor) ProcessReseedLogical(task string) error {
 
 		if server.IsSlave && !isPITR && !pointAfterRestore && linkOnSource {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Start slave after dump on %s", server.URL)
-			server.StartSlave()
+			server.ReplicationLink().Start(LinkByReseed)
 		}
 
 		server.JobsUpdateStateRuntimeOnly(task, "Reseed completed", 3, 1)
@@ -8195,7 +8195,7 @@ func (server *ServerMonitor) ProcessReseedLogical(task string) error {
 			}
 
 			if err == nil {
-				server.StartSlave()
+				server.ReplicationLink().Start(LinkByReseed)
 			}
 		}
 

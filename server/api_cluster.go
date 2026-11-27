@@ -259,6 +259,15 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxReplicationPluginIndexRemove)),
 	)).Methods(http.MethodPost)
+	// the CDC feed of a source of another engine (CDC_SOURCES.md)
+	router.Handle("/api/clusters/{clusterName}/replication-plugin-actions/reinit/{pluginName}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxReplicationPluginReinit)),
+	)).Methods(http.MethodPost)
+	router.Handle("/api/clusters/{clusterName}/replication-plugin-actions/drop-source-objects/{pluginName}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxReplicationPluginDropSourceObjects)),
+	)).Methods(http.MethodPost)
 
 	// credential store entries: the vault entries (#2227)
 	router.Handle("/api/clusters/{clusterName}/secret-kv-list", negroni.New(
@@ -3830,6 +3839,12 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.SwitchMonitoringScheduler()
 	case "monitoring-schema-change":
 		mycluster.SwitchMonitoringSchemaChange()
+	case "replication-plugin-feed-enabled":
+		// the feed's start and stop: the single switch, its TOML follows it (syncReplicationFeed)
+		mycluster.Conf.ReplicationPluginFeedEnabled = !mycluster.Conf.ReplicationPluginFeedEnabled
+	case "replication-plugin-feed-create-source-objects":
+		// the feed may create its publication and slot on the source: a change of the client's database (F1)
+		mycluster.Conf.ReplicationPluginFeedCreateSourceObjects = !mycluster.Conf.ReplicationPluginFeedCreateSourceObjects
 	case "monitoring-schema-columns":
 		mycluster.SwitchMonitoringSchemaColumns()
 	case "monitoring-schema-indexes":
@@ -5281,6 +5296,23 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		}
 	case "replication-plugin-tables":
 		mycluster.Conf.ReplicationPluginTables = strings.TrimSpace(value)
+	case "replication-plugin-feed-source-cluster":
+		v := strings.TrimSpace(value)
+		if v != "" && v == mycluster.Name {
+			// a feed from the cluster into itself would apply its own changes again, without end
+			return fmt.Errorf("invalid value for %s: %q is this cluster, a feed reads another cluster", name, v)
+		}
+		mycluster.Conf.ReplicationPluginFeedSourceCluster = v
+	case "replication-plugin-feed-database":
+		mycluster.Conf.ReplicationPluginFeedDatabase = strings.TrimSpace(value)
+	case "replication-plugin-feed-tables":
+		mycluster.Conf.ReplicationPluginFeedTables = strings.TrimSpace(value)
+	case "replication-plugin-feed-retained-max":
+		val, err := strconv.Atoi(value)
+		if err != nil || val < 1 {
+			return fmt.Errorf("invalid value for %s: %q, expected a number of MB, 1 or more", name, value)
+		}
+		mycluster.Conf.ReplicationPluginFeedRetainedMax = val
 	case "replication-plugin-source":
 		v := strings.TrimSpace(value)
 		if v == "" {
@@ -12464,7 +12496,7 @@ func (repman *ReplicationManager) handlerMuxClusterRejoin(w http.ResponseWriter,
 	status := "armed"
 	if mycluster.IsActive() {
 		if srv := mycluster.GetServerFromURL(target); srv != nil {
-			go srv.RejoinMaster()
+			go srv.ReplicationLink().Rejoin()
 			status = "running"
 		}
 	}

@@ -4722,6 +4722,16 @@ definitions:
         type: integer
       replicationPluginDestination:
         type: string
+      replicationPluginFeedCreateSourceObjects:
+        type: boolean
+      replicationPluginFeedDatabase:
+        type: string
+      replicationPluginFeedRetainedMax:
+        type: integer
+      replicationPluginFeedSourceCluster:
+        type: string
+      replicationPluginFeedTables:
+        type: string
       replicationPluginIndexes:
         items:
           $ref: '#/definitions/config.ReplicationPluginIndex'
@@ -5797,6 +5807,13 @@ definitions:
     properties:
       download:
         type: boolean
+    type: object
+  server.ReplicationFeedDropResult:
+    properties:
+      statements:
+        items:
+          type: string
+        type: array
     type: object
   server.ReplicationPluginIndexList:
     properties:
@@ -13071,6 +13088,97 @@ paths:
       summary: Retrieve query rules for a specific cluster
       tags:
       - Cluster
+  /api/clusters/{clusterName}/replication-plugin-actions/drop-source-objects/{pluginName}:
+    post:
+      description: 'With the feed switched off: its replication slot and its publication
+        are dropped on the source, only those the feed created (its state lists them),
+        never another. The statements run are returned and logged.'
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Plugin Name
+        in: path
+        name: pluginName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/server.ReplicationFeedDropResult'
+        "400":
+          description: The feed is on, or created nothing
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "404":
+          description: No such plugin
+          schema:
+            type: string
+      summary: Remove what a CDC feed created on its source
+      tags:
+      - ClusterReplicationPlugins
+  /api/clusters/{clusterName}/replication-plugin-actions/reinit/{pluginName}:
+    post:
+      description: 'The rejoin of a feed whose source can no longer give its changes
+        (ERR00140: its slot dropped at its bound, or lost): the plugin stops, its
+        position and checkpoints are removed, and it starts again with a new initial
+        load (its tables on the destination emptied, then copied from a new snapshot).
+        What the feed created on the source is kept and replaced by the new initial
+        load.'
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Plugin Name
+        in: path
+        name: pluginName
+        required: true
+        type: string
+      produces:
+      - text/plain
+      responses:
+        "200":
+          description: New initial load requested
+          schema:
+            type: string
+        "400":
+          description: Not a feed with a capture source
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "404":
+          description: No such plugin
+          schema:
+            type: string
+      summary: Start a CDC feed again from a new initial load
+      tags:
+      - ClusterReplicationPlugins
   /api/clusters/{clusterName}/replication-plugin-index-actions/put:
     post:
       consumes:

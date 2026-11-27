@@ -111,6 +111,9 @@ var tests = []string{
 	// for a dedicated test cluster only. Run them by name.
 	// testBackupVerification is not in this list either: it cuts the last backup short on
 	// purpose, for a dedicated test cluster only. Run it by name.
+	// testCDCFeedPostgres is not in this list either: it needs a PostgreSQL source cluster
+	// (REPMAN_REGTEST_CDC_SOURCE_CLUSTER) and the capture plugin. Run it by name on the MariaDB
+	// cluster: /api/clusters/<cluster>/tests/actions/run/testCDCFeedPostgres
 	// testProxySQLPostgresRouting is not in this list either: it needs a
 	// PostgreSQL cluster behind a ProxySQL and switches the master over twice.
 	// Run it by name: /api/clusters/<cluster>/tests/actions/run/testProxySQLPostgresRouting

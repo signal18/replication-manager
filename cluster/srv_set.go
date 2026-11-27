@@ -69,12 +69,6 @@ func (server *ServerMonitor) SetEventScheduler(value bool) (string, error) {
 	return logs, err
 }
 
-func (server *ServerMonitor) SetGroupReplicationPrimary() (string, error) {
-	logs, err := dbhelper.SetGroupReplicationPrimary(server.Conn, server.DBVersion)
-	server.GetCluster().LogSQL(logs, err, server.URL, "MasterFailover", config.LvlErr, "Could not set server a primary")
-	return logs, err
-}
-
 func (server *ServerMonitor) SetState(state string) {
 	cluster := server.ClusterGroup
 	if server.PrevState != state {
@@ -414,12 +408,12 @@ func (server *ServerMonitor) mysqlGTIDRejoinError(master *ServerMonitor) error {
 	return nil
 }
 
-func (server *ServerMonitor) SetReplicationGTIDSlavePosFromServer(master *ServerMonitor) (string, error) {
+func (server *ServerMonitor) SetReplicationGTIDSlavePosFromServer(master *ServerMonitor, reason string) (string, error) {
 	cluster := server.ClusterGroup
 	if err := server.mysqlGTIDRejoinError(master); err != nil {
 		return "", err
 	}
-	server.StopSlave()
+	server.ReplicationLink().Stop(reason)
 
 	changemasteropt := cluster.GetChangeMasterBaseOptForSlave(server, master, server.IsDelayed)
 	if server.IsMariaDB() {
@@ -427,10 +421,10 @@ func (server *ServerMonitor) SetReplicationGTIDSlavePosFromServer(master *Server
 	} else {
 		changemasteropt.Mode = "MASTER_AUTO_POSITION"
 	}
-	return server.ChangeMaster(changemasteropt)
+	return server.ReplicationLink().ChangeSource(SourceOf(changemasteropt), changemasteropt, reason)
 }
 
-func (server *ServerMonitor) SetReplicationGTIDCurrentPosFromServer(master *ServerMonitor) (string, error) {
+func (server *ServerMonitor) SetReplicationGTIDCurrentPosFromServer(master *ServerMonitor, reason string) (string, error) {
 	cluster := server.ClusterGroup
 	if err := server.mysqlGTIDRejoinError(master); err != nil {
 		return "", err
@@ -443,14 +437,14 @@ func (server *ServerMonitor) SetReplicationGTIDCurrentPosFromServer(master *Serv
 	} else {
 		changemasteropt.Mode = "CURRENT_POS"
 	}
-	return server.ChangeMaster(changemasteropt)
+	return server.ReplicationLink().ChangeSource(SourceOf(changemasteropt), changemasteropt, reason)
 }
 
-func (server *ServerMonitor) SetReplicationFromMaxscaleServer(master *ServerMonitor) (string, error) {
+func (server *ServerMonitor) SetReplicationFromMaxscaleServer(master *ServerMonitor, reason string) (string, error) {
 	opt := server.ClusterGroup.GetChangeMasterBaseOptForMxs(server, master)
 	opt.Logfile = master.FailoverMasterLogFile
 	opt.Logpos = master.FailoverMasterLogPos
-	return server.ChangeMaster(opt)
+	return server.ReplicationLink().ChangeSource(SourceOf(opt), opt, reason)
 }
 
 func (server *ServerMonitor) SetReplicationChannel(source string) (string, error) {
@@ -1078,23 +1072,6 @@ func (server *ServerMonitor) SetDataDiverge() {
 		}
 	}
 	server.IsDataDiverge = false
-}
-
-// ChangeMaster points this server's replication at opt's primary. Every CHANGE MASTER of
-// a cluster goes through it, so the replication TLS material is decided in one place,
-// from the primary's live certificate (ReplicationTLSFor, #1933).
-func (server *ServerMonitor) ChangeMaster(opt dbhelper.ChangeMasterOpt) (string, error) {
-	if opt.SSLCa == "" && !opt.SSLCaClear && !opt.SSLOff {
-		tls := server.ReplicationTLSFor(opt.Host, opt.Port, opt.SSL)
-		opt.SSLCa, opt.SSLCaClear, opt.SSLOff = tls.CA, tls.ClearCA, tls.SSLOff
-		// The decision is traceable: a replica that then fails its handshake opens
-		// WARN0236 (CheckReplicationTLS).
-		if cluster := server.ClusterGroup; cluster != nil && cluster.Conf != nil && (tls.CA != "" || tls.ClearCA || tls.SSLOff) {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
-				"Replication TLS of %s towards %s:%s: CA %q, CA emptied %t, TLS off %t", server.URL, opt.Host, opt.Port, tls.CA, tls.ClearCA, tls.SSLOff)
-		}
-	}
-	return dbhelper.ChangeMaster(server.Conn, opt, server.DBVersion)
 }
 
 // ReplicationSSLCaProvisioned is where the configurator ships the cluster CA in every

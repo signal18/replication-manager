@@ -25,7 +25,7 @@ func TestRejoinSource(t *testing.T) {
 	// Flat multi-tier cluster: no intermediate replica, the master is the source.
 	c, _, db2, db3 := newCluster(&config.Config{MultiTierSlave: true})
 	db3.IsSlave = true
-	db3.Replications = []dbhelper.SlaveStatus{{MasterServerID: 2}}
+	db3.Replications = db3.replicationsOfRows([]dbhelper.SlaveStatus{{MasterServerID: 2}}...)
 	c.slaves = []*ServerMonitor{db3}
 	if got, err := c.rejoinSource(); err != nil || got != db2 {
 		t.Fatalf("flat multi-tier: want master db2, got %v (%v)", got, err)
@@ -34,9 +34,9 @@ func TestRejoinSource(t *testing.T) {
 	// Multi-tier tree: db3 replicates from db2, db1 hangs under db3 -> db3 is the source.
 	c, db1, _, db3 := newCluster(&config.Config{MultiTierSlave: true})
 	db3.IsSlave = true
-	db3.Replications = []dbhelper.SlaveStatus{{MasterServerID: 2}}
+	db3.Replications = db3.replicationsOfRows([]dbhelper.SlaveStatus{{MasterServerID: 2}}...)
 	db1.IsSlave = true
-	db1.Replications = []dbhelper.SlaveStatus{{MasterServerID: 3}}
+	db1.Replications = db1.replicationsOfRows([]dbhelper.SlaveStatus{{MasterServerID: 3}}...)
 	c.slaves = []*ServerMonitor{db3, db1}
 	if got, err := c.rejoinSource(); err != nil || got != db3 {
 		t.Fatalf("multi-tier tree: want intermediate db3, got %v (%v)", got, err)

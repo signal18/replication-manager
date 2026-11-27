@@ -695,6 +695,12 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.ReplicationPluginSource, "replication-plugin-source", "master", "ColumnStore or analytic child: the parent server whose binlog the replication plugin reads, master (followed after a failover) or host:port of a dedicated replica")
 	flags.IntVar(&conf.ReplicationPluginCheckpointInterval, "replication-plugin-checkpoint-interval", 10, "ColumnStore or analytic child: seconds of binlog per checkpoint of the replication plugin")
 	flags.IntVar(&conf.ReplicationPluginMergeInterval, "replication-plugin-merge-interval", 0, "ColumnStore or analytic child: seconds between two merges of the InnoDB staging into the destination; 0 applies each checkpoint to the destination")
+	flags.BoolVar(&conf.ReplicationPluginFeedEnabled, "replication-plugin-feed-enabled", true, "CDC feed: the feed runs (its start and stop, from the GUI or the replication interface); off keeps its position and what it created on the source")
+	flags.StringVar(&conf.ReplicationPluginFeedSourceCluster, "replication-plugin-feed-source-cluster", "", "CDC feed into this cluster: the source cluster of another engine (PostgreSQL) whose changes the feed carries; empty: no feed")
+	flags.StringVar(&conf.ReplicationPluginFeedDatabase, "replication-plugin-feed-database", "", "CDC feed: the database of the source the feed reads (PostgreSQL streams one database)")
+	flags.StringVar(&conf.ReplicationPluginFeedTables, "replication-plugin-feed-tables", "", "CDC feed: the source tables carried, comma separated schema.table or schema.*")
+	flags.BoolVar(&conf.ReplicationPluginFeedCreateSourceObjects, "replication-plugin-feed-create-source-objects", false, "CDC feed: allow the feed to create its publication and replication slot on the source (a change of the source database: off by default)")
+	flags.IntVar(&conf.ReplicationPluginFeedRetainedMax, "replication-plugin-feed-retained-max", 10240, "CDC feed: MB of WAL the feed's replication slot may keep on the source; above, the feed drops its own slot, stops, and needs a new initial load")
 	flags.StringVar(&conf.StagingProxyHosts, "staging-proxy-hosts", "", "Staging proxy hosts list to monitor separated by commas")
 	flags.StringVar(&conf.StagingServerHost, "staging-server-host", "", "Staging database host")
 

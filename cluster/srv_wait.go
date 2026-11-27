@@ -31,14 +31,18 @@ func (server *ServerMonitor) WaitSyncToMaster(master *ServerMonitor) {
 		server.LogReplPostion()
 		return
 	}
+	// the managed replication's WaitCaughtUp, 30 s; as before, a timeout or an aborted wait is
+	// not an error here (the next step checks the topology)
+	until := Position{File: master.BinaryLogFile, Pos: master.BinaryLogPos}
+	what := "MasterPosWait"
 	if server.DBVersion.Flavor == "MariaDB" {
-		logs, err := dbhelper.MasterWaitGTID(server.Conn, master.GTIDBinlogPos.Sprint(), 30)
-		cluster.LogSQL(logs, err, server.URL, "MasterFailover", config.LvlErr, "Failed MasterWaitGTID, %s", err)
-
-	} else {
-		logs, err := dbhelper.MasterPosWait(server.Conn, server.DBVersion, master.BinaryLogFile, master.BinaryLogPos, 30, cluster.Conf.MasterConn)
-		cluster.LogSQL(logs, err, server.URL, "MasterFailover", config.LvlErr, "Failed MasterPosWait, %s", err)
+		until, what = Position{GTID: master.GTIDBinlogPos.Sprint()}, "MasterWaitGTID"
 	}
+	logs, err := server.ReplicationLink().WaitCaughtUp(until, 30*time.Second)
+	if waitEndedWithoutError(err) {
+		err = nil
+	}
+	cluster.LogSQL(logs, err, server.URL, "MasterFailover", config.LvlErr, "Failed "+what+", %s", err)
 
 	// if cluster.Conf.LogLevel > 2 {
 	server.LogReplPostion()
@@ -134,14 +138,23 @@ func (server *ServerMonitor) AppliedPosition() string {
 // (logical_restore_gate.go) and the staging refresh before it detaches a replica (#2124).
 func (server *ServerMonitor) WaitSyncToTarget(target ReplicationTarget, timeout int) (bool, error) {
 	cluster := server.ClusterGroup
+	what := "MasterPosWait"
 	if server.DBVersion.IsMariaDB() {
-		reached, logs, err := dbhelper.MasterWaitGTIDReached(server.Conn, target.GTID, timeout)
-		cluster.LogSQL(logs, err, server.URL, "WaitSyncToTarget", config.LvlErr, "Failed MasterWaitGTID, %s", err)
-		return reached, err
+		what = "MasterWaitGTID"
 	}
-	reached, logs, err := dbhelper.MasterPosWaitReached(server.Conn, server.DBVersion, target.File, target.Pos, timeout, cluster.Conf.MasterConn)
-	cluster.LogSQL(logs, err, server.URL, "WaitSyncToTarget", config.LvlErr, "Failed MasterPosWait, %s", err)
-	return reached, err
+	logs, err := server.ReplicationLink().WaitCaughtUp(target, time.Duration(timeout)*time.Second)
+	if errors.Is(err, ErrReplicationNotCaughtUp) {
+		return false, nil
+	}
+	cluster.LogSQL(logs, err, server.URL, "WaitSyncToTarget", config.LvlErr, "Failed "+what+", %s", err)
+	return err == nil, err
+}
+
+// waitEndedWithoutError: the timeout of a wait (ErrReplicationNotCaughtUp) or a wait the server
+// aborted (NULL, dbhelper.ErrWaitAborted), which MasterWaitGTID and MasterPosWait ignored: the
+// callers that relied on them (WaitSyncToMaster, the positional rejoin of a relay) still do.
+func waitEndedWithoutError(err error) bool {
+	return errors.Is(err, ErrReplicationNotCaughtUp) || errors.Is(err, dbhelper.ErrWaitAborted)
 }
 
 // waitReplicaReachTarget waits, with no timer, for the replica url to reach target in

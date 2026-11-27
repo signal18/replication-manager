@@ -42,8 +42,8 @@ func (regtest *RegTest) TestSwitchover2TimesReplicationOkNoSemiSyncNoRplCheck(cl
 			return false
 		}
 	}
-	if cluster.CheckSlavesRunning() == false {
-		return false
-	}
-	return true
+	// The monitor sees the new topology a tick or two after the second switchover ends: a
+	// check right after it read the old one ("pointing to wrong master"). Wait until every
+	// replica replicates from the new master, 30 seconds at most.
+	return cluster.WaitSlavesRunning(30 * time.Second)
 }

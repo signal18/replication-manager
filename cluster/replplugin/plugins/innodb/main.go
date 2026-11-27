@@ -10,51 +10,6 @@
 // The apply runs with the binlog on: the child's own replicas follow the denormalized table.
 package main
 
-import (
-	"context"
-	"fmt"
+import "github.com/signal18/replication-manager/cluster/replplugin/cdc"
 
-	"github.com/jmoiron/sqlx"
-	"github.com/signal18/replication-manager/cluster/replplugin/cdc"
-	"github.com/signal18/replication-manager/cluster/replplugin/wire"
-	"github.com/signal18/replication-manager/utils/dbhelper"
-)
-
-type innodb struct{}
-
-func (innodb) Name() string                { return "innodb" }
-func (innodb) Refuse(cdc.TableDesc) string { return "" }
-func (innodb) Session() []string           { return nil }
-
-// Create: the table the target holds is already InnoDB.
-func (innodb) Create(context.Context, *sqlx.Conn, cdc.TableDesc) error { return nil }
-
-func (innodb) Apply(ctx context.Context, conn *sqlx.Conn, schema, table string, t wire.TableFiles, files map[string][]byte, name string, keys func([][]interface{}) error) (string, error) {
-	return cdc.ApplyDeleteThenLoad(ctx, conn, schema, table, t, files, name, keys)
-}
-
-func (innodb) Truncate(ctx context.Context, conn *sqlx.Conn, schema, table string) error {
-	q, err := dbhelper.TruncateTable(ctx, conn, schema, table)
-	if err != nil {
-		return fmt.Errorf("%w (%s)", err, q)
-	}
-	return nil
-}
-
-func (innodb) Position(ctx context.Context, conn *sqlx.Conn, plugin string) (wire.Applied, error) {
-	seq, gtid, q, err := dbhelper.ReplPluginPosition(ctx, conn, cdc.StagingSchema, plugin)
-	if err != nil {
-		return wire.Applied{}, fmt.Errorf("%w (%s)", err, q)
-	}
-	return wire.Applied{Seq: seq, GTID: gtid}, nil
-}
-
-func (innodb) SavePosition(ctx context.Context, conn *sqlx.Conn, plugin string, a wire.Applied) error {
-	q, err := dbhelper.SaveReplPluginPosition(ctx, conn, cdc.StagingSchema, plugin, a.Seq, a.GTID)
-	if err != nil {
-		return fmt.Errorf("%w (%s)", err, q)
-	}
-	return nil
-}
-
-func main() { cdc.Main(innodb{}) }
+func main() { cdc.Main(cdc.InnoDB{}) }

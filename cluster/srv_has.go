@@ -155,7 +155,7 @@ func (server *ServerMonitor) IsSlaveOfReplicationSource(name string) bool {
 	cluster := server.ClusterGroup
 	if server.Replications != nil {
 
-		for _, ss := range server.Replications {
+		for _, ss := range server.NativeReplications().Rows() {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "IsSlaveOfReplicationSource check %s drop unlinked server %s ", ss.ConnectionName.String, name)
 			if ss.ConnectionName.String == name {
 				return true

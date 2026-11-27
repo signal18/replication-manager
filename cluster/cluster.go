@@ -103,6 +103,10 @@ type Cluster struct {
 	// read through Orchestrator() and orchestrator(server), never directly.
 	Orchestrators      map[string]Orchestrator `json:"-"`
 	orchestratorsMutex sync.RWMutex            `json:"-"`
+	// ReplicationPlugins are the cluster's replication plugins by name
+	// (newReplicationPluginList); read through ReplicationPlugin(name), never directly.
+	ReplicationPlugins      map[string]ReplicationPlugin `json:"-"`
+	replicationPluginsMutex sync.RWMutex                 `json:"-"`
 	// hostStepDeadlines: server URL -> the one deadline of a rolling host step (the reboot
 	// and the wait for the host share it, cluster_roll_host.go)
 	hostStepDeadlines sync.Map `json:"-"`
@@ -659,6 +663,7 @@ type Cluster struct {
 	replPlugins          map[string]*replPluginRunner         `json:"-"` // replication plugins by TOML path (#2015)
 	columnstoreFeed      atomic.Pointer[replFeed]             `json:"-"` // the seed's restore feeding replplugin-columnstore (#2015)
 	replPluginsMu        sync.Mutex                           `json:"-"`
+	replPluginsHeld      map[string]bool                      `json:"-"` // the TOMLs a rebuild or a removal holds stopped, under replPluginsMu
 	analyticCreating     atomic.Pointer[time.Time]            `json:"-"` // the analytic child's -create running since (CINF0031)
 	replManifests        sync.Map                             `json:"-"` // replication plugin manifests read, by binary path, with its modification time
 	// backupVerifying holds the backups being verified (#2023): backup id -> level.
@@ -1078,6 +1083,10 @@ func (cluster *Cluster) InitFromConf() {
 	err = cluster.newOrchestratorList()
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could not set orchestrator list %s", err)
+	}
+	err = cluster.newReplicationPluginList()
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could not set replication plugin list %s", err)
 	}
 	// Proxies were just rebuilt with no knowledge of maintenance restored onto
 	// Servers above (see newServerMonitor) -- replay the notification so
@@ -3787,7 +3796,7 @@ func (cluster *Cluster) LostArbitration(realmasterurl string) {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Arbitration failed master script complete: %s", string(out))
 	} else {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Arbitration failed attaching failed master %s to electected master :%s", master.URL, realmaster.URL)
-		logs, err := master.SetReplicationGTIDCurrentPosFromServer(realmaster)
+		logs, err := master.SetReplicationGTIDCurrentPosFromServer(realmaster, LinkByArbitration)
 		cluster.LogSQL(logs, err, realmaster.URL, "Arbitration", config.LvlErr, "Failed in GTID rejoin lost master to winner master %s", err)
 
 	}

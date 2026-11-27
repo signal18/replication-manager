@@ -265,7 +265,7 @@ func (regtest *RegTest) TestPhysicalReseedRestore(cl *clusterpkg.Cluster, conf s
 	}
 
 	step("stop replication on %s and commit rows on the master meanwhile", slave.URL)
-	if _, err := slave.StopSlave(); err != nil {
+	if _, err := slave.ReplicationLink().Stop(clusterpkg.LinkByTest); err != nil {
 		return fail("cannot stop replication: %s", err)
 	}
 	rows = rows[:0]

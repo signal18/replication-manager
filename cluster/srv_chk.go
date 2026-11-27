@@ -334,7 +334,7 @@ func (server *ServerMonitor) CheckSlaveSettings() {
 		// If master is in GTID mode ON or ON_PERMISSIVE, and slave has GTID mode ON_PERMISSIVE
 		if !cluster.StateMachine.IsInStateList("ERR00099@"+sl.URL, "ERR00098") && !hasErr {
 			if !sl.DBVersion.IsMySQLOrPercona() || !sl.DBVersion.GreaterEqual("5.7.6") || sl.SlaveStatus.AutoPosition != 1 {
-				dbhelper.SetSlaveGTIDMode(sl.Conn, "slave_pos", cluster.Conf.MasterConn, server.DBVersion)
+				sl.ReplicationLink().Configure(LinkOptions{GTIDMode: "slave_pos"}, LinkByMonitor)
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Enforce GTID replication on slave %s", sl.URL)
 			}
 
@@ -350,20 +350,20 @@ func (server *ServerMonitor) CheckSlaveSettings() {
 		cluster.SetState("WARN0051", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0051"], sl.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
 	}
 	if cluster.Conf.ForceSlaveGtidStrict && !sl.IsReplicationUsingGtidStrict() && cluster.GetTopology() != config.TopoMultiMasterWsrep && server.IsMariaDB() {
-		dbhelper.SetSlaveGTIDModeStrict(sl.Conn, server.DBVersion)
+		sl.ReplicationLink().Configure(LinkOptions{GTIDStrict: true}, LinkByMonitor)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Enforce GTID strict mode on slave %s", sl.URL)
 	} else if !sl.IsIgnored() && !sl.IsReplicationUsingGtidStrict() && cluster.GetTopology() != config.TopoMultiMasterWsrep && server.IsMariaDB() {
 		cluster.SetState("WARN0058", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0058"], sl.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
 	}
 
 	if cluster.Conf.ForceSlaveIdempotent && !sl.HaveSlaveIdempotent && cluster.GetTopology() != config.TopoMultiMasterWsrep && server.IsMariaDB() {
-		dbhelper.SetSlaveExecMode(sl.Conn, "IDEMPOTENT", cluster.Conf.MasterConn, server.DBVersion)
+		sl.ReplicationLink().Configure(LinkOptions{ExecMode: "IDEMPOTENT"}, LinkByMonitor)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Enforce replication mode idempotent on slave %s", sl.URL)
 	} /* else if !sl.IsIgnored() && cluster.Conf.ForceSlaveIdempotent && sl.HaveSlaveIdempotent && cluster.GetTopology() != config.TopoMultiMasterWsrep && server.IsMariaDB() {
 		cluster.SetState("WARN0103", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0103"], sl.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
 	}*/
 	if cluster.Conf.ForceSlaveStrict && sl.HaveSlaveIdempotent && cluster.GetTopology() != config.TopoMultiMasterWsrep && server.IsMariaDB() {
-		dbhelper.SetSlaveExecMode(sl.Conn, "STRICT", cluster.Conf.MasterConn, server.DBVersion)
+		sl.ReplicationLink().Configure(LinkOptions{ExecMode: "STRICT"}, LinkByMonitor)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Enforce replication mode strict on slave %s", sl.URL)
 	} /*else if !sl.IsIgnored() && cluster.Conf.ForceSlaveStrict &&  && cluster.GetTopology() != config.TopoMultiMasterWsrep && server.IsMariaDB() {
 		cluster.SetState("WARN0104", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0103"], sl.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
@@ -396,7 +396,7 @@ func (server *ServerMonitor) CheckSlaveSettings() {
 		}
 		if wantMode != "" && time.Since(sl.lastParallelModeEnforce) > slaveParallelModeEnforceCooldown {
 			sl.lastParallelModeEnforce = time.Now()
-			if _, err := dbhelper.SetSlaveParallelMode(sl.Conn, wantMode, cluster.Conf.MasterConn, server.DBVersion); err != nil {
+			if _, err := sl.ReplicationLink().Configure(LinkOptions{ParallelMode: wantMode}, LinkByMonitor); err != nil {
 				cluster.SetState("WARN0216", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0216"], sl.URL, strings.ToLower(forcedMode), err.Error()), ErrFrom: "TOPO", ServerUrl: sl.URL})
 			} else {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Enforce replication parallel mode %s on slave %s", strings.ToLower(forcedMode), sl.URL)

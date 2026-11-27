@@ -56,7 +56,7 @@ func (cluster *Cluster) CheckReplicationTLS() {
 		if s == nil || s.IsDown() {
 			continue
 		}
-		for _, rep := range s.Replications {
+		for _, rep := range s.NativeReplications().Rows() {
 			from := rep.MasterHost.String + ":" + rep.MasterPort.String
 			if rep.ConnectionName.String != "" {
 				from += " (channel " + rep.ConnectionName.String + ")"
