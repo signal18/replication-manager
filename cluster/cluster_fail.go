@@ -800,6 +800,44 @@ func (cluster *Cluster) electSwitchoverGroupReplicationCandidate(l []*ServerMoni
 	return -1
 }
 
+// electionSeqNos returns the GTID sequence numbers a candidate contributes to the
+// election ranking (sum of the returned values). It only computes a local value:
+// the monitored GTID fields (SlaveGtid, GtidIOPos, ...) are never modified.
+//
+// MariaDB and PostgreSQL candidates keep the domain-server-seq sequence of the
+// master's GTID domain. A MySQL/Percona GTID is a "uuid:interval" set, which is
+// not a MariaDB domain-server-seq list: parsing it as one derives a number from
+// UUID components that has nothing to do with the transactions. Such a candidate
+// contributes no scalar sequence and is ranked by its binlog coordinates (Pos).
+// A candidate without replication status keeps the synthetic default sequence.
+func (cluster *Cluster) electionSeqNos(sl *ServerMonitor, ss *dbhelper.SlaveStatus, errss error) []uint64 {
+	// Default for a candidate without replication status (failover-restart-unsafe).
+	seqnos := gtid.NewList("1-1-1").GetSeqNos()
+	if errss != nil {
+		return seqnos
+	}
+	if sl.DBVersion != nil && sl.DBVersion.IsMySQLOrPercona() {
+		return nil
+	}
+	if cluster.master.State != stateFailed {
+		return sl.SlaveGtid.GetSeqDomainIdNos(cluster.master.DomainID)
+	}
+	return gtid.NewList(ss.GtidIOPos.String).GetSeqDomainIdNos(cluster.master.DomainID)
+}
+
+// binlogRank turns a binlog file name and a 'Read_Master_Log_Pos' into the
+// number the election compares: the numeric suffix after the LAST dot of the
+// file name, followed by the position padded to 12 digits. The suffix is taken
+// after the last dot so that a basename containing dots (db1.example.com-bin.000007)
+// is read correctly. A ParseUint error is ignored as before.
+func binlogRank(file, pos string) uint64 {
+	for len(pos) < 12 {
+		pos = "0" + pos
+	}
+	v, _ := strconv.ParseUint(file[strings.LastIndex(file, ".")+1:]+pos, 10, 64)
+	return v
+}
+
 // Returns a candidate from a list of slaves. If there's only one slave it will be the de facto candidate.
 func (cluster *Cluster) electSwitchoverCandidate(l []*ServerMonitor, forcingLog bool) int {
 	ll := len(l)
@@ -881,25 +919,11 @@ func (cluster *Cluster) electSwitchoverCandidate(l []*ServerMonitor, forcingLog 
 		if !strings.Contains(logfile, ".") {
 			continue
 		}
-		for len(filepos) < 12 {
-			filepos = "0" + filepos
-		}
-
-		pos := strings.Split(logfile, ".")[1] + filepos
-		binlogposreach, _ := strconv.ParseUint(pos, 10, 64)
+		binlogposreach := binlogRank(logfile, filepos)
 
 		posList[i] = binlogposreach
 
-		seqnos := gtid.NewList("1-1-1").GetSeqNos()
-
-		if errss == nil {
-			if cluster.master.State != stateFailed {
-				//	seqnos = sl.SlaveGtid.GetSeqNos()
-				seqnos = sl.SlaveGtid.GetSeqDomainIdNos(cluster.master.DomainID)
-			} else {
-				seqnos = gtid.NewList(ss.GtidIOPos.String).GetSeqDomainIdNos(cluster.master.DomainID)
-			}
-		}
+		seqnos := cluster.electionSeqNos(sl, ss, errss)
 
 		for _, v := range seqnos {
 			seqList[i] += v
@@ -1027,26 +1051,12 @@ func (cluster *Cluster) electFailoverCandidate(l []*ServerMonitor, forcingLog bo
 		if !strings.Contains(logfile, ".") {
 			continue
 		}
-		for len(filepos) < 12 {
-			filepos = "0" + filepos
-		}
-
-		pos := strings.Split(logfile, ".")[1] + filepos
-		binlogposreach, _ := strconv.ParseUint(pos, 10, 64)
+		binlogposreach := binlogRank(logfile, filepos)
 
 		posList[i] = binlogposreach
 		trackposList[i].Pos = binlogposreach
 
-		seqnos := gtid.NewList("1-1-1").GetSeqNos()
-
-		if errss == nil {
-			if cluster.master.State != stateFailed {
-				// Need MySQL GTID support
-				seqnos = sl.SlaveGtid.GetSeqDomainIdNos(cluster.master.DomainID)
-			} else {
-				seqnos = gtid.NewList(ss.GtidIOPos.String).GetSeqDomainIdNos(cluster.master.DomainID)
-			}
-		}
+		seqnos := cluster.electionSeqNos(sl, ss, errss)
 
 		for _, v := range seqnos {
 			seqList[i] += v

@@ -58,6 +58,16 @@ var tests = []string{
 	"testFailoverSemisyncAutoRejoinMSSXMSXXMSXMSSM",
 	"testFailoverSemisyncAutoRejoinMSSXMSXXMXSMSSM",
 	"testFailoverSemisyncSlavekilledAutoRejoin",
+	"testElectionGTIDPositionalFailover",
+	"testElectionGTIDPositionalRefusal",
+	"testElectionGTIDPositionalSwitchover",
+	"testElectionGTIDPositionalErrant",
+	// testElectionMMSwitchSingleWriter, testElectionMMSwitchConcurrent, testElectionMMFailover, testElectionRingSwitch, testElectionRingFailover and
+	// testElectionMultiTier (#2451) are not in this list either: they switch over, stop and rejoin servers of a
+	// multi-master pair, a multi-master ring or a multi-tier cluster (the last one deliberately builds a state that can
+	// expose an unresolved limit). They check their own applicability (topology-target, servers, engine) and a healthy
+	// start, and are SKIP otherwise. Run them by name:
+	// /api/clusters/<cluster>/tests/actions/run/<testName>
 	"testSlaReplAllSlavesStopNoSemiSync",
 	"testSlaReplAllSlavesDelayNoSemiSync",
 	"testMasterSuspect",
@@ -272,6 +282,10 @@ var testTargets = map[string][]TestTarget{
 	"testFailoverAllSlavesDelayNoRplChecksNoSemiSync":              anyCluster,
 	"testFailoverAllSlavesDelayRplChecksNoSemiSync":                anyCluster,
 	"testFailoverNoRplChecksNoSemiSync":                            anyCluster,
+	"testElectionGTIDPositionalFailover": {{TopologyTarget: []string{config.TopoMasterSlave}, NumberNodesTarget: 3, FlavorTarget: []string{"mysql", "percona"}, ConfigVariableMustSet: map[string]string{"check-replication-state": "true"}}},
+	"testElectionGTIDPositionalRefusal": {{TopologyTarget: []string{config.TopoMasterSlave}, NumberNodesTarget: 3, FlavorTarget: []string{"mysql", "percona"}, ConfigVariableMustSet: map[string]string{"check-replication-state": "true"}}},
+	"testElectionGTIDPositionalSwitchover": {{TopologyTarget: []string{config.TopoMasterSlave}, NumberNodesTarget: 3, FlavorTarget: []string{"mysql", "percona"}, ConfigVariableMustSet: map[string]string{"check-replication-state": "false"}}},
+	"testElectionGTIDPositionalErrant": {{TopologyTarget: []string{config.TopoMasterSlave}, NumberNodesTarget: 3, FlavorTarget: []string{"mysql", "percona"}, ConfigVariableMustHave: map[string]string{"check-replication-errant-trx": "true"}, ConfigVariableMustSet: map[string]string{"check-replication-state": "true"}}},
 	"testFailoverNoRplChecksNoSemiSyncMasterHeartbeat":             anyCluster,
 	"testFailoverNumberFailureLimitReach":                          anyCluster,
 	"testFailoverTimeNotReach":                                     anyCluster,
