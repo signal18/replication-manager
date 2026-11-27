@@ -29,11 +29,21 @@ Issue #2453. Status: **design validated by the maintainer (2026-11-27)**. Steps 
 ## The object: each entry of `server.Replications` is a `Replication`, given by a plugin
 
 The object already exists: every `ServerMonitor` holds its replications in `server.Replications`
-(and `LastSeenReplications` while it is down), filled by its `Refresh` (`readNativeLinks`) during
-`TopologyDiscover`, which then builds the graph (who is the master, who replicates from whom). Nothing
-new is added beside it (T2): each entry becomes an interface, `Replication`, implemented by the
-plugin of that link. The discovery stays `TopologyDiscover`'s: where `Refresh` stores the rows it
-read, it stores them as `Replication` objects of their plugin.
+(and `LastSeenReplications` while it is down). The call chain that fills it, each monitor tick:
+
+1. `Cluster.TopologyDiscover` (`cluster_topo.go`) starts `server.Ping` for each server;
+2. `ServerMonitor.Ping` (`srv.go`) calls `server.Refresh()`;
+3. `ServerMonitor.Refresh` calls `server.refreshNativeLinks()`, then fills `server.ReplicationFeeds`
+   from `cluster.cdcFeedStatus(server)` (the CDC feeds, in a second list since step 1);
+4. `refreshNativeLinks` (`replication_native.go`) stores the rows of `readNativeLinks`
+   (`SHOW ALL SLAVES STATUS`, or the channels one by one, or the PostgreSQL subscriptions) in
+   `server.Replications`;
+5. back in `TopologyDiscover`, once every `Ping` is done, the graph is built: the master, the
+   replicas, who replicates from whom.
+
+Nothing new is added beside it (T2): each entry becomes an interface, `Replication`, implemented by
+the plugin of that link. Steps 3 and 4 store `Replication` objects of their plugin instead of bare
+rows, and the CDC feeds join the same list; steps 1, 2 and 5 do not change.
 
 A replication is between two servers, often of two clusters:
 
