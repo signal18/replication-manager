@@ -206,7 +206,7 @@ function OrchestratorDbVM({ selectedCluster, user, scope }) {
             key: 'Proxmox API URL',
             value: (
               <TextForm
-                value={selectedCluster?.config?.proxmoxAPIURL}
+                value={selectedCluster?.config?.proxmoxApiUrl}
                 placeholder='https://pve.example:8006'
                 confirmTitle='Proxmox API URL Change'
                 confirmBody='The Proxmox VE API endpoint of the hosts of this cluster. Change "proxmox-api-url" to: '
@@ -220,7 +220,7 @@ function OrchestratorDbVM({ selectedCluster, user, scope }) {
             value: (
               <TextForm
                 type='password'
-                value={selectedCluster?.config?.proxmoxAPIToken || ''}
+                value={selectedCluster?.config?.proxmoxApiToken || ''}
                 placeholder='user@realm!tokenid=secret'
                 confirmTitle='Proxmox API Token Change'
                 confirmBody='The API token, encrypted in the configuration and never logged. Change "proxmox-api-token"'
@@ -233,7 +233,7 @@ function OrchestratorDbVM({ selectedCluster, user, scope }) {
             key: 'Proxmox API Accept Any Certificate',
             value: (
               <RMSwitch
-                isChecked={selectedCluster?.config?.proxmoxAPIInsecure}
+                isChecked={selectedCluster?.config?.proxmoxApiInsecure}
                 isDisabled={user?.grants['cluster-settings'] == false}
                 confirmTitle={'Confirm switch settings for proxmox-api-insecure (a lab only)?'}
                 onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'proxmox-api-insecure' }))}

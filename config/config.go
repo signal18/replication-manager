@@ -613,9 +613,9 @@ type Config struct {
 	OnPremiseSSHStopProxyScript              string                       `mapstructure:"onpremise-ssh-stop-proxy-script" toml:"onpremise-ssh-stop-proxy-script" json:"onpremiseSshStopProxyScript"`
 	OnPremiseSSHDbJobScript                  string                       `mapstructure:"onpremise-ssh-db-job-script" toml:"onpremise-ssh-db-job-script" json:"onpremiseSshDbJobScript"`
 	OnPremiseSSHUpgradeDbScript              string                       `mapstructure:"onpremise-ssh-upgrade-db-script" toml:"onpremise-ssh-upgrade-db-script" json:"onpremiseSshUpgradeDbScript"`
-	ProxmoxAPIURL                            string                       `mapstructure:"proxmox-api-url" toml:"proxmox-api-url" json:"proxmoxAPIURL"`
-	ProxmoxAPIToken                          string                       `secret:"true" mapstructure:"proxmox-api-token" toml:"proxmox-api-token" json:"proxmoxAPIToken"`
-	ProxmoxAPIInsecure                       bool                         `mapstructure:"proxmox-api-insecure" toml:"proxmox-api-insecure" json:"proxmoxAPIInsecure"`
+	ProxmoxAPIURL                            string                       `mapstructure:"proxmox-api-url" toml:"proxmox-api-url" json:"proxmoxApiUrl"`
+	ProxmoxAPIToken                          string                       `secret:"true" mapstructure:"proxmox-api-token" toml:"proxmox-api-token" json:"proxmoxApiToken"`
+	ProxmoxAPIInsecure                       bool                         `mapstructure:"proxmox-api-insecure" toml:"proxmox-api-insecure" json:"proxmoxApiInsecure"`
 	ProvDbHostVmids                          string                       `mapstructure:"prov-db-host-vmids" toml:"prov-db-host-vmids" json:"provDbHostVmids"`
 	ProvDbRollingUpgradeHost                 bool                         `mapstructure:"prov-db-rolling-upgrade-host" toml:"prov-db-rolling-upgrade-host" json:"provDbRollingUpgradeHost"`
 	ProvDbHostUpgradeScript                  string                       `mapstructure:"prov-db-host-upgrade-script" toml:"prov-db-host-upgrade-script" json:"provDbHostUpgradeScript"`

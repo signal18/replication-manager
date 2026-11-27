@@ -34246,13 +34246,13 @@ const docTemplate = `{
                 "provUseIpv6": {
                     "type": "boolean"
                 },
-                "proxmoxAPIInsecure": {
+                "proxmoxApiInsecure": {
                     "type": "boolean"
                 },
-                "proxmoxAPIToken": {
+                "proxmoxApiToken": {
                     "type": "string"
                 },
-                "proxmoxAPIURL": {
+                "proxmoxApiUrl": {
                     "type": "string"
                 },
                 "proxyServersBackendCompression": {

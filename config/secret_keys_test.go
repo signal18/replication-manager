@@ -60,7 +60,7 @@ func TestSecretLookingKeysAreSecrets(t *testing.T) {
 	}
 }
 
-// The tunnel and Consul credentials and the router password are secrets: masked in the API
+// The tunnel and Consul credentials, the router password and the Proxmox API token are secrets: masked in the API
 // JSON, the mask finds each by its json name.
 func TestFlatSecretsMasked(t *testing.T) {
 	conf := Config{
@@ -68,6 +68,9 @@ func TestFlatSecretsMasked(t *testing.T) {
 		RegistryConsulCredential: "consul:MARKER6",
 		RegistryConsulToken:      "MARKER7",
 		MysqlRouterPass:          "MARKER8",
+		// its json name must be the mechanical camelCase of its key (proxmoxApiToken), or the
+		// mask writes a second field and leaves the token in clear
+		ProxmoxAPIToken: "repman@pve!t=MARKER9",
 	}
 	secrets := map[string]Secret{}
 	for _, k := range SecretKeys {
