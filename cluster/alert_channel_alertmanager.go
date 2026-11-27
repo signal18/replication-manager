@@ -90,12 +90,13 @@ func (c *alertmanagerAlertChannel) client() *alertmanager.Client {
 		conf.AlertAlertmanagerTLSSkipVerify, c.Timeout())
 }
 
-// severity maps a state's type to the Alertmanager convention.
+// severity maps a state's type to the Alertmanager convention. Most states carry the type
+// "WARNING" (not config.LvlWarn): both are a warning.
 func alertSeverity(errType string) string {
 	switch errType {
 	case config.LvlErr, "ERR":
 		return "critical"
-	case config.LvlWarn:
+	case config.LvlWarn, "WARNING":
 		return "warning"
 	}
 	return "info"
@@ -202,7 +203,9 @@ func (c *alertmanagerAlertChannel) reconcile(now time.Time) []alertmanager.Alert
 	suppressed := cluster.IsIntervention || cluster.IsAlertDisable
 	open := map[string]state.State{}
 	if SM != nil {
-		for _, st := range SM.GetOpenStates() {
+		// the last completed tick: the resend is queued by CheckAlertChannels right after
+		// ClearState, when CurState (GetOpenStates) is empty
+		for _, st := range SM.GetLastTickStates() {
 			if cluster.inAlertTrigger(st.ErrKey) {
 				open[state.BuildStateKey(st.ErrKey, st.ServerUrl)] = st
 			}

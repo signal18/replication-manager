@@ -220,14 +220,16 @@ func TestAlertmanagerResendReconciles(t *testing.T) {
 	c.Conf.AlertAlertmanagerURL = "http://unused.invalid"
 	ch := c.AlertChannel(ConstAlertChannelAlertmanager).(*alertmanagerAlertChannel)
 
-	// a trigger state open since before the start: never got an opened edge
-	c.StateMachine.AddState("WARN0023", state.State{ErrType: "WARN", ErrDesc: "No GTID", ServerUrl: "db2:3306"})
+	// a trigger state open since before the start: never got an opened edge. The tick sets
+	// it, ends with ClearState, then CheckAlertChannels queues the resend: CurState is empty
+	// then, the state is in the last tick's states.
+	c.StateMachine.AddState("WARN0023", state.State{ErrType: "WARNING", ErrDesc: "No GTID", ServerUrl: "db2:3306"})
+	c.StateMachine.ClearState()
 	out := ch.reconcile(time.Now())
 	if len(out) != 1 || out[0].Labels["code"] != "WARN0023" || out[0].Labels["severity"] != "warning" || out[0].EndsAt != "" {
 		t.Fatalf("reconcile must fire the open trigger state: %+v", out)
 	}
 	// the state clears (its resolve missed): one round still firing, the second resolves
-	c.StateMachine.ClearState()
 	c.StateMachine.ClearState()
 	if out = ch.reconcile(time.Now()); len(out) != 1 || out[0].EndsAt != "" {
 		t.Fatalf("first miss keeps it firing: %+v", out)
@@ -406,5 +408,15 @@ func TestAlertScriptTimeoutKillsChildren(t *testing.T) {
 	}
 	if d := time.Since(start); d > 10*time.Second {
 		t.Fatalf("the script ran %s past a 1 s timeout", d)
+	}
+}
+
+// A state's type maps to the Alertmanager severity; "WARNING", the type most states carry
+// (ERR00042 included), is a warning, not info.
+func TestAlertSeverity(t *testing.T) {
+	for errType, want := range map[string]string{"ERROR": "critical", "ERR": "critical", "WARN": "warning", "WARNING": "warning", "INFO": "info", "": "info"} {
+		if got := alertSeverity(errType); got != want {
+			t.Fatalf("alertSeverity(%q) = %q, want %q", errType, got, want)
+		}
 	}
 }

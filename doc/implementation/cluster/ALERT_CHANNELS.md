@@ -87,7 +87,7 @@ Auth: `alert-alertmanager-bearer-token` wins over `alert-alertmanager-user` /
 Events: the states of `monitoring-alert-trigger` opening and clearing in the HA state machine
 (`CheckAlert`, transitions that are already flap-free). Labels: `alertname` and `code` (the
 state code), `cluster`, `server` (when the state is a server's), `severity` (`critical` for
-ERROR, `warning` for WARN, `info` otherwise), `domain` (`ha`), `source=replication-manager`.
+ERROR, `warning` for WARN and WARNING, `info` otherwise), `domain` (`ha`), `source=replication-manager`.
 Annotations: `summary` (first line), `description`, `monitor`. `generatorURL` is
 `api-public-url` when it is an http(s) URL. The active and the standby monitor send the same
 labels, so Alertmanager deduplicates.

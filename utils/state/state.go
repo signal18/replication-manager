@@ -423,6 +423,19 @@ func (SM *StateMachine) GetOpenStates() []State {
 	return log
 }
 
+// GetLastTickStates returns the states of the last completed monitor tick (OldState), the
+// view IsInState and the GUI read. GetOpenStates reads CurState, which is empty right after
+// ClearState at the end of a tick.
+func (SM *StateMachine) GetLastTickStates() []State {
+	var log []State
+	SM.Lock()
+	for _, state := range *SM.OldState {
+		log = append(log, state)
+	}
+	SM.Unlock()
+	return log
+}
+
 func (SM *StateMachine) GetOpenErrors() []StateHttp {
 	var log []StateHttp
 	SM.Lock()
