@@ -167,6 +167,8 @@ manifest (`replplugin-<name>.manifest.json`, `wire.PluginManifest`) gives:
   no tag for the parent's release, the child's provisioning fails on the pull, with its state.
   The image is resolved when the child is created only: a later upgrade of the parent does not
   change the child's image;
+- `flavor`, the database flavor the destination exists for, as `utils/version` names it
+  (`MariaDB` for the DuckDB engine): a parent master of another flavor is refused at the plan;
 - `singleServer`, a child of one database.
 
 The plan is refused when the plugin is missing or the plan does not grant its tier. The

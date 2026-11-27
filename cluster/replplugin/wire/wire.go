@@ -218,6 +218,10 @@ type PluginManifest struct {
 	// package that must match its server release exactly, the child running the parent's
 	// release. A release the registry has no tag for fails at the child's pull, with its state
 	Image string `json:"image,omitempty"`
+	// Flavor: the database flavor the destination exists for, as utils/version names it
+	// (MariaDB, MySQL, Percona); a parent of another flavor is refused at the create plan.
+	// Empty: any
+	Flavor string `json:"flavor,omitempty"`
 	// SingleServer: the destination is written out of the binlog, a child of it has one
 	// database (its replicas would not receive the destination's tables)
 	SingleServer bool `json:"singleServer,omitempty"`

@@ -569,10 +569,14 @@ func childDestinationImage(m wire.PluginManifest, parent *cluster.Cluster) (stri
 	if pm == nil || pm.DBVersion == nil {
 		return "", fmt.Errorf("the image of the destination %s follows the parent's release, and %s has no master to read it from", m.Name, parent.Name)
 	}
-	return destinationImageFor(m, pm.DBVersion), nil
+	return destinationImageFor(m, parent.Name, pm.DBVersion)
 }
 
-// destinationImageFor is the image of manifest m for the parent release v.
-func destinationImageFor(m wire.PluginManifest, v *version.Version) string {
-	return strings.ReplaceAll(m.Image, "{version}", v.ToString())
+// destinationImageFor is the image of manifest m for the parent release v, refused when the
+// manifest names a flavor and the parent is of another (a MySQL parent of a MariaDB engine).
+func destinationImageFor(m wire.PluginManifest, parent string, v *version.Version) (string, error) {
+	if m.Flavor != "" && !strings.EqualFold(m.Flavor, v.Flavor) {
+		return "", fmt.Errorf("the destination %s exists for %s, and %s's master runs %s %s", m.Name, m.Flavor, parent, v.Flavor, v.ToString())
+	}
+	return strings.ReplaceAll(m.Image, "{version}", v.ToString()), nil
 }

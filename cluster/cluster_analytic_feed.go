@@ -29,16 +29,18 @@ type AnalyticFeed struct {
 	MergeInterval      int `json:"mergeInterval"`
 	// Running: a process of the plugin runs; Stopped its last stop when it does not, with its
 	// reason and the restart due (WARN0242)
-	Running        bool      `json:"running"`
-	StoppedReason  string    `json:"stoppedReason,omitempty"`
-	RestartAt      time.Time `json:"restartAt,omitempty"`
-	CreatingSince  time.Time `json:"creatingSince,omitempty"` // the seed's -create runs (CINF0031)
-	ConfigNotFound bool      `json:"configNotFound"`          // no plugin TOML yet: the child is not seeded
+	Running        bool       `json:"running"`
+	StoppedReason  string     `json:"stoppedReason,omitempty"`
+	RestartAt      *time.Time `json:"restartAt,omitempty"`
+	CreatingSince  *time.Time `json:"creatingSince,omitempty"` // the seed's -create runs (CINF0031)
+	ConfigNotFound bool       `json:"configNotFound"`          // no plugin TOML yet: the child is not seeded
 	// Status: the plugin's last status line (GTID captured and applied, lag, counts, apply
 	// error, last merge), nil before the first one
 	Status *wire.Status `json:"status,omitempty"`
 	// Skipped: the tables the seed left as they were, with the reason (WARN0340)
 	Skipped []wire.CreateResult `json:"skipped,omitempty"`
+	// SkippedError: the file of the tables left as they were cannot be read (WARN0340 says it too)
+	SkippedError string `json:"skippedError,omitempty"`
 }
 
 // AnalyticFeedStatus is the feed of the cluster when it is an analytic child, false when it is
@@ -57,7 +59,8 @@ func (cluster *Cluster) AnalyticFeedStatus() (AnalyticFeed, bool) {
 		MergeInterval:      cluster.Conf.ReplicationPluginMergeInterval,
 	}
 	if t := cluster.analyticCreating.Load(); t != nil {
-		f.CreatingSince = *t
+		at := *t
+		f.CreatingSince = &at
 	}
 	path := cluster.analyticPluginPath()
 	cluster.replPluginsMu.Lock()
@@ -66,7 +69,8 @@ func (cluster *Cluster) AnalyticFeedStatus() (AnalyticFeed, bool) {
 	if r != nil {
 		f.SourceHost = r.cfg.Source.Host
 		if stop := r.stopped.Load(); stop != nil {
-			f.StoppedReason, f.RestartAt = stop.Reason, stop.Restart
+			at := stop.Restart
+			f.StoppedReason, f.RestartAt = stop.Reason, &at
 		} else {
 			f.Running = true
 		}
@@ -77,6 +81,9 @@ func (cluster *Cluster) AnalyticFeedStatus() (AnalyticFeed, bool) {
 	} else if _, err := os.Stat(path); os.IsNotExist(err) {
 		f.ConfigNotFound = true
 	}
-	f.Skipped, _ = readAnalyticSkipped(cluster.analyticSkippedPath())
+	var err error
+	if f.Skipped, err = readAnalyticSkipped(cluster.analyticSkippedPath()); err != nil {
+		f.SkippedError = err.Error()
+	}
 	return f, true
 }

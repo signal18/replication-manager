@@ -16,7 +16,7 @@ import (
 // The indexes of an analytic child's denormalize mode (CDC_CORE.md "Denormalize"), on a DuckDB
 // child for instance: the three REST routes of replication-plugin-index-*, one tool each. A
 // DuckDB child itself is created by cluster-create-child (destination duckdb).
-func (s *MCPServer) registerAnalyticChildTools() {
+func (s *MCPServer) registerAnalyticChildReadTools() {
 	s.addTool(
 		mcp.NewTool("list-cluster-analytic-indexes",
 			mcp.WithDescription("List the indexes of an analytic child (a DuckDB child, for instance): each a denormalizing query run on the parent and the denormalized table it keeps up to date on the child (slaveSchema.slaveTable). ready names the indexes whose init is done (the table filled once from a consistent snapshot of the parent); pinned: a config file sets the list. Needs cluster-settings."),
@@ -38,6 +38,10 @@ func (s *MCPServer) registerAnalyticChildTools() {
 			return mcp.NewToolResultText(toJSON(out)), nil
 		},
 	)
+}
+
+// registerAnalyticChildTools: the changes of the indexes, with the write tools.
+func (s *MCPServer) registerAnalyticChildTools() {
 	s.addTool(
 		mcp.NewTool("cluster-set-analytic-index",
 			mcp.WithDescription("Add an index to an analytic child, or replace the index of that name: a denormalizing query (a SELECT run on the parent, inner joins, every table with its schema, returning the primary key columns of every table it reads, each under one name) and the denormalized table it fills on the child. The child's plugin restarts; a new or changed index starts with its init (the table made from the query's result, then filled from a consistent snapshot of the parent), then each change on a table the query reads recomputes the rows of the changed keys. Nothing is changed on the parent. Needs cluster-settings."),

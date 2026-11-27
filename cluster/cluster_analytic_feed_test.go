@@ -52,11 +52,19 @@ func TestAnalyticFeedStatus(t *testing.T) {
 		t.Fatal("the status returned must be a copy")
 	}
 
+	// an unreadable file of skipped tables is said, not hidden
+	if err := os.WriteFile(cl.analyticSkippedPath(), []byte("{"), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	if f, _ = cl.AnalyticFeedStatus(); f.SkippedError == "" || f.Skipped != nil {
+		t.Fatalf("unreadable skipped file: %+v", f)
+	}
+
 	// stopped by the supervisor: the reason and the restart due
 	at := time.Now().Add(time.Minute)
 	r.stopped.Store(&replPluginStop{Reason: "exit 1", Restart: at})
 	f, _ = cl.AnalyticFeedStatus()
-	if f.Running || f.StoppedReason != "exit 1" || !f.RestartAt.Equal(at) {
+	if f.Running || f.StoppedReason != "exit 1" || f.RestartAt == nil || !f.RestartAt.Equal(at) {
 		t.Fatalf("stopped: %+v", f)
 	}
 }

@@ -25,6 +25,7 @@ func (s *MCPServer) registerReadOnlyTools() {
 	s.registerDatabaseReadTools()
 	s.registerBackupReadTools()
 	s.registerProxyReadTools()
+	s.registerAnalyticChildReadTools()
 }
 
 // registerWriteTools registers all write/action MCP tools (Phase 2).
