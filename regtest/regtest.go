@@ -62,7 +62,7 @@ var tests = []string{
 	"testElectionGTIDPositionalRefusal",
 	"testElectionGTIDPositionalSwitchover",
 	"testElectionGTIDPositionalErrant",
-	// testElectionMMSwitchSingleWriter, testElectionMMSwitchConcurrent, testElectionMMFailover, testElectionRing and
+	// testElectionMMSwitchSingleWriter, testElectionMMSwitchConcurrent, testElectionMMFailover, testElectionRingSwitch, testElectionRingFailover and
 	// testElectionMultiTier (#2451) are not in this list either: they switch over, stop and rejoin servers of a
 	// multi-master pair, a multi-master ring or a multi-tier cluster (the last one deliberately builds a state that can
 	// expose an unresolved limit). They check their own applicability (topology-target, servers, engine) and a healthy

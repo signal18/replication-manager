@@ -13,45 +13,73 @@ import (
 	"github.com/signal18/replication-manager/config"
 )
 
-// TestElectionRing (#2451): in a multi-master ring the promotion does not rank candidates
-// (VMasterFailover -> electVirtualCandidate takes the first live server that is not the old primary), but the
-// monitor runs the shared FoundCandidateMaster gate every tick: isFoundCandidateMaster calls
-// electFailoverCandidate on the ring's servers, the function whose MySQL and Percona ranking #2451 corrects.
-// The test verifies, on a healthy ring of three servers declared by the topology target multi-master-ring and
-// built by the supported bootstrap:
+// TestElectionRingSwitch and TestElectionRingFailover (#2451): in a multi-master ring the promotion does not rank
+// candidates (VMasterFailover -> electVirtualCandidate takes the first live server that is not the old primary), but the
+// monitor runs the shared FoundCandidateMaster gate every tick: isFoundCandidateMaster calls electFailoverCandidate on the
+// ring's servers, the function whose MySQL and Percona ranking #2451 corrects. Both tests start from a healthy ring of three
+// servers declared by the topology target multi-master-ring (set through the settings API on a wired ring), each on its own
+// fresh ring, run by name only.
 //
-//	switchover  the virtual primary moves to another server, an independent session can write on it, a marker
-//	            written there reaches the two other servers around the ring, and the ring edges are intact;
-//	failover    the virtual primary is stopped, a survivor takes over and is writable for an independent
-//	            session, the ring is closed around the stopped server (each survivor replicates, threads
-//	            running), and a marker written on the new primary reaches the other survivor;
-//	gate        during the whole run the monitor never raised ERR00032 ("no candidate"): the shared gate did
-//	            not refuse the ring (sampled twice a second).
+// What the product does, read from VMasterFailover and CloseRing and confirmed in the logs of develop and of the fix:
+// CloseRing(oldMaster) runs for the switchover AND the failover. It stops the replication of the child (the server that
+// replicates from the old virtual primary) and repoints it to the old virtual primary's parent. A switchover also freezes
+// the old virtual primary, which stops all its replication threads and leaves it bypassed (ERR00048, state SlaveErr).
+// So a ring is NOT intact after either operation, and what the tests assert is the structure CloseRing is designed to give:
 //
-// The stopped server is started again and its rejoin is observed, not asserted (ring reintegration is not
-// part of #2451). Name length: the runner formats "<cluster>/<test>" in 60 columns, so the name stays short.
-func (regtest *RegTest) TestElectionRing(cl *cluster.Cluster, conf string, test *cluster.Test) bool {
-	r := newElectionRun(cl, test, "testElectionRing")
-	return r.finish(r.ring())
+//	switchover  the election result (the virtual primary as the operation ends) is another server, an independent session can
+//	            write on it, the child replicates from the old primary's parent with both threads running, and a marker
+//	            written on the new primary reaches the ring members (every server but the bypassed old primary, whose
+//	            replication is stopped: observed);
+//	failover    the virtual primary is stopped, the election result is a live server, an independent session can write
+//	            on it, the child replicates from the stopped server's parent, a marker reaches the other survivor.
+//
+// The failover test is independent of the switchover test: a ring that a switchover has left bypassed and unhealthy is not
+// a valid start for a failover (CloseRing then finds the same server as child and parent). The FoundCandidateMaster gate is
+// sampled twice a second and its refusals (ERR00032) are observed for comparison between the builds: a refusal comes from the
+// eligibility of the candidate (for instance ERR00042), not from the ranking. The stopped server is started again and its
+// rejoin is observed. Names stay short: the runner formats "<cluster>/<test>" in 60 columns.
+func (regtest *RegTest) TestElectionRingSwitch(cl *cluster.Cluster, conf string, test *cluster.Test) bool {
+	r := newElectionRun(cl, test, "testElectionRingSwitch")
+	return r.finish(r.ring(false))
 }
 
-// ringEdges says whether each server replicates from its predecessor in the server list (the ring the
-// bootstrap builds) with both threads running.
+func (regtest *RegTest) TestElectionRingFailover(cl *cluster.Cluster, conf string, test *cluster.Test) bool {
+	r := newElectionRun(cl, test, "testElectionRingFailover")
+	return r.finish(r.ring(true))
+}
+
+// ringEdges says whether each server replicates from its predecessor in the server list (the ring the bootstrap
+// builds) with both threads running.
 func (r *electionRun) ringEdges(servers []*cluster.ServerMonitor, live func(*cluster.ServerMonitor) bool) bool {
 	n := len(servers)
 	for i, s := range servers {
 		if !live(s) {
 			continue
 		}
-		p := servers[(i+n-1)%n]
-		if !r.replicating(s, p) {
+		if !r.replicating(s, servers[(i+n-1)%n]) {
 			return false
 		}
 	}
 	return true
 }
 
-func (r *electionRun) ring() bool {
+// ringNeighbours returns the child (the server that replicates from srv) and the parent (the server srv replicates from).
+func (r *electionRun) ringNeighbours(servers []*cluster.ServerMonitor, srv *cluster.ServerMonitor) (child, parent *cluster.ServerMonitor) {
+	for _, s := range servers {
+		if s.URL == srv.URL {
+			continue
+		}
+		if r.sourceHost(s) == srv.Host {
+			child = s
+		}
+		if r.sourceHost(srv) == s.Host {
+			parent = s
+		}
+	}
+	return child, parent
+}
+
+func (r *electionRun) ring(failover bool) bool {
 	cl := r.cl
 	if !r.requireTarget(config.TopoMultiMasterRing, 3) {
 		return true
@@ -71,8 +99,12 @@ func (r *electionRun) ring() bool {
 	for _, s := range servers {
 		r.prefered[s.URL] = s.IsPrefered()
 	}
+	child, parent := r.ringNeighbours(servers, vm)
+	if child == nil || parent == nil || child.URL == parent.URL {
+		return r.check("setup", false, "the neighbours of the virtual primary %s in the ring are child=%s parent=%s", vm.URL, urlOf(child), urlOf(parent))
+	}
 	all := func(*cluster.ServerMonitor) bool { return true }
-	r.logf("ring: virtual primary %s, servers %s %s %s", vm.URL, servers[0].URL, servers[1].URL, servers[2].URL)
+	r.logf("ring: virtual primary %s, child %s, parent %s", vm.URL, child.URL, parent.URL)
 	cl.SetInteractive(false)
 	cl.SetCheckFalsePositiveHeartbeat(false)
 	cl.SetFailSync(false)
@@ -85,16 +117,16 @@ func (r *electionRun) ring() bool {
 	if err := r.createSchema(vm); err != nil {
 		return r.check("setup", false, "create schema %s: %s", r.schema, err)
 	}
-	if err := electionExec(vm, "CREATE TABLE "+r.schema+".marker (tag VARCHAR(64) PRIMARY KEY) ENGINE=InnoDB"); err != nil {
-		return r.check("setup", false, "create table: %s", err)
-	}
-	if err := electionExec(vm, "CREATE TABLE "+r.schema+".probe (id INT AUTO_INCREMENT PRIMARY KEY, who VARCHAR(80)) ENGINE=InnoDB"); err != nil {
-		return r.check("setup", false, "create probe table: %s", err)
+	for _, q := range []string{
+		"CREATE TABLE " + r.schema + ".marker (tag VARCHAR(64) PRIMARY KEY) ENGINE=InnoDB",
+		"CREATE TABLE " + r.schema + ".probe (id INT AUTO_INCREMENT PRIMARY KEY, who VARCHAR(80)) ENGINE=InnoDB",
+		"INSERT INTO " + r.schema + ".marker(tag) VALUES('w0')",
+	} {
+		if err := electionExec(vm, q); err != nil {
+			return r.check("setup", false, "%s: %s", q, err)
+		}
 	}
 	tags := []string{"w0"}
-	if err := electionExec(vm, "INSERT INTO "+r.schema+".marker(tag) VALUES('w0')"); err != nil {
-		return r.check("setup", false, "insert w0: %s", err)
-	}
 	for _, s := range servers {
 		if !r.tagsOn("setup-ring-propagation@"+s.URL, s, tags) {
 			return false
@@ -125,68 +157,79 @@ func (r *electionRun) ring() bool {
 	}()
 	defer func() { close(stop); wg.Wait() }()
 
-	// ---- switchover of the virtual primary
-	old := cl.GetMaster()
-	cl.SwitchoverWaitTest()
-	electionWait(electionSwitchWait, func() bool { m := cl.GetMaster(); return m != nil && m.URL != old.URL })
-	time.Sleep(5 * time.Second)
-	nm := cl.GetMaster()
-	r.dump("ring-switch-after")
-	if !r.check("ring-switch-selection", nm != nil && nm.URL != old.URL, "virtual primary moved from %s to %s", old.URL, urlOf(nm)) {
-		return false
-	}
-	r.independentWrite("ring-switch-writable", nm)
-	if err := electionExec(nm, "INSERT INTO "+r.schema+".marker(tag) VALUES('s-new')"); err != nil {
-		r.check("ring-switch-propagation", false, "insert on the new primary: %s", err)
+	if !failover {
+		// ---- switchover of the virtual primary. The election result is the virtual primary as the operation ends,
+		// before the next topology pass.
+		cl.SwitchoverWaitTest()
+		nm := cl.GetMaster()
+		time.Sleep(5 * time.Second)
+		r.dump("ring-switch-after")
+		if !r.check("ring-switch-election", nm != nil && nm.URL != vm.URL, "the switchover elected %s as virtual primary (old %s)", urlOf(nm), vm.URL) {
+			return false
+		}
+		r.observe("designated primary at the end of the switchover %s, after 5 seconds %s", nm.URL, urlOf(cl.GetMaster()))
+		r.independentWrite("ring-switch-writable", nm)
+		// CloseRing: the child of the old primary replicates from the old primary's parent
+		r.check("ring-switch-closed", electionWait(electionHealthWait, func() bool { return r.replicating(child, parent) }), "after CloseRing the child %s replicates from the old primary's parent %s with both threads running", child.URL, parent.URL)
+		if err := electionExec(nm, "INSERT INTO "+r.schema+".marker(tag) VALUES('s-new')"); err != nil {
+			r.check("ring-switch-propagation", false, "insert on the new primary: %s", err)
+		} else {
+			tags = append(tags, "s-new")
+			for _, s := range servers {
+				if s.URL == vm.URL {
+					continue
+				}
+				r.tagsOn("ring-switch-propagation@"+s.URL, s, tags)
+			}
+			ok, n := r.hasTags(vm, tags)
+			io, sqlThread, err := electionReplicaThreads(vm)
+			r.observe("the bypassed old virtual primary %s holds %d of the %d markers (all=%v); its replication threads I/O=%q SQL=%q (err=%v): the switchover froze it", vm.URL, n, len(tags), ok, io, sqlThread, err)
+		}
 	} else {
-		tags = append(tags, "s-new")
+		// ---- failover of the virtual primary
+		ctr := cl.GetFailoverCtr()
+		fw := new(sync.WaitGroup)
+		fw.Add(1)
+		go cl.WaitFailover(fw)
+		r.stop(vm)
+		fw.Wait()
+		np := cl.GetMaster() // the election result as the failover ends
+		time.Sleep(5 * time.Second)
+		r.dump("ring-failover-after")
+		r.observe("designated primary at the end of the failover %s, after 5 seconds %s (lost %s)", urlOf(np), urlOf(cl.GetMaster()), vm.URL)
+		if !r.check("ring-failover-election", np != nil && np.URL != vm.URL && !np.IsFailed(), "the failover elected %s as virtual primary after the loss of %s", urlOf(np), vm.URL) {
+			return false
+		}
+		r.check("ring-failover-counter", cl.GetFailoverCtr() == ctr+1, "failover counter %d->%d", ctr, cl.GetFailoverCtr())
+		r.independentWrite("ring-failover-writable", np)
+		// CloseRing: the child of the stopped server replicates from the stopped server's parent
+		r.check("ring-failover-closed", electionWait(electionHealthWait, func() bool { return r.replicating(child, parent) }), "after CloseRing the child %s replicates from the stopped server's parent %s with both threads running", child.URL, parent.URL)
+		var other *cluster.ServerMonitor
 		for _, s := range servers {
-			r.tagsOn("ring-switch-propagation@"+s.URL, s, tags)
-		}
-	}
-	r.check("ring-switch-edges", electionWait(electionHealthWait, func() bool { return r.ringEdges(servers, all) }), "the ring edges are intact after the switchover")
-
-	// ---- failover of the virtual primary
-	failed := cl.GetMaster()
-	ctr := cl.GetFailoverCtr()
-	fw := new(sync.WaitGroup)
-	fw.Add(1)
-	go cl.WaitFailover(fw)
-	r.stop(failed)
-	fw.Wait()
-	time.Sleep(5 * time.Second)
-	np := cl.GetMaster()
-	r.dump("ring-failover-after")
-	if !r.check("ring-failover-selection", np != nil && np.URL != failed.URL && !np.IsFailed(), "virtual primary is %s after the loss of %s", urlOf(np), failed.URL) {
-		r.recoverRing(failed)
-		return false
-	}
-	r.check("ring-failover-counter", cl.GetFailoverCtr() == ctr+1, "failover counter %d->%d", ctr, cl.GetFailoverCtr())
-	r.independentWrite("ring-failover-writable", np)
-	var other *cluster.ServerMonitor
-	for _, s := range servers {
-		if s.URL != failed.URL && s.URL != np.URL {
-			other = s
-		}
-	}
-	if err := electionExec(np, "INSERT INTO "+r.schema+".marker(tag) VALUES('f-new')"); err != nil {
-		r.check("ring-failover-propagation", false, "insert on the new primary: %s", err)
-	} else {
-		tags = append(tags, "f-new")
-		r.tagsOn("ring-failover-propagation", other, tags)
-	}
-	survivorsRun := electionWait(electionHealthWait, func() bool {
-		for _, s := range []*cluster.ServerMonitor{np, other} {
-			if io, sqlThread, err := electionReplicaThreads(s); err != nil || io != "Yes" || sqlThread != "Yes" {
-				return false
+			if s.URL != vm.URL && s.URL != np.URL {
+				other = s
 			}
 		}
-		return true
-	})
-	r.check("ring-failover-survivors", survivorsRun, "both survivors (%s, %s) replicate with both threads running: the ring is closed around %s", np.URL, other.URL, failed.URL)
-	r.recoverRing(failed)
-	r.observe("ring after the rejoin: edges intact=%v, discovered topology=%s", r.ringEdges(servers, all), cl.GetTopology())
-	r.check("ring-found-candidate-gate", atomic.LoadInt32(&gate) == 0, "ERR00032 (no candidate) raised in %d of the samples taken during the run", atomic.LoadInt32(&gate))
+		if err := electionExec(np, "INSERT INTO "+r.schema+".marker(tag) VALUES('f-new')"); err != nil {
+			r.check("ring-failover-propagation", false, "insert on the new primary: %s", err)
+		} else {
+			tags = append(tags, "f-new")
+			r.tagsOn("ring-failover-propagation", other, tags)
+		}
+		survivorsRun := electionWait(electionHealthWait, func() bool {
+			for _, s := range []*cluster.ServerMonitor{np, other} {
+				if io, sqlThread, err := electionReplicaThreads(s); err != nil || io != "Yes" || sqlThread != "Yes" {
+					return false
+				}
+			}
+			return true
+		})
+		r.check("ring-failover-survivors", survivorsRun, "both survivors (%s, %s) replicate with both threads running", np.URL, other.URL)
+		r.recoverRing(vm)
+		r.observe("ring after the rejoin: edges intact=%v, discovered topology=%s", r.ringEdges(servers, all), cl.GetTopology())
+	}
+	// the shared FoundCandidateMaster gate: its refusals come from the eligibility of the candidate, not from the ranking
+	r.observe("FoundCandidateMaster gate: ERR00032 (no candidate) present in %d samples taken twice a second during the run", atomic.LoadInt32(&gate))
 	return len(r.failed) == 0
 }
 

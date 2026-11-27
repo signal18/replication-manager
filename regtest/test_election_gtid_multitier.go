@@ -150,8 +150,10 @@ func (r *electionRun) multiTier() bool {
 		time.Sleep(time.Second)
 	}
 	ahead := electionWait(electionSyncWait, func() bool { v, err := electionReceivedAhead(d, relay); return err == nil && v })
-	rankD, errD := electionServerRank(d)
-	rankRelay, errRelay := electionServerRank(relay)
+	if !ahead {
+		return r.unestablished("after the relay's binary log was rotated the replica %s below it does not rank above the relay", d.URL)
+	}
+	rankRelayBefore, _ := electionServerRank(relay) // before the markers: used only to see the monitor catch up
 	for _, s := range below {
 		if _, err := s.StopSlaveIOThread(); err != nil {
 			return r.check("mt-premise", false, "stop the I/O thread of %s: %s", s.URL, err)
@@ -166,12 +168,27 @@ func (r *electionRun) multiTier() bool {
 	if !r.tagsOn("mt-premise-relay", relay, tags) {
 		return false
 	}
+	// The election reads the replication status the monitor holds. The decisive inputs are the ranks as they stand right
+	// before the primary is stopped, after the markers: wait for the monitor to show the relay's new position, then sample.
+	electionWait(electionSyncWait, func() bool { v, err := electionServerRank(relay); return err == nil && v > rankRelayBefore })
+	time.Sleep(3 * time.Second)
+	rankD, errD := electionServerRank(d)
+	rankRelay, errRelay := electionServerRank(relay)
 	if errD != nil || errRelay != nil {
 		return r.unestablished("the election's rank cannot be computed from the replication status (%v, %v)", errD, errRelay)
 	}
-	r.logf("mt-premise: election rank of the relay %s = %d, of the replica below it %s = %d", relay.URL, rankRelay, d.URL, rankD)
-	if _, n := r.hasTags(d, tags); !ahead || rankD <= rankRelay || n >= len(tags) {
-		return r.unestablished("the replica %s below the relay does not rank above the relay by the election's own number (%d vs %d, ahead=%v) or already holds the new markers (%d of %d)", d.URL, rankD, rankRelay, ahead, n, len(tags))
+	for _, s := range cl.Servers {
+		if s.URL == master.URL {
+			continue
+		}
+		if ss, err := s.GetSlaveStatus(s.ReplicationSourceName); err == nil {
+			rk, _ := electionServerRank(s)
+			r.logf("mt-final-inputs: %s source=%s file=%s pos=%s rank=%d io=%s sql=%s", s.URL, ss.MasterHost.String, ss.MasterLogFile.String, ss.ReadMasterLogPos.String, rk, ss.SlaveIORunning.String, ss.SlaveSQLRunning.String)
+		}
+	}
+	r.logf("mt-premise: election rank of the relay %s = %d, of the replica below it %s = %d (sampled right before the primary is stopped)", relay.URL, rankRelay, d.URL, rankD)
+	if _, n := r.hasTags(d, tags); rankD <= rankRelay || n >= len(tags) {
+		return r.unestablished("the replica %s below the relay does not rank above the relay by the election's own number (%d vs %d) or already holds the new markers (%d of %d)", d.URL, rankD, rankRelay, n, len(tags))
 	}
 	if !r.premise("MT", relay, d, true) {
 		return true

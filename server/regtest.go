@@ -272,8 +272,11 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 		if test.Name == "testElectionMMFailover" {
 			res = regtest.TestElectionMMFailover(cl, test.ConfigFile, &test)
 		}
-		if test.Name == "testElectionRing" {
-			res = regtest.TestElectionRing(cl, test.ConfigFile, &test)
+		if test.Name == "testElectionRingSwitch" {
+			res = regtest.TestElectionRingSwitch(cl, test.ConfigFile, &test)
+		}
+		if test.Name == "testElectionRingFailover" {
+			res = regtest.TestElectionRingFailover(cl, test.ConfigFile, &test)
 		}
 		if test.Name == "testElectionMultiTier" {
 			res = regtest.TestElectionMultiTier(cl, test.ConfigFile, &test)

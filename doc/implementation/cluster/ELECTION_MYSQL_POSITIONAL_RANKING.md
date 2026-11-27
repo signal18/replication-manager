@@ -101,7 +101,7 @@ catch-up (`ReadAllRelayLogs`), the rejoin and `MASTER_AUTO_POSITION`; the failov
   | `testElectionGTIDPositionalSwitchover` | same | switchover on the non-preferred ranking path |
   | `testElectionGTIDPositionalErrant` | same, `check-replication-errant-trx` | an errant transaction still holds the automatic failover |
   | `testElectionMMSwitchSingleWriter`, `testElectionMMSwitchConcurrent`, `testElectionMMFailover` (by name) | multi-master, 2 nodes | one-candidate election, writer policy through a non-privileged account, marker propagation |
-  | `testElectionRing` (by name) | multi-master-ring, 3 nodes | the virtual election and the shared `FoundCandidateMaster` gate |
+  | `testElectionRingSwitch`, `testElectionRingFailover` (by name) | multi-master-ring, 3 nodes | the virtual election, what `CloseRing` does, and the shared `FoundCandidateMaster` gate, each on a fresh ring |
   | `testElectionMultiTier` (by name) | multi-tier-slave, 3 nodes | election among replicas that read different servers' binlogs (a limitation, characterised) |
 
   The four master-slave tests are in the ALL list. The multi-master, ring and multi-tier tests are run by name only
