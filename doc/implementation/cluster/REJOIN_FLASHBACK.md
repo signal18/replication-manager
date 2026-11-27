@@ -40,8 +40,10 @@ Two facts, both checked on the saved crash binlog and on a throwaway MariaDB 11.
 2. **Drop the binary log of an asynchronous old master** (`flashbackDropsBinlog`,
    `positionAfterFlashback`), only after the replay ended complete, and only when:
    - `autorejoin-async-flashback-drop-binlog` is true (default);
-   - the old master was **not** in semi-sync at the failover: `Crash.FailoverSemiSyncSlaveStatus`,
-     the elected replica's `Rpl_semi_sync_slave_status` read when it was promoted;
+   - the old master was **not** in semi-sync at the failover: `Crash.FailoverSemiSyncMasterStatus`,
+     its `Rpl_semi_sync_master_status` as the monitor last read it before the failover. The
+     elected replica's `Rpl_semi_sync_slave_status` (`FailoverSemiSyncSlaveStatus`) is not used: it
+     stays ON until the replica's IO thread restarts after the master's semi-sync was turned off;
    - its lost events were copied first (`autorejoin-backup-binlog`, the file the flashback read,
      not empty);
    - `gtid_binlog_pos` is past the target in a domain (`parentBackupBehind`).

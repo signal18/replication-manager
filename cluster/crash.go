@@ -33,7 +33,12 @@ type Crash struct {
 	NewMasterLogFile            string
 	NewMasterLogPos             string
 	FailoverSemiSyncSlaveStatus bool
-	FailoverIOGtid              *gtid.List
+	// FailoverSemiSyncMasterStatus is the old master's Rpl_semi_sync_master_status as the monitor
+	// last read it before the failover: ON, it waited for a replica's acknowledgement. The elected
+	// replica's slave status alone does not say it (it stays ON until its IO thread restarts after
+	// the master's semi-sync was turned off).
+	FailoverSemiSyncMasterStatus bool `json:"failoverSemiSyncMasterStatus,omitempty"`
+	FailoverIOGtid               *gtid.List
 	// FailoverIOGtidString is the election GTID in its usable text form
 	// ("domain-server-seq"), the anchor for logical recovery of the diverged
 	// old master: SET GLOBAL gtid_slave_pos = "<this>" then CHANGE MASTER …

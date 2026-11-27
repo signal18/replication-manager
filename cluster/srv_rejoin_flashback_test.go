@@ -141,7 +141,7 @@ func TestFlashbackDropsBinlog(t *testing.T) {
 	if err := os.WriteFile(copy, []byte("binlog"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	async, semisync := &Crash{}, &Crash{FailoverSemiSyncSlaveStatus: true}
+	async, semisync := &Crash{FailoverSemiSyncSlaveStatus: true}, &Crash{FailoverSemiSyncMasterStatus: true, FailoverSemiSyncSlaveStatus: true}
 
 	c.Conf.AutorejoinAsyncFlashbackDropBinlog = true
 	if drop, why := server.flashbackDropsBinlog(async, copy); !drop {

@@ -593,10 +593,11 @@ type flashbackBinlogReset struct {
 // flashbackDropsBinlog tells whether the rewound old master's binary log is dropped after the
 // flashback (autorejoin-async-flashback-drop-binlog), with why:
 //   - only for an old master that replicated asynchronously at the failover: the crash's
-//     FailoverSemiSyncSlaveStatus, the elected replica's Rpl_semi_sync_slave_status read when it
-//     was promoted. In semi-sync, MariaDB truncates the transactions no replica acknowledged at
-//     the old master's restart (rpl_semi_sync_slave_enabled + the crash-safe truncation), its
-//     binary log is not past the position;
+//     FailoverSemiSyncMasterStatus, the old master's Rpl_semi_sync_master_status as last read
+//     before the failover (the elected replica's slave status stays ON after the master's
+//     semi-sync was turned off: it does not say the master waited). In semi-sync, MariaDB
+//     truncates the transactions no replica acknowledged at the old master's restart as a
+//     semi-sync replica, its binary log is not past the position;
 //   - only when its lost events were copied first (autorejoin-backup-binlog: copy, the file the
 //     flashback read, not empty). Without the copy the binlog is never dropped.
 func (server *ServerMonitor) flashbackDropsBinlog(crash *Crash, copy string) (bool, string) {
@@ -604,7 +605,7 @@ func (server *ServerMonitor) flashbackDropsBinlog(crash *Crash, copy string) (bo
 	switch {
 	case !cluster.Conf.AutorejoinAsyncFlashbackDropBinlog:
 		return false, "autorejoin-async-flashback-drop-binlog is off"
-	case crash.FailoverSemiSyncSlaveStatus:
+	case crash.FailoverSemiSyncMasterStatus:
 		return false, "the old master was in semi-sync at the failover"
 	}
 	if st, err := os.Stat(copy); err != nil || st.Size() == 0 {

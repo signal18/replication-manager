@@ -203,6 +203,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	}
 	cluster.master.FailoverSemiSyncSlaveStatus = cluster.master.SemiSyncSlaveStatus
 	crash.FailoverSemiSyncSlaveStatus = cluster.master.SemiSyncSlaveStatus
+	crash.FailoverSemiSyncMasterStatus = cluster.oldMaster != nil && cluster.oldMaster.SemiSyncMasterStatus
 
 	// if relay server than failover and switchover converge to a new binlog  make this happen
 	var relaymaster *ServerMonitor
@@ -1471,6 +1472,7 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 		}
 		cluster.master.FailoverSemiSyncSlaveStatus = cluster.master.SemiSyncSlaveStatus
 		crash.FailoverSemiSyncSlaveStatus = cluster.master.SemiSyncSlaveStatus
+		crash.FailoverSemiSyncMasterStatus = cluster.oldMaster != nil && cluster.oldMaster.SemiSyncMasterStatus
 		cluster.Crashes = append(cluster.Crashes, crash)
 		// Same as the failover path: write the crash to its own crash-bin dir now
 		// (option B) so disk + history stay synchronized; delta filled at rejoin.
