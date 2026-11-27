@@ -1447,6 +1447,12 @@ func MasterWaitGTID(db *sqlx.DB, gtid string, timeout int) (string, error) {
 	return query + "(" + gtid + "-" + strconv.Itoa(timeout) + ")", err
 }
 
+// ErrWaitAborted: MASTER_GTID_WAIT or MASTER_POS_WAIT returned NULL (the wait aborted, the
+// replication not running on that channel), which MasterWaitGTID and MasterPosWait ignore:
+// wrapped by the Reached variants so a caller can tell it from an SQL error. MySQL and MariaDB
+// only, as these functions (PostgreSQL has no such wait: the callers never send it there).
+var ErrWaitAborted = errors.New("replication wait aborted")
+
 // MasterWaitGTIDReached is MasterWaitGTID reading MASTER_GTID_WAIT's result: true once the
 // replica applied gtid, false at the timeout (-1); NULL (the wait aborted) is an error, as
 // MasterPosWaitReached's. MasterWaitGTID ignores it, a timeout looks like a success: kept as is
@@ -1456,7 +1462,7 @@ func MasterWaitGTIDReached(db *sqlx.DB, gtid string, timeout int) (bool, string,
 	var res sql.NullInt64
 	err := db.QueryRowx(query, gtid, timeout).Scan(&res)
 	if err == nil && !res.Valid {
-		err = errors.New("MASTER_GTID_WAIT returned NULL: the wait was aborted")
+		err = fmt.Errorf("%w: MASTER_GTID_WAIT returned NULL: the wait was aborted", ErrWaitAborted)
 	}
 	return err == nil && res.Int64 >= 0, query + "(" + gtid + "-" + strconv.Itoa(timeout) + ")", err
 }
@@ -1478,7 +1484,7 @@ func MasterPosWaitReached(db *sqlx.DB, myver *version.Version, log string, pos s
 	var res sql.NullInt64
 	err := db.QueryRowx(query, args...).Scan(&res)
 	if err == nil && !res.Valid {
-		err = errors.New(funcname + " returned NULL: replication not running")
+		err = fmt.Errorf("%w: %s returned NULL: replication not running", ErrWaitAborted, funcname)
 	}
 	return err == nil && res.Int64 >= 0, query + "(" + log + "-" + pos + "-" + strconv.Itoa(timeout) + ")", err
 }

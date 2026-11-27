@@ -443,7 +443,7 @@ func (server *ServerMonitor) rejoinMasterSync(crash *Crash) error {
 		opt := cluster.GetChangeMasterBaseOptForMxs(server, realmaster)
 		opt.Logfile = crash.FailoverMasterLogFile
 		opt.Logpos = crash.FailoverMasterLogPos
-		logs, err := server.ReplicationLink().ChangeSource(opt, LinkByRejoin)
+		logs, err := server.ReplicationLink().ChangeSource(SourceOf(opt), opt, LinkByRejoin)
 		cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Change master positional failed in Rejoin old Master in sync to maxscale %s", err)
 		if err != nil {
 			return err
@@ -455,7 +455,7 @@ func (server *ServerMonitor) rejoinMasterSync(crash *Crash) error {
 		opt.Mode = "POSITIONAL"
 		opt.Logfile = crash.NewMasterLogFile
 		opt.Logpos = crash.NewMasterLogPos
-		logs, err := server.ReplicationLink().ChangeSource(opt, LinkByRejoin)
+		logs, err := server.ReplicationLink().ChangeSource(SourceOf(opt), opt, LinkByRejoin)
 		cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Change master positional failed in Rejoin old Master in sync %s", err)
 		if err != nil {
 			return err
@@ -528,7 +528,7 @@ func (server *ServerMonitor) rejoinMasterFlashBack(crash *Crash) error {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Error starting client: %s at %s", err, strings.ReplaceAll(clientCmd.Path, cluster.GetRplPass(), "XXXX"))
 		return err
 	}
-	logs, err := dbhelper.SetGTIDSlavePos(server.Conn, crash.FailoverIOGtid.Sprint())
+	logs, err := server.ReplicationLink().SetPosition(Position{GTID: crash.FailoverIOGtid.Sprint()}, LinkByRejoin)
 	cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlInfo, "SET GLOBAL gtid_slave_pos = \"%s\"", crash.FailoverIOGtid.Sprint())
 	if err != nil {
 		return err
@@ -602,7 +602,7 @@ func (server *ServerMonitor) RejoinDirectDump() error {
 		opt.Logfile = realmaster.FailoverMasterLogFile
 		opt.Logpos = realmaster.FailoverMasterLogPos
 
-		logs, err3 = server.ReplicationLink().ChangeSource(opt, LinkByRejoin)
+		logs, err3 = server.ReplicationLink().ChangeSource(SourceOf(opt), opt, LinkByRejoin)
 		cluster.LogSQL(logs, err3, server.URL, "Rejoin", config.LvlErr, "Failed change master maxscale on %s: %s", server.URL, err3)
 	}
 	if err3 != nil {
@@ -855,11 +855,7 @@ func (server *ServerMonitor) rejoinMasterAsSlave() error {
 
 func (server *ServerMonitor) rejoinSlaveChangePassword(ss *dbhelper.SlaveStatus) error {
 	cluster := server.ClusterGroup
-	logs, err := dbhelper.ChangeReplicationPassword(server.Conn, dbhelper.ChangeMasterOpt{
-		User:     cluster.GetRplUser(),
-		Password: cluster.GetRplPass(),
-		Channel:  cluster.Conf.MasterConn,
-	}, server.DBVersion)
+	logs, err := server.ReplicationLink().RotateCredential(LinkByRejoin)
 	cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Change master for password rotation : %s", err)
 	if err != nil {
 		return err
@@ -950,7 +946,10 @@ func (server *ServerMonitor) rejoinSlave(ss dbhelper.SlaveStatus) error {
 					logs, err := mycurrentmaster.ReplicationLink().Stop(LinkByRejoin)
 					cluster.LogSQL(logs, err, mycurrentmaster.URL, "Rejoin", config.LvlErr, "Failed to stop slave on relay server  %s: %s", mycurrentmaster.URL, err)
 					if err == nil {
-						logs, err2 := dbhelper.MasterPosWait(server.Conn, server.DBVersion, mycurrentmaster.BinaryLogFile, mycurrentmaster.BinaryLogPos, 3600, cluster.Conf.MasterConn)
+						logs, err2 := server.ReplicationLink().WaitCaughtUp(Position{File: mycurrentmaster.BinaryLogFile, Pos: mycurrentmaster.BinaryLogPos}, 3600*time.Second)
+						if waitEndedWithoutError(err2) {
+							err2 = nil
+						}
 						cluster.LogSQL(logs, err2, server.URL, "Rejoin", config.LvlErr, "Failed positional rejoin wait pos %s %s", server.URL, err2)
 						if err2 == nil {
 							myparentss, _ := mycurrentmaster.GetSlaveStatus(mycurrentmaster.ReplicationSourceName)
@@ -962,7 +961,7 @@ func (server *ServerMonitor) rejoinSlave(ss dbhelper.SlaveStatus) error {
 							opt.Mode = "POSITIONAL"
 							opt.Logfile = myparentss.MasterLogFile.String
 							opt.Logpos = myparentss.ReadMasterLogPos.String
-							logs, changeMasterErr := server.ReplicationLink().ChangeSource(opt, LinkByRejoin)
+							logs, changeMasterErr := server.ReplicationLink().ChangeSource(SourceOf(opt), opt, LinkByRejoin)
 
 							cluster.LogSQL(logs, changeMasterErr, server.URL, "Rejoin", config.LvlErr, "Rejoin Failed doing Positional switch of slave %s: %s", server.URL, changeMasterErr)
 

@@ -539,7 +539,7 @@ func (cluster *Cluster) RetryDirectReseedSystemCatalog(dest *ServerMonitor, arti
 	}
 
 	var slaveStartErrs []string
-	for _, rep := range dest.Replications {
+	for _, rep := range dest.NativeReplications().Rows() {
 		if logs, err := dest.ReplicationChannelLink(rep.ConnectionName.String).Start(LinkByReseed); err != nil {
 			cluster.LogSQL(logs, err, dest.URL, "RetrySystemCatalog", config.LvlErr,
 				"Failed start slave channel '%s' after system-catalogue retry on %s: %s", rep.ConnectionName.String, dest.URL, err)

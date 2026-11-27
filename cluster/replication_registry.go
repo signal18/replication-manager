@@ -6,8 +6,6 @@ package cluster
 
 import (
 	"fmt"
-
-	"github.com/signal18/replication-manager/utils/dbhelper"
 )
 
 // The built-in replication plugins (design step 2). The native binlog code serves every
@@ -73,51 +71,16 @@ func (cluster *Cluster) ReplicationPlugin(name string) ReplicationPlugin {
 	return p
 }
 
-// unsupportedReplicationPlugin answers ErrReplicationNotSupported to every action. Each plugin
-// embeds it and declares the methods it implements, as unsupportedOrchestrator.
+// unsupportedReplicationPlugin answers ErrReplicationNotSupported to the plugin's own actions
+// (Create, Bootstrap). Each plugin embeds it and declares the ones it implements, as
+// unsupportedOrchestrator.
 type unsupportedReplicationPlugin struct{}
 
 func (unsupportedReplicationPlugin) Bootstrap(c *Cluster, topology string, master *ServerMonitor) error {
 	return fmt.Errorf("%w: %s of topology %q", ErrReplicationNotSupported, ReplicationActionBootstrap, topology)
 }
-func (unsupportedReplicationPlugin) Create(l Link, reason string) (string, error) {
-	return "", replicationNotSupported(ReplicationActionCreate, l)
-}
-func (unsupportedReplicationPlugin) Remove(l Link, reason string) (string, error) {
-	return "", replicationNotSupported(ReplicationActionRemove, l)
-}
-func (unsupportedReplicationPlugin) Status(l Link) (dbhelper.SlaveStatus, string, error) {
-	return dbhelper.SlaveStatus{}, "", replicationNotSupported(ReplicationActionStatus, l)
-}
-func (unsupportedReplicationPlugin) Start(l Link, reason string) (string, error) {
-	return "", replicationNotSupported(ReplicationActionStart, l)
-}
-func (unsupportedReplicationPlugin) Stop(l Link, reason string) (string, error) {
-	return "", replicationNotSupported(ReplicationActionStop, l)
-}
-func (unsupportedReplicationPlugin) StartCopyEvents(l Link, reason string) (string, error) {
-	return "", replicationNotSupported(ReplicationActionStartCopyEvents, l)
-}
-func (unsupportedReplicationPlugin) StopCopyEvents(l Link, reason string) (string, error) {
-	return "", replicationNotSupported(ReplicationActionStopCopyEvents, l)
-}
-func (unsupportedReplicationPlugin) StartApplyEvents(l Link, reason string) (string, error) {
-	return "", replicationNotSupported(ReplicationActionStartApplyEvents, l)
-}
-func (unsupportedReplicationPlugin) StopApplyEvents(l Link, reason string) (string, error) {
-	return "", replicationNotSupported(ReplicationActionStopApplyEvents, l)
-}
-func (unsupportedReplicationPlugin) ResetPositions(l Link, reason string) (string, error) {
-	return "", replicationNotSupported(ReplicationActionResetPositions, l)
-}
-func (unsupportedReplicationPlugin) ChangeSource(l Link, opt dbhelper.ChangeMasterOpt, reason string) (string, error) {
-	return "", replicationNotSupported(ReplicationActionChangeSource, l)
-}
-func (unsupportedReplicationPlugin) SkipEvent(l Link, reason string) (string, error) {
-	return "", replicationNotSupported(ReplicationActionSkipEvent, l)
-}
-func (unsupportedReplicationPlugin) Rejoin(l Link) error {
-	return replicationNotSupported(ReplicationActionRejoin, l)
+func (unsupportedReplicationPlugin) Create(source Endpoint, target *ServerMonitor, name, reason string) (Replication, error) {
+	return nil, fmt.Errorf("%w: %s of %q", ErrReplicationNotSupported, ReplicationActionCreate, name)
 }
 
 // nullReplicationPlugin stands for an unknown plugin name: a manifest with its name and no

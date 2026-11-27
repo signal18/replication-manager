@@ -14,7 +14,7 @@ import (
 )
 
 // The changes repman made to a server's replication links (law T27): every stop, reset of
-// positions or repoint through a Link (ReplicationPlugin) is recorded with the reason the caller gave,
+// positions or repoint through a Replication is recorded with the reason the caller gave,
 // and stays a state, tick after tick, until the link runs again: the GUI tells why a link is
 // down instead of a log line. A reseed's stops are WARN0252 (their own text, srv_reseed_link.go),
 // every other change WARN0352. A Start through the link that succeeds drops the record at once.
@@ -69,12 +69,8 @@ func (server *ServerMonitor) linkChangeList() []linkChange {
 
 // linkRow is the channel's row in the server's last status, native or cdc.
 func (server *ServerMonitor) linkRow(channel string) (dbhelper.SlaveStatus, bool) {
-	for _, rows := range [][]dbhelper.SlaveStatus{server.Replications, server.ReplicationFeeds} {
-		for _, r := range rows {
-			if r.ConnectionName.String == channel {
-				return r, true
-			}
-		}
+	if r := server.Replications.Named(channel); r != nil {
+		return r.Row(), true
 	}
 	return dbhelper.SlaveStatus{}, false
 }

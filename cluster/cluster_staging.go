@@ -135,7 +135,7 @@ func (cluster *Cluster) RefreshStaging(source *Cluster, masterGTIDList string) e
 			defer fileio.Close()
 			encoder := json.NewEncoder(fileio)
 			encoder.SetIndent("", "\t")
-			err = encoder.Encode(STG.Replications)
+			err = encoder.Encode(STG.NativeReplications().Rows())
 			if err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error encoding replication info: %s", err)
 			} else {
@@ -215,7 +215,7 @@ func (cluster *Cluster) RefreshStaging(source *Cluster, masterGTIDList string) e
 			defer fileio.Close()
 			encoder := json.NewEncoder(fileio)
 			encoder.SetIndent("", "\t")
-			err = encoder.Encode(SL.Replications)
+			err = encoder.Encode(SL.NativeReplications().Rows())
 			if err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error encoding replication info: %s", err)
 			} else {
@@ -479,7 +479,7 @@ func (server *ServerMonitor) setSeedGTIDSlavePos(pos string) (string, string, er
 		return "", logs, err
 	}
 	value := reseedGTIDSlavePos(pos, gtid.NewList(current))
-	logs, err = dbhelper.SetGTIDSlavePos(server.Conn, value)
+	logs, err = server.ReplicationLink().SetPosition(Position{GTID: value}, LinkByReseed)
 	return value, logs, err
 }
 
@@ -580,7 +580,7 @@ func (cluster *Cluster) ReseedFromParentCluster(parent *Cluster, target *ServerM
 			}
 		}
 
-		target.ReplicationLink().ChangeSource(changeOpt, LinkByReseed) // Ignore error
+		target.ReplicationLink().ChangeSource(SourceOf(changeOpt), changeOpt, LinkByReseed) // Ignore error
 	}
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Receive reseed logical backup %s request for server: %s", backtype, target.URL)

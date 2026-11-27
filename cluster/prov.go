@@ -932,7 +932,7 @@ func (cluster *Cluster) BootstrapReplicationCleanup(ftwrl bool) error {
 			if cluster.Conf.Verbose {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "SET GLOBAL gtid_slave_pos='' on %s", server.URL)
 			}
-			logs, err := dbhelper.SetGTIDSlavePos(server.Conn, "")
+			logs, err := server.ReplicationLink().SetPosition(Position{}, LinkByBootstrap)
 			cluster.LogSQL(logs, err, server.URL, "BootstrapReplicationCleanup", config.LvlErr, "Can reset GTID slave pos %s %s", server.URL, err)
 		}
 

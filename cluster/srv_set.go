@@ -427,7 +427,7 @@ func (server *ServerMonitor) SetReplicationGTIDSlavePosFromServer(master *Server
 	} else {
 		changemasteropt.Mode = "MASTER_AUTO_POSITION"
 	}
-	return server.ReplicationLink().ChangeSource(changemasteropt, reason)
+	return server.ReplicationLink().ChangeSource(SourceOf(changemasteropt), changemasteropt, reason)
 }
 
 func (server *ServerMonitor) SetReplicationGTIDCurrentPosFromServer(master *ServerMonitor, reason string) (string, error) {
@@ -443,14 +443,14 @@ func (server *ServerMonitor) SetReplicationGTIDCurrentPosFromServer(master *Serv
 	} else {
 		changemasteropt.Mode = "CURRENT_POS"
 	}
-	return server.ReplicationLink().ChangeSource(changemasteropt, reason)
+	return server.ReplicationLink().ChangeSource(SourceOf(changemasteropt), changemasteropt, reason)
 }
 
 func (server *ServerMonitor) SetReplicationFromMaxscaleServer(master *ServerMonitor, reason string) (string, error) {
 	opt := server.ClusterGroup.GetChangeMasterBaseOptForMxs(server, master)
 	opt.Logfile = master.FailoverMasterLogFile
 	opt.Logpos = master.FailoverMasterLogPos
-	return server.ReplicationLink().ChangeSource(opt, reason)
+	return server.ReplicationLink().ChangeSource(SourceOf(opt), opt, reason)
 }
 
 func (server *ServerMonitor) SetReplicationChannel(source string) (string, error) {

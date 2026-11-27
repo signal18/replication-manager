@@ -93,7 +93,7 @@ func (replica *ServerMonitor) resumeVerificationReplica(meta *backupmgr.BackupMe
 		return fmt.Errorf("reset the binary logs of %s: %w", replica.URL, err)
 	}
 	if replica.HasMySQLGTID() && meta.BinLogGtid != "" {
-		logs, err := dbhelper.SetGtidPurged(replica.Conn, replica.DBVersion, meta.BinLogGtid)
+		logs, err := replica.ReplicationLink().SetPosition(Position{GTID: meta.BinLogGtid}, LinkByBackupVerification)
 		cluster.LogSQL(logs, err, replica.URL, "BackupVerification", config.LvlInfo, "Backup verification could not set GTID_PURGED on %s: %s", replica.URL, err)
 		if err != nil {
 			return fmt.Errorf("GTID_PURGED on %s: %w", replica.URL, err)

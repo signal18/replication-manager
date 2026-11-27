@@ -395,7 +395,7 @@ func (server *ServerMonitor) PostgresLogicalReseedFinish() {
 	cluster.postgresInstallDDLReplication(server)
 	opt := cluster.GetChangeMasterBaseOptForSlave(server, primary, false)
 	opt.PostgresExistingSlot = true
-	logs, err := server.ReplicationLink().ChangeSource(opt, LinkByReseed)
+	logs, err := server.ReplicationLink().ChangeSource(SourceOf(opt), opt, LinkByReseed)
 	cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Re-copy of %s done but it could not subscribe on its slot: %s", server.URL, err)
 	if err != nil {
 		return

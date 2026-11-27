@@ -120,14 +120,14 @@ func (server *ServerMonitor) RebootstrapColumnstoreReplica() error {
 	if _, err := server.ReplicationLink().Stop(LinkByColumnStore); err != nil {
 		return err
 	}
-	logs, err = dbhelper.SetGTIDSlavePos(server.Conn, "")
+	logs, err = server.ReplicationLink().SetPosition(Position{}, LinkByColumnStore)
 	if err != nil {
 		cluster.LogSQL(logs, err, server.URL, "Rebootstrap", config.LvlErr, "Could not reset the GTID position of %s: %s", server.URL, err)
 		return err
 	}
 	opt := cluster.GetChangeMasterBaseOptForSlave(server, master, server.IsDelayed)
 	opt.Mode = "SLAVE_POS"
-	logs, err = server.ReplicationLink().ChangeSource(opt, LinkByColumnStore)
+	logs, err = server.ReplicationLink().ChangeSource(SourceOf(opt), opt, LinkByColumnStore)
 	if err != nil {
 		cluster.LogSQL(logs, err, server.URL, "Rebootstrap", config.LvlErr, "Could not point %s at the master %s: %s", server.URL, master.URL, err)
 		return err

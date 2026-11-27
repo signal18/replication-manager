@@ -186,9 +186,8 @@ type ServerMonitor struct {
 	MxsServerStatus             string                   `json:"maxscaleServerStatus"`
 	ProxysqlHostgroup           string                   `json:"proxysqlHostgroup"`
 	RelayLogSize                uint64                   `json:"relayLogSize"`
-	Replications                []dbhelper.SlaveStatus   `json:"replications"`
-	LastSeenReplications        []dbhelper.SlaveStatus   `json:"lastSeenReplications"`
-	ReplicationFeeds            []dbhelper.SlaveStatus   `json:"replicationFeeds"` // the CDC feeds writing into this server, as links of kind cdc (replication_cdc.go); never in Replications, which the failover, rejoin and reseed act on
+	Replications                ReplicationList          `json:"replications"`         // every replication writing into this server: its native channels, then the CDC feeds (replication.go); filled by Refresh only
+	LastSeenReplications        ReplicationList          `json:"lastSeenReplications"` // Replications when the server was last seen up
 	MasterStatus                dbhelper.MasterStatus    `json:"masterStatus"`
 	SlaveStatus                 *dbhelper.SlaveStatus    `json:"-"`
 	ReplicationSourceName       string                   `json:"replicationSourceName"`
@@ -1670,10 +1669,12 @@ func (server *ServerMonitor) Refresh() error {
 
 	// SHOW SLAVE STATUS
 
-	logs, err = server.refreshNativeLinks()
+	var native ReplicationList
+	native, logs, err = server.refreshNativeLinks()
 	cluster.LogSQL(logs, err, server.URL, "Monitor", config.LvlDbg, "Could not get slaves status %s %s", server.URL, err)
-	// the CDC feeds that write into this server, beside its channels (replication_cdc.go)
-	server.ReplicationFeeds = cluster.cdcFeedStatus(server)
+	// one list: the native channels, then the CDC feeds that write into this server
+	// (replication_cdc.go), stored at once
+	server.Replications = append(native, cluster.cdcFeedsOf(server)...)
 
 	// select a replication status get an err if repliciations array is empty
 	server.SlaveStatus, err = server.GetSlaveStatus(server.ReplicationSourceName)
@@ -1702,8 +1703,10 @@ func (server *ServerMonitor) Refresh() error {
 				sid = src.ServerID
 			}
 			server.SlaveStatus.MasterServerID = sid
-			for i := range server.Replications {
-				server.Replications[i].MasterServerID = sid
+			for _, r := range server.NativeReplications() {
+				if row := mutableRow(r); row != nil {
+					row.MasterServerID = sid
+				}
 			}
 
 			server.SlaveGtid = gtid.NewList(server.SlaveStatus.GtidSlavePos.String)
@@ -2190,7 +2193,7 @@ func (server *ServerMonitor) SaveInfos() error {
 	clsave.Variables = server.SensitiveVariables.ToNewMap()
 	clsave.Status = server.Status.ToNewMap()
 	clsave.ProcessList = server.FullProcessList
-	clsave.SlaveStatus = server.LastSeenReplications
+	clsave.SlaveStatus = server.LastSeenReplications.OfKind(ReplicationKindNative).Rows()
 	clsave.MaxSlowQueryTimestamp = server.MaxSlowQueryTimestamp
 	// DictTables saved separately in dicttables.json (not pushed to git)
 	if server.JobResults != nil {
@@ -2529,7 +2532,8 @@ func (server *ServerMonitor) ChangeMasterTo(master *ServerMonitor, master_use_gi
 	hasMyGTID := server.HasMySQLGTID()
 	if cluster.Conf.MultiMasterGrouprep {
 		//MySQL group replication
-		logs, err = server.ReplicationLink().ChangeSource(cluster.GetChangeMasterBaseOptForReplGroup(server), reason)
+		opt := cluster.GetChangeMasterBaseOptForReplGroup(server)
+		logs, err = server.ReplicationLink().ChangeSource(SourceOf(opt), opt, reason)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Group Replication bootstrapped for %v", server.URL)
 	} else if !cluster.Conf.ForceSlaveNoGtid && server.DBVersion.IsMariaDB() && server.DBVersion.Major >= 10 {
 		//mariadb using GTID
@@ -2540,13 +2544,13 @@ func (server *ServerMonitor) ChangeMasterTo(master *ServerMonitor, master_use_gi
 		}
 		changemasteropt := cluster.GetChangeMasterBaseOptForSlave(server, master, server.IsDelayed)
 		changemasteropt.Mode = master_use_gitd
-		logs, err = server.ReplicationLink().ChangeSource(changemasteropt, reason)
+		logs, err = server.ReplicationLink().ChangeSource(SourceOf(changemasteropt), changemasteropt, reason)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Replication bootstrapped on %s with %s as master", server.URL, master.URL)
 	} else if hasMyGTID && !cluster.Conf.ForceSlaveNoGtid {
 		// MySQL GTID
 		changemasteropt := cluster.GetChangeMasterBaseOptForSlave(server, master, server.IsDelayed)
 		changemasteropt.Mode = "MASTER_AUTO_POSITION"
-		logs, err = server.ReplicationLink().ChangeSource(changemasteropt, reason)
+		logs, err = server.ReplicationLink().ChangeSource(SourceOf(changemasteropt), changemasteropt, reason)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Replication bootstrapped on %s with MySQL GTID replication style and %s as master", server.URL, master.URL)
 
 	} else {
@@ -2554,7 +2558,7 @@ func (server *ServerMonitor) ChangeMasterTo(master *ServerMonitor, master_use_gi
 		changemasteropt.Mode = "POSITIONAL"
 		changemasteropt.Logfile = master.BinaryLogFile
 		changemasteropt.Logpos = master.BinaryLogPos
-		logs, err = server.ReplicationLink().ChangeSource(changemasteropt, reason)
+		logs, err = server.ReplicationLink().ChangeSource(SourceOf(changemasteropt), changemasteropt, reason)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Replication bootstrapped on %s with old replication style and %s as master", server.URL, master.URL)
 	}
 	if err != nil {

@@ -70,8 +70,8 @@ func (server *ServerMonitor) reseedStoppedLinkList() []string {
 // replicationChannels lists the replica's channel names from its last status (the
 // unnamed default channel is "").
 func (server *ServerMonitor) replicationChannels() []string {
-	out := make([]string, 0, len(server.Replications))
-	for _, r := range server.Replications {
+	out := make([]string, 0, len(server.NativeReplications()))
+	for _, r := range server.NativeReplications().Rows() {
 		out = append(out, r.ConnectionName.String)
 	}
 	return out
@@ -86,7 +86,7 @@ func (server *ServerMonitor) reseedLinkPointsToPrimary() (bool, string) {
 	if cluster.master == nil {
 		return false, "no primary known: start replication once a primary is elected"
 	}
-	for _, r := range server.Replications {
+	for _, r := range server.NativeReplications().Rows() {
 		if r.ConnectionName.String != server.ReplicationSourceName {
 			continue
 		}

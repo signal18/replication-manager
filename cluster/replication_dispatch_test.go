@@ -1,6 +1,8 @@
 package cluster
 
 import (
+	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"go/ast"
@@ -11,6 +13,9 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/dbhelper"
 )
 
 // The lock of the replication link interface (doc/implementation/cluster/REPLICATION_INTERFACE.md):
@@ -38,6 +43,20 @@ var replicationLinkSQL = map[string]bool{
 	"ResetAllSlaves":        true,
 	"ChangeMaster":          true,
 	"SkipBinlogEvent":       true,
+	// step 2b: Promote, SetPosition, WaitCaughtUp, Configure, RotateCredential
+	"PostgresPromote":           true,
+	"SetGTIDSlavePos":           true,
+	"SetGtidPurged":             true,
+	"MasterWaitGTID":            true,
+	"MasterWaitGTIDReached":     true,
+	"MasterPosWait":             true,
+	"MasterPosWaitReached":      true,
+	"SetSlaveExecMode":          true,
+	"SetSlaveGTIDMode":          true,
+	"SetSlaveGTIDModeStrict":    true,
+	"SetSlaveHeartbeat":         true,
+	"SetSlaveParallelMode":      true,
+	"ChangeReplicationPassword": true,
 }
 
 var replicationLinkBackendFiles = map[string]bool{
@@ -45,11 +64,6 @@ var replicationLinkBackendFiles = map[string]bool{
 }
 
 var replicationLinkSQLLaterNames = map[string]bool{
-	"ChangeReplicationPassword":      true,
-	"SetSlaveExecMode":               true,
-	"SetSlaveGTIDMode":               true,
-	"SetSlaveGTIDModeStrict":         true,
-	"SetSlaveHeartbeat":              true,
 	"SetChannelReplicateIgnoreTable": true,
 	"SetMultiSourceRepl":             true,
 	"SetDefaultMasterConn":           true,
@@ -61,9 +75,6 @@ var replicationLinkSQLLater = map[string]int{
 	"cluster/cluster_columnstore_child.go": 1, // the ColumnStore child's replicate_ignore_table
 	"cluster/prov.go":                      1, // the bootstrap's default_master_connection
 	"cluster/spider.go":                    1, // the Spider shard's multi-source channel
-	"cluster/srv_chk.go":                   4, // the exec and GTID modes the monitor enforces
-	"cluster/srv_heartbeat.go":             1, // the managed channel's heartbeat period
-	"cluster/srv_rejoin.go":                1, // the replication password after a rotation
 	"cluster/srv_set.go":                   1, // default_master_connection
 }
 
@@ -157,20 +168,45 @@ func TestNoReplicationLinkSQLOutsideBackend(t *testing.T) {
 	}
 }
 
+// nativeRows are rows as native replications detached from a server (a struct literal).
+func nativeRows(rows ...dbhelper.SlaveStatus) ReplicationList {
+	return (*ServerMonitor)(nil).replicationsOfRows(rows...)
+}
+
+// replicationsOfRows are rows as the monitor stores them: native replications of server.
+func (server *ServerMonitor) replicationsOfRows(rows ...dbhelper.SlaveStatus) ReplicationList {
+	out := ReplicationList{}
+	for _, row := range rows {
+		if server == nil {
+			out = append(out, &nativeReplication{replicationBase: replicationBase{manifest: nativeManifest, name: row.ConnectionName.String, row: row}})
+			continue
+		}
+		out = append(out, server.nativeReplication(row.ConnectionName.String, row))
+	}
+	return out
+}
+
 // The native link calls nothing but the dbhelper helper of its operation, on its own channel,
 // and records the change it makes (T27); a successful start drops it.
 func TestNativeLinkRecordsChanges(t *testing.T) {
 	c, sv := reseedLinkFixture()
 	link := sv.ReplicationChannelLink("belair")
-	if link.Kind() != ReplicationKindNative || link.Name != "belair" {
-		t.Fatalf("kind %s name %q", link.Kind(), link.Name)
+	if KindOf(link) != ReplicationKindNative || link.Name() != "belair" || !CanFailover(link) {
+		t.Fatalf("kind %s name %q", KindOf(link), link.Name())
 	}
-	// no connection: Stop refuses before any SQL, and records nothing
-	if _, err := link.Stop(LinkBySwitchover); err == nil {
-		t.Fatal("a stop without a connection must fail")
+	// no connection: every verb that changes the link refuses before any SQL, and records nothing
+	for name, op := range map[string]func() (string, error){
+		"Stop":            func() (string, error) { return link.Stop(LinkBySwitchover) },
+		"StopCopyEvents":  func() (string, error) { return link.StopCopyEvents(LinkBySwitchover) },
+		"StopApplyEvents": func() (string, error) { return link.StopApplyEvents(LinkBySwitchover) },
+		"ResetPositions":  func() (string, error) { return link.ResetPositions(LinkBySwitchover) },
+	} {
+		if _, err := op(); err == nil {
+			t.Fatalf("%s without a connection must fail", name)
+		}
 	}
 	if len(sv.linkChangeList()) != 0 {
-		t.Fatal("nothing recorded for a stop that never ran")
+		t.Fatal("nothing recorded for a change that never ran")
 	}
 	sv.recordLinkChange("belair", linkOpStop, LinkBySwitchover)
 	sv.recordLinkChange("crm", linkOpChangeSource, LinkByRejoin)
@@ -201,7 +237,7 @@ func stateOpen(c *Cluster, key string) bool {
 }
 
 // The registry gives the two built-in plugins, a null plugin for an unknown name (never nil), and
-// a Link refuses an action its plugin's manifest does not list, before any call.
+// an object refuses an action its plugin's manifest does not list.
 func TestReplicationPluginRegistry(t *testing.T) {
 	c, sv := reseedLinkFixture()
 	if err := c.newReplicationPluginList(); err != nil {
@@ -214,7 +250,8 @@ func TestReplicationPluginRegistry(t *testing.T) {
 		}
 	}
 	native := c.ReplicationPlugin(ReplicationPluginNative).Manifest()
-	for _, a := range []string{ReplicationActionStartCopyEvents, ReplicationActionStopCopyEvents, ReplicationActionStartApplyEvents, ReplicationActionStopApplyEvents, ReplicationActionChangeSource, ReplicationActionRejoin} {
+	for _, a := range []string{ReplicationActionStartCopyEvents, ReplicationActionStopCopyEvents, ReplicationActionStartApplyEvents, ReplicationActionStopApplyEvents, ReplicationActionChangeSource, ReplicationActionRejoin,
+		ReplicationActionPromote, ReplicationActionSetPosition, ReplicationActionWaitCaughtUp, ReplicationActionConfigure, ReplicationActionRotateCredential} {
 		if !native.Can(a) {
 			t.Errorf("native: %s not in its manifest", a)
 		}
@@ -227,20 +264,131 @@ func TestReplicationPluginRegistry(t *testing.T) {
 	if err := c.ReplicationPlugin(ReplicationPluginNative).Bootstrap(c, "master-slave", sv); !errors.Is(err, ErrReplicationNotSupported) {
 		t.Errorf("native Bootstrap: want ErrReplicationNotSupported (step 5), got %v", err)
 	}
-	if _, err := sv.ReplicationLink().Create(LinkByTest); !errors.Is(err, ErrReplicationNotSupported) {
+	if _, err := c.ReplicationPlugin(ReplicationPluginNative).Create(Endpoint{Host: "db2.belair", Port: "3306"}, sv, "belair", LinkByTest); !errors.Is(err, ErrReplicationNotSupported) {
 		t.Errorf("native Create: want ErrReplicationNotSupported (step 5), got %v", err)
 	}
-	unknown := Link{Plugin: c.ReplicationPlugin("repl-nowhere-nowhere-native"), Server: sv, Name: "x"}
-	if unknown.Plugin == nil || unknown.Plugin.Manifest().Name != "repl-nowhere-nowhere-native" {
-		t.Fatalf("unknown plugin: %+v", unknown.Plugin)
+	unknownPlugin := c.ReplicationPlugin("repl-nowhere-nowhere-native")
+	if unknownPlugin == nil || unknownPlugin.Manifest().Name != "repl-nowhere-nowhere-native" {
+		t.Fatalf("unknown plugin: %+v", unknownPlugin)
 	}
+	// an entry of an unknown plugin (decoded from JSON): every verb refused
+	unknown := &replicationBase{manifest: unknownPlugin.Manifest(), target: sv, name: "x"}
 	if _, err := unknown.Stop(LinkByTest); !errors.Is(err, ErrReplicationNotSupported) {
 		t.Errorf("unknown plugin Stop: want ErrReplicationNotSupported, got %v", err)
 	}
 	if err := unknown.Rejoin(); !errors.Is(err, ErrReplicationNotSupported) {
 		t.Errorf("unknown plugin Rejoin: want ErrReplicationNotSupported, got %v", err)
 	}
+	if CanFailover(unknown) {
+		t.Error("the failover never moves a replication whose plugin can not promote")
+	}
 	if (*Cluster)(nil).ReplicationPlugin(ReplicationPluginNative).Manifest().Name != ReplicationPluginNative {
 		t.Error("a nil cluster still resolves a built-in plugin")
+	}
+}
+
+// The ends of a native replication: its source resolved among this cluster's servers, then the
+// other clusters' (a parent), else an external address.
+func TestReplicationEnds(t *testing.T) {
+	c, sv := reseedLinkFixture()
+	db2 := &ServerMonitor{Host: "db2.belair", Port: "3306", URL: "db2.belair:3306", ClusterGroup: c}
+	c.Servers = serverList{sv, db2}
+	parent := &Cluster{Name: "parent", Conf: &config.Config{}}
+	p1 := &ServerMonitor{Host: "db1.parent", Port: "3306", URL: "db1.parent:3306", ClusterGroup: parent}
+	parent.Servers = serverList{p1}
+	c.clusterList = map[string]*Cluster{"belair": c, "parent": parent}
+	sv.Replications = sv.replicationsOfRows(channel("belair", "db2.belair", "Yes", "Yes"), channel("parent", "db1.parent", "Yes", "Yes"), channel("ext", "client.example", "Yes", "Yes"))
+	for _, want := range []struct {
+		name    string
+		cluster *Cluster
+		server  *ServerMonitor
+		url     string
+	}{{"belair", c, db2, "db2.belair:3306"}, {"parent", parent, p1, "db1.parent:3306"}, {"ext", nil, nil, "client.example:3306"}} {
+		r := sv.Replications.Named(want.name)
+		if r.SourceCluster() != want.cluster || r.SourceServer().Server != want.server || r.SourceServer().URL() != want.url {
+			t.Errorf("%s: source %v %+v", want.name, r.SourceCluster(), r.SourceServer())
+		}
+		if r.TargetServer() != sv || r.TargetCluster() != c || r.Plugin().Name != ReplicationPluginNative {
+			t.Errorf("%s: target %v %v", want.name, r.TargetServer(), r.TargetCluster())
+		}
+	}
+	if sv.ReplicationLink() != sv.Replications.Named("belair") {
+		t.Error("the managed link is the object of the monitor's read")
+	}
+	if fresh := sv.ReplicationChannelLink("new"); fresh.Name() != "new" || fresh.TargetServer() != sv || fresh.SourceServer().URL() != "" {
+		t.Errorf("a channel not read yet: %+v", fresh)
+	}
+}
+
+// The JSON does not break: each entry of replications keeps every key of the row, with its
+// value, and adds the plugin and the four ends; decoded back, it is the same.
+func TestReplicationJSONKeepsTheRowKeys(t *testing.T) {
+	c, sv := reseedLinkFixture()
+	db2 := &ServerMonitor{Host: "db2.belair", Port: "3306", URL: "db2.belair:3306", ClusterGroup: c}
+	c.Servers = serverList{sv, db2}
+	row := channel("belair", "db2.belair", "Yes", "No")
+	row.Kind = string(ReplicationKindNative)
+	row.MasterServerID = 7
+	row.GtidSlavePos = sql.NullString{String: "0-1-9", Valid: true}
+	sv.Replications = sv.replicationsOfRows(row)
+
+	want, err := json.Marshal(row)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rowKeys map[string]json.RawMessage
+	if err := json.Unmarshal(want, &rowKeys); err != nil {
+		t.Fatal(err)
+	}
+	got, err := json.Marshal(sv.Replications)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var entries []map[string]json.RawMessage
+	if err := json.Unmarshal(got, &entries); err != nil || len(entries) != 1 {
+		t.Fatalf("%s %v", got, err)
+	}
+	e := entries[0]
+	for k, v := range rowKeys {
+		if string(e[k]) != string(v) {
+			t.Errorf("key %q: %s, today %s", k, e[k], v)
+		}
+	}
+	for k, v := range map[string]string{"plugin": ReplicationPluginNative, "sourceCluster": "belair", "sourceServer": "db2.belair:3306", "targetCluster": "belair", "targetServer": "db1.child:3306"} {
+		var s string
+		if err := json.Unmarshal(e[k], &s); err != nil || s != v {
+			t.Errorf("%s: %s, want %q", k, e[k], v)
+		}
+	}
+	if len(e) != len(rowKeys)+5 {
+		t.Errorf("%d keys, want the row's %d and 5", len(e), len(rowKeys))
+	}
+
+	// the API clients and the gRPC double marshal decode it back
+	var back ReplicationList
+	if err := json.Unmarshal(got, &back); err != nil || len(back) != 1 {
+		t.Fatalf("decode: %v %d", err, len(back))
+	}
+	if back[0].Row() != row || back[0].Name() != "belair" || KindOf(back[0]) != ReplicationKindNative {
+		t.Fatalf("decoded: %+v", back[0].Row())
+	}
+	again, _ := json.Marshal(back)
+	if string(again) != string(got) {
+		t.Fatalf("decode then encode changed it:\n%s\n%s", got, again)
+	}
+	if _, err := back[0].Stop(LinkByTest); err == nil {
+		t.Fatal("a decoded copy acts on no server")
+	}
+	// a server's JSON
+	var srv struct {
+		Replications []map[string]json.RawMessage `json:"replications"`
+	}
+	b, _ := json.Marshal(sv)
+	if err := json.Unmarshal(b, &srv); err != nil || len(srv.Replications) != 1 || string(srv.Replications[0]["connectionName"]) != string(rowKeys["connectionName"]) {
+		t.Fatalf("server JSON: %v %+v", err, srv.Replications)
+	}
+	var decoded ServerMonitor
+	if err := json.Unmarshal(b, &decoded); err != nil || len(decoded.Replications) != 1 {
+		t.Fatalf("a ServerMonitor decodes (the CLI, the gRPC API): %v", err)
 	}
 }

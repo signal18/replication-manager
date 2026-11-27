@@ -113,7 +113,7 @@ func (regtest *RegTest) TestAlterEngine(cl *cluster.Cluster, conf string, test *
 	}
 	// The child master's channel from this cluster still runs.
 	running := false
-	for _, r := range master.Replications {
+	for _, r := range master.NativeReplications().Rows() {
 		if r.ConnectionName.String == cl.Conf.MasterConn && r.SlaveIORunning.String == "Yes" && r.SlaveSQLRunning.String == "Yes" {
 			running = true
 		}
