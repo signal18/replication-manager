@@ -52,11 +52,12 @@ exit 0
 `
 
 // fakeRecorder: a command that appends its name and arguments to FAKE_DIR/calls; it fails
-// when FAKE_DIR/<name>-fails holds its last argument.
+// when FAKE_DIR/<name>-fails holds its last argument, and hangs 3 s when FAKE_DIR/<name>-hangs does.
 const fakeRecorder = `#!/bin/sh
 n=$(basename "$0")
 echo "$n $*" >>"$FAKE_DIR/calls"
 last=""; for a in "$@"; do last="$a"; done
+[ -f "$FAKE_DIR/$n-hangs" ] && grep -qx "$last" "$FAKE_DIR/$n-hangs" && sleep 3
 [ -f "$FAKE_DIR/$n-fails" ] && grep -qx "$last" "$FAKE_DIR/$n-fails" && { echo "$n: $last: failed" >&2; exit 1; }
 exit 0
 `
@@ -274,6 +275,19 @@ func TestExternalSnapbackHalfway(t *testing.T) {
 		calls := strings.Join(h.calls(), "\n")
 		if strings.Contains(calls[strings.Index(calls, "plugin snapback"):], "mount ") {
 			t.Fatalf("mounted a half-restored storage: %s", calls)
+		}
+	})
+	t.Run("the unmount runs past the deadline: half-way, never started", func(t *testing.T) {
+		h := newFakeStorageHost(t)
+		h.vs.timeout = time.Second
+		// the binlog file system is unmounted, then the datadir's umount hangs past the deadline
+		os.WriteFile(filepath.Join(h.dir, "umount-hangs"), []byte(h.data+"\n"), 0o644)
+		run, err := h.vs.Snapback(h.server, "repman-20261127T100000Z")
+		if err == nil || !run.Changed || !strings.Contains(err.Error(), "backup-snapshot-timeout") {
+			t.Fatalf("%v %+v", err, run)
+		}
+		if strings.Contains(strings.Join(h.calls(), "\n"), "plugin snapback") {
+			t.Fatal("the plugin ran after an unmount that did not end")
 		}
 	})
 	t.Run("the mount fails after the restore", func(t *testing.T) {

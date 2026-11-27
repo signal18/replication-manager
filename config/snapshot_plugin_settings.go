@@ -152,11 +152,16 @@ func (conf *Config) SnapshotPluginEnv(m SnapshotPluginManifest) []string {
 			continue
 		}
 		raw := fmt.Sprintf("%v", v)
+		prefix := EnvSnapshotSettingPrefix
 		if st.Type == ConstArchiveSettingTypeSecret {
-			env = append(env, snapshotEnvName(EnvSnapshotSecretPrefix, st.Name)+"="+conf.GetDecryptedPassword(st.Name, raw))
+			prefix, raw = EnvSnapshotSecretPrefix, conf.GetDecryptedPassword(st.Name, raw)
+		}
+		if strings.ContainsAny(raw, "\x00\n\r") {
+			// the API refuses such a value; one written by hand in the TOML never reaches the
+			// plugin's environment, where it could add a variable
 			continue
 		}
-		env = append(env, snapshotEnvName(EnvSnapshotSettingPrefix, st.Name)+"="+raw)
+		env = append(env, snapshotEnvName(prefix, st.Name)+"="+raw)
 	}
 	sort.Strings(env)
 	return env

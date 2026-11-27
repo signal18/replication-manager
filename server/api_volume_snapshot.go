@@ -237,7 +237,9 @@ func (repman *ReplicationManager) handlerMuxVolumeSnapshotPluginSet(w http.Respo
 		return
 	}
 	var spec cluster.VolumeSnapshotPluginSettingsSpec
-	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&spec); err != nil {
+	dec := json.NewDecoder(io.LimitReader(r.Body, 1<<20))
+	dec.DisallowUnknownFields() // a misspelled field is a 400, never a 200 that changes nothing
+	if err := dec.Decode(&spec); err != nil {
 		http.Error(w, "Error decoding request body: "+err.Error(), http.StatusBadRequest)
 		return
 	}

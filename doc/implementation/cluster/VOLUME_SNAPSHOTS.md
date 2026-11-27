@@ -188,7 +188,7 @@ What an external plugin needs from replication-manager to drive a storage system
     files" check pass on an incomplete set.
   - Devices are computed before every action, `list` and `delete` included: a plugin resolves
     its target from them on each run (one host round trip, read-only, under the action's
-    deadline). Empty means unknown: the plugin contract says it is never read as "no
+    deadline). The GUI asks for the list when its snapshot window opens and once after each action, never on a timer. Empty means unknown: the plugin contract says it is never read as "no
     restriction".
 - **Unmount (T14: `backup-snapshot-unmount`).** `snapbackUnmounted` wraps the plugin's
   snapback in the helper's `unmount` and `mount` actions, under the action's deadline.
@@ -202,7 +202,15 @@ What an external plugin needs from replication-manager to drive a storage system
     secret is kept), a NUL or a line break refused. It waits for the volume to be unused (`wait_unused`),
     unmounts deepest first through `unmount_pairs` (shared with the LVM snapback, T2: on a
     failure it puts back what it unmounted, or says CHANGED), and prints the `MOUNT` records the
-    `mount` action replays after `blockdev --flushbufs`.
+    `mount` action replays after `blockdev --flushbufs`. A source with a subvolume suffix
+    (`/dev/sda1[/subvol]`, as `findmnt` prints it) is not a block device: its flush fails, is
+    logged, and the mount goes on (`mount <dir>` is tried first).
+  - A host step whose end is not seen (its deadline passed, its output cut) counts as changed
+    (`hostRun`): an unmount killed half-way may have unmounted some file systems, so the snapback
+    is half-way and the server is never started on them. The mount step's deadline message
+    names its own limit, not `backup-snapshot-timeout`.
+  - The settings API refuses an unknown field (400), and a value with a NUL or a line break
+    written by hand in the TOML is left out of the plugin's environment.
   - Outcomes: an unchanged plugin failure is mounted back and unchanged. A changed failure is
     left unmounted, half-way. A failed mount counts as changed (ERR00123), so the server is not
     started.

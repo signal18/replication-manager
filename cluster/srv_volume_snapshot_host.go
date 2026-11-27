@@ -80,9 +80,19 @@ func (c *contractSnapshotter) hostRun(ctx context.Context, server *ServerMonitor
 			recs = append(recs, hostRecord{kind: f[0], fields: f[1:]})
 		}
 	}
+	if err != nil && (ctx.Err() != nil || out.truncated || run.incomplete) {
+		// what the host step did is not known (a deadline: it may still run; an output cut
+		// short: a CHANGED past the cut): it may have unmounted some file systems, so the
+		// snapback is half-way and the server is never started on them
+		run.Changed = true
+	}
 	if err != nil {
 		if ctx.Err() == context.DeadlineExceeded {
-			return run, recs, fmt.Errorf("stopped after %s (backup-snapshot-timeout)", c.timeout)
+			limit := fmt.Sprintf("%s (backup-snapshot-timeout)", c.timeout)
+			if action == snapshotHostMount {
+				limit = fmt.Sprintf("%s (the mount step's own limit)", volumeSnapshotDownTimeout)
+			}
+			return run, recs, fmt.Errorf("stopped after %s", limit)
 		}
 		if msg := strings.TrimSpace(lastLine(strings.TrimSpace(out.stderr))); msg != "" {
 			return run, recs, errors.New(msg)
@@ -90,6 +100,7 @@ func (c *contractSnapshotter) hostRun(ctx context.Context, server *ServerMonitor
 		return run, recs, err
 	}
 	if out.truncated || run.incomplete {
+		run.Changed = true
 		return run, recs, errors.New("the output of the host step was cut")
 	}
 	return run, recs, nil

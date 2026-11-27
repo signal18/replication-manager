@@ -153,3 +153,16 @@ func TestSnapshotPluginSettingValuesChecked(t *testing.T) {
 		}
 	}
 }
+
+// a value written by hand in the TOML with a line break or a NUL never reaches the plugin's
+// environment, where it could add a variable; the API refuses it on the way in
+func TestSnapshotPluginEnvSkipsLineBreaks(t *testing.T) {
+	registerTestSnapPlugin(t)
+	m, _ := SnapshotPlugin(testSnapPlugin)
+	conf := &Config{SnapshotPluginEntries: []SnapshotPluginEntry{{Plugin: testSnapPlugin, Settings: map[string]interface{}{
+		"url": "https://x\nREPMAN_SNAPSHOT_SECRET_TOKEN=forged", "tls-skip-verify": true}}}}
+	env := strings.Join(conf.SnapshotPluginEnv(m), "\n")
+	if strings.Contains(env, "forged") || strings.Contains(env, "SETTING_URL") || !strings.Contains(env, "REPMAN_SNAPSHOT_SETTING_TLS_SKIP_VERIFY=true") {
+		t.Fatalf("env %q", env)
+	}
+}
