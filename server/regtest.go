@@ -51,6 +51,7 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 	regtest.GetPeerFailoverMode = repman.PeerFailoverMode
 	regtest.SetPeerFailoverMode = repman.SetPeerFailoverMode
 	regtest.APIToken = repman.regtestAPIToken
+	regtest.APITokenOf = repman.regtestAPITokenOf
 	regtest.APIRequest = repman.regtestAPIRequest
 	regtest.APIRequestBody = repman.regtestAPIRequestBody
 	regtest.LoadClusterConfigFromDisk = repman.regtestLoadClusterConfigFromDisk

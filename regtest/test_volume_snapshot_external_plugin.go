@@ -38,7 +38,7 @@ func (regtest *RegTest) TestVolumeSnapshotExternalPlugin(cl *cluster.Cluster, co
 		logf(config.LvlErr, "FAIL "+format, args...)
 		return false
 	}
-	if APIToken == nil || APIRequestBody == nil {
+	if APIToken == nil || APITokenOf == nil || APIRequestBody == nil {
 		return fail("the server hooks are not wired")
 	}
 	const plugin = "rt-fake-storage"
@@ -105,10 +105,6 @@ exit 0
 	if err != nil {
 		return fail("no API user with the grants: %s", err)
 	}
-	owner, err := APIToken(cl, config.GrantClusterSettings)
-	if err != nil {
-		return fail("no API user with cluster-settings: %s", err)
-	}
 	api := func(token, method, path string, body interface{}) (int, string) {
 		var payload []byte
 		if body != nil {
@@ -119,6 +115,22 @@ exit 0
 			return 0, err.Error()
 		}
 		return code, strings.TrimSpace(string(resp))
+	}
+
+	// a cluster owner: cluster-settings without global-settings, a throwaway user (the first
+	// user holding cluster-settings is often the admin, who holds global-settings too)
+	const ownerName = "rt-snapshot-owner"
+	ownerPass := fmt.Sprintf("rt-%x", time.Now().UnixNano())
+	defer api(admin, "POST", "/users/drop", map[string]string{"username": ownerName})
+	if code, body := api(admin, "POST", "/users/add", map[string]string{"username": ownerName, "password": ownerPass, "grants": config.GrantClusterSettings, "roles": "visitor"}); code != http.StatusOK {
+		return fail("adding %s: %d %s", ownerName, code, body)
+	}
+	if u, ok := cl.GetACLUser(ownerName); !ok || !u.Grants[config.GrantClusterSettings] || u.Grants[config.GrantGlobalSettings] {
+		return fail("%s does not hold cluster-settings without global-settings", ownerName)
+	}
+	owner, err := APITokenOf(cl, ownerName)
+	if err != nil {
+		return fail("no token for %s: %s", ownerName, err)
 	}
 
 	// 1. the settings: global-settings only, the secret never returned
