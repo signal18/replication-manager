@@ -719,6 +719,9 @@ func (cluster *Cluster) ChecksumTableEntry(schema string, table string) (*Server
 	return master, t, nil
 }
 
+// checksumOneTable is the checksum of one table run by the loops over the tables, replaced in tests.
+var checksumOneTable = (*Cluster).CheckTableChecksum
+
 func (cluster *Cluster) CheckAllTableChecksum() bool {
 	master := cluster.GetMaster()
 	if master == nil {
@@ -733,7 +736,7 @@ func (cluster *Cluster) CheckAllTableChecksum() bool {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Checksum of the tables cancelled before %s.%s", t.TableSchema, t.TableName)
 			break
 		}
-		res := cluster.CheckTableChecksum(t.TableSchema, t.TableName)
+		res := checksumOneTable(cluster, t.TableSchema, t.TableName)
 		if res == "ER" {
 			hasErrors = true
 		}
@@ -757,7 +760,7 @@ func (cluster *Cluster) CheckAllTableChecksumSchema(name string) bool {
 			break
 		}
 		if t.TableSchema == name {
-			res := cluster.CheckTableChecksum(t.TableSchema, t.TableName)
+			res := checksumOneTable(cluster, t.TableSchema, t.TableName)
 			if res == "ER" {
 				hasErrors = true
 			}

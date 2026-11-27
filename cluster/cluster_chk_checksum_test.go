@@ -244,3 +244,28 @@ func TestCheckAllTableChecksumCancelled(t *testing.T) {
 		t.Fatalf("a cancel before the start does not stop a later checksum: %q", got)
 	}
 }
+
+// A cancel sent while a loop over the tables runs a table's checksum stops the loop before the
+// next table: the all-tables (cron) loop and the schema loop.
+func TestCheckAllTableChecksumCancelMidLoop(t *testing.T) {
+	tables := []dbhelper.Table{{TableSchema: "app", TableName: "a"}, {TableSchema: "app", TableName: "b"}, {TableSchema: "app", TableName: "c"}}
+	cl := newChecksumTestCluster(t, tables, tables)
+	defer func() { checksumOneTable = (*Cluster).CheckTableChecksum }()
+	var ran []string
+	checksumOneTable = func(c *Cluster, schema, table string) string {
+		ran = append(ran, table)
+		if table == "a" {
+			c.CancelTableChecksum() // sent while the first table's checksum runs
+		}
+		return "NA"
+	}
+	cl.CheckAllTableChecksum()
+	if len(ran) != 1 || ran[0] != "a" {
+		t.Fatalf("CheckAllTableChecksum after a cancel on the first table ran %v, want [a]", ran)
+	}
+	ran = nil
+	cl.CheckAllTableChecksumSchema("app")
+	if len(ran) != 1 || ran[0] != "a" {
+		t.Fatalf("CheckAllTableChecksumSchema after a cancel on the first table ran %v, want [a]", ran)
+	}
+}
