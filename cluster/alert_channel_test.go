@@ -58,7 +58,7 @@ func (b *blockingChannel) Send(ctx context.Context, ev AlertEvent) error {
 }
 
 // A dead channel never stalls the caller: the queue is bounded, the oldest alerts are
-// dropped, the drops are counted and WARN0360 opens (F2, T18).
+// dropped, the drops are counted and WARN0362 opens (F2, T18).
 func TestAlertQueueBoundedDropOldest(t *testing.T) {
 	c := newAlertTestCluster(t)
 	c.Conf.AlertQueueLimit = 5
@@ -81,13 +81,13 @@ func TestAlertQueueBoundedDropOldest(t *testing.T) {
 		t.Fatalf("%d dropped, want at least 44 (50 - 5 queued - 1 in flight)", d)
 	}
 	c.CheckAlertChannels()
-	if !c.StateMachine.CurState.Search("WARN0360") {
-		t.Fatal("drops must open WARN0360")
+	if !c.StateMachine.CurState.Search("WARN0362") {
+		t.Fatal("drops must open WARN0362")
 	}
 	close(b.release)
 }
 
-// A failing channel opens WARN0361 after alertFailureThreshold sends, with its error.
+// A failing channel opens WARN0363 after alertFailureThreshold sends, with its error.
 func TestAlertFailureState(t *testing.T) {
 	c := newAlertTestCluster(t)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -106,9 +106,9 @@ func TestAlertFailureState(t *testing.T) {
 	q := alertQueueOf(t, c, ConstAlertChannelTelegram)
 	waitFor(t, func() bool { return q.failures.Load() >= 3 })
 	c.CheckAlertChannels()
-	st, ok := (*c.StateMachine.CurState)["WARN0361"]
+	st, ok := (*c.StateMachine.CurState)["WARN0363"]
 	if !ok || !strings.Contains(st.ErrDesc, "telegram") || !strings.Contains(st.ErrDesc, "Unauthorized") {
-		t.Fatalf("WARN0361 %+v", st)
+		t.Fatalf("WARN0363 %+v", st)
 	}
 	if strings.Contains(st.ErrDesc, "MARKER") {
 		t.Fatalf("the bot token in a state: %s", st.ErrDesc)

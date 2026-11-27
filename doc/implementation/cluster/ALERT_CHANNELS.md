@@ -57,11 +57,11 @@ arguments). Keys and settings are unchanged. What changes is where the send runs
 - the alert script is killed after `alert-script-timeout` (default 300 s; it had no limit),
   in a process group of its own so its children die with it, with `WaitDelay` so a child
   holding the output does not hold the worker; its output is a bounded tail (`capBuffer`); a
-  script that fails or is killed is a failed send (WARN0361 after 3);
+  script that fails or is killed is a failed send (WARN0363 after 3);
 - Teams honours `alert-send-timeout` (default 10 s) through `SendWithContext`;
 - Pushover, whose client has no deadline, runs one send at a time: a send past the timeout is
   reported failed and the next waits for it to end, so a hung API never piles up goroutines.
-- a mail failure keeps `failSendCount` (now atomic: the worker writes it, the tick reads it) and WARN0138 as before; the failed send is also the channel's failure (WARN0361).
+- a mail failure keeps `failSendCount` (now atomic: the worker writes it, the tick reads it) and WARN0138 as before; the failed send is also the channel's failure (WARN0363).
 
 ### Queue, drops, failures (T18)
 
@@ -70,9 +70,9 @@ read at each push, so it applies live). Over the cap the oldest event is dropped
 copied into a fresh array so the dropped events are freed, and the drop is counted.
 `CheckAlertChannels` opens:
 
-- **WARN0360** while a channel dropped alerts in the last 5 minutes (held, so it does not flap),
+- **WARN0362** while a channel dropped alerts in the last 5 minutes (held, so it does not flap),
   naming the channels and their drop counts;
-- **WARN0361** while a channel's last 3 sends or more failed, with its last error (the channels
+- **WARN0363** while a channel's last 3 sends or more failed, with its last error (the channels
   redact their secrets from errors).
 
 The first 3 consecutive failures of a channel are logged; after that the state carries it.
@@ -120,7 +120,7 @@ everything escaped: `_*[]()~\`>#+-=|{}.!` and the backslash), `alert-telegram-ap
 `https://api.telegram.org`), `alert-telegram-timeout`. Events: the same as the mail (states of
 the trigger, server state changes), the same text. The token is in the request URL
 (`/bot<token>/sendMessage`) and net/http quotes the URL in its errors: `telegram.Client` replaces
-the token in every error it returns, so it never reaches a log or WARN0361.
+the token in every error it returns, so it never reaches a log or WARN0363.
 
 ### Settings, API, GUI
 
@@ -137,8 +137,8 @@ Script). The three secrets follow `doc/implementation/config/SECRET_KEYS_FLAT.md
   failure, every peer down is, and no credential reaches the error.
 - `utils/alert/telegram`: sendMessage to every chat; the token redacted from an API refusal,
   a transport error and a timeout; MarkdownV2 escaping.
-- `cluster/alert_channel_test.go`: the queue bound and drop-oldest with WARN0360 while a channel
-  blocks, `dispatchAlert` never waits; WARN0361 from a refusing Telegram without the token;
+- `cluster/alert_channel_test.go`: the queue bound and drop-oldest with WARN0362 while a channel
+  blocks, `dispatchAlert` never waits; WARN0363 from a refusing Telegram without the token;
   Alertmanager fire and resolve end to end from `CheckAlert` against a fake server (labels,
   `startsAt`/`endsAt`, bearer); the resend reconciliation; the off-switches; the routing table of
   the chat channels; intervention suppression.

@@ -58,7 +58,7 @@ func (c *mailAlertChannel) Send(_ context.Context, ev AlertEvent) error {
 	}
 	a := ev.Alert
 	if err := a.EmailMessage(to, cluster.Mailer); err != nil {
-		// WARN0138 as before, and the channel's failure state (WARN0361) like every channel;
+		// WARN0138 as before, and the channel's failure state (WARN0363) like every channel;
 		// the registry logs the first failures
 		cluster.failSendCount.Add(1)
 		return err

@@ -24,12 +24,12 @@ import (
 // never unbounded (T18).
 const defaultAlertQueueLimit = 1000
 
-// alertDropStateHold is how long WARN0360 stays open after a channel's last drop, so a burst
+// alertDropStateHold is how long WARN0362 stays open after a channel's last drop, so a burst
 // is seen in the GUI and the state does not flap with each alert (T5).
 const alertDropStateHold = 5 * time.Minute
 
 // alertFailureThreshold is the number of consecutive failed sends of a channel that opens
-// WARN0361.
+// WARN0363.
 const alertFailureThreshold = 3
 
 // alertResend is the internal event a channel with a resend cycle (alertResender) gets on its
@@ -320,8 +320,8 @@ func (cluster *Cluster) GetAlertChannelStatus() []AlertChannelStatus {
 	return out
 }
 
-// CheckAlertChannels runs once per monitor tick: it opens WARN0360 while a channel has
-// dropped alerts in the last alertDropStateHold, WARN0361 while a channel's last sends
+// CheckAlertChannels runs once per monitor tick: it opens WARN0362 while a channel has
+// dropped alerts in the last alertDropStateHold, WARN0363 while a channel's last sends
 // failed, and queues the resend of the channels that have one (Alertmanager), on the active
 // monitor only, as SendAlert sends on the active monitor only.
 func (cluster *Cluster) CheckAlertChannels() {
@@ -344,10 +344,10 @@ func (cluster *Cluster) CheckAlertChannels() {
 	}
 	if len(dropping) > 0 {
 		sort.Strings(dropping)
-		cluster.SetState("WARN0360", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0360"], r.queueLimit(), strings.Join(dropping, ", ")), ErrFrom: "ALERT"})
+		cluster.SetState("WARN0362", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0362"], r.queueLimit(), strings.Join(dropping, ", ")), ErrFrom: "ALERT"})
 	}
 	if len(failing) > 0 {
 		sort.Strings(failing)
-		cluster.SetState("WARN0361", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0361"], strings.Join(failing, "; ")), ErrFrom: "ALERT"})
+		cluster.SetState("WARN0363", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0363"], strings.Join(failing, "; ")), ErrFrom: "ALERT"})
 	}
 }
