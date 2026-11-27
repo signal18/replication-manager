@@ -31,8 +31,8 @@ func TestDenormalizeSQL(t *testing.T) {
 	ctx := context.Background()
 	mock.ExpectExec(regexp.QuoteMeta("CREATE DATABASE IF NOT EXISTS `dn`")).WillReturnResult(sqlmock.NewResult(0, 0))
 	mock.ExpectExec(regexp.QuoteMeta("DROP TABLE IF EXISTS `dn`.`ol`")).WillReturnResult(sqlmock.NewResult(0, 0))
-	mock.ExpectExec(regexp.QuoteMeta("CREATE TABLE `dn`.`ol` ENGINE=InnoDB AS SELECT * FROM (SELECT 1 AS a) AS d WHERE 1=0")).WillReturnResult(sqlmock.NewResult(0, 0))
-	mock.ExpectExec(regexp.QuoteMeta("ALTER TABLE `dn`.`ol` ADD PRIMARY KEY (`a`, `b`), ADD INDEX `k1` (`b`)")).WillReturnResult(sqlmock.NewResult(0, 0))
+	// the keys in the CREATE: innodb_force_primary_key=ON refuses a table made without one
+	mock.ExpectExec(regexp.QuoteMeta("CREATE TABLE `dn`.`ol` (PRIMARY KEY (`a`, `b`), INDEX `k1` (`b`)) ENGINE=InnoDB AS SELECT * FROM (SELECT 1 AS a) AS d WHERE 1=0")).WillReturnResult(sqlmock.NewResult(0, 0))
 	if _, err := CreateDenormalizedTable(ctx, conn, "dn", "ol", "SELECT 1 AS a", []string{"a", "b"}, [][]string{{"a"}, {"b"}}); err != nil {
 		t.Fatal(err)
 	}

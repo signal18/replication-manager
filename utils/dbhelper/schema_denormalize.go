@@ -50,19 +50,21 @@ func CreateDenormalizedTable(ctx context.Context, conn *sqlx.Conn, schema, table
 	if len(key) == 0 {
 		return "", fmt.Errorf("no key for the denormalized table %s.%s", schema, table)
 	}
-	queries := []string{
-		"CREATE DATABASE IF NOT EXISTS " + QuoteMySQLIdentifier(schema),
-		"DROP TABLE IF EXISTS " + quoted,
-		"CREATE TABLE " + quoted + " ENGINE=InnoDB AS SELECT * FROM (" + sql + ") AS d WHERE 1=0",
-	}
-	alter := "ALTER TABLE " + quoted + " ADD PRIMARY KEY (" + quoteColumns(key) + ")"
+	// the keys in the CREATE itself, never added after it: a server with
+	// innodb_force_primary_key=ON (replication-manager's configurator sets it) refuses a table
+	// created without a primary key (error 1173)
+	keys := "PRIMARY KEY (" + quoteColumns(key) + ")"
 	for i, cols := range indexes {
 		if len(cols) == 0 || isPrefix(cols, key) {
 			continue // the primary key serves it
 		}
-		alter += fmt.Sprintf(", ADD INDEX `k%d` (%s)", i, quoteColumns(cols))
+		keys += fmt.Sprintf(", INDEX `k%d` (%s)", i, quoteColumns(cols))
 	}
-	queries = append(queries, alter)
+	queries := []string{
+		"CREATE DATABASE IF NOT EXISTS " + QuoteMySQLIdentifier(schema),
+		"DROP TABLE IF EXISTS " + quoted,
+		"CREATE TABLE " + quoted + " (" + keys + ") ENGINE=InnoDB AS SELECT * FROM (" + sql + ") AS d WHERE 1=0",
+	}
 	for _, q := range queries {
 		if _, err := conn.ExecContext(ctx, q); err != nil {
 			return q, err
