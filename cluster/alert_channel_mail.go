@@ -58,12 +58,11 @@ func (c *mailAlertChannel) Send(_ context.Context, ev AlertEvent) error {
 	}
 	a := ev.Alert
 	if err := a.EmailMessage(to, cluster.Mailer); err != nil {
-		if cluster.failSendCount < 3 {
+		if cluster.failSendCount.Add(1) <= 3 {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModMailer, config.LvlErr, "Could not send mail alert: %s", err)
 		}
-		cluster.failSendCount++
 	} else {
-		cluster.failSendCount = 0
+		cluster.failSendCount.Store(0)
 	}
 	return nil
 }
@@ -96,10 +95,15 @@ func (c *scriptAlertChannel) Send(ctx context.Context, ev AlertEvent) error {
 	}
 	a := ev.Alert
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Calling alert script")
-	out, err := exec.CommandContext(ctx, script, a.Cluster, a.Host, a.PrevState, a.State).CombinedOutput()
+	cmd := exec.CommandContext(ctx, script, a.Cluster, a.Host, a.PrevState, a.State)
+	var out capBuffer // its tail, bounded (T18): a chatty script never grows the memory
+	cmd.Stdout, cmd.Stderr = &out, &out
+	snapshotCmdOwnGroup(cmd)        // the timeout kills the script's children too
+	cmd.WaitDelay = 5 * time.Second // a child keeping the pipes open does not hold the worker
+	err := cmd.Run()
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "%s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Alert script: %s", err)
 	}
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Alert script complete: %s", string(out))
-	return nil
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Alert script complete: %s", out.String())
+	return err
 }

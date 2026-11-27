@@ -9,12 +9,17 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/alert"
 	"github.com/signal18/replication-manager/utils/alert/alertmanager"
 	"github.com/signal18/replication-manager/utils/state"
 )
@@ -311,5 +316,95 @@ func TestStateAlertSuppressed(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 	if am.count() != 0 {
 		t.Fatal("an intervention must suppress the alert")
+	}
+}
+
+// funcChannel sends with fn, under timeout.
+type funcChannel struct {
+	timeout time.Duration
+	fn      func(ctx context.Context) error
+}
+
+func (f *funcChannel) Name() string                                 { return "func" }
+func (f *funcChannel) Enabled() bool                                { return true }
+func (f *funcChannel) Accepts(ev AlertEvent) bool                   { return true }
+func (f *funcChannel) Timeout() time.Duration                       { return f.timeout }
+func (f *funcChannel) Send(ctx context.Context, _ AlertEvent) error { return f.fn(ctx) }
+
+func funcQueue(c *Cluster, ch AlertChannel) *alertQueue {
+	q := &alertQueue{channel: ch, wake: make(chan struct{}, 1)}
+	c.alertChannels().queues = []*alertQueue{q}
+	return q
+}
+
+// A panic in a send is a failed send, and the worker goes on with the next events.
+func TestAlertChannelPanicKeepsWorker(t *testing.T) {
+	c := newAlertTestCluster(t)
+	var calls atomic.Int32
+	q := funcQueue(c, &funcChannel{timeout: time.Second, fn: func(context.Context) error {
+		if calls.Add(1) == 1 {
+			panic("bad event")
+		}
+		return nil
+	}})
+	c.dispatchAlert(AlertEvent{Kind: AlertLogLine, Level: "ALERT", Message: "a"})
+	waitFor(t, func() bool { return q.failures.Load() == 1 })
+	if e, _ := q.lastErr.Load().(string); !strings.Contains(e, "panic") {
+		t.Fatalf("last error %q", e)
+	}
+	c.dispatchAlert(AlertEvent{Kind: AlertLogLine, Level: "ALERT", Message: "b"})
+	waitFor(t, func() bool { return q.sent.Load() == 1 })
+}
+
+// A send that ignores its context fails at its timeout, the worker goes on, and while that
+// send still runs the next ones fail at once: one stuck goroutine per channel at most (F2).
+func TestAlertChannelIgnoringContextTimesOut(t *testing.T) {
+	c := newAlertTestCluster(t)
+	release := make(chan struct{})
+	var running atomic.Int32
+	q := funcQueue(c, &funcChannel{timeout: 100 * time.Millisecond, fn: func(context.Context) error {
+		running.Add(1)
+		defer running.Add(-1)
+		<-release // a mailer with no deadline
+		return nil
+	}})
+	start := time.Now()
+	for i := 0; i < 3; i++ {
+		c.dispatchAlert(AlertEvent{Kind: AlertLogLine, Level: "ALERT", Message: "x"})
+	}
+	waitFor(t, func() bool { return q.failures.Load() >= 2 })
+	if d := time.Since(start); d > 5*time.Second {
+		t.Fatalf("the worker waited %s on a stuck send", d)
+	}
+	if n := running.Load(); n != 1 {
+		t.Fatalf("%d sends running, want 1", n)
+	}
+	close(release)
+	waitFor(t, func() bool { return !q.inFlight.Load() })
+	c.dispatchAlert(AlertEvent{Kind: AlertLogLine, Level: "ALERT", Message: "y"})
+	waitFor(t, func() bool { return q.sent.Load() >= 1 })
+}
+
+// The alert script is killed with its children at its timeout, even when a child keeps the
+// output open; a failed script is a failed send.
+func TestAlertScriptTimeoutKillsChildren(t *testing.T) {
+	if _, err := exec.LookPath("sh"); err != nil {
+		t.Skip("no sh")
+	}
+	c := newAlertTestCluster(t)
+	script := filepath.Join(t.TempDir(), "alert.sh")
+	os.WriteFile(script, []byte("#!/bin/sh\nsleep 30 &\nsleep 30\n"), 0o755)
+	c.Conf.AlertScript = script
+	c.Conf.AlertScriptTimeout = 1
+	ch := newScriptAlertChannel(c)
+	ctx, cancel := context.WithTimeout(context.Background(), ch.Timeout())
+	defer cancel()
+	start := time.Now()
+	err := ch.Send(ctx, AlertEvent{Alert: alert.Alert{Cluster: "c", Host: "h", PrevState: "a", State: "b"}})
+	if err == nil {
+		t.Fatal("a killed script is a failed send")
+	}
+	if d := time.Since(start); d > 10*time.Second {
+		t.Fatalf("the script ran %s past a 1 s timeout", d)
 	}
 }

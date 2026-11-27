@@ -487,7 +487,7 @@ type Cluster struct {
 	Partner                *config.Partner          `json:"partner" groups:"web"`
 	ServerGlobals          *ServerGlobals           `json:"-"`
 	ConfigManager          *manager.ConfigManager   `json:"-"`
-	failSendCount          int                      `json:"-"`
+	failSendCount          atomic.Int32             `json:"-"` // written by the mail worker, read by the tick
 	MeetUserID             string                   `json:"-"` //To store meet user id
 	ServiceTemplates       []string                 `json:"-"` //To store application templates
 	DiskStatManager        *misc.DiskStatManager    `json:"diskStat" groups:"web"`

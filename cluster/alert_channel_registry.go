@@ -8,6 +8,7 @@ package cluster
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -53,6 +54,7 @@ type alertQueue struct {
 	dropped      atomic.Uint64 // monotonic, alerts dropped by the cap
 	lastDropUnix atomic.Int64
 	failures     atomic.Uint64 // consecutive failed sends; 0 after a success
+	inFlight     atomic.Bool   // a send past its timeout still runs: the next one does not start
 	lastErr      atomic.Value  // string, the last send error (redacted by the channel)
 	sent         atomic.Uint64
 }
@@ -210,14 +212,43 @@ func (r *alertChannelRegistry) work(q *alertQueue) {
 	}
 }
 
+// send runs one Send under the channel's timeout, in a goroutine of its own: a channel that
+// does not honour its context (the mail, a hook with its own client) or that panics never
+// stops its worker. A send past its timeout is counted failed; while it still runs, the
+// next events of that channel fail at once instead of piling up goroutines (one at most per
+// channel, F2/T18).
 func (r *alertChannelRegistry) send(q *alertQueue, ev AlertEvent) {
 	timeout := q.channel.Timeout()
 	if timeout <= 0 {
 		timeout = 10 * time.Second
 	}
-	ctx, cancel := context.WithTimeout(r.ctx, timeout)
-	defer cancel()
-	err := q.channel.Send(ctx, ev)
+	var err error
+	if q.inFlight.Load() {
+		err = errors.New("its previous send is still running past its timeout")
+	} else {
+		ctx, cancel := context.WithTimeout(r.ctx, timeout)
+		defer cancel()
+		q.inFlight.Store(true)
+		done := make(chan error, 1)
+		go func() {
+			defer q.inFlight.Store(false)
+			defer func() {
+				if p := recover(); p != nil {
+					done <- fmt.Errorf("panic in the send: %v", p)
+				}
+			}()
+			done <- q.channel.Send(ctx, ev)
+		}()
+		select {
+		case err = <-done:
+		case <-ctx.Done():
+			select {
+			case err = <-done: // it ended with its context
+			case <-time.After(alertSendGrace):
+				err = fmt.Errorf("no answer after %s", timeout)
+			}
+		}
+	}
 	if err == nil {
 		q.failures.Store(0)
 		q.sent.Add(1)
@@ -229,6 +260,9 @@ func (r *alertChannelRegistry) send(q *alertQueue, ev AlertEvent) {
 		r.cluster.LogModulePrintf(r.cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could not send %s alert: %s", q.channel.Name(), err)
 	}
 }
+
+// alertSendGrace is how long a send whose context ended may still take to return.
+const alertSendGrace = time.Second
 
 // alertStopWait bounds how long a cluster stop waits for a worker in the middle of a send
 // that does not honour its context (the mail): the stop never hangs on a channel (F2).

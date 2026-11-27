@@ -678,7 +678,7 @@ func (cluster *Cluster) sendAlertEvent(ev AlertEvent) error {
 }
 
 func (cluster *Cluster) CheckSendMail() {
-	if cluster.failSendCount > 3 {
+	if cluster.failSendCount.Load() > 3 {
 		cluster.SetState("WARN0138", state.State{ErrType: "WARN", ErrDesc: clusterError["WARN0138"], ErrFrom: "CHECK"})
 	}
 }
