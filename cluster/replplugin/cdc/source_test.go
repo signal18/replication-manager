@@ -20,12 +20,12 @@ func testSink(t *testing.T) (*Sink, string) {
 	cfg := wire.Config{Rules: []wire.Rule{{Schema: "public", Tables: []string{"t"}}}}
 	c := &capture{cfg: cfg, statePath: wire.StatePath(path), bufs: map[string]*tableBuf{}, keyErrs: map[string]bool{}, packs: map[string]*packBuf{},
 		opened: time.Now(), maxSize: sizeBytes(64), maxAge: time.Hour, txCap: mbBytes(0)}
-	c.w = &checkpointWriter{dir: wire.CheckpointDir(path), maxPending: mbBytes(0)}
+	c.w = &diskQueue{dir: wire.CheckpointDir(path), maxPending: mbBytes(0)}
 	return &Sink{c: c}, path
 }
 
 func readOne(t *testing.T, path string, seq int64) (wire.Manifest, map[string][]byte) {
-	m, files, err := readCheckpoint(filepath.Join(wire.CheckpointDir(path), wire.CheckpointName(seq)))
+	m, files, err := readSeq(&diskQueue{dir: wire.CheckpointDir(path)}, seq)
 	if err != nil {
 		t.Fatal(err)
 	}

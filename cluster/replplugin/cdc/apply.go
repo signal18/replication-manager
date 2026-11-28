@@ -5,23 +5,18 @@
 package cdc
 
 import (
-	"archive/tar"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
-	"runtime"
 	"slices"
-	"sort"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
-	gzip "github.com/klauspost/pgzip"
 	"github.com/signal18/replication-manager/cluster/replplugin/wire"
 )
 
@@ -36,7 +31,8 @@ const applyEvery = 2 * time.Second
 type applier struct {
 	dest Destination
 	cfg  wire.Config
-	path string // the plugin's TOML
+	path string    // the plugin's TOML
+	tr   Transport // the checkpoints: what the apply reads of the capture, and nothing else
 	// a new initial load from the start (no restore done, no checkpoint): the position a
 	// Positioner destination committed belongs to the feed's previous life (a rebuild) and is
 	// set back to zero, never taken (its checkpoints 1..N would be skipped as applied)
@@ -61,7 +57,7 @@ func (a *applier) fill(st *wire.Status) {
 	for _, id := range a.done.Indexes {
 		st.IndexesReady = append(st.IndexesReady, strings.SplitN(id, "@", 2)[0])
 	}
-	st.PendingMB = wire.PendingBytes(wire.CheckpointDir(a.path)) >> 20
+	st.PendingMB = a.tr.PendingBytes() >> 20
 	if a.last != nil && a.cfg.MergeIntervalMs > 0 {
 		st.MergedSeq, st.MergedGTID, st.MergeTookMs = a.last.Seq, a.last.GTID, a.last.TookMs
 		if a.last.Seq > 0 {
@@ -150,7 +146,7 @@ func (a *applier) runOnce(ctx context.Context) {
 		return
 	}
 	defer db.Close()
-	dir, appliedPath, mergedPath := wire.CheckpointDir(a.path), wire.AppliedPath(a.path), wire.MergedPath(a.path)
+	appliedPath, mergedPath := wire.AppliedPath(a.path), wire.MergedPath(a.path)
 	done, err := readApplied(appliedPath)
 	if err != nil {
 		a.setErr(err)
@@ -199,11 +195,11 @@ func (a *applier) runOnce(ctx context.Context) {
 			a.setErr(err)
 			continue
 		}
-		for _, seq := range pendingCheckpoints(dir, done.Seq) {
+		for _, seq := range a.tr.Pending(done.Seq) {
 			if ctx.Err() != nil {
 				return
 			}
-			gtid, err := a.applyOne(ctx, db, filepath.Join(dir, wire.CheckpointName(seq)))
+			gtid, err := a.applyOne(ctx, db, seq, &done)
 			if err != nil {
 				failed = fmt.Errorf("checkpoint %d: %w", seq, err)
 				break
@@ -216,7 +212,7 @@ func (a *applier) runOnce(ctx context.Context) {
 				failed = err
 				break
 			}
-			os.Remove(filepath.Join(dir, wire.CheckpointName(seq)))
+			a.tr.Ack(seq)
 			a.mu.Lock()
 			a.done = done
 			a.mu.Unlock()
@@ -232,8 +228,8 @@ func (a *applier) runOnce(ctx context.Context) {
 
 // applyOne applies one checkpoint and returns its GTID: to the destination, or to the
 // staging in one InnoDB transaction.
-func (a *applier) applyOne(ctx context.Context, db *sqlx.DB, path string) (string, error) {
-	m, files, err := readCheckpoint(path)
+func (a *applier) applyOne(ctx context.Context, db *sqlx.DB, seq int64, done *wire.Applied) (string, error) {
+	m, files, err := readSeq(a.tr, seq)
 	if err != nil {
 		return "", err
 	}
@@ -407,12 +403,11 @@ func (a *applier) mergeWhenDue(ctx context.Context, db *sqlx.DB, done wire.Appli
 	return writeMerged(path, next)
 }
 
-// merge merges the staging of every carried table (the State's) into the destination.
+// merge merges the staging of every carried table into the destination: the tables of the
+// rules and every table the staging holds (never the capture's State: the apply knows the
+// capture only through the transport).
 func (a *applier) merge(ctx context.Context, db *sqlx.DB) error {
-	st, err := wire.ReadState(wire.StatePath(a.path))
-	if err != nil {
-		return err
-	}
+	carried, _ := a.cfg.Tables()
 	conn, err := a.session(ctx, db)
 	if err != nil {
 		return err
@@ -425,7 +420,7 @@ func (a *applier) merge(ctx context.Context, db *sqlx.DB) error {
 	defer reader.Close()
 	// the carried tables and every table the staging holds (a table no longer carried keeps
 	// its staged rows until they are merged)
-	tables, err := stagedTables(ctx, reader, st.Tables)
+	tables, err := stagedTables(ctx, reader, carried)
 	if err != nil {
 		return err
 	}
@@ -458,74 +453,15 @@ func writeApplied(path string, a wire.Applied) error {
 
 // nextSeqBase is the last checkpoint number used: the State's, the applied one's, or a file's
 // still waiting, the highest.
-func nextSeqBase(stateSeq int64, appliedPath, dir string) int64 {
+func nextSeqBase(stateSeq int64, appliedPath string, tr Transport) int64 {
 	seq := stateSeq
 	if a, err := readApplied(appliedPath); err == nil && a.Seq > seq {
 		seq = a.Seq
 	}
-	for _, s := range pendingCheckpoints(dir, seq) {
+	for _, s := range tr.Pending(seq) {
 		if s > seq {
 			seq = s
 		}
 	}
 	return seq
-}
-
-// pendingCheckpoints are the seqs of the checkpoint files after after, in order.
-func pendingCheckpoints(dir string, after int64) []int64 {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return nil
-	}
-	var seqs []int64
-	for _, e := range entries {
-		if seq, ok := wire.ParseCheckpointName(e.Name()); ok && seq > after {
-			seqs = append(seqs, seq)
-		}
-	}
-	sort.Slice(seqs, func(i, j int) bool { return seqs[i] < seqs[j] })
-	return seqs
-}
-
-// readCheckpoint reads a checkpoint's manifest and files.
-func readCheckpoint(path string) (wire.Manifest, map[string][]byte, error) {
-	var m wire.Manifest
-	f, err := os.Open(path)
-	if err != nil {
-		return m, nil, err
-	}
-	defer f.Close()
-	gz, err := gzip.NewReaderN(f, 1<<20, runtime.NumCPU())
-	if err != nil {
-		return m, nil, err
-	}
-	defer gz.Close()
-	files := map[string][]byte{}
-	tr := tar.NewReader(gz)
-	for {
-		h, err := tr.Next()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return m, nil, err
-		}
-		b, err := io.ReadAll(tr)
-		if err != nil {
-			return m, nil, err
-		}
-		files[h.Name] = b
-	}
-	mb, ok := files[wire.ManifestName]
-	if !ok {
-		return m, nil, fmt.Errorf("no %s", wire.ManifestName)
-	}
-	if err := json.Unmarshal(mb, &m); err != nil {
-		return m, nil, err
-	}
-	// wire 1 wrote the same checkpoints (replication-manager applied them): kept after an upgrade
-	if m.Wire != 1 && m.Wire != wire.WireVersion {
-		return m, nil, fmt.Errorf("checkpoint of wire %d, this plugin wire %d", m.Wire, wire.WireVersion)
-	}
-	return m, files, nil
 }

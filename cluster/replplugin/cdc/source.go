@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -266,7 +265,7 @@ func (s *Sink) Idle() bool {
 			return false
 		}
 	}
-	return wire.PendingBytes(c.w.dir) == 0
+	return c.w.PendingBytes() == 0
 }
 
 // Describe sets the status's description.
@@ -329,17 +328,6 @@ func emptyOrMake(ctx context.Context, db *sqlx.DB, conn *sqlx.Conn, dest Destina
 	return q, nil
 }
 
-// clearCheckpoints removes the checkpoints waiting in dir: those of an initial load that did
-// not finish, which a new initial load replaces.
-func clearCheckpoints(dir string) {
-	entries, _ := os.ReadDir(dir)
-	for _, e := range entries {
-		if _, ok := wire.ParseCheckpointName(e.Name()); ok {
-			os.Remove(filepath.Join(dir, e.Name()))
-		}
-	}
-}
-
 // runSource runs the capture source src until it fails or a signal stops it.
 func runSource(c *capture, ap *applier, src Source, sig <-chan os.Signal, tick func(), ticker *time.Ticker) {
 	ctx, cancel := context.WithCancel(context.Background())
@@ -351,7 +339,7 @@ func runSource(c *capture, ap *applier, src Source, sig <-chan os.Signal, tick f
 		c.st.InitialLoad = true
 		c.st.Description = "initial load"
 		// an initial load that did not finish: its checkpoints are replaced by the new one's
-		clearCheckpoints(c.w.dir)
+		c.w.Clear()
 	}
 	c.mu.Unlock()
 	if err := src.Prepare(ctx, sink); err != nil {

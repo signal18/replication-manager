@@ -54,7 +54,7 @@ type capture struct {
 	cfg       wire.Config
 	statePath string
 	c         *canal.Canal
-	w         *checkpointWriter
+	w         Transport // where the checkpoints go: the seam to the apply
 
 	mu       sync.Mutex
 	state    wire.State
@@ -258,7 +258,7 @@ func (c *capture) flushLocked() error {
 		return nil
 	}
 	seq := c.state.Seq + 1
-	if err := c.w.write(wire.Manifest{Seq: seq, GTID: c.gtid, Tables: tables, Packs: packs}, files); err != nil {
+	if err := publish(c.w, wire.Manifest{Seq: seq, GTID: c.gtid, Tables: tables, Packs: packs}, files); err != nil {
 		return fmt.Errorf("checkpoint %d: %w", seq, err)
 	}
 	c.state.Seq, c.state.GTID = seq, c.gtid
@@ -496,12 +496,14 @@ func MainSource(dest Destination, src Source) {
 	// a crash between a checkpoint's file and the State that records it: the next checkpoint
 	// must not reuse that number (one applied would be skipped), it carries the re-read
 	// changes again under a new one (applied twice gives the same table)
-	state.Seq = nextSeqBase(state.Seq, wire.AppliedPath(*configPath), wire.CheckpointDir(*configPath))
+	// the transport: the local-disk queue of the checkpoints, the only one today
+	tr := &diskQueue{dir: wire.CheckpointDir(*configPath), maxPending: mbBytes(cfg.MaxPendingMB)}
+	state.Seq = nextSeqBase(state.Seq, wire.AppliedPath(*configPath), tr)
 	if state.RestoreDone && len(cfg.Rules) == 0 {
 		cfg.Rules = wire.RulesOf(state.Tables)
 	}
 
-	ap := &applier{dest: dest, cfg: cfg, path: *configPath, fresh: !state.RestoreDone && state.Seq == 0}
+	ap := &applier{dest: dest, cfg: cfg, path: *configPath, tr: tr, fresh: !state.RestoreDone && state.Seq == 0}
 	c := &capture{cfg: cfg, statePath: statePath, state: state, bufs: map[string]*tableBuf{}, keyErrs: map[string]bool{}, gtid: state.GTID, opened: time.Now(), ap: ap,
 		maxSize: sizeBytes(cfg.BatchMB), maxAge: time.Duration(cfg.BatchTimeoutMs) * time.Millisecond, packs: map[string]*packBuf{}}
 	if len(cfg.Indexes) > 0 {
@@ -517,9 +519,10 @@ func MainSource(dest Destination, src Source) {
 		}
 	}
 	c.txCap = mbBytes(cfg.MaxPendingMB)
-	c.w = &checkpointWriter{dir: wire.CheckpointDir(*configPath), maxPending: mbBytes(cfg.MaxPendingMB), paused: func(p int64) {
+	tr.paused = func(p int64) {
 		c.pausedMB.Store(p >> 20) // c.mu is held by the caller: never taken here
-	}}
+	}
+	c.w = tr
 
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGTERM, syscall.SIGINT)

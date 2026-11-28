@@ -5,20 +5,12 @@
 package cdc
 
 import (
-	"archive/tar"
-	"bytes"
-	"encoding/json"
 	"fmt"
 	"math"
-	"os"
-	"path/filepath"
-	"runtime"
 	"sort"
 	"strconv"
-	"time"
 
 	"github.com/go-mysql-org/go-mysql/schema"
-	gzip "github.com/klauspost/pgzip"
 	"github.com/signal18/replication-manager/cluster/replplugin/wire"
 )
 
@@ -164,83 +156,6 @@ func (b *tableBuf) keyNames() []string {
 		names[i] = b.t.Columns[c].Name
 	}
 	return names
-}
-
-// checkpointWriter writes the checkpoints into dir, atomically (a temporary file renamed),
-// waiting first while the checkpoints not yet applied exceed maxPending.
-type checkpointWriter struct {
-	dir        string
-	maxPending int64
-	paused     func(pending int64) // told while it waits, 0 when it ends; called with the capture's lock held: it must not take it
-}
-
-func (w *checkpointWriter) waitRoom() {
-	for waited := false; ; waited = true {
-		p := wire.PendingBytes(w.dir)
-		if p <= w.maxPending {
-			if waited && w.paused != nil {
-				w.paused(0) // room again: the pause ends
-			}
-			return
-		}
-		if w.paused != nil {
-			w.paused(p)
-		}
-		time.Sleep(time.Second)
-	}
-}
-
-// write packs the files and the manifest into checkpoint m.Seq.
-func (w *checkpointWriter) write(m wire.Manifest, files map[string][]byte) error {
-	w.waitRoom()
-	m.Wire = wire.WireVersion
-	var buf bytes.Buffer
-	// parallel gzip, 1 MB blocks over the CPUs: the gzip of a big period (the restore's
-	// rows) was the slow part of a checkpoint
-	gz := gzip.NewWriter(&buf)
-	if err := gz.SetConcurrency(1<<20, runtime.NumCPU()); err != nil {
-		return err
-	}
-	tw := tar.NewWriter(gz)
-	names := make([]string, 0, len(files))
-	for n := range files {
-		names = append(names, n)
-	}
-	sort.Strings(names)
-	add := func(name string, data []byte) error {
-		if err := tw.WriteHeader(&tar.Header{Name: name, Mode: 0644, Size: int64(len(data)), ModTime: time.Now()}); err != nil {
-			return err
-		}
-		_, err := tw.Write(data)
-		return err
-	}
-	for _, n := range names {
-		if err := add(n, files[n]); err != nil {
-			return err
-		}
-	}
-	mb, err := json.Marshal(m)
-	if err != nil {
-		return err
-	}
-	if err := add(wire.ManifestName, mb); err != nil {
-		return err
-	}
-	if err := tw.Close(); err != nil {
-		return err
-	}
-	if err := gz.Close(); err != nil {
-		return err
-	}
-	if err := os.MkdirAll(w.dir, 0750); err != nil {
-		return err
-	}
-	final := filepath.Join(w.dir, wire.CheckpointName(m.Seq))
-	tmp := final + ".tmp"
-	if err := os.WriteFile(tmp, buf.Bytes(), 0640); err != nil {
-		return err
-	}
-	return os.Rename(tmp, final)
 }
 
 // tables renders the buffers of a period into a manifest's tables and their files.

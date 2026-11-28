@@ -54,7 +54,7 @@ func TestPeriodTimeOrSize(t *testing.T) {
 		Columns: []schema.TableColumn{{Name: "id", Type: schema.TYPE_NUMBER, RawType: "int(11)"}}, PKColumns: []int{0}}
 	dir := t.TempDir()
 	c := &capture{cfg: wire.Config{Rules: wire.RulesOf([]string{"repl_test.pk_int"})}, statePath: dir + "/state.json",
-		w: &checkpointWriter{dir: dir, maxPending: mbBytes(0), paused: func(int64) {}}, bufs: map[string]*tableBuf{}, keyErrs: map[string]bool{},
+		w: &diskQueue{dir: dir, maxPending: mbBytes(0), paused: func(int64) {}}, bufs: map[string]*tableBuf{}, keyErrs: map[string]bool{},
 		opened: time.Now(), maxSize: 1000, maxAge: time.Hour}
 	insert := func(id int32, size uint32) {
 		if err := c.OnRow(&canal.RowsEvent{Table: tb, Action: canal.InsertAction, Rows: [][]interface{}{{id}}, Header: &replication.EventHeader{EventSize: size}}); err != nil {

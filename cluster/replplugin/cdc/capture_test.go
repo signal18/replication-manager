@@ -23,10 +23,10 @@ func TestWaitRoomPauseWithLockHeld(t *testing.T) {
 		t.Fatal(err)
 	}
 	c := &capture{cfg: wire.Config{MaxPendingMB: 1}}
-	c.w = &checkpointWriter{dir: dir, maxPending: 1024, paused: func(p int64) { c.pausedMB.Store(p >> 10) }}
+	c.w = &diskQueue{dir: dir, maxPending: 1024, paused: func(p int64) { c.pausedMB.Store(p >> 10) }}
 	c.mu.Lock() // as flushLocked
 	done := make(chan struct{})
-	go func() { c.w.waitRoom(); close(done) }()
+	go func() { c.w.(*diskQueue).waitRoom(); close(done) }()
 	deadline := time.Now().Add(5 * time.Second)
 	for c.pausedMB.Load() == 0 {
 		if time.Now().After(deadline) {
@@ -79,15 +79,15 @@ func TestNextSeqBase(t *testing.T) {
 	cp := filepath.Join(dir, "x.checkpoints")
 	os.MkdirAll(cp, 0750)
 	applied := filepath.Join(dir, "x.applied.json")
-	if got := nextSeqBase(4, applied, cp); got != 4 {
+	if got := nextSeqBase(4, applied, &diskQueue{dir: cp}); got != 4 {
 		t.Fatalf("nothing else: %d", got)
 	}
 	writeApplied(applied, wire.Applied{Seq: 6})
-	if got := nextSeqBase(4, applied, cp); got != 6 {
+	if got := nextSeqBase(4, applied, &diskQueue{dir: cp}); got != 6 {
 		t.Fatalf("applied 6: %d", got)
 	}
 	os.WriteFile(filepath.Join(cp, wire.CheckpointName(7)), []byte("x"), 0640)
-	if got := nextSeqBase(4, applied, cp); got != 7 {
+	if got := nextSeqBase(4, applied, &diskQueue{dir: cp}); got != 7 {
 		t.Fatalf("waiting 7: %d", got)
 	}
 }
