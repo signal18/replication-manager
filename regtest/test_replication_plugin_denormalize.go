@@ -134,7 +134,13 @@ func (regtest *RegTest) TestAnalyticChildDenormalize(cl *cluster.Cluster, conf s
 	}
 
 	// the index, through the API: the plugin restarts with it and runs its init
-	body, _ := json.Marshal(config.ReplicationPluginIndex{Name: tpccIndexName, SQL: tpccDenormalizingQuery(), SlaveSchema: tpccDenormSchema, SlaveTable: tpccDenormTable})
+	index := config.ReplicationPluginIndex{Name: tpccIndexName, SQL: tpccDenormalizingQuery(), SlaveSchema: tpccDenormSchema, SlaveTable: tpccDenormTable}
+	if p := os.Getenv("REPMAN_REGTEST_DENORM_PARTITION"); p != "" {
+		// the denormalized table partitioned by the order's entry date (day, week or month)
+		index.PartitionColumn, index.PartitionPeriod = "o_entry_d", p
+		tlsLogf(cl, "%s: the denormalized table partitioned by %s of o_entry_d", name, p)
+	}
+	body, _ := json.Marshal(index)
 	if code, _, resp, err := APIRequestBody(tok, http.MethodPost, base+"/replication-plugin-index-actions/put", body); err != nil || code != 200 {
 		return fail("index: HTTP %d %v %s", code, err, resp)
 	}

@@ -414,6 +414,9 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 		if test.Name == "testAnalyticChildDenormalize" {
 			res = regtest.TestAnalyticChildDenormalize(cl, test.ConfigFile, &test)
 		}
+		if test.Name == "testAnalyticChildTableMode" {
+			res = regtest.TestAnalyticChildTableMode(cl, test.ConfigFile, &test)
+		}
 		if test.Name == "testRollingReprovReseed" {
 			res = regtest.TestRollingReprovReseed(cl, test.ConfigFile, &test)
 		}
