@@ -272,7 +272,11 @@ func (cluster *Cluster) assertRejoinResultStates() {
 	reconciled := false
 	for url, cr := range latest {
 		srv := cluster.GetServerFromURL(url)
-		if srv != nil && srv.IsSlave && !srv.IsFailed() {
+		// Healthy means replicating (F5): a node whose link to the elected master is
+		// defined but broken (IO thread stopped on error 1236 after a refused flashback
+		// position) is a slave pointing at it, not a recovered one. GetMasterFromReplication
+		// matches a stopped link by host, so it cannot tell on its own.
+		if srv != nil && srv.IsSlave && !srv.IsFailed() && !srv.IsReplicationBroken() {
 			if m, _ := cluster.GetMasterFromReplication(srv); m != nil && m.URL == cr.ElectedMasterURL {
 				// Resolved: the node is a healthy slave of the elected master. If the
 				// durable record still carries a FAILED verdict, the node recovered by
