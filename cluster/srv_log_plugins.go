@@ -742,6 +742,7 @@ func (cluster *Cluster) checkResourceScaleWorkloadStates() {
 
 func (cluster *Cluster) CheckLogPlugins() {
 	cluster.assertDomainObservabilityStates()
+	cluster.assertChecksumFailureStates()      // WARN0342: tables whose last checksum failed (#2465)
 	cluster.checkResourceScaleWorkloadStates() // surface resource scale decisions in the Workload pill
 	if !cluster.Conf.LogPlugin {
 		// WARN0314 — plugins are present on disk but log-plugin is disabled.

@@ -4,6 +4,7 @@ import {
   checksumRepairAllTables,
   checksumRepairTable,
   checksumAllTables,
+  checksumCancel,
   checksumTable,
   getShardSchema,
   monitorAllSchemas,
@@ -186,6 +187,7 @@ function Shards({ selectedCluster, user, onOpenSchedulerSettings, onOpenLogsSett
   const isColumnstore = selectedCluster?.config?.topologyTarget === 'columnstore'
   const [isChecksumRepairAllRunning, setIsChecksumRepairAllRunning] = useState(false)
   const [isSchemaConfirmOpen, setIsSchemaConfirmOpen]               = useState(false)
+  const [isCancelConfirmOpen, setIsCancelConfirmOpen]               = useState(false)
   const [pendingChecksumAll, setPendingChecksumAll]                 = useState(false)
   const [pendingChecksumRepairAll, setPendingChecksumRepairAll]     = useState(false)
   const [checksumTimeout, setChecksumTimeout]                       = useState(false)
@@ -603,6 +605,12 @@ function Shards({ selectedCluster, user, onOpenSchedulerSettings, onOpenLogsSett
               {isChecksumAllRunning ? 'Preparing schema cache…' : 'Checksum All Tables'}
             </RMButton>
             <RMButton
+              onClick={() => setIsCancelConfirmOpen(true)}
+              isDisabled={!selectedCluster?.name || !user?.grants['cluster-checksum']}
+            >
+              Cancel Running Checksums
+            </RMButton>
+            <RMButton
               onClick={() => setEngineSwitch({})}
               isDisabled={!selectedCluster?.name || !user?.grants['db-optimize']}
             >
@@ -837,6 +845,17 @@ function Shards({ selectedCluster, user, onOpenSchedulerSettings, onOpenLogsSett
       )}
       {columnstoreRebalance && (
         <ColumnstoreRebalanceModal selectedCluster={selectedCluster} schema={columnstoreRebalance.schema} table={columnstoreRebalance.table} isOpen={!!columnstoreRebalance} closeModal={() => setColumnstoreRebalance(null)} />
+      )}
+      {isCancelConfirmOpen && (
+        <ConfirmModal
+          isOpen={isCancelConfirmOpen}
+          closeModal={() => setIsCancelConfirmOpen(false)}
+          title="Confirm cancel of the running checksums?"
+          onConfirmClick={() => {
+            setIsCancelConfirmOpen(false)
+            dispatch(checksumCancel({ clusterName: selectedCluster?.name }))
+          }}
+        />
       )}
       {isSchemaConfirmOpen && (
         <ConfirmModal

@@ -367,6 +367,7 @@ type ServerMonitor struct {
 	linkChangesMu               sync.Mutex                         // guards linkChanges: the links record, the refresh drops (#2093)
 	linkChanges                 []linkChange                       // the replication links repman stopped, reset or repointed and that do not run again: WARN0252 (reseed), WARN0352 (srv_link_change.go)
 	logicalRestoreGate          atomic.Pointer[logicalRestoreGate] // the pause of a restore writing to the binlog, WARN0254 while paused (#2124)
+	checksumWait                atomic.Pointer[string]             // what a table checksum waits for on this replica, WARN0086 while set (#2465)
 	restoreKeptMu               sync.Mutex                         // guards restoreKept
 	restoreKept                 []string                           // the tables the last logical restore kept as the server has them (MySQL refuses their DDL), WARN0280 while any
 	logicalRestoreGatePurging   atomic.Bool                        // a binlog rotation of that restore is being handled
@@ -1765,6 +1766,7 @@ func (server *ServerMonitor) Refresh() error {
 	server.ReplicationHealth = server.CheckReplication()
 	server.checkLinkChanges()        // WARN0252, WARN0352: links repman stopped, reset or repointed and that do not run (T27, #2093)
 	server.checkLogicalRestoreGate() // WARN0254: a restore with the binlog on paused for its replicas (#2124)
+	server.checkChecksumWait()       // WARN0086: a table checksum waiting for this replica (#2465)
 	server.checkRestoreKeptTables()  // WARN0280: tables the last restore kept as the server has them
 
 	if server.IsSlave {
@@ -2270,6 +2272,11 @@ func (server *ServerMonitor) ReloadDictTables(legacyTables map[string]*dbhelper.
 	}
 	var tottablesize, totindexsize int64
 	for k, v := range tables {
+		// no checksum survives a restart: one saved running (PR) or waiting (WA) never
+		// ends, and kept ChecksumIsRunning true for good (#2465)
+		if v != nil && (v.TableSync == "PR" || v.TableSync == "WA") {
+			v.TableSync = ""
+		}
 		server.DictTables.Set(k, v)
 		tottablesize += v.DataLength
 		totindexsize += v.IndexLength

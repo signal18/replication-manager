@@ -525,6 +525,9 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 		if test.Name == "testSchemaEventsDrift" {
 			res = regtest.TestSchemaEventsDrift(cl, test.ConfigFile, &test)
 		}
+		if test.Name == "testTableChecksum" {
+			res = regtest.TestTableChecksum(cl, test.ConfigFile, &test)
+		}
 		if test.Name == "testSchemaEventsFailoverIsolation" {
 			res = regtest.TestSchemaEventsFailoverIsolation(cl, test.ConfigFile, &test)
 		}

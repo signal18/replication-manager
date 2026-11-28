@@ -93,6 +93,7 @@ export const clusterService = {
 
   // Cluster management APIs
   checksumAllTables,
+  checksumCancel,
   checksumRepairAllTables,
   analyzeAllTables,
   switchOverCluster,
@@ -474,6 +475,10 @@ function getQueryRules(clusterName, baseURL) {
 //#region Cluster management APIs
 function checksumAllTables(clusterName, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/actions/checksum-all-tables`)
+}
+
+function checksumCancel(clusterName, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/actions/checksum-cancel`)
 }
 
 function checksumRepairAllTables(clusterName, baseURL) {

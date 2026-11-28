@@ -368,6 +368,9 @@ type Cluster struct {
 	RepMgrHostname              string               `json:"-"`
 	exitMsg                     string               `json:"-"`
 	exit                        atomic.Bool          `json:"-"`
+	checksumCancel              atomic.Uint64        `json:"-"` // bumped by CancelTableChecksum: a running table checksum started before ends NA (#2465)
+	checksumFailures            sync.Map             `json:"-"` // schema.table -> why its last checksum failed, WARN0342 while set (#2465)
+	checksumRunning             atomic.Int32         `json:"-"` // table checksums and loops over the tables running (ChecksumIsRunning)
 	backupSlotsHeld             atomic.Int32         `json:"-"` // global backup slots taken by this cluster's backups
 	stopOnce                    sync.Once            `json:"-"`
 	backupEncryptionCleanupOnce sync.Once            `json:"-"`

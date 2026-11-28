@@ -1232,6 +1232,21 @@ export const checksumAllTables = createGuardedAsyncThunk(
   }
 )
 
+export const checksumCancel = createGuardedAsyncThunk(
+  'cluster/checksumCancel',
+  async ({ clusterName }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.checksumCancel(clusterName, baseURL)
+      showSuccessBanner('Cancel sent to the running checksums!', status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner('Cancel of the running checksums failed!', error, thunkAPI)
+      return handleError(error, thunkAPI)
+    }
+  }
+)
+
 export const checksumRepairAllTables = createGuardedAsyncThunk(
   'cluster/checksumRepairAllTables',
   async ({ clusterName }, thunkAPI) => {

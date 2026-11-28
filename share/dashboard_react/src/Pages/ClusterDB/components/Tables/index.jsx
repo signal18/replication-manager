@@ -5,13 +5,13 @@ import { createColumnHelper } from '@tanstack/react-table'
 import { shallowEqual, useDispatch, useSelector } from 'react-redux'
 import { DataTable } from '../../../../components/DataTable'
 import { isEqual } from 'lodash'
-import { analyzeAllTables, analyzeSchema, analyzeTable, checksumAllTables, checksumRepairAllTables, checksumSchema, checksumRepairSchema, checksumTable, checksumRepairTable, getDatabaseService } from '../../../../redux/clusterSlice'
+import { analyzeAllTables, analyzeSchema, analyzeTable, checksumAllTables, checksumCancel, checksumRepairAllTables, checksumSchema, checksumRepairSchema, checksumTable, checksumRepairTable, getDatabaseService } from '../../../../redux/clusterSlice'
 import { getTablePct } from '../../../../utility/common'
 import Gauge from '../../../../components/Gauge'
 import MenuOptions from '../../../../components/MenuOptions'
 import ConfirmModal from '../../../../components/Modals/ConfirmModal'
 import RMIconButton from '../../../../components/RMIconButton'
-import { HiChartBar, HiShieldCheck } from 'react-icons/hi'
+import { HiBan, HiChartBar, HiShieldCheck } from 'react-icons/hi'
 import { use } from 'react'
 
 const selectTables = (state) => ({ tables: state.cluster.database.tables, isDesktop: state.common.isDesktop })
@@ -99,6 +99,10 @@ function Tables({ clusterName, dbId, selectedDBServer, usePersistent, tableSize,
 
   const handleChecksumAll = () => {
     dispatch(checksumAllTables({ clusterName }))
+  }
+
+  const handleChecksumCancel = () => {
+    dispatch(checksumCancel({ clusterName }))
   }
 
   const handleChecksumRepairAll = () => {
@@ -313,6 +317,11 @@ function Tables({ clusterName, dbId, selectedDBServer, usePersistent, tableSize,
             <RMIconButton icon={HiShieldCheck} tooltip={"Checksum All Tables"} isDisabled={!user?.grants['cluster-checksum']} onClick={() => {
               setConfirmTitle(`Confirm run checksum for all schemas and tables?`)
               setConfirmHandler(() => () => handleChecksumAll())
+              openConfirmModal()
+            }} />
+            <RMIconButton icon={HiBan} tooltip={"Cancel Running Checksums"} isDisabled={!user?.grants['cluster-checksum']} onClick={() => {
+              setConfirmTitle(`Confirm cancel of the running checksums?`)
+              setConfirmHandler(() => () => handleChecksumCancel())
               openConfirmModal()
             }} />
             <Box className={styles.divider} />

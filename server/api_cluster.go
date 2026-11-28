@@ -868,6 +868,10 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterSchemaChecksumAllTable)),
 	))
+	router.Handle("/api/clusters/{clusterName}/actions/checksum-cancel", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterSchemaChecksumCancel)),
+	))
 	router.Handle("/api/clusters/{clusterName}/actions/checksum-repair-all-tables", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterSchemaChecksumRepairAllTable)),
@@ -8453,6 +8457,28 @@ func (repman *ReplicationManager) handlerMuxClusterChecksumSchema(w http.Respons
 	}
 }
 
+// writeChecksumTableUnavailable answers the request and returns true when a
+// checksum or a repair of schema.table cannot start: 503 when the cluster has
+// no known master, 404 when the table is missing from the master's table
+// dictionary (a schema refresh is then requested, so a retry can succeed).
+// It returns false, writing nothing, when the checksum can start (#2465).
+func writeChecksumTableUnavailable(w http.ResponseWriter, mycluster *cluster.Cluster, schema string, table string) bool {
+	_, _, err := mycluster.ChecksumTableEntry(schema, table)
+	if err == nil {
+		return false
+	}
+	code := http.StatusServiceUnavailable
+	if errors.Is(err, cluster.ErrChecksumTableUnknown) {
+		code = http.StatusNotFound
+		mycluster.SetWaitMonitorSchema()
+	}
+	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Checksum of table %s.%s refused: %s", schema, table, err)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	json.NewEncoder(w).Encode(map[string]string{"message": fmt.Sprintf("checksum of %s.%s not started: %s", schema, table, err)})
+	return true
+}
+
 // handlerMuxClusterSchemaChecksumTable handles the checksum calculation for a specific table in a given cluster.
 // @Summary Calculate checksum for a specific table in a specific cluster
 // @Description This endpoint triggers the checksum calculation for a specific table in the specified cluster.
@@ -8465,7 +8491,9 @@ func (repman *ReplicationManager) handlerMuxClusterChecksumSchema(w http.Respons
 // @Param tableName path string true "Table Name"
 // @Success 200 {string} string "Successfully triggered checksum calculation for the table"
 // @Failure 403 {string} string "No valid ACL"
+// @Failure 404 {object} map[string]string "Table not in the master's table dictionary; schema monitoring triggered; retry after the next schema refresh"
 // @Failure 500 {string} string "No cluster"
+// @Failure 503 {object} map[string]string "Master not discovered"
 // @Router /api/clusters/{clusterName}/schema/{schemaName}/{tableName}/actions/checksum-table [post]
 func (repman *ReplicationManager) handlerMuxClusterSchemaChecksumTable(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -8477,7 +8505,37 @@ func (repman *ReplicationManager) handlerMuxClusterSchemaChecksumTable(w http.Re
 			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
-		go mycluster.CheckTableChecksum(vars["schemaName"], vars["tableName"])
+		if !writeChecksumTableUnavailable(w, mycluster, vars["schemaName"], vars["tableName"]) {
+			go mycluster.CheckTableChecksum(vars["schemaName"], vars["tableName"])
+		}
+	} else {
+		http.Error(w, "No cluster", http.StatusInternalServerError)
+	}
+}
+
+// handlerMuxClusterSchemaChecksumCancel cancels the table checksums running in a given cluster.
+// @Summary Cancel the running table checksums of a specific cluster
+// @Description Each running table checksum ends NA before its next chunk or at its next wait turn for a replica (30 s at most); a checksum of all tables or of a schema stops its loop. A checksum started after the cancel runs.
+// @Tags ClusterSchema
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Success 200 {string} string "Cancel sent to the running table checksums"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster"
+// @Router /api/clusters/{clusterName}/actions/checksum-cancel [post]
+func (repman *ReplicationManager) handlerMuxClusterSchemaChecksumCancel(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", http.StatusForbidden)
+			return
+		}
+		mycluster.CancelTableChecksum()
 	} else {
 		http.Error(w, "No cluster", http.StatusInternalServerError)
 	}
@@ -8535,7 +8593,9 @@ func (repman *ReplicationManager) handlerMuxClusterSchemaChecksumRepairAllTable(
 // @Param tableName path string true "Table Name"
 // @Success 200 {string} string "Successfully triggered checksum calculation for the table"
 // @Failure 403 {string} string "No valid ACL"
+// @Failure 404 {object} map[string]string "Table not in the master's table dictionary; schema monitoring triggered; retry after the next schema refresh"
 // @Failure 500 {string} string "No cluster"
+// @Failure 503 {object} map[string]string "Master not discovered"
 // @Router /api/clusters/{clusterName}/schema/{schemaName}/{tableName}/actions/checksum-repair-table [post]
 func (repman *ReplicationManager) handlerMuxClusterSchemaChecksumRepairTable(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -8547,7 +8607,9 @@ func (repman *ReplicationManager) handlerMuxClusterSchemaChecksumRepairTable(w h
 			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
-		go mycluster.RepairOneTableChecksum(vars["schemaName"], vars["tableName"])
+		if !writeChecksumTableUnavailable(w, mycluster, vars["schemaName"], vars["tableName"]) {
+			go mycluster.RepairOneTableChecksum(vars["schemaName"], vars["tableName"])
+		}
 	} else {
 		http.Error(w, "No cluster", http.StatusInternalServerError)
 	}

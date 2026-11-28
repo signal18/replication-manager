@@ -82,6 +82,9 @@ var tests = []string{
 	// container next to each database, a physical backup tool and restic, and it
 	// reseeds a replica. Run it by name:
 	// /api/clusters/<cluster>/tests/actions/run/testBackupArchiveRemoveOriginal
+	// testTableChecksum is not in this list either: it writes on a replica on
+	// purpose (a divergence the checksum must find, then repair), MariaDB only. Run it
+	// by name: /api/clusters/<cluster>/tests/actions/run/testTableChecksum
 	// testSchemaEventsDrift is not in this list either: it writes on a replica
 	// and switches monitoring-schema-events off and on while it runs. Run it by
 	// name: /api/clusters/<cluster>/tests/actions/run/testSchemaEventsDrift

@@ -13,14 +13,13 @@ import (
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/jmoiron/sqlx"
-	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/version"
 )
 
 // The staging seed waits for the replica it detaches to reach its master's position read once
 // (WaitSyncToTarget), with no timer, its catching up the creation's step, and stops only on a
-// broken replication. Slave is not enough:
-// db3.belair-staging-test, Slave at 2 s, was detached 660 MB short of its master's position.
+// broken replication. Slave is not enough: a replica at Slave, 2 s behind, was detached 660 MB
+// short of its master's position.
 func TestWaitStagingReplicaInSync(t *testing.T) {
 	mariadb := &version.Version{Flavor: "MariaDB", Major: 11, Minor: 8, Release: 6}
 	master, masterMock := newMyLoaderPositionServer(t, mariadb, true)
@@ -38,7 +37,7 @@ func TestWaitStagingReplicaInSync(t *testing.T) {
 		}
 		t.Cleanup(func() { db.Close() })
 		return &ServerMonitor{Host: "db3", Port: "3306", URL: "db3:3306", ClusterGroup: c, DBVersion: mariadb,
-			Conn: sqlx.NewDb(db, "sqlmock")}, mock
+			Conn: sqlx.NewDb(db, "sqlmock"), SlaveStatus: runningReplicaStatus("binlog.000010", "692538834")}, mock
 	}
 	gtidWait := func(mock sqlmock.Sqlmock, result int) {
 		mock.ExpectQuery("MASTER_GTID_WAIT").WithArgs("5-11130737-726", 30).
@@ -70,7 +69,8 @@ func TestWaitStagingReplicaInSync(t *testing.T) {
 	// list is not swapped under the wait (a reload's rebuild is read by URL, GetServerFromURL)
 	c.SetStagingCreation(StagingCreation{Kind: "Staging", Parent: "prod", Step: "seed from prod"})
 	replica.State = stateSlave
-	replica.SlaveStatus = &dbhelper.SlaveStatus{SecondsBehindMaster: sql.NullInt64{Int64: 40, Valid: true}}
+	replica.SlaveStatus = runningReplicaStatus("binlog.000010", "692538834")
+	replica.SlaveStatus.SecondsBehindMaster = sql.NullInt64{Int64: 40, Valid: true}
 	gtidBinlogPos()
 	gtidWait(mock, -1)
 	gtidWait(mock, 0)
@@ -85,36 +85,46 @@ func TestWaitStagingReplicaInSync(t *testing.T) {
 	}
 }
 
-// A replica whose applied position does not move for replicaNoProgressFor is not catching
-// up: the wait stops instead of waiting forever, and the replica is not detached.
-func TestWaitStagingReplicaInSyncStopsWithoutProgress(t *testing.T) {
+// A replica whose applied position does not move is not given up on: one long transaction, a
+// delayed replica or parallel retries keep it still for good reasons. The wait goes on while its
+// threads run, and ends with the reason once the engine stops the SQL thread.
+func TestWaitStagingReplicaInSyncNoGiveUpOnStillPosition(t *testing.T) {
 	mariadb := &version.Version{Flavor: "MariaDB", Major: 11, Minor: 8, Release: 6}
 	master, masterMock := newMyLoaderPositionServer(t, mariadb, true)
 	c := master.ClusterGroup
 	c.master = master
-	masterMock.ExpectQuery("global_variables").WithArgs("GTID_BINLOG_POS").
-		WillReturnRows(sqlmock.NewRows([]string{"Value"}).AddRow("5-11130737-726"))
+	masterMock.MatchExpectationsInOrder(false)
+	for i := 0; i < 2; i++ {
+		masterMock.ExpectQuery("global_variables").WithArgs("GTID_BINLOG_POS").
+			WillReturnRows(sqlmock.NewRows([]string{"Value"}).AddRow("5-11130737-726"))
+	}
 	db, mock, err := sqlmock.New()
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer db.Close()
 	replica := &ServerMonitor{Host: "db3", Port: "3306", URL: "db3:3306", ClusterGroup: c, DBVersion: mariadb,
-		Conn: sqlx.NewDb(db, "sqlmock"), State: stateSlaveLate,
-		SlaveStatus: &dbhelper.SlaveStatus{RelayMasterLogFile: sql.NullString{String: "binlog.000010", Valid: true},
-			ExecMasterLogPos: sql.NullString{String: "692538834", Valid: true}}}
+		Conn: sqlx.NewDb(db, "sqlmock"), State: stateSlaveLate, SlaveStatus: runningReplicaStatus("binlog.000010", "692538834")}
 	c.Servers = []*ServerMonitor{master, replica}
-	// each turn lasts its 30 s: the fourth sees the position still for 90 s
-	clock := time.Now()
-	replicaProgressClock = func() time.Time { clock = clock.Add(30 * time.Second); return clock }
-	defer func() { replicaProgressClock = time.Now }()
-	for i := 0; i < 4; i++ {
+	// ten 30 s turns (5 minutes) at the same position, then reached
+	for i := 0; i < 10; i++ {
 		mock.ExpectQuery("MASTER_GTID_WAIT").WithArgs("5-11130737-726", 30).
 			WillReturnRows(sqlmock.NewRows([]string{"r"}).AddRow(-1))
 	}
+	mock.ExpectQuery("MASTER_GTID_WAIT").WithArgs("5-11130737-726", 30).
+		WillReturnRows(sqlmock.NewRows([]string{"r"}).AddRow(0))
+	if err := c.waitStagingReplicaInSync(replica.URL); err != nil {
+		t.Fatalf("a still position with running threads is waited for: %v", err)
+	}
+	// the SQL thread stopped on an error: the wait ends with it, no query sent
+	replica.SlaveStatus.SlaveSQLRunning = sql.NullString{String: "No", Valid: true}
+	replica.SlaveStatus.LastSQLError = sql.NullString{String: "Deadlock found; retried 10 times", Valid: true}
 	err = c.waitStagingReplicaInSync(replica.URL)
-	if err == nil || !strings.Contains(err.Error(), "makes no progress (still at binlog.000010:692538834 for 1m30s") {
-		t.Fatalf("a replica without progress: %v", err)
+	if err == nil || !strings.Contains(err.Error(), "SQL thread stopped on an error: Deadlock found") {
+		t.Fatalf("a stopped SQL thread ends the wait: %v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("waits: %s", err)
 	}
 }
 
@@ -132,7 +142,7 @@ func TestWaitStagingReplicaInSyncStopsOnSQLError(t *testing.T) {
 	}
 	defer db.Close()
 	replica := &ServerMonitor{Host: "db3", Port: "3306", URL: "db3:3306", ClusterGroup: c, DBVersion: mariadb,
-		Conn: sqlx.NewDb(db, "sqlmock"), State: stateSlave}
+		Conn: sqlx.NewDb(db, "sqlmock"), State: stateSlave, SlaveStatus: runningReplicaStatus("binlog.000010", "692538834")}
 	c.Servers = []*ServerMonitor{master, replica}
 	mock.ExpectQuery("MASTER_GTID_WAIT").WillReturnError(errors.New("invalid connection"))
 	if err := c.waitStagingReplicaInSync(replica.URL); err == nil || !strings.Contains(err.Error(), "invalid connection") {
