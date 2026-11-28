@@ -53,8 +53,8 @@ type applier struct {
 	dropped, purgeSkipped int64
 	targetStmts           []string
 	targetTotal           int64
-	err  string
-	last *merged
+	err                   string
+	last                  *merged
 }
 
 // fill puts what the apply did into a status line.
