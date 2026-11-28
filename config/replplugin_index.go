@@ -30,10 +30,14 @@ type ReplicationPluginIndex struct {
 	Init      string `mapstructure:"init" toml:"init" json:"init,omitempty"`
 	RangeStep int    `mapstructure:"range-step" toml:"range-step" json:"rangeStep,omitempty"`
 	// the destination's partitioning, when it needs one: a DATE, DATETIME or TIMESTAMP column of
-	// the result, day, week or month, the partitions kept ahead (0: 3)
+	// the result by day, week, month or year, or an INT or BIGINT column by ranges of ids (1M,
+	// 2M, 5M, 10M, 20M, 50M); the partitions kept ahead (0: 3)
 	PartitionColumn string `mapstructure:"partition-column" toml:"partition-column" json:"partitionColumn,omitempty"`
 	PartitionPeriod string `mapstructure:"partition-period" toml:"partition-period" json:"partitionPeriod,omitempty"`
 	PartitionsAhead int    `mapstructure:"partitions-ahead" toml:"partitions-ahead" json:"partitionsAhead,omitempty"`
+	// PartitionPurgeAfterDays: 0 (off, the default), or the destination's partitions whose whole
+	// range ended more than this many days ago are dropped (a time period only)
+	PartitionPurgeAfterDays int `mapstructure:"partition-purge-after-days" toml:"partition-purge-after-days" json:"partitionPurgeAfterDays,omitempty"`
 	// TargetEngine: the destination table's engine, as the destination plugin takes them
 	// (InnoDB for repl-mariadb-mariadb-cdc); empty, the plugin's default
 	TargetEngine string `mapstructure:"target-engine" toml:"target-engine" json:"targetEngine,omitempty"`
@@ -96,10 +100,22 @@ func ValidateReplicationPluginIndex(idx ReplicationPluginIndex) error {
 			return fmt.Errorf("index %s: %s %q: a MariaDB name, without ` . or /", idx.Name, k, v)
 		}
 	}
-	switch strings.ToLower(idx.PartitionPeriod) {
-	case "", "day", "week", "month":
+	idRange := false
+	switch period := strings.ToLower(idx.PartitionPeriod); period {
+	case "", "day", "week", "month", "year":
+	case "1m", "2m", "5m", "10m", "20m", "50m":
+		idRange = true
 	default:
-		return fmt.Errorf("index %s: partition-period %q: day, week or month", idx.Name, idx.PartitionPeriod)
+		return fmt.Errorf("index %s: partition-period %q: day, week, month, year, or a range of ids: 1M, 2M, 5M, 10M, 20M or 50M", idx.Name, idx.PartitionPeriod)
+	}
+	if idx.PartitionPurgeAfterDays < 0 {
+		return fmt.Errorf("index %s: partition-purge-after-days is 0 (off) or more", idx.Name)
+	}
+	if idRange && idx.PartitionPurgeAfterDays > 0 {
+		return fmt.Errorf("index %s: partition-purge-after-days has no meaning on a range of ids (partition-period %s)", idx.Name, idx.PartitionPeriod)
+	}
+	if idx.PartitionPurgeAfterDays > 0 && idx.PartitionColumn == "" {
+		return fmt.Errorf("index %s: partition-purge-after-days needs a partitioned index", idx.Name)
 	}
 	if (idx.PartitionColumn == "") != (idx.PartitionPeriod == "") {
 		return fmt.Errorf("index %s: partition-column and partition-period go together", idx.Name)
@@ -183,7 +199,7 @@ func (conf *Config) ReplicationPluginIndexesToml(section string) (string, error)
 				part[k] = v
 			}
 		}
-		for k, v := range map[string]int{"max-keys-per-batch": e.MaxKeysPerBatch, "range-step": e.RangeStep, "partitions-ahead": e.PartitionsAhead} {
+		for k, v := range map[string]int{"max-keys-per-batch": e.MaxKeysPerBatch, "range-step": e.RangeStep, "partitions-ahead": e.PartitionsAhead, "partition-purge-after-days": e.PartitionPurgeAfterDays} {
 			if v > 0 {
 				part[k] = int64(v)
 			}

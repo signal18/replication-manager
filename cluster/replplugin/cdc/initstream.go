@@ -177,6 +177,7 @@ func scanEach(rows *sql.Rows, last *[]interface{}, fn func([]interface{}) error)
 type dumpSource struct {
 	dir, schema, table string
 	ncols, partPos     int // the table's columns; the partition column's position, -1 none
+	part               *partitioning
 	files              []string
 }
 
@@ -199,20 +200,21 @@ func (s *dumpSource) open(ctx context.Context) (string, string, error) {
 		}
 	}
 	from := ""
-	if s.partPos >= 0 && len(s.files) > 0 {
-		var min string
+	if s.part != nil && s.partPos >= 0 && len(s.files) > 0 {
+		var min int64
+		found := false
 		err := s.each(ctx, func(r []interface{}) error {
-			if v, ok := r[s.partPos].([]byte); ok {
-				if t, ok := parseTimeValue(v); ok && (min == "" || t.Format("2006-01-02") < min) {
-					min = t.Format("2006-01-02")
-				}
+			if o, ok := s.part.value(r[s.partPos]); ok && (!found || o < min) {
+				min, found = o, true
 			}
 			return nil
 		})
 		if err != nil {
 			return "", "", err
 		}
-		from = min
+		if found {
+			from = s.part.literal(min)
+		}
 	}
 	return meta.GTID, from, nil
 }
@@ -343,7 +345,7 @@ func copyInitJob(src *sqlx.DB, tc *tableCopy) (*initJob, error) {
 		if tc.idx.BackupDir == "" {
 			return nil, fmt.Errorf("index %s: init backup without backup_dir (the split dump to read)", tc.idx.Name)
 		}
-		j.src = &dumpSource{dir: tc.idx.BackupDir, schema: tc.srcSchema, table: tc.srcTable, ncols: len(cols), partPos: partPos}
+		j.src = &dumpSource{dir: tc.idx.BackupDir, schema: tc.srcSchema, table: tc.srcTable, ncols: len(cols), partPos: partPos, part: tc.part}
 		j.elem.Source, j.backup = wire.InitBackup, true
 	default:
 		return nil, fmt.Errorf("index %s: init %q: select or backup", tc.idx.Name, tc.idx.Init)

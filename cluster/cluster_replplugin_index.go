@@ -60,7 +60,7 @@ func (cluster *Cluster) replPluginIndexes(parent string) []wire.Index {
 	for _, e := range cluster.Conf.ReplicationPluginIndexList() {
 		idx := wire.Index{Name: e.Name, SQL: e.SQL, Schema: e.SlaveSchema, Table: e.SlaveTable, MaxKeysPerBatch: e.MaxKeysPerBatch,
 			Mode: e.Mode, Tables: e.Tables, Init: e.Init, RangeStep: e.RangeStep, PartitionColumn: e.PartitionColumn,
-			PartitionPeriod: e.PartitionPeriod, PartitionsAhead: e.PartitionsAhead, TargetEngine: e.TargetEngine}
+			PartitionPeriod: e.PartitionPeriod, PartitionsAhead: e.PartitionsAhead, PartitionPurgeAfterDays: e.PartitionPurgeAfterDays, TargetEngine: e.TargetEngine}
 		if strings.EqualFold(e.Init, wire.InitBackup) {
 			idx.BackupDir = cluster.replPluginBackupDir(parent)
 		}

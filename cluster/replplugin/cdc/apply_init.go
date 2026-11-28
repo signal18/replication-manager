@@ -126,8 +126,7 @@ func (a *applier) applySchema(ctx context.Context, db *sqlx.DB, e wire.SchemaEle
 		if err != nil || p == nil {
 			return q, err
 		}
-		from, _ := parseTimeValue(e.PartitionFrom)
-		pq, err := partitionTable(ctx, conn, p, e.Schema, e.Table, from)
+		pq, err := partitionTable(ctx, conn, p, e.Schema, e.Table, e.PartitionFrom)
 		return q + "; " + pq, err
 	})
 	if err != nil {
@@ -173,7 +172,8 @@ func (a *applier) applyInitPart(ctx context.Context, db *sqlx.DB, m wire.Manifes
 		pt, err := a.partitioned(ctx, conn, idx, t.Schema, t.Table)
 		if err == nil && pt != nil {
 			var q string
-			if q, err = pt.ensure(ctx, conn, time.Now().UTC(), pt.latest(files[t.Inserts])); err != nil {
+			top, ok := pt.latest(files[t.Inserts])
+			if q, err = pt.ensure(ctx, conn, time.Now().UTC(), top, ok); err != nil {
 				err = fmt.Errorf("%w (%s)", err, q)
 			}
 		}
@@ -181,7 +181,8 @@ func (a *applier) applyInitPart(ctx context.Context, db *sqlx.DB, m wire.Manifes
 		if err != nil {
 			return fmt.Errorf("index %s: %w", idx.Name, err)
 		}
-		groups := splitByPartition(files[t.Inserts], files[t.Deletes], pt)
+		groups, skipped := splitByPartition(files[t.Inserts], files[t.Deletes], pt, time.Now().UTC())
+		a.countPurgeSkipped(skipped)
 		jobs := map[string]func(context.Context) error{}
 		for name, g := range groups {
 			g := g
@@ -222,15 +223,17 @@ type partRows struct {
 }
 
 // splitByPartition splits a part's rows and keys (line i of one is line i of the other) by
-// the partition of each row; one group "" when the table is not partitioned.
-func splitByPartition(rows, keys []byte, pt *partitionedTable) map[string]*partRows {
+// the partition of each row; one group "" when the table is not partitioned. A row older than the
+// purge horizon is left out and counted: it would land in the first partition.
+func splitByPartition(rows, keys []byte, pt *partitionedTable, now time.Time) (map[string]*partRows, int64) {
 	out := map[string]*partRows{}
 	if pt == nil {
 		if len(rows) > 0 {
 			out[""] = &partRows{rows: rows, keys: keys, n: int64(bytes.Count(rows, []byte{'\n'}))}
 		}
-		return out
+		return out, 0
 	}
+	var skipped int64
 	for len(rows) > 0 {
 		var r, k []byte
 		r, rows = cutLine(rows)
@@ -239,6 +242,10 @@ func splitByPartition(rows, keys []byte, pt *partitionedTable) map[string]*partR
 		var v interface{}
 		if pt.pos < len(fields) && fields[pt.pos] != nil {
 			v = fields[pt.pos]
+		}
+		if pt.p.purged(v, now) {
+			skipped++
+			continue
 		}
 		name := pt.p.route(v, pt.first)
 		g, ok := out[name]
@@ -250,7 +257,61 @@ func splitByPartition(rows, keys []byte, pt *partitionedTable) map[string]*partR
 		g.keys = append(append(g.keys, k...), '\n')
 		g.n++
 	}
-	return out
+	return out, skipped
+}
+
+// withoutPurged is rows (a TSV file) without the rows older than the purge horizon, and their
+// count.
+func withoutPurged(rows []byte, pt *partitionedTable, now time.Time) ([]byte, int64) {
+	if pt == nil {
+		return rows, 0
+	}
+	if _, on := pt.p.keptFrom(now); !on {
+		return rows, 0
+	}
+	var out []byte
+	var skipped int64
+	for len(rows) > 0 {
+		var r []byte
+		r, rows = cutLine(rows)
+		if len(r) == 0 {
+			continue
+		}
+		fields := wire.DecodeTSV(r)
+		var v interface{}
+		if pt.pos < len(fields) && fields[pt.pos] != nil {
+			v = fields[pt.pos]
+		}
+		if pt.p.purged(v, now) {
+			skipped++
+			continue
+		}
+		out = append(append(out, r...), '\n')
+	}
+	return out, skipped
+}
+
+// countPurgeSkipped counts rows left out past the purge horizon.
+func (a *applier) countPurgeSkipped(n int64) {
+	if n == 0 {
+		return
+	}
+	a.mu.Lock()
+	a.purgeSkipped += n
+	a.mu.Unlock()
+}
+
+// ranOnTarget records a statement the apply ran on the target that removed data (F11): the
+// status carries it, replication-manager logs it.
+func (a *applier) ranOnTarget(q string, dropped int) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.dropped += int64(dropped)
+	a.targetTotal++
+	a.targetStmts = append(a.targetStmts, q)
+	if over := len(a.targetStmts) - wire.MaxSourceStatements; over > 0 {
+		a.targetStmts = append([]string(nil), a.targetStmts[over:]...)
+	}
 }
 
 func cutLine(b []byte) ([]byte, []byte) {
@@ -342,25 +403,44 @@ func (a *applier) routeDelta(m wire.Manifest, done *wire.Applied) []wire.TableFi
 }
 
 // ensureDeltaPartitions adds, before the checkpoint's transaction (a DDL commits), the
-// partitions its rows need on every partitioned destination it writes.
-func (a *applier) ensureDeltaPartitions(ctx context.Context, conn *sqlx.Conn, tables []wire.TableFiles, files map[string][]byte) error {
+// partitions its rows need on every partitioned destination it writes, and leaves out the rows
+// older than a destination's purge horizon (a late row never undoes a purge); it returns the
+// tables to apply.
+func (a *applier) ensureDeltaPartitions(ctx context.Context, conn *sqlx.Conn, tables []wire.TableFiles, files map[string][]byte) ([]wire.TableFiles, error) {
+	now := time.Now().UTC()
+	out := make([]wire.TableFiles, 0, len(tables))
 	for _, t := range tables {
 		idx, ok := a.indexOfDest(t.Schema, t.Table)
 		if !ok {
+			out = append(out, t)
 			continue
 		}
 		pt, err := a.partitioned(ctx, conn, idx, t.Schema, t.Table)
 		if err != nil {
-			return fmt.Errorf("index %s: %w", idx.Name, err)
+			return nil, fmt.Errorf("index %s: %w", idx.Name, err)
 		}
 		if pt == nil {
+			out = append(out, t)
 			continue
 		}
-		if q, err := pt.ensure(ctx, conn, time.Now().UTC(), pt.latest(files[t.Inserts])); err != nil {
-			return fmt.Errorf("index %s: %w (%s)", idx.Name, err, q)
+		if t.Inserts != "" {
+			if rows, skipped := withoutPurged(files[t.Inserts], pt, now); skipped > 0 {
+				// a file of its own: another destination of the same rows has its own horizon
+				name := t.Inserts + "@" + t.Schema + "." + t.Table
+				files[name], t.Inserts, t.InsertRows = rows, name, t.InsertRows-skipped
+				a.countPurgeSkipped(skipped)
+				if len(rows) == 0 {
+					t.Inserts = ""
+				}
+			}
 		}
+		top, ok := pt.latest(files[t.Inserts])
+		if q, err := pt.ensure(ctx, conn, now, top, ok); err != nil {
+			return nil, fmt.Errorf("index %s: %w (%s)", idx.Name, err, q)
+		}
+		out = append(out, t)
 	}
-	return nil
+	return out, nil
 }
 
 // indexOfDest is the index whose destination schema.table is.
@@ -379,7 +459,9 @@ func (a *applier) indexOfDest(schema, table string) (wire.Index, bool) {
 }
 
 // maintainPartitions keeps the partitions of every partitioned destination whose init is
-// done up to the horizon (partitions_ahead periods after the current one).
+// done up to the horizon (partitions_ahead periods after the current one), and drops those past
+// its purge (partition_purge_after_days): never during an init (a destination whose init is not
+// applied is not maintained), never the last one nor the one being written.
 func (a *applier) maintainPartitions(ctx context.Context, db *sqlx.DB, done *wire.Applied) error {
 	type dest struct {
 		idx           wire.Index
@@ -408,9 +490,14 @@ func (a *applier) maintainPartitions(ctx context.Context, db *sqlx.DB, done *wir
 	for _, d := range dests {
 		pt, err := a.partitioned(ctx, conn, d.idx, d.schema, d.table)
 		if err == nil && pt != nil {
+			now := time.Now().UTC()
 			var q string
-			if q, err = pt.ensure(ctx, conn, time.Now().UTC(), time.Time{}); err != nil {
+			if q, err = pt.ensure(ctx, conn, now, 0, false); err != nil {
 				err = fmt.Errorf("%w (%s)", err, q)
+			} else if q, dropped, perr := pt.purge(ctx, conn, now); perr != nil {
+				err = fmt.Errorf("the purge: %w (%s)", perr, q)
+			} else if len(dropped) > 0 {
+				a.ranOnTarget(q, len(dropped))
 			}
 		}
 		if err != nil {

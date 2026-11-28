@@ -31547,11 +31547,15 @@
                     "type": "string"
                 },
                 "partitionColumn": {
-                    "description": "the destination's partitioning, when it needs one: a DATE, DATETIME or TIMESTAMP column of\nthe result, day, week or month, the partitions kept ahead (0: 3)",
+                    "description": "the destination's partitioning, when it needs one: a DATE, DATETIME or TIMESTAMP column of\nthe result by day, week, month or year, or an INT or BIGINT column by ranges of ids (1M,\n2M, 5M, 10M, 20M, 50M); the partitions kept ahead (0: 3)",
                     "type": "string"
                 },
                 "partitionPeriod": {
                     "type": "string"
+                },
+                "partitionPurgeAfterDays": {
+                    "description": "PartitionPurgeAfterDays: 0 (off, the default), or the destination's partitions whose whole\nrange ended more than this many days ago are dropped (a time period only)",
+                    "type": "integer"
                 },
                 "partitionsAhead": {
                     "type": "integer"

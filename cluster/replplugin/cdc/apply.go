@@ -48,6 +48,11 @@ type applier struct {
 
 	mu   sync.Mutex
 	done wire.Applied
+	// the partition purge: partitions dropped, rows past its horizon not written, the DROP
+	// statements run (the last MaxSourceStatements of them) and their count, for the status
+	dropped, purgeSkipped int64
+	targetStmts           []string
+	targetTotal           int64
 	err  string
 	last *merged
 }
@@ -74,6 +79,8 @@ func (a *applier) fill(st *wire.Status) {
 		}
 	}
 	st.PendingMB = a.tr.PendingBytes() >> 20
+	st.PartitionsDropped, st.PurgedRowsSkipped = a.dropped, a.purgeSkipped
+	st.TargetStatements, st.TargetStatementsTotal = append([]string(nil), a.targetStmts...), a.targetTotal
 	if a.last != nil && a.cfg.MergeIntervalMs > 0 {
 		st.MergedSeq, st.MergedGTID, st.MergeTookMs = a.last.Seq, a.last.GTID, a.last.TookMs
 		if a.last.Seq > 0 {
@@ -290,7 +297,7 @@ func (a *applier) applyOne(ctx context.Context, db *sqlx.DB, seq int64, done *wi
 			return m.GTID, nil
 		}
 	}
-	if err := a.ensureDeltaPartitions(ctx, conn, m.Tables, files); err != nil {
+	if m.Tables, err = a.ensureDeltaPartitions(ctx, conn, m.Tables, files); err != nil {
 		return "", err
 	}
 	name := func(t wire.TableFiles) string {

@@ -151,10 +151,13 @@ type Index struct {
 	RangeStep int `toml:"range_step" json:"rangeStep,omitempty"`
 	// The partitioning of the destination, when the destination needs it: PartitionColumn a
 	// DATE, DATETIME or TIMESTAMP column of the result, PartitionPeriod day, week (ISO, from
-	// Monday) or month; PartitionsAhead the partitions kept after the current one (0: 3)
+	// Monday), month or year; PartitionsAhead the partitions kept after the current one (0: 3)
 	PartitionColumn string `toml:"partition_column" json:"partitionColumn,omitempty"`
 	PartitionPeriod string `toml:"partition_period" json:"partitionPeriod,omitempty"`
 	PartitionsAhead int    `toml:"partitions_ahead" json:"partitionsAhead,omitempty"`
+	// PartitionPurgeAfterDays: 0 (off), or the partitions whose whole range ended more than this
+	// many days ago are dropped, and the rows older than that horizon are no longer written
+	PartitionPurgeAfterDays int `toml:"partition_purge_after_days" json:"partitionPurgeAfterDays,omitempty"`
 	// TargetEngine: the destination table's engine on its target (InnoDB, Aria, S3, DuckDB,
 	// as the destination takes them), "" the destination's default; Engine is its alias
 	TargetEngine string `toml:"target_engine" json:"targetEngine,omitempty"`
@@ -281,6 +284,15 @@ type Status struct {
 	// SourceStatementsTotal counts every such statement the process ran: replication-manager
 	// logs each one once, a repeated statement included
 	SourceStatementsTotal int64 `json:"sourceStatementsTotal,omitempty"`
+	// TargetStatements: the last statements the apply ran on the target that remove data (a
+	// partition dropped by its purge), oldest first, at most MaxSourceStatements;
+	// TargetStatementsTotal counts them all: replication-manager logs each one once (F11)
+	TargetStatements      []string `json:"targetStatements,omitempty"`
+	TargetStatementsTotal int64    `json:"targetStatementsTotal,omitempty"`
+	// the partition purge: the partitions dropped and the rows older than its horizon not
+	// written, since the plugin started
+	PartitionsDropped int64 `json:"partitionsDropped,omitempty"`
+	PurgedRowsSkipped int64 `json:"purgedRowsSkipped,omitempty"`
 }
 
 // MaxSourceStatements bounds Status.SourceStatements.

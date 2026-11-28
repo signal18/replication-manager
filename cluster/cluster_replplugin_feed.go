@@ -336,20 +336,41 @@ func (cluster *Cluster) checkReplPluginSourceStates(r *replPluginRunner, st *wir
 // the last total-logged of stmts. A new process of the plugin (its generation, or a total lower
 // than the one logged) starts the count again.
 func (r *replPluginRunner) logSourceStatements(stmts []string, total int64, log func(string)) {
+	r.stmtMu.Lock()
+	l := stmtLog{n: r.loggedStmts, gen: r.loggedGen}
+	r.stmtMu.Unlock()
+	r.logStatements(&l, stmts, total, log)
+	r.stmtMu.Lock()
+	r.loggedStmts, r.loggedGen = l.n, l.gen
+	r.stmtMu.Unlock()
+}
+
+// logTargetStatements logs the statements the apply ran on the target not logged yet, as
+// logSourceStatements.
+func (r *replPluginRunner) logTargetStatements(stmts []string, total int64, log func(string)) {
+	r.stmtMu.Lock()
+	l := r.targetLog
+	r.stmtMu.Unlock()
+	r.logStatements(&l, stmts, total, log)
+	r.stmtMu.Lock()
+	r.targetLog = l
+	r.stmtMu.Unlock()
+}
+
+// logStatements logs the statements of stmts not counted in l yet, and counts them.
+func (r *replPluginRunner) logStatements(l *stmtLog, stmts []string, total int64, log func(string)) {
 	r.inMu.Lock()
 	gen := r.gen
 	r.inMu.Unlock()
-	r.stmtMu.Lock()
-	defer r.stmtMu.Unlock()
-	if gen != r.loggedGen || total < r.loggedStmts {
-		r.loggedGen, r.loggedStmts = gen, 0
+	if gen != l.gen || total < l.n {
+		l.gen, l.n = gen, 0
 	}
-	n := total - r.loggedStmts
+	n := total - l.n
 	if n > int64(len(stmts)) {
 		n = int64(len(stmts)) // more than the status keeps: the older ones are lost, said by the count
 	}
 	for _, q := range stmts[int64(len(stmts))-n:] {
 		log(q)
 	}
-	r.loggedStmts = total
+	l.n = total
 }

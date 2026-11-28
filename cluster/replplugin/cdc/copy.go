@@ -137,10 +137,8 @@ func (tc *tableCopy) check() error {
 	if partCol == nil {
 		return fmt.Errorf("index %s: %s has no column %s to partition by", tc.idx.Name, name, tc.part.column)
 	}
-	switch strings.ToLower(partCol.DataType) {
-	case "date", "datetime", "timestamp":
-	default:
-		return fmt.Errorf("index %s: %s.%s is a %s: a partition column is a DATE, DATETIME or TIMESTAMP", tc.idx.Name, name, partCol.Name, partCol.DataType)
+	if why := tc.part.takes(partCol.DataType); why != "" {
+		return fmt.Errorf("index %s: %s.%s: %s", tc.idx.Name, name, partCol.Name, why)
 	}
 	tc.part.column = partCol.Name
 	for _, k := range tc.pk {

@@ -29,23 +29,28 @@ import { clusterService } from '../../services/clusterService'
 
 const NAME = /^[a-z0-9][a-z0-9_-]{0,63}$/
 const IDENT = /^[^`./]{1,64}$/
+const ID_STEPS = ['1M', '2M', '5M', '10M', '20M', '50M']
 const TABLE = /^[^`./\s]{1,64}\.[^`./\s]{1,64}$/
 
 function IndexFormModal({ isOpen, closeModal, index, onSave }) {
   const initial = index ? { ...index, tables: (index.tables || []).join(', ') } : null
-  const [form, setForm] = useState(initial || { name: '', mode: 'index', tables: '', init: '', slaveSchema: '', slaveTable: '', sql: '', maxKeysPerBatch: 0, rangeStep: 0, partitionColumn: '', partitionPeriod: '', partitionsAhead: 0, targetEngine: '' })
+  const [form, setForm] = useState(initial || { name: '', mode: 'index', tables: '', init: '', slaveSchema: '', slaveTable: '', sql: '', maxKeysPerBatch: 0, rangeStep: 0, partitionColumn: '', partitionPeriod: '', partitionsAhead: 0, partitionPurgeAfterDays: 0, targetEngine: '' })
   const [saving, setSaving] = useState(false)
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value })
   const tableMode = form.mode === 'table'
   const tables = String(form.tables || '').split(',').map((t) => t.trim()).filter(Boolean)
   const partitioned = !!form.partitionColumn || !!form.partitionPeriod
+  const idRange = ID_STEPS.includes(String(form.partitionPeriod || '').toUpperCase())
+  const purge = parseInt(form.partitionPurgeAfterDays, 10) || 0
   const valid =
     NAME.test(form.name) &&
     IDENT.test(form.slaveSchema) &&
     (tableMode
       ? tables.length > 0 && tables.every((t) => TABLE.test(t)) && (!form.slaveTable || (IDENT.test(form.slaveTable) && tables.length === 1))
       : IDENT.test(form.slaveTable) && /^\s*select\b/i.test(form.sql)) &&
-    (!partitioned || (IDENT.test(form.partitionColumn) && !!form.partitionPeriod))
+    (!partitioned || (IDENT.test(form.partitionColumn) && !!form.partitionPeriod)) &&
+    /^[0-9]*$/.test(String(form.partitionPurgeAfterDays ?? '')) &&
+    !(idRange && purge > 0)
   const save = async () => {
     setSaving(true)
     const int = (v) => parseInt(v, 10) || 0
@@ -57,7 +62,8 @@ function IndexFormModal({ isOpen, closeModal, index, onSave }) {
       init: tableMode ? form.init : '',
       maxKeysPerBatch: int(form.maxKeysPerBatch),
       rangeStep: int(form.rangeStep),
-      partitionsAhead: int(form.partitionsAhead)
+      partitionsAhead: int(form.partitionsAhead),
+      partitionPurgeAfterDays: idRange ? 0 : int(form.partitionPurgeAfterDays)
     })
     setSaving(false)
   }
@@ -129,12 +135,22 @@ function IndexFormModal({ isOpen, closeModal, index, onSave }) {
                   <option value='day'>day</option>
                   <option value='week'>week</option>
                   <option value='month'>month</option>
+                  <option value='year'>year</option>
+                  {ID_STEPS.map((s) => (
+                    <option key={s} value={s}>{`${s} ids`}</option>
+                  ))}
                 </Select>
+                <FormHelperText>A time period on a DATE, DATETIME or TIMESTAMP column; a range of ids on an INT or BIGINT column.</FormHelperText>
               </FormControl>
               <FormControl>
                 <FormLabel>Partitions ahead</FormLabel>
                 <Input value={form.partitionsAhead} onChange={set('partitionsAhead')} placeholder='0' />
                 <FormHelperText>Made before they are needed. 0: 3.</FormHelperText>
+              </FormControl>
+              <FormControl>
+                <FormLabel>Purge after (days)</FormLabel>
+                <Input value={form.partitionPurgeAfterDays} isDisabled={idRange} onChange={set('partitionPurgeAfterDays')} placeholder='0' />
+                <FormHelperText>0: never. Drops the partitions whose whole period ended that many days ago; older rows are no longer written. Time periods only.</FormHelperText>
               </FormControl>
             </Flex>
             <Flex gap='3'>
@@ -217,7 +233,7 @@ function AnalyticChildIndexes({ clusterName, readOnly }) {
           <Text fontWeight='semibold' minW='10rem'>{idx.name}</Text>
           <Text fontFamily='mono' fontSize='sm' flex='1'>
             {idx.mode === 'table' ? `${(idx.tables || []).join(', ')} → ${idx.slaveSchema}${idx.slaveTable ? '.' + idx.slaveTable : ''}` : `${idx.slaveSchema}.${idx.slaveTable}`}
-            {idx.partitionColumn ? ` (by ${idx.partitionPeriod} of ${idx.partitionColumn})` : ''}
+            {idx.partitionColumn ? ` (by ${idx.partitionPeriod} of ${idx.partitionColumn}${idx.partitionPurgeAfterDays ? `, purged after ${idx.partitionPurgeAfterDays} days` : ''})` : ''}
           </Text>
           {(list.ready || []).includes(idx.name) ? <Badge colorScheme='green'>ready</Badge> : <Badge colorScheme='orange'>init pending</Badge>}
           <RMButton size='sm' variant='outline' isDisabled={!canManage} onClick={() => setEditing(idx)}>Edit</RMButton>

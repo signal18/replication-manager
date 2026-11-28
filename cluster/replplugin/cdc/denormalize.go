@@ -266,6 +266,9 @@ func (m *indexMeta) addPartitionKey(ctx context.Context, src *sqlx.DB) error {
 	}
 	for _, c := range cols {
 		if strings.EqualFold(c.Name, f.orgName) {
+			if why := m.part.takes(c.DataType); why != "" {
+				return fmt.Errorf("index %s: partition_column %s (%s.%s.%s): %s", m.idx.Name, col, f.schema, f.orgTable, f.orgName, why)
+			}
 			if c.Nullable {
 				return fmt.Errorf("index %s: partition_column %s (%s.%s.%s) may be NULL: it joins the destination's primary key, it must be NOT NULL", m.idx.Name, col, f.schema, f.orgTable, f.orgName)
 			}

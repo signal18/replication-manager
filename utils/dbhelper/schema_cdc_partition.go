@@ -15,13 +15,13 @@ import (
 
 // The partitioned destination of a CDC index (CDC_CORE.md "Partitioning"): a table
 // partitioned by RANGE on a time column, its partitions named and bounded by the CDC core
-// (one per period), the next ones added ahead of time. RANGE COLUMNS on a DATE or DATETIME
-// column; RANGE (UNIX_TIMESTAMP(col)) on a TIMESTAMP column, which RANGE COLUMNS does not take.
+// (one per period), the next ones added ahead of time. RANGE COLUMNS on a DATE, DATETIME or
+// integer column; RANGE (UNIX_TIMESTAMP(col)) on a TIMESTAMP column, which RANGE COLUMNS does not take.
 // MariaDB and MySQL only (T23): the CDC core writes a MariaDB target; a PostgreSQL server is
 // never a destination of these statements (a PostgreSQL destination partitions its own way).
 
 // RangePartition is one partition: its name and the value it holds less than, a date or a
-// datetime literal ('2026-12-01', '2026-12-01 00:00:00').
+// datetime literal ('2026-12-01', '2026-12-01 00:00:00'), or an integer (an id range).
 type RangePartition struct {
 	Name     string
 	LessThan string
@@ -30,6 +30,7 @@ type RangePartition struct {
 var (
 	partitionName    = regexp.MustCompile(`^[A-Za-z0-9_]{1,64}$`)
 	partitionLiteral = regexp.MustCompile(`^[0-9]{4}-[0-9]{2}-[0-9]{2}( [0-9]{2}:[0-9]{2}:[0-9]{2})?$`)
+	partitionInteger = regexp.MustCompile(`^-?[0-9]{1,20}$`)
 )
 
 func rangePartitionsSQL(unixTimestamp bool, parts []RangePartition) (string, error) {
@@ -38,12 +39,20 @@ func rangePartitionsSQL(unixTimestamp bool, parts []RangePartition) (string, err
 	}
 	out := make([]string, len(parts))
 	for i, p := range parts {
-		if !partitionName.MatchString(p.Name) || !partitionLiteral.MatchString(p.LessThan) {
-			return "", fmt.Errorf("partition %q less than %q: invalid", p.Name, p.LessThan)
+		if !partitionName.MatchString(p.Name) {
+			return "", fmt.Errorf("partition %q: invalid name", p.Name)
 		}
-		bound := "'" + p.LessThan + "'"
-		if unixTimestamp {
-			bound = "UNIX_TIMESTAMP(" + bound + ")"
+		var bound string
+		switch {
+		case partitionInteger.MatchString(p.LessThan):
+			bound = p.LessThan // an integer column (an id range)
+		case partitionLiteral.MatchString(p.LessThan):
+			bound = "'" + p.LessThan + "'"
+			if unixTimestamp {
+				bound = "UNIX_TIMESTAMP(" + bound + ")"
+			}
+		default:
+			return "", fmt.Errorf("partition %q less than %q: invalid", p.Name, p.LessThan)
 		}
 		out[i] = "PARTITION " + QuoteMySQLIdentifier(p.Name) + " VALUES LESS THAN (" + bound + ")"
 	}
@@ -126,4 +135,27 @@ func CreateTableFromColumnsIndexed(ctx context.Context, conn *sqlx.Conn, schema,
 		}
 	}
 	return strings.Join(queries, "; "), nil
+}
+
+// DropPartitions drops the partitions names of schema.table, their rows with them: the purge
+// of a CDC destination's oldest periods. MariaDB and MySQL only, as the rest of this file: a
+// PostgreSQL destination drops its own partitions (DROP TABLE of a partition), never through it.
+func DropPartitions(ctx context.Context, conn *sqlx.Conn, schema, table string, names []string) (string, error) {
+	quoted, err := QuoteMySQLTableIdentifier(schema + "." + table)
+	if err != nil {
+		return "", err
+	}
+	if len(names) == 0 {
+		return "", fmt.Errorf("no partition to drop")
+	}
+	q := make([]string, len(names))
+	for i, n := range names {
+		if !partitionName.MatchString(n) {
+			return "", fmt.Errorf("partition %q: invalid", n)
+		}
+		q[i] = QuoteMySQLIdentifier(n)
+	}
+	query := "ALTER TABLE " + quoted + " DROP PARTITION " + strings.Join(q, ", ")
+	_, err = conn.ExecContext(ctx, query)
+	return query, err
 }

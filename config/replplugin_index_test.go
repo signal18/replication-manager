@@ -72,7 +72,7 @@ func TestReplicationPluginIndexTableMode(t *testing.T) {
 		{Name: "x", Mode: "table", Tables: []string{"a.t"}, SlaveSchema: "p", SQL: "SELECT 1"},
 		{Name: "x", Mode: "table", Tables: []string{"a.t"}, SlaveSchema: "p", Init: "dump"},
 		{Name: "x", Mode: "table", Tables: []string{"a.t"}, SlaveSchema: "p", PartitionColumn: "ts"},
-		{Name: "x", Mode: "table", Tables: []string{"a.t"}, SlaveSchema: "p", PartitionColumn: "ts", PartitionPeriod: "year"},
+		{Name: "x", Mode: "table", Tables: []string{"a.t"}, SlaveSchema: "p", PartitionColumn: "ts", PartitionPeriod: "decade"},
 		{Name: "x", SQL: "SELECT 1", SlaveSchema: "p", SlaveTable: "t", Init: "backup"},
 		{Name: "x", Mode: "copy", Tables: []string{"a.t"}, SlaveSchema: "p"},
 	} {
@@ -99,5 +99,37 @@ func TestReplicationPluginIndexTableMode(t *testing.T) {
 	b := back.C.Indexes[0]
 	if !b.TableMode() || strings.Join(b.Tables, ",") != "logs.access,logs.audit" || b.Init != "backup" || b.PartitionColumn != "created_at" || b.PartitionPeriod != "day" || b.PartitionsAhead != 5 || b.RangeStep != 20000 || b.TargetEngine != "InnoDB" {
 		t.Fatalf("%+v\n%s", b, out)
+	}
+}
+
+// The partition periods: a time period, or one of six id ranges; the purge on a time period only.
+func TestReplicationPluginIndexPartitionPeriods(t *testing.T) {
+	base := ReplicationPluginIndex{Name: "x", Mode: "table", Tables: []string{"a.t"}, SlaveSchema: "p", PartitionColumn: "c"}
+	for _, ok := range []string{"day", "week", "month", "year", "1M", "2M", "5m", "10M", "20M", "50M"} {
+		i := base
+		i.PartitionPeriod = ok
+		if err := ValidateReplicationPluginIndex(i); err != nil {
+			t.Fatalf("%s: %v", ok, err)
+		}
+	}
+	for _, bad := range []string{"decade", "3M", "100M", "0M", "M", "1G"} {
+		i := base
+		i.PartitionPeriod = bad
+		if err := ValidateReplicationPluginIndex(i); err == nil {
+			t.Fatalf("%s must be refused", bad)
+		}
+	}
+	i := base
+	i.PartitionPeriod, i.PartitionPurgeAfterDays = "month", 400
+	if err := ValidateReplicationPluginIndex(i); err != nil {
+		t.Fatal(err)
+	}
+	i.PartitionPeriod = "10M"
+	if err := ValidateReplicationPluginIndex(i); err == nil {
+		t.Fatal("a purge on an id range must be refused")
+	}
+	i.PartitionPeriod, i.PartitionPurgeAfterDays = "day", -1
+	if err := ValidateReplicationPluginIndex(i); err == nil {
+		t.Fatal("a negative purge must be refused")
 	}
 }

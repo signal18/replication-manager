@@ -34,7 +34,10 @@ func day(s string) time.Time {
 	return t
 }
 
-// The periods: a day, an ISO week from Monday, a calendar month; each partition named by
+// d is the ordinal of a date.
+func d(s string) int64 { return dayOrdinal(day(s)) }
+
+// The periods: a day, an ISO week from Monday, a calendar month, a year; each partition named by
 // its start, bounded by the next start; older values and NULL go to the first partition.
 func TestPartitionPeriods(t *testing.T) {
 	for _, c := range []struct{ period, value, start, next string }{
@@ -42,15 +45,16 @@ func TestPartitionPeriods(t *testing.T) {
 		{"week", "2026-11-28", "2026-11-23", "2026-11-30"}, // a Saturday: its Monday
 		{"week", "2026-11-23", "2026-11-23", "2026-11-30"},
 		{"month", "2026-12-31", "2026-12-01", "2027-01-01"},
+		{"year", "2026-11-28", "2026-01-01", "2027-01-01"},
 	} {
 		p := &partitioning{column: "ts", period: c.period, ahead: 3}
-		s := p.start(day(c.value))
-		if s.Format("2006-01-02") != c.start || p.next(s).Format("2006-01-02") != c.next {
-			t.Fatalf("%s of %s: %s, next %s", c.period, c.value, s, p.next(s))
+		s := p.start(d(c.value))
+		if p.literal(s) != c.start || p.literal(p.next(s)) != c.next {
+			t.Fatalf("%s of %s: %s, next %s", c.period, c.value, p.literal(s), p.literal(p.next(s)))
 		}
 	}
 	p := &partitioning{column: "ts", period: "month", ahead: 2}
-	parts, err := p.plan(day("2026-09-15"), p.horizon(day("2026-11-28")))
+	parts, err := p.plan(d("2026-09-15"), p.horizon(day("2026-11-28"), 0))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,7 +65,7 @@ func TestPartitionPeriods(t *testing.T) {
 	if want := "p20260901<2026-10-01 p20261001<2026-11-01 p20261101<2026-12-01 p20261201<2027-01-01 p20270101<2027-02-01"; strings.Join(got, " ") != want {
 		t.Fatalf("plan %s", strings.Join(got, " "))
 	}
-	first := day("2026-09-01")
+	first := d("2026-09-01")
 	for v, want := range map[string]string{"2026-11-28 10:11:12.5": "p20261101", "2020-01-01": "p20260901", "0000-00-00 00:00:00": "p20260901"} {
 		if r := p.route([]byte(v), first); r != want {
 			t.Fatalf("route %s: %s", v, r)
@@ -70,24 +74,87 @@ func TestPartitionPeriods(t *testing.T) {
 	if r := p.route(nil, first); r != "p20260901" {
 		t.Fatalf("NULL: %s", r)
 	}
-	if s, ok := partitionStart("p20261101"); !ok || !s.Equal(day("2026-11-01")) {
-		t.Fatal("partitionStart")
+	if s, ok := p.startOf("p20261101"); !ok || s != d("2026-11-01") {
+		t.Fatal("startOf")
 	}
-	if _, ok := partitionStart("pmax"); ok {
+	if _, ok := p.startOf("pmax"); ok {
 		t.Fatal("pmax is not one of the CDC's")
 	}
 	// bounded: a daily plan of 30 years is refused, never 10000 partitions
-	d := &partitioning{column: "ts", period: "day", ahead: 3}
-	if _, err := d.plan(day("1996-01-01"), day("2026-11-28")); err == nil {
+	dd := &partitioning{column: "ts", period: "day", ahead: 3}
+	if _, err := dd.plan(d("1996-01-01"), d("2026-11-28")); err == nil {
 		t.Fatal("a plan past maxPartitions must be refused")
 	}
-	for _, bad := range []wire.Index{{Name: "i", PartitionColumn: "ts"}, {Name: "i", PartitionPeriod: "day"}, {Name: "i", PartitionColumn: "ts", PartitionPeriod: "year"}} {
+	for _, bad := range []wire.Index{{Name: "i", PartitionColumn: "ts"}, {Name: "i", PartitionPeriod: "day"}, {Name: "i", PartitionColumn: "ts", PartitionPeriod: "decade"},
+		{Name: "i", PartitionColumn: "id", PartitionPeriod: "100M"}, {Name: "i", PartitionColumn: "id", PartitionPeriod: "3M"}, {Name: "i", PartitionColumn: "id", PartitionPeriod: "M"},
+		{Name: "i", PartitionColumn: "id", PartitionPeriod: "10M", PartitionPurgeAfterDays: 30}} {
 		if _, err := newPartitioning(bad); err == nil {
 			t.Fatalf("%+v must be refused", bad)
 		}
 	}
-	if p, _ := newPartitioning(wire.Index{Name: "i", PartitionColumn: "ts", PartitionPeriod: "Week"}); p == nil || p.ahead != defaultPartitionsAhead || p.period != "week" {
+	if p, _ := newPartitioning(wire.Index{Name: "i", PartitionColumn: "ts", PartitionPeriod: "Week"}); p == nil || p.ahead != defaultPartitionsAhead || p.period != "week" || p.integer() {
 		t.Fatalf("%+v", p)
+	}
+	for period, step := range map[string]int64{"1M": 1000000, "2M": 2000000, "5m": 5000000, "10M": 10000000, "20M": 20000000, "50M": 50000000} {
+		if p, err := newPartitioning(wire.Index{Name: "i", PartitionColumn: "id", PartitionPeriod: period}); err != nil || p.step != step {
+			t.Fatalf("%s: %+v %v", period, p, err)
+		}
+	}
+	// the column's type goes with the period
+	tp := &partitioning{period: "month"}
+	ip := &partitioning{period: "10m", step: 10000000}
+	for typ, want := range map[string][2]bool{"datetime": {true, false}, "timestamp": {true, false}, "int": {false, true}, "bigint": {false, true}, "smallint": {false, false}, "tinyint": {false, false}, "varchar": {false, false}} {
+		if (tp.takes(typ) == "") != want[0] || (ip.takes(typ) == "") != want[1] {
+			t.Fatalf("%s: time %q, ids %q", typ, tp.takes(typ), ip.takes(typ))
+		}
+	}
+}
+
+// An id range: partitions of <n>M ids named by their start on 14 digits, the first one taking
+// every lower value, partitions_ahead steps after the highest id written.
+func TestPartitionIDRange(t *testing.T) {
+	p, err := newPartitioning(wire.Index{Name: "i", PartitionColumn: "id", PartitionPeriod: "10M", PartitionsAhead: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.name(10000000) != "p00000010000000" || p.start(19999999) != 10000000 || p.next(10000000) != 20000000 || p.literal(20000000) != "20000000" {
+		t.Fatal(p.name(10000000), p.start(19999999))
+	}
+	if s, ok := p.startOf("p00000010000000"); !ok || s != 10000000 {
+		t.Fatal(s, ok)
+	}
+	if _, ok := p.startOf("p20261101"); ok {
+		t.Fatal("a date name is not an id range's")
+	}
+	parts, err := p.plan(1, p.horizon(time.Time{}, 25000000))
+	if err != nil || len(parts) != 5 || parts[0].Name != "p00000000000000" || parts[0].LessThan != "10000000" || parts[4].Name != "p00000040000000" {
+		t.Fatal(parts, err)
+	}
+	if r := p.route([]byte("35000001"), 0); r != "p00000030000000" {
+		t.Fatal(r)
+	}
+	if r := p.route([]byte("-5"), 0); r != "p00000000000000" {
+		t.Fatal(r)
+	}
+	_, conn, mock := mockConn(t)
+	pt := &partitionedTable{p: p, schema: "app", table: "events", pos: 0, first: 0, last: 40000000}
+	// no row written: an id range does not move
+	if q, err := pt.ensure(context.Background(), conn, time.Now(), 0, false); err != nil || q != "" {
+		t.Fatal(q, err)
+	}
+	// id 41000000 written: 2 steps after its own
+	mock.ExpectExec(regexp.QuoteMeta("ALTER TABLE `app`.`events` ADD PARTITION (PARTITION `p00000050000000` VALUES LESS THAN (60000000), PARTITION `p00000060000000` VALUES LESS THAN (70000000))")).
+		WillReturnResult(sqlmock.NewResult(0, 0))
+	top, ok := pt.latest([]byte("41000000\tx\n12\ty\n"))
+	if _, err := pt.ensure(context.Background(), conn, time.Now(), top, ok); err != nil || pt.last != 60000000 {
+		t.Fatal(err, pt.last)
+	}
+	// no purge on an id range
+	if q, dropped, err := pt.purge(context.Background(), conn, time.Now()); err != nil || q != "" || dropped != nil {
+		t.Fatal(q, dropped, err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -111,34 +178,35 @@ func mockConn(t *testing.T) (*sqlx.DB, *sqlx.Conn, sqlmock.Sqlmock) {
 func TestPartitionsCreatedAhead(t *testing.T) {
 	_, conn, mock := mockConn(t)
 	p := &partitioning{column: "ts", period: "day", ahead: 2}
-	pt := &partitionedTable{p: p, schema: "logs_p", table: "access", pos: 1, first: day("2026-11-20"), last: day("2026-11-28")}
+	pt := &partitionedTable{p: p, schema: "logs_p", table: "access", pos: 1, first: d("2026-11-20"), last: d("2026-11-28")}
 	now := day("2026-11-28").Add(10 * time.Hour)
 	mock.ExpectExec(regexp.QuoteMeta("ALTER TABLE `logs_p`.`access` ADD PARTITION (PARTITION `p20261129` VALUES LESS THAN ('2026-11-30'), PARTITION `p20261130` VALUES LESS THAN ('2026-12-01'))")).
 		WillReturnResult(sqlmock.NewResult(0, 0))
-	if _, err := pt.ensure(context.Background(), conn, now, time.Time{}); err != nil {
+	if _, err := pt.ensure(context.Background(), conn, now, 0, false); err != nil {
 		t.Fatal(err)
 	}
-	if !pt.last.Equal(day("2026-11-30")) {
-		t.Fatalf("last %s", pt.last)
+	if pt.last != d("2026-11-30") {
+		t.Fatalf("last %s", p.literal(pt.last))
 	}
 	// nothing to add: no statement
-	if _, err := pt.ensure(context.Background(), conn, now, day("2026-11-29")); err != nil {
+	if _, err := pt.ensure(context.Background(), conn, now, d("2026-11-29"), true); err != nil {
 		t.Fatal(err)
 	}
 	// a row of 2026-12-02: its partition first
 	mock.ExpectExec(regexp.QuoteMeta("ALTER TABLE `logs_p`.`access` ADD PARTITION (PARTITION `p20261201` VALUES LESS THAN ('2026-12-02'), PARTITION `p20261202` VALUES LESS THAN ('2026-12-03'))")).
 		WillReturnResult(sqlmock.NewResult(0, 0))
-	if _, err := pt.ensure(context.Background(), conn, now, pt.latest([]byte("1\t2026-12-02 01:00:00\n2\t2026-11-01 00:00:00\n"))); err != nil {
+	top, ok := pt.latest([]byte("1\t2026-12-02 01:00:00\n2\t2026-11-01 00:00:00\n"))
+	if _, err := pt.ensure(context.Background(), conn, now, top, ok); err != nil {
 		t.Fatal(err)
 	}
 	// a TIMESTAMP column: bounds by UNIX_TIMESTAMP
 	pt.unixTimestamp = true
 	mock.ExpectExec(regexp.QuoteMeta("ADD PARTITION (PARTITION `p20261203` VALUES LESS THAN (UNIX_TIMESTAMP('2026-12-04')))")).WillReturnResult(sqlmock.NewResult(0, 0))
-	if _, err := pt.ensure(context.Background(), conn, now, day("2026-12-03")); err != nil {
+	if _, err := pt.ensure(context.Background(), conn, now, d("2026-12-03"), true); err != nil {
 		t.Fatal(err)
 	}
 	// a value years ahead: refused, nothing added
-	if _, err := pt.ensure(context.Background(), conn, now, day("2030-01-01")); err == nil {
+	if _, err := pt.ensure(context.Background(), conn, now, d("2030-01-01"), true); err == nil {
 		t.Fatal("a value years ahead must be refused")
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
@@ -327,7 +395,7 @@ func TestDumpSource(t *testing.T) {
 	write("logs.access.00000.sql.gz", "/*!40101 SET NAMES binary*/;\nINSERT INTO `access` VALUES\n(1,'2026-03-02 10:00:00','a\\tb'),\n(2,'2026-01-09 00:00:00',NULL);\n", true)
 	write("logs.access.00001.sql", "INSERT INTO `access` VALUES (3,'2026-02-01 00:00:00','it''s');\n", false)
 	write("logs.audit.00000.sql", "INSERT INTO `audit` VALUES (9,'2020-01-01 00:00:00','x');\n", false)
-	s := &dumpSource{dir: dir, schema: "logs", table: "access", ncols: 3, partPos: 1}
+	s := &dumpSource{dir: dir, schema: "logs", table: "access", ncols: 3, partPos: 1, part: &partitioning{column: "ts", period: "day"}}
 	gtid, from, err := s.open(context.Background())
 	if err != nil || gtid != "0-1-500" || from != "2026-01-09" {
 		t.Fatal(gtid, from, err)
@@ -448,14 +516,14 @@ func TestRouteDelta(t *testing.T) {
 
 // The rows of an init part split by partition, each row with its key line.
 func TestSplitByPartition(t *testing.T) {
-	pt := &partitionedTable{p: &partitioning{column: "ts", period: "month"}, pos: 1, first: day("2026-01-01")}
+	pt := &partitionedTable{p: &partitioning{column: "ts", period: "month"}, pos: 1, first: d("2026-01-01")}
 	rows := []byte("1\t2026-01-05 00:00:00\n2\t2026-02-01 00:00:00\n3\t\\N\n4\t2026-02-28 23:59:59\n")
 	keys := []byte("1\t2026-01-05 00:00:00\n2\t2026-02-01 00:00:00\n3\t\\N\n4\t2026-02-28 23:59:59\n")
-	g := splitByPartition(rows, keys, pt)
+	g, _ := splitByPartition(rows, keys, pt, day("2026-03-01"))
 	if len(g) != 2 || g["p20260101"].n != 2 || g["p20260201"].n != 2 || string(g["p20260201"].keys) != "2\t2026-02-01 00:00:00\n4\t2026-02-28 23:59:59\n" {
 		t.Fatalf("%+v", g)
 	}
-	if one := splitByPartition(rows, keys, nil); len(one) != 1 || one[""].n != 4 {
+	if one, _ := splitByPartition(rows, keys, nil, day("2026-03-01")); len(one) != 1 || one[""].n != 4 {
 		t.Fatalf("%+v", one)
 	}
 }
@@ -594,7 +662,7 @@ func TestIndexPartitionKey(t *testing.T) {
 	saved := columnsOfTable
 	defer func() { columnsOfTable = saved }()
 	columnsOfTable = func(_ context.Context, _ *sqlx.DB, schema, table string) ([]dbhelper.TableColumn, error) {
-		return []dbhelper.TableColumn{{Name: "o_id", ColumnType: "int(11)"}, {Name: "o_entry_d", ColumnType: "datetime"}, {Name: "o_note", ColumnType: "datetime", Nullable: true}}, nil
+		return []dbhelper.TableColumn{{Name: "o_id", ColumnType: "int(11)"}, {Name: "o_entry_d", DataType: "datetime", ColumnType: "datetime"}, {Name: "o_note", DataType: "datetime", ColumnType: "datetime", Nullable: true}}, nil
 	}
 	meta := func() *indexMeta {
 		return &indexMeta{idx: wire.Index{Name: "o", Schema: "dn", Table: "o"}, key: []string{"o_id"}, keyPos: []int{0}, columns: []string{"o_id", "o_entry_d", "o_note", "x"},
@@ -633,5 +701,58 @@ func TestRowKeyWithoutPrimaryKey(t *testing.T) {
 	c.rowKey(other)
 	if len(other.PKColumns) != 0 {
 		t.Fatal(other.PKColumns)
+	}
+}
+
+// The purge: a partition whose whole range ended more than partition_purge_after_days ago is
+// dropped (never the last one, never the one being written), and the rows older than that
+// horizon are left out of the init and the delta, counted.
+func TestPartitionPurge(t *testing.T) {
+	p := &partitioning{column: "ts", period: "month", ahead: 1, purge: 40}
+	now := day("2026-11-28")
+	if k, on := p.keptFrom(now); !on || k != d("2026-10-01") { // now - 40 days = 2026-10-19: October kept
+		t.Fatal(p.literal(k), on)
+	}
+	if !p.purged([]byte("2026-09-30 23:59:59"), now) || p.purged([]byte("2026-10-01 00:00:00"), now) || p.purged(nil, now) {
+		t.Fatal("purge horizon")
+	}
+	if (&partitioning{period: "month"}).purged([]byte("2000-01-01"), now) {
+		t.Fatal("no purge when off")
+	}
+	_, conn, mock := mockConn(t)
+	pt := &partitionedTable{p: p, schema: "logs_p", table: "access", pos: 1, first: d("2026-08-01"), last: d("2026-12-01")}
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT PARTITION_NAME FROM information_schema.PARTITIONS")).WillReturnRows(sqlmock.NewRows([]string{"n"}).
+		AddRow("p20260801").AddRow("p20260901").AddRow("p20261001").AddRow("p20261101").AddRow("p20261201"))
+	mock.ExpectExec(regexp.QuoteMeta("ALTER TABLE `logs_p`.`access` DROP PARTITION `p20260801`, `p20260901`")).WillReturnResult(sqlmock.NewResult(0, 0))
+	q, dropped, err := pt.purge(context.Background(), conn, now)
+	if err != nil || len(dropped) != 2 || pt.first != d("2026-10-01") || !strings.Contains(q, "DROP PARTITION") {
+		t.Fatal(q, dropped, err, pt.first)
+	}
+	// nothing more to drop: no statement
+	if q, dropped, err := pt.purge(context.Background(), conn, now); err != nil || q != "" || len(dropped) != 0 {
+		t.Fatal(q, dropped, err)
+	}
+	// never the last remaining partition, even past the horizon
+	old := &partitionedTable{p: p, schema: "logs_p", table: "old", first: d("2020-01-01"), last: d("2020-01-01")}
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT PARTITION_NAME FROM information_schema.PARTITIONS")).WillReturnRows(sqlmock.NewRows([]string{"n"}).AddRow("p20200101"))
+	if q, dropped, err := old.purge(context.Background(), conn, now); err != nil || q != "" || len(dropped) != 0 {
+		t.Fatal(q, dropped, err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+	// the rows past the horizon are left out, of a part as of the delta
+	pt.first = d("2026-10-01")
+	rows := []byte("1\t2026-09-30 10:00:00\n2\t2026-10-02 10:00:00\n3\t2026-11-27 10:00:00\n")
+	g, skipped := splitByPartition(rows, rows, pt, now)
+	if skipped != 1 || g["p20261001"].n != 1 || g["p20261101"].n != 1 || len(g) != 2 {
+		t.Fatal(skipped, g)
+	}
+	kept, skipped := withoutPurged(rows, pt, now)
+	if skipped != 1 || string(kept) != "2\t2026-10-02 10:00:00\n3\t2026-11-27 10:00:00\n" {
+		t.Fatalf("%d %q", skipped, kept)
+	}
+	if _, err := newPartitioning(wire.Index{Name: "i", PartitionColumn: "ts", PartitionPeriod: "year", PartitionPurgeAfterDays: -1}); err == nil {
+		t.Fatal("a negative purge must be refused")
 	}
 }

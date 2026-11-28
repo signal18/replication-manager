@@ -61,6 +61,13 @@ type replPluginRunner struct {
 	stmtMu      sync.Mutex
 	loggedStmts int64 // the statements of a capture source on its source logged, counted (F11)
 	loggedGen   int64 // the process they were counted in
+	// the statements the apply ran on its target that remove data (a partition purge), logged
+	targetLog stmtLog
+}
+
+// stmtLog counts the statements of a plugin process logged so far.
+type stmtLog struct {
+	n, gen int64
 }
 
 // replFeed is a restore feeding a plugin's stdin (#2015): the process it started with, so a
@@ -562,6 +569,12 @@ func (cluster *Cluster) checkReplPluginStates(runners []*replPluginRunner, errs 
 		if st.Description != "" {
 			detail = "; " + st.Description
 		}
+		if st.PartitionsDropped > 0 || st.PurgedRowsSkipped > 0 {
+			detail += fmt.Sprintf("; partition purge: %d partitions dropped, %d rows older than its horizon not written", st.PartitionsDropped, st.PurgedRowsSkipped)
+		}
+		r.logTargetStatements(st.TargetStatements, st.TargetStatementsTotal, func(q string) {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Replication plugin %s of %s ran on its target %s:%d: %s", name, cluster.Name, r.cfg.Target.Host, r.cfg.Target.Port, q)
+		})
 		cluster.SetState("CINF0017", state.State{ErrType: config.LvlInfo, ErrDesc: fmt.Sprintf(clusterError["CINF0017"], name, cluster.Name, st.State, st.GTID, st.AppliedSeq, st.AppliedGTID, st.PendingMB, st.LagSeconds, st.Inserts, st.Updates, st.Deletes, st.Skipped, detail), ErrFrom: "REPL"})
 		if st.LastDDL != "" {
 			// the destination keeps the old structure: a state, not a log line (F7)

@@ -19,6 +19,9 @@ func TestRangePartitionClause(t *testing.T) {
 	if err != nil || got != "PARTITION BY RANGE (UNIX_TIMESTAMP(`ts`)) (PARTITION `p20261101` VALUES LESS THAN (UNIX_TIMESTAMP('2026-12-01')))" {
 		t.Fatal(got, err)
 	}
+	if got, err := RangePartitionClause("id", false, []RangePartition{{Name: "p00000010000000", LessThan: "20000000"}}); err != nil || got != "PARTITION BY RANGE COLUMNS(`id`) (PARTITION `p00000010000000` VALUES LESS THAN (20000000))" {
+		t.Fatal(got, err)
+	}
 	for _, bad := range []RangePartition{{Name: "p1`", LessThan: "2026-12-01"}, {Name: "p1", LessThan: "2026-12-01') OR (1"}} {
 		if _, err := RangePartitionClause("ts", false, []RangePartition{bad}); err == nil {
 			t.Fatalf("%+v must be refused", bad)

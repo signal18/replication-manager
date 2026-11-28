@@ -182,15 +182,34 @@ parent, or its master).
 
 ## Partitioning
 
-Partitioning is a property of the index, required by the destination: `partition_column` (a DATE,
-DATETIME or TIMESTAMP column of the result) and `partition_period` (`day`, `week` from Monday, or
-`month`), `partitions_ahead` (0: 3). A destination that needs it (InnoDB here, S3 next) takes it; an
-analytic one does not.
+Partitioning is a property of the index, required by the destination: `partition_column` and
+`partition_period`, `partitions_ahead` (0: 3). A destination that needs it (InnoDB here, S3 next)
+takes it; an analytic one does not. Two kinds of period, one key:
 
-- The destination is `PARTITION BY RANGE COLUMNS(col)` on a DATE or DATETIME, `RANGE
-  (UNIX_TIMESTAMP(col))` on a TIMESTAMP (RANGE COLUMNS does not take one), one partition per period
-  named `p<YYYYMMDD of its start>`, from the period of the earliest value of the init to the
-  horizon. The first partition takes every older value and NULL.
+- **a time**: `day`, `week` (from Monday), `month` or `year` on a DATE, DATETIME or TIMESTAMP
+  column; one partition per period named `p<YYYYMMDD of its start>`; the `partitions_ahead` periods
+  after the current one always exist;
+- **a range of ids** (an auto-increment id): exactly `1M`, `2M`, `5M`, `10M`, `20M` or `50M` ids on an
+  INT or BIGINT column (signed or unsigned; TINYINT, SMALLINT and MEDIUMINT are refused, too small);
+  bounds multiples of the step; one partition per step named `p<its start on 14 digits>`
+  (`p00000010000000` holds 10M to 20M; the names sort, up to 99,999,999,999,999); the
+  `partitions_ahead` steps after the step of the highest id written always exist (an id range moves
+  with its values, not with time).
+
+Any other period, or a period that does not go with the column's type, is refused with the reason.
+
+- The destination is `PARTITION BY RANGE COLUMNS(col)` on a DATE, DATETIME or integer, `RANGE
+  (UNIX_TIMESTAMP(col))` on a TIMESTAMP (RANGE COLUMNS does not take one), from the period of the
+  earliest value of the init to the horizon. The first partition takes every lower value and NULL.
+- **The purge** (`partition_purge_after_days`, 0 = off, the default; a time period only, refused on
+  an id range): the apply drops every partition whose whole range ended more than that many days ago
+  (`ALTER TABLE ... DROP PARTITION`, `dbhelper.DropPartitions`), never the partition being written,
+  never during an init (a destination whose init is not applied is not maintained), never the last
+  one. Each drop is in the status (`targetStatements`), which replication-manager logs with its exact
+  statement (F11), and counted (`partitionsDropped`). A row of the init or of the delta older than the
+  purge horizon (the start of the oldest period kept) is not written: it would land in the first
+  partition and undo the purge; it is counted (`purgedRowsSkipped`). Both counts are in the feed's
+  CINF0017.
 - **The destination's primary key** is the concatenation of the row key of every source table of the
   index, then the partition column when the index is partitioned (MariaDB requires it in the primary
   key, error 1503). A source table's **row key** is its primary key, or when it has none its first
