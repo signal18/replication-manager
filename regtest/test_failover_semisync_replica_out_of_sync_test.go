@@ -48,3 +48,12 @@ func TestSemisyncBlockedTargetMissReason(t *testing.T) {
 		t.Errorf("a single server must miss the target, got: %q", miss)
 	}
 }
+
+// TestSemisyncReadOnlyValue: read_only is 0/1 on MySQL and older MariaDB, an ENUM on MariaDB 11.8+.
+func TestSemisyncReadOnlyValue(t *testing.T) {
+	for v, want := range map[string]int{"0": 0, "OFF": 0, "off": 0, "1": 1, "ON": 1, "NO_LOCK": 1, "NO_LOCK_NO_ADMIN": 1} {
+		if got := semisyncReadOnlyValue(v); got != want {
+			t.Errorf("semisyncReadOnlyValue(%q) = %d, want %d", v, got, want)
+		}
+	}
+}

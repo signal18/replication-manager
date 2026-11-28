@@ -106,16 +106,27 @@ func semisyncMarkers(s *cluster.ServerMonitor) int {
 }
 
 // semisyncReadOnly reads read_only from the server itself: the monitor's copy lags one check behind a role change.
-// -1 when it cannot be read.
+// 0 when writable, 1 otherwise, -1 when it cannot be read. Read as text: MariaDB 11.8+ answers an ENUM
+// (OFF, ON, NO_LOCK, NO_LOCK_NO_ADMIN) where older versions and MySQL answer 0 / 1, and "OFF" does not scan
+// into an integer (every read returned -1 on MariaDB 13.0).
 func semisyncReadOnly(s *cluster.ServerMonitor) int {
-	var v int
+	var v string
 	if s.Conn == nil {
 		return -1
 	}
 	if err := s.Conn.QueryRow("SELECT @@global.read_only").Scan(&v); err != nil {
 		return -1
 	}
-	return v
+	return semisyncReadOnlyValue(v)
+}
+
+// semisyncReadOnlyValue maps a read_only value to 0 (writable) or 1 (any read-only mode).
+func semisyncReadOnlyValue(v string) int {
+	switch strings.ToUpper(strings.TrimSpace(v)) {
+	case "0", "OFF":
+		return 0
+	}
+	return 1
 }
 
 func semisyncLog(cl *cluster.Cluster, level string, format string, args ...interface{}) {
@@ -334,7 +345,9 @@ func semisyncRestore(cl *cluster.Cluster, saved *semisyncSaved) bool {
 				}
 				if first.State == "Slave" && !first.IsReplicationBroken() && have == want && want >= 0 && !cl.IsInFailover() && time.Since(attempt) > 20*time.Second {
 					attempt = time.Now()
-					if err := cl.Switchover(saved.master, false); err != nil {
+					// saved.master is the URL of a monitored server (first): validated, like the API's switchover to a
+					// server (the host list holds the configured hosts, not URLs: "Preferred master not found")
+					if err := cl.Switchover(saved.master, true); err != nil {
 						semisyncLog(cl, config.LvlWarn, "Switch back to %s: %s", saved.master, err)
 					}
 				}
