@@ -104,6 +104,22 @@ To create a group replication cluster (multi-master-grprep):
   itself, replication-manager does not fail over.
 Galera (multi-master-wsrep, MariaDB) is created the same way with the wsrep tag.
 
+**DuckDB analytic child**
+A child cluster of a MariaDB cluster whose chosen tables are columnar copies, held by
+MariaDB's own DuckDB engine and fed from the parent's binlog by the replication plugin
+duckdb (an enterprise plugin). The parent is only read, never changed. The flow:
+1. The parent needs a logical backup (list-cluster-local-backups; else database-backup-logical
+   on its master).
+2. cluster-create-child cluster_name=<parent> destination=duckdb tables=<schema.table or
+   schema.*, comma separated>, confirm false: read the plan (image ghcr.io/mariadb/duckdb at the
+   parent's exact release, 1 database); then the same with confirm true.
+3. Follow CINF0014 on the new cluster (get-cluster-alerts); WARN0239 says where it stopped, and
+   WARN0340 names each table left InnoDB with its reason (no primary key, latin1...).
+4. For a denormalized table (one query joining tables, kept up to date), cluster-set-analytic-index
+   on the child; list-cluster-analytic-indexes says when its init is done.
+The feed's progress is the state CINF0017 (GTID captured and applied, lag) and CINF0030 (last
+merge of the InnoDB staging, replication-plugin-merge-interval > 0).
+
 **Proxy**
 Load balancer or router sitting in front of the cluster (ProxySQL, MaxScale, HAProxy,
 etc.). replication-manager updates proxy backend lists automatically on topology changes.

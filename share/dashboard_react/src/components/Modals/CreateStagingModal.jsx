@@ -1,6 +1,7 @@
 import {
   Box,
   FormControl,
+  FormHelperText,
   FormLabel,
   Input,
   Modal,
@@ -122,7 +123,12 @@ function CreateStagingModal({ selectedCluster, kind = 'staging', isOpen, closeMo
               <>
                 <FormControl>
                   <FormLabel fontSize='sm'>Destination plugin (replplugin-&lt;name&gt;)</FormLabel>
-                  <Input id='child-destination' size='sm' value={destination} onChange={(e) => { setDestination(e.target.value); setPlan(null) }} />
+                  <Input id='child-destination' size='sm' value={destination} placeholder='duckdb' list='child-destinations' onChange={(e) => { setDestination(e.target.value); setPlan(null) }} />
+                  <datalist id='child-destinations'>
+                    <option value='duckdb'>DuckDB: columnar copies in MariaDB's DuckDB engine, image ghcr.io/mariadb/duckdb at the parent's release, 1 database</option>
+                    <option value='innodb'>InnoDB: copies and denormalized tables kept InnoDB</option>
+                  </datalist>
+                  <FormHelperText fontSize='xs'>duckdb: a DuckDB analytic child (enterprise plugin). The plan below says whether the plugin is installed and granted.</FormHelperText>
                 </FormControl>
                 <FormControl>
                   <FormLabel fontSize='sm'>Tables (schema.table or schema.*, comma separated)</FormLabel>

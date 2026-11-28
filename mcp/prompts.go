@@ -226,4 +226,33 @@ Report should include:
 			), nil
 		},
 	)
+	s.mcp.AddPrompt(
+		mcp.NewPrompt("deploy-duckdb-child",
+			mcp.WithPromptDescription("Deploy a DuckDB analytic child under a MariaDB cluster and check that it is fed"),
+			mcp.WithArgument("cluster_name", mcp.ArgumentDescription("Name of the parent cluster"), mcp.RequiredArgument()),
+			mcp.WithArgument("tables", mcp.ArgumentDescription("Tables to copy: schema.table or schema.*, comma separated"), mcp.RequiredArgument()),
+		),
+		func(ctx context.Context, req mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
+			clusterName, tables := req.Params.Arguments["cluster_name"], req.Params.Arguments["tables"]
+			if clusterName == "" || tables == "" {
+				return nil, fmt.Errorf("cluster_name and tables are required")
+			}
+			return mcp.NewGetPromptResult(
+				"Deploy a DuckDB analytic child",
+				[]mcp.PromptMessage{
+					mcp.NewPromptMessage(
+						mcp.RoleUser,
+						mcp.NewTextContent(fmt.Sprintf(`Deploy a DuckDB analytic child of cluster "%s" for the tables %s.
+
+1. Call get-cluster-topology: the parent needs a MariaDB master. Call list-cluster-local-backups: it needs a logical backup; if none, call database-backup-logical on its master and wait for it.
+2. Call cluster-create-child with cluster_name=%s, destination=duckdb, tables=%s and confirm=false. Show the plan to the user (name, image ghcr.io/mariadb/duckdb at the parent's release, 1 database, notes). Only with the user's yes, call it again with confirm=true.
+3. Follow the new cluster with get-cluster-alerts: CINF0014 while it is created, WARN0239 if it stopped (say where and why), WARN0340 for each table left InnoDB with its reason, CINF0017 once the plugin feeds the copies (GTID applied, lag).
+4. If the user wants one wide table joining several tables, call cluster-set-analytic-index on the child with the denormalizing query, then list-cluster-analytic-indexes until the index is ready.
+
+Never change the parent: the child only reads its binlog.`, clusterName, tables, clusterName, tables)),
+					),
+				},
+			), nil
+		},
+	)
 }

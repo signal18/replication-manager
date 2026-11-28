@@ -161,11 +161,14 @@ manifest (`replplugin-<name>.manifest.json`, `wire.PluginManifest`) gives:
 - its tier and licence;
 - the configurator tags its servers need (added to the child);
 - its default image: `{version}` in it stands for the parent master's release (an engine
-  package that must match its server release exactly), and `imageVersions` lists the releases
-  it exists for; the create plan refuses a parent release without image, with the list. The
-  release is compared as `X.Y.Z`, without a suffix (`11.8.10`, never `11.8.10-MariaDB-log`),
-  and the image is resolved when the child is created only: a later upgrade of the parent does
-  not change the child's image;
+  package that must match its server release exactly). The release is the parent master's
+  `DBVersion` as the monitor parsed it (`utils/version`), written `X.Y.Z` without a suffix
+  (`11.8.10`, never `11.8.10-MariaDB-log`). No list of releases is kept: when the registry has
+  no tag for the parent's release, the child's provisioning fails on the pull, with its state.
+  The image is resolved when the child is created only: a later upgrade of the parent does not
+  change the child's image;
+- `flavor`, the database flavor the destination exists for, as `utils/version` names it
+  (`MariaDB` for the DuckDB engine): a parent master of another flavor is refused at the plan;
 - `singleServer`, a child of one database.
 
 The plan is refused when the plugin is missing or the plan does not grant its tier. The
@@ -192,6 +195,55 @@ on the child master and **before its channel from the parent starts**:
 
 A failure stops the reseed with the channel stopped and its state (WARN0252): a table made by
 the destination must never receive native row events.
+
+## The DuckDB child
+
+An analytic child of destination `duckdb`: its chosen tables become MariaDB DuckDB-engine
+tables (`ha_duckdb`, MariaDB's own plugin), columnar copies the client queries with plain
+MariaDB SQL. The destination is an enterprise plugin, `replplugin-duckdb`, delivered with the
+enterprise plugins and gated by its manifest's tier like any other (`EnterprisePluginsPlan`,
+ERR00132 otherwise). This repository holds no DuckDB code: everything below is the analytic
+child's, the plugin brings its two things (refuse or convert a table, apply a checkpoint).
+
+- **Create**: `create-child` (API, the GUI's Create Child with "Analytic copies", MCP
+  `cluster-create-child`) with `destination=duckdb` and `tables`. The manifest gives:
+  - the image `ghcr.io/mariadb/duckdb:{version}`, MariaDB's public image (its mariadb-docker CI,
+    `Containerfile.plugin` with `PLUGIN=duckdb`): the engine package must match its server
+    release, so `{version}` is the parent master's release as the monitor parsed it. No list
+    of releases: a release the registry has no tag for fails at the child's pull, and the
+    creation stops at its `master` step with WARN0239 naming the image;
+  - one database (`singleServer`): the copies are written out of the binlog;
+  - the tags `duckdb` and `localinfile`. `duckdb` loads the engine from the configurator; until
+    its ruleset exists on the collector (T21), the plugin's `-create` loads it with
+    `INSTALL SONAME 'ha_duckdb'` on the child (persisted in `mysql.plugin`).
+- **Feed**: native replication cannot feed the engine (error 1031 on every UPDATE or DELETE row
+  event): the chosen tables are fed by the CDC core from the parent's binlog, every apply
+  session with `sql_log_bin=0` and `binlog_format=MIXED` (`dbhelper.SessionNoBinlogMixed`). The
+  channel from the parent ignores the converted tables; the others replicate natively.
+- **Refused tables** (WARN0340 with the reason, the table stays InnoDB): not InnoDB, no primary
+  key, partitioned, a character set other than utf8mb4/utf8mb3/ascii, a generated, invisible or
+  BIT column.
+- **Merge interval**: with 0, each checkpoint is applied to the DuckDB tables; on tables of
+  millions of rows, 3600 stages them in InnoDB and merges once an hour (the measures above).
+- **Denormalize**: an index's denormalized table is made InnoDB from the query, then converted
+  by the plugin like a copied table; the init and the micro checkpoints are applied to it as to
+  any table of the destination.
+- **The parent**: only read. Its binlog is read from `replication-plugin-source`, no channel,
+  setting or table of it changes (F1, T27).
+- **Off**: the plugin not delivered, or a plan without the enterprise plugins, refuses the
+  create plan and stops the feed (ERR00132); an empty `replication-plugin-destination` makes the
+  child a plain child at its next seed. Stopping and starting the feed itself is the
+  replication interface's (below).
+
+### The feed as a replication link
+
+`Cluster.AnalyticFeedStatus()` (`cluster/cluster_analytic_feed.go`) is the feed of an analytic
+child, for the CDC backend of the replication interface, which shows it beside the native
+channels: the destination, tables, source as set and as read, intervals, whether the plugin
+runs or why it is stopped and when it restarts, the `-create` running since, the plugin's last
+status line (GTID captured and applied, lag, counts, apply error, last merge) and the tables
+left InnoDB. Read only and cheap (the supervisor's lock briefly, the runner's atomics, one small
+file), never a database: callable from any goroutine. Test `TestAnalyticFeedStatus`.
 
 ## Denormalize
 
@@ -222,8 +274,10 @@ GUI: the Analytic Child settings. The cluster writes the list into the plugin TO
 query and table, so a changed query runs its init again; the status's `indexesReady` names them):
 
 1. the denormalized table is made from the description of the empty query result
-   (`CREATE TABLE ... AS SELECT * FROM (<sql>) AS d WHERE 1=0`, then its primary key and indexes),
-   and the destination makes it its own (`Create`); an existing table of the same columns is
+   with its primary key and indexes in the same statement
+   (`CREATE TABLE ... (PRIMARY KEY (...), INDEX ...) ENGINE=InnoDB AS SELECT * FROM (<sql>) AS d
+   WHERE 1=0`: a server with `innodb_force_primary_key=ON`, which replication-manager's
+   configurator sets, refuses a table created without a key, error 1173), and the destination makes it its own (`Create`); an existing table of the same columns is
    emptied instead (`Truncater`);
 2. the query runs on the source in one `START TRANSACTION WITH CONSISTENT SNAPSHOT`, its rows
    applied by parts of 10000.
@@ -305,6 +359,8 @@ The ColumnStore destination stays open source, maintained as a community destina
 - `cluster/cluster_replplugin.go`: the supervisor, the states, the manifest and the plan gate.
 - `cluster/cluster_repl_source.go`: the source and its checks.
 - `cluster/cluster_analytic_child.go`: the analytic child's seed, tags, states, settings.
+- `cluster/cluster_analytic_feed.go`: `AnalyticFeedStatus`, the feed for the replication interface.
+- `mcp/tools_analytic.go`: the MCP tools of the indexes (the DuckDB child itself: `cluster-create-child`).
 - `utils/dbhelper/schema_repl_staging.go`: the SQL (MariaDB; PostgreSQL has no storage engine
   to choose, `ErrNoStorageEngine`).
 - `regtest/test_replication_plugin_child.go`: `testColumnstoreChildCDC` and

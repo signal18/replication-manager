@@ -10,22 +10,35 @@ import (
 
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/cluster/replplugin/wire"
+	"github.com/signal18/replication-manager/utils/version"
 )
 
-// CDC_CORE.md: a destination's image follows the parent's release when its manifest says
-// "{version}", refused for a release its list does not have.
+// CDC_CORE.md: a destination's image follows the parent's release, as the monitor parsed it,
+// when its manifest says "{version}": the exact X.Y.Z, never a suffix.
 func TestChildDestinationImage(t *testing.T) {
-	m := wire.PluginManifest{Name: "colstore", Image: "example.org/db:{version}", ImageVersions: []string{"11.4.14", "11.8.10"}}
-	if img, err := destinationImageFor(m, "shop", "11.8.10"); err != nil || img != "example.org/db:11.8.10" {
-		t.Fatalf("%s %v", img, err)
+	m := wire.PluginManifest{Name: "duckdb", Image: "ghcr.io/mariadb/duckdb:{version}", Flavor: "MariaDB"}
+	for in, want := range map[string]string{
+		"11.8.9-MariaDB-ubu2404-log": "ghcr.io/mariadb/duckdb:11.8.9",
+		"11.4.14-MariaDB":            "ghcr.io/mariadb/duckdb:11.4.14",
+	} {
+		v, tokens := version.NewVersionFromString("MariaDB", in)
+		if v == nil || tokens != 3 {
+			t.Fatalf("%s: not parsed as X.Y.Z (%v, %d tokens)", in, v, tokens)
+		}
+		if img, err := destinationImageFor(m, "shop", v); err != nil || img != want {
+			t.Fatalf("%s: %s %v, want %s", in, img, err, want)
+		}
 	}
-	if _, err := destinationImageFor(m, "shop", "11.8.9"); err == nil || !strings.Contains(err.Error(), "11.4.14, 11.8.10") {
-		t.Fatalf("a release without image must be refused with the list: %v", err)
+	// a MariaDB engine: a MySQL parent refused at the plan, not at the pull
+	mysql, _ := version.NewVersionFromString("MySQL", "8.4.3")
+	if _, err := destinationImageFor(m, "shop", mysql); err == nil || !strings.Contains(err.Error(), "exists for MariaDB") {
+		t.Fatalf("a MySQL parent of a MariaDB destination must be refused: %v", err)
 	}
-	m.ImageVersions = nil
-	if img, _ := destinationImageFor(m, "shop", "12.3.4"); img != "example.org/db:12.3.4" {
-		t.Fatalf("no list, any release: %s", img)
+	m.Flavor = ""
+	if img, err := destinationImageFor(m, "shop", mysql); err != nil || img != "ghcr.io/mariadb/duckdb:8.4.3" {
+		t.Fatalf("no flavor, any parent: %s %v", img, err)
 	}
+	m.Flavor = "MariaDB"
 	if img, err := childDestinationImage(wire.PluginManifest{Image: "example.org/db:1"}, &cluster.Cluster{}); err != nil || img != "example.org/db:1" {
 		t.Fatalf("a fixed image: %s %v", img, err)
 	}

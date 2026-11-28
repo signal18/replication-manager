@@ -162,10 +162,14 @@ var toolACLPaths = map[string]string{
 	"check-cluster-error-state":         "",
 	"get-cluster-last-crash-lost-event": "", // REST /servers/{s}/lost-events is served without a specific grant
 	// cluster, write
-	"cluster-failover":                    "/actions/failover",
-	"cluster-switchover":                  "/actions/switchover",
-	"cluster-create-staging":              "/actions/create-staging",
-	"cluster-create-child":                "/actions/create-child",
+	"cluster-failover":       "/actions/failover",
+	"cluster-switchover":     "/actions/switchover",
+	"cluster-create-staging": "/actions/create-staging",
+	"cluster-create-child":   "/actions/create-child",
+	// analytic child (a DuckDB child): the indexes of its denormalize mode
+	"list-cluster-analytic-indexes":       "/replication-plugin-index-list",
+	"cluster-set-analytic-index":          "/replication-plugin-index-actions/put",
+	"cluster-remove-analytic-index":       "/replication-plugin-index-actions/remove/{index}",
 	"cluster-alter-engine":                "/actions/alter-engine",
 	"cluster-alter-table-engine":          "/schema/{schema}/{table}/actions/alter-engine/{engine}",
 	"cluster-rebalance-columnstore":       "/actions/columnstore-rebalance",
@@ -271,6 +275,7 @@ var templateArgs = map[string]string{
 	"{schema}":   "schema_name",
 	"{table}":    "table_name",
 	"{engine}":   "engine_to",
+	"{index}":    "index_name",
 }
 
 // aclArg is one substituted argument: path-escaped, so a value can never

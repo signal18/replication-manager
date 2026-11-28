@@ -439,3 +439,28 @@ the app names against the infrastructure's `appTemplates` (the self-service stat
 carries them with the identity `domain` / `subDomain` / `zone` / `gatewayDomain`), refuses
 a template the infrastructure does not have, and answers `apps: [{name, template, url}]`,
 the URL the template's primary route gives once provisioned.
+
+## The DuckDB analytic child (2026-11-27)
+
+A DuckDB child is an analytic child (`doc/implementation/cluster/CDC_CORE.md`, "The DuckDB
+child") of destination `duckdb`. No tool of its own creates it: `cluster-create-child`
+(`/actions/create-child`) with `destination=duckdb` and `tables` is the route, its plan
+(`confirm=false`) gives the image `ghcr.io/mariadb/duckdb:<parent release>` and one database.
+The three routes of the denormalize mode's indexes get one tool each (rule 6):
+
+| tool | route | grant |
+|---|---|---|
+| `list-cluster-analytic-indexes` | `GET /replication-plugin-index-list` | cluster-settings |
+| `cluster-set-analytic-index` | `POST /replication-plugin-index-actions/put` | cluster-settings |
+| `cluster-remove-analytic-index` | `POST /replication-plugin-index-actions/remove/{index}` (`index_name`) | cluster-settings |
+
+They call the cluster methods the REST handlers call (`PutReplicationPluginIndex`,
+`DeleteReplicationPluginIndex`, the pinned list refused). The object is `analytic-index`, the
+product's word (the GUI's Analytic Child settings), not the implementation's
+`replication-plugin`. The instructions carry the flow in a few lines, and the prompt
+`deploy-duckdb-child` (parent, tables) walks it: logical backup, plan, yes, create, states.
+
+No read tool for the feed (lag, GTID, last merge): the feed is shown as a replication link by
+the replication interface's CDC backend, which reads `Cluster.AnalyticFeedStatus()`; its tool
+will be that interface's. Until then the states CINF0017 and CINF0030 (`get-cluster-alerts`)
+carry it.
