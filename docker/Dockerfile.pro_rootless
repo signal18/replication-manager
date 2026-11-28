@@ -25,6 +25,10 @@ FROM debian:bookworm-slim
 ENV PROXYSQL_VERSION=2.7.3
 ENV MARIADB_VERSION=11.4
 ENV MYDUMPER_VERSION=0.17.1-1
+# One build (#2444): one server binary; the image sets its install profile
+# (the defaults of the old pro flavour) and the package layout.
+ENV REPLICATION_MANAGER_INSTALL_PROFILE=pro
+ENV REPLICATION_MANAGER_INSTALL_LAYOUT=package
 
 RUN mkdir -p \
         /etc/replication-manager \
@@ -38,7 +42,9 @@ RUN apt-get update && apt-get -y  install apt-transport-https curl \
 
 COPY --from=builder /go/src/github.com/signal18/replication-manager/etc/local/config.toml.docker /etc/replication-manager/config.toml
 COPY --from=builder /go/src/github.com/signal18/replication-manager/share /usr/share/replication-manager/
-COPY --from=builder /go/src/github.com/signal18/replication-manager/build/binaries/replication-manager-pro /usr/bin/replication-manager
+COPY --from=builder /go/src/github.com/signal18/replication-manager/build/binaries/replication-manager /usr/bin/replication-manager
+# the flavour name scripts and older commands call: a symlink to the one binary
+RUN ln -sfn replication-manager /usr/bin/replication-manager-pro
 COPY --from=builder /go/src/github.com/signal18/replication-manager/build/binaries/replication-manager-cli /usr/bin/replication-manager-cli
 COPY --from=builder /go/bin/gotty-client /usr/local/bin/gotty-client
 

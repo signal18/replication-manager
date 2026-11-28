@@ -50,7 +50,7 @@ func (regtest *RegTest) TestRejoinStaleCrashKeepsMaster(cl *cluster.Cluster, con
 	}()
 
 	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Firing RejoinMaster on the live master %s with a stale crash naming it loser of %s", master.URL, slave.URL)
-	if err := master.RejoinMaster(); err != nil {
+	if err := master.ReplicationLink().Rejoin(); err != nil {
 		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "RejoinMaster returned %s (a skip returns nil)", err)
 	}
 	// Let the monitor loop observe the outcome (a rejoin that did run would have
@@ -61,8 +61,8 @@ func (regtest *RegTest) TestRejoinStaleCrashKeepsMaster(cl *cluster.Cluster, con
 		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "FAIL: master changed after a stale-crash rejoin (now %v)", m)
 		return false
 	}
-	if master.IsSlave || len(master.Replications) > 0 {
-		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "FAIL: the master acquired a replication channel (ring): IsSlave=%v channels=%d", master.IsSlave, len(master.Replications))
+	if master.IsSlave || len(master.NativeReplications()) > 0 {
+		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "FAIL: the master acquired a replication channel (ring): IsSlave=%v channels=%d", master.IsSlave, len(master.NativeReplications()))
 		return false
 	}
 	if !slave.IsSlave {

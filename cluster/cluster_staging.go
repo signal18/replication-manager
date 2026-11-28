@@ -112,7 +112,7 @@ func (cluster *Cluster) RefreshStaging(source *Cluster, masterGTIDList string) e
 			return err
 		}
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "[STAGING] Stopping slave %s replication", STG.Name)
-		STG.StopSlave()
+		STG.ReplicationLink().Stop(LinkByStaging)
 
 		// Wait until the slave is stopped
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "[STAGING] Waiting for slave %s to stop replication", STG.URL)
@@ -135,7 +135,7 @@ func (cluster *Cluster) RefreshStaging(source *Cluster, masterGTIDList string) e
 			defer fileio.Close()
 			encoder := json.NewEncoder(fileio)
 			encoder.SetIndent("", "\t")
-			err = encoder.Encode(STG.Replications)
+			err = encoder.Encode(STG.NativeReplications().Rows())
 			if err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error encoding replication info: %s", err)
 			} else {
@@ -143,7 +143,7 @@ func (cluster *Cluster) RefreshStaging(source *Cluster, masterGTIDList string) e
 			}
 		}
 
-		_, err = STG.ResetSlave()
+		_, err = STG.ReplicationLink().Remove(LinkByStaging)
 		if err != nil {
 			return err
 		}
@@ -194,7 +194,7 @@ func (cluster *Cluster) RefreshStaging(source *Cluster, masterGTIDList string) e
 		}
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "[STAGING] Stopping slave %s replication", SL.URL)
 
-		SL.StopSlave()
+		SL.ReplicationLink().Stop(LinkByStaging)
 
 		// Wait until the slave is stopped
 		waitstart := time.Now()
@@ -215,7 +215,7 @@ func (cluster *Cluster) RefreshStaging(source *Cluster, masterGTIDList string) e
 			defer fileio.Close()
 			encoder := json.NewEncoder(fileio)
 			encoder.SetIndent("", "\t")
-			err = encoder.Encode(SL.Replications)
+			err = encoder.Encode(SL.NativeReplications().Rows())
 			if err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error encoding replication info: %s", err)
 			} else {
@@ -224,8 +224,8 @@ func (cluster *Cluster) RefreshStaging(source *Cluster, masterGTIDList string) e
 		}
 
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "[STAGING] Resetting master position on slave %s", SL.URL)
-		SL.StopSlave()
-		_, err = SL.ResetSlave()
+		SL.ReplicationLink().Stop(LinkByStaging)
+		_, err = SL.ReplicationLink().Remove(LinkByStaging)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error resetting slave: %s", err)
 			return err
@@ -479,7 +479,7 @@ func (server *ServerMonitor) setSeedGTIDSlavePos(pos string) (string, string, er
 		return "", logs, err
 	}
 	value := reseedGTIDSlavePos(pos, gtid.NewList(current))
-	logs, err = dbhelper.SetGTIDSlavePos(server.Conn, value)
+	logs, err = server.ReplicationLink().SetPosition(Position{GTID: value}, LinkByReseed)
 	return value, logs, err
 }
 
@@ -563,7 +563,7 @@ func (cluster *Cluster) ReseedFromParentCluster(parent *Cluster, target *ServerM
 	channel := parent.Conf.MasterConn
 	if target.IsMaster() {
 		// Set replication master to current master if not PITR
-		logs, err = target.StopSlaveChannel(channel)
+		logs, err = target.ReplicationChannelLink(channel).Stop(LinkByReseed)
 		if err != nil {
 			cluster.LogSQL(logs, err, target.URL, "Rejoin", config.LvlErr, "Failed stop slave on server: %s %s", target.URL, err)
 		}
@@ -580,7 +580,7 @@ func (cluster *Cluster) ReseedFromParentCluster(parent *Cluster, target *ServerM
 			}
 		}
 
-		target.ChangeMaster(changeOpt) // Ignore error
+		target.ReplicationLink().ChangeSource(SourceOf(changeOpt), changeOpt, LinkByReseed) // Ignore error
 	}
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Receive reseed logical backup %s request for server: %s", backtype, target.URL)
@@ -709,7 +709,7 @@ func (cluster *Cluster) ReseedFromParentCluster(parent *Cluster, target *ServerM
 	target.JobsUpdateStateRuntimeOnly(task, "Reseed completed", 3, 1)
 
 	if target.IsMaster() {
-		_, err2 := target.StartSlaveChannel(channel)
+		_, err2 := target.ReplicationChannelLink(channel).Start(LinkByReseed)
 		if err2 != nil {
 			cluster.LogSQL(logs, err, target.URL, "Rejoin", config.LvlErr, "Failed start slave on server: %s %s", target.URL, err)
 		} else {
@@ -825,12 +825,12 @@ func (cluster *Cluster) freshenParentBackup(parent *Cluster, cmaster *ServerMoni
 		return false, nil // ReseedFromParentCluster refuses with its own reason
 	}
 	channel := parent.Conf.MasterConn
-	if logs, err := cmaster.StopSlaveChannel(channel); err != nil {
+	if logs, err := cmaster.ReplicationChannelLink(channel).Stop(LinkByStaging); err != nil {
 		cluster.LogSQL(logs, err, cmaster.URL, "Reseed", config.LvlErr, "Failed stop slave %s on %s: %s", channel, cmaster.URL, err)
 	}
 	stopped = true
 	restart := func() {
-		if logs, err := cmaster.StartSlaveChannel(channel); err != nil {
+		if logs, err := cmaster.ReplicationChannelLink(channel).Start(LinkByStaging); err != nil {
 			cluster.LogSQL(logs, err, cmaster.URL, "Reseed", config.LvlErr, "Failed start slave %s on %s: %s", channel, cmaster.URL, err)
 		}
 	}
@@ -938,7 +938,7 @@ func (cluster *Cluster) seedFromParent(parent *Cluster, staging bool) error {
 	masterGTIDList, err := cluster.ReseedFromParentCluster(parent, cmaster, "") // the master combines its GTID list with the parent's
 	if refused := (parentReseedRefused{}); parentStopped && errors.As(err, &refused) {
 		// nothing was loaded: the parent channel freshenParentBackup stopped runs again
-		if logs, serr := cmaster.StartSlaveChannel(parent.Conf.MasterConn); serr != nil {
+		if logs, serr := cmaster.ReplicationChannelLink(parent.Conf.MasterConn).Start(LinkByReseed); serr != nil {
 			cluster.LogSQL(logs, serr, cmaster.URL, "Reseed", config.LvlErr, "Failed start slave %s on %s: %s", parent.Conf.MasterConn, cmaster.URL, serr)
 		}
 	}

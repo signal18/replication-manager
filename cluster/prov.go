@@ -922,9 +922,9 @@ func (cluster *Cluster) BootstrapReplicationCleanup(ftwrl bool) error {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Stop all slaves or stop slave %s ", server.URL)
 		}
 		if server.DBVersion.IsMariaDB() {
-			logs, err = dbhelper.StopAllSlaves(server.Conn, server.DBVersion)
+			logs, err = server.stopEveryChannel(LinkByBootstrap)
 		} else {
-			logs, err = server.StopSlave()
+			logs, err = server.ReplicationLink().Stop(LinkByBootstrap)
 		}
 		cluster.LogSQL(logs, err, server.URL, "BootstrapReplicationCleanup", config.LvlErr, "Stop all slaves or just slave %s %s", server.URL, err)
 
@@ -932,13 +932,13 @@ func (cluster *Cluster) BootstrapReplicationCleanup(ftwrl bool) error {
 			if cluster.Conf.Verbose {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "SET GLOBAL gtid_slave_pos='' on %s", server.URL)
 			}
-			logs, err := dbhelper.SetGTIDSlavePos(server.Conn, "")
+			logs, err := server.ReplicationLink().SetPosition(Position{}, LinkByBootstrap)
 			cluster.LogSQL(logs, err, server.URL, "BootstrapReplicationCleanup", config.LvlErr, "Can reset GTID slave pos %s %s", server.URL, err)
 		}
 
 		// reset all replication if go to master-slave
 		if !cluster.Conf.MultiTierSlave && !cluster.Conf.MultiMaster && !cluster.Conf.MultiMasterRing && !cluster.Conf.MultiMasterGrouprep && !cluster.Conf.MultiMasterWsrep {
-			server.ResetSlave()
+			server.ReplicationLink().Remove(LinkByBootstrap)
 		}
 
 	}
@@ -1063,8 +1063,8 @@ func (cluster *Cluster) BootstrapReplication(clean bool, ftwrl bool) error {
 
 				if cluster.Conf.MultiMasterGrouprep {
 					// All clsuter node need a specialreplicaton for recovery parameters are not important as leader host is not needed
-					server.ChangeMasterTo(server, "CURRENT_POS")
-					server.BootstrapGroupReplication()
+					server.ChangeMasterTo(server, "CURRENT_POS", LinkByBootstrap)
+					server.GroupReplication().bootstrapGroup()
 				}
 				continue
 			} else {
@@ -1078,15 +1078,15 @@ func (cluster *Cluster) BootstrapReplication(clean bool, ftwrl bool) error {
 				}
 
 				if cluster.Conf.MultiMasterGrouprep {
-					_ = server.ChangeMasterTo(server, "SLAVE_POS")
-					server.StartGroupReplication()
+					_ = server.ChangeMasterTo(server, "SLAVE_POS", LinkByBootstrap)
+					server.GroupReplication().Start(LinkByBootstrap)
 				} else {
 					if server.IsPostgreSQLHost() {
 						// the DDL replication objects before the subscription: the log table
 						// must exist here for its rows to be applied, the apply trigger with it
 						cluster.postgresInstallDDLReplication(server)
 					}
-					_ = server.ChangeMasterTo(cluster.Servers[masterKey], "SLAVE_POS")
+					_ = server.ChangeMasterTo(cluster.Servers[masterKey], "SLAVE_POS", LinkByBootstrap)
 				}
 				if !server.ClusterGroup.IsInIgnoredReadonly(server) && !server.IsPostgreSQLHost() {
 					// a logical replication subscriber stays writable: no read_only on PostgreSQL
@@ -1119,8 +1119,8 @@ func (cluster *Cluster) BootstrapReplication(clean bool, ftwrl bool) error {
 				}
 				continue
 			} else {
-				dbhelper.StopAllSlaves(server.Conn, server.DBVersion)
-				dbhelper.ResetAllSlaves(server.Conn, server.DBVersion)
+				server.stopEveryChannel(LinkByBootstrap)
+				server.removeEveryChannel(LinkByBootstrap)
 
 				// Set master GTID mode to be compatible with the cluster
 				if cluster.Conf.ForceSlaveGtid && server.DBVersion.IsMySQLOrPercona() && server.DBVersion.GreaterEqual("5.7.6") {
@@ -1132,14 +1132,14 @@ func (cluster *Cluster) BootstrapReplication(clean bool, ftwrl bool) error {
 				}
 
 				if relaykey == key {
-					err = server.ChangeMasterTo(cluster.Servers[masterKey], "CURRENT_POS")
+					err = server.ChangeMasterTo(cluster.Servers[masterKey], "CURRENT_POS", LinkByBootstrap)
 					if err != nil {
 						cluster.StateMachine.RemoveFailoverState()
 						return err
 					}
 
 				} else {
-					err = server.ChangeMasterTo(cluster.Servers[relaykey], "CURRENT_POS")
+					err = server.ChangeMasterTo(cluster.Servers[relaykey], "CURRENT_POS", LinkByBootstrap)
 					if err != nil {
 						cluster.StateMachine.RemoveFailoverState()
 						return err
@@ -1174,7 +1174,7 @@ func (cluster *Cluster) BootstrapReplication(clean bool, ftwrl bool) error {
 				continue
 			}
 			if key == 0 {
-				err = server.ChangeMasterTo(cluster.Servers[1], "CURRENT_POS")
+				err = server.ChangeMasterTo(cluster.Servers[1], "CURRENT_POS", LinkByBootstrap)
 				if err != nil {
 					cluster.StateMachine.RemoveFailoverState()
 					return err
@@ -1184,7 +1184,7 @@ func (cluster *Cluster) BootstrapReplication(clean bool, ftwrl bool) error {
 				}
 			}
 			if key == 1 {
-				err = server.ChangeMasterTo(cluster.Servers[0], "CURRENT_POS")
+				err = server.ChangeMasterTo(cluster.Servers[0], "CURRENT_POS", LinkByBootstrap)
 				if err != nil {
 					cluster.StateMachine.RemoveFailoverState()
 					return err
@@ -1226,7 +1226,7 @@ func (cluster *Cluster) BootstrapReplication(clean bool, ftwrl bool) error {
 			}
 
 			i := (len(cluster.Servers) + key - 1) % len(cluster.Servers)
-			err = server.ChangeMasterTo(cluster.Servers[i], "SLAVE_POS")
+			err = server.ChangeMasterTo(cluster.Servers[i], "SLAVE_POS", LinkByBootstrap)
 			if err != nil {
 				cluster.StateMachine.RemoveFailoverState()
 				return err

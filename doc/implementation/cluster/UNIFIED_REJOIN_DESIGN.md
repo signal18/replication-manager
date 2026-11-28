@@ -4,6 +4,24 @@ Design agreed with Stephane after the split-brain rejoin work of 2026-07-14/15.
 NOT YET IMPLEMENTED — this is the target to build (carefully, rested), replacing
 the fragmented election-specific paths added during the night.
 
+## What a failover guarantees (the maintainer's rule, 2026-11-27)
+
+- **A failover is the AP choice**: availability, at the cost of the transactions the old master had
+  not sent to any replica yet.
+- **Semi-sync is a guarantee between the master and a replica, never between the master and the
+  client.** An acknowledgement proves the transaction reached a replica; nothing tells the server or
+  repman whether the application received its OK (a connection can drop right after the commit,
+  MDEV-31596). So repman cannot know which lost transactions the client considers done.
+- **Hence: the new master is the truth; the old master rewinds** (flashback, REJOIN_FLASHBACK.md, or
+  reseed); **the lost transactions are kept, never replayed by repman**: captured before the rejoin
+  (autorejoin-backup-binlog), shown in the lost-events viewer with the exact replay command (F11);
+  the operator, who knows the application, decides (F1).
+- Replaying them automatically was considered and rejected: a client who retried, or a user who saw a
+  payment missing and paid again, would be charged twice (FAILOVER_CATCH_UP.md). Holding all traffic
+  until the old master returns is not a failover any more.
+- The semi-sync state is still used where it gives a replica fact: choosing the candidate, and the
+  guards of the flashback binlog drop (an async old master only).
+
 ## Principle
 
 **A rejoin is a rejoin. A crash is a crash.** Single-repman and election

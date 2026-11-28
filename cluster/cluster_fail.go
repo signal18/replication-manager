@@ -187,8 +187,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	crash.UnixTimestamp = time.Now().Unix()
 	crash.URL = cluster.oldMaster.URL
 	crash.ElectedMasterURL = cluster.master.URL
-	crash.FailoverMasterLogFile = ms.MasterLogFile.String
-	crash.FailoverMasterLogPos = ms.ReadMasterLogPos.String
+	crash.FailoverMasterLogFile, crash.FailoverMasterLogPos = failoverSourcePosition(ms)
 	crash.NewMasterLogFile = cluster.master.BinaryLogFile
 	crash.NewMasterLogPos = cluster.master.BinaryLogPos
 	if cluster.master.DBVersion.IsMariaDB() {
@@ -203,6 +202,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	}
 	cluster.master.FailoverSemiSyncSlaveStatus = cluster.master.SemiSyncSlaveStatus
 	crash.FailoverSemiSyncSlaveStatus = cluster.master.SemiSyncSlaveStatus
+	crash.FailoverSemiSyncMasterStatus = cluster.oldMaster != nil && cluster.oldMaster.SemiSyncMasterStatus
 
 	// if relay server than failover and switchover converge to a new binlog  make this happen
 	var relaymaster *ServerMonitor
@@ -243,7 +243,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	if !cluster.Conf.MultiMaster && !cluster.Conf.MultiMasterGrouprep {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Stopping slave threads on new master")
 		if cluster.master.DBVersion.IsMariaDB() || cluster.master.DBVersion.Minor < 7 {
-			logs, err := cluster.master.StopSlave()
+			logs, err := cluster.master.ReplicationLink().Stop(failoverOrSwitchover(fail))
 			cluster.LogSQL(logs, err, cluster.master.URL, "MasterFailover", config.LvlErr, "Failed stopping slave on new master %s %s", cluster.master.URL, err)
 		}
 		if cluster.master.ClusterGroup.Conf.FailoverSemiSyncState {
@@ -263,20 +263,8 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 
 	if !cluster.Conf.MultiMaster && !cluster.Conf.MultiMasterGrouprep {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Resetting slave on new master and set read/write mode on")
-		if cluster.master.DBVersion.IsMySQLOrPercona() {
-			// Need to stop all threads to reset on MySQL
-			logs, err := cluster.master.StopSlave()
-			cluster.LogSQL(logs, err, cluster.master.URL, "MasterFailover", config.LvlErr, "Failed stop slave on new master %s %s", cluster.master.URL, err)
-		}
-
-		logs, err := cluster.master.ResetSlave()
-		cluster.LogSQL(logs, err, cluster.master.URL, "MasterFailover", config.LvlErr, "Failed reset slave on new master %s %s", cluster.master.URL, err)
 	}
-	if !fail {
-		// Get Fresh GTID pos before open traffic
-		cluster.master.Refresh()
-	}
-	err = cluster.master.SetReadWrite()
+	err = openNewMaster(cluster.master.ReplicationLink(), failoverOrSwitchover(fail), !cluster.Conf.MultiMaster && !cluster.Conf.MultiMasterGrouprep, !fail, cluster.master.Refresh, cluster.master.SetReadWrite)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could not set new master as read-write")
 	}
@@ -308,7 +296,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		//cluster.oldMaster.StopSlave() // This is helpful in some cases the old master can have an old replication running
 		one_shoot_slave_pos := false
 		if cluster.oldMaster.DBVersion.IsMariaDB() && !cluster.oldMaster.HaveMariaDBGTID && cluster.oldMaster.DBVersion.Major >= 10 && cluster.Conf.SwitchoverCopyOldLeaderGtid {
-			logs, err := dbhelper.SetGTIDSlavePos(cluster.oldMaster.Conn, cluster.master.GTIDBinlogPos.Sprint())
+			logs, err := cluster.oldMaster.ReplicationLink().SetPosition(Position{GTID: cluster.master.GTIDBinlogPos.Sprint()}, failoverOrSwitchover(fail))
 			cluster.LogSQL(logs, err, cluster.oldMaster.URL, "MasterFailover", config.LvlErr, "Could not set old master gtid_slave_pos , reason: %s", err)
 			one_shoot_slave_pos = true
 		}
@@ -364,11 +352,11 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 				changemasteropt.Logpos = crash.FailoverMasterLogPos
 			}
 		}
-		logs, changeMasterErr = cluster.oldMaster.ChangeMaster(changemasteropt)
+		logs, changeMasterErr = cluster.oldMaster.ReplicationLink().ChangeSource(SourceOf(changemasteropt), changemasteropt, failoverOrSwitchover(fail))
 		cluster.LogSQL(logs, changeMasterErr, cluster.oldMaster.URL, "MasterFailover", config.LvlErr, "Change master failed on old master, reason:%s ", changeMasterErr)
 		startSlaveErr := error(nil)
 		if oldmasterneedslavestart {
-			logs, startSlaveErr = cluster.oldMaster.StartSlave()
+			logs, startSlaveErr = cluster.oldMaster.ReplicationLink().Start(failoverOrSwitchover(fail))
 			cluster.LogSQL(logs, startSlaveErr, cluster.oldMaster.URL, "MasterFailover", config.LvlErr, "Start slave failed on old master,%s reason:  %s ", cluster.oldMaster.URL, startSlaveErr)
 			err = startSlaveErr
 		}
@@ -445,11 +433,11 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	return true
 }
 
-func (cluster *Cluster) pointSlaveToMasterWithMode(sl *ServerMonitor, mode string) (string, error) {
+func (cluster *Cluster) pointSlaveToMasterWithMode(sl *ServerMonitor, mode string, reason string) (string, error) {
 	changemasteropt := cluster.GetChangeMasterBaseOptForSlave(sl, cluster.master, sl.IsDelayed)
 	changemasteropt.Mode = mode
 
-	return sl.ChangeMaster(changemasteropt)
+	return sl.ReplicationLink().ChangeSource(SourceOf(changemasteropt), changemasteropt, reason)
 }
 
 // pointSlaveToMasterAutoDetect picks the GTID mode for CHANGE MASTER/CHANGE
@@ -460,14 +448,14 @@ func (cluster *Cluster) pointSlaveToMasterWithMode(sl *ServerMonitor, mode strin
 // CHANGE MASTER step on a MySQL/Percona target before a physical
 // reseed/flashback ever starts streaming. Mirrors the mode selection already
 // used for logical reseed/flashback below in this file.
-func (cluster *Cluster) pointSlaveToMasterAutoDetect(sl *ServerMonitor) (string, error) {
+func (cluster *Cluster) pointSlaveToMasterAutoDetect(sl *ServerMonitor, reason string) (string, error) {
 	switch changeMasterStrategyFor(sl.DBVersion, sl.HasMySQLGTID()) {
 	case changeMasterAutoPosition:
-		return cluster.pointSlaveToMasterWithMode(sl, "MASTER_AUTO_POSITION")
+		return cluster.pointSlaveToMasterWithMode(sl, "MASTER_AUTO_POSITION", reason)
 	case changeMasterPositional:
-		return cluster.pointSlaveToMasterPositional(sl)
+		return cluster.pointSlaveToMasterPositional(sl, reason)
 	default:
-		return cluster.pointSlaveToMasterWithMode(sl, "SLAVE_POS")
+		return cluster.pointSlaveToMasterWithMode(sl, "SLAVE_POS", reason)
 	}
 }
 
@@ -493,7 +481,7 @@ func changeMasterStrategyFor(v *version.Version, hasGTID bool) changeMasterStrat
 	return changeMasterSlavePos
 }
 
-func (cluster *Cluster) pointSlaveToMasterPositional(sl *ServerMonitor) (string, error) {
+func (cluster *Cluster) pointSlaveToMasterPositional(sl *ServerMonitor, reason string) (string, error) {
 	changemasteropt := cluster.GetChangeMasterBaseOptForSlave(sl, cluster.master, sl.IsDelayed)
 
 	pseudoGTID, logs, err := sl.GetLastPseudoGTID()
@@ -518,11 +506,12 @@ func (cluster *Cluster) pointSlaveToMasterPositional(sl *ServerMonitor) (string,
 	changemasteropt.Logpos = mPos
 	changemasteropt.Mode = "POSITIONAL"
 
-	return sl.ChangeMaster(changemasteropt)
+	return sl.ReplicationLink().ChangeSource(SourceOf(changemasteropt), changemasteropt, reason)
 }
 
-func (cluster *Cluster) pointSlaveToMasterMxsNoGtid(sl *ServerMonitor) (string, error) {
-	return sl.ChangeMaster(cluster.GetChangeMasterBaseOptForMxs(sl, cluster.master))
+func (cluster *Cluster) pointSlaveToMasterMxsNoGtid(sl *ServerMonitor, reason string) (string, error) {
+	opt := cluster.GetChangeMasterBaseOptForMxs(sl, cluster.master)
+	return sl.ReplicationLink().ChangeSource(SourceOf(opt), opt, reason)
 }
 
 func (cluster *Cluster) SwitchSlavesToMaster(fail bool) {
@@ -542,11 +531,11 @@ func (cluster *Cluster) SwitchSlavesToMaster(fail bool) {
 			sl.WaitSyncToMaster(cluster.oldMaster)
 		}
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Change master on slave %s", sl.URL)
-		logs, err = sl.StopSlave()
+		logs, err = sl.ReplicationLink().Stop(failoverOrSwitchover(fail))
 		cluster.LogSQL(logs, err, cluster.oldMaster.URL, "MasterFailover", config.LvlErr, "Could not stop slave on server %s, %s", sl.URL, err)
 		if !fail && !cluster.Conf.MxsBinlogOn && cluster.Conf.SwitchSlaveWaitCatch {
 			if cluster.Conf.SwitchoverCopyOldLeaderGtid && sl.DBVersion.IsMariaDB() {
-				logs, err := dbhelper.SetGTIDSlavePos(sl.Conn, cluster.oldMaster.GTIDBinlogPos.Sprint())
+				logs, err := sl.ReplicationLink().SetPosition(Position{GTID: cluster.oldMaster.GTIDBinlogPos.Sprint()}, failoverOrSwitchover(fail))
 				cluster.LogSQL(logs, err, sl.URL, "MasterFailover", config.LvlErr, "Could not set gtid_slave_pos on slave %s, %s", sl.URL, err)
 			}
 		}
@@ -556,32 +545,32 @@ func (cluster *Cluster) SwitchSlavesToMaster(fail bool) {
 		// Not MariaDB and not using MySQL GTID, 2.0 stop doing any thing until pseudo GTID
 		if !sl.HasMariaDBGTID() && !cluster.master.HasMySQLGTID() {
 			if cluster.Conf.AutorejoinSlavePositionalHeartbeat {
-				logs, changeMasterErr = cluster.pointSlaveToMasterPositional(sl)
+				logs, changeMasterErr = cluster.pointSlaveToMasterPositional(sl, failoverOrSwitchover(fail))
 			} else {
 				sl.SetMaintenance()
 			}
 			// do nothing stay connected to dead master proceed with relay fix later
 
 		} else if cluster.oldMaster.DBVersion.IsMySQLOrPerconaGreater57() && cluster.master.HasMySQLGTID() {
-			logs, changeMasterErr = cluster.pointSlaveToMasterWithMode(sl, "MASTER_AUTO_POSITION")
+			logs, changeMasterErr = cluster.pointSlaveToMasterWithMode(sl, "MASTER_AUTO_POSITION", failoverOrSwitchover(fail))
 		} else if !cluster.Conf.MxsBinlogOn {
-			logs, changeMasterErr = cluster.pointSlaveToMasterWithMode(sl, "SLAVE_POS")
+			logs, changeMasterErr = cluster.pointSlaveToMasterWithMode(sl, "SLAVE_POS", failoverOrSwitchover(fail))
 		} else { // We deduct we are in maxscale binlog server , but can have support for GTID or not
 
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Pointing relay to the new master: %s:%s", cluster.master.Host, cluster.master.Port)
 			if sl.MxsHaveGtid {
-				logs, changeMasterErr = cluster.pointSlaveToMasterWithMode(sl, "SLAVE_POS")
+				logs, changeMasterErr = cluster.pointSlaveToMasterWithMode(sl, "SLAVE_POS", failoverOrSwitchover(fail))
 			} else {
-				logs, changeMasterErr = cluster.pointSlaveToMasterMxsNoGtid(sl)
+				logs, changeMasterErr = cluster.pointSlaveToMasterMxsNoGtid(sl, failoverOrSwitchover(fail))
 			}
 		}
 		cluster.LogSQL(logs, changeMasterErr, sl.URL, "MasterFailover", config.LvlErr, "Change master failed on slave %s, %s", sl.URL, changeMasterErr)
-		logs, err = sl.StartSlave()
+		logs, err = sl.ReplicationLink().Start(failoverOrSwitchover(fail))
 		cluster.LogSQL(logs, err, sl.URL, "MasterFailover", config.LvlErr, "Could not start slave on server %s, %s", sl.URL, err)
 		// now start the old master as relay is ready
 		if cluster.Conf.MxsBinlogOn && !fail {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Restarting old master replication relay server ready")
-			cluster.oldMaster.StartSlave()
+			cluster.oldMaster.ReplicationLink().Start(failoverOrSwitchover(fail))
 		}
 		if !cluster.Conf.ActivePassive && cluster.Conf.ReadOnly && !cluster.Conf.MxsBinlogOn && !sl.IsIgnoredReadonly() {
 			logs, err = sl.SetReadOnly()
@@ -707,9 +696,11 @@ func (cluster *Cluster) failoverEnableEventScheduler() {
 // FailoverExtraMultiSource care of master extra muti source replications
 func (cluster *Cluster) FailoverExtraMultiSource(oldMaster *ServerMonitor, NewMaster *ServerMonitor, fail bool) error {
 
-	for _, rep := range oldMaster.Replications {
-
-		if rep.ConnectionName.String != cluster.Conf.MasterConn {
+	// the replications the failover may move: a plugin that can promote and change the source
+	// (never a CDC feed)
+	for _, link := range oldMaster.Replications {
+		rep := link.Row()
+		if CanFailover(link) && link.Name() != cluster.Conf.MasterConn {
 			myparentrplpassword := ""
 			parentCluster := cluster.GetParentClusterFromReplicationSource(rep)
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Failover replication source %s ", rep.ConnectionName.String)
@@ -750,13 +741,13 @@ func (cluster *Cluster) FailoverExtraMultiSource(oldMaster *ServerMonitor, NewMa
 					changemasteropt.Mode = "MASTER_AUTO_POSITION"
 				}
 			}
-			logs, err := NewMaster.ChangeMaster(changemasteropt)
+			logs, err := NewMaster.ReplicationChannelLink(rep.ConnectionName.String).ChangeSource(SourceOf(changemasteropt), changemasteropt, failoverOrSwitchover(fail))
 			cluster.LogSQL(logs, err, NewMaster.URL, "MasterFailover", config.LvlErr, "Change master failed on slave %s, %s", NewMaster.URL, err)
 			if !fail && err == nil {
-				logs, err := dbhelper.ResetSlave(oldMaster.Conn, true, rep.ConnectionName.String, oldMaster.DBVersion)
+				logs, err := link.Remove(failoverOrSwitchover(fail))
 				cluster.LogSQL(logs, err, oldMaster.URL, "MasterFailover", config.LvlErr, "Reset replication source %s failed on %s, %s", rep.ConnectionName.String, oldMaster.URL, err)
 			}
-			logs, err = dbhelper.StartSlave(NewMaster.Conn, rep.ConnectionName.String, NewMaster.DBVersion)
+			logs, err = NewMaster.ReplicationChannelLink(rep.ConnectionName.String).Start(failoverOrSwitchover(fail))
 			cluster.LogSQL(logs, err, NewMaster.URL, "MasterFailover", config.LvlErr, "Start replication source %s failed on %s, %s", rep.ConnectionName.String, NewMaster.URL, err)
 
 		}
@@ -1253,7 +1244,7 @@ func (cluster *Cluster) isSlaveElectable(sl *ServerMonitor, forcingLog bool) boo
 		}
 	}
 
-	if sl.HaveSemiSync && !sl.SemiSyncSlaveStatus && cluster.Conf.FailSync && cluster.Conf.RplChecks {
+	if cluster.isSlaveBlockedBySemiSync(sl) {
 		cluster.SetState("ERR00043", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00043"], sl.URL), ErrFrom: "CHECK", ServerUrl: sl.URL})
 		// if cluster.Conf.LogLevel > 1 || forcingLog {
 		cluster.LogModulePrintf(forcingLog, config.ConstLogModWriterElection, config.LvlWarn, "Semi-sync slave %s is out of sync. Skipping", sl.URL)
@@ -1275,6 +1266,13 @@ func (cluster *Cluster) isSlaveElectable(sl *ServerMonitor, forcingLog bool) boo
 		return false
 	}
 	return true
+}
+
+// isSlaveBlockedBySemiSync is the election test of failover-at-sync, kept behind check-replication-state like
+// the other election checks. electSwitchoverCandidate runs isSlaveElectable too: a switchover meets it with
+// failover-at-sync, next to the switchover-at-sync test of isSlaveElectableForSwitchover.
+func (cluster *Cluster) isSlaveBlockedBySemiSync(sl *ServerMonitor) bool {
+	return cluster.Conf.FailSync && cluster.Conf.RplChecks && sl.IsSemiSyncReplicaOutOfSync()
 }
 
 func (cluster *Cluster) isSlaveValidReader(sl *ServerMonitor, forcingLog bool) bool {
@@ -1423,7 +1421,7 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 		cluster.oldMaster.freeze()
 	}
 	if !fail && cluster.Conf.MultiMasterGrouprep {
-		logs, errswitch := cluster.slaves[key].SetGroupReplicationPrimary()
+		logs, errswitch := cluster.slaves[key].GroupReplication().Promote(LinkBySwitchover)
 		if errswitch != nil {
 			// the group kept its PRIMARY: so does replication-manager
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Server %s could not be made the group's PRIMARY (%s): %s; switchover canceled", cluster.slaves[key].URL, logs, errswitch)
@@ -1465,8 +1463,7 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 		//		cluster.master.FailoverMasterLogPos = cluster.master.MasterLogPos
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO ", "Save crash information")
 
-		crash.FailoverMasterLogFile = ms.MasterLogFile.String
-		crash.FailoverMasterLogPos = ms.ReadMasterLogPos.String
+		crash.FailoverMasterLogFile, crash.FailoverMasterLogPos = failoverSourcePosition(ms)
 		if cluster.master.DBVersion.IsMariaDB() {
 			if cluster.Conf.MxsBinlogOn {
 				//	cluster.master.FailoverIOGtid = cluster.master.CurrentGtid
@@ -1480,6 +1477,7 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 		}
 		cluster.master.FailoverSemiSyncSlaveStatus = cluster.master.SemiSyncSlaveStatus
 		crash.FailoverSemiSyncSlaveStatus = cluster.master.SemiSyncSlaveStatus
+		crash.FailoverSemiSyncMasterStatus = cluster.oldMaster != nil && cluster.oldMaster.SemiSyncMasterStatus
 		cluster.Crashes = append(cluster.Crashes, crash)
 		// Same as the failover path: write the crash to its own crash-bin dir now
 		// (option B) so disk + history stay synchronized; delta filled at rejoin.
@@ -1601,7 +1599,7 @@ func (cluster *Cluster) CloseRing(oldMaster *ServerMonitor) error {
 		return errors.New("Can't find parent in ring")
 	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Parent is %s", parent.URL)
-	logs, err := child.StopSlave()
+	logs, err := child.ReplicationLink().Stop(LinkByFailover)
 	cluster.LogSQL(logs, err, child.URL, "MasterFailover", config.LvlErr, "Could not stop slave on server %s, %s", child.URL, err)
 
 	hasMyGTID := parent.HasMySQLGTID()
@@ -1627,17 +1625,52 @@ func (cluster *Cluster) CloseRing(oldMaster *ServerMonitor) error {
 		} else {
 			changeMasterOpt.Mode = ""
 		}
-		logs, changeMasterErr = child.ChangeMaster(changeMasterOpt)
+		logs, changeMasterErr = child.ReplicationLink().ChangeSource(SourceOf(changeMasterOpt), changeMasterOpt, LinkByFailover)
 	} else {
 		//MariaDB all cases use GTID
 		changeMasterOpt.Mode = "SLAVE_POS"
-		logs, changeMasterErr = child.ChangeMaster(changeMasterOpt)
+		logs, changeMasterErr = child.ReplicationLink().ChangeSource(SourceOf(changeMasterOpt), changeMasterOpt, LinkByFailover)
 	}
 
 	cluster.LogSQL(logs, changeMasterErr, child.URL, "MasterFailover", config.LvlErr, "Could not change masteron server %s, %s", child.URL, changeMasterErr)
 
-	logs, err = child.StartSlave()
+	logs, err = child.ReplicationLink().Start(LinkByFailover)
 	cluster.LogSQL(logs, err, child.URL, "MasterFailover", config.LvlErr, "Could not start slave on server %s, %s", child.URL, err)
 
 	return nil
+}
+
+// openNewMaster is the order the promotion of a MariaDB/MySQL candidate keeps, on purpose: the
+// link ends first (Promote: RESET SLAVE ALL, when promote), then on a switchover (refresh) the new
+// master's position is read, then read_only goes off. The position read is the one the other
+// replicas are repointed to: read after read_only off, a write of an application connected
+// directly could slip in before it, and positional replicas would skip it (F5: nothing proves no
+// traffic reaches the new master before the proxies switch). Returns SetReadWrite's error;
+// Promote logs its own.
+func openNewMaster(link Replication, reason string, promote, refresh bool, refreshServer func() error, setReadWrite func() error) error {
+	if promote {
+		link.Promote(reason)
+	}
+	if refresh {
+		// Get Fresh GTID pos before open traffic
+		refreshServer()
+	}
+	return setReadWrite()
+}
+
+// failoverSourcePosition is where, in the old master's binary log, the elected replica stopped:
+// the end of the last transaction it applied (Relay_Master_Log_File, Exec_Master_Log_Pos), read
+// once its relay log is applied (ReadAllRelayLogs). Not what it received (Master_Log_File,
+// Read_Master_Log_Pos): that can be inside a transaction it received in part and never applied,
+// and the lost events captured from there missed that transaction's start (its GTID event):
+// on a test failover 4 transactions saved for 5 past the rejoin GTID, the first one rewound in
+// part only. The received position is the fallback when the executed one is not reported.
+func failoverSourcePosition(ms *dbhelper.SlaveStatus) (string, string) {
+	if ms == nil {
+		return "", ""
+	}
+	if ms.RelayMasterLogFile.String != "" && ms.ExecMasterLogPos.String != "" {
+		return ms.RelayMasterLogFile.String, ms.ExecMasterLogPos.String
+	}
+	return ms.MasterLogFile.String, ms.ReadMasterLogPos.String
 }

@@ -184,7 +184,7 @@ func (s *MCPServer) registerDatabaseReadTools() {
 
 	s.addTool(
 		mcp.NewTool("get-database-replication",
-			mcp.WithDescription("Get the replication picture of a server: its role (master, slave, standalone, failed), every replication channel it consumes (SHOW ALL SLAVES STATUS: master host, IO/SQL thread state, Seconds_Behind_Master, last errors, GTID positions) and what it serves as a master (SHOW MASTER STATUS: binlog file, position, GTID). Use it before any failover, switchover or rejoin decision, and to explain a lag or a stopped replica. Use server_name in host:port format (e.g. db1:3306)."),
+			mcp.WithDescription("Get the replication picture of a server: its role (master, slave, standalone, failed), every replication link it consumes, each with its kind: its native channels (SHOW ALL SLAVES STATUS: master host, IO/SQL thread state, Seconds_Behind_Master, last errors, GTID positions) and the CDC feeds of replication plugins writing into it (kind cdc: capture as IO, apply as SQL, lag, GTID captured and applied, last errors) and what it serves as a master (SHOW MASTER STATUS: binlog file, position, GTID). Use it before any failover, switchover or rejoin decision, and to explain a lag or a stopped replica. Use server_name in host:port format (e.g. db1:3306)."),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
 			mcp.WithString("server_name", mcp.Required(), mcp.Description("Server name in host:port format (e.g. db1:3306)")),
 		),
@@ -199,7 +199,7 @@ func (s *MCPServer) registerDatabaseReadTools() {
 				"isMaster":     node.IsMaster(),
 				"isSlave":      node.IsSlave,
 				"isDown":       node.IsDown(),
-				"replications": node.GetAllSlavesStatus(),
+				"replications": node.ReplicationLinkStatus(),
 				"masterStatus": node.GetMasterStatus(),
 			}
 			return mcp.NewToolResultText(toJSON(out)), nil

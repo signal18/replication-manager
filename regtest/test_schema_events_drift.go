@@ -23,6 +23,9 @@ import (
 var (
 	// APIToken issues a token for a local API user of the cluster holding the grants.
 	APIToken func(cl *clusterpkg.Cluster, grants ...string) (string, error)
+	// APITokenOf issues a token for the named local API user of the cluster, for a test that
+	// needs a user without some grant (APIToken may pick one holding every grant).
+	APITokenOf func(cl *clusterpkg.Cluster, user string) (string, error)
 	// APIRequest sends one request to the API and returns status, headers and body.
 	APIRequest func(token, method, path string) (int, http.Header, []byte, error)
 	// APIRequestBody is APIRequest with a JSON body.

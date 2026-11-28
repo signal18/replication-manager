@@ -995,3 +995,52 @@ func TestRelayLogSpaceNullUint64Scan(t *testing.T) {
 		})
 	}
 }
+
+// TestStartSlaveThreads: the statement of each engine for the IO and SQL threads, sent once;
+// PostgreSQL sends nothing and answers ErrNoReplicationThread (T23).
+func TestStartSlaveThreads(t *testing.T) {
+	mariadb, _ := version.NewVersion("MariaDB", 11, 8, 9)
+	mysql80, _ := version.NewVersion("MySQL", 8, 0, 36)
+	mysql84, _ := version.NewVersion("MySQL", 8, 4, 2)
+	pg, _ := version.NewVersion("PostgreSQL", 16, 4)
+	start := map[string]func(*sqlx.DB, string, *version.Version) (string, error){
+		"IO_THREAD":  StartSlaveIOThread,
+		"SQL_THREAD": StartSlaveSQLThread,
+	}
+	for thread, fn := range start {
+		for _, tc := range []struct {
+			ver     *version.Version
+			channel string
+			want    string
+		}{
+			{mariadb, "", "START SLAVE " + thread},
+			{mariadb, "c1", "START SLAVE 'c1' " + thread},
+			{mysql80, "", "START SLAVE " + thread},
+			{mysql80, "c1", "START SLAVE " + thread + " FOR CHANNEL 'c1'"},
+			{mysql84, "c1", "START REPLICA " + thread + " FOR CHANNEL 'c1'"},
+		} {
+			db, mock, err := sqlmock.New()
+			if err != nil {
+				t.Fatal(err)
+			}
+			mock.ExpectExec(regexp.QuoteMeta(tc.want)).WillReturnResult(sqlmock.NewResult(0, 0))
+			got, err := fn(sqlx.NewDb(db, "sqlmock"), tc.channel, tc.ver)
+			if err != nil || got != tc.want {
+				t.Errorf("%s %s %q: got %q, %v; want %q", thread, tc.ver.Flavor, tc.channel, got, err, tc.want)
+			}
+			if err := mock.ExpectationsWereMet(); err != nil {
+				t.Error(err)
+			}
+			db.Close()
+		}
+		db, mock, _ := sqlmock.New()
+		got, err := fn(sqlx.NewDb(db, "sqlmock"), "alltables", pg)
+		if got != "" || err != ErrNoReplicationThread {
+			t.Errorf("%s PostgreSQL: got %q, %v; want no statement and ErrNoReplicationThread", thread, got, err)
+		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Error(err)
+		}
+		db.Close()
+	}
+}

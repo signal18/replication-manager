@@ -51,6 +51,7 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 	regtest.GetPeerFailoverMode = repman.PeerFailoverMode
 	regtest.SetPeerFailoverMode = repman.SetPeerFailoverMode
 	regtest.APIToken = repman.regtestAPIToken
+	regtest.APITokenOf = repman.regtestAPITokenOf
 	regtest.APIRequest = repman.regtestAPIRequest
 	regtest.APIRequestBody = repman.regtestAPIRequestBody
 	regtest.LoadClusterConfigFromDisk = repman.regtestLoadClusterConfigFromDisk
@@ -251,6 +252,21 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 		if test.Name == "testFailoverNoRplChecksNoSemiSync" {
 			res = regtest.TestFailoverNoRplChecksNoSemiSync(cl, test.ConfigFile, &test)
 		}
+		if test.Name == "testFailoverSemisyncReplicasOutOfSyncBlocked" {
+			res = regtest.TestFailoverSemisyncReplicasOutOfSyncBlocked(cl, test.ConfigFile, &test)
+		}
+		if test.Name == "testFailoverSemisyncOutOfSyncAtSyncOff" {
+			res = regtest.TestFailoverSemisyncOutOfSyncAtSyncOff(cl, test.ConfigFile, &test)
+		}
+		if test.Name == "testFailoverSemisyncOutOfSyncNoRplChecks" {
+			res = regtest.TestFailoverSemisyncOutOfSyncNoRplChecks(cl, test.ConfigFile, &test)
+		}
+		if test.Name == "testFailoverSemisyncInSyncAllowed" {
+			res = regtest.TestFailoverSemisyncInSyncAllowed(cl, test.ConfigFile, &test)
+		}
+		if test.Name == "testFailoverSemisyncDisabledAllowed" {
+			res = regtest.TestFailoverSemisyncDisabledAllowed(cl, test.ConfigFile, &test)
+		}
 		if test.Name == "testFailoverAllSlavesDelayNoRplChecksNoSemiSync" {
 			res = regtest.TestFailoverAllSlavesDelayNoRplChecksNoSemiSync(cl, test.ConfigFile, &test)
 		}
@@ -395,6 +411,9 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 		if test.Name == "testAnalyticChildCDC" {
 			res = regtest.TestAnalyticChildCDC(cl, test.ConfigFile, &test)
 		}
+		if test.Name == "testAnalyticChildDenormalize" {
+			res = regtest.TestAnalyticChildDenormalize(cl, test.ConfigFile, &test)
+		}
 		if test.Name == "testRollingReprovReseed" {
 			res = regtest.TestRollingReprovReseed(cl, test.ConfigFile, &test)
 		}
@@ -470,6 +489,9 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 		if test.Name == "testAppSecretVersions" {
 			res = regtest.TestAppSecretVersions(cl, test.ConfigFile, &test)
 		}
+		if test.Name == "testVolumeSnapshotExternalPlugin" {
+			res = regtest.TestVolumeSnapshotExternalPlugin(cl, test.ConfigFile, &test)
+		}
 		if test.Name == "testAppSecretVersionsVault" {
 			res = regtest.TestAppSecretVersionsVault(cl, test.ConfigFile, &test)
 		}
@@ -514,6 +536,9 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 		}
 		if test.Name == "testProxySQLStaleOfflineRowRecovery" {
 			res = regtest.TestProxySQLStaleOfflineRowRecovery(cl, test.ConfigFile, &test)
+		}
+		if test.Name == "testCDCFeedPostgres" {
+			res = regtest.TestCDCFeedPostgres(cl, test.ConfigFile, &test)
 		}
 		if test.Name == "testProxySQLPostgresRouting" {
 			res = regtest.TestProxySQLPostgresRouting(cl, test.ConfigFile, &test)

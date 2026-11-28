@@ -1538,6 +1538,39 @@ export const restartDatabase = createGuardedAsyncThunk(
   }
 )
 
+// the host (VM) of a server (proxmox orchestrator): action is stop, start or reboot
+export const hostActionDatabase = createGuardedAsyncThunk(
+  'cluster/hostActionDatabase',
+  async ({ clusterName, serverId, action }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.hostActionDatabase(clusterName, serverId, action, baseURL)
+      showSuccessBanner(`Host ${action} started`, status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner(`Host ${action} failed!`, error, thunkAPI)
+      return handleError(error, thunkAPI)
+    }
+  }
+)
+
+export const getHostStatusDatabase = createGuardedAsyncThunk(
+  'cluster/getHostStatusDatabase',
+  async ({ clusterName, serverId }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.getHostStatusDatabase(clusterName, serverId, baseURL)
+      const uptime = data?.uptimeSeconds ? `, up ${Math.round(data.uptimeSeconds / 60)} min` : ''
+      const running = data?.actionRunning ? `, ${data.actionRunning} running` : ''
+      showSuccessBanner(`Host ${data?.node}/${data?.vmid}: ${data?.state}${uptime}${running}`, status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner('Host status failed!', error, thunkAPI)
+      return handleError(error, thunkAPI)
+    }
+  }
+)
+
 export const upgradeDatabase = createGuardedAsyncThunk(
   'cluster/upgradeDatabase',
   async ({ clusterName, serverId }, thunkAPI) => {

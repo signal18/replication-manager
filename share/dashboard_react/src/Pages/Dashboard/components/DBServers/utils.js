@@ -1,8 +1,13 @@
 import { gtidstring } from '../../../../utility/common'
 
+// a server's replications are one list: its native channels, then the CDC feeds writing into it
+// (kind 'cdc'); the channel columns read the channels, the feed block the feeds
+export const channelsOf = (rowData) => (rowData?.replications || []).filter((r) => r.kind !== 'cdc')
+export const feedsOf = (rowData) => (rowData?.replications || []).filter((r) => r.kind === 'cdc')
+
 export const getUsingGtid = (rowData, hasMariadbGtid, hasMysqlGtid) => {
   if (hasMariadbGtid) {
-    return rowData.replications?.length > 0 && rowData.replications[0].usingGtid.String
+    return channelsOf(rowData).length > 0 && channelsOf(rowData)[0].usingGtid.String
   } else if (hasMysqlGtid) {
     return rowData.gtidExecuted
   }
@@ -15,8 +20,8 @@ export const getCurrentGtid = (rowData, hasMariadbGtid, hasMysqlGtid) => {
   }
 
   if (!hasMariadbGtid && !hasMysqlGtid) {
-    if (rowData.isSlave && rowData.replications?.length > 0) {
-      result += rowData.replications[0].masterLogFile.String
+    if (rowData.isSlave && channelsOf(rowData).length > 0) {
+      result += channelsOf(rowData)[0].masterLogFile.String
     } else {
       result += rowData.binaryLogFile
     }
@@ -32,8 +37,8 @@ export const getSlaveGtid = (rowData, hasMariadbGtid, hasMysqlGtid) => {
     result = gtidstring(rowData.slaveGtid)
   }
   if (!hasMariadbGtid && !hasMysqlGtid) {
-    if (rowData.isSlave && rowData.replications?.length > 0) {
-      result += rowData.replications[0].execMasterLogPos.String
+    if (rowData.isSlave && channelsOf(rowData).length > 0) {
+      result += channelsOf(rowData)[0].execMasterLogPos.String
     } else {
       result += rowData.binaryLogPos
     }
@@ -55,7 +60,7 @@ export const getSlaveGtidHeader = (hasMariadbGtid, hasMysqlGtid) => {
 }
 
 export const getDelay = (rowData) => {
-  return rowData.replications?.length > 0 && rowData.replications[0].secondsBehindMaster.Int64
+  return channelsOf(rowData).length > 0 && channelsOf(rowData)[0].secondsBehindMaster.Int64
 }
 
 export const getFailCount = (rowData) => {

@@ -25,7 +25,10 @@ func (regtest *RegTest) TestFailoverAssyncAutoRejoinFlashback(cluster *cluster.C
 	cluster.DisableSemisync()
 	SaveMaster := cluster.GetMaster()
 	SaveMasterURL := SaveMaster.URL
-	go cluster.RunSysbench()
+	// the load runs through the failover and the rejoin; its end is waited for before the
+	// checksum, which compares the master against replicas that must have applied all of it
+	load := make(chan error, 1)
+	go func() { load <- cluster.RunSysbench() }()
 	time.Sleep(4 * time.Second)
 	wg := new(sync.WaitGroup)
 	wg.Add(1)
@@ -45,6 +48,18 @@ func (regtest *RegTest) TestFailoverAssyncAutoRejoinFlashback(cluster *cluster.C
 	cluster.StartDatabaseService(SaveMaster)
 	wg2.Wait()
 
+	// A checksum taken while sysbench still writes compares a moving master (about 90 s after
+	// the failover the load was still running): wait for the load to end, bounded by its
+	// duration and a margin for its prepare, never a blind sleep.
+	select {
+	case err := <-load:
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Sysbench ended: %s", err)
+		}
+	case <-time.After(time.Duration(cluster.Conf.SysbenchTime)*time.Second + 10*time.Minute):
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Sysbench still running %ds after its start: no consistency check under load", cluster.Conf.SysbenchTime)
+		return false
+	}
 	if cluster.CheckTableConsistency(cluster.BenchTable()) != true {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Inconsitant slave")
 		return false

@@ -151,9 +151,6 @@ func formatHeartbeatPeriod(period float64) string {
 	return strconv.FormatFloat(period, 'f', -1, 64) + "s"
 }
 
-// setSlaveHeartbeat changes a channel's period; a variable so a test sees the call.
-var setSlaveHeartbeat = dbhelper.SetSlaveHeartbeat
-
 // checkReplicationHeartbeatPeriod: a failover decision waits up to one heartbeat period for
 // the false-positive heartbeat check, so a period above force-slave-heartbeat-time (or 0,
 // heartbeats off) is a WARN0050 while the check is on. force-slave-heartbeat is the client's
@@ -176,7 +173,7 @@ func (server *ServerMonitor) checkReplicationHeartbeatPeriod() {
 	if cluster.Conf.ForceSlaveHeartbeat && !(server.heartbeatEnforceFailed && period == server.heartbeatEnforceFailedPeriod) {
 		ss, err := server.GetSlaveStatus(channel)
 		if err == nil && ss.SlaveIORunning.String == "Yes" && ss.SlaveSQLRunning.String == "Yes" {
-			logs, err := setSlaveHeartbeat(server.Conn, strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatTime), channel, server.DBVersion)
+			logs, err := server.ReplicationChannelLink(channel).Configure(LinkOptions{HeartbeatPeriod: strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatTime)}, LinkByMonitor)
 			cluster.LogSQL(logs, err, server.URL, "Monitor", config.LvlInfo, "Could not set the heartbeat period of %s: %s", server.URL, err)
 			if err != nil {
 				server.heartbeatEnforceFailed = true

@@ -36,7 +36,7 @@ func (cluster *Cluster) postgresReplicationTopology() string {
 		if sl == nil || sl.DBVersion == nil || !sl.DBVersion.IsPostgreSQL() {
 			return ""
 		}
-		if postgresIsPhysicalStandbyStatus(sl.Replications) {
+		if postgresIsPhysicalStandbyStatus(sl.NativeReplications().Rows()) {
 			standbys++
 		} else {
 			subscribers++

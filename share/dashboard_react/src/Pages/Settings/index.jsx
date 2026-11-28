@@ -18,6 +18,7 @@ import RepFailOverSettings from './RepFailOverSettings'
 import RepConfigSettings from './RepConfigSettings'
 import CredentialsSettings from './CredentialsSettings'
 import AnalyticChildSettings from './AnalyticChildSettings'
+import ReplicationFeedSettings from './ReplicationFeedSettings'
 import AppTemplateRepoSection from './components/AppTemplateRepoSection'
 import { setSetting } from '../../redux/settingsSlice'
 import { useDispatch } from 'react-redux'
@@ -28,7 +29,7 @@ import { useDispatch } from 'react-redux'
 // its own tabs inside (by channel, Cloud18 Support for a Cloud18 cluster).
 const SETUP_GROUPS = [
   { name: 'Connect', sections: ['isCredentialsOpen', 'isConnectionOpen'] },
-  { name: 'High Availability', sections: ['isGeneralOpen', 'isRepFailOverOpen', 'isRejoinOpen', 'isRepConfigOpen', 'isProxiesOpen', 'isAnalyticChildOpen'] },
+  { name: 'High Availability', sections: ['isGeneralOpen', 'isRepFailOverOpen', 'isRejoinOpen', 'isRepConfigOpen', 'isProxiesOpen', 'isAnalyticChildOpen', 'isReplicationFeedOpen'] },
   { name: 'Collecting', sections: ['isMonitoringOpen', 'isLogsOpen', 'isGraphsOpen'] },
   { name: 'Alerts', sections: ['alerts'] },
   { name: 'Marketplace', sections: ['isCloud18Open', 'isAppTemplateRepoOpen'] },
@@ -91,6 +92,7 @@ function Settings({ selectedCluster, user, onTabChange, monitor }) {
     isLogsOpen: { title: 'Logs', body: <LogsSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} /> },
     isRejoinOpen: { title: 'Rejoin', body: <RejoinSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} /> },
     isAnalyticChildOpen: { title: 'Analytic Child', body: <AnalyticChildSettings selectedCluster={selectedCluster} user={user} /> },
+    isReplicationFeedOpen: { title: 'CDC Feed', body: <ReplicationFeedSettings selectedCluster={selectedCluster} user={user} /> },
     isProxiesOpen: { title: 'Proxies', body: <ProxySettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} /> },
     isGraphsOpen: { title: 'Graphs', body: <GraphSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} /> },
     // Marketplace (the Cloud18 settings): a sub-tab of its own

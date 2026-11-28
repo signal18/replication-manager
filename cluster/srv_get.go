@@ -303,7 +303,7 @@ func (server *ServerMonitor) GetSibling() *ServerMonitor {
 
 func (server *ServerMonitor) GetSlaveStatus(name string) (*dbhelper.SlaveStatus, error) {
 	if server.Replications != nil {
-		for _, ss := range server.Replications {
+		for _, ss := range server.NativeReplications().Rows() {
 			if ss.ConnectionName.String == name {
 				return &ss, nil
 			}
@@ -314,7 +314,7 @@ func (server *ServerMonitor) GetSlaveStatus(name string) (*dbhelper.SlaveStatus,
 
 func (server *ServerMonitor) GetSlaveStatusLastSeen(name string) (*dbhelper.SlaveStatus, error) {
 	if server.LastSeenReplications != nil {
-		for _, ss := range server.LastSeenReplications {
+		for _, ss := range server.LastSeenReplications.OfKind(ReplicationKindNative).Rows() {
 			if ss.ConnectionName.String == name {
 				return &ss, nil
 			}
@@ -326,7 +326,7 @@ func (server *ServerMonitor) GetSlaveStatusLastSeen(name string) (*dbhelper.Slav
 }
 
 func (server *ServerMonitor) GetAllSlavesStatus() []dbhelper.SlaveStatus {
-	return server.Replications
+	return server.NativeReplications().Rows()
 }
 
 func (server *ServerMonitor) GetMasterStatus() dbhelper.MasterStatus {

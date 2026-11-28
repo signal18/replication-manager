@@ -492,6 +492,8 @@ func (repman *ReplicationManager) apiserver() {
 	repman.apiDatabaseProtectedHandler(router)
 	repman.apiClusterUnprotectedHandler(router)
 	repman.apiClusterProtectedHandler(router)
+	// the volume snapshot routes (#2443) on the HTTPS API too, as in http.go
+	repman.apiVolumeSnapshotProtectedHandler(router)
 	// User-issued API tokens (issue #1835): the HTTPS API router is built here,
 	// separately from the dashboard router in http.go.
 	repman.apiTokenRoutes(router)

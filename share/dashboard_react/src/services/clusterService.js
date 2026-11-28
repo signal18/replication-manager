@@ -33,6 +33,12 @@ export const clusterService = {
   getSchemaEvents,
   getQueryRules,
   getServerLostEvents,
+  getVolumeSnapshots,
+  getVolumeSnapshotPlugins,
+  setVolumeSnapshotPluginSettings,
+  takeVolumeSnapshot,
+  deleteVolumeSnapshot,
+  snapbackVolume,
   rejoinCluster,
 
   // Restic management APIs
@@ -55,6 +61,11 @@ export const clusterService = {
   resticWipeRepo,
   getArchiveList,
   getSecretKvList,
+  getReplicationPluginIndexList,
+  putReplicationPluginIndex,
+  removeReplicationPluginIndex,
+  reinitReplicationPlugin,
+  dropReplicationFeedSourceObjects,
   putSecretKv,
   switchSecretKv,
   removeSecretKv,
@@ -141,6 +152,8 @@ export const clusterService = {
   startDatabase,
   restartDatabase,
   upgradeDatabase,
+  hostActionDatabase,
+  getHostStatusDatabase,
   provisionDatabase,
   unprovisionDatabase,
   updateOpensvcTemplate,
@@ -394,6 +407,32 @@ function getResticSnapshot(clusterName, baseURL, filter) {
 
 function getResticStats(clusterName, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/restic/stats`)
+}
+
+// Volume snapshots of a server's data volume (#2443)
+function getVolumeSnapshots(clusterName, serverId, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/servers/${serverId}/volume-snapshots`)
+}
+
+// The snapshot plugins of a cluster and the settings of the external ones (#2456)
+function getVolumeSnapshotPlugins(clusterName, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/volume-snapshot-plugins`)
+}
+
+function setVolumeSnapshotPluginSettings(clusterName, plugin, body, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/volume-snapshot-plugin-actions/set/${encodeURIComponent(plugin)}`, body)
+}
+
+function takeVolumeSnapshot(clusterName, serverId, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/servers/${serverId}/actions/volume-snapshot-take`)
+}
+
+function deleteVolumeSnapshot(clusterName, serverId, name, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/servers/${serverId}/actions/volume-snapshot-delete/${encodeURIComponent(name)}`)
+}
+
+function snapbackVolume(clusterName, serverId, name, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/servers/${serverId}/actions/volume-snapback/${encodeURIComponent(name)}`)
 }
 
 function getServerLostEvents(clusterName, serverId, { file = 'forward', pos = 0, bytes = 262144, ts = 0 } = {}, baseURL) {
@@ -693,6 +732,15 @@ function restartDatabase(clusterName, serverId, rid, baseURL) {
 
 function upgradeDatabase(clusterName, serverId, baseURL) {
   return getApi(baseURL).post(`clusters/${clusterName}/servers/${serverId}/actions/upgrade`)
+}
+
+// the host (VM) of a server, on an orchestrator that drives the hosts (proxmox)
+function hostActionDatabase(clusterName, serverId, action, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/servers/${serverId}/actions/host-${action}`)
+}
+
+function getHostStatusDatabase(clusterName, serverId, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/servers/${serverId}/host-status`)
 }
 
 function provisionDatabase(clusterName, serverId, baseURL) {
@@ -1153,6 +1201,28 @@ function resticCopyRepo(clusterName, payload, baseURL) {
 
 function resticWipeRepo(clusterName, payload, baseURL) {
   return getApi(baseURL).post(`clusters/${clusterName}/restic/wipe`, payload)
+}
+
+// the indexes of an analytic child's denormalize mode (CDC_CORE.md "Denormalize")
+function getReplicationPluginIndexList(clusterName, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/replication-plugin-index-list`)
+}
+
+function putReplicationPluginIndex(clusterName, index, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/replication-plugin-index-actions/put`, index)
+}
+
+function removeReplicationPluginIndex(clusterName, indexName, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/replication-plugin-index-actions/remove/${encodeURIComponent(indexName)}`)
+}
+
+// the CDC feed of a source of another engine (CDC_SOURCES.md)
+function reinitReplicationPlugin(clusterName, pluginName, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/replication-plugin-actions/reinit/${encodeURIComponent(pluginName)}`)
+}
+
+function dropReplicationFeedSourceObjects(clusterName, pluginName, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/replication-plugin-actions/drop-source-objects/${encodeURIComponent(pluginName)}`)
 }
 
 // credential store entries, the vault entries (#2227): secrets go in through add and edit and

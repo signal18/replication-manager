@@ -246,6 +246,29 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxResticCheckConfig)),
 	))
 
+	// the indexes of an analytic child's denormalize mode (CDC_CORE.md "Denormalize")
+	router.Handle("/api/clusters/{clusterName}/replication-plugin-index-list", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxReplicationPluginIndexList)),
+	))
+	router.Handle("/api/clusters/{clusterName}/replication-plugin-index-actions/put", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxReplicationPluginIndexPut)),
+	)).Methods(http.MethodPost)
+	router.Handle("/api/clusters/{clusterName}/replication-plugin-index-actions/remove/{indexName}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxReplicationPluginIndexRemove)),
+	)).Methods(http.MethodPost)
+	// the CDC feed of a source of another engine (CDC_SOURCES.md)
+	router.Handle("/api/clusters/{clusterName}/replication-plugin-actions/reinit/{pluginName}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxReplicationPluginReinit)),
+	)).Methods(http.MethodPost)
+	router.Handle("/api/clusters/{clusterName}/replication-plugin-actions/drop-source-objects/{pluginName}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxReplicationPluginDropSourceObjects)),
+	)).Methods(http.MethodPost)
+
 	// credential store entries: the vault entries (#2227)
 	router.Handle("/api/clusters/{clusterName}/secret-kv-list", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
@@ -3525,7 +3548,7 @@ func (repman *ReplicationManager) handlerMuxSwitchSettings(w http.ResponseWriter
 				err := repman.setClusterSetting(mycluster, setting, value)
 				if err != nil {
 					code := http.StatusBadRequest
-					if errors.Is(err, cluster.ErrCredentialChangeRefused) {
+					if errors.Is(err, cluster.ErrCredentialChangeRefused) || errors.Is(err, errImmutableGlobalSetting) {
 						code = http.StatusConflict
 					}
 					http.Error(w, fmt.Sprintf("Failed to set value for %s: %s", setting, err.Error()), code)
@@ -3545,6 +3568,9 @@ func (repman *ReplicationManager) handlerMuxSwitchSettings(w http.ResponseWriter
 }
 
 func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Cluster, setting string) error {
+	if err := immutableClusterSetting(mycluster, setting); err != nil {
+		return err
+	}
 	switch setting {
 	case "verbose":
 		mycluster.SwitchVerbosity()
@@ -3582,6 +3608,8 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.SwitchRejoinBackupBinlog()
 	case "autorejoin-flashback":
 		mycluster.SwitchRejoinFlashback()
+	case "autorejoin-async-flashback-drop-binlog":
+		mycluster.SwitchRejoinAsyncFlashbackDropBinlog()
 	case "autorejoin-flashback-on-sync":
 		mycluster.SwitchRejoinSemisync()
 	case "autorejoin-flashback-on-unsync": //?????
@@ -3786,6 +3814,10 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.Conf.BackupRestoreDefinerStrict = !mycluster.Conf.BackupRestoreDefinerStrict
 	case "backup-check-free-space":
 		mycluster.Conf.BackupCheckFreeSpace = !mycluster.Conf.BackupCheckFreeSpace
+	case "backup-snapshot":
+		mycluster.Conf.BackupSnapshot = !mycluster.Conf.BackupSnapshot
+	case "backup-snapshot-unmount":
+		mycluster.Conf.BackupSnapshotUnmount = !mycluster.Conf.BackupSnapshotUnmount
 	case "backup-estimate-size":
 		mycluster.Conf.BackupEstimateSize = !mycluster.Conf.BackupEstimateSize
 	case "backup-restic-purge-oldest-on-disk-space":
@@ -3809,6 +3841,12 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.SwitchMonitoringScheduler()
 	case "monitoring-schema-change":
 		mycluster.SwitchMonitoringSchemaChange()
+	case "replication-plugin-feed-enabled":
+		// the feed's start and stop: the single switch, its TOML follows it (syncReplicationFeed)
+		mycluster.Conf.ReplicationPluginFeedEnabled = !mycluster.Conf.ReplicationPluginFeedEnabled
+	case "replication-plugin-feed-create-source-objects":
+		// the feed may create its publication and slot on the source: a change of the client's database (F1)
+		mycluster.Conf.ReplicationPluginFeedCreateSourceObjects = !mycluster.Conf.ReplicationPluginFeedCreateSourceObjects
 	case "monitoring-schema-columns":
 		mycluster.SwitchMonitoringSchemaColumns()
 	case "monitoring-schema-indexes":
@@ -3933,6 +3971,12 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.SwitchBackupVerificationRegisteredProven()
 	case "mail-smtp-tls-skip-verify":
 		mycluster.Conf.SwitchMailSmtpTlsSkipVerify()
+	case "alert-alertmanager":
+		mycluster.Conf.AlertAlertmanager = !mycluster.Conf.AlertAlertmanager
+	case "alert-alertmanager-tls-skip-verify":
+		mycluster.Conf.AlertAlertmanagerTLSSkipVerify = !mycluster.Conf.AlertAlertmanagerTLSSkipVerify
+	case "alert-telegram":
+		mycluster.Conf.AlertTelegram = !mycluster.Conf.AlertTelegram
 	case "cloud18-shared":
 		mycluster.Conf.SwitchCloud18Shared()
 	case "cloud18-marketplace-bau-client-storage":
@@ -3962,6 +4006,10 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.Conf.LogArbitration = !mycluster.Conf.LogArbitration
 	case "onpremise-ssh":
 		mycluster.Conf.OnPremiseSSH = !mycluster.Conf.OnPremiseSSH
+	case "proxmox-api-insecure":
+		mycluster.Conf.ProxmoxAPIInsecure = !mycluster.Conf.ProxmoxAPIInsecure
+	case "prov-db-rolling-upgrade-host":
+		mycluster.Conf.ProvDbRollingUpgradeHost = !mycluster.Conf.ProvDbRollingUpgradeHost
 	case "db-log-rotate":
 		mycluster.Conf.DBLogRotate = !mycluster.Conf.DBLogRotate
 		// Nothing else notices this flag turning off -- close any writers
@@ -3984,10 +4032,29 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 	return nil
 }
 
+// maxSettingBodyBytes bounds a setting value sent as the request body (a private key is a few KiB).
+const maxSettingBodyBytes = 64 << 10
+
+// settingValueFromBody returns the value of a set-setting request: the path's value, or, when it
+// is empty and the request a POST, the request body (maxSettingBodyBytes at most). A private key
+// or a long secret then never sits in a URL, which proxies and the panic recovery log (F10).
+func settingValueFromBody(w http.ResponseWriter, r *http.Request, value string) (string, error) {
+	if value != "" || r.Method != http.MethodPost || r.Body == nil {
+		return value, nil
+	}
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxSettingBodyBytes))
+	if err != nil {
+		return "", errors.New("setting value in the body: too large or unreadable")
+	}
+	return strings.TrimSpace(string(body)), nil
+}
+
 // handlerMuxSetSettings handles the setting of settings for a given cluster.
 // @Summary Set settings for a specific cluster
 // @Description This endpoint sets the settings for the specified cluster.
 // @Description A credential setting is user:password, with a user and a password: in clear for db-servers-credential, replication-credential, proxysql-servers-credential, maxscale-servers-credential and shardproxy-servers-credential; encoded in base64 for backup-verification-credential, cloud18-dba-user-credentials and cloud18-sponsor-user-credentials (an empty value clears the verification and sponsor credentials). Any other value is refused with 400, the value never echoed.
+// @Description With an empty settingValue (the path ending in a slash), a POST takes the value from the request body (64 KiB at most), for a value that must not sit in a URL.
+// @Description On-premise SSH: onpremise-ssh-credential is user:password in base64, the password may be empty to connect with the private key; onpremise-ssh-private-key is in base64 either the absolute path of the key on the replication-manager host or the key itself (PEM / OpenSSH, no passphrase), which is written 0600 under the cluster's working directory, never in the config git, the setting then holding that path (send it as the POST body to .../set/onpremise-ssh-private-key/ so the key never sits in a URL); onpremise-ssh-port is the port; the onpremise-ssh-*-script settings are in base64 the absolute path of a local script. An on-premise SSH setting set in the configuration file under /etc, on the command line or in the environment is refused with 409.
 // @Tags ClusterSettings
 // @Accept json
 // @Produce json
@@ -3998,7 +4065,7 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 // @Success 200 {string} string "Successfully set setting"
 // @Failure 400 {string} string "A credential setting that is not user:password"
 // @Failure 403 {string} string "No valid ACL"
-// @Failure 409 {string} string "A credential change refused (no store keeps versions)"
+// @Failure 409 {string} string "A credential change refused (no store keeps versions), or an on-premise SSH setting set in the immutable configuration"
 // @Failure 500 {string} string "No cluster"
 // @Router /api/clusters/{clusterName}/settings/actions/set/{settingName}/{settingValue} [post]
 func (repman *ReplicationManager) handlerMuxSetSettings(w http.ResponseWriter, r *http.Request) {
@@ -4013,6 +4080,11 @@ func (repman *ReplicationManager) handlerMuxSetSettings(w http.ResponseWriter, r
 			settingValue = ""
 		}
 		value = settingValue
+	}
+	value, err := settingValueFromBody(w, r, value)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
 	}
 
 	// Should be handled with global settings
@@ -4313,19 +4385,28 @@ var base64LogValueSettings = map[string]struct{}{
 	"backup-restic-password":              {},
 	"backup-restic-repository":            {},
 	"backup-save-script":                  {},
+	"backup-snapshot-script":              {},
 	"backup-verification-host":            {},
 	"cloud18-alert-slack-url":             {},
 	"cloud18-dba-user-credentials":        {},
 	"cloud18-gitlab-password":             {},
 	"cloud18-sponsor-user-credentials":    {},
 	"mail-smtp-password":                  {},
+	"onpremise-ssh-db-job-script":         {},
+	"onpremise-ssh-start-db-script":       {},
+	"onpremise-ssh-start-proxy-script":    {},
+	"onpremise-ssh-stop-proxy-script":     {},
+	"onpremise-ssh-upgrade-db-script":     {},
+	"prov-db-host-upgrade-script":         {},
+	"prov-db-host-vmids":                  {},
+	"proxmox-api-url":                     {},
 	"topology-staging-post-detach-script": {},
 	"topology-staging-refresh-script":     {},
 }
 
 func GetApiChangeLogFormat(name, value string) (string, []interface{}) {
 	switch name {
-	case "replication-credential", "db-servers-credential", "proxysql-servers-credential", "proxy-servers-backend-max-connections", "proxy-servers-backend-max-replication-lag", "maxscale-servers-credential", "shardproxy-servers-credential", "mail-smtp-password", "mail-smtp-user", "mail-to", "mail-from", "cloud18-gitlab-user", "cloud18-gitlab-password", "cloud18-domain-secret", "backup-restic-aws-access-key-id", "backup-restic-aws-access-secret", "backup-restic-password", "cloud18-dba-user-credentials", "cloud18-sponsor-user-credentials", "haproxy-password", "backup-verification-credential", "alert-slack-url", "cloud18-alert-slack-url", "alert-teams-url", "alert-teams-proxy-url":
+	case "replication-credential", "db-servers-credential", "proxysql-servers-credential", "proxy-servers-backend-max-connections", "proxy-servers-backend-max-replication-lag", "maxscale-servers-credential", "shardproxy-servers-credential", "mail-smtp-password", "mail-smtp-user", "mail-to", "mail-from", "cloud18-gitlab-user", "cloud18-gitlab-password", "cloud18-domain-secret", "backup-restic-aws-access-key-id", "backup-restic-aws-access-secret", "backup-restic-password", "cloud18-dba-user-credentials", "cloud18-sponsor-user-credentials", "haproxy-password", "backup-verification-credential", "alert-slack-url", "cloud18-alert-slack-url", "alert-teams-url", "alert-teams-proxy-url", "proxmox-api-token", "alert-alertmanager-password", "alert-alertmanager-bearer-token", "alert-telegram-bot-token", "onpremise-ssh-credential", "onpremise-ssh-private-key":
 		return "API receive set setting %s to ****", []interface{}{name}
 	default:
 		logValue := value
@@ -4378,7 +4459,8 @@ var ErrInvalidCredentialFormat = errors.New("invalid credential format")
 // it (SetCredentialsModal): base64 for the three keys decoded by their setter, the value in
 // clear for the others. clearable: an empty value clears the credential (the Cloud18 sponsor
 // user is cleared that way, the verification server is optional).
-var credentialSettings = map[string]struct{ base64, clearable bool }{
+// passwordOptional: the password may be empty (the on-premise SSH user, with the private key).
+var credentialSettings = map[string]struct{ base64, clearable, passwordOptional bool }{
 	"db-servers-credential":            {},
 	"replication-credential":           {},
 	"proxysql-servers-credential":      {},
@@ -4387,6 +4469,7 @@ var credentialSettings = map[string]struct{ base64, clearable bool }{
 	"backup-verification-credential":   {base64: true, clearable: true},
 	"cloud18-dba-user-credentials":     {base64: true},
 	"cloud18-sponsor-user-credentials": {base64: true, clearable: true},
+	"onpremise-ssh-credential":         {base64: true, passwordOptional: true},
 }
 
 // checkCredentialSetting refuses a credential setting that is not user:password with a user
@@ -4411,12 +4494,39 @@ func checkCredentialSetting(name, value string) error {
 		return nil
 	}
 	user, password, found := strings.Cut(pair, ":")
-	if !found || user == "" || password == "" {
+	if !found || user == "" || (password == "" && !spec.passwordOptional) {
 		encoding := "in clear"
 		if spec.base64 {
 			encoding = "encoded in base64"
 		}
 		return fmt.Errorf("%w: %s must be user:password %s, with a user and a password", ErrInvalidCredentialFormat, name, encoding)
+	}
+	// the SSH user is refused by its setter with spaces around it: refuse it here too, so the answer is a 400
+	if name == "onpremise-ssh-credential" && user != strings.TrimSpace(user) {
+		return fmt.Errorf("%w: %s: the user has spaces around it", ErrInvalidCredentialFormat, name)
+	}
+	return nil
+}
+
+// onPremiseSSHSettings are the on-premise orchestrator's SSH settings other than its credential
+// (which follows the credential chain, T16's credential exception): set in the configuration
+// file under /etc, on the command line or in the environment, they are refused by the API.
+var onPremiseSSHSettings = map[string]bool{
+	"onpremise-ssh":                    true,
+	"onpremise-ssh-port":               true,
+	"onpremise-ssh-private-key":        true,
+	"onpremise-ssh-start-db-script":    true,
+	"onpremise-ssh-start-proxy-script": true,
+	"onpremise-ssh-stop-proxy-script":  true,
+	"onpremise-ssh-db-job-script":      true,
+	"onpremise-ssh-upgrade-db-script":  true,
+}
+
+// immutableClusterSetting refuses a change of an on-premise SSH setting the immutable
+// configuration sets (T16): the operator's, on the host, changed there.
+func immutableClusterSetting(mycluster *cluster.Cluster, name string) error {
+	if onPremiseSSHSettings[name] && mycluster.Conf.IsVariableImmutable(name) {
+		return fmt.Errorf("%s: %w", name, errImmutableGlobalSetting)
 	}
 	return nil
 }
@@ -4426,7 +4536,7 @@ func setSettingErrorCode(err error) int {
 	switch {
 	case errors.Is(err, ErrInvalidCredentialFormat):
 		return http.StatusBadRequest
-	case errors.Is(err, cluster.ErrCredentialChangeRefused):
+	case errors.Is(err, cluster.ErrCredentialChangeRefused), errors.Is(err, errImmutableGlobalSetting):
 		return http.StatusConflict
 	case err.Error() == "Setting not found":
 		return http.StatusNotImplemented
@@ -4436,6 +4546,9 @@ func setSettingErrorCode(err error) int {
 
 func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, name string, value string) error {
 	if err := checkCredentialSetting(name, value); err != nil {
+		return err
+	}
+	if err := immutableClusterSetting(mycluster, name); err != nil {
 		return err
 	}
 	var isactive = setIsActive(value)
@@ -4492,11 +4605,54 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "failover-limit":
 		val, _ := strconv.Atoi(value)
 		mycluster.SetFailLimit(val)
+	case "autorejoin-async-flashback-drop-binlog-max-transactions":
+		val, err := strconv.Atoi(value)
+		if err != nil || val < 0 {
+			return fmt.Errorf("autorejoin-async-flashback-drop-binlog-max-transactions: %q is not a count of transactions", value)
+		}
+		mycluster.Conf.AutorejoinAsyncFlashbackDropBinlogMaxTransactions = val
 	case "backup-keep-last":
 		err = mycluster.SetBackupKeepLastN(value)
 		if err != nil {
 			return err
 		}
+	case "backup-snapshot-plugin":
+		if _, ok := config.SnapshotPlugin(value); !ok || value == config.ConstSnapshotPluginScript {
+			return fmt.Errorf("unknown snapshot plugin %q: zfs, lvm or an external plugin (the script is set by backup-snapshot-script)", value)
+		}
+		mycluster.Conf.BackupSnapshotPlugin = value
+	case "backup-snapshot-target":
+		if err := config.ValidSnapshotTarget(value); err != nil {
+			return err
+		}
+		mycluster.Conf.BackupSnapshotTarget = value
+	case "backup-snapshot-keep":
+		keep, err := strconv.Atoi(value)
+		if err != nil || keep < 1 || keep > config.ConstSnapshotKeepMax {
+			return fmt.Errorf("backup-snapshot-keep must be 1 to %d", config.ConstSnapshotKeepMax)
+		}
+		mycluster.Conf.BackupSnapshotKeep = keep
+	case "backup-snapshot-lvm-size":
+		if err := config.ValidSnapshotLVMSize(value); err != nil {
+			return err
+		}
+		mycluster.Conf.BackupSnapshotLVMSize = value
+	case "backup-snapshot-timeout":
+		timeout, err := strconv.Atoi(value)
+		if err != nil || timeout < 10 {
+			return errors.New("backup-snapshot-timeout must be 10 seconds or more")
+		}
+		mycluster.Conf.BackupSnapshotTimeout = timeout
+	case "backup-snapshot-script":
+		val, err := base64.StdEncoding.DecodeString(value)
+		if err != nil {
+			return errors.New("unable to decode")
+		}
+		_, storeValue, err := resolveExecutablePath(string(val), "backup-snapshot-script")
+		if err != nil {
+			return err
+		}
+		mycluster.Conf.BackupSnapshotScript = storeValue
 	case "backup-logical-remote-pickup-timeout":
 		if err = mycluster.SetBackupLogicalRemotePickupTimeout(value); err != nil {
 			return err
@@ -4633,6 +4789,12 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.CompressBackupsDecompressBufferSize = val
 	case "backup-reseed-remote-decompress":
 		mycluster.Conf.BackupReseedRemoteDecompress = applyIsActive(mycluster.Conf.BackupReseedRemoteDecompress, isactive)
+	case "onpremise-ssh":
+		mycluster.Conf.OnPremiseSSH = applyIsActive(mycluster.Conf.OnPremiseSSH, isactive)
+	case "proxmox-api-insecure":
+		mycluster.Conf.ProxmoxAPIInsecure = applyIsActive(mycluster.Conf.ProxmoxAPIInsecure, isactive)
+	case "prov-db-rolling-upgrade-host":
+		mycluster.Conf.ProvDbRollingUpgradeHost = applyIsActive(mycluster.Conf.ProvDbRollingUpgradeHost, isactive)
 	case "compress-backups-logical":
 		normalized, err := normalizeCompressionOverride(value)
 		if err != nil {
@@ -4951,6 +5113,58 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.SetProvDbDiskFS(value)
 	case "prov-db-disk-pool":
 		mycluster.SetProvDbDiskPool(value)
+	case "proxmox-api-url", "prov-db-host-vmids", "prov-db-host-upgrade-script":
+		// base64 like every value that may hold a slash (a URL, node/vmid, a path)
+		val, err := base64.StdEncoding.DecodeString(value)
+		if err != nil {
+			return errors.New("unable to decode")
+		}
+		if err := mycluster.SetProxmoxSetting(name, string(val)); err != nil {
+			return err
+		}
+	case "proxmox-api-token":
+		val, err := base64.StdEncoding.DecodeString(value)
+		if err != nil {
+			return errors.New("unable to decode")
+		}
+		if err := mycluster.SetProxmoxAPIToken(string(val)); err != nil {
+			return err
+		}
+	case "onpremise-ssh-credential":
+		// user:password in base64, checked above; the password may be empty (the private key)
+		val, err := base64.StdEncoding.DecodeString(value)
+		if err != nil {
+			return errors.New("unable to decode")
+		}
+		if err := mycluster.SetOnPremiseSSHCredential(string(val)); err != nil {
+			return err
+		}
+	case "onpremise-ssh-private-key":
+		// base64 of a path on the replication-manager host, or of the key itself
+		val, err := base64.StdEncoding.DecodeString(value)
+		if err != nil {
+			return errors.New("unable to decode")
+		}
+		if err := mycluster.SetOnPremiseSSHPrivateKey(string(val)); err != nil {
+			return err
+		}
+	case "onpremise-ssh-start-db-script", "onpremise-ssh-start-proxy-script", "onpremise-ssh-stop-proxy-script", "onpremise-ssh-db-job-script", "onpremise-ssh-upgrade-db-script":
+		// base64 like every value that holds a path
+		val, err := base64.StdEncoding.DecodeString(value)
+		if err != nil {
+			return errors.New("unable to decode")
+		}
+		if err := mycluster.SetOnPremiseSSHSetting(name, string(val)); err != nil {
+			return err
+		}
+	case "onpremise-ssh-port":
+		if err := mycluster.SetOnPremiseSSHSetting(name, value); err != nil {
+			return err
+		}
+	case "prov-db-host-reboot-timeout":
+		if err := mycluster.SetProvDbHostRebootTimeout(value); err != nil {
+			return err
+		}
 	case "prov-db-start-timeout":
 		if err := mycluster.SetProvDbStartTimeout(value); err != nil {
 			return err
@@ -5096,6 +5310,23 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		}
 	case "replication-plugin-tables":
 		mycluster.Conf.ReplicationPluginTables = strings.TrimSpace(value)
+	case "replication-plugin-feed-source-cluster":
+		v := strings.TrimSpace(value)
+		if v != "" && v == mycluster.Name {
+			// a feed from the cluster into itself would apply its own changes again, without end
+			return fmt.Errorf("invalid value for %s: %q is this cluster, a feed reads another cluster", name, v)
+		}
+		mycluster.Conf.ReplicationPluginFeedSourceCluster = v
+	case "replication-plugin-feed-database":
+		mycluster.Conf.ReplicationPluginFeedDatabase = strings.TrimSpace(value)
+	case "replication-plugin-feed-tables":
+		mycluster.Conf.ReplicationPluginFeedTables = strings.TrimSpace(value)
+	case "replication-plugin-feed-retained-max":
+		val, err := strconv.Atoi(value)
+		if err != nil || val < 1 {
+			return fmt.Errorf("invalid value for %s: %q, expected a number of MB, 1 or more", name, value)
+		}
+		mycluster.Conf.ReplicationPluginFeedRetainedMax = val
 	case "replication-plugin-source":
 		v := strings.TrimSpace(value)
 		if v == "" {
@@ -5324,6 +5555,31 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.SetAlertTeamsUrl(string(val))
 	case "monitoring-alert-trigger":
 		mycluster.SetMonitoringAlertTriggerl(value)
+	case "alert-queue-limit", "alert-send-timeout", "alert-script-timeout", "alert-alertmanager-timeout", "alert-alertmanager-resend-interval", "alert-telegram-timeout":
+		if err := mycluster.SetAlertChannelInt(name, value); err != nil {
+			return err
+		}
+	case "alert-alertmanager-user", "alert-telegram-chat-id", "alert-telegram-parse-mode":
+		if err := mycluster.SetAlertChannelSetting(name, value); err != nil {
+			return err
+		}
+	case "alert-alertmanager-url", "alert-telegram-api-url":
+		// base64 like every value that may hold a slash
+		val, err := base64.StdEncoding.DecodeString(value)
+		if err != nil {
+			return errors.New("unable to decode")
+		}
+		if err := mycluster.SetAlertChannelSetting(name, string(val)); err != nil {
+			return err
+		}
+	case "alert-alertmanager-password", "alert-alertmanager-bearer-token", "alert-telegram-bot-token":
+		val, err := base64.StdEncoding.DecodeString(value)
+		if err != nil {
+			return errors.New("unable to decode")
+		}
+		if err := mycluster.SetAlertChannelSecret(name, string(val)); err != nil {
+			return err
+		}
 	case "mail-smtp-addr":
 		mycluster.Conf.SetMailSmtpAddr(value)
 	case "mail-smtp-password":
@@ -5865,6 +6121,8 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.AutorejoinBackupBinlog = applyIsActive(mycluster.Conf.AutorejoinBackupBinlog, isactive)
 	case "autorejoin-flashback":
 		mycluster.Conf.AutorejoinFlashback = applyIsActive(mycluster.Conf.AutorejoinFlashback, isactive)
+	case "autorejoin-async-flashback-drop-binlog":
+		mycluster.Conf.AutorejoinAsyncFlashbackDropBinlog = applyIsActive(mycluster.Conf.AutorejoinAsyncFlashbackDropBinlog, isactive)
 	case "autorejoin-flashback-on-sync":
 		mycluster.Conf.AutorejoinSemisync = applyIsActive(mycluster.Conf.AutorejoinSemisync, isactive)
 	case "autorejoin-slave-positional-heartbeat":
@@ -6093,6 +6351,10 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.BackupMysqldumpSplitDump = applyIsActive(mycluster.Conf.BackupMysqldumpSplitDump, isactive)
 	case "backup-check-free-space":
 		mycluster.Conf.BackupCheckFreeSpace = applyIsActive(mycluster.Conf.BackupCheckFreeSpace, isactive)
+	case "backup-snapshot":
+		mycluster.Conf.BackupSnapshot = applyIsActive(mycluster.Conf.BackupSnapshot, isactive)
+	case "backup-snapshot-unmount":
+		mycluster.Conf.BackupSnapshotUnmount = applyIsActive(mycluster.Conf.BackupSnapshotUnmount, isactive)
 	case "backup-estimate-size":
 		mycluster.Conf.BackupEstimateSize = applyIsActive(mycluster.Conf.BackupEstimateSize, isactive)
 	case "backup-encryption":
@@ -6421,6 +6683,12 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.BackupVerificationRegisteredProven = applyIsActive(mycluster.Conf.BackupVerificationRegisteredProven, isactive)
 	case "mail-smtp-tls-skip-verify":
 		mycluster.Conf.MailSMTPTLSSkipVerify = applyIsActive(mycluster.Conf.MailSMTPTLSSkipVerify, isactive)
+	case "alert-alertmanager":
+		mycluster.Conf.AlertAlertmanager = applyIsActive(mycluster.Conf.AlertAlertmanager, isactive)
+	case "alert-alertmanager-tls-skip-verify":
+		mycluster.Conf.AlertAlertmanagerTLSSkipVerify = applyIsActive(mycluster.Conf.AlertAlertmanagerTLSSkipVerify, isactive)
+	case "alert-telegram":
+		mycluster.Conf.AlertTelegram = applyIsActive(mycluster.Conf.AlertTelegram, isactive)
 	case "cloud18-shared":
 		mycluster.Conf.Cloud18Shared = applyIsActive(mycluster.Conf.Cloud18Shared, isactive)
 	case "cloud18-marketplace-bau-client-storage":
@@ -10525,9 +10793,7 @@ func (repman *ReplicationManager) handlerMuxSendAlert(w http.ResponseWriter, r *
 			return
 		}
 
-		if mycluster.LogSlack.IsHookActive(hooktype) {
-			mycluster.LogSlack.WithFields(post.Fields).Warn(post.Message)
-		} else {
+		if !mycluster.SendAlertHookMessage(hooktype, post.Fields, post.Message) {
 			http.Error(w, "No slack hook", http.StatusInternalServerError)
 			return
 		}
@@ -12275,7 +12541,7 @@ func (repman *ReplicationManager) handlerMuxClusterRejoin(w http.ResponseWriter,
 	status := "armed"
 	if mycluster.IsActive() {
 		if srv := mycluster.GetServerFromURL(target); srv != nil {
-			go srv.RejoinMaster()
+			go srv.ReplicationLink().Rejoin()
 			status = "running"
 		}
 	}

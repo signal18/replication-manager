@@ -3,11 +3,9 @@ FULLVERSION = $(shell git describe --tags)
 BUILD = $(shell date +%FT%T%z)
 OS = $(shell uname -s | tr '[A-Z]' '[a-z]')
 ARCH ?= amd64
-TAR = -X github.com/signal18/replication-manager/server.WithTarball=ON
 BIN = replication-manager
 BINDIR = build/binaries
 BIN-OSC = $(BIN)-osc
-BIN-OSC-CGO = $(BIN)-osc-cgo
 BIN-TST = $(BIN)-tst
 BIN-PRO = $(BIN)-pro
 BIN-CLI = $(BIN)-cli
@@ -15,23 +13,28 @@ BIN-ARB = $(BIN)-arb
 BIN-EMBED = $(BIN)
 
 PROTO_DIR = signal18/replication-manager/v3
-EMBED = -X github.com/signal18/replication-manager/server.WithEmbed=ON
 WITH_REACT = ON
 
-.PHONY: all bin non-cgo tar react osc osc-bin osc-basedir osc-cgo osc-cgo-basedir \
+# One build (#2444, doc/implementation/build/ONE_BUILD.md): the server is linked ONCE, as
+# $(BINDIR)/$(BIN), with everything compiled in. The old flavour targets (osc, tst, pro,
+# emb, *-basedir) are symlinks to that binary, named after the install profile they select
+# at run time (replication-manager-osc -> osc defaults, -pro -> pro defaults, -emb -> pro
+# defaults + embedded layout, -basedir -> tarball layout; the program name is the symlink's).
+# No -X server.With... linker flag exists any more.
+SERVER_LDFLAGS = -X github.com/signal18/replication-manager/server.Version=$(VERSION) -X github.com/signal18/replication-manager/server.FullVersion=$(FULLVERSION) -X github.com/signal18/replication-manager/server.Build=$(BUILD)
+
+.PHONY: all bin server non-cgo tar react osc osc-bin osc-basedir \
         tst tst-basedir pro pro-bin pro-basedir cli arb emb \
         plugins plugin-keys plugin-sigs plugin-push plugin-repo-init plugins-clean \
         clean proto repos
 
-all: cli bin tar arb
+all: cli bin arb
 
-bin: osc tst pro osc-cgo emb
+bin: osc tst pro emb
 
-non-cgo: cli osc tst pro arb emb plugins
+non-cgo: cli bin arb plugins
 
-tar: osc-basedir tst-basedir pro-basedir osc-cgo-basedir
-
-pro osc emb pro-basedir : react
+tar: osc-basedir tst-basedir pro-basedir
 
 react:
 	$(Building react frontend $(REACT))
@@ -44,48 +47,44 @@ react:
 repos:
 	./scripts/updaterepo.sh
 
+# The one server binary. The dashboard is embedded, so react comes first.
+server: react
+	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -v --tags "server" --ldflags "-extldflags '-static' -w -s $(SERVER_LDFLAGS)" $(LDFLAGS) -o $(BINDIR)/$(BIN)
+
+# The flavour names: relative symlinks to the one binary in the same directory. A process
+# started through one carries the symlink's name in its argv[0] (the profile) and in ps.
+emb: server
+	ln -sfn $(BIN) $(BINDIR)/$(BIN)-emb
+
 osc: osc-bin plugins
 
-osc-bin:
-	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -v --tags "server" --ldflags "-extldflags '-static' -w -s -X github.com/signal18/replication-manager/server.Version=$(VERSION) -X github.com/signal18/replication-manager/server.FullVersion=$(FULLVERSION) -X github.com/signal18/replication-manager/server.Build=$(BUILD) -X github.com/signal18/replication-manager/server.WithProvisioning=OFF "  $(LDFLAGS) -o $(BINDIR)/$(BIN-OSC)
+osc-bin: server
+	ln -sfn $(BIN) $(BINDIR)/$(BIN-OSC)
 
-osc-basedir:
-	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH)  go build -v --tags "server"  --ldflags "-extldflags '-static' -w -s $(TAR) -X github.com/signal18/replication-manager/server.Version=$(VERSION) -X github.com/signal18/replication-manager/server.FullVersion=$(FULLVERSION) -X github.com/signal18/replication-manager/server.Build=$(BUILD) -X github.com/signal18/replication-manager/server.WithProvisioning=OFF "  $(LDFLAGS) -o $(BINDIR)/$(BIN-OSC)-basedir
+osc-basedir: server
+	ln -sfn $(BIN) $(BINDIR)/$(BIN-OSC)-basedir
 
-osc-cgo:
-ifeq ($(ARCH),amd64)
-	env CGO_ENABLED=1 GOOS=$(OS) GOARCH=$(ARCH) go build -v --tags "server" --ldflags "-extldflags '-static' -w -s -X github.com/signal18/replication-manager/server.Version=$(VERSION) -X github.com/signal18/replication-manager/server.FullVersion=$(FULLVERSION) -X github.com/signal18/replication-manager/server.Build=$(BUILD) -X github.com/signal18/replication-manager/server.WithProvisioning=OFF "  $(LDFLAGS) -o $(BINDIR)/$(BIN-OSC-CGO)
-endif
+tst: server
+	ln -sfn $(BIN) $(BINDIR)/$(BIN-TST)
 
-osc-cgo-basedir:
-ifeq ($(ARCH),amd64)
-	env CGO_ENABLED=1 GOOS=$(OS) GOARCH=$(ARCH)  go build -v --tags "server" --ldflags "-extldflags '-static' -w -s $(TAR) -X github.com/signal18/replication-manager/server.Version=$(VERSION) -X github.com/signal18/replication-manager/server.FullVersion=$(FULLVERSION) -X github.com/signal18/replication-manager/server.Build=$(BUILD) -X github.com/signal18/replication-manager/server.WithProvisioning=OFF "  $(LDFLAGS) -o $(BINDIR)/$(BIN-OSC-CGO)-basedir
-endif
-
-tst:
-	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH)  go build -v --tags "server" --ldflags "-w -s -X github.com/signal18/replication-manager/server.Version=$(VERSION) -X github.com/signal18/replication-manager/server.FullVersion=$(FULLVERSION) -X github.com/signal18/replication-manager/server.Build=$(BUILD)   -X github.com/signal18/replication-manager/server.WithDeprecate=OFF"  $(LDFLAGS) -o $(BINDIR)/$(BIN-TST)
-
-tst-basedir:
-	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH)  go build -v --tags "server"  --ldflags "-w -s $(TAR) -X github.com/signal18/replication-manager/server.Version=$(VERSION) -X github.com/signal18/replication-manager/server.FullVersion=$(FULLVERSION) -X github.com/signal18/replication-manager/server.Build=$(BUILD)   -X github.com/signal18/replication-manager/server.WithDeprecate=OFF"  $(LDFLAGS) -o $(BINDIR)/$(BIN-TST)-basedir
+tst-basedir: server
+	ln -sfn $(BIN) $(BINDIR)/$(BIN-TST)-basedir
 
 pro: pro-bin plugins
 
-pro-bin:
-	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH)  go build -v --tags "server" --ldflags " -w -s -X 'github.com/signal18/replication-manager/server.Version=$(VERSION)' -X 'github.com/signal18/replication-manager/server.FullVersion=$(FULLVERSION)' -X 'github.com/signal18/replication-manager/server.Build=$(BUILD)' -X github.com/signal18/replication-manager/server.WithOpenSVC=ON  "  $(LDFLAGS) -o $(BINDIR)/$(BIN-PRO)
+pro-bin: server
+	ln -sfn $(BIN) $(BINDIR)/$(BIN-PRO)
 
-pro-basedir:
-	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH)  go build -v --tags "server" --ldflags "-w -s $(TAR) -X github.com/signal18/replication-manager/server.Version=$(VERSION) -X github.com/signal18/replication-manager/server.FullVersion=$(FULLVERSION) -X github.com/signal18/replication-manager/server.Build=$(BUILD) -X github.com/signal18/replication-manager/server.WithOpenSVC=ON  "  $(LDFLAGS) -o $(BINDIR)/$(BIN-PRO)-basedir
+pro-basedir: server
+	ln -sfn $(BIN) $(BINDIR)/$(BIN-PRO)-basedir
 
 cli:
-	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH)  go build -v --tags "clients" --ldflags "-w -s $(EMBED) -X github.com/signal18/replication-manager/clients.Version=$(VERSION) -X github.com/signal18/replication-manager/clients.FullVersion=$(FULLVERSION) -X github.com/signal18/replication-manager/clients.Build=$(BUILD)"  $(LDFLAGS) -o $(BINDIR)/$(BIN-CLI)
+	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH)  go build -v --tags "clients" --ldflags "-w -s -X github.com/signal18/replication-manager/clients.Version=$(VERSION) -X github.com/signal18/replication-manager/clients.FullVersion=$(FULLVERSION) -X github.com/signal18/replication-manager/clients.Build=$(BUILD)"  $(LDFLAGS) -o $(BINDIR)/$(BIN-CLI)
 	mkdir -p ./share/dashboard/static/configurator/bin
 	cp $(BINDIR)/$(BIN-CLI) ./share/dashboard/static/configurator/bin/$(BIN-CLI)
 
 arb:
 	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH)  go build -v --tags "arbitrator" --ldflags "-w -s -X github.com/signal18/replication-manager/arbitrator.Version=$(VERSION) -X github.com/signal18/replication-manager/arbitrator.FullVersion=$(FULLVERSION) -X github.com/signal18/replication-manager/arbitrator.Build=$(BUILD)"   $(LDFLAGS) -o $(BINDIR)/$(BIN-ARB)
-
-emb:
-	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH)  go build -v --tags "server" --ldflags "-w -s $(EMBED) -X 'github.com/signal18/replication-manager/server.Version=$(VERSION)' -X 'github.com/signal18/replication-manager/server.FullVersion=$(FULLVERSION)' -X 'github.com/signal18/replication-manager/server.Build=$(BUILD)' -X github.com/signal18/replication-manager/server.WithOpenSVC=ON  "  $(LDFLAGS) -o $(BINDIR)/$(BIN)
 
 # ---- External log-tailer plugins --------------------------------------------
 # Each subdirectory under cluster/logplugin/plugins/ that contains a main.go

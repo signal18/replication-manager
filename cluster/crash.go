@@ -12,6 +12,7 @@ package cluster
 
 import (
 	"encoding/json"
+	"fmt"
 	"maps"
 	"os"
 	"path/filepath"
@@ -33,7 +34,12 @@ type Crash struct {
 	NewMasterLogFile            string
 	NewMasterLogPos             string
 	FailoverSemiSyncSlaveStatus bool
-	FailoverIOGtid              *gtid.List
+	// FailoverSemiSyncMasterStatus is the old master's Rpl_semi_sync_master_status as the monitor
+	// last read it before the failover: ON, it waited for a replica's acknowledgement. The elected
+	// replica's slave status alone does not say it (it stays ON until its IO thread restarts after
+	// the master's semi-sync was turned off).
+	FailoverSemiSyncMasterStatus bool `json:"failoverSemiSyncMasterStatus,omitempty"`
+	FailoverIOGtid               *gtid.List
 	// FailoverIOGtidString is the election GTID in its usable text form
 	// ("domain-server-seq"), the anchor for logical recovery of the diverged
 	// old master: SET GLOBAL gtid_slave_pos = "<this>" then CHANGE MASTER …
@@ -54,6 +60,9 @@ type Crash struct {
 	DeltaRowEvents        int    `json:"deltaRowEvents"`
 	DeltaDDL              int    `json:"deltaDdl"`
 	DeltaStatementDML     int    `json:"deltaStatementDml"`
+	// DeltaGTIDs are the MariaDB GTIDs of the lost transactions, read by the analysis: what the
+	// binlog drop of the flashback rejoin checks the binary log against. Not persisted.
+	DeltaGTIDs []gtid.Gtid `json:"-"`
 	// RejoinResult is stamped when the rejoin EXECUTION ends: it moves the crash
 	// out of the working set into history carrying WHY it ended. This is the loop
 	// terminator — a crash with a result is done and never re-drives automatically
@@ -118,6 +127,18 @@ func RejoinMethodClass(method string) string {
 		return RejoinClassUnsafeShort
 	}
 	return ""
+}
+
+// notFlashbackable says why the lost events must not be flashed back, "" when they may: the
+// analysis found DDL or statement-format DML among them, which mariadb-binlog --flashback does
+// not reverse. Replayed anyway, the row events are rewound and the rest stays: a test failover
+// whose lost events held 4 DDL rewound 212 of 215 transactions. Not analysed: as before, the
+// flashback runs (a rejoin re-armed from an archive).
+func (crash *Crash) notFlashbackable() string {
+	if !crash.DeltaAnalyzed || !crash.Diverged() || crash.DeltaFlashable {
+		return ""
+	}
+	return fmt.Sprintf("the lost events hold %d DDL and %d statement-format DML, flashback reverses row events only", crash.DeltaDDL, crash.DeltaStatementDML)
 }
 
 // Rejoin result codes (Crash.RejoinResult). "" = not yet attempted.
@@ -571,7 +592,7 @@ func (cluster *Cluster) ProcessArmedRejoins() {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Operator-armed rejoin of %s via %q — running", server.URL, cr.RejoinMethod)
 			// async: a reseed can run for hours/days; never block the monitor loop.
 			// RejoinMaster's rejoinInProgress guard makes the per-tick spawn safe.
-			go server.RejoinMaster()
+			go server.ReplicationLink().Rejoin()
 		}
 	}
 }

@@ -381,8 +381,12 @@ func (cluster *Cluster) GetDomain() string {
 	return ""
 }
 
+// GetOrchestrator is the orchestrator type the services of the cluster are dispatched on: the
+// configured prov-orchestrator, except a backend that reuses another's service operations
+// (proxmox: the on-premise ones, serviceOrchestratorType). The configured value is
+// Conf.ProvOrchestrator; the backend itself is cluster.Orchestrator().
 func (cluster *Cluster) GetOrchestrator() string {
-	return cluster.Conf.ProvOrchestrator
+	return serviceOrchestratorType(cluster.Conf.ProvOrchestrator)
 }
 
 // GetDomainHeadCluster is GetDomain for a child cluster resolving its
@@ -1041,7 +1045,7 @@ func (cluster *Cluster) GetMasterFromReplication(slave *ServerMonitor) (*ServerM
 			//Ignoring same ServerID
 			continue
 		}
-		if len(slave.Replications) > 0 {
+		if len(slave.NativeReplications()) > 0 {
 
 			// if cluster.Conf.LogLevel > 2 {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "GetMasterFromReplication server  %d  lookup if server %s is the one : %d", slave.GetReplicationServerID(), server.URL, server.ServerID)
@@ -1254,7 +1258,7 @@ func (cluster *Cluster) GetChildClusters() map[string]*Cluster {
 		}
 		condidateclustermaster := c.GetMaster()
 		if condidateclustermaster != nil && c.Name != cluster.Name {
-			for _, rep := range condidateclustermaster.Replications {
+			for _, rep := range condidateclustermaster.NativeReplications().Rows() {
 				// is a source name has my cluster name or is any child cluster master point to my master
 				master := cluster.GetMaster()
 				if rep.ConnectionName.String == cluster.Name || (master != nil && master.Host == rep.MasterHost.String && master.Port == rep.MasterPort.String) {

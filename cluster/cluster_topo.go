@@ -362,7 +362,7 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 						// rejoin may run a multi-hour reseed and must never block the monitor
 						// tick. rejoinInProgress makes the per-tick spawn safe; finishRejoin
 						// makes it one-shot. This was the last synchronous rejoin caller.
-						go extra.RejoinMaster()
+						go extra.ReplicationLink().Rejoin()
 					}
 				} else if !cluster.IsFailedArbitrator && !cluster.IsActive() {
 					// STANDBY (GH-1847): its view can lag the active's by seconds (a demoted

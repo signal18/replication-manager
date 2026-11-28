@@ -330,6 +330,9 @@ func (cluster *Cluster) SwitchRejoinSemisync() {
 func (cluster *Cluster) SwitchRejoinFlashback() {
 	cluster.Conf.AutorejoinFlashback = !cluster.Conf.AutorejoinFlashback
 }
+func (cluster *Cluster) SwitchRejoinAsyncFlashbackDropBinlog() {
+	cluster.Conf.AutorejoinAsyncFlashbackDropBinlog = !cluster.Conf.AutorejoinAsyncFlashbackDropBinlog
+}
 
 func (cluster *Cluster) SwitchRejoinPseudoGTID() {
 	cluster.Conf.AutorejoinSlavePositionalHeartbeat = !cluster.Conf.AutorejoinSlavePositionalHeartbeat

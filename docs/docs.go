@@ -10369,6 +10369,311 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/replication-plugin-actions/drop-source-objects/{pluginName}": {
+            "post": {
+                "description": "With the feed switched off: its replication slot and its publication are dropped on the source, only those the feed created (its state lists them), never another. The statements run are returned and logged.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterReplicationPlugins"
+                ],
+                "summary": "Remove what a CDC feed created on its source",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Plugin Name",
+                        "name": "pluginName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/server.ReplicationFeedDropResult"
+                        }
+                    },
+                    "400": {
+                        "description": "The feed is on, or created nothing",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "No such plugin",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/replication-plugin-actions/reinit/{pluginName}": {
+            "post": {
+                "description": "The rejoin of a feed whose source can no longer give its changes (ERR00140: its slot dropped at its bound, or lost): the plugin stops, its position and checkpoints are removed, and it starts again with a new initial load (its tables on the destination emptied, then copied from a new snapshot). What the feed created on the source is kept and replaced by the new initial load.",
+                "produces": [
+                    "text/plain"
+                ],
+                "tags": [
+                    "ClusterReplicationPlugins"
+                ],
+                "summary": "Start a CDC feed again from a new initial load",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Plugin Name",
+                        "name": "pluginName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "New initial load requested",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Not a feed with a capture source",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "No such plugin",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/replication-plugin-index-actions/put": {
+            "post": {
+                "description": "Stores the index (name, sql, slave-schema, slave-table, max-keys-per-batch) and writes it into the analytic child's plugin configuration: the plugin restarts and a new or changed index starts with its init (the denormalized table made from the query's result, then filled on a consistent snapshot of the source). The query returns the primary key columns of every table it reads.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterReplicationPlugins"
+                ],
+                "summary": "Add or change an index of the denormalize mode",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "the index",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/config.ReplicationPluginIndex"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "name",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid index",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "409": {
+                        "description": "The list is set by a config file",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/replication-plugin-index-actions/remove/{indexName}": {
+            "post": {
+                "description": "The index leaves the plugin's configuration; its denormalized table stays on the child, to drop by hand.",
+                "produces": [
+                    "text/plain"
+                ],
+                "tags": [
+                    "ClusterReplicationPlugins"
+                ],
+                "summary": "Remove an index of the denormalize mode",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Index Name",
+                        "name": "indexName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Index removed",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Unknown index",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "409": {
+                        "description": "The list is set by a config file",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/replication-plugin-index-list": {
+            "get": {
+                "description": "The analytic child's indexes: each a denormalizing query, run on the source, and the denormalized table (slave-schema.slave-table) it fills on the child; ready lists those whose init is done.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterReplicationPlugins"
+                ],
+                "summary": "List the indexes of the denormalize mode",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/server.ReplicationPluginIndexList"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/restic/check-config": {
             "post": {
                 "description": "Validates the current restic repository configuration read-only. Returns ok, initialization_required, or error.",
@@ -13589,6 +13894,255 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/servers/{serverName}/actions/host-reboot": {
+            "post": {
+                "description": "Asks the hypervisor for a clean reboot of the VM under the server (a stopped VM is started), in the background. Only an orchestrator that drives the hosts (proxmox) supports it. Refused (409) while the database on the VM runs, unless the server is in maintenance; always refused on a running master.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "DatabaseActions"
+                ],
+                "summary": "Reboot the host (VM) of a database server",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Name",
+                        "name": "serverName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Host reboot started",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Cluster Not Found or Server Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "A host action is already running on the server, or the database on the VM runs (not in maintenance, or the running master)",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "501": {
+                        "description": "The orchestrator does not drive the hosts",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/servers/{serverName}/actions/host-start": {
+            "post": {
+                "description": "Starts the VM under the server through the hypervisor, in the background. Only an orchestrator that drives the hosts (proxmox) supports it.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "DatabaseActions"
+                ],
+                "summary": "Start the host (VM) of a database server",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Name",
+                        "name": "serverName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Host start started",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Cluster Not Found or Server Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "A host action is already running on the server",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "501": {
+                        "description": "The orchestrator does not drive the hosts",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/servers/{serverName}/actions/host-stop": {
+            "post": {
+                "description": "Asks the hypervisor for a clean shutdown of the VM under the server (never a hard stop), in the background. Only an orchestrator that drives the hosts (proxmox) supports it; the VM is the server's entry in prov-db-host-vmids. Refused (409) while the database on the VM runs, unless the server is in maintenance; always refused on a running master: stop the database or switch over first, or use the rolling upgrade.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "DatabaseActions"
+                ],
+                "summary": "Shut down the host (VM) of a database server",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Name",
+                        "name": "serverName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Host shutdown started",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Cluster Not Found or Server Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "A host action is already running on the server, or the database on the VM runs (not in maintenance, or the running master)",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "501": {
+                        "description": "The orchestrator does not drive the hosts",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/servers/{serverName}/actions/job-cancel/{task}": {
             "get": {
                 "description": "Cancels a task identified by its name on a specified server within a cluster.",
@@ -15947,6 +16501,215 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/servers/{serverName}/actions/volume-snapback/{snapshotName}": {
+            "post": {
+                "description": "Destructive, an operator's action only: the server goes into maintenance, is stopped through its orchestrator, its volume is rolled back to the snapshot (on ZFS the snapshots taken after it are destroyed), the server is started and stays in maintenance (WARN0331) until an operator takes it out. Refused on the master and during a failover. A rollback that fails after it changed the volume leaves the server stopped and in maintenance (ERR00123). The replication links of the server are not changed. Runs in the background.\nRequired grants: db-restore and db-maintenance",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "DatabaseBackup"
+                ],
+                "summary": "Snapback a server to a volume snapshot",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Name",
+                        "name": "serverName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Snapshot Name",
+                        "name": "snapshotName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "The snapback started",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "Cluster Not Found\" or \"Server Not Found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "409": {
+                        "description": "Refused: the master, a failover running, snapshot not found, snapshots off, plugin refused, an action already running",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/servers/{serverName}/actions/volume-snapshot-delete/{snapshotName}": {
+            "post": {
+                "description": "Deletes the snapshot (recursively on ZFS). Only a snapshot replication-manager took (repman-*) can be deleted: a snapshot of another origin is refused. Runs in the background, like the take.\nRequired grant: db-backup",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "DatabaseBackup"
+                ],
+                "summary": "Delete a volume snapshot of a server",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Name",
+                        "name": "serverName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Snapshot Name",
+                        "name": "snapshotName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "The delete started",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "Cluster Not Found\" or \"Server Not Found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "409": {
+                        "description": "Refused: not a repman-* snapshot, invalid name, snapshots off, plugin refused, an action already running",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/servers/{serverName}/actions/volume-snapshot-take": {
+            "post": {
+                "description": "Starts a snapshot named repman-\u003cUTC time\u003e of the volume holding the server's files (a recursive ZFS snapshot, an LVM snapshot, or the client's script), then deletes the managed snapshots beyond backup-snapshot-keep. The run goes on in the background: its outcome is the server's last action (volume-snapshots) and the states CINF0024 / WARN0330.\nRequired grant: db-backup",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "DatabaseBackup"
+                ],
+                "summary": "Take a volume snapshot of a server",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Name",
+                        "name": "serverName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "The snapshot started: its name",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "Cluster Not Found\" or \"Server Not Found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "409": {
+                        "description": "Refused: snapshots off, plugin refused or unreachable, an action already running on the server",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/servers/{serverName}/actions/wait-innodb-purge": {
             "get": {
                 "description": "Waits for InnoDB purge on a specified server within a cluster.",
@@ -16725,6 +17488,86 @@ const docTemplate = `{
                         "description": "Cluster Not Found\" or \"Server Not Found\" or \"Encoding error",
                         "schema": {
                             "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/servers/{serverName}/host-status": {
+            "get": {
+                "description": "Answers the hypervisor node, the vmid, the state (running, stopped, paused, unknown) and the uptime of the VM under the server, and the host action running on it if any. Only an orchestrator that drives the hosts (proxmox) supports it.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Database"
+                ],
+                "summary": "Status of the host (VM) of a database server",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Name",
+                        "name": "serverName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The host status",
+                        "schema": {
+                            "$ref": "#/definitions/server.hostStatusResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Cluster Not Found or Server Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "501": {
+                        "description": "The orchestrator does not drive the hosts",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "502": {
+                        "description": "The hypervisor did not answer",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     }
                 }
@@ -18779,6 +19622,62 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Cluster Not Found\" or \"Server Not Found\" or \"Error setting custom variable value",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/servers/{serverName}/volume-snapshots": {
+            "get": {
+                "description": "Runs the list action of the cluster's snapshot plugin (backup-snapshot-plugin, or backup-snapshot-script when set) and returns the snapshots of the volume holding the server's files, the commands run, the plugins known and the server's last snapshot action. A plugin that can not run is reported in error, with an empty list. Snapshots named repman-* are the ones replication-manager took (managed): only these are pruned and deletable.\nRequired grant: cluster-show-backups or db-backup",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "DatabaseBackup"
+                ],
+                "summary": "List the volume snapshots of a server",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Name",
+                        "name": "serverName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The snapshots",
+                        "schema": {
+                            "$ref": "#/definitions/cluster.VolumeSnapshotList"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "Cluster Not Found\" or \"Server Not Found",
                         "schema": {
                             "type": "string"
                         }
@@ -21980,7 +22879,7 @@ const docTemplate = `{
         },
         "/api/clusters/{clusterName}/settings/actions/set/{settingName}/{settingValue}": {
             "post": {
-                "description": "This endpoint sets the settings for the specified cluster.\nA credential setting is user:password, with a user and a password: in clear for db-servers-credential, replication-credential, proxysql-servers-credential, maxscale-servers-credential and shardproxy-servers-credential; encoded in base64 for backup-verification-credential, cloud18-dba-user-credentials and cloud18-sponsor-user-credentials (an empty value clears the verification and sponsor credentials). Any other value is refused with 400, the value never echoed.",
+                "description": "This endpoint sets the settings for the specified cluster.\nA credential setting is user:password, with a user and a password: in clear for db-servers-credential, replication-credential, proxysql-servers-credential, maxscale-servers-credential and shardproxy-servers-credential; encoded in base64 for backup-verification-credential, cloud18-dba-user-credentials and cloud18-sponsor-user-credentials (an empty value clears the verification and sponsor credentials). Any other value is refused with 400, the value never echoed.\nWith an empty settingValue (the path ending in a slash), a POST takes the value from the request body (64 KiB at most), for a value that must not sit in a URL.\nOn-premise SSH: onpremise-ssh-credential is user:password in base64, the password may be empty to connect with the private key; onpremise-ssh-private-key is in base64 either the absolute path of the key on the replication-manager host or the key itself (PEM / OpenSSH, no passphrase), which is written 0600 under the cluster's working directory, never in the config git, the setting then holding that path (send it as the POST body to .../set/onpremise-ssh-private-key/ so the key never sits in a URL); onpremise-ssh-port is the port; the onpremise-ssh-*-script settings are in base64 the absolute path of a local script. An on-premise SSH setting set in the configuration file under /etc, on the command line or in the environment is refused with 409.",
                 "consumes": [
                     "application/json"
                 ],
@@ -22042,7 +22941,7 @@ const docTemplate = `{
                         }
                     },
                     "409": {
-                        "description": "A credential change refused (no store keeps versions)",
+                        "description": "A credential change refused (no store keeps versions), or an on-premise SSH setting set in the immutable configuration",
                         "schema": {
                             "type": "string"
                         }
@@ -24531,6 +25430,141 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Error updating user\" or \"No valid cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/volume-snapshot-plugin-actions/set/{pluginName}": {
+            "post": {
+                "description": "Stores the settings its manifest declares, each checked against its type; a secret is encrypted with the replication-manager key before it is saved (refused without a key) and never returned; an empty secret keeps the one held; unset removes settings. The plugin gets them in its environment at its next run: REPMAN_SNAPSHOT_SETTING_\u003cNAME\u003e, and the secret decrypted as REPMAN_SNAPSHOT_SECRET_\u003cNAME\u003e.\nRequired grant: global-settings (the settings direct a program on the replication-manager host)",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "DatabaseBackup"
+                ],
+                "summary": "Set the settings of an external snapshot plugin",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Plugin Name",
+                        "name": "pluginName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "the settings",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/cluster.VolumeSnapshotPluginSettingsSpec"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The settings held, without the secrets",
+                        "schema": {
+                            "$ref": "#/definitions/config.SnapshotPluginEntry"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid setting",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "Cluster Not Found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "409": {
+                        "description": "The settings are set by a config file",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No encryption key: a secret is never stored in clear",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/volume-snapshot-plugins": {
+            "get": {
+                "description": "The snapshot plugins known (built-in, the client's script, the external plugins found beside the other plugins), each with the settings its manifest declares, the values the cluster holds for it (a secret never: only its name in secretsSet), whether the plan allows it and whether it says it has been tested on the storage it drives.\nRequired grant: cluster-show-backups, db-backup or global-settings",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "DatabaseBackup"
+                ],
+                "summary": "List the volume snapshot plugins and their settings",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The plugins",
+                        "schema": {
+                            "$ref": "#/definitions/cluster.VolumeSnapshotPluginList"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "Cluster Not Found",
                         "schema": {
                             "type": "string"
                         }
@@ -29740,6 +30774,193 @@ const docTemplate = `{
                 }
             }
         },
+        "cluster.VolumeSnapshot": {
+            "type": "object",
+            "properties": {
+                "created": {
+                    "type": "string"
+                },
+                "managed": {
+                    "description": "taken by replication-manager: pruned by backup-snapshot-keep, deletable",
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "size": {
+                    "description": "bytes: the space it holds (ZFS), its copy-on-write space (LVM)",
+                    "type": "integer"
+                }
+            }
+        },
+        "cluster.VolumeSnapshotList": {
+            "type": "object",
+            "properties": {
+                "commands": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "isMaster": {
+                    "type": "boolean"
+                },
+                "keep": {
+                    "type": "integer"
+                },
+                "lastOp": {
+                    "$ref": "#/definitions/cluster.VolumeSnapshotOp"
+                },
+                "plugin": {
+                    "type": "string"
+                },
+                "plugins": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/config.SnapshotPluginManifest"
+                    }
+                },
+                "snapshots": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/cluster.VolumeSnapshot"
+                    }
+                },
+                "target": {
+                    "type": "string"
+                }
+            }
+        },
+        "cluster.VolumeSnapshotOp": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string"
+                },
+                "commands": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "end": {
+                    "type": "string"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "plugin": {
+                    "type": "string"
+                },
+                "server": {
+                    "type": "string"
+                },
+                "snapbackDone": {
+                    "description": "a snapback done: the server stays in maintenance until an operator takes it out (WARN0331)",
+                    "type": "boolean"
+                },
+                "snapshot": {
+                    "type": "string"
+                },
+                "start": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "cluster.VolumeSnapshotPluginInfo": {
+            "type": "object",
+            "properties": {
+                "actions": {
+                    "description": "the ConstSnapshotAction* it implements",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "allowed": {
+                    "description": "Allowed: the plan lets the cluster use it (an enterprise one needs an enterprise plan)",
+                    "type": "boolean"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "entry": {
+                    "description": "Entry: the settings held, a secret never (SnapshotPluginEntry.MarshalJSON)",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/config.SnapshotPluginEntry"
+                        }
+                    ]
+                },
+                "external": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "run": {
+                    "description": "ConstSnapshotRun*",
+                    "type": "string"
+                },
+                "settings": {
+                    "description": "Settings: what an external plugin needs set (#2456), stored per cluster in its\n[[snapshot-plugin]] entry, a secret encrypted; passed in its environment",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/config.PluginSetting"
+                    }
+                },
+                "tested": {
+                    "description": "Tested: false when the plugin says it has not run against the real storage it drives",
+                    "type": "boolean"
+                },
+                "tier": {
+                    "description": "ConstArchiveTierEnterprise, \"\" for every plan",
+                    "type": "string"
+                }
+            }
+        },
+        "cluster.VolumeSnapshotPluginList": {
+            "type": "object",
+            "properties": {
+                "pinned": {
+                    "description": "Pinned: a config file sets the plugin settings ([[snapshot-plugin]]): the API can not\nchange them",
+                    "type": "boolean"
+                },
+                "plugins": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/cluster.VolumeSnapshotPluginInfo"
+                    }
+                },
+                "selected": {
+                    "type": "string"
+                }
+            }
+        },
+        "cluster.VolumeSnapshotPluginSettingsSpec": {
+            "type": "object",
+            "properties": {
+                "settings": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "unset": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
         "cluster.backupCandidateSet": {
             "type": "object",
             "properties": {
@@ -30214,6 +31435,27 @@ const docTemplate = `{
                 }
             }
         },
+        "config.ReplicationPluginIndex": {
+            "type": "object",
+            "properties": {
+                "maxKeysPerBatch": {
+                    "description": "MaxKeysPerBatch: the packed keys one unpack restricts the query to; 0: the plugin's default",
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "slaveSchema": {
+                    "type": "string"
+                },
+                "slaveTable": {
+                    "type": "string"
+                },
+                "sql": {
+                    "type": "string"
+                }
+            }
+        },
         "config.Route": {
             "type": "object",
             "properties": {
@@ -30475,6 +31717,58 @@ const docTemplate = `{
                 }
             }
         },
+        "config.SnapshotPluginEntry": {
+            "type": "object",
+            "properties": {
+                "plugin": {
+                    "type": "string"
+                },
+                "settings": {
+                    "type": "object",
+                    "additionalProperties": true
+                }
+            }
+        },
+        "config.SnapshotPluginManifest": {
+            "type": "object",
+            "properties": {
+                "actions": {
+                    "description": "the ConstSnapshotAction* it implements",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "description": {
+                    "type": "string"
+                },
+                "external": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "run": {
+                    "description": "ConstSnapshotRun*",
+                    "type": "string"
+                },
+                "settings": {
+                    "description": "Settings: what an external plugin needs set (#2456), stored per cluster in its\n[[snapshot-plugin]] entry, a secret encrypted; passed in its environment",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/config.PluginSetting"
+                    }
+                },
+                "tested": {
+                    "description": "Tested: false when the plugin says it has not run against the real storage it drives",
+                    "type": "boolean"
+                },
+                "tier": {
+                    "description": "ConstArchiveTierEnterprise, \"\" for every plan",
+                    "type": "string"
+                }
+            }
+        },
         "config.SourceType": {
             "type": "string",
             "enum": [
@@ -30603,14 +31897,47 @@ const docTemplate = `{
                 "ExternalScript": {
                     "type": "boolean"
                 },
+                "alertAlertmanager": {
+                    "type": "boolean"
+                },
+                "alertAlertmanagerBearerToken": {
+                    "type": "string"
+                },
+                "alertAlertmanagerPassword": {
+                    "type": "string"
+                },
+                "alertAlertmanagerResendInterval": {
+                    "type": "integer"
+                },
+                "alertAlertmanagerTimeout": {
+                    "type": "integer"
+                },
+                "alertAlertmanagerTlsSkipVerify": {
+                    "type": "boolean"
+                },
+                "alertAlertmanagerUrl": {
+                    "type": "string"
+                },
+                "alertAlertmanagerUser": {
+                    "type": "string"
+                },
                 "alertPushoverAppToken": {
                     "type": "string"
                 },
                 "alertPushoverUserToken": {
                     "type": "string"
                 },
+                "alertQueueLimit": {
+                    "type": "integer"
+                },
                 "alertScript": {
                     "type": "string"
+                },
+                "alertScriptTimeout": {
+                    "type": "integer"
+                },
+                "alertSendTimeout": {
+                    "type": "integer"
                 },
                 "alertSlackChannel": {
                     "type": "string"
@@ -30629,6 +31956,24 @@ const docTemplate = `{
                 },
                 "alertTeamsUrl": {
                     "type": "string"
+                },
+                "alertTelegram": {
+                    "type": "boolean"
+                },
+                "alertTelegramApiUrl": {
+                    "type": "string"
+                },
+                "alertTelegramBotToken": {
+                    "type": "string"
+                },
+                "alertTelegramChatId": {
+                    "type": "string"
+                },
+                "alertTelegramParseMode": {
+                    "type": "string"
+                },
+                "alertTelegramTimeout": {
+                    "type": "integer"
                 },
                 "analyzeUsePersistent": {
                     "type": "boolean"
@@ -30815,6 +32160,12 @@ const docTemplate = `{
                 },
                 "autorejoin": {
                     "type": "boolean"
+                },
+                "autorejoinAsyncFlashbackDropBinlog": {
+                    "type": "boolean"
+                },
+                "autorejoinAsyncFlashbackDropBinlogMaxTransactions": {
+                    "type": "integer"
                 },
                 "autorejoinBackupBinlog": {
                     "type": "boolean"
@@ -31220,6 +32571,30 @@ const docTemplate = `{
                 },
                 "backupSaveScript": {
                     "type": "string"
+                },
+                "backupSnapshot": {
+                    "type": "boolean"
+                },
+                "backupSnapshotKeep": {
+                    "type": "integer"
+                },
+                "backupSnapshotLvmSize": {
+                    "type": "string"
+                },
+                "backupSnapshotPlugin": {
+                    "type": "string"
+                },
+                "backupSnapshotScript": {
+                    "type": "string"
+                },
+                "backupSnapshotTarget": {
+                    "type": "string"
+                },
+                "backupSnapshotTimeout": {
+                    "type": "integer"
+                },
+                "backupSnapshotUnmount": {
+                    "type": "boolean"
                 },
                 "backupSplitMysqlUser": {
                     "type": "boolean"
@@ -32016,6 +33391,14 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "injectTrafficMode": {
+                    "type": "string"
+                },
+                "installLayout": {
+                    "description": "package|tarball|embed, resolved at start, not a key (#2444)",
+                    "type": "string"
+                },
+                "installProfile": {
+                    "description": "osc|tst|pro, resolved at start, not a key (#2444)",
                     "type": "string"
                 },
                 "interactive": {
@@ -32970,6 +34353,15 @@ const docTemplate = `{
                 "provDbExpireLogDays": {
                     "type": "integer"
                 },
+                "provDbHostRebootTimeout": {
+                    "type": "integer"
+                },
+                "provDbHostUpgradeScript": {
+                    "type": "string"
+                },
+                "provDbHostVmids": {
+                    "type": "string"
+                },
                 "provDbJobsDockerRunArgs": {
                     "type": "string"
                 },
@@ -33018,6 +34410,9 @@ const docTemplate = `{
                 },
                 "provDbResourceRaisedOverPlanScript": {
                     "type": "string"
+                },
+                "provDbRollingUpgradeHost": {
+                    "type": "boolean"
                 },
                 "provDbRunAsUid": {
                     "type": "string"
@@ -33286,6 +34681,15 @@ const docTemplate = `{
                 "provUseIpv6": {
                     "type": "boolean"
                 },
+                "proxmoxApiInsecure": {
+                    "type": "boolean"
+                },
+                "proxmoxApiToken": {
+                    "type": "string"
+                },
+                "proxmoxApiUrl": {
+                    "type": "string"
+                },
                 "proxyServersBackendCompression": {
                     "type": "boolean"
                 },
@@ -33495,6 +34899,27 @@ const docTemplate = `{
                 },
                 "replicationPluginDestination": {
                     "type": "string"
+                },
+                "replicationPluginFeedCreateSourceObjects": {
+                    "type": "boolean"
+                },
+                "replicationPluginFeedDatabase": {
+                    "type": "string"
+                },
+                "replicationPluginFeedRetainedMax": {
+                    "type": "integer"
+                },
+                "replicationPluginFeedSourceCluster": {
+                    "type": "string"
+                },
+                "replicationPluginFeedTables": {
+                    "type": "string"
+                },
+                "replicationPluginIndexes": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/config.ReplicationPluginIndex"
+                    }
                 },
                 "replicationPluginMergeInterval": {
                     "type": "integer"
@@ -33736,6 +35161,13 @@ const docTemplate = `{
                 },
                 "slaposSphinxPartitions": {
                     "type": "string"
+                },
+                "snapshotPlugins": {
+                    "description": "SnapshotPluginEntries: the settings of the external snapshot plugins (#2456)",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/config.SnapshotPluginEntry"
+                    }
                 },
                 "sphinx": {
                     "type": "boolean"
@@ -35007,6 +36439,39 @@ const docTemplate = `{
                 }
             }
         },
+        "server.ReplicationFeedDropResult": {
+            "type": "object",
+            "properties": {
+                "statements": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "server.ReplicationPluginIndexList": {
+            "type": "object",
+            "properties": {
+                "indexes": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/config.ReplicationPluginIndex"
+                    }
+                },
+                "pinned": {
+                    "description": "Pinned: a config file sets the list, the API cannot change it",
+                    "type": "boolean"
+                },
+                "ready": {
+                    "description": "Ready: the indexes whose init is done (the plugin's status)",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
         "server.ResticCurrentTaskResponse": {
             "type": "object",
             "properties": {
@@ -35915,6 +37380,26 @@ const docTemplate = `{
                 "usableGwu": {
                     "description": "= capacity: the uplink has no quota",
                     "type": "number"
+                }
+            }
+        },
+        "server.hostStatusResponse": {
+            "type": "object",
+            "properties": {
+                "actionRunning": {
+                    "type": "string"
+                },
+                "node": {
+                    "type": "string"
+                },
+                "state": {
+                    "type": "string"
+                },
+                "uptimeSeconds": {
+                    "type": "integer"
+                },
+                "vmid": {
+                    "type": "string"
                 }
             }
         },

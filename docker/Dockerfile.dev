@@ -39,6 +39,9 @@ FROM golang:1.26-bookworm AS final
 ENV PROXYSQL_VERSION=2.7.3
 ENV MARIADB_VERSION=11.4
 ENV MYDUMPER_VERSION=0.17.1-1
+# One build (#2444): the dev tree runs ./replication-manager-pro or -osc, whose name
+# selects the install profile; only the layout is fixed here.
+ENV REPLICATION_MANAGER_INSTALL_LAYOUT=package
 
 RUN curl -LsS https://r.mariadb.com/downloads/mariadb_repo_setup | bash -s -- --mariadb-server-version="mariadb-$MARIADB_VERSION" --skip-maxscale
 
@@ -84,7 +87,8 @@ RUN cp etc/local/config.toml.docker /etc/replication-manager/config.toml && \
         cp etc/local/masterslave/haproxy/config.toml /etc/replication-manager/cluster.d/localmasterslavehaproxy.toml && \
         cp etc/local/masterslave/proxysql/config.toml /etc/replication-manager/cluster.d/localmasterslaveproxysql.toml && \
         cp -r share /usr/share/replication-manager/ && \
-        cp build/binaries/replication-manager-pro /usr/bin/replication-manager && \
+        cp build/binaries/replication-manager /usr/bin/replication-manager && \
+        ln -sfn replication-manager /usr/bin/replication-manager-pro && \
         cp build/binaries/replication-manager-cli /usr/bin/replication-manager-cli
 
 RUN bash scripts/post_install.sh

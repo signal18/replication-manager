@@ -310,27 +310,10 @@ func cdcPluginSource(child *cluster.Cluster, plugin string) string {
 // cdcRegtestSame waits until the plugin applied the parent's GTID, then compares the rows of
 // each table, parent master against child master.
 func cdcRegtestSame(cl, child *cluster.Cluster, plugin string, tables []string) error {
-	m := cl.GetMaster()
-	if m == nil {
-		return fmt.Errorf("no master on %s", cl.Name)
-	}
-	var target string
-	if err := m.Conn.Get(&target, "SELECT @@gtid_binlog_pos"); err != nil {
+	if err := cdcWaitApplied(cl, child, plugin); err != nil {
 		return err
 	}
-	if err := tlsWait(cdcRegtestCatch, func() error {
-		st, ok := child.ReplicationPluginStatuses()[plugin]
-		if !ok {
-			return fmt.Errorf("plugin %s not running", plugin)
-		}
-		if !gtidCovers(st.AppliedGTID, target) || (st.NextMergeAt != "" && !gtidCovers(st.MergedGTID, target)) {
-			return fmt.Errorf("applied %q merged %q, parent at %q", st.AppliedGTID, st.MergedGTID, target)
-		}
-		return nil
-	}); err != nil {
-		return err
-	}
-	cm := child.GetMaster()
+	m, cm := cl.GetMaster(), child.GetMaster()
 	for _, t := range tables {
 		a, na, err := cdcTableHash(m.Conn.DB, t)
 		if err != nil {
@@ -345,6 +328,29 @@ func cdcRegtestSame(cl, child *cluster.Cluster, plugin string, tables []string) 
 		}
 	}
 	return nil
+}
+
+// cdcWaitApplied waits until the plugin applied the parent's GTID, and merged it when it
+// feeds an accumulation.
+func cdcWaitApplied(cl, child *cluster.Cluster, plugin string) error {
+	m := cl.GetMaster()
+	if m == nil {
+		return fmt.Errorf("no master on %s", cl.Name)
+	}
+	var target string
+	if err := m.Conn.Get(&target, "SELECT @@gtid_binlog_pos"); err != nil {
+		return err
+	}
+	return tlsWait(cdcRegtestCatch, func() error {
+		st, ok := child.ReplicationPluginStatuses()[plugin]
+		if !ok {
+			return fmt.Errorf("plugin %s not running", plugin)
+		}
+		if !gtidCovers(st.AppliedGTID, target) || (st.NextMergeAt != "" && !gtidCovers(st.MergedGTID, target)) {
+			return fmt.Errorf("applied %q merged %q, parent at %q", st.AppliedGTID, st.MergedGTID, target)
+		}
+		return nil
+	})
 }
 
 // gtidCovers: every domain of want is at least at its sequence in have.

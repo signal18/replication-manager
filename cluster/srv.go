@@ -48,6 +48,11 @@ import (
 
 // ServerMonitor defines a server to monitor.
 type ServerMonitor struct {
+	// the binary log the flashback rejoin reset (positionAfterFlashback): WARN0364 until the server's next backup
+	flashbackBinlogReset atomic.Pointer[flashbackBinlogReset]
+	// the last binlog drop the flashback rejoin refused, with the guard that failed: WARN0365 for a day
+	flashbackDropRefused atomic.Pointer[flashbackDropRefusal]
+
 	legacyJobLoginAt int64        // unix time of the last legacy job body (OpenJobBody), read atomically; 0 never
 	jobBodyAt        int64        // unix time of the last job body accepted from this server's jobs (OpenJobBody), read atomically; 0 never (WARN0324)
 	jobsRunningSince time.Time    // when CheckJobsSilent first saw this server running on the active monitor (zero: not running); the tick only
@@ -186,8 +191,8 @@ type ServerMonitor struct {
 	MxsServerStatus             string                   `json:"maxscaleServerStatus"`
 	ProxysqlHostgroup           string                   `json:"proxysqlHostgroup"`
 	RelayLogSize                uint64                   `json:"relayLogSize"`
-	Replications                []dbhelper.SlaveStatus   `json:"replications"`
-	LastSeenReplications        []dbhelper.SlaveStatus   `json:"lastSeenReplications"`
+	Replications                ReplicationList          `json:"replications"`         // every replication writing into this server: its native channels, then the CDC feeds (replication.go); filled by Refresh only
+	LastSeenReplications        ReplicationList          `json:"lastSeenReplications"` // Replications when the server was last seen up
 	MasterStatus                dbhelper.MasterStatus    `json:"masterStatus"`
 	SlaveStatus                 *dbhelper.SlaveStatus    `json:"-"`
 	ReplicationSourceName       string                   `json:"replicationSourceName"`
@@ -359,8 +364,8 @@ type ServerMonitor struct {
 	reseedPhase                 atomic.Value                       // string: one of the ReseedPhase* constants (restore_progress.go), physical reseed/flashback only; empty for paths that don't set it
 	logicalReseedDispatching    atomic.Bool                        // claimed for the duration of an in-flight launchLogicalReseed call, so repeated StateProcessing ticks over the same open WARN0075 can't enter ProcessReseedLogical concurrently
 	physicalJobDispatched       atomic.Bool                        // the physical reseed/flashback armed by SetInReseedBackup was dispatched (dispatchPhysicalJob): its backup is streamed once
-	reseedLinksMu               sync.Mutex                         // guards reseedLinks: the reseed records, the refresh drops (#2093)
-	reseedLinks                 reseedStoppedLinks                 // the channels a reseed stopped and has not started again, WARN0252 while one does not run
+	linkChangesMu               sync.Mutex                         // guards linkChanges: the links record, the refresh drops (#2093)
+	linkChanges                 []linkChange                       // the replication links repman stopped, reset or repointed and that do not run again: WARN0252 (reseed), WARN0352 (srv_link_change.go)
 	logicalRestoreGate          atomic.Pointer[logicalRestoreGate] // the pause of a restore writing to the binlog, WARN0254 while paused (#2124)
 	restoreKeptMu               sync.Mutex                         // guards restoreKept
 	restoreKept                 []string                           // the tables the last logical restore kept as the server has them (MySQL refuses their DDL), WARN0280 while any
@@ -1045,7 +1050,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 	}
 	//	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlInfo, "niac %s: %s", server.URL, server.DBVersion)
 	var ss dbhelper.SlaveStatus
-	ss, _, errss := dbhelper.GetSlaveStatus(server.Conn, cluster.Conf.MasterConn, server.DBVersion)
+	ss, _, errss := server.ReplicationLink().Status()
 	// We have no replicatieon can this be the old master
 	//  1617 is no multi source channel found
 	noChannel := false
@@ -1115,7 +1120,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 				} else {
 					// async: a reseed can run for hours/days; never block the monitor
 					// loop. RejoinMaster's rejoinInProgress guard makes the spawn safe.
-					go server.RejoinMaster()
+					go server.ReplicationLink().Rejoin()
 				}
 			} else {
 				// Name the ACTUAL failing gate: this used to always print "Auto Rejoin
@@ -1230,8 +1235,8 @@ func (server *ServerMonitor) ProcessFailedSlave() {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Rexep failed replication-restart-on-sqlerror-match %s %s", cluster.Conf.ReplicationRestartOnSQLErrorMatch, err)
 			} else if matched {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Rexep restart slave  %s  matching: %s", cluster.Conf.ReplicationRestartOnSQLErrorMatch, ss.LastSQLError.String)
-				server.SkipReplicationEvent()
-				server.StartSlave()
+				server.SkipReplicationEvent(LinkBySQLErrorRestart)
+				server.ReplicationLink().Start(LinkBySQLErrorRestart)
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Skip event and restart slave on %s", server.URL)
 			}
 		}
@@ -1669,16 +1674,12 @@ func (server *ServerMonitor) Refresh() error {
 
 	// SHOW SLAVE STATUS
 
-	if (!cluster.Conf.MxsBinlogOn || !server.IsMaxscale) && server.DBVersion.IsMariaDB() || server.DBVersion.IsPostgreSQL() {
-		server.Replications, logs, err = dbhelper.GetAllSlavesStatus(server.Conn, server.DBVersion)
-		if len(server.Replications) > 0 && err == nil && server.DBVersion.IsPostgreSQL() && server.ReplicationSourceName == "" {
-			//setting first subscription if we don't have one
-			server.ReplicationSourceName = server.Replications[0].ConnectionName.String
-		}
-	} else {
-		server.Replications, logs, err = dbhelper.GetChannelSlaveStatus(server.Conn, server.DBVersion)
-	}
+	var native ReplicationList
+	native, logs, err = server.refreshNativeLinks()
 	cluster.LogSQL(logs, err, server.URL, "Monitor", config.LvlDbg, "Could not get slaves status %s %s", server.URL, err)
+	// one list: the native channels, then the CDC feeds that write into this server
+	// (replication_cdc.go), stored at once
+	server.Replications = append(native, cluster.cdcFeedsOf(server)...)
 
 	// select a replication status get an err if repliciations array is empty
 	server.SlaveStatus, err = server.GetSlaveStatus(server.ReplicationSourceName)
@@ -1707,8 +1708,10 @@ func (server *ServerMonitor) Refresh() error {
 				sid = src.ServerID
 			}
 			server.SlaveStatus.MasterServerID = sid
-			for i := range server.Replications {
-				server.Replications[i].MasterServerID = sid
+			for _, r := range server.NativeReplications() {
+				if row := mutableRow(r); row != nil {
+					row.MasterServerID = sid
+				}
 			}
 
 			server.SlaveGtid = gtid.NewList(server.SlaveStatus.GtidSlavePos.String)
@@ -1760,7 +1763,7 @@ func (server *ServerMonitor) Refresh() error {
 		}
 	}
 	server.ReplicationHealth = server.CheckReplication()
-	server.checkReseedStoppedLinks() // WARN0252: links a reseed stopped and that do not run (#2093)
+	server.checkLinkChanges()        // WARN0252, WARN0352: links repman stopped, reset or repointed and that do not run (T27, #2093)
 	server.checkLogicalRestoreGate() // WARN0254: a restore with the binlog on paused for its replicas (#2124)
 	server.checkRestoreKeptTables()  // WARN0280: tables the last restore kept as the server has them
 
@@ -1843,7 +1846,7 @@ func (server *ServerMonitor) freeze() bool {
 		}
 	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Freezing writes stopping all slaves on %s", server.URL)
-	logs, err := server.StopAllSlaves()
+	logs, err := server.StopAllSlaves(LinkByFreeze)
 	cluster.LogSQL(logs, err, server.URL, "Freeze", config.LvlInfo, "Could not stop replicas source on %s ", server.URL)
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Freezing writes set read only on %s", server.URL)
 	logs, err = server.SetReadOnly()
@@ -1897,11 +1900,20 @@ func (server *ServerMonitor) freeze() bool {
 	return true
 }
 
+// relayLogStatus is the status row of the managed channel (replication-source-name) that
+// ReadAllRelayLogs waits on. The first read named the default channel "" (since 2019): with a
+// named channel it found no row, its empty Using_Gtid ended the wait at once, and the failover
+// reset a candidate that had not applied its relay log (a test failover: IO at 1309861, applied
+// 1308314, 1547 received transactions dropped, the old master then rejoined as not diverged).
+func (server *ServerMonitor) relayLogStatus() (dbhelper.SlaveStatus, string, error) {
+	return dbhelper.GetMSlaveStatus(server.Conn, server.ClusterGroup.Conf.MasterConn, server.DBVersion)
+}
+
 func (server *ServerMonitor) ReadAllRelayLogs() error {
 	cluster := server.ClusterGroup
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Reading all relay logs on %s", server.URL)
 	if server.DBVersion.IsMariaDB() && server.HaveMariaDBGTID {
-		ss, logs, err := dbhelper.GetMSlaveStatus(server.Conn, "", server.DBVersion)
+		ss, logs, err := server.relayLogStatus()
 		cluster.LogSQL(logs, err, server.URL, "ReadAllRelayLogs", config.LvlInfo, "Could not get slave status %s %s", server.URL, err)
 		if err != nil {
 			return err
@@ -1914,7 +1926,7 @@ func (server *ServerMonitor) ReadAllRelayLogs() error {
 
 		for !myGtid_Slave_Pos.Equal(myGtid_IO_Pos) && ss.UsingGtid.String != "" && ss.GtidSlavePos.String != "" && server.State != stateFailed {
 			server.Refresh()
-			ss, logs, err = dbhelper.GetMSlaveStatus(server.Conn, cluster.Conf.MasterConn, server.DBVersion)
+			ss, logs, err = server.relayLogStatus()
 			cluster.LogSQL(logs, err, server.URL, "ReadAllRelayLogs", config.LvlInfo, "Could not get slave status %s %s", server.URL, err)
 
 			if err != nil {
@@ -1927,7 +1939,7 @@ func (server *ServerMonitor) ReadAllRelayLogs() error {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Waiting sync IO_Pos:%s, Slave_Pos:%s", myGtid_IO_Pos.Sprint(), myGtid_Slave_Pos.Sprint())
 		}
 	} else {
-		ss, logs, err := dbhelper.GetSlaveStatus(server.Conn, cluster.Conf.MasterConn, server.DBVersion)
+		ss, logs, err := server.ReplicationLink().Status()
 		cluster.LogSQL(logs, err, server.URL, "ReadAllRelayLogs", config.LvlInfo, "Could not get slave status %s %s", server.URL, err)
 		if err != nil {
 			return err
@@ -1937,7 +1949,7 @@ func (server *ServerMonitor) ReadAllRelayLogs() error {
 			if ss.MasterLogFile == ss.RelayMasterLogFile && ss.ReadMasterLogPos == ss.ExecMasterLogPos {
 				break
 			}
-			ss, logs, err = dbhelper.GetSlaveStatus(server.Conn, cluster.Conf.MasterConn, server.DBVersion)
+			ss, logs, err = server.ReplicationLink().Status()
 			cluster.LogSQL(logs, err, server.URL, "ReadAllRelayLogs", config.LvlErr, "Could not get slave status %s %s", server.URL, err)
 			if err != nil {
 				return err
@@ -1996,74 +2008,6 @@ func (server *ServerMonitor) delete(sl *serverList) {
 	*sl = lsm
 }
 
-func (server *ServerMonitor) StopSlave() (string, error) {
-	cluster := server.ClusterGroup
-	if server.Conn == nil {
-		return "", errors.New("No database connection pool")
-	}
-	return dbhelper.StopSlave(server.Conn, cluster.Conf.MasterConn, server.DBVersion)
-}
-
-func (server *ServerMonitor) StopSlaveChannel(channel string) (string, error) {
-	if server.Conn == nil {
-		return "", errors.New("No database connection pool")
-	}
-	return dbhelper.StopSlave(server.Conn, channel, server.DBVersion)
-}
-
-func (server *ServerMonitor) StopAllSlaves() (string, error) {
-	if server.Conn == nil {
-		return "", errors.New("No database connection pool")
-	}
-	sql := ""
-	var lasterror error
-	for _, rep := range server.Replications {
-		res, errslave := dbhelper.StopSlave(server.Conn, rep.ConnectionName.String, server.DBVersion)
-		sql += res
-		if errslave != nil {
-			lasterror = errslave
-		}
-	}
-
-	return sql, lasterror
-}
-
-func (server *ServerMonitor) StopAllExtraSourceSlaves() (string, error) {
-	if server.Conn == nil {
-		return "", errors.New("No database connection pool")
-	}
-	cluster := server.ClusterGroup
-	sql := ""
-	var lasterror error
-	for _, rep := range server.Replications {
-		if rep.ConnectionName.String != cluster.Conf.MasterConn {
-			res, errslave := dbhelper.StopSlave(server.Conn, rep.ConnectionName.String, server.DBVersion)
-			sql += res
-			if errslave != nil {
-				lasterror = errslave
-			}
-		}
-	}
-
-	return sql, lasterror
-}
-
-func (server *ServerMonitor) StartSlave() (string, error) {
-	if server.Conn == nil {
-		return "", errors.New("No database connection")
-	}
-	cluster := server.ClusterGroup
-	return dbhelper.StartSlave(server.Conn, cluster.Conf.MasterConn, server.DBVersion)
-
-}
-
-func (server *ServerMonitor) StartSlaveChannel(channel string) (string, error) {
-	if server.Conn == nil {
-		return "", errors.New("No database connection")
-	}
-	return dbhelper.StartSlave(server.Conn, channel, server.DBVersion)
-}
-
 func (server *ServerMonitor) ResetMaster() (string, error) {
 	if server.Conn == nil {
 		return "", errors.New("No database connection pool")
@@ -2074,34 +2018,6 @@ func (server *ServerMonitor) ResetMaster() (string, error) {
 
 func (server *ServerMonitor) ResetPFSQueries() error {
 	return server.ExecQueryNoBinLog("truncate performance_schema.events_statements_summary_by_digest", 5*time.Second)
-}
-
-func (server *ServerMonitor) StopSlaveIOThread() (string, error) {
-	if server.Conn == nil {
-		return "", errors.New("No database connection pool")
-	}
-	cluster := server.ClusterGroup
-	return dbhelper.StopSlaveIOThread(server.Conn, cluster.Conf.MasterConn, server.DBVersion)
-}
-
-func (server *ServerMonitor) StopSlaveSQLThread() (string, error) {
-	if server.Conn == nil {
-		return "", errors.New("No database connection pool")
-	}
-	cluster := server.ClusterGroup
-	return dbhelper.StopSlaveSQLThread(server.Conn, cluster.Conf.MasterConn, server.DBVersion)
-}
-
-func (server *ServerMonitor) ResetSlave() (string, error) {
-	cluster := server.ClusterGroup
-	return dbhelper.ResetSlave(server.Conn, true, cluster.Conf.MasterConn, server.DBVersion)
-}
-
-// ResetSlavePositions clears the managed channel's positions and relay logs and keeps the
-// link (RESET SLAVE without ALL): what a reseed may do, never delete the link (law T27, #2093).
-func (server *ServerMonitor) ResetSlavePositions() (string, error) {
-	cluster := server.ClusterGroup
-	return dbhelper.ResetSlave(server.Conn, false, cluster.Conf.MasterConn, server.DBVersion)
 }
 
 func (server *ServerMonitor) FlushLogs() (string, error) {
@@ -2132,13 +2048,6 @@ func (server *ServerMonitor) Uprovision() {
 func (server *ServerMonitor) Provision() {
 	cluster := server.ClusterGroup
 	cluster.OpenSVCProvisionDatabaseService(server)
-}
-
-func (server *ServerMonitor) SkipReplicationEvent() {
-	cluster := server.ClusterGroup
-	server.StopSlave()
-	dbhelper.SkipBinlogEvent(server.Conn, cluster.Conf.MasterConn, server.DBVersion)
-	server.StartSlave()
 }
 
 func (server *ServerMonitor) KillThread(id string) (string, error) {
@@ -2298,7 +2207,7 @@ func (server *ServerMonitor) SaveInfos() error {
 	clsave.Variables = server.SensitiveVariables.ToNewMap()
 	clsave.Status = server.Status.ToNewMap()
 	clsave.ProcessList = server.FullProcessList
-	clsave.SlaveStatus = server.LastSeenReplications
+	clsave.SlaveStatus = server.LastSeenReplications.OfKind(ReplicationKindNative).Rows()
 	clsave.MaxSlowQueryTimestamp = server.MaxSlowQueryTimestamp
 	// DictTables saved separately in dicttables.json (not pushed to git)
 	if server.JobResults != nil {
@@ -2455,11 +2364,7 @@ func (server *ServerMonitor) CaptureLoop(start int64) {
 		clsave.Status, logs, err = dbhelper.GetStatus(server.Conn, server.DBVersion, server.HasLogMutex(), server.HasLogLatch(), server.HasLogPFSMemory())
 		cluster.LogSQL(logs, err, server.URL, "CaptureLoop", config.LvlDbg, "Failed Status for server %s: %s ", server.URL, err)
 
-		if (!cluster.Conf.MxsBinlogOn || !server.IsMaxscale) && server.DBVersion.IsMariaDB() {
-			clsave.SlaveSatus, logs, err = dbhelper.GetAllSlavesStatus(server.Conn, server.DBVersion)
-		} else {
-			clsave.SlaveSatus, logs, err = dbhelper.GetChannelSlaveStatus(server.Conn, server.DBVersion)
-		}
+		clsave.SlaveSatus, logs, err = server.readNativeLinks((!cluster.Conf.MxsBinlogOn || !server.IsMaxscale) && server.DBVersion.IsMariaDB())
 		cluster.LogSQL(logs, err, server.URL, "CaptureLoop", config.LvlDbg, "Failed Slave Status for server %s: %s ", server.URL, err)
 
 		saveJSON, _ := json.MarshalIndent(clsave, "", "\t")
@@ -2630,7 +2535,7 @@ func (server *ServerMonitor) ShutdownClean() error {
 	return nil
 }
 
-func (server *ServerMonitor) ChangeMasterTo(master *ServerMonitor, master_use_gitd string) error {
+func (server *ServerMonitor) ChangeMasterTo(master *ServerMonitor, master_use_gitd string, reason string) error {
 	logs := ""
 	cluster := server.ClusterGroup
 	var err error
@@ -2641,7 +2546,8 @@ func (server *ServerMonitor) ChangeMasterTo(master *ServerMonitor, master_use_gi
 	hasMyGTID := server.HasMySQLGTID()
 	if cluster.Conf.MultiMasterGrouprep {
 		//MySQL group replication
-		logs, err = server.ChangeMaster(cluster.GetChangeMasterBaseOptForReplGroup(server))
+		opt := cluster.GetChangeMasterBaseOptForReplGroup(server)
+		logs, err = server.ReplicationLink().ChangeSource(SourceOf(opt), opt, reason)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Group Replication bootstrapped for %v", server.URL)
 	} else if !cluster.Conf.ForceSlaveNoGtid && server.DBVersion.IsMariaDB() && server.DBVersion.Major >= 10 {
 		//mariadb using GTID
@@ -2652,13 +2558,13 @@ func (server *ServerMonitor) ChangeMasterTo(master *ServerMonitor, master_use_gi
 		}
 		changemasteropt := cluster.GetChangeMasterBaseOptForSlave(server, master, server.IsDelayed)
 		changemasteropt.Mode = master_use_gitd
-		logs, err = server.ChangeMaster(changemasteropt)
+		logs, err = server.ReplicationLink().ChangeSource(SourceOf(changemasteropt), changemasteropt, reason)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Replication bootstrapped on %s with %s as master", server.URL, master.URL)
 	} else if hasMyGTID && !cluster.Conf.ForceSlaveNoGtid {
 		// MySQL GTID
 		changemasteropt := cluster.GetChangeMasterBaseOptForSlave(server, master, server.IsDelayed)
 		changemasteropt.Mode = "MASTER_AUTO_POSITION"
-		logs, err = server.ChangeMaster(changemasteropt)
+		logs, err = server.ReplicationLink().ChangeSource(SourceOf(changemasteropt), changemasteropt, reason)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Replication bootstrapped on %s with MySQL GTID replication style and %s as master", server.URL, master.URL)
 
 	} else {
@@ -2666,13 +2572,13 @@ func (server *ServerMonitor) ChangeMasterTo(master *ServerMonitor, master_use_gi
 		changemasteropt.Mode = "POSITIONAL"
 		changemasteropt.Logfile = master.BinaryLogFile
 		changemasteropt.Logpos = master.BinaryLogPos
-		logs, err = server.ChangeMaster(changemasteropt)
+		logs, err = server.ReplicationLink().ChangeSource(SourceOf(changemasteropt), changemasteropt, reason)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Replication bootstrapped on %s with old replication style and %s as master", server.URL, master.URL)
 	}
 	if err != nil {
 		cluster.LogSQL(logs, err, server.URL, "BootstrapReplication", config.LvlErr, "Replication can't be bootstrap for server %s with %s as master: %s ", server.URL, master.URL, err)
 	}
-	_, err = server.StartSlave()
+	_, err = server.ReplicationLink().Start(reason)
 	if err != nil {
 		err = errors.New(fmt.Sprintln("Can't start slave: ", err))
 	}
@@ -2691,36 +2597,6 @@ func (server *ServerMonitor) CertificatesReload() error {
 	_, err := server.Conn.Exec(cmd)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Reload certificatd %s", err)
-		return err
-	}
-	return nil
-}
-
-// setGroupReplicationAllowlist names the cluster's servers as the hosts allowed to join,
-// before group replication starts (#2164). A failure is logged: the start goes on.
-func (server *ServerMonitor) setGroupReplicationAllowlist() {
-	cluster := server.ClusterGroup
-	logs, err := dbhelper.SetGroupReplicationAllowlist(server.Conn, server.DBVersion, cluster.GetGroupReplicationWhiteList())
-	cluster.LogSQL(logs, err, server.URL, "SetGroupReplicationAllowlist", config.LvlErr, "Group replication allowlist can't be set on server %s: %s", server.URL, err)
-}
-
-func (server *ServerMonitor) BootstrapGroupReplication() error {
-	server.setGroupReplicationAllowlist()
-	logs, err := dbhelper.BootstrapGroupReplication(server.Conn, server.DBVersion)
-	cluster := server.ClusterGroup
-	if err != nil {
-		cluster.LogSQL(logs, err, server.URL, "BootstrapReplication", config.LvlErr, "Group Replication can't be bootstrap on server %s :%s ", server.URL, err)
-		return err
-	}
-	return nil
-}
-
-func (server *ServerMonitor) StartGroupReplication() error {
-	server.setGroupReplicationAllowlist()
-	logs, err := dbhelper.StartGroupReplication(server.Conn, server.DBVersion)
-	cluster := server.ClusterGroup
-	if err != nil {
-		cluster.LogSQL(logs, err, server.URL, "BootstrapReplication", config.LvlErr, "Group Replication can't be joined on server %s :%s ", server.URL, err)
 		return err
 	}
 	return nil

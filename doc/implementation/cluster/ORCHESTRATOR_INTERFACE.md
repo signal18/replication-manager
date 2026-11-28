@@ -1321,6 +1321,99 @@ to four actions, `host-stop`, `host-start`, `host-reboot`, `host-status` (stdout
 sequence with the host step: their script answers `host-reboot` with the playbook that
 reboots the VM, and `upgrade` no longer has to do it.
 
+### 10.5 Step 3b as implemented (#2442)
+
+The Proxmox backend landed before steps 2, 2b and 3, because the paying client of 10.1 needs
+it and its service side is the on-premise one, already behind the interface. What was built,
+and where it differs from 10.4:
+
+- **The facet.** `HostOrchestrator` and `HostStatus` in `cluster/orchestrator.go`, embedded
+  in `Orchestrator`; `OrchestratorTraits.HasHost`; `unsupportedOrchestrator` answers the four
+  methods with the sentinel, so every existing backend is unchanged. The matrix test has the
+  four rows and a `proxmox` column, derived from the on-premise one (it embeds the on-premise
+  adapter) plus the host rows implemented; `matrixFiles` lists both files of the backend.
+- **The backend.** `cluster/orchestrator_proxmox.go`: `proxmoxOrchestrator` embeds
+  `*onPremiseOrchestrator` (its `unsupportedOrchestrator.orch` repointed so a not-supported
+  error names proxmox), overrides `Name`, `Type`, `Traits` (on-premise plus `HasHost`) and
+  `Check` (`GET /version` with the token). `Nodes()` stays the on-premise one (the database
+  hosts, what `cluster.Agents` shows); listing the hypervisor nodes (`/nodes`) is in the
+  client and not wired into the inventory yet. `StopHost` uses `/status/shutdown`, the clean
+  shutdown, not the `/status/stop` of 10.4: a hard power-off of a guest that holds a database
+  is never what an operator wants from this button. `RebootHost` of a stopped VM starts it.
+  Each action waits for its Proxmox task (`/nodes/{node}/tasks/{upid}/status`) until
+  `hostActionDeadline(server)`, and logs the `pvesh` command that reproduces it (F11). A
+  failed status read before a reboot is logged (WARNING) and the reboot asked anyway.
+- **The API client.** `utils/proxmox`: seven calls, token in the `Authorization` header
+  only, every request bounded (30 s), answers capped at 1 MB, no error carries the token. The
+  PBS client of the archive plugin is another product's API and internal to that plugin, so
+  nothing is shared with it.
+- **The dispatch bridge.** Until step 2 routes the callers through the interface, ~120 call
+  sites switch on `cluster.GetOrchestrator()`. `GetOrchestrator()` now returns
+  `serviceOrchestratorType(prov-orchestrator)` (registry file): `onpremise` for `proxmox`, the
+  type itself otherwise, so every switch treats a proxmox cluster as an on-premise one, with
+  no new case anywhere (the dispatch lock counts only the registry's three lines and the
+  backend's `Type()`). The configured value stays `Conf.ProvOrchestrator` (the GUI reads it),
+  and `cluster.Orchestrator()` resolves it to the proxmox backend, so the host facet is
+  reached through the interface only. The direct comparisons of `Conf.ProvOrchestrator` in
+  `server/` test `opensvc` or `kube` only and are unaffected.
+- **The rolling upgrade.** `cluster/cluster_roll_host.go`, `rollingUpgradeHostStep(server)`,
+  called by `rollingUpgradeOnPremise` between `WaitDatabaseFailed` and
+  `UpgradeDatabaseService`, for the replicas and the old master; an error restores the
+  server's maintenance flag and stops the run, as the other steps of that function, and names
+  the VM (`node/vmid`) as possibly stopped or mid-reboot. It runs
+  `prov-db-host-upgrade-script` through `runGuestScript` (the SSH script runner the on-premise
+  upgrade now shares, `prov_onpremise_db.go`), `RebootHost`, then waits for `HostStatus`
+  `running` and a TCP answer on the guest's SSH port. The reboot and the wait share one
+  deadline (`prov-db-host-reboot-timeout` from the reboot): the step stores it per server in
+  `cluster.hostStepDeadlines`, the backend's task wait reads it through
+  `hostActionDeadline`, and the wait gets what the reboot left, never a second timeout.
+  The wait accepts only a new boot (the reboot race of the second review): the step reads
+  the VM's uptime before asking the reboot (`hostBootBefore`), and `hostBoot.rebooted` takes
+  the VM back only when its uptime is lower than before or no longer than the time since the
+  request (plus 2 s of rounding), with the state `running` and the SSH port answering. The old
+  guest's uptime only grows from before, so it never passes; a VM whose status could not be
+  read before is judged on the time since the request alone. The Proxmox uptime is used
+  rather than the guest's `boot_id` over SSH: it comes from the same API call as the state,
+  and needs no session into a guest that is going down. Two limits, both failing closed (the step times out, the
+  database is never upgraded on a guest that did not reboot): the rule needs the Proxmox
+  uptime to restart on an API reboot (the QEMU process is restarted, so it should: the T13
+  run checks it, with and without the guest agent); and a VM booted less than 2 s before the
+  request is taken back only by a poll that lands while its new uptime is still lower than
+  that, which the 2 s poll can miss (the upgrade script runs in the guest just before, so a
+  guest that young does not happen in practice). A status the hypervisor refuses (4xx: the
+  token, a privilege, no such VM) ends the wait at once; a network error, a 5xx, a 408 or a
+  429 (a proxy under load) is retried until the deadline. The full `rollingServer` sequence of
+  10.2 is still step 2's.
+- **States.** `CheckRollingUpgradeHost`, each tick, config domain, WARNING, no I/O:
+  `WARN0350` (host step on, backend without hosts; the design's WARN0342), `WARN0351` (servers
+  without a VM; the design's WARN0327, a code taken since). A failed host step is a log line
+  at ERROR and the rolling stops at the server: the per-server failure state of 2.4 is step
+  2's (ERR00122 is used by the licence plugin today, the design's code needs a new number).
+- **Settings and API.** The seven keys of 10.4 (`config.go`, `AddFlags`), settable by the
+  settings API (the three free-text values in base64 like the other paths; the token through
+  the credential chain, `SetProxmoxAPIToken`, masked in the change log; the two switches
+  also by value for an idempotent Ansible call). Four endpoints in
+  `server/api_database_host.go` (`actions/host-stop`, `host-start`, `host-reboot`, `GET
+  host-status`), ACL rules reusing `db-stop`, `db-start`, both, and `db-show-status`; the
+  actions run in the background (one per server at a time, 409 otherwise) and answer 202.
+  The shutdown and the reboot are refused (409) by `HostActionRefusal` while the database on
+  the VM runs, unless the server is in maintenance, and always on a running master; no
+  override in this version. The rolling step does not ask it: it stopped the database. GUI:
+  the server menu entries and the settings rows on a proxmox cluster. User doc:
+  `doc/proxmox_orchestrator.md`.
+- **Off-switch (T14).** `proxmox` is not in the default `prov-orchestrator-enable`; the host
+  step has `prov-db-rolling-upgrade-host`, default false.
+- **Follow-ups (review of #2447).** A cluster-scoped context for the background host
+  actions and the host wait, so they end with the cluster instead of their timeout (they are
+  bounded today); a `proxmox-api-ca` setting so a self-signed Proxmox certificate is trusted
+  without `proxmox-api-insecure`.
+- **Tests.** `TestProxmoxHostFacet` against a fake Proxmox API (`httptest`, the four VM
+  endpoints, the task status, `/version`, token checked), `TestRollingSequenceHostStep` on a
+  recording backend (off, on, server without a VM, reboot error, host not back within the
+  timeout), `TestCheckRollingUpgradeHost`, `TestProxmoxServiceDispatchIsOnPremise`, the
+  client's own tests in `utils/proxmox`. The T13 column (a Proxmox lab or the client's
+  cluster) is open: no Proxmox VE host is reachable from the project's infrastructure today.
+
 ---
 
 ## 11. The secret facet on every backend: on-premise first

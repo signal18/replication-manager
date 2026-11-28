@@ -1633,10 +1633,10 @@ engine, and the Docker multi-product matrix.
   current desired one.
 - A `<cluster>-deployment` left over from before per-proxy Deployment
   naming requires manual operator cleanup.
-- Kubernetes provisioning code compiles regardless of `WithOpenSVC`, but
-  `--kube-config` and the `kube` orchestrator default are only
-  registered/exposed when `WithOpenSVC=="ON"` — `kube-config` remains
-  settable via TOML/env in any build regardless.
+- Since the one build (4.0, #2444) `--kube-config` is registered in every instance; it
+  defaults to empty, and the `kube` orchestrator is in the default
+  `prov-orchestrator-enable` list only with the `pro` install profile
+  (`doc/implementation/build/ONE_BUILD.md`). It is settable via TOML/env on any profile.
 - Stop/start errors from the orchestrator aren't surfaced to API callers
   (see "Idempotency and error propagation") — true for every orchestrator,
   not Kubernetes-specific.

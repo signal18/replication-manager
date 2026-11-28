@@ -695,6 +695,12 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.ReplicationPluginSource, "replication-plugin-source", "master", "ColumnStore or analytic child: the parent server whose binlog the replication plugin reads, master (followed after a failover) or host:port of a dedicated replica")
 	flags.IntVar(&conf.ReplicationPluginCheckpointInterval, "replication-plugin-checkpoint-interval", 10, "ColumnStore or analytic child: seconds of binlog per checkpoint of the replication plugin")
 	flags.IntVar(&conf.ReplicationPluginMergeInterval, "replication-plugin-merge-interval", 0, "ColumnStore or analytic child: seconds between two merges of the InnoDB staging into the destination; 0 applies each checkpoint to the destination")
+	flags.BoolVar(&conf.ReplicationPluginFeedEnabled, "replication-plugin-feed-enabled", true, "CDC feed: the feed runs (its start and stop, from the GUI or the replication interface); off keeps its position and what it created on the source")
+	flags.StringVar(&conf.ReplicationPluginFeedSourceCluster, "replication-plugin-feed-source-cluster", "", "CDC feed into this cluster: the source cluster of another engine (PostgreSQL) whose changes the feed carries; empty: no feed")
+	flags.StringVar(&conf.ReplicationPluginFeedDatabase, "replication-plugin-feed-database", "", "CDC feed: the database of the source the feed reads (PostgreSQL streams one database)")
+	flags.StringVar(&conf.ReplicationPluginFeedTables, "replication-plugin-feed-tables", "", "CDC feed: the source tables carried, comma separated schema.table or schema.*")
+	flags.BoolVar(&conf.ReplicationPluginFeedCreateSourceObjects, "replication-plugin-feed-create-source-objects", false, "CDC feed: allow the feed to create its publication and replication slot on the source (a change of the source database: off by default)")
+	flags.IntVar(&conf.ReplicationPluginFeedRetainedMax, "replication-plugin-feed-retained-max", 10240, "CDC feed: MB of WAL the feed's replication slot may keep on the source; above, the feed drops its own slot, stops, and needs a new initial load")
 	flags.StringVar(&conf.StagingProxyHosts, "staging-proxy-hosts", "", "Staging proxy hosts list to monitor separated by commas")
 	flags.StringVar(&conf.StagingServerHost, "staging-server-host", "", "Staging database host")
 
@@ -735,6 +741,8 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.AutorejoinSemisync, "autorejoin-flashback-on-sync", true, "Automatic rejoin failed leader via flashback if semisync SYNC ")
 	flags.BoolVar(&conf.AutorejoinNoSemisync, "autorejoin-flashback-on-unsync", false, "Automatic rejoin failed leader flashback if semisync NOT SYNC ")
 	flags.BoolVar(&conf.AutorejoinFlashback, "autorejoin-flashback", false, "Automatic rejoin ahead failed leader via binlog flashback")
+	flags.BoolVar(&conf.AutorejoinAsyncFlashbackDropBinlog, "autorejoin-async-flashback-drop-binlog", true, "After the flashback of an asynchronous failed leader, drop its binary log (its lost events copied first) and set its gtid_binlog_state to the rejoin position; false keeps it, and with gtid_strict_mode the rejoin position is then refused (error 1947)")
+	flags.IntVar(&conf.AutorejoinAsyncFlashbackDropBinlogMaxTransactions, "autorejoin-async-flashback-drop-binlog-max-transactions", 10000, "Most lost transactions the flashback rejoin drops the binary log for; above it the binary log is kept and the rejoin falls back to a reseed (0 = the default, 10000)")
 	flags.BoolVar(&conf.AutorejoinZFSFlashback, "autorejoin-zfs-flashback", false, "Automatic rejoin ahead failed leader via previous ZFS snapshot")
 	flags.BoolVar(&conf.AutorejoinMysqldump, "autorejoin-mysqldump", false, "Automatic rejoin ahead failed leader via direct current master dump")
 	flags.BoolVar(&conf.AutorejoinPhysicalBackup, "autorejoin-physical-backup", false, "Automatic rejoin ahead failed leader via reseed previous phyiscal backup")
@@ -757,6 +765,24 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.TeamsUrl, "alert-teams-url", "", "Teams url channel for alerts")
 	flags.StringVar(&conf.TeamsProxyUrl, "alert-teams-proxy-url", "", "Proxy url for Teams Webhook")
 	flags.StringVar(&conf.TeamsAlertState, "alert-teams-state", "", "State Code for Teams Alert : ERR|WARN|INFO")
+
+	flags.IntVar(&conf.AlertQueueLimit, "alert-queue-limit", 1000, "Max alerts waiting to be sent, per alert channel. When a channel does not keep up (down, slow), the oldest waiting alert is dropped and counted (WARN0360). <= 0 falls back to this default, never unbounded")
+	flags.IntVar(&conf.AlertSendTimeout, "alert-send-timeout", 10, "Timeout in seconds of one alert send to Teams or Pushover")
+	flags.IntVar(&conf.AlertScriptTimeout, "alert-script-timeout", 300, "Timeout in seconds of one run of alert-script, killed after it")
+	flags.BoolVar(&conf.AlertAlertmanager, "alert-alertmanager", false, "Send the alerts of monitoring-alert-trigger to Prometheus Alertmanager")
+	flags.StringVar(&conf.AlertAlertmanagerURL, "alert-alertmanager-url", "", "Prometheus Alertmanager URLs, comma separated (http://am1:9093,http://am2:9093): every peer gets the alerts")
+	flags.StringVar(&conf.AlertAlertmanagerUser, "alert-alertmanager-user", "", "Prometheus Alertmanager basic auth user")
+	flags.StringVar(&conf.AlertAlertmanagerPassword, "alert-alertmanager-password", "", "Prometheus Alertmanager basic auth password (a secret: encrypted in the config, never logged)")
+	flags.StringVar(&conf.AlertAlertmanagerBearerToken, "alert-alertmanager-bearer-token", "", "Prometheus Alertmanager bearer token, wins over basic auth (a secret: encrypted in the config, never logged)")
+	flags.BoolVar(&conf.AlertAlertmanagerTLSSkipVerify, "alert-alertmanager-tls-skip-verify", false, "Do not verify the TLS certificate of Prometheus Alertmanager")
+	flags.IntVar(&conf.AlertAlertmanagerTimeout, "alert-alertmanager-timeout", 10, "Timeout in seconds of one post to Prometheus Alertmanager")
+	flags.IntVar(&conf.AlertAlertmanagerResendInterval, "alert-alertmanager-resend-interval", 60, "Interval in seconds at which the firing alerts are posted again to Prometheus Alertmanager, shorter than its resolve_timeout (default 5m)")
+	flags.BoolVar(&conf.AlertTelegram, "alert-telegram", false, "Send the alerts of monitoring-alert-trigger and the server state changes to Telegram")
+	flags.StringVar(&conf.AlertTelegramBotToken, "alert-telegram-bot-token", "", "Telegram bot token (a secret: encrypted in the config, never logged)")
+	flags.StringVar(&conf.AlertTelegramChatID, "alert-telegram-chat-id", "", "Telegram chat ids, comma separated (a user or group id, -100... for a channel, or @channelname)")
+	flags.StringVar(&conf.AlertTelegramParseMode, "alert-telegram-parse-mode", "", "Telegram message format: empty for plain text, or MarkdownV2")
+	flags.StringVar(&conf.AlertTelegramAPIURL, "alert-telegram-api-url", "https://api.telegram.org", "Telegram Bot API base URL")
+	flags.IntVar(&conf.AlertTelegramTimeout, "alert-telegram-timeout", 10, "Timeout in seconds of one Telegram send")
 
 	conf.CheckType = "tcp"
 	flags.BoolVar(&conf.CheckReplFilter, "check-replication-filters", true, "Check that possible master have equal replication filters")
@@ -830,35 +856,33 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	conf.Daemon = true
 	flags.IntVar(&conf.CacheStaticMaxAge, "cache-static-max-age", 18000, "Cache Max Age Duration for static files")
 
-	if WithEnforce == "ON" {
-		flags.BoolVar(&conf.ForceSlaveReadOnly, "force-slave-readonly", true, "Automatically activate read only on slave")
-		flags.BoolVar(&conf.ForceSlaveHeartbeat, "force-slave-heartbeat", false, "Automatically activate heartbeat on slave")
-		flags.IntVar(&conf.ForceSlaveHeartbeatRetry, "force-slave-heartbeat-retry", 5, "Replication heartbeat retry on slave")
-		flags.IntVar(&conf.ForceSlaveHeartbeatTime, "force-slave-heartbeat-time", 3, "Replication heartbeat time")
-		flags.BoolVar(&conf.ForceSlaveGtid, "force-slave-gtid-mode", false, "Automatically activate gtid mode on slave")
-		flags.BoolVar(&conf.ForceSlaveGtidStrict, "force-slave-gtid-mode-strict", false, "Automatically activate GTID strict mode")
-		flags.BoolVar(&conf.ForceSlaveNoGtid, "force-slave-no-gtid-mode", false, "Automatically activate no gtid mode on slave")
-		flags.BoolVar(&conf.ForceSlaveSemisync, "force-slave-semisync", false, "Automatically activate semisync on slave")
-		flags.BoolVar(&conf.ForceBinlogRow, "force-binlog-row", false, "Automatically activate binlog row format on master")
-		flags.BoolVar(&conf.ForceBinlogAnnotate, "force-binlog-annotate", false, "Automatically activate annotate event")
-		flags.BoolVar(&conf.ForceBinlogSlowqueries, "force-binlog-slowqueries", false, "Automatically activate long replication statement in slow log")
-		flags.BoolVar(&conf.ForceBinlogChecksum, "force-binlog-checksum", false, "Automatically force  binlog checksum")
-		flags.BoolVar(&conf.ForceBinlogCompress, "force-binlog-compress", false, "Automatically force binlog compression")
-		flags.BoolVar(&conf.ForceBinlogPurge, "force-binlog-purge", false, "Automatically force binlog purge")
-		flags.BoolVar(&conf.ForceBinlogPurgeReplicas, "force-binlog-purge-replicas", false, "Automatically force binlog purge replicas based on oldest master binlog when master purged")
-		flags.BoolVar(&conf.ForceBinlogPurgeOnRestore, "force-binlog-purge-on-restore", false, "Automatically force binlog purge on restore")
-		flags.IntVar(&conf.ForceBinlogPurgeTotalSize, "force-binlog-purge-total-size", 0, "With force-binlog-purge, the binlog budget in GB: the primary's binlogs beyond it are purged (max_binlog_total_size on MariaDB 11.4+); 0 follows the disk: (plan disk - data) / 2 on a provisioned cluster, the binlogs plus half the free space of the measured data disk, else 30; never below two binlog files")
-		flags.IntVar(&conf.ForceBinlogPurgeMinReplica, "force-binlog-purge-min-replica", 1, "Minimum of replica(s) needed for purging binary log")
-		flags.BoolVar(&conf.ForceDiskRelayLogSizeLimit, "force-disk-relaylog-size-limit", false, "Automatically limit the size of relay log on disk ")
-		flags.Uint64Var(&conf.ForceDiskRelayLogSizeLimitSize, "force-disk-relaylog-size-limit-size", 1000000000, "Automatically limit the size of relay log on disk to 1G")
-		flags.BoolVar(&conf.ForceInmemoryBinlogCacheSize, "force-inmemory-binlog-cache-size", false, "Automatically adapt binlog cache size based on monitoring")
-		flags.BoolVar(&conf.ForceSlaveStrict, "force-slave-strict", false, "Slave mode to error when replica diverge")
-		flags.BoolVar(&conf.ForceSlaveIdempotent, "force-slave-idempotent", false, "Slave mode to repair when replica diverge using full master row event")
-		flags.StringVar(&conf.ForceSlaveParallelMode, "force-slave-parallel-mode", "", "serialized|minimal|conservative|optimistic|aggressive| empty for no enforcement")
-		flags.BoolVar(&conf.ForceSyncBinlog, "force-sync-binlog", false, "Automatically force master crash safe")
-		flags.BoolVar(&conf.ForceSyncInnoDB, "force-sync-innodb", false, "Automatically force master innodb crash safe")
-		flags.BoolVar(&conf.ForceNoslaveBehind, "force-noslave-behind", false, "Automatically force no slave behing")
-	}
+	flags.BoolVar(&conf.ForceSlaveReadOnly, "force-slave-readonly", true, "Automatically activate read only on slave")
+	flags.BoolVar(&conf.ForceSlaveHeartbeat, "force-slave-heartbeat", false, "Automatically activate heartbeat on slave")
+	flags.IntVar(&conf.ForceSlaveHeartbeatRetry, "force-slave-heartbeat-retry", 5, "Replication heartbeat retry on slave")
+	flags.IntVar(&conf.ForceSlaveHeartbeatTime, "force-slave-heartbeat-time", 3, "Replication heartbeat time")
+	flags.BoolVar(&conf.ForceSlaveGtid, "force-slave-gtid-mode", false, "Automatically activate gtid mode on slave")
+	flags.BoolVar(&conf.ForceSlaveGtidStrict, "force-slave-gtid-mode-strict", false, "Automatically activate GTID strict mode")
+	flags.BoolVar(&conf.ForceSlaveNoGtid, "force-slave-no-gtid-mode", false, "Automatically activate no gtid mode on slave")
+	flags.BoolVar(&conf.ForceSlaveSemisync, "force-slave-semisync", false, "Automatically activate semisync on slave")
+	flags.BoolVar(&conf.ForceBinlogRow, "force-binlog-row", false, "Automatically activate binlog row format on master")
+	flags.BoolVar(&conf.ForceBinlogAnnotate, "force-binlog-annotate", false, "Automatically activate annotate event")
+	flags.BoolVar(&conf.ForceBinlogSlowqueries, "force-binlog-slowqueries", false, "Automatically activate long replication statement in slow log")
+	flags.BoolVar(&conf.ForceBinlogChecksum, "force-binlog-checksum", false, "Automatically force  binlog checksum")
+	flags.BoolVar(&conf.ForceBinlogCompress, "force-binlog-compress", false, "Automatically force binlog compression")
+	flags.BoolVar(&conf.ForceBinlogPurge, "force-binlog-purge", false, "Automatically force binlog purge")
+	flags.BoolVar(&conf.ForceBinlogPurgeReplicas, "force-binlog-purge-replicas", false, "Automatically force binlog purge replicas based on oldest master binlog when master purged")
+	flags.BoolVar(&conf.ForceBinlogPurgeOnRestore, "force-binlog-purge-on-restore", false, "Automatically force binlog purge on restore")
+	flags.IntVar(&conf.ForceBinlogPurgeTotalSize, "force-binlog-purge-total-size", 0, "With force-binlog-purge, the binlog budget in GB: the primary's binlogs beyond it are purged (max_binlog_total_size on MariaDB 11.4+); 0 follows the disk: (plan disk - data) / 2 on a provisioned cluster, the binlogs plus half the free space of the measured data disk, else 30; never below two binlog files")
+	flags.IntVar(&conf.ForceBinlogPurgeMinReplica, "force-binlog-purge-min-replica", 1, "Minimum of replica(s) needed for purging binary log")
+	flags.BoolVar(&conf.ForceDiskRelayLogSizeLimit, "force-disk-relaylog-size-limit", false, "Automatically limit the size of relay log on disk ")
+	flags.Uint64Var(&conf.ForceDiskRelayLogSizeLimitSize, "force-disk-relaylog-size-limit-size", 1000000000, "Automatically limit the size of relay log on disk to 1G")
+	flags.BoolVar(&conf.ForceInmemoryBinlogCacheSize, "force-inmemory-binlog-cache-size", false, "Automatically adapt binlog cache size based on monitoring")
+	flags.BoolVar(&conf.ForceSlaveStrict, "force-slave-strict", false, "Slave mode to error when replica diverge")
+	flags.BoolVar(&conf.ForceSlaveIdempotent, "force-slave-idempotent", false, "Slave mode to repair when replica diverge using full master row event")
+	flags.StringVar(&conf.ForceSlaveParallelMode, "force-slave-parallel-mode", "", "serialized|minimal|conservative|optimistic|aggressive| empty for no enforcement")
+	flags.BoolVar(&conf.ForceSyncBinlog, "force-sync-binlog", false, "Automatically force master crash safe")
+	flags.BoolVar(&conf.ForceSyncInnoDB, "force-sync-innodb", false, "Automatically force master innodb crash safe")
+	flags.BoolVar(&conf.ForceNoslaveBehind, "force-noslave-behind", false, "Automatically force no slave behing")
 
 	flags.BoolVar(&conf.HttpServ, "http-server", true, "Start the HTTP server")
 	flags.BoolVar(&conf.ApiServ, "api-server", true, "Start the API HTTPS server")
@@ -885,16 +909,14 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.IntVar(&conf.HttpRefreshInterval, "http-refresh-interval", 4000, "Http refresh interval in ms")
 	flags.IntVar(&conf.SessionLifeTime, "http-session-lifetime", 3600, "Http Session life time ")
 
-	if WithMail == "ON" {
-		flags.StringVar(&conf.MailFrom, "mail-from", "mrm@localhost", "Alert email sender")
-		flags.StringVar(&conf.MailTo, "mail-to", "", "Alert email recipients, separated by commas")
-		flags.StringVar(&conf.MailSMTPAddr, "mail-smtp-addr", "localhost:25", "Alert email SMTP server address, in host:[port] format")
-		flags.StringVar(&conf.MailSMTPUser, "mail-smtp-user", "", "SMTP user")
-		flags.StringVar(&conf.MailSMTPPassword, "mail-smtp-password", "", "SMTP password")
-		flags.BoolVar(&conf.MailSMTPTLSSkipVerify, "mail-smtp-tls-skip-verify", false, "Use TLS with skip verify")
-		flags.IntVar(&conf.MailMaxPool, "mail-max-pool", 0, "Max pool of SMTP connection. 0 means no pool")
-		flags.IntVar(&conf.MailTimeout, "mail-timeout", 5, "Mail timeout in seconds when using pool. 0 means no timeout, default 5")
-	}
+	flags.StringVar(&conf.MailFrom, "mail-from", "mrm@localhost", "Alert email sender")
+	flags.StringVar(&conf.MailTo, "mail-to", "", "Alert email recipients, separated by commas")
+	flags.StringVar(&conf.MailSMTPAddr, "mail-smtp-addr", "localhost:25", "Alert email SMTP server address, in host:[port] format")
+	flags.StringVar(&conf.MailSMTPUser, "mail-smtp-user", "", "SMTP user")
+	flags.StringVar(&conf.MailSMTPPassword, "mail-smtp-password", "", "SMTP password")
+	flags.BoolVar(&conf.MailSMTPTLSSkipVerify, "mail-smtp-tls-skip-verify", false, "Use TLS with skip verify")
+	flags.IntVar(&conf.MailMaxPool, "mail-max-pool", 0, "Max pool of SMTP connection. 0 means no pool")
+	flags.IntVar(&conf.MailTimeout, "mail-timeout", 5, "Mail timeout in seconds when using pool. 0 means no timeout, default 5")
 
 	flags.BoolVar(&conf.PRXServersReadOnMaster, "proxy-servers-read-on-master", false, "Should RO route via proxies point to master")
 	flags.BoolVar(&conf.PRXServersReadOnMasterNoSlave, "proxy-servers-read-on-master-no-slave", true, "Should RO route via proxies point to master when no more replicats")
@@ -906,46 +928,27 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	externalprx := new(cluster.ExternalProxy)
 	externalprx.AddFlags(flags, conf)
 
-	if WithMaxscale == "ON" {
-		maxscaleprx := new(cluster.MaxscaleProxy)
-		maxscaleprx.AddFlags(flags, conf)
-	}
+	maxscaleprx := new(cluster.MaxscaleProxy)
+	maxscaleprx.AddFlags(flags, conf)
 
 	proxyjanitorprx := new(cluster.ProxyJanitor)
 	proxyjanitorprx.AddFlags(flags, conf)
 
 	// TODO: this seems dead code / unimplemented
 	// start
-	if WithMySQLRouter == "ON" {
-		flags.BoolVar(&conf.MysqlRouterOn, "mysqlrouter", false, "MySQLRouter proxy server is query for backend status")
-		flags.BoolVar(&conf.MysqlRouterDebug, "mysqlrouter-debug", true, "MySQLRouter log debug")
-		flags.IntVar(&conf.MysqlRouterLogLevel, "log-level-mysqlrouter", 1, "MySQLRouter log debug level")
-		flags.StringVar(&conf.MysqlRouterHosts, "mysqlrouter-servers", "127.0.0.1", "MaxScale hosts ")
-		flags.StringVar(&conf.MysqlRouterPort, "mysqlrouter-port", "6603", "MySQLRouter admin port")
-		flags.StringVar(&conf.MysqlRouterUser, "mysqlrouter-user", "admin", "MySQLRouter admin user")
-		flags.StringVar(&conf.MysqlRouterPass, "mysqlrouter-pass", "mariadb", "MySQLRouter admin password")
-		flags.IntVar(&conf.MysqlRouterWritePort, "mysqlrouter-write-port", 3306, "MySQLRouter read-write port to leader")
-		flags.IntVar(&conf.MysqlRouterReadPort, "mysqlrouter-read-port", 3307, "MySQLRouter load balance read port to all nodes")
-		flags.IntVar(&conf.MysqlRouterReadWritePort, "mysqlrouter-read-write-port", 3308, "MySQLRouter load balance read port to all nodes")
-	}
+	// The mysqlrouter-* flags were registered by no build (WithMySQLRouter was never set):
+	// they stay unregistered in the one build (#2444), so no default secret
+	// (mysqlrouter-pass) appears in any instance. The config fields remain.
 	// end of dead code
 
-	if WithMariadbshardproxy == "ON" {
-		mdbsprx := new(cluster.MariadbShardProxy)
-		mdbsprx.AddFlags(flags, conf)
-	}
-	if WithHaproxy == "ON" {
-		haprx := new(cluster.HaproxyProxy)
-		haprx.AddFlags(flags, conf)
-	}
-	if WithProxysql == "ON" {
-		proxysqlprx := new(cluster.ProxySQLProxy)
-		proxysqlprx.AddFlags(flags, conf)
-	}
-	if WithSphinx == "ON" {
-		sphinxprx := new(cluster.SphinxProxy)
-		sphinxprx.AddFlags(flags, conf)
-	}
+	mdbsprx := new(cluster.MariadbShardProxy)
+	mdbsprx.AddFlags(flags, conf)
+	haprx := new(cluster.HaproxyProxy)
+	haprx.AddFlags(flags, conf)
+	proxysqlprx := new(cluster.ProxySQLProxy)
+	proxysqlprx.AddFlags(flags, conf)
+	sphinxprx := new(cluster.SphinxProxy)
+	sphinxprx.AddFlags(flags, conf)
 
 	myproxyprx := new(cluster.MyProxyProxy)
 	myproxyprx.AddFlags(flags, conf)
@@ -953,38 +956,32 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	consulprx := new(cluster.ConsulProxy)
 	consulprx.AddFlags(flags, conf)
 
-	if WithSpider == "ON" {
-		flags.BoolVar(&conf.Spider, "spider", false, "Turn on spider detection")
-	}
+	flags.BoolVar(&conf.Spider, "spider", false, "Turn on spider detection")
 
-	if WithMonitoring == "ON" {
-		flags.IntVar(&conf.GraphiteCarbonPort, "graphite-carbon-port", 2003, "Graphite Carbon Metrics TCP & UDP port")
-		flags.IntVar(&conf.GraphiteCarbonApiPort, "graphite-carbon-api-port", 10002, "Graphite Carbon API port")
-		flags.IntVar(&conf.GraphiteCarbonServerPort, "graphite-carbon-server-port", 10003, "Graphite Carbon HTTP port")
-		flags.IntVar(&conf.GraphiteCarbonLinkPort, "graphite-carbon-link-port", 7002, "Graphite Carbon Link port")
-		flags.IntVar(&conf.GraphiteCarbonPicklePort, "graphite-carbon-pickle-port", 2004, "Graphite Carbon Pickle port")
-		flags.IntVar(&conf.GraphiteCarbonPprofPort, "graphite-carbon-pprof-port", 7007, "Graphite Carbon Pickle port")
-		flags.StringVar(&conf.GraphiteCarbonHost, "graphite-carbon-host", "127.0.0.1", "Graphite monitoring host")
-		flags.BoolVar(&conf.GraphiteMetrics, "graphite-metrics", true, "Enable Graphite monitoring")
-		flags.IntVar(&conf.GraphiteMetricsQueueLimit, "graphite-metrics-queue-limit", 100000, "Max metrics buffered in memory awaiting flush to the carbon sink. Oldest are dropped once exceeded (protects against unbounded growth when the sink is slow/unreachable). <= 0 falls back to this default, never unbounded")
-		flags.BoolVar(&conf.GraphiteEmbedded, "graphite-embedded", true, "Enable Internal Graphite Carbon Server")
-		flags.BoolVar(&conf.GraphiteWhitelist, "graphite-whitelist", true, "Enable Whitelist")
-		flags.BoolVar(&conf.GraphiteBlacklist, "graphite-blacklist", false, "Enable Blacklist")
-		flags.StringVar(&conf.GraphiteWhitelistTemplate, "graphite-whitelist-template", "minimal", "Graphite default template for whitelist (none | minimal | grafana | all)")
-	}
+	flags.IntVar(&conf.GraphiteCarbonPort, "graphite-carbon-port", 2003, "Graphite Carbon Metrics TCP & UDP port")
+	flags.IntVar(&conf.GraphiteCarbonApiPort, "graphite-carbon-api-port", 10002, "Graphite Carbon API port")
+	flags.IntVar(&conf.GraphiteCarbonServerPort, "graphite-carbon-server-port", 10003, "Graphite Carbon HTTP port")
+	flags.IntVar(&conf.GraphiteCarbonLinkPort, "graphite-carbon-link-port", 7002, "Graphite Carbon Link port")
+	flags.IntVar(&conf.GraphiteCarbonPicklePort, "graphite-carbon-pickle-port", 2004, "Graphite Carbon Pickle port")
+	flags.IntVar(&conf.GraphiteCarbonPprofPort, "graphite-carbon-pprof-port", 7007, "Graphite Carbon Pickle port")
+	flags.StringVar(&conf.GraphiteCarbonHost, "graphite-carbon-host", "127.0.0.1", "Graphite monitoring host")
+	flags.BoolVar(&conf.GraphiteMetrics, "graphite-metrics", true, "Enable Graphite monitoring")
+	flags.IntVar(&conf.GraphiteMetricsQueueLimit, "graphite-metrics-queue-limit", 100000, "Max metrics buffered in memory awaiting flush to the carbon sink. Oldest are dropped once exceeded (protects against unbounded growth when the sink is slow/unreachable). <= 0 falls back to this default, never unbounded")
+	flags.BoolVar(&conf.GraphiteEmbedded, "graphite-embedded", true, "Enable Internal Graphite Carbon Server")
+	flags.BoolVar(&conf.GraphiteWhitelist, "graphite-whitelist", true, "Enable Whitelist")
+	flags.BoolVar(&conf.GraphiteBlacklist, "graphite-blacklist", false, "Enable Blacklist")
+	flags.StringVar(&conf.GraphiteWhitelistTemplate, "graphite-whitelist-template", "minimal", "Graphite default template for whitelist (none | minimal | grafana | all)")
 	//	flags.BoolVar(&conf.Heartbeat, "heartbeat-table", false, "Heartbeat for active/passive or multi mrm setup")
-	if WithArbitrationClient == "ON" {
-		flags.BoolVar(&conf.Arbitration, "arbitration-external", false, "Multi moninitor sas arbitration")
-		flags.StringVar(&conf.ArbitrationSasSecret, "arbitration-external-secret", "", "Secret for arbitration")
-		flags.StringVar(&conf.ArbitrationSasHosts, "arbitration-external-hosts", "https://arbitrator.cloud18.io", "Arbitrator address")
-		flags.IntVar(&conf.ArbitrationSasUniqueId, "arbitration-external-unique-id", 0, "Unique replication-manager instance idententifier")
-		flags.StringVar(&conf.ArbitrationPeerHosts, "arbitration-peer-hosts", "127.0.0.1:10001", "Peer replication-manager hosts http port")
-		flags.BoolVar(&conf.ArbitrationMinorityFreeze, "arbitration-minority-freeze", false, "Hold FLUSH TABLES WITH READ LOCK on a minority master during split brain (blocks even SUPER writes; released when the split resolves) — true protection read_only cannot give on MariaDB")
-		flags.StringVar(&conf.DBServersLocality, "db-servers-locality", "127.0.0.1", "List database servers that are in same network locality")
-		flags.StringVar(&conf.ArbitrationFailedMasterScript, "arbitration-failed-master-script", "", "External script when a master lost arbitration during split brain")
-		flags.IntVar(&conf.ArbitrationReadTimout, "arbitration-read-timeout", 800, "Read timeout for arbotration response in millisec don't woveload monitoring ticker in second")
-		flags.IntVar(&conf.ArbitrationVerdictStreak, "arbitration-verdict-streak", 3, "Consecutive arbitrator answers of one kind, in monitoring ticks, before a cluster changes status (looser) or the minority fail-safe fires (unreachable, or an arbitrator without its store); a winner resets the count; 1 = act on every answer, as before; the default of 3 delays a real loss by that many ticks in exchange for immunity to one bad answer")
-	}
+	flags.BoolVar(&conf.Arbitration, "arbitration-external", false, "Multi moninitor sas arbitration")
+	flags.StringVar(&conf.ArbitrationSasSecret, "arbitration-external-secret", "", "Secret for arbitration")
+	flags.StringVar(&conf.ArbitrationSasHosts, "arbitration-external-hosts", "https://arbitrator.cloud18.io", "Arbitrator address")
+	flags.IntVar(&conf.ArbitrationSasUniqueId, "arbitration-external-unique-id", 0, "Unique replication-manager instance idententifier")
+	flags.StringVar(&conf.ArbitrationPeerHosts, "arbitration-peer-hosts", "127.0.0.1:10001", "Peer replication-manager hosts http port")
+	flags.BoolVar(&conf.ArbitrationMinorityFreeze, "arbitration-minority-freeze", false, "Hold FLUSH TABLES WITH READ LOCK on a minority master during split brain (blocks even SUPER writes; released when the split resolves) — true protection read_only cannot give on MariaDB")
+	flags.StringVar(&conf.DBServersLocality, "db-servers-locality", "127.0.0.1", "List database servers that are in same network locality")
+	flags.StringVar(&conf.ArbitrationFailedMasterScript, "arbitration-failed-master-script", "", "External script when a master lost arbitration during split brain")
+	flags.IntVar(&conf.ArbitrationReadTimout, "arbitration-read-timeout", 800, "Read timeout for arbotration response in millisec don't woveload monitoring ticker in second")
+	flags.IntVar(&conf.ArbitrationVerdictStreak, "arbitration-verdict-streak", 3, "Consecutive arbitrator answers of one kind, in monitoring ticks, before a cluster changes status (looser) or the minority fail-safe fires (unreachable, or an arbitrator without its store); a winner resets the count; 1 = act on every answer, as before; the default of 3 delays a real loss by that many ticks in exchange for immunity to one bad answer")
 
 	flags.StringVar(&conf.SchedulerReceiverPorts, "scheduler-db-servers-receiver-ports", "4444", "Scheduler TCP port to send data to db node, if list port affection is modulo db nodes")
 	flags.StringVar(&conf.SchedulerSenderPorts, "scheduler-db-servers-sender-ports", "", "Scheduler TCP port to receive data from db node, consume one port per transfert if not set, pick one available port")
@@ -1149,6 +1146,14 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.IntVar(&conf.BackupEstimateSizePercentage, "backup-estimate-size-percentage", 150, "Size ratio estimation for backup using information schema data and index size. Default 150 (50 percent bigger than size from query)")
 	flags.BoolVar(&conf.BackupEncryption, "backup-encryption", false, "Encrypt newly created local backup artifacts (OpenSSL AES-256-CBC format) with the database root password (db-servers-credential)")
 	flags.BoolVar(&conf.BackupKeepUntilValid, "backup-keep-until-valid", false, "Backup will rename previous backup to .old before removing after new backup valid")
+	flags.BoolVar(&conf.BackupSnapshot, "backup-snapshot", false, "Volume snapshots of the database servers' data volume: take, list, delete, snapback (off-switch)")
+	flags.StringVar(&conf.BackupSnapshotPlugin, "backup-snapshot-plugin", config.ConstSnapshotPluginZFS, "Volume snapshot plugin: zfs, lvm, or an external plugin (backup-snapshot-script, when set, replaces it)")
+	flags.StringVar(&conf.BackupSnapshotTarget, "backup-snapshot-target", "", "The volume to snapshot: a ZFS dataset (pool/dataset) or an LVM volume (vg/lv); empty finds the one holding the server's files")
+	flags.IntVar(&conf.BackupSnapshotKeep, "backup-snapshot-keep", config.ConstSnapshotKeepDefault, "Volume snapshots taken by replication-manager kept per server, the oldest pruned after each snapshot (1 to 64)")
+	flags.StringVar(&conf.BackupSnapshotLVMSize, "backup-snapshot-lvm-size", "20%ORIGIN", "Copy-on-write space of an LVM snapshot of a thick volume: a size (10G) or extents (20%ORIGIN); a thin volume takes none")
+	flags.StringVar(&conf.BackupSnapshotScript, "backup-snapshot-script", "", "Client script run on the replication-manager host for every volume snapshot action, in place of the plugin: action as first argument, context in REPMAN_SNAPSHOT_* variables")
+	flags.IntVar(&conf.BackupSnapshotTimeout, "backup-snapshot-timeout", 1800, "Seconds a volume snapshot action may run before it is stopped")
+	flags.BoolVar(&conf.BackupSnapshotUnmount, "backup-snapshot-unmount", true, "Unmount the server's file systems on the database host around the snapback of an external snapshot plugin (off: the plugin or a client handles them)")
 	flags.StringVar(&conf.BackupMyDumperPath, "backup-mydumper-path", "", "Path to mydumper binary")
 	flags.StringVar(&conf.BackupMyLoaderPath, "backup-myloader-path", "", "Path to myloader binary")
 	flags.StringVar(&conf.BackupMyLoaderOptions, "backup-myloader-options", config.DefaultBackupMyLoaderOptions, "Extra options")
@@ -1281,6 +1286,8 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.SysbenchForcePK, "sysbench-force-pk", true, "Force primary key in sysbench tables")
 	flags.StringVar(&conf.SysbenchBinaryPath, "sysbench-binary-path", "/usr/bin/sysbench", "Sysbench Wrapper in test mode")
 
+	// The orchestrator defaults of the install profile (one build, #2444): opensvc with pro,
+	// onpremise otherwise; prov-orchestrator-cluster empty outside pro, as when it was not registered.
 	if WithOpenSVC == "ON" {
 		flags.StringVar(&conf.ProvOrchestratorEnable, "prov-orchestrator-enable", "opensvc,kube,onpremise,local", "seprated list of orchestrator ")
 		flags.StringVar(&conf.ProvOrchestrator, "prov-orchestrator", "opensvc", "onpremise|opensvc|kube|slapos|local")
@@ -1288,6 +1295,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	} else {
 		flags.StringVar(&conf.ProvOrchestrator, "prov-orchestrator", "onpremise", "onpremise|opensvc|kube|slapos|local")
 		flags.StringVar(&conf.ProvOrchestratorEnable, "prov-orchestrator-enable", "onpremise,local", "seprated list of orchestrator ")
+		flags.StringVar(&conf.ProvOrchestratorCluster, "prov-orchestrator-cluster", "", "The orchestrated cluster used in FQDNS")
 	}
 
 	flags.StringVar(&conf.SlapOSDBPartitions, "slapos-db-partitions", "", "List databases slapos partitions path")
@@ -1317,6 +1325,16 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.OnPremiseSSHStopProxyScript, "onpremise-ssh-stop-proxy-script", "", "Run via ssh a custom script to stop Proxy")
 	flags.StringVar(&conf.OnPremiseSSHDbJobScript, "onpremise-ssh-db-job-script", "", "Run via ssh a custom script to execute database jobs")
 	flags.StringVar(&conf.OnPremiseSSHUpgradeDbScript, "onpremise-ssh-upgrade-db-script", "", "Run via ssh a custom script to upgrade database version")
+
+	// Proxmox VE orchestrator (prov-orchestrator = "proxmox", listed in prov-orchestrator-enable):
+	// the on-premise SSH service operations plus the VM of each database server (design 10.4)
+	flags.StringVar(&conf.ProxmoxAPIURL, "proxmox-api-url", "", "Proxmox VE API endpoint, https://host:8006")
+	flags.StringVar(&conf.ProxmoxAPIToken, "proxmox-api-token", "", "Proxmox VE API token user@realm!tokenid=secret (a secret: encrypted in the config, never logged)")
+	flags.BoolVar(&conf.ProxmoxAPIInsecure, "proxmox-api-insecure", false, "Accept the Proxmox VE API certificate without verification (a lab only)")
+	flags.StringVar(&conf.ProvDbHostVmids, "prov-db-host-vmids", "", "The VM under each database server, host=node/vmid pairs comma separated (db1=pve1/101,db2=pve2/102)")
+	flags.BoolVar(&conf.ProvDbRollingUpgradeHost, "prov-db-rolling-upgrade-host", false, "Rolling upgrade reboots the host (VM) of each server between the database stop and its upgrade, on an orchestrator that drives the hosts")
+	flags.StringVar(&conf.ProvDbHostUpgradeScript, "prov-db-host-upgrade-script", "", "Local script run over ssh in the guest before its reboot in the rolling upgrade host step (kernel and packages); empty: reboot only")
+	flags.IntVar(&conf.ProvDbHostRebootTimeout, "prov-db-host-reboot-timeout", 600, "Seconds for a host action (shutdown, start, reboot) and for the rebooted VM to run and answer on ssh")
 
 	flags.BoolVar(&conf.Cloud18, "cloud18", false, "Enable Cloud 18 DBAAS")
 	flags.StringVar(&conf.Cloud18Domain, "cloud18-domain", "", "DNS sub domain per organisation")
@@ -1407,7 +1425,9 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 		flags.BoolVar(&conf.Measurement, "measurement", false, "Enable measurement")
 	}
 
-	if WithProvisioning == "ON" {
+	// The provisioning keys: their defaults with the provisioning profiles (tst, pro), their
+	// zero value with osc, registered either way (one build, #2444).
+	addFlagsWithDefaults(flags, WithProvisioning == "ON", func(flags *pflag.FlagSet) {
 		flags.StringVar(&conf.Cloud18GatewayService, "cloud18-gateway-service", "", "Cloud18 OpenSVC HAProxy gateway service(s) namespace/svc/name, comma-separated: route fragments are published on every one of them")
 		flags.StringVar(&conf.ProvDatadirVersion, "prov-db-datadir-version", "10.2", "Empty datadir to deploy for localtest")
 		flags.StringVar(&conf.ProvDiskSystemSize, "prov-db-disk-system-size", "2", "Disk in g for micro service VM")
@@ -1493,8 +1513,8 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 		flags.BoolVar(&conf.MeasurementAutoClampLimit, "measurement-auto-clamp-limit", false, "Auto clamp to allowed value for measurement if exceed the min-max boundaries")
 		flags.BoolVar(&conf.ProvObjectAllowOverwrite, "prov-object-allow-overwrite", true, "Allow overwriting config/secret keys when objects already exist")
 
-		if WithOpenSVC == "ON" {
-
+		// The OpenSVC keys: their defaults with the pro profile, their zero value otherwise.
+		addFlagsWithDefaults(flags, WithOpenSVC == "ON", func(flags *pflag.FlagSet) {
 			flags.BoolVar(&conf.Enterprise, "opensvc", true, "Provisioning via opensvc")
 			flags.IntVar(&conf.ProvEventTimeout, "prov-timeout", 600, "Timeout in seconds for provisionning operations")
 			flags.StringVar(&conf.ProvHost, "opensvc-host", "collector.signal18.io:443", "OpenSVC collector API")
@@ -1521,8 +1541,8 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 				crcTable := crc64.MakeTable(crc64.ECMA)
 				conf.ProvCodeApp = "ns" + strconv.FormatUint(crc64.Checksum([]byte(dbConfig.Get("email").(string)), crcTable), 10)
 			}
-		}
-	}
+		})
+	})
 
 	flags.StringVar(&conf.ProvDockerRegistryCredentials, "prov-docker-registry-credentials", "", "Docker registry credentials for private registry. Format: url:port:user:password")
 
@@ -1638,7 +1658,7 @@ func (repman *ReplicationManager) discoverClustersFromEnv() []string {
 		if !strings.HasPrefix(name, prefix) {
 			continue
 		}
-		if strings.HasPrefix(name, prefix+"DEFAULT_") {
+		if strings.HasPrefix(name, prefix+"DEFAULT_") || isInstallProfileEnv(name) {
 			continue
 		}
 		for _, suffix := range suffixes {
@@ -2956,6 +2976,13 @@ func (repman *ReplicationManager) Run() error {
 	}
 	repman.termlength = 40
 	repman.Logrus.WithField("version", repman.Version).Info("Replication-Manager started in daemon mode")
+	if installProfile.ProfileSource == "default" {
+		// Neither the environment nor the program name chose: a renamed binary gets the pro
+		// defaults and the embedded layout, say it so an operator can set REPLICATION_MANAGER_INSTALL_PROFILE.
+		repman.Logrus.WithField("version", repman.Version).Warnf("Install profile %s, layout %s: chosen by default (program name %q names no flavour); set %s / %s to choose", installProfile.Profile, installProfile.Layout, filepath.Base(os.Args[0]), EnvInstallProfile, EnvInstallLayout)
+	} else {
+		repman.Logrus.WithField("version", repman.Version).Infof("Install profile %s (%s), layout %s (%s)", installProfile.Profile, installProfile.ProfileSource, installProfile.Layout, installProfile.LayoutSource)
+	}
 	loglen := repman.termlength - 9 - (len(strings.Split(repman.Conf.Hosts, ",")) * 3)
 	repman.tlog = s18log.NewTermLog(loglen)
 	repman.Logs = s18log.NewHttpLog(200)
@@ -4896,6 +4923,8 @@ func (repman *ReplicationManager) GetEncryptedValueFromMemory(key string) string
 		return repman.Conf.GetStableEncryptedValue("alert-pushover-user-token", repman.Conf.GetDecryptedValue("alert-pushover-user-token"))
 	case "alert-pushover-app-token":
 		return repman.Conf.GetStableEncryptedValue("alert-pushover-app-token", repman.Conf.GetDecryptedValue("alert-pushover-app-token"))
+	case "alert-alertmanager-password", "alert-alertmanager-bearer-token", "alert-telegram-bot-token":
+		return repman.Conf.GetStableEncryptedValue(key, repman.Conf.GetDecryptedValue(key))
 	case "mail-smtp-password":
 		return repman.Conf.GetStableEncryptedValue("mail-smtp-password", repman.Conf.GetDecryptedValue("mail-smtp-password"))
 	case "api-oauth-client-secret":

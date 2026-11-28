@@ -57,6 +57,8 @@ type Config struct {
 	GoArch                                   string                       `mapstructure:"goarch" toml:"-" json:"goArch"`
 	WithTarball                              string                       `mapstructure:"-" toml:"-" json:"withTarball"`
 	WithEmbed                                string                       `mapstructure:"-" toml:"-" json:"withEmbed"`
+	InstallProfile                           string                       `mapstructure:"-" toml:"-" json:"installProfile"` // osc|tst|pro, resolved at start, not a key (#2444)
+	InstallLayout                            string                       `mapstructure:"-" toml:"-" json:"installLayout"`  // package|tarball|embed, resolved at start, not a key (#2444)
 	MemProfile                               string                       `mapstructure:"-" toml:"-" json:"-"`
 	Include                                  string                       `mapstructure:"include" toml:"-" json:"-"`
 	MonitoringSystemUser                     string                       `scope:"server" mapstructure:"user" toml:"-" json:"-"`
@@ -344,6 +346,7 @@ type Config struct {
 	AutorejoinBackupBinlog                   bool                         `mapstructure:"autorejoin-backup-binlog" toml:"autorejoin-backup-binlog" json:"autorejoinBackupBinlog"`
 	AutorejoinSemisync                       bool                         `mapstructure:"autorejoin-flashback-on-sync" toml:"autorejoin-flashback-on-sync" json:"autorejoinFlashbackOnSync"`
 	AutorejoinNoSemisync                     bool                         `mapstructure:"autorejoin-flashback-on-unsync" toml:"autorejoin-flashback-on-unsync" json:"autorejoinFlashbackOnUnsync"`
+	AutorejoinAsyncFlashbackDropBinlog       bool                         `mapstructure:"autorejoin-async-flashback-drop-binlog" toml:"autorejoin-async-flashback-drop-binlog" json:"autorejoinAsyncFlashbackDropBinlog"`
 	AutorejoinSlavePositionalHeartbeat       bool                         `mapstructure:"autorejoin-slave-positional-heartbeat" toml:"autorejoin-slave-positional-heartbeat" json:"autorejoinSlavePositionalHeartbeat"`
 	CheckType                                string                       `mapstructure:"check-type" toml:"check-type" json:"checkType"`
 	CheckReplFilter                          bool                         `mapstructure:"check-replication-filters" toml:"check-replication-filters" json:"checkReplicationFilters"`
@@ -416,6 +419,23 @@ type Config struct {
 	TeamsUrl                                 string                       `mapstructure:"alert-teams-url" toml:"alert-teams-url" json:"alertTeamsUrl"`
 	TeamsProxyUrl                            string                       `mapstructure:"alert-teams-proxy-url" toml:"alert-teams-proxy-url" json:"alertTeamsProxyUrl"`
 	TeamsAlertState                          string                       `mapstructure:"alert-teams-state" toml:"alert-teams-state" json:"alertTeamsState"`
+	AlertQueueLimit                          int                          `mapstructure:"alert-queue-limit" toml:"alert-queue-limit" json:"alertQueueLimit"`
+	AlertSendTimeout                         int                          `mapstructure:"alert-send-timeout" toml:"alert-send-timeout" json:"alertSendTimeout"`
+	AlertScriptTimeout                       int                          `mapstructure:"alert-script-timeout" toml:"alert-script-timeout" json:"alertScriptTimeout"`
+	AlertAlertmanager                        bool                         `mapstructure:"alert-alertmanager" toml:"alert-alertmanager" json:"alertAlertmanager"`
+	AlertAlertmanagerURL                     string                       `mapstructure:"alert-alertmanager-url" toml:"alert-alertmanager-url" json:"alertAlertmanagerUrl"`
+	AlertAlertmanagerUser                    string                       `mapstructure:"alert-alertmanager-user" toml:"alert-alertmanager-user" json:"alertAlertmanagerUser"`
+	AlertAlertmanagerPassword                string                       `secret:"true" mapstructure:"alert-alertmanager-password" toml:"alert-alertmanager-password" json:"alertAlertmanagerPassword"`
+	AlertAlertmanagerBearerToken             string                       `secret:"true" mapstructure:"alert-alertmanager-bearer-token" toml:"alert-alertmanager-bearer-token" json:"alertAlertmanagerBearerToken"`
+	AlertAlertmanagerTLSSkipVerify           bool                         `mapstructure:"alert-alertmanager-tls-skip-verify" toml:"alert-alertmanager-tls-skip-verify" json:"alertAlertmanagerTlsSkipVerify"`
+	AlertAlertmanagerTimeout                 int                          `mapstructure:"alert-alertmanager-timeout" toml:"alert-alertmanager-timeout" json:"alertAlertmanagerTimeout"`
+	AlertAlertmanagerResendInterval          int                          `mapstructure:"alert-alertmanager-resend-interval" toml:"alert-alertmanager-resend-interval" json:"alertAlertmanagerResendInterval"`
+	AlertTelegram                            bool                         `mapstructure:"alert-telegram" toml:"alert-telegram" json:"alertTelegram"`
+	AlertTelegramBotToken                    string                       `secret:"true" mapstructure:"alert-telegram-bot-token" toml:"alert-telegram-bot-token" json:"alertTelegramBotToken"`
+	AlertTelegramChatID                      string                       `mapstructure:"alert-telegram-chat-id" toml:"alert-telegram-chat-id" json:"alertTelegramChatId"`
+	AlertTelegramParseMode                   string                       `mapstructure:"alert-telegram-parse-mode" toml:"alert-telegram-parse-mode" json:"alertTelegramParseMode"`
+	AlertTelegramAPIURL                      string                       `mapstructure:"alert-telegram-api-url" toml:"alert-telegram-api-url" json:"alertTelegramApiUrl"`
+	AlertTelegramTimeout                     int                          `mapstructure:"alert-telegram-timeout" toml:"alert-telegram-timeout" json:"alertTelegramTimeout"`
 	Heartbeat                                bool                         `mapstructure:"heartbeat-table" toml:"heartbeat-table" json:"heartbeatTable"`
 	ExtProxyOn                               bool                         `mapstructure:"extproxy" toml:"extproxy" json:"extproxy"`
 	ExtProxyVIP                              string                       `mapstructure:"extproxy-address" toml:"extproxy-address" json:"extproxyAddress"`
@@ -549,6 +569,13 @@ type Config struct {
 	ReplicationPluginSource                  string                       `mapstructure:"replication-plugin-source" toml:"replication-plugin-source" json:"replicationPluginSource"`
 	ReplicationPluginCheckpointInterval      int                          `mapstructure:"replication-plugin-checkpoint-interval" toml:"replication-plugin-checkpoint-interval" json:"replicationPluginCheckpointInterval"`
 	ReplicationPluginMergeInterval           int                          `mapstructure:"replication-plugin-merge-interval" toml:"replication-plugin-merge-interval" json:"replicationPluginMergeInterval"`
+	ReplicationPluginIndexes                 []ReplicationPluginIndex     `mapstructure:"replication-plugin-index" toml:"replication-plugin-index" json:"replicationPluginIndexes"`
+	ReplicationPluginFeedEnabled             bool                         `mapstructure:"replication-plugin-feed-enabled" toml:"replication-plugin-feed-enabled" json:"replicationPluginFeedEnabled"`
+	ReplicationPluginFeedSourceCluster       string                       `mapstructure:"replication-plugin-feed-source-cluster" toml:"replication-plugin-feed-source-cluster" json:"replicationPluginFeedSourceCluster"`
+	ReplicationPluginFeedDatabase            string                       `mapstructure:"replication-plugin-feed-database" toml:"replication-plugin-feed-database" json:"replicationPluginFeedDatabase"`
+	ReplicationPluginFeedTables              string                       `mapstructure:"replication-plugin-feed-tables" toml:"replication-plugin-feed-tables" json:"replicationPluginFeedTables"`
+	ReplicationPluginFeedCreateSourceObjects bool                         `mapstructure:"replication-plugin-feed-create-source-objects" toml:"replication-plugin-feed-create-source-objects" json:"replicationPluginFeedCreateSourceObjects"`
+	ReplicationPluginFeedRetainedMax         int                          `mapstructure:"replication-plugin-feed-retained-max" toml:"replication-plugin-feed-retained-max" json:"replicationPluginFeedRetainedMax"`
 	StagingProxyHosts                        string                       `mapstructure:"staging-proxy-hosts" toml:"staging-proxy-hosts" json:"stagingProxyHosts"`
 	StagingServerHost                        string                       `mapstructure:"staging-server-host" toml:"staging-server-host" json:"stagingServerHost"`
 	GraphiteMetrics                          bool                         `scope:"server" mapstructure:"graphite-metrics" toml:"graphite-metrics" json:"graphiteMetrics"`
@@ -610,6 +637,13 @@ type Config struct {
 	OnPremiseSSHStopProxyScript              string                       `mapstructure:"onpremise-ssh-stop-proxy-script" toml:"onpremise-ssh-stop-proxy-script" json:"onpremiseSshStopProxyScript"`
 	OnPremiseSSHDbJobScript                  string                       `mapstructure:"onpremise-ssh-db-job-script" toml:"onpremise-ssh-db-job-script" json:"onpremiseSshDbJobScript"`
 	OnPremiseSSHUpgradeDbScript              string                       `mapstructure:"onpremise-ssh-upgrade-db-script" toml:"onpremise-ssh-upgrade-db-script" json:"onpremiseSshUpgradeDbScript"`
+	ProxmoxAPIURL                            string                       `mapstructure:"proxmox-api-url" toml:"proxmox-api-url" json:"proxmoxApiUrl"`
+	ProxmoxAPIToken                          string                       `secret:"true" mapstructure:"proxmox-api-token" toml:"proxmox-api-token" json:"proxmoxApiToken"`
+	ProxmoxAPIInsecure                       bool                         `mapstructure:"proxmox-api-insecure" toml:"proxmox-api-insecure" json:"proxmoxApiInsecure"`
+	ProvDbHostVmids                          string                       `mapstructure:"prov-db-host-vmids" toml:"prov-db-host-vmids" json:"provDbHostVmids"`
+	ProvDbRollingUpgradeHost                 bool                         `mapstructure:"prov-db-rolling-upgrade-host" toml:"prov-db-rolling-upgrade-host" json:"provDbRollingUpgradeHost"`
+	ProvDbHostUpgradeScript                  string                       `mapstructure:"prov-db-host-upgrade-script" toml:"prov-db-host-upgrade-script" json:"provDbHostUpgradeScript"`
+	ProvDbHostRebootTimeout                  int                          `mapstructure:"prov-db-host-reboot-timeout" toml:"prov-db-host-reboot-timeout" json:"provDbHostRebootTimeout"`
 	ProvOpensvcP12Certificate                string                       `mapstructure:"opensvc-p12-certificate" toml:"opensvc-p12-certificate" json:"opensvcP12Certificate"`
 	ProvOpensvcP12Secret                     string                       `secret:"true" mapstructure:"opensvc-p12-secret" toml:"opensvc-p12-secret" json:"opensvcP12Secret"`
 	ProvOpensvcUseCollectorAPI               bool                         `mapstructure:"opensvc-use-collector-api" toml:"opensvc-use-collector-api" json:"opensvcUseCollectorApi"`
@@ -915,6 +949,14 @@ type Config struct {
 	BackupKeepWeekly                          int               `mapstructure:"backup-keep-weekly" toml:"backup-keep-weekly" json:"backupKeepWeekly"`
 	BackupKeepMonthly                         int               `mapstructure:"backup-keep-monthly" toml:"backup-keep-monthly" json:"backupKeepMonthly"`
 	BackupKeepYearly                          int               `mapstructure:"backup-keep-yearly" toml:"backup-keep-yearly" json:"backupKeepYearly"`
+	BackupSnapshot                            bool              `mapstructure:"backup-snapshot" toml:"backup-snapshot" json:"backupSnapshot"`
+	BackupSnapshotPlugin                      string            `mapstructure:"backup-snapshot-plugin" toml:"backup-snapshot-plugin" json:"backupSnapshotPlugin"`
+	BackupSnapshotTarget                      string            `mapstructure:"backup-snapshot-target" toml:"backup-snapshot-target" json:"backupSnapshotTarget"`
+	BackupSnapshotKeep                        int               `mapstructure:"backup-snapshot-keep" toml:"backup-snapshot-keep" json:"backupSnapshotKeep"`
+	BackupSnapshotLVMSize                     string            `mapstructure:"backup-snapshot-lvm-size" toml:"backup-snapshot-lvm-size" json:"backupSnapshotLvmSize"`
+	BackupSnapshotScript                      string            `mapstructure:"backup-snapshot-script" toml:"backup-snapshot-script" json:"backupSnapshotScript"`
+	BackupSnapshotTimeout                     int               `mapstructure:"backup-snapshot-timeout" toml:"backup-snapshot-timeout" json:"backupSnapshotTimeout"`
+	BackupSnapshotUnmount                     bool              `mapstructure:"backup-snapshot-unmount" toml:"backup-snapshot-unmount" json:"backupSnapshotUnmount"`
 	BackupKeepWithin                          string            `mapstructure:"backup-keep-within" toml:"backup-keep-within" json:"backupKeepWithin"`
 	BackupKeepWithinHourly                    string            `mapstructure:"backup-keep-within-hourly" toml:"backup-keep-within-hourly" json:"backupKeepWithinHourly"`
 	BackupKeepWithinDaily                     string            `mapstructure:"backup-keep-within-daily" toml:"backup-keep-within-daily" json:"backupKeepWithinDaily"`
@@ -1199,6 +1241,13 @@ type Config struct {
 	//OAuthRedirectURL                          string                 `mapstructure:"api-oauth-redirect-url" toml:"git-url" json:"-"`
 	//	BackupResticStoragePolicy                  string `mapstructure:"backup-restic-storage-policy"  toml:"backup-restic-storage-policy" json:"backupResticStoragePolicy"`
 	//ProvMode                           string `mapstructure:"prov-mode" toml:"prov-mode" json:"provMode"` //InitContainer vs API
+
+	// SnapshotPluginEntries: the settings of the external snapshot plugins (#2456)
+	SnapshotPluginEntries []SnapshotPluginEntry `mapstructure:"snapshot-plugin" toml:"snapshot-plugin" json:"snapshotPlugins"`
+
+	// AutorejoinAsyncFlashbackDropBinlogMaxTransactions: the cap of the binlog drop of the flashback
+	// rejoin (cluster/srv_rejoin_flashback_drop.go), 0 = 10000
+	AutorejoinAsyncFlashbackDropBinlogMaxTransactions int `mapstructure:"autorejoin-async-flashback-drop-binlog-max-transactions" toml:"autorejoin-async-flashback-drop-binlog-max-transactions" json:"autorejoinAsyncFlashbackDropBinlogMaxTransactions"`
 }
 
 func init() {
@@ -1680,6 +1729,9 @@ const (
 	ConstOrchestratorSlapOS     string = "slapos"
 	ConstOrchestratorLocalhost  string = "local"
 	ConstOrchestratorOnPremise  string = "onpremise"
+	// ConstOrchestratorProxmox is the Proxmox VE backend: the on-premise service operations
+	// (SSH into the guest) plus the host facet (the VM, through the Proxmox API).
+	ConstOrchestratorProxmox string = "proxmox"
 
 	// DB container memory-cap alignment modes (prov-db-resource-align). The cgroup --memory
 	// cap is deliberately set ABOVE the MySQL config memory (prov-db-memory) so mariadbd's
@@ -3204,6 +3256,12 @@ func (conf *Config) GetOrchestratorsProv() []ConfigVariableType {
 			Id:        5,
 			Name:      ConstOrchestratorOnPremise,
 			Available: strings.Contains(conf.ProvOrchestratorEnable, ConstOrchestratorOnPremise),
+			Label:     "",
+		},
+		ConfigVariableType{
+			Id:        6,
+			Name:      ConstOrchestratorProxmox,
+			Available: strings.Contains(conf.ProvOrchestratorEnable, ConstOrchestratorProxmox),
 			Label:     "",
 		},
 	}

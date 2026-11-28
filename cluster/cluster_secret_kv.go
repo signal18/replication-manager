@@ -787,7 +787,7 @@ func (cluster *Cluster) rotateWithVaultEngine(e config.SecretKvConfig) error {
 	cluster.applyCredential("db-servers-credential")
 	cluster.applyCredential("replication-credential")
 	for _, s := range cluster.slaves {
-		for _, ss := range s.Replications {
+		for _, ss := range s.NativeReplications().Rows() {
 			if err := s.rejoinSlaveChangePassword(&ss); err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Password rotation: replication password of %s not changed: %s", s.URL, err)
 			}

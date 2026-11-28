@@ -96,7 +96,7 @@ func gateReplica(c *Cluster, name, applying string, delay int64, running string,
 	}
 	// Name set as the monitoring does: empty, hosts-delayed "" would list it as delayed
 	return &ServerMonitor{Host: name, Port: "3306", URL: name + ":3306", Name: name, ClusterGroup: c, State: stateSlave,
-		SlaveStatus: &ss, Replications: []dbhelper.SlaveStatus{ss}}
+		SlaveStatus: &ss, Replications: nativeRows([]dbhelper.SlaveStatus{ss}...)}
 }
 
 // A replica holds the gate until it applied the rotated binlog (its SQL thread on the current

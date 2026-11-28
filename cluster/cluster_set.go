@@ -66,6 +66,7 @@ func (cluster *Cluster) SetStatus() {
 	cluster.checkBinlogBudgetStates()             // WARN0264 the binlog budget at its floor, WARN0265 a replica beyond it (#2142)
 	cluster.checkArchiveEncryptionStates()        // WARN0263 an archive encrypted client-side kept without a key (#2091)
 	cluster.checkSnapbackStates()                 // CINF0020 snapback running, WARN0255 a backup directory not at its latest snapshot (backups locked), WARN0256 a snapback failed (#2091)
+	cluster.checkVolumeSnapshotStates()           // CINF0024 a volume snapshot action running, WARN0330 one failed, WARN0331 a server left in maintenance by a snapback, ERR00123 a snapback stopped half-way, WARN0332 the plugin can not run (#2443)
 	cluster.checkRegisteredVerificationStates()   // WARN0253 while a registered backup's last verification failed (#2108)
 	cluster.saveBackupCatalogue()                 // the global backup catalogue files, written when changed on the active replication-manager (#2091)
 	cluster.checkCatalogueStates()                // the catalogue's automatic rebuild when due, CINF0021 while one runs, WARN0260 when it differs from an archive (#2091)
@@ -3027,6 +3028,57 @@ func (cluster *Cluster) SetBackupVerificationCredential(cred string) error {
 	}
 	cluster.Conf.BackupVerificationCredential = cred
 	cluster.MarkSecretVersionStoreDirty()
+	return nil
+}
+
+// SetProxmoxAPIToken sets proxmox-api-token, the Proxmox VE API token of the proxmox
+// orchestrator: through the credential chain, so it is a version in every active store and
+// encrypted in the saved config (F9), never logged (F10). Empty clears it.
+func (cluster *Cluster) SetProxmoxAPIToken(token string) error {
+	token = strings.TrimSpace(token)
+	if token != "" && (!strings.Contains(token, "!") || !strings.Contains(token, "=")) {
+		return errors.New("proxmox-api-token must be user@realm!tokenid=secret")
+	}
+	if err := cluster.CredentialChain().Set("proxmox-api-token", token); err != nil {
+		return err
+	}
+	cluster.Conf.ProxmoxAPIToken = token
+	cluster.MarkSecretVersionStoreDirty()
+	return nil
+}
+
+// SetProxmoxSetting sets one of the plain settings of the proxmox orchestrator:
+// proxmox-api-url, prov-db-host-vmids (validated: host=node/vmid pairs),
+// prov-db-host-upgrade-script.
+func (cluster *Cluster) SetProxmoxSetting(name string, value string) error {
+	value = strings.TrimSpace(value)
+	switch name {
+	case "proxmox-api-url":
+		cluster.Conf.ProxmoxAPIURL = value
+	case "prov-db-host-vmids":
+		if _, err := parseHostVMIDs(value); err != nil {
+			return err
+		}
+		cluster.Conf.ProvDbHostVmids = value
+	case "prov-db-host-upgrade-script":
+		cluster.Conf.ProvDbHostUpgradeScript = value
+	default:
+		return fmt.Errorf("%s is not a proxmox orchestrator setting", name)
+	}
+	return nil
+}
+
+// SetProvDbHostRebootTimeout sets prov-db-host-reboot-timeout: the seconds a host action and
+// the return of a rebooted host may take, more than 0.
+func (cluster *Cluster) SetProvDbHostRebootTimeout(value string) error {
+	v, err := strconv.Atoi(strings.TrimSpace(value))
+	if err != nil {
+		return err
+	}
+	if v <= 0 {
+		return fmt.Errorf("prov-db-host-reboot-timeout must be more than 0 seconds, got %d", v)
+	}
+	cluster.Conf.ProvDbHostRebootTimeout = v
 	return nil
 }
 

@@ -49,6 +49,10 @@ var tests = []string{
 	"testFailoverAllSlavesDelayRplChecksNoSemiSync",
 	"testFailoverNoRplChecksNoSemiSync",
 	"testFailoverNoRplChecksNoSemiSyncMasterHeartbeat",
+	"testFailoverSemisyncOutOfSyncAtSyncOff",
+	"testFailoverSemisyncOutOfSyncNoRplChecks",
+	"testFailoverSemisyncInSyncAllowed",
+	"testFailoverSemisyncDisabledAllowed",
 	"testFailoverNumberFailureLimitReach",
 	"testFailoverTimeNotReach",
 	"testCancelFailoverReplicationHeartbeatDetection",
@@ -111,6 +115,9 @@ var tests = []string{
 	// for a dedicated test cluster only. Run them by name.
 	// testBackupVerification is not in this list either: it cuts the last backup short on
 	// purpose, for a dedicated test cluster only. Run it by name.
+	// testCDCFeedPostgres is not in this list either: it needs a PostgreSQL source cluster
+	// (REPMAN_REGTEST_CDC_SOURCE_CLUSTER) and the capture plugin. Run it by name on the MariaDB
+	// cluster: /api/clusters/<cluster>/tests/actions/run/testCDCFeedPostgres
 	// testProxySQLPostgresRouting is not in this list either: it needs a
 	// PostgreSQL cluster behind a ProxySQL and switches the master over twice.
 	// Run it by name: /api/clusters/<cluster>/tests/actions/run/testProxySQLPostgresRouting
@@ -125,6 +132,12 @@ var tests = []string{
 	// test only). Same eligibility as above, plus the annotation of the claim; otherwise SKIP, before
 	// anything is changed. Run it by name:
 	// /api/clusters/<cluster>/tests/actions/run/testK8SDatabaseConfigParity
+	// testFailoverSemisyncReplicasOutOfSyncBlocked is not in this list either: it commits rows no
+	// replica has and stops the master, and on a build that promotes a replica (the bug it shows, #2438)
+	// it leaves a former master holding rows the promoted master lacks, a cluster the test does not
+	// repair. For a dedicated test cluster only. It checks its own targets (master-slave from 2 nodes):
+	// SKIP, before anything is changed. Run it by name:
+	// /api/clusters/<cluster>/tests/actions/run/testFailoverSemisyncReplicasOutOfSyncBlocked
 	"testRunSysbenchTPCPerMinuteIncreaseThreads",
 	"testConfigPersistBackupOption",
 	"testCredentialPersistTagReload",
@@ -132,6 +145,7 @@ var tests = []string{
 	"testAPIUserRotatePassword",
 	"testCredentialStoreSaveOnly",
 	"testAppSecretVersions",
+	"testVolumeSnapshotExternalPlugin",
 	"testCredentialConfigRotationScheduled",
 	"testConfigCookiePushBasic",
 	"testConfigCookiePushLifecycle",
@@ -200,6 +214,7 @@ var tests = []string{
 	"testAlterEngine",
 	"testColumnstoreChildCDC",
 	"testAnalyticChildCDC",
+	"testAnalyticChildDenormalize",
 	"testProvisionReplicationUser",
 }
 
@@ -273,6 +288,11 @@ var testTargets = map[string][]TestTarget{
 	"testFailoverAllSlavesDelayRplChecksNoSemiSync":                anyCluster,
 	"testFailoverNoRplChecksNoSemiSync":                            anyCluster,
 	"testFailoverNoRplChecksNoSemiSyncMasterHeartbeat":             anyCluster,
+	// #2438: master-slave from 2 nodes; each test sets its own semi-sync state and restores it (the fifth, ReplicasOutOfSyncBlocked, is named-only)
+	"testFailoverSemisyncOutOfSyncAtSyncOff":                       {{TopologyTarget: []string{config.TopoMasterSlave}, NumberNodesTarget: 2}},
+	"testFailoverSemisyncOutOfSyncNoRplChecks":                     {{TopologyTarget: []string{config.TopoMasterSlave}, NumberNodesTarget: 2}},
+	"testFailoverSemisyncInSyncAllowed":                            {{TopologyTarget: []string{config.TopoMasterSlave}, NumberNodesTarget: 2}},
+	"testFailoverSemisyncDisabledAllowed":                          {{TopologyTarget: []string{config.TopoMasterSlave}, NumberNodesTarget: 2}},
 	"testFailoverNumberFailureLimitReach":                          anyCluster,
 	"testFailoverTimeNotReach":                                     anyCluster,
 	// a direct replica receives from the master: the check reads it on master-slave only
@@ -340,6 +360,8 @@ var testTargets = map[string][]TestTarget{
 	"testK8SProvisionSchedulerVolumeBinding":                                   {{OrchestratorTarget: []string{config.ConstOrchestratorKubernetes}}},
 	"testK8SStopStartDatabaseService":                                          {{OrchestratorTarget: []string{config.ConstOrchestratorKubernetes}}},
 	"testSchemaPlugin":                                                         anyCluster,
+	// a fake external snapshot plugin on a replica (#2456): a master and a replica
+	"testVolumeSnapshotExternalPlugin": {{TopologyTarget: []string{config.TopoMasterSlave}, NumberNodesTarget: 2}},
 	"testJobsRoundTrip":                                                        {{OrchestratorTarget: []string{config.ConstOrchestratorOpenSVC, config.ConstOrchestratorKubernetes}}},
 	// its own local web service: any cluster
 	"testAppMonitorHTTP": anyCluster,
@@ -371,6 +393,7 @@ var testTargets = map[string][]TestTarget{
 	"testAlterEngine":                                                          anyCluster,
 	"testColumnstoreChildCDC":                                                  anyCluster,
 	"testAnalyticChildCDC":                                                     anyCluster,
+	"testAnalyticChildDenormalize":                                             anyCluster,
 
 	// #2227: a real rotation on MariaDB and MySQL, the versioned file on. Its variant with a vault
 	// entry, testCredentialVersionsRotationVault, is run by name on a cluster whose config enables

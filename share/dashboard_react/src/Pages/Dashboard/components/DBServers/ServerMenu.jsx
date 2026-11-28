@@ -3,6 +3,7 @@ import MenuOptions from '../../../../components/MenuOptions'
 import ConfirmModal from '../../../../components/Modals/ConfirmModal'
 import AdvancedReseedModal from '../../../../components/Modals/AdvancedReseedModal'
 import LostEventsModal from '../../../../components/Modals/LostEventsModal'
+import VolumeSnapshotsModal from '../../../../components/Modals/VolumeSnapshotsModal'
 import {
   abortDatabase,
   clearDatabase,
@@ -31,6 +32,8 @@ import {
   startDatabase,
   restartDatabase,
   upgradeDatabase,
+  hostActionDatabase,
+  getHostStatusDatabase,
   startSlave,
   stopDatabase,
   stopSlave,
@@ -114,6 +117,7 @@ function ServerMenu({
 
   // State for LostEventsModal (last divergence viewer)
   const [isLostEventsModalOpen, setIsLostEventsModalOpen] = useState(false)
+  const [isVolumeSnapshotsOpen, setIsVolumeSnapshotsOpen] = useState(false)
 
   const serverName = row?.id ? `server ${row.host}:${row.port} (${row.id})` : ''
 
@@ -358,6 +362,11 @@ function ServerMenu({
                 }
               },
               {
+                name: 'Volume Snapshots',
+                isDisabled: !user?.grants['db-backup'] && !user?.grants['cluster-show-backups'],
+                onClick: () => setIsVolumeSnapshotsOpen(true)
+              },
+              {
                 name: 'Flush logs',
                 isDisabled: !user?.grants['db-backup'],
                 onClick: () => {
@@ -438,6 +447,52 @@ function ServerMenu({
                   setConfirmHandler(() => () => dispatch(upgradeDatabase({ clusterName, serverId: row.id })))
                 }
               },
+              ...(orchestrator === 'proxmox'
+                ? [
+                    {
+                      name: 'Host (VM) Status',
+                      isDisabled: !user?.grants['db-show-status'],
+                      onClick: () => dispatch(getHostStatusDatabase({ clusterName, serverId: row.id }))
+                    },
+                    {
+                      name: 'Reboot Host (VM)',
+                      isDisabled: !user?.grants['db-start'] || !user?.grants['db-stop'],
+                      onClick: () => {
+                        openConfirmModal()
+                        setConfirmTitle(
+                          `Confirm reboot of the VM of ${serverName}? Refused while its database runs, unless the server is in maintenance, and always on the running master: stop the database or switch over first, or use the rolling upgrade.`
+                        )
+                        setConfirmHandler(
+                          () => () => dispatch(hostActionDatabase({ clusterName, serverId: row.id, action: 'reboot' }))
+                        )
+                      }
+                    },
+                    {
+                      name: 'Shutdown Host (VM)',
+                      isDisabled: !user?.grants['db-stop'],
+                      onClick: () => {
+                        openConfirmModal()
+                        setConfirmTitle(
+                          `Confirm shutdown of the VM of ${serverName}? Refused while its database runs, unless the server is in maintenance, and always on the running master: stop the database or switch over first.`
+                        )
+                        setConfirmHandler(
+                          () => () => dispatch(hostActionDatabase({ clusterName, serverId: row.id, action: 'stop' }))
+                        )
+                      }
+                    },
+                    {
+                      name: 'Start Host (VM)',
+                      isDisabled: !user?.grants['db-start'],
+                      onClick: () => {
+                        openConfirmModal()
+                        setConfirmTitle(`Confirm start of the VM of ${serverName}?`)
+                        setConfirmHandler(
+                          () => () => dispatch(hostActionDatabase({ clusterName, serverId: row.id, action: 'start' }))
+                        )
+                      }
+                    }
+                  ]
+                : []),
               ...(orchestrator === 'opensvc'
                 ? [
                     {
@@ -640,6 +695,16 @@ function ServerMenu({
             port: row.port
           }}
           backupType={reseedOperationType.includes('physical') ? backupPhysicalType : backupLogicalType}
+        />
+      )}
+
+      {isVolumeSnapshotsOpen && (
+        <VolumeSnapshotsModal
+          isOpen={isVolumeSnapshotsOpen}
+          closeModal={() => setIsVolumeSnapshotsOpen(false)}
+          clusterName={clusterName}
+          server={row}
+          user={user}
         />
       )}
 

@@ -9,6 +9,7 @@ package cluster
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/signal18/replication-manager/config/credstore"
 	"github.com/signal18/replication-manager/opensvc"
@@ -33,6 +34,7 @@ type Orchestrator interface {
 	AppOrchestrator
 	SecretOrchestrator
 	TerminalOrchestrator
+	HostOrchestrator
 }
 
 // OrchestratorInfo identifies an orchestrator and states what it can do.
@@ -65,6 +67,9 @@ type OrchestratorTraits struct {
 	ProvisionsNewHosts  bool // a child or self-service cluster can be provisioned on new servers: server_child_cluster.go, server_selfservice.go
 	HasTerminal         bool // a shell into the service container: server_tty.go, api.go
 	HasAtomicRestart    bool // a restart that is not a stop then a start: api_database.go restartSupportedForOrchestrator
+	HasHost             bool // the backend drives the machine under a database server (a hypervisor): the HostOrchestrator facet, the host step of the rolling upgrade
+	HostIsLocal         bool // the database runs on the monitor's own host: a command for the database host runs locally (srv_volume_snapshot.go)
+	HostBySSH           bool // the database host is reached over SSH (onpremise-ssh): a command for the database host runs there (srv_volume_snapshot.go)
 }
 
 // ServiceLayout is where a service keeps its data, configuration, binaries and socket, and
@@ -209,6 +214,28 @@ type TerminalCommand struct {
 	Username string
 	Password string
 	Key      string
+}
+
+// HostOrchestrator is the host under a database server (its VM), for a backend that drives a
+// hypervisor (design section 10.4). The other backends answer ErrOrchestratorNotSupported. The
+// service on the host stays the DatabaseOrchestrator's: a host backend owns the machine and
+// nothing inside it. Each method returns once the hypervisor reports the action done, bounded
+// by prov-db-host-reboot-timeout.
+type HostOrchestrator interface {
+	// StopHost shuts the VM down cleanly (never a hard power-off: the guest holds a database).
+	StopHost(server *ServerMonitor) error
+	StartHost(server *ServerMonitor) error
+	// RebootHost reboots the VM: a clean shutdown, then a start.
+	RebootHost(server *ServerMonitor) error
+	HostStatus(server *ServerMonitor) (HostStatus, error)
+}
+
+// HostStatus is what the hypervisor says of the VM under a server.
+type HostStatus struct {
+	Node   string        `json:"node"` // the hypervisor node the VM runs on
+	VMID   string        `json:"vmid"`
+	State  string        `json:"state"` // "running", "stopped", "paused", "unknown"
+	Uptime time.Duration `json:"-"`     // the API serves it in seconds (handlerMuxServerHostStatus)
 }
 
 // ErrOrchestratorNotSupported: the orchestrator has no such operation (a freeze on

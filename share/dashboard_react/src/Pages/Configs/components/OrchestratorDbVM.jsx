@@ -1,4 +1,4 @@
-import { VStack } from '@chakra-ui/react'
+import { Flex, Text, VStack } from '@chakra-ui/react'
 import React, { useState, useEffect } from 'react'
 
 import Dropdown from '../../../components/Dropdown'
@@ -10,10 +10,13 @@ import { setSetting, switchSetting } from '../../../redux/settingsSlice'
 import { getKubeStorageClasses } from '../../../redux/clusterSlice'
 import { convertObjectToArrayForDropdown } from '../../../utility/common'
 import RMSwitch from '../../../components/RMSwitch'
+import RMButton from '../../../components/RMButton'
+import SetCredentialsModal from '../../../components/Modals/SetCredentialsModal'
+import SSHPrivateKeyModal from '../../../components/Modals/SSHPrivateKeyModal'
 
 // the configurator's Databases / Proxies tabs (#2268): scope 'proxy' keeps the proxy rows, 'db' the
 // others (the database rows and those both share); no scope keeps every row
-const PROXY_ROWS = ['Proxy Start Timeout', 'Proxy VM', 'Kubernetes Proxy Storage Class']
+const PROXY_ROWS = ['Proxy Start Timeout', 'Proxy VM', 'Kubernetes Proxy Storage Class', 'SSH Start Proxy Script', 'SSH Stop Proxy Script']
 const scopedRows = (rows, scope) =>
   !scope ? rows : rows.filter((row) => (scope === 'proxy') === PROXY_ROWS.includes(row.key))
 
@@ -24,6 +27,29 @@ function OrchestratorDbVM({ selectedCluster, user, scope }) {
   } = useSelector((state) => state)
   const kubeStorageClasses = useSelector((state) => state.cluster?.kubeStorageClasses || [])
   const [serviceVMs, setServiceVMs] = useState([])
+  const [isSSHCredentialOpen, setIsSSHCredentialOpen] = useState(false)
+  const [isSSHKeyOpen, setIsSSHKeyOpen] = useState(false)
+  const canEdit = user?.grants?.['cluster-settings'] !== false
+  const orchestrator = selectedCluster?.config?.provOrchestrator
+  // the on-premise SSH settings: the onpremise orchestrator, and proxmox, which runs its host
+  // scripts in the guests over the same SSH
+  const usesSSH = orchestrator === 'onpremise' || orchestrator === 'proxmox'
+  // a local script of the replication-manager host, sent over SSH; base64 like every path
+  const sshScriptRow = (setting, key, field, body) => ({
+    clusterSetting: setting,
+    key,
+    value: (
+      <TextForm
+        value={selectedCluster?.config?.[field]}
+        placeholder='/etc/replication-manager/scripts/script.sh'
+        isDisabled={!canEdit}
+        maxLength={1024}
+        confirmTitle={`${key} Change`}
+        confirmBody={`${body} Empty: the built-in command. Change "${setting}" to: `}
+        onSave={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting, value: btoa(value) }))}
+      />
+    )
+  })
 
   useEffect(() => {
     if (monitor?.serviceVM) {
@@ -199,6 +225,155 @@ function OrchestratorDbVM({ selectedCluster, user, scope }) {
         />
       )
     },
+    ...(selectedCluster?.config?.provOrchestrator === 'proxmox'
+      ? [
+          {
+            clusterSetting: 'proxmox-api-url',
+            key: 'Proxmox API URL',
+            value: (
+              <TextForm
+                value={selectedCluster?.config?.proxmoxApiUrl}
+                placeholder='https://pve.example:8006'
+                confirmTitle='Proxmox API URL Change'
+                confirmBody='The Proxmox VE API endpoint of the hosts of this cluster. Change "proxmox-api-url" to: '
+                onSave={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'proxmox-api-url', value: btoa(value) }))}
+              />
+            )
+          },
+          {
+            clusterSetting: 'proxmox-api-token',
+            key: 'Proxmox API Token',
+            value: (
+              <TextForm
+                type='password'
+                value={selectedCluster?.config?.proxmoxApiToken || ''}
+                placeholder='user@realm!tokenid=secret'
+                confirmTitle='Proxmox API Token Change'
+                confirmBody='The API token, encrypted in the configuration and never logged. Change "proxmox-api-token"'
+                onSave={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'proxmox-api-token', value: btoa(value) }))}
+              />
+            )
+          },
+          {
+            clusterSetting: 'proxmox-api-insecure',
+            key: 'Proxmox API Accept Any Certificate',
+            value: (
+              <RMSwitch
+                isChecked={selectedCluster?.config?.proxmoxApiInsecure}
+                isDisabled={user?.grants['cluster-settings'] == false}
+                confirmTitle={'Confirm switch settings for proxmox-api-insecure (a lab only)?'}
+                onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'proxmox-api-insecure' }))}
+              />
+            )
+          },
+          {
+            clusterSetting: 'prov-db-host-vmids',
+            key: 'Database Host VMs (host=node/vmid)',
+            value: (
+              <TextForm
+                value={selectedCluster?.config?.provDbHostVmids}
+                placeholder='db1=pve1/101,db2=pve2/102'
+                confirmTitle='Database Host VMs Change'
+                confirmBody='The VM under each database server, host=node/vmid pairs comma separated. Change "prov-db-host-vmids" to: '
+                onSave={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'prov-db-host-vmids', value: btoa(value) }))}
+              />
+            )
+          },
+          {
+            clusterSetting: 'prov-db-rolling-upgrade-host',
+            key: 'Rolling Upgrade Reboots The Host',
+            value: (
+              <RMSwitch
+                isChecked={selectedCluster?.config?.provDbRollingUpgradeHost}
+                isDisabled={user?.grants['cluster-settings'] == false}
+                confirmTitle={'Confirm switch settings for prov-db-rolling-upgrade-host?'}
+                onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'prov-db-rolling-upgrade-host' }))}
+              />
+            )
+          },
+          {
+            clusterSetting: 'prov-db-host-upgrade-script',
+            key: 'Host Upgrade Script (run in the guest before the reboot)',
+            value: (
+              <TextForm
+                value={selectedCluster?.config?.provDbHostUpgradeScript}
+                placeholder='/etc/replication-manager/host-upgrade.sh'
+                confirmTitle='Host Upgrade Script Change'
+                confirmBody='A local script run over ssh in the guest before its reboot in the rolling upgrade; empty: reboot only. Change "prov-db-host-upgrade-script" to: '
+                onSave={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'prov-db-host-upgrade-script', value: btoa(value) }))}
+              />
+            )
+          },
+          {
+            clusterSetting: 'prov-db-host-reboot-timeout',
+            key: 'Host Reboot Timeout (s)',
+            value: (
+              <TextForm
+                value={selectedCluster?.config?.provDbHostRebootTimeout}
+                placeholder='600'
+                confirmTitle='Host Reboot Timeout Change'
+                confirmBody='Seconds for a host action and for a rebooted VM to run and answer on ssh. Change "prov-db-host-reboot-timeout" to: '
+                onSave={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'prov-db-host-reboot-timeout', value: value }))}
+              />
+            )
+          }
+        ]
+      : []),
+    ...(usesSSH
+      ? [
+          {
+            clusterSetting: 'onpremise-ssh',
+            key: 'SSH To The Hosts',
+            value: (
+              <RMSwitch
+                isChecked={selectedCluster?.config?.onpremiseSsh}
+                isDisabled={!canEdit}
+                confirmTitle={'Confirm switch settings for onpremise-ssh?'}
+                onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'onpremise-ssh' }))}
+              />
+            )
+          },
+          {
+            clusterSetting: 'onpremise-ssh-port',
+            key: 'SSH Port',
+            value: (
+              <TextForm
+                value={selectedCluster?.config?.onpremiseSshPort}
+                placeholder='22'
+                isDisabled={!canEdit}
+                confirmTitle='SSH Port Change'
+                confirmBody='The SSH port of the database and proxy hosts. Change "onpremise-ssh-port" to: '
+                onSave={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'onpremise-ssh-port', value }))}
+              />
+            )
+          },
+          {
+            clusterSetting: 'onpremise-ssh-credential',
+            key: 'SSH Credentials',
+            value: (
+              <Flex align='center' gap='3' wrap='wrap'>
+                <Text as='span' color='gray.500'>user:password ****</Text>
+                <RMButton isDisabled={!canEdit} onClick={() => setIsSSHCredentialOpen(true)}>Change</RMButton>
+              </Flex>
+            )
+          },
+          {
+            clusterSetting: 'onpremise-ssh-private-key',
+            key: 'SSH Private Key',
+            value: (
+              <Flex align='center' gap='3' wrap='wrap'>
+                <Text as='span' fontFamily='mono' fontSize='sm'>{selectedCluster?.config?.onpremiseSshPrivateKey || '~/.ssh/id_rsa (default)'}</Text>
+                <RMButton isDisabled={!canEdit} onClick={() => setIsSSHKeyOpen(true)}>Change</RMButton>
+              </Flex>
+            )
+          },
+          sshScriptRow('onpremise-ssh-start-db-script', 'SSH Start Database Script', 'onpremiseSshStartDbScript', 'Starts the database on its host.'),
+          sshScriptRow('onpremise-ssh-db-job-script', 'SSH Database Jobs Script', 'onpremiseSshDbJobScript', 'Runs the database jobs on its host.'),
+          sshScriptRow('onpremise-ssh-upgrade-db-script', 'SSH Upgrade Database Script', 'onpremiseSshUpgradeDbScript', 'Upgrades the database in the rolling upgrade.'),
+          sshScriptRow('onpremise-ssh-start-proxy-script', 'SSH Start Proxy Script', 'onpremiseSshStartProxyScript', 'Starts the proxy on its host.'),
+          sshScriptRow('onpremise-ssh-stop-proxy-script', 'SSH Stop Proxy Script', 'onpremiseSshStopProxyScript', 'Stops the proxy on its host.')
+        ]
+      : []),
     {
       clusterSetting: 'prov-docker-daemon-private',
       key: 'Provisioning Private Docker Daemon',
@@ -231,6 +406,15 @@ function OrchestratorDbVM({ selectedCluster, user, scope }) {
   return (
     <VStack>
       <TableType2 dataArray={scopedRows(dataObject, scope)} className={parentStyles.table} />
+      {isSSHCredentialOpen && (
+        <SetCredentialsModal clusterName={selectedCluster?.name} isOpen={isSSHCredentialOpen}
+          type='onpremise-ssh-credential' closeModal={() => setIsSSHCredentialOpen(false)} />
+      )}
+      {isSSHKeyOpen && (
+        <SSHPrivateKeyModal isOpen={isSSHKeyOpen} closeModal={() => setIsSSHKeyOpen(false)}
+          currentPath={selectedCluster?.config?.onpremiseSshPrivateKey}
+          onSave={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'onpremise-ssh-private-key', value: value ? btoa(value) : '', inBody: true }))} />
+      )}
     </VStack>
   )
 }

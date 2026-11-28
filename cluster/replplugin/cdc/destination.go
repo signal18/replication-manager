@@ -36,6 +36,24 @@ type Destination interface {
 	Apply(ctx context.Context, conn *sqlx.Conn, schema, table string, t wire.TableFiles, files map[string][]byte, name string, keys func([][]interface{}) error) (string, error)
 }
 
+// Truncater is a destination that empties a table its own way (an init of the denormalize
+// mode starts from an empty denormalized table); without it, the core deletes every row.
+type Truncater interface {
+	Truncate(ctx context.Context, conn *sqlx.Conn, schema, table string) error
+}
+
+// Positioner is a transactional destination that keeps the last checkpoint applied in its own
+// transaction: the core then applies each checkpoint in one transaction ending with
+// SavePosition, and at start takes Position when it is past <name>.applied.json (a crash
+// between the commit and that file). Without it, applied.json alone holds the position and a
+// checkpoint may be applied twice, which gives the same table.
+type Positioner interface {
+	// Position is the last checkpoint committed, a zero Applied when none
+	Position(ctx context.Context, conn *sqlx.Conn, plugin string) (wire.Applied, error)
+	// SavePosition records a in the transaction open on conn
+	SavePosition(ctx context.Context, conn *sqlx.Conn, plugin string, a wire.Applied) error
+}
+
 // TableDesc is a table of the source as the target holds it before the destination makes it
 // its own: what a destination checks.
 type TableDesc struct {

@@ -441,6 +441,7 @@ func (repman *ReplicationManager) httpserver() {
 		))
 		repman.apiMeetProtectedHandler(router)
 		repman.apiClusterProtectedHandler(router)
+		repman.apiVolumeSnapshotProtectedHandler(router)
 		repman.apiDatabaseProtectedHandler(router)
 		repman.apiProxyProtectedHandler(router)
 		repman.apiAppProtectedHandler(router)

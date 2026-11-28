@@ -34,6 +34,7 @@ func (o *localhostOrchestrator) Traits() OrchestratorTraits {
 	return OrchestratorTraits{
 		HasImage:           true,
 		StartFetchesConfig: true,
+		HostIsLocal:        true,
 	}
 }
 

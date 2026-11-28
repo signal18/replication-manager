@@ -14290,6 +14290,8 @@ Status: Internal Server Error
 | arbitratorBindAddress | string| `string` |  | |  |  |
 | arbitratorDriver | string| `string` |  | |  |  |
 | autorejoin | boolean| `bool` |  | |  |  |
+| autorejoinAsyncFlashbackDropBinlog | boolean| `bool` |  | |  |  |
+| autorejoinAsyncFlashbackDropBinlogMaxTransactions | integer| `int` |  | |  |  |
 | autorejoinBackupBinlog | boolean| `bool` |  | |  |  |
 | autorejoinFlashback | boolean| `bool` |  | |  |  |
 | autorejoinFlashbackOnSync | boolean| `bool` |  | |  |  |

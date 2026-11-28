@@ -82,6 +82,9 @@ func (cluster *Cluster) resolveReplPluginSource(cfg wire.Config) *ServerMonitor 
 		}
 		replica = !srv.IsMaster()
 	}
+	if cfg.SourceKind != "" {
+		return srv // a capture source checks its own engine's settings, its status says them
+	}
 	if why := replSourceRefusal(srv, replica); why != "" {
 		cluster.SetState("ERR00130", state.State{ErrType: config.LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00130"], name, cluster.Name, srv.URL, why), ErrFrom: "REPL"})
 		return nil

@@ -85,10 +85,10 @@ func TestCanRotatePasswords(t *testing.T) {
 		}, "immutable"},
 		{"a database down", func(c *Cluster) { c.Servers = append(c.Servers, &ServerMonitor{State: stateFailed}) }, "databases are down"},
 		{"replication stopped on a replica", func(c *Cluster) {
-			replica := &ServerMonitor{State: stateSlave, Conn: &sqlx.DB{}, Replications: []dbhelper.SlaveStatus{{
+			replica := &ServerMonitor{State: stateSlave, Conn: &sqlx.DB{}, Replications: nativeRows([]dbhelper.SlaveStatus{{
 				SlaveIORunning:  sql.NullString{String: "Yes", Valid: true},
 				SlaveSQLRunning: sql.NullString{String: "No", Valid: true},
-			}}}
+			}}...)}
 			c.Servers = append(c.Servers, replica)
 			c.slaves = serverList{replica}
 		}, "replication is not running"},

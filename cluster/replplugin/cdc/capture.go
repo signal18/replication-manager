@@ -77,6 +77,10 @@ type capture struct {
 	last     atomic.Pointer[wire.Status] // the last status line, printed again while paused
 	txCap    int64                       // a source transaction larger than this stops the plugin
 	txSize   int64                       // the row events of the current transaction
+	// the denormalize mode: the source tables of the indexes, and the open
+	// micro_checkpoint_pack, per source table
+	packTables map[string]bool
+	packs      map[string]*packBuf
 }
 
 func (c *capture) buf(t *schema.Table) *tableBuf {
@@ -108,9 +112,16 @@ func (c *capture) tsv(t *schema.Table, r []interface{}) row {
 func (c *capture) OnRow(e *canal.RowsEvent) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	packed := c.pack(e)
 	if !c.cfg.Matches(e.Table.Schema, e.Table.Name) {
-		c.st.Skipped += int64(len(e.Rows))
-		return nil
+		if !packed {
+			c.st.Skipped += int64(len(e.Rows))
+			return nil
+		}
+		c.inTx = true
+		c.lastTS = e.Header.Timestamp
+		c.rows += len(e.Rows)
+		return c.addRowEvent(int64(e.Header.EventSize))
 	}
 	c.inTx = true
 	c.lastTS = e.Header.Timestamp
@@ -161,6 +172,25 @@ func (c *capture) addRowEvent(size int64) error {
 		c.flushDue = true // at the transaction's end
 	}
 	return nil
+}
+
+// pack records a rows event of an index's source table in the open micro_checkpoint_pack;
+// false when the table is no index's.
+func (c *capture) pack(e *canal.RowsEvent) bool {
+	name := e.Table.Schema + "." + e.Table.Name
+	if !c.packTables[name] {
+		return false
+	}
+	b, ok := c.packs[name]
+	if !ok || b.t != e.Table {
+		if !ok || b.empty() {
+			b = newPackBuf(e.Table)
+			c.packs[name] = b
+		}
+	}
+	b.pack(e.Action, e.Rows)
+	c.st.Packed += int64(len(e.Rows))
+	return true
 }
 
 func (c *capture) OnXID(_ *replication.EventHeader, _ mysql.Position) error {
@@ -216,7 +246,11 @@ func (c *capture) flushLocked() error {
 	c.flushDue = false
 	c.opened = time.Now()
 	tables, files := renderTables(c.bufs)
-	if len(tables) == 0 {
+	packs, packFiles := renderPacks(c.packs)
+	for k, v := range packFiles {
+		files[k] = v
+	}
+	if len(tables) == 0 && len(packs) == 0 {
 		if c.gtid != "" && c.gtid != c.state.GTID {
 			c.state.GTID = c.gtid
 			return wire.WriteState(c.statePath, c.state)
@@ -224,14 +258,14 @@ func (c *capture) flushLocked() error {
 		return nil
 	}
 	seq := c.state.Seq + 1
-	if err := c.w.write(wire.Manifest{Seq: seq, GTID: c.gtid, Tables: tables}, files); err != nil {
+	if err := c.w.write(wire.Manifest{Seq: seq, GTID: c.gtid, Tables: tables, Packs: packs}, files); err != nil {
 		return fmt.Errorf("checkpoint %d: %w", seq, err)
 	}
 	c.state.Seq, c.state.GTID = seq, c.gtid
 	if err := wire.WriteState(c.statePath, c.state); err != nil {
 		return err
 	}
-	c.bufs, c.rows, c.size = map[string]*tableBuf{}, 0, 0
+	c.bufs, c.packs, c.rows, c.size = map[string]*tableBuf{}, map[string]*packBuf{}, 0, 0
 	return nil
 }
 
@@ -399,11 +433,18 @@ func fail(c *capture, err error) {
 	os.Exit(1)
 }
 
-// Main runs a destination plugin: -config its TOML; with -create, the tables of its rules are
-// made the destination's on the target, one CreateResult JSON line each, and it exits.
-func Main(dest Destination) {
+// Main runs a destination plugin of a MariaDB source (its binlog): -config its TOML; with
+// -create, the tables of its rules are made the destination's on the target, one CreateResult
+// JSON line each, and it exits.
+func Main(dest Destination) { MainSource(dest, nil) }
+
+// MainSource runs a destination plugin with a capture source of its own (source.go), or the
+// core's binlog capture when src is nil. With -drop, a source that is a Dropper removes what it
+// created on the source server for the feed (State.Owned), and the plugin exits.
+func MainSource(dest Destination, src Source) {
 	configPath := flag.String("config", "", "the plugin's TOML (<cluster datadir>/replication-plugins/<name>.toml)")
 	create := flag.Bool("create", false, "make the tables of the rules the destination's on the target, print one JSON line per table, exit")
+	drop := flag.Bool("drop", false, "remove what the capture source created on the source server for this feed (its State's owned objects), exit")
 	flag.Parse()
 	if *configPath == "" {
 		fail(nil, fmt.Errorf("-config is required"))
@@ -415,8 +456,23 @@ func Main(dest Destination) {
 	if v := os.Getenv(wire.EnvWireVersion); v != "" && v != strconv.Itoa(wire.WireVersion) {
 		fail(nil, fmt.Errorf("replication-manager speaks wire %s, this plugin wire %d", v, wire.WireVersion))
 	}
+	switch {
+	case src == nil && cfg.SourceKind != "":
+		fail(nil, fmt.Errorf("source_kind %q: this plugin reads a MariaDB binlog only", cfg.SourceKind))
+	case src != nil && cfg.SourceKind != src.Kind():
+		fail(nil, fmt.Errorf("source_kind %q: this plugin captures %q", cfg.SourceKind, src.Kind()))
+	case src != nil && len(cfg.Indexes) > 0:
+		fail(nil, fmt.Errorf("the denormalize mode needs a MariaDB source"))
+	}
+	statePath := wire.StatePath(*configPath)
 	if *create {
+		if src != nil {
+			fail(nil, fmt.Errorf("-create is the seed of an analytic child: a capture source makes its tables at its initial load"))
+		}
 		os.Exit(runCreate(cfg, dest))
+	}
+	if *drop {
+		os.Exit(runDrop(cfg, statePath, src))
 	}
 	if cfg.BatchTimeoutMs <= 0 {
 		cfg.BatchTimeoutMs = 10000
@@ -424,12 +480,17 @@ func Main(dest Destination) {
 	if cfg.RestoreBatchTimeoutMs <= 0 {
 		cfg.RestoreBatchTimeoutMs = 30000
 	}
-	statePath := wire.StatePath(*configPath)
 	state, err := wire.ReadState(statePath)
 	if err != nil {
 		fail(nil, fmt.Errorf("state %s: %w", statePath, err))
 	}
-	if !state.RestoreDone && state.Seq > 0 {
+	if state.NeedsInit {
+		// replication-manager does not start it then; run by hand, it says so and stops
+		b, _ := json.Marshal(wire.Status{Wire: wire.WireVersion, Time: time.Now().UTC().Format(time.RFC3339), State: wire.StateNeedsInit, Error: state.Reason, GTID: state.GTID, SourceKind: cfg.SourceKind})
+		fmt.Println(string(b))
+		os.Exit(3)
+	}
+	if src == nil && !state.RestoreDone && state.Seq > 0 {
 		fail(nil, fmt.Errorf("a restore was interrupted after %d checkpoints: the child must be seeded again", state.Seq))
 	}
 	// a crash between a checkpoint's file and the State that records it: the next checkpoint
@@ -440,38 +501,25 @@ func Main(dest Destination) {
 		cfg.Rules = wire.RulesOf(state.Tables)
 	}
 
-	ap := &applier{dest: dest, cfg: cfg, path: *configPath}
+	ap := &applier{dest: dest, cfg: cfg, path: *configPath, fresh: !state.RestoreDone && state.Seq == 0}
 	c := &capture{cfg: cfg, statePath: statePath, state: state, bufs: map[string]*tableBuf{}, keyErrs: map[string]bool{}, gtid: state.GTID, opened: time.Now(), ap: ap,
-		maxSize: sizeBytes(cfg.BatchMB), maxAge: time.Duration(cfg.BatchTimeoutMs) * time.Millisecond}
+		maxSize: sizeBytes(cfg.BatchMB), maxAge: time.Duration(cfg.BatchTimeoutMs) * time.Millisecond, packs: map[string]*packBuf{}}
+	if len(cfg.Indexes) > 0 {
+		// the denormalize mode: the indexes resolved on the source, their source tables packed
+		src, err := SourceDB(cfg)
+		if err != nil {
+			fail(c, err)
+		}
+		defer src.Close()
+		ap.src = src
+		if ap.indexes, c.packTables, err = resolveIndexes(context.Background(), cfg, src); err != nil {
+			fail(c, err)
+		}
+	}
 	c.txCap = mbBytes(cfg.MaxPendingMB)
 	c.w = &checkpointWriter{dir: wire.CheckpointDir(*configPath), maxPending: mbBytes(cfg.MaxPendingMB), paused: func(p int64) {
 		c.pausedMB.Store(p >> 20) // c.mu is held by the caller: never taken here
 	}}
-
-	ccfg := canal.NewDefaultConfig()
-	ccfg.Addr = fmt.Sprintf("%s:%d", cfg.Source.Host, cfg.Source.Port)
-	ccfg.User = cfg.Source.User
-	ccfg.Password = os.Getenv(wire.EnvSourcePassword)
-	ccfg.Flavor = mysql.MariaDBFlavor
-	if cfg.ServerID > 0 {
-		ccfg.ServerID = cfg.ServerID
-	}
-	ccfg.Dump.ExecutionPath = "" // no dump: the restore's rows come on stdin
-	// the tables carried are known at the restore's end: filtered in OnRow. canal keeps only
-	// a table an include matches, the excludes then removing some: an exclude alone
-	// excludes every table
-	ccfg.IncludeTableRegex = []string{`^.*\..*$`}
-	ccfg.ExcludeTableRegex = []string{`^mysql\..*$`} // replication_manager_schema's load-test tables are carried (#2015)
-	cc, err := canal.NewCanal(ccfg)
-	if err != nil {
-		fail(c, fmt.Errorf("source %s: %w", ccfg.Addr, err))
-	}
-	c.c = cc
-	cc.SetEventHandler(c)
-
-	applyCtx, stopApply := context.WithCancel(context.Background())
-	defer stopApply()
-	go ap.run(applyCtx)
 
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGTERM, syscall.SIGINT)
@@ -498,6 +546,40 @@ func Main(dest Destination) {
 			c.status(wire.StateRunning, "")
 		}
 	}
+	if src != nil {
+		runSource(c, ap, src, sig, tick, ticker)
+		return
+	}
+	runBinlog(c, ap, cfg, state, sig, tick, ticker)
+}
+
+// runBinlog is the core's own capture: the source's MariaDB binlog, from the State's GTID, or
+// after the seed's restore read on stdin.
+func runBinlog(c *capture, ap *applier, cfg wire.Config, state wire.State, sig <-chan os.Signal, tick func(), ticker *time.Ticker) {
+	ccfg := canal.NewDefaultConfig()
+	ccfg.Addr = fmt.Sprintf("%s:%d", cfg.Source.Host, cfg.Source.Port)
+	ccfg.User = cfg.Source.User
+	ccfg.Password = os.Getenv(wire.EnvSourcePassword)
+	ccfg.Flavor = mysql.MariaDBFlavor
+	if cfg.ServerID > 0 {
+		ccfg.ServerID = cfg.ServerID
+	}
+	ccfg.Dump.ExecutionPath = "" // no dump: the restore's rows come on stdin
+	// the tables carried are known at the restore's end: filtered in OnRow. canal keeps only
+	// a table an include matches, the excludes then removing some: an exclude alone
+	// excludes every table
+	ccfg.IncludeTableRegex = []string{`^.*\..*$`}
+	ccfg.ExcludeTableRegex = []string{`^mysql\..*$`} // replication_manager_schema's load-test tables are carried (#2015)
+	cc, err := canal.NewCanal(ccfg)
+	if err != nil {
+		fail(c, fmt.Errorf("source %s: %w", ccfg.Addr, err))
+	}
+	c.c = cc
+	cc.SetEventHandler(c)
+
+	applyCtx, stopApply := context.WithCancel(context.Background())
+	defer stopApply()
+	go ap.run(applyCtx)
 
 	started := make(chan struct{})
 	if state.RestoreDone {

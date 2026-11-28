@@ -35,7 +35,8 @@ var orchestratorDispatchAllowed = map[string]int{
 	"cluster/orchestrator_localhost.go": 10,
 	"cluster/orchestrator_onpremise.go": 12,
 	"cluster/orchestrator_opensvc.go":   32,
-	"cluster/orchestrator_registry.go":  5,
+	"cluster/orchestrator_proxmox.go":   1, // step 3b: its Type()
+	"cluster/orchestrator_registry.go":  8, // step 3b: the proxmox case, serviceOrchestratorType
 	"cluster/orchestrator_slapos.go":    8,
 	// the backends themselves, until they move behind the adapters
 	"cluster/app_resize_dynamic.go":      7, // develop at the 2026-11-23 merge (app live resize, #2417)
@@ -97,6 +98,7 @@ var orchestratorDispatchAllowed = map[string]int{
 	"cluster/srv_job.go":                   1,
 	"cluster/srv_job_backup.go":            1,
 	"cluster/srv_job_postgres.go":          3,
+	"cluster/srv_volume_snapshot.go":       1, // OnPremiseConnect: the SSH session to the database host, as srv_job.go
 	"cluster/srv_set.go":                   1,
 	"cluster/srv_wal_archive.go":           2,
 	"mcp/tools_app.go":                     6,

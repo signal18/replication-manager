@@ -103,6 +103,13 @@ type Cluster struct {
 	// read through Orchestrator() and orchestrator(server), never directly.
 	Orchestrators      map[string]Orchestrator `json:"-"`
 	orchestratorsMutex sync.RWMutex            `json:"-"`
+	// ReplicationPlugins are the cluster's replication plugins by name
+	// (newReplicationPluginList); read through ReplicationPlugin(name), never directly.
+	ReplicationPlugins      map[string]ReplicationPlugin `json:"-"`
+	replicationPluginsMutex sync.RWMutex                 `json:"-"`
+	// hostStepDeadlines: server URL -> the one deadline of a rolling host step (the reboot
+	// and the wait for the host share it, cluster_roll_host.go)
+	hostStepDeadlines sync.Map `json:"-"`
 	// MasterChangeTs is when the CURRENT master was designated in this process (failover,
 	// switchover, or first discovery). Anchors the rejoin staleness guards (#1793): a crash
 	// record older than this names a loser that is no longer relevant to the live master.
@@ -225,6 +232,7 @@ type Cluster struct {
 	backupMount    backupMount                // the backups folder mount (#2091)
 	snapbackMu     sync.Mutex                 // guards snapbacks
 	snapbacks      map[string]*SnapbackState  // server URL -> its backup directory's snapback (#2091), nil until read
+	vsnap          volumeSnapshots            // the last volume snapshot action of each server (#2443)
 	binlogGapMu    sync.Mutex                 // guards binlogGaps and binlogInSnapshotFile
 	binlogGaps     map[string]*BinlogGap      // server URL -> its lost binlog continuity in the archive (#2091), nil until read
 	catalogueMu    sync.Mutex                 // guards catalogueSaved
@@ -474,6 +482,8 @@ type Cluster struct {
 	rollingReprovMutex     sync.Mutex               `json:"-"`
 	openSVCCert            openSVCCertState         `json:"-"`
 	Mailer                 *mailer.Mailer           `json:"-"`
+	alertChannelsOnce      sync.Once                // alertChannels(): the registry, built at first use
+	alertChannelReg        *alertChannelRegistry    // the alert channels and their queues (alert_channel_registry.go)
 	ResticManager          *backupmgr.ResticManager `json:"-"`
 	resolvedS3Mode         string                   // probe-resolved S3 mode during auto startup; "" if not yet probed
 	MessageChan            chan sharedlog.Message   `json:"-"`
@@ -481,7 +491,7 @@ type Cluster struct {
 	Partner                *config.Partner          `json:"partner" groups:"web"`
 	ServerGlobals          *ServerGlobals           `json:"-"`
 	ConfigManager          *manager.ConfigManager   `json:"-"`
-	failSendCount          int                      `json:"-"`
+	failSendCount          atomic.Int32             `json:"-"` // written by the mail worker, read by the tick
 	MeetUserID             string                   `json:"-"` //To store meet user id
 	ServiceTemplates       []string                 `json:"-"` //To store application templates
 	DiskStatManager        *misc.DiskStatManager    `json:"diskStat" groups:"web"`
@@ -655,6 +665,7 @@ type Cluster struct {
 	replPlugins          map[string]*replPluginRunner         `json:"-"` // replication plugins by TOML path (#2015)
 	columnstoreFeed      atomic.Pointer[replFeed]             `json:"-"` // the seed's restore feeding replplugin-columnstore (#2015)
 	replPluginsMu        sync.Mutex                           `json:"-"`
+	replPluginsHeld      map[string]bool                      `json:"-"` // the TOMLs a rebuild or a removal holds stopped, under replPluginsMu
 	analyticCreating     atomic.Pointer[time.Time]            `json:"-"` // the analytic child's -create running since (CINF0031)
 	replManifests        sync.Map                             `json:"-"` // replication plugin manifests read, by binary path, with its modification time
 	// backupVerifying holds the backups being verified (#2023): backup id -> level.
@@ -903,6 +914,7 @@ func (cluster *Cluster) InitFromConf() {
 	}
 	cluster.ensureCloud18Provider() // registered to Cloud18: the Cloud18 storage, SSO (#2091)
 	cluster.LoadArchivePlugins()    // the external archive plugins' manifests, once per process (#2091)
+	cluster.LoadSnapshotPlugins()   // the external snapshot plugins' manifests, once per process (#2443)
 
 	// the newest version the vault entries hold, read once before monitoring begins, for
 	// the secrets the local file does not version (#2227 rule 1b, bounded); first, a
@@ -1073,6 +1085,10 @@ func (cluster *Cluster) InitFromConf() {
 	err = cluster.newOrchestratorList()
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could not set orchestrator list %s", err)
+	}
+	err = cluster.newReplicationPluginList()
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could not set replication plugin list %s", err)
 	}
 	// Proxies were just rebuilt with no knowledge of maintenance restored onto
 	// Servers above (see newServerMonitor) -- replay the notification so
@@ -1584,6 +1600,8 @@ func (cluster *Cluster) tickBody() {
 		cluster.CheckAppSandboxRuntime()
 		// the apps the instance admin trusts run without the sandbox runtime
 		cluster.CheckAppDockerTrusted()
+		// the host step of the rolling upgrade without effect: no host backend, servers without a VM
+		cluster.CheckRollingUpgradeHost()
 		// Run generic log-tailer plugin checks (errorlog / sqlerrorlog / slowlog 24h)
 		cluster.CheckLogPlugins()
 		// Replication plugins: supervised on the active monitor only (#2015)
@@ -1787,6 +1805,7 @@ func (cluster *Cluster) StateProcessing() {
 	}
 
 	cluster.CheckSendMail()
+	cluster.CheckAlertChannels()
 }
 
 // dispatchPhysicalJob streams the backup of a physical reseed or flashback, once per reseed, off
@@ -1936,6 +1955,8 @@ func (cluster *Cluster) Stop() {
 		phase("saveConfig", func() {
 			cluster.ConfigManager.SaveConfig(cluster, true)
 		})
+		// last: the phases above may still alert
+		phase("alertChannels", cluster.stopAlertChannels)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Stop[%s] done, total %s", cluster.Name, time.Since(stopStart))
 	})
 }
@@ -2481,6 +2502,16 @@ func (cluster *Cluster) SaveConfigFile() (bool, error) {
 		buf.WriteString(archives)
 	}
 
+	// the indexes of an analytic child's denormalize mode, unless a config file pins them
+	if !cluster.ReplicationPluginIndexesPinned() {
+		indexes, err := cluster.Conf.ReplicationPluginIndexesToml("saved-" + cluster.Name)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Error rendering the index list: %s", err)
+			return false, err
+		}
+		buf.WriteString(indexes)
+	}
+
 	// the credential store entries, unless a config file pins them (#2227)
 	if _, pinned := cluster.Conf.GetImmuableFlag("secret-kv"); !pinned {
 		stores, err := cluster.Conf.SecretKvsToml("saved-" + cluster.Name)
@@ -2489,6 +2520,16 @@ func (cluster *Cluster) SaveConfigFile() (bool, error) {
 			return false, err
 		}
 		buf.WriteString(stores)
+	}
+
+	// the settings of the external snapshot plugins, unless a config file pins them (#2456)
+	if _, pinned := cluster.Conf.GetImmuableFlag("snapshot-plugin"); !pinned {
+		entries, err := cluster.Conf.SnapshotPluginEntriesToml("saved-" + cluster.Name)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Error rendering the snapshot plugin settings: %s", err)
+			return false, err
+		}
+		buf.WriteString(entries)
 	}
 
 	// the S3 provider list, unless the config does not keep it (#2155)
@@ -2661,6 +2702,8 @@ func (cluster *Cluster) GetEncryptedValueFromMemory(key string) string {
 		return cluster.Conf.GetStableEncryptedValue("backup-verification-credential", cluster.Conf.GetDecryptedValue("backup-verification-credential"))
 	case "haproxy-password":
 		return cluster.Conf.GetStableEncryptedValue("haproxy-password", cluster.Conf.GetDecryptedValue("haproxy-password"))
+	case "proxmox-api-token":
+		return cluster.Conf.GetStableEncryptedValue("proxmox-api-token", cluster.Conf.GetDecryptedValue("proxmox-api-token"))
 	case "maxscale-pass":
 		return cluster.Conf.GetStableEncryptedValue("maxscale-pass", cluster.Conf.GetDecryptedValue("maxscale-pass"))
 	case "myproxy-password":
@@ -2686,6 +2729,8 @@ func (cluster *Cluster) GetEncryptedValueFromMemory(key string) string {
 		return cluster.Conf.GetStableEncryptedValue("alert-pushover-user-token", cluster.Conf.GetDecryptedValue("alert-pushover-user-token"))
 	case "alert-pushover-app-token":
 		return cluster.Conf.GetStableEncryptedValue("alert-pushover-app-token", cluster.Conf.GetDecryptedValue("alert-pushover-app-token"))
+	case "alert-alertmanager-password", "alert-alertmanager-bearer-token", "alert-telegram-bot-token":
+		return cluster.Conf.GetStableEncryptedValue(key, cluster.Conf.GetDecryptedValue(key))
 	case "mail-smtp-password":
 		return cluster.Conf.GetStableEncryptedValue("mail-smtp-password", cluster.Conf.GetDecryptedValue("mail-smtp-password"))
 	case "api-oauth-client-secret":
@@ -3758,7 +3803,7 @@ func (cluster *Cluster) LostArbitration(realmasterurl string) {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Arbitration failed master script complete: %s", string(out))
 	} else {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Arbitration failed attaching failed master %s to electected master :%s", master.URL, realmaster.URL)
-		logs, err := master.SetReplicationGTIDCurrentPosFromServer(realmaster)
+		logs, err := master.SetReplicationGTIDCurrentPosFromServer(realmaster, LinkByArbitration)
 		cluster.LogSQL(logs, err, realmaster.URL, "Arbitration", config.LvlErr, "Failed in GTID rejoin lost master to winner master %s", err)
 
 	}

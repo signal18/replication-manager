@@ -4,7 +4,8 @@ import styles from './styles.module.scss'
 import RMSwitch from '../../components/RMSwitch'
 import { useDispatch, useSelector } from 'react-redux'
 import TableType2 from '../../components/TableType2'
-import { switchSetting } from '../../redux/settingsSlice'
+import { setSetting, switchSetting } from '../../redux/settingsSlice'
+import TextForm from '../../components/TextForm'
 import CommonModal from '../../components/Modals/CommonModal'
 import modalStyles from '../../components/Modals/styles.module.scss'
 import Markdown from 'react-markdown'
@@ -24,7 +25,7 @@ function RejoinSettings({ selectedCluster, user, openConfirmModal }) {
 
   const h = (content, title) => <RMIconButton icon={HiQuestionMarkCircle} onClick={() => openInfoModal(title, content)} iconFontsize='1rem' variant='ghost' style={{ opacity: 0.5, minWidth: '1.5rem', height: '1.5rem' }} />
 
-  const { settings: { arLoading, arBackupBinlogLoading, arFlashbackOnSyncLoading, arFlashbackLoading, arMysqldumpLoading, arLogicalBackupLoading, arPhysicalBackupLoading, arForceRestoreLoading, autoseedLoading } } = useSelector((state) => state)
+  const { settings: { arLoading, arBackupBinlogLoading, arFlashbackOnSyncLoading, arFlashbackLoading, arAsyncFlashbackDropBinlogLoading, arMysqldumpLoading, arLogicalBackupLoading, arPhysicalBackupLoading, arForceRestoreLoading, autoseedLoading } } = useSelector((state) => state)
 
   const sw = (setting, configKey, loading) => <RMSwitch confirmTitle={`Confirm switch settings for ${setting}?`} onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting }))} isDisabled={user?.grants['cluster-settings'] == false} isChecked={selectedCluster?.config?.[configKey]} loading={loading} />
 
@@ -32,6 +33,8 @@ function RejoinSettings({ selectedCluster, user, openConfirmModal }) {
   const hBinlog = `**Failback Backup Extra Events**\n\nSaves binary log events that occurred on the new master between the crash and the failover.\nCan later be replayed to recover transactions not yet replicated at the time of failure.\n\nConfig: \`autorejoin-backup-binlog\``
   const hFlashbackSync = `**Failback Flashback When Semi-Sync Sync**\n\nEnables flashback-based rejoin when the cluster was in a semi-synchronous sync state at failover.\nRolls back divergent transactions rather than doing a full reseed.\n\nConfig: \`autorejoin-flashback-on-sync\``
   const hFlashback = `**Failback Binlog Flashback**\n\nUses MariaDB's FLASHBACK to reverse divergent transactions on the rejoining node.\nFaster than a full mysqldump reseed. Requires MariaDB 10.2+ with ROW binlog format.\n\nConfig: \`autorejoin-flashback\``
+  const hAsyncDropBinlog = `**Failback Async Flashback Drops The Binary Log**\n\nAfter the flashback of an old master that replicated asynchronously, its binary log still holds the transactions the flashback reversed, past the position it rejoins at. On (default): repman drops that binary log (RESET MASTER, then gtid_binlog_state set to the rejoin position) only when every guard holds, each checked on the live server: not in semi-sync at the failover, the lost events copied first, the replay applied exactly the saved transactions, no more than the cap, one GTID domain, past the position only those transactions of the old master, nobody reading its binary log (no binlog dump thread, no replication from it). A guard that fails keeps the binary log, with a warning naming it. After a drop, the binlog backup chain of that server is reported broken until its next backup.\nOff: the binary log is kept, the previous behaviour; with gtid_strict_mode the rejoin position is then refused (error 1947) and the rejoin falls back to a reseed.\n\nConfig: \`autorejoin-async-flashback-drop-binlog\``
+  const hDropMax = `**Failback Async Flashback Drop Cap**\n\nMost lost transactions the binlog drop of the flashback rejoin is done for; above it the binary log is kept and the rejoin falls back to a reseed. 0 is the default, 10000.\n\nConfig: \`autorejoin-async-flashback-drop-binlog-max-transactions\``
   const hDump = `**Failback Direct Master Dump**\n\nReseeds the rejoining node by streaming a live mysqldump from the current master.\nSafe choice when the node is heavily diverged.\n\nConfig: \`autorejoin-mysqldump\``
   const hLogical = `**Failback Via Logical Backup**\n\nReseeds from the most recent logical backup (mysqldump, mydumper).\nAvoids load on the live master at the cost of using a potentially older backup.\n\nConfig: \`autorejoin-logical-backup\``
   const hPhysical = `**Failback Via Physical Backup**\n\nReseeds from the most recent physical backup (Xtrabackup, Mariabackup).\nFastest restore for large datasets.\n\nConfig: \`autorejoin-physical-backup\``
@@ -43,6 +46,8 @@ function RejoinSettings({ selectedCluster, user, openConfirmModal }) {
     { clusterSetting: 'autorejoin-backup-binlog', key: 'Failback Backup Extra Events', help: h(hBinlog, 'Failback Backup Extra Events'), value: sw('autorejoin-backup-binlog', 'autorejoinBackupBinlog', arBackupBinlogLoading) },
     { clusterSetting: 'autorejoin-flashback-on-sync', key: 'Failback Flashback When Semi-Sync Status Sync', help: h(hFlashbackSync, 'Failback Flashback When Semi-Sync Status Sync'), value: sw('autorejoin-flashback-on-sync', 'autorejoinFlashbackOnSync', arFlashbackOnSyncLoading) },
     { clusterSetting: 'autorejoin-flashback', key: 'Failback Binlog Flashback', help: h(hFlashback, 'Failback Binlog Flashback'), value: sw('autorejoin-flashback', 'autorejoinFlashback', arFlashbackLoading) },
+    { clusterSetting: 'autorejoin-async-flashback-drop-binlog', key: 'Failback Async Flashback Drops The Binary Log', help: h(hAsyncDropBinlog, 'Failback Async Flashback Drops The Binary Log'), value: sw('autorejoin-async-flashback-drop-binlog', 'autorejoinAsyncFlashbackDropBinlog', arAsyncFlashbackDropBinlogLoading) },
+    { clusterSetting: 'autorejoin-async-flashback-drop-binlog-max-transactions', key: 'Failback Async Flashback Drop Cap', help: h(hDropMax, 'Failback Async Flashback Drop Cap'), value: (<TextForm value={String(selectedCluster?.config?.autorejoinAsyncFlashbackDropBinlogMaxTransactions ?? 0)} regexPattern={'^[0-9]+$'} confirmTitle={'Confirm autorejoin-async-flashback-drop-binlog-max-transactions to '} onSave={(v) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'autorejoin-async-flashback-drop-binlog-max-transactions', value: v }))} />) },
     { clusterSetting: 'autorejoin-mysqldump', key: 'Failback Direct Master Dump', help: h(hDump, 'Failback Direct Master Dump'), value: sw('autorejoin-mysqldump', 'autorejoinMysqldump', arMysqldumpLoading) },
     { clusterSetting: 'autorejoin-logical-backup', key: 'Failback Via Logical Backup', help: h(hLogical, 'Failback Via Logical Backup'), value: sw('autorejoin-logical-backup', 'autorejoinLogicalBackup', arLogicalBackupLoading) },
     { clusterSetting: 'autorejoin-physical-backup', key: 'Failback Via Physical Backup', help: h(hPhysical, 'Failback Via Physical Backup'), value: sw('autorejoin-physical-backup', 'autorejoinPhysicalBackup', arPhysicalBackupLoading) },

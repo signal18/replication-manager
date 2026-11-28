@@ -40,6 +40,12 @@ var databaseACLRules = []ACLRule{
 
 	{"/actions/restart", []string{config.GrantDBStart, config.GrantDBStop}, nil},
 
+	// The host (VM) of a server, on an orchestrator that drives the hosts (api_database_host.go)
+	{"/actions/host-stop", nil, []string{config.GrantDBStop}},
+	{"/actions/host-start", nil, []string{config.GrantDBStart}},
+	{"/actions/host-reboot", []string{config.GrantDBStart, config.GrantDBStop}, nil},
+	{"/host-status", nil, []string{config.GrantDBShowStatus}},
+
 	// Actions with multiple allowed grants (OR logic)
 	{"/actions/analyze-pfs", nil, []string{config.GrantDBOptimize, config.GrantDBAnalyse}},
 
@@ -62,6 +68,14 @@ var databaseACLRules = []ACLRule{
 	{"/actions/backup-physical", nil, []string{config.GrantDBBackup}},
 	{"/actions/backup-slowquery-log", nil, []string{config.GrantDBBackup}},
 	{"/actions/flush-logs", nil, []string{config.GrantDBBackup}},
+
+	// Volume snapshots of a server's data volume (#2443): the list for who sees backups, the
+	// take and the delete for who backs up, the snapback (destructive) for who restores AND
+	// may put the server in maintenance
+	{"/volume-snapshots", nil, []string{config.GrantClusterShowBackups, config.GrantDBBackup}},
+	{"/actions/volume-snapshot-take", nil, []string{config.GrantDBBackup}},
+	{"/actions/volume-snapshot-delete/", nil, []string{config.GrantDBBackup}},
+	{"/actions/volume-snapback/", []string{config.GrantDBRestore, config.GrantDBMaintenance}, nil},
 
 	// Restore actions
 	{"/actions/reseed/", nil, []string{config.GrantDBRestore}},
@@ -137,6 +151,12 @@ var pricingACLRules = []ACLRule{
 	{"/settings/actions/switch/cloud18-marketplace-bau-client-storage", nil, []string{config.GrantSalesPricing}},
 	// SMT gain calibration (#1958): runs sysbench on the replication-manager host and writes a server setting
 	{"/settings/actions/calibrate-smt-gain", nil, []string{config.GrantGlobalSettings}},
+	// the volume snapshot script (#2443) is a program run on the replication-manager host
+	// for every snapshot action: the instance admin's, never a cluster owner's
+	{"/settings/actions/set/backup-snapshot-script", nil, []string{config.GrantGlobalSettings}},
+	// the settings of an external snapshot plugin (#2456) point a program on the
+	// replication-manager host at a storage system and hand it a credential: the same grant
+	{"/volume-snapshot-plugin-actions/set/", nil, []string{config.GrantGlobalSettings}},
 }
 
 // appACLRules defines ACL rules for application endpoints
@@ -180,6 +200,9 @@ var appACLRules = []ACLRule{
 
 // clusterACLRules defines ACL rules for general cluster-level endpoints
 var clusterACLRules = []ACLRule{
+	// the snapshot plugins of the cluster and their settings, never a secret (#2456): read
+	// as the volume snapshots are
+	{"/volume-snapshot-plugins", nil, []string{config.GrantClusterShowBackups, config.GrantDBBackup, config.GrantGlobalSettings}},
 	// Sharding
 	{"/actions/monitor-schemas", nil, []string{config.GrantClusterSharding}},
 	{"/schema", nil, []string{config.GrantClusterSharding}},
@@ -214,6 +237,11 @@ var clusterACLRules = []ACLRule{
 	// grant never reaches a stronger action through the less specific fallback
 	// the vault entries (#2227): an operator adds, edits and removes them; the cluster's
 	// sponsor (db-config-flag) also sees them and turns them on or off
+	{"/replication-plugin-index-list", nil, []string{config.GrantClusterSettings}},
+	{"/replication-plugin-index-actions/put", nil, []string{config.GrantClusterSettings}},
+	{"/replication-plugin-index-actions/remove/", nil, []string{config.GrantClusterSettings}},
+	{"/replication-plugin-actions/reinit/", nil, []string{config.GrantClusterReplication}},
+	{"/replication-plugin-actions/drop-source-objects/", nil, []string{config.GrantClusterReplication}},
 	{"/secret-kv-list", nil, []string{config.GrantClusterSettings, config.GrantDBConfigFlag}},
 	{"/secret-kv-actions/add", nil, []string{config.GrantClusterSettings}},
 	{"/secret-kv-actions/edit/", nil, []string{config.GrantClusterSettings}},

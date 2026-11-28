@@ -109,8 +109,10 @@ jobs:
           if [ "${{ matrix.os }}" = "windows" ]; then
             BINARY_NAME="${BINARY_NAME}.exe"
           fi
+          # The one server binary (#2444): its name (replication-manager-<os>-<arch>) selects the
+          # pro defaults and the embedded layout, as the old Embed + OpenSVC link did.
           go build -v --tags "server" \
-            --ldflags "-w -s -X github.com/signal18/replication-manager/server.WithEmbed=ON -X github.com/signal18/replication-manager/server.Version=${{ steps.version.outputs.version }} -X github.com/signal18/replication-manager/server.FullVersion=${{ steps.version.outputs.fullversion }} -X github.com/signal18/replication-manager/server.Build=${{ steps.version.outputs.build }} -X github.com/signal18/replication-manager/server.WithOpenSVC=ON" \
+            --ldflags "-w -s -X github.com/signal18/replication-manager/server.Version=${{ steps.version.outputs.version }} -X github.com/signal18/replication-manager/server.FullVersion=${{ steps.version.outputs.fullversion }} -X github.com/signal18/replication-manager/server.Build=${{ steps.version.outputs.build }}" \
             -o "build/binaries/${BINARY_NAME}"
 
       - name: Compress binaries

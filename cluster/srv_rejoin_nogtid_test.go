@@ -50,10 +50,10 @@ func TestRejoinGTIDHelpersRefuseMySQLWithoutGTID(t *testing.T) {
 			replica.Variables.Set("ENFORCE_GTID_CONSISTENCY", "ON")
 		}
 		source, _ := mysqlGTIDServer(t, c, "db1", tc.source)
-		if _, err := replica.SetReplicationGTIDCurrentPosFromServer(source); !errors.Is(err, errNoMySQLGTID) {
+		if _, err := replica.SetReplicationGTIDCurrentPosFromServer(source, LinkByTest); !errors.Is(err, errNoMySQLGTID) {
 			t.Errorf("%s, current pos: %v", tc.name, err)
 		}
-		if _, err := replica.SetReplicationGTIDSlavePosFromServer(source); !errors.Is(err, errNoMySQLGTID) {
+		if _, err := replica.SetReplicationGTIDSlavePosFromServer(source, LinkByTest); !errors.Is(err, errNoMySQLGTID) {
 			t.Errorf("%s, slave pos: %v", tc.name, err)
 		}
 		if err := mock.ExpectationsWereMet(); err != nil {

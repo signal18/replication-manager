@@ -37,6 +37,16 @@ Listing a key in `SecretKeys` alone breaks it. Each of these keys needs all of t
    at the next save.
 4. **The change log masks it.** The key is in the `****` case of `GetApiChangeLogFormat`.
 
+## Alert channel secrets
+
+The alert channels added with the channel registry (#2458) hold three flat secrets, with the
+four steps above: `alert-alertmanager-password`, `alert-alertmanager-bearer-token` and
+`alert-telegram-bot-token` (`Cluster.SetAlertChannelSecret` writes through the chain, the
+channels read `GetDecryptedValue`). Their json names are the mechanical camelCase of the key
+(`alertTelegramBotToken`), so the mask finds them. The Alertmanager URL and the Telegram API
+URL are plain settings, like the other alert URLs: the Telegram bot token lives in its own key,
+never in the URL setting. See `doc/implementation/cluster/ALERT_CHANNELS.md`.
+
 ## Alert URLs
 
 `alert-slack-url`, `cloud18-alert-slack-url`, `alert-teams-url` and `alert-teams-proxy-url` were

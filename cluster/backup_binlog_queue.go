@@ -467,8 +467,9 @@ func (cluster *Cluster) checkBinlogCopyStates() {
 }
 
 // checkHeldBinlogCopyStates, every tick: WARN0258 for each server whose backup directory keeps
-// binlog copies beyond backup-binlogs-keep for the binlog-only snapshot, WARN0259 for each
-// server whose binlog continuity in the archive is lost.
+// binlog copies beyond backup-binlogs-keep for the binlog-only snapshot, WARN0364 for each
+// server whose binary log the flashback rejoin reset, WARN0259 for each server whose binlog
+// continuity in the archive is lost.
 func (cluster *Cluster) checkHeldBinlogCopyStates() {
 	for _, server := range cluster.Servers {
 		if server == nil {
@@ -481,6 +482,7 @@ func (cluster *Cluster) checkHeldBinlogCopyStates() {
 		if held > 0 {
 			cluster.SetState("WARN0258", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0258"], server.URL, held, cluster.Conf.BackupBinlogsKeep, oldest, since.Format(time.RFC3339)), ErrFrom: "JOB", ServerUrl: server.URL})
 		}
+		server.checkFlashbackBinlogResetState()
 	}
 	for _, g := range cluster.BinlogGaps() {
 		cluster.SetState("WARN0259", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0259"], g.Server, g.From, g.To, g.Reason, g.Since.Format(time.RFC3339)), ErrFrom: "JOB", ServerUrl: g.Server})

@@ -344,7 +344,7 @@ func (cluster *Cluster) RotatePasswords() (err error) {
 		if s == nil {
 			continue
 		}
-		for _, ss := range s.Replications {
+		for _, ss := range s.NativeReplications().Rows() {
 			err := s.rejoinSlaveChangePassword(&ss)
 			if err != nil {
 				msg := dbhelper.MaskAppPassword(err.Error(), new_password_rpl)

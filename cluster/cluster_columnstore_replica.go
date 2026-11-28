@@ -97,11 +97,11 @@ func (server *ServerMonitor) RebootstrapColumnstoreReplica() error {
 			cluster.SetState("WARN0246", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0246"], server.URL, master.URL, masterOnly, replicaOnly), ErrFrom: "JOB", ServerUrl: server.URL})
 			return fmt.Errorf("the schema of %s differs from the master %s (%d tables on the master only, %d on the replica only)", server.URL, master.URL, masterOnly, replicaOnly)
 		}
-		if _, err := server.StopSlave(); err != nil {
+		if _, err := server.ReplicationLink().Stop(LinkByColumnStore); err != nil {
 			return err
 		}
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rebootstrap of ColumnStore replica %s: its tables are the master's, replicating from the master's current position", server.URL)
-		if err := server.ChangeMasterTo(master, "SLAVE_POS"); err != nil {
+		if err := server.ChangeMasterTo(master, "SLAVE_POS", LinkByColumnStore); err != nil {
 			return err
 		}
 		_, err := server.SetReadOnly()
@@ -117,22 +117,22 @@ func (server *ServerMonitor) RebootstrapColumnstoreReplica() error {
 		cluster.SetState("WARN0245", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0245"], server.URL, master.URL, file, gtidList), ErrFrom: "JOB", ServerUrl: server.URL})
 		return fmt.Errorf("the oldest binary log %s of the master %s starts after %s: the schema of %s cannot be replicated", file, master.URL, gtidList, server.URL)
 	}
-	if _, err := server.StopSlave(); err != nil {
+	if _, err := server.ReplicationLink().Stop(LinkByColumnStore); err != nil {
 		return err
 	}
-	logs, err = dbhelper.SetGTIDSlavePos(server.Conn, "")
+	logs, err = server.ReplicationLink().SetPosition(Position{}, LinkByColumnStore)
 	if err != nil {
 		cluster.LogSQL(logs, err, server.URL, "Rebootstrap", config.LvlErr, "Could not reset the GTID position of %s: %s", server.URL, err)
 		return err
 	}
 	opt := cluster.GetChangeMasterBaseOptForSlave(server, master, server.IsDelayed)
 	opt.Mode = "SLAVE_POS"
-	logs, err = server.ChangeMaster(opt)
+	logs, err = server.ReplicationLink().ChangeSource(SourceOf(opt), opt, LinkByColumnStore)
 	if err != nil {
 		cluster.LogSQL(logs, err, server.URL, "Rebootstrap", config.LvlErr, "Could not point %s at the master %s: %s", server.URL, master.URL, err)
 		return err
 	}
-	if _, err := server.StartSlave(); err != nil {
+	if _, err := server.ReplicationLink().Start(LinkByColumnStore); err != nil {
 		return err
 	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rebootstrap of ColumnStore replica %s: replicating the schema of %s from the origin", server.URL, master.URL)
