@@ -312,7 +312,11 @@ type partitionedTable struct {
 	pos           int  // the partition column in the rows
 	unixTimestamp bool // a TIMESTAMP column: RANGE (UNIX_TIMESTAMP(col))
 	first, last   int64
-	reloaded      bool // ensure read the partitions again once in this call
+	reloaded      bool  // ensure read the partitions again once in this call
+	top           int64 // the highest id written (an id range), since the plugin started
+	// listener: the destination told of the partitions added and dropped (its own tables of the
+	// same partitioning: S3's delta tables), nil none
+	listener PartitionListener
 }
 
 // partitionTable partitions the new, empty destination table from the period of from (the
@@ -401,6 +405,9 @@ func (pt *partitionedTable) ensure(ctx context.Context, conn *sqlx.Conn, now tim
 	if ok && upTo > top {
 		top = upTo
 	}
+	if ok && upTo > pt.top {
+		pt.top = upTo
+	}
 	target := pt.p.horizon(now, top)
 	if pt.p.integer() && !ok {
 		target = pt.last // no value written: an id range moves with its values only
@@ -436,6 +443,11 @@ func (pt *partitionedTable) ensure(ctx context.Context, conn *sqlx.Conn, now tim
 		return q, err
 	}
 	pt.last = target
+	if pt.listener != nil {
+		if err := pt.listener.PartitionsAdded(ctx, conn, pt.schema, pt.table, pt.unixTimestamp, parts); err != nil {
+			return q, fmt.Errorf("the destination's tables of the partitions added: %w", err)
+		}
+	}
 	return q, nil
 }
 
@@ -484,6 +496,11 @@ func (pt *partitionedTable) purge(ctx context.Context, conn *sqlx.Conn, now time
 		return q, nil, err
 	}
 	pt.first = first
+	if pt.listener != nil {
+		if err := pt.listener.PartitionsDropped(ctx, conn, pt.schema, pt.table, drop); err != nil {
+			return q, drop, fmt.Errorf("the destination's tables of the partitions dropped: %w", err)
+		}
+	}
 	return q, drop, nil
 }
 
@@ -515,5 +532,57 @@ func forEachTSV(b []byte, fn func(fields [][]byte)) {
 		if len(line) > 0 {
 			fn(wire.DecodeTSV(line))
 		}
+	}
+}
+
+// PartitionListener is a destination that keeps tables of its own with the partitioning of a
+// partitioned destination table (S3: its delta tables): the core tells it of every partition it
+// adds ahead of time or drops by the purge, outside any transaction, before a checkpoint writes
+// into them.
+type PartitionListener interface {
+	PartitionsAdded(ctx context.Context, conn *sqlx.Conn, schema, table string, unixTimestamp bool, parts []dbhelper.RangePartition) error
+	PartitionsDropped(ctx context.Context, conn *sqlx.Conn, schema, table string, names []string) error
+}
+
+// PartitionMaintainer is a destination with work of its own per partition (S3: each changed
+// partition rebuilt from its delta and exchanged): the core calls it every apply round, after the
+// checkpoints of the round, between them (no checkpoint is written while it runs).
+type PartitionMaintainer interface {
+	MaintainPartitions(ctx context.Context, w PartitionWork) error
+}
+
+// PartitionWork is what a PartitionMaintainer gets: the partitioned destination tables whose
+// init is done, a session on the target, and the core's pool.
+type PartitionWork struct {
+	Tables []PartitionedDest
+	// Session opens a connection to the target with the destination's session set
+	Session func(ctx context.Context) (*sqlx.Conn, error)
+	// Run runs one job per partition on the pool (threads), never two on one partition, each
+	// under deadline, and returns the failed ones by name
+	Run func(ctx context.Context, deadline time.Duration, jobs map[string]func(context.Context) error) map[string]error
+	Now time.Time
+}
+
+// PartitionedDest is one partitioned destination table of a PartitionWork.
+type PartitionedDest struct {
+	Index         wire.Index
+	Schema, Table string
+	// Closed says whether a partition's range is over at Now (its period ended, or for an id
+	// range a later partition holds rows): the one being written is not closed
+	Closed func(name string) bool
+}
+
+// closed is whether a partition's range is over at now: a time period that ended, or an id
+// range below the step of the highest id written (pt.top, the last partition's when unknown).
+func (pt *partitionedTable) closed(now time.Time) func(name string) bool {
+	return func(name string) bool {
+		s, ok := pt.p.startOf(name)
+		if !ok {
+			return false
+		}
+		if pt.p.integer() {
+			return pt.p.next(s) <= pt.p.start(pt.top)
+		}
+		return pt.p.next(s) <= dayOrdinal(now)
 	}
 }

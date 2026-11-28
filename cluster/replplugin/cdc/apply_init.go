@@ -79,6 +79,9 @@ func (a *applier) partitioned(ctx context.Context, conn *sqlx.Conn, idx wire.Ind
 	if err != nil {
 		return nil, err
 	}
+	if l, ok := a.dest.(PartitionListener); ok {
+		pt.listener = l
+	}
 	if a.parts == nil {
 		a.parts = map[string]*partitionedTable{}
 	}
@@ -522,6 +525,53 @@ func (a *applier) maintainPartitions(ctx context.Context, db *sqlx.DB, done *wir
 		return fmt.Errorf("%s", strings.Join(errs, "; "))
 	}
 	return nil
+}
+
+// maintainDestination hands the partitioned destinations whose init is done to a
+// PartitionMaintainer destination (S3: the delta applied by exchange).
+func (a *applier) maintainDestination(ctx context.Context, db *sqlx.DB, done *wire.Applied) error {
+	m, ok := a.dest.(PartitionMaintainer)
+	if !ok {
+		return nil
+	}
+	conn, err := a.session(ctx, db)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	now := time.Now().UTC()
+	w := PartitionWork{Now: now,
+		Session: func(ctx context.Context) (*sqlx.Conn, error) { return a.session(ctx, db) },
+		Run: func(ctx context.Context, deadline time.Duration, jobs map[string]func(context.Context) error) map[string]error {
+			return runPartitions(ctx, a.cfg.Threads, deadline, jobs)
+		}}
+	add := func(idx wire.Index, schema, table string) error {
+		pt, err := a.partitioned(ctx, conn, idx, schema, table)
+		if err != nil || pt == nil {
+			return err
+		}
+		w.Tables = append(w.Tables, PartitionedDest{Index: idx, Schema: schema, Table: table, Closed: pt.closed(now)})
+		return nil
+	}
+	for _, d := range a.copies {
+		if _, inited := done.Inits[d.initKey()]; inited && d.idx.PartitionColumn != "" && done.Paused[d.id] == "" {
+			if err := add(d.idx, d.destSchema, d.destTable); err != nil {
+				return err
+			}
+		}
+	}
+	for _, idx := range a.cfg.Indexes {
+		id := indexID(idx)
+		if !idx.TableMode() && idx.PartitionColumn != "" && slices.Contains(done.Indexes, id) && done.Paused[id] == "" {
+			if err := add(idx, idx.Schema, idx.Table); err != nil {
+				return err
+			}
+		}
+	}
+	if len(w.Tables) == 0 {
+		return nil
+	}
+	return m.MaintainPartitions(ctx, w)
 }
 
 // pausedError says the paused indexes, in order; nil when none.

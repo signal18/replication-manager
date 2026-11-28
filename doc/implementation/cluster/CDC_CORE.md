@@ -230,6 +230,14 @@ Any other period, or a period that does not go with the column's type, is refuse
   under its deadline (10 minutes for an init part); a failed partition is reported by name and the
   others go on. The init's apply uses it; the S3 destination's partition exchange is its next user.
 
+**A destination with partition work of its own** (S3, next): `cdc.PartitionListener` is told of
+every partition the core adds ahead or drops by the purge, outside any transaction, before a
+checkpoint writes into it (its own tables of the same partitioning follow: S3's delta tables);
+`cdc.PartitionMaintainer` is called every apply round, after the round's checkpoints, with the
+partitioned destinations whose init is done, a session, the pool (`Run`, the `threads` workers,
+never two on one partition, each under its deadline) and `Closed(name)`: a time partition whose
+period ended, or an id range below the step of the highest id written since the plugin started.
+
 The InnoDB destination writes its rows with multi-row `INSERT`s after the keys' `DELETE`
 (`cdc.ApplyDeleteThenInsert`), never `LOAD DATA LOCAL`: replication-manager's hardening turns
 `local_infile` off on the target (seen on dev3, error 4166), and an InnoDB table takes inserts well.

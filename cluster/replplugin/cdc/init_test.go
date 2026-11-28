@@ -816,3 +816,44 @@ func TestEnsureReadsPartitionsAgain(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// A destination listening to the partitions: told of each one added ahead and dropped by the
+// purge; the closed ranges of a time period and of an id range.
+type partitionSpy struct{ added, dropped []string }
+
+func (s *partitionSpy) PartitionsAdded(_ context.Context, _ *sqlx.Conn, schema, table string, _ bool, parts []dbhelper.RangePartition) error {
+	for _, p := range parts {
+		s.added = append(s.added, schema+"."+table+"."+p.Name)
+	}
+	return nil
+}
+func (s *partitionSpy) PartitionsDropped(_ context.Context, _ *sqlx.Conn, schema, table string, names []string) error {
+	for _, n := range names {
+		s.dropped = append(s.dropped, schema+"."+table+"."+n)
+	}
+	return nil
+}
+
+func TestPartitionListenerAndClosed(t *testing.T) {
+	_, conn, mock := mockConn(t)
+	spy := &partitionSpy{}
+	p := &partitioning{column: "ts", period: "day", ahead: 1}
+	pt := &partitionedTable{p: p, schema: "s", table: "t", first: d("2026-11-27"), last: d("2026-11-28"), listener: spy}
+	mock.ExpectExec(regexp.QuoteMeta("ADD PARTITION (PARTITION `p20261129`")).WillReturnResult(sqlmock.NewResult(0, 0))
+	if _, err := pt.ensure(context.Background(), conn, day("2026-11-28"), 0, false); err != nil || len(spy.added) != 1 || spy.added[0] != "s.t.p20261129" {
+		t.Fatal(err, spy.added)
+	}
+	closed := pt.closed(day("2026-11-28").Add(time.Hour))
+	if !closed("p20261127") || closed("p20261128") || closed("p20261129") {
+		t.Fatal("a day period is closed once it ended")
+	}
+	ip := &partitioning{column: "id", period: "1m", step: 1000000, ahead: 1}
+	ipt := &partitionedTable{p: ip, top: 2500000}
+	ic := ipt.closed(time.Now())
+	if !ic("p00000000000000") || !ic("p00000001000000") || ic("p00000002000000") {
+		t.Fatal("an id range is closed below the step of the highest id")
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}

@@ -246,6 +246,11 @@ func (a *applier) runOnce(ctx context.Context) {
 			}
 		}
 		if failed == nil {
+			if err := a.maintainDestination(ctx, db, &done); err != nil {
+				failed = fmt.Errorf("the destination's partition work: %w", err)
+			}
+		}
+		if failed == nil {
 			failed = pausedError(done)
 		}
 		a.setErr(failed)
