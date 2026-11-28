@@ -272,6 +272,9 @@ func (cluster *Cluster) DropReplicationFeedSourceObjects(plugin string) ([]strin
 	if cfg.Enabled {
 		return nil, fmt.Errorf("the feed %s runs: stop it first (replication-plugin-feed-enabled off)", plugin)
 	}
+	if err := cluster.replPluginRunsHere(); err != nil {
+		return nil, err
+	}
 	release := cluster.holdReplPluginAt(path)
 	defer release()
 	// switched on between the check and the hold: the feed would run on what is dropped

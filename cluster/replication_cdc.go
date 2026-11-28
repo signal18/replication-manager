@@ -426,6 +426,9 @@ func (r *cdcReplication) runAction(action, reason string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	if err := f.cluster.replPluginRunsHere(); err != nil {
+		return "", err
+	}
 	bin, err := f.cluster.verifiedReplPlugin(f.cfg.Plugin)
 	if err != nil {
 		return "", err

@@ -219,6 +219,20 @@ func (cluster *Cluster) CheckReplicationPlugins() {
 	cluster.checkReplPluginStates(runners, errs)
 }
 
+// replPluginRunsHere: a replication plugin binary runs only on the active replication-manager,
+// never on a standby (two monitors would both capture or apply the same feed). The supervisor
+// (CheckReplicationPlugins) checks it each tick; every other path that runs the binary (an
+// adapter action, -create, -drop) checks it here.
+func (cluster *Cluster) replPluginRunsHere() error {
+	if !cluster.IsActive() {
+		return fmt.Errorf("replication plugins run only on the active replication-manager; this one is %s", cluster.Status)
+	}
+	if cluster.exit.Load() {
+		return fmt.Errorf("replication plugins do not start on a cluster that is stopping")
+	}
+	return nil
+}
+
 func (cluster *Cluster) startReplPluginLocked(path string, c wire.Config, mod time.Time) {
 	if _, held := replPluginClaims.LoadOrStore(path, cluster); held {
 		return // another runner of this process holds it: never two

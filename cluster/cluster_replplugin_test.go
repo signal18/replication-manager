@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/signal18/replication-manager/cluster/replplugin/wire"
 	"testing"
 	"time"
 
@@ -100,4 +102,20 @@ func TestReplicationPluginSupervision(t *testing.T) {
 	cl.Status = ConstMonitorActif
 	write(toml, "broken", true)
 	waitState("WARN0242", "source refused the connection")
+}
+
+// A replication plugin binary runs only on the active replication-manager: an adapter action,
+// a -create or a -drop on a standby is refused before the binary is looked up.
+func TestReplPluginRunsOnlyOnActive(t *testing.T) {
+	c := &Cluster{Status: ConstMonitorStandby}
+	if err := c.replPluginRunsHere(); err == nil {
+		t.Fatal("a standby runs a replication plugin")
+	}
+	if _, err := c.runReplPluginCreate("duckdb", "/nonexistent.toml", wire.Config{}); err == nil || !strings.Contains(err.Error(), "active replication-manager") {
+		t.Fatalf("-create on a standby: %v", err)
+	}
+	c.Status = ConstMonitorActif
+	if err := c.replPluginRunsHere(); err != nil {
+		t.Fatalf("the active monitor refused: %v", err)
+	}
 }

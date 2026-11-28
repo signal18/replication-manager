@@ -219,6 +219,7 @@ func TestAnalyticPluginPathAcrossNames(t *testing.T) {
 func TestCDCAdapterRunsTheBinaryActions(t *testing.T) {
 	c, sv := duckdbChildFixture(t, "duckdb")
 	c.Conf.SecretKey = []byte("0123456789abcdef")
+	c.Status = ConstMonitorActif // a plugin binary runs only on the active monitor
 	script := `case "$1" in
 stop-copy) printf 'paused capture\t%s\t%s\t%s\t%s\n' "$REPMAN_REPL_NAME" "$REPMAN_REPL_REASON" "$REPMAN_REPL_SETTING_BATCH_ROWS" "$REPMAN_REPL_SECRET_TOKEN" ;;
 start-copy) echo "no capture to resume" >&2; exit 2 ;;

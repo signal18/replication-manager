@@ -223,6 +223,9 @@ func (cluster *Cluster) prepareAnalyticChild(parent *Cluster, target *ServerMoni
 // failure the results read so far are returned with the error: the tables made before it
 // are made.
 func (cluster *Cluster) runReplPluginCreate(plugin, path string, cfg wire.Config) ([]wire.CreateResult, error) {
+	if err := cluster.replPluginRunsHere(); err != nil {
+		return nil, err
+	}
 	bin, err := cluster.verifiedReplPlugin(plugin)
 	if err != nil {
 		return nil, err
