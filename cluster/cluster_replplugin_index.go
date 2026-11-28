@@ -69,26 +69,20 @@ func (cluster *Cluster) replPluginIndexes(parent string) []wire.Index {
 	return out
 }
 
-// replPluginBackupDir is the folder of the latest logical backup of the cluster parent that
-// is a split dump, "" when there is none (the plugin then refuses the init with its reason).
+// replPluginBackupDir is the folder of the parent's logical backup a child is seeded from
+// (ParentLogicalBackup), when it is a split dump; "" otherwise (the plugin then refuses the init
+// with its reason).
 func (cluster *Cluster) replPluginBackupDir(parent string) string {
 	p, err := cluster.GetClusterFromName(parent)
 	if err != nil || p == nil {
 		return ""
 	}
-	var best int64
-	dir := ""
-	for _, srv := range []*ServerMonitor{p.GetBackupServer(), p.GetMaster()} {
-		if srv == nil {
-			continue
-		}
-		id, meta := srv.GetLatestMeta("logical")
-		if meta == nil || meta.Dest == "" || meta.Encrypted || id <= best {
-			continue
-		}
-		if ok, err := splitdump.Detect(meta.Dest); err == nil && ok {
-			best, dir = id, meta.Dest
-		}
+	dir, _, err := p.ParentLogicalBackup()
+	if err != nil {
+		return ""
+	}
+	if ok, err := splitdump.Detect(dir); err != nil || !ok {
+		return ""
 	}
 	return dir
 }

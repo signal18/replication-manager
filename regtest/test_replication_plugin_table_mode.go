@@ -79,7 +79,8 @@ func (regtest *RegTest) TestAnalyticChildTableMode(cl *cluster.Cluster, conf str
 		return fail("logical backup of %s: %s", cl.Name, err)
 	}
 
-	extra := map[string]any{"destination": dest, "tables": logsSchema + ".*", "name": fmt.Sprintf("%s-tm%d", cl.Name, time.Now().Unix()%100000)}
+	// one database: the destination is written with the binlog on, but one is enough here (disk)
+	extra := map[string]any{"destination": dest, "tables": logsSchema + ".*", "dbCount": 1, "name": fmt.Sprintf("%s-tm%d", cl.Name, time.Now().Unix()%100000)}
 	run, skipped, ok := createCheckedChildWith(cl, "child", config.GrantClusterReplication, map[string]int{"Master": 1}, extra)
 	if run.created {
 		defer stagingDelete(cl, run.tok, run.name)

@@ -97,7 +97,7 @@ func (regtest *RegTest) TestAnalyticChildDenormalize(cl *cluster.Cluster, conf s
 	}
 
 	// the child, seeded from the parent as any child, its tables copied by the plugin
-	extra := map[string]any{"destination": dest, "tables": tpccSchema + ".*", "name": fmt.Sprintf("%s-dn%d", cl.Name, time.Now().Unix()%100000)}
+	extra := map[string]any{"destination": dest, "tables": tpccSchema + ".*", "dbCount": 1, "name": fmt.Sprintf("%s-dn%d", cl.Name, time.Now().Unix()%100000)}
 	run, skipped, ok := createCheckedChildWith(cl, "child", config.GrantClusterReplication, map[string]int{"Master": 1}, extra)
 	if run.created {
 		defer stagingDelete(cl, run.tok, run.name)

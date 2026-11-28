@@ -151,10 +151,10 @@ The init is **one streamed SQL**: rows flowing into the loader, which does not k
   key (`range_step` rows, keyset `a > ? OR (a = ? AND b > ?)`), in index mode the query streamed. The
   GTID is read **before** the snapshot opens: the transactions between the two are in the rows and in
   the delta, which applies them again (whole row images); none is missed.
-- `init = "backup"` (table mode): the latest split dump of the parent (replication-manager writes its
-  folder in `backup_dir`: the latest logical backup of the parent's backup server or master that is a
-  split dump, not encrypted), the table's data files chunk by chunk, gzip or not; the GTID is the
-  backup's metadata's. No load on the source. The earliest partition value costs a first pass over the
+- `init = "backup"` (table mode): the parent's logical backup a child is seeded from
+  (`ParentLogicalBackup`: the mydumper folder, or the mysqldump `splitdump` folder), when it is a
+  split dump; replication-manager writes its folder in `backup_dir`. The table's data files are read
+  chunk by chunk, gzip or not (not zstd); the GTID is the backup's metadata's. No load on the source. The earliest partition value costs a first pass over the
   table's files.
 
 The inits run in the capture, **before the binlog is read**, and publish into the transport; the
