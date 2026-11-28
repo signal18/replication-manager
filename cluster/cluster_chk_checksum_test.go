@@ -151,7 +151,7 @@ func newChecksumWaitCluster(t *testing.T) (*Cluster, *ServerMonitor, *ServerMoni
 	status := runningReplicaStatus("binlog.000010", "692538834")
 	replica := &ServerMonitor{Host: "db2", Port: "3306", URL: "db2:3306", ClusterGroup: c, DBVersion: mariadb,
 		Conn: sqlx.NewDb(db, "sqlmock"), State: stateSlave, SlaveStatus: status,
-		Replications: []dbhelper.SlaveStatus{*status}}
+		Replications: nativeRows(*status)}
 	c.Servers = []*ServerMonitor{master, replica}
 	c.slaves = []*ServerMonitor{replica}
 	t.Cleanup(func() { checksumWaitTurn = func(*ServerMonitor) {} })
