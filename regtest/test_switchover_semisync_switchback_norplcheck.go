@@ -18,7 +18,10 @@ func (regtest *RegTest) TestSwitchover2TimesReplicationOkSemiSyncNoRplCheck(clus
 
 	cluster.SetRplChecks(false)
 	cluster.SetRplMaxDelay(0)
-	err := cluster.DisableSemisync()
+	// The semi-sync variant: semi-sync on, both sides, on every server (it disabled it since 2017,
+	// the same test as the NoSemiSync one). The replica side registers at the IO thread connect,
+	// which each switchover makes.
+	err := cluster.EnableSemisync()
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "%s", err)
 		return false

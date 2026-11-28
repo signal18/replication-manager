@@ -27,8 +27,15 @@ func (regtest *RegTest) TestFailoverAssyncAutoRejoinFlashback(cluster *cluster.C
 	SaveMasterURL := SaveMaster.URL
 	// the load runs through the failover and the rejoin; its end is waited for before the
 	// checksum, which compares the master against replicas that must have applied all of it
+	// The prepare (DDL and its bulk insert) ends before the master is cut: lost events holding
+	// DDL are not flashbackable and the rejoin skips the flashback (seen when the master died
+	// during the prepare), so only the row load of the run is lost and rewound.
+	if err := cluster.ResetBench(); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Benchmark prepare failed: %s", err)
+		return false
+	}
 	load := make(chan error, 1)
-	go func() { load <- cluster.RunSysbench() }()
+	go func() { load <- cluster.RunBench() }()
 	time.Sleep(4 * time.Second)
 	wg := new(sync.WaitGroup)
 	wg.Add(1)
