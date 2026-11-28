@@ -199,7 +199,7 @@ func (s *MCPServer) registerDatabaseReadTools() {
 				"isMaster":     node.IsMaster(),
 				"isSlave":      node.IsSlave,
 				"isDown":       node.IsDown(),
-				"replications": node.ReplicationLinkStatus(),
+				"replications": node.Replications, // each with its plugin and its ends
 				"masterStatus": node.GetMasterStatus(),
 			}
 			return mcp.NewToolResultText(toJSON(out)), nil

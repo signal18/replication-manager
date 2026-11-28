@@ -47,8 +47,17 @@ func (cluster *Cluster) HasAnalyticChild() bool {
 	return strings.TrimSpace(cluster.Conf.ReplicationPluginDestination) != ""
 }
 
+// analyticPluginPath is the TOML of the analytic child's feed, <destination>.toml. A child
+// seeded under another name of its plugin (duckdb.toml, then replication-plugin-destination set
+// to repl-mariadb-duckdb-cdc) keeps its TOML: the first that exists among the plugin's names.
 func (cluster *Cluster) analyticPluginPath() string {
-	return filepath.Join(cluster.replPluginDir(), strings.TrimSpace(cluster.Conf.ReplicationPluginDestination)+".toml")
+	dest := strings.TrimSpace(cluster.Conf.ReplicationPluginDestination)
+	for _, n := range replPluginNames(dest) {
+		if p := filepath.Join(cluster.replPluginDir(), n+".toml"); fileExists(p) {
+			return p
+		}
+	}
+	return filepath.Join(cluster.replPluginDir(), dest+".toml")
 }
 
 func (cluster *Cluster) analyticSkippedPath() string {

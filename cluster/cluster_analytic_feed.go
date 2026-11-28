@@ -5,7 +5,6 @@
 package cluster
 
 import (
-	"os"
 	"strings"
 	"time"
 
@@ -13,13 +12,18 @@ import (
 )
 
 // AnalyticFeed is the state of an analytic child's feed (a DuckDB child, any destination
-// plugin): what the replication interface's CDC backend reads to show the feed as a
-// replication link, beside the native channels. It is read only: the feed's states stay
-// CINF0017, WARN0242, WARN0243, CINF0030, CINF0031 and WARN0340, raised every tick.
+// plugin), read through its Replication object (the CDC replication of
+// repl-mariadb-duckdb-cdc, ... in its target's server.Replications, CDCReplication.Feed). It is
+// read only: the feed's states stay CINF0017, WARN0242, WARN0243, CINF0030, CINF0031 and
+// WARN0340, raised every tick.
 type AnalyticFeed struct {
 	Cluster     string `json:"cluster"`
 	Destination string `json:"destination"` // the plugin, replication-plugin-destination
-	Tables      string `json:"tables"`      // replication-plugin-tables
+	// Replication: the feed's plugin (repl-mariadb-duckdb-cdc, ...) and its name among the
+	// links of its target ("cdc:<destination>"), "" before the seed
+	Replication string `json:"replication,omitempty"`
+	Name        string `json:"name,omitempty"`
+	Tables      string `json:"tables"` // replication-plugin-tables
 	// Source: replication-plugin-source as set (master or host:port), SourceHost the server
 	// the running plugin reads ("" when none runs)
 	Source     string `json:"source"`
@@ -44,8 +48,8 @@ type AnalyticFeed struct {
 }
 
 // AnalyticFeedStatus is the feed of the cluster when it is an analytic child, false when it is
-// not one. Safe to call from any goroutine: it takes the supervisor's lock briefly and reads the
-// runner's atomics, never a database.
+// not one. Safe to call from any goroutine: it reads the feed's TOML, takes the supervisor's
+// lock briefly and reads the runner's atomics, never a database.
 func (cluster *Cluster) AnalyticFeedStatus() (AnalyticFeed, bool) {
 	if !cluster.HasAnalyticChild() {
 		return AnalyticFeed{}, false
@@ -62,24 +66,11 @@ func (cluster *Cluster) AnalyticFeedStatus() (AnalyticFeed, bool) {
 		at := *t
 		f.CreatingSince = &at
 	}
-	path := cluster.analyticPluginPath()
-	cluster.replPluginsMu.Lock()
-	r := cluster.replPlugins[path]
-	cluster.replPluginsMu.Unlock()
-	if r != nil {
-		f.SourceHost = r.cfg.Source.Host
-		if stop := r.stopped.Load(); stop != nil {
-			at := stop.Restart
-			f.StoppedReason, f.RestartAt = stop.Reason, &at
-		} else {
-			f.Running = true
-		}
-		if st := r.status.Load(); st != nil {
-			s := *st
-			f.Status = &s
-		}
-	} else if _, err := os.Stat(path); os.IsNotExist(err) {
+	if r := cluster.cdcReplicationAt(cluster.analyticPluginPath()); r == nil {
 		f.ConfigNotFound = true
+	} else if st, err := r.Feed(); err == nil {
+		f.Replication, f.Name = r.Plugin().Name, r.Name()
+		f.SourceHost, f.Running, f.StoppedReason, f.RestartAt, f.Status = st.SourceHost, st.Running, st.StoppedReason, st.RestartAt, st.Status
 	}
 	var err error
 	if f.Skipped, err = readAnalyticSkipped(cluster.analyticSkippedPath()); err != nil {

@@ -47,12 +47,10 @@ func writeReplPluginIndexError(w http.ResponseWriter, err error) {
 // @Router /api/clusters/{clusterName}/replication-plugin-index-list [get]
 func (repman *ReplicationManager) handlerMuxReplicationPluginIndexList(w http.ResponseWriter, r *http.Request) {
 	repman.withResticCluster(w, r, false, func(mycluster *cluster.Cluster, vars map[string]string) {
-		out := ReplicationPluginIndexList{Indexes: mycluster.Conf.ReplicationPluginIndexList(), Ready: []string{}, Pinned: mycluster.ReplicationPluginIndexesPinned()}
+		// ready: read through the feeds' Replication objects (the replication interface)
+		out := ReplicationPluginIndexList{Indexes: mycluster.Conf.ReplicationPluginIndexList(), Ready: mycluster.ReplicationPluginIndexesReady(), Pinned: mycluster.ReplicationPluginIndexesPinned()}
 		if out.Indexes == nil {
 			out.Indexes = []config.ReplicationPluginIndex{}
-		}
-		for _, st := range mycluster.ReplicationPluginStatuses() {
-			out.Ready = append(out.Ready, st.IndexesReady...)
 		}
 		writeArchiveJSON(w, out)
 	})

@@ -200,7 +200,7 @@ func (repman *ReplicationManager) PlanChildCluster(parent *cluster.Cluster, req 
 		plan.Notes = append(plan.Notes, fmt.Sprintf("%d ColumnStore servers, each its own failover service holding a dbroot; the master is seeded, the others replicate its schema", plan.DBCount))
 	}
 	if plan.Destination != "" {
-		plan.Notes = append(plan.Notes, "the tables of "+plan.Tables+" are made "+plan.Destination+" tables on the child at the seed (never on the parent) by the plugin replplugin-"+plan.Destination+", which feeds them from the parent's binlog; a table it cannot hold stays as it is, replicated natively, with a state giving the reason")
+		plan.Notes = append(plan.Notes, "the tables of "+plan.Tables+" are made "+plan.Destination+" tables on the child at the seed (never on the parent) by the replication plugin "+cluster.CanonicalReplicationPluginName(plan.Destination)+", which feeds them from the parent's binlog (a replication of the child's master, beside its channel from the parent); a table it cannot hold stays as it is, replicated natively, with a state giving the reason")
 		if len(manifest.Tags) > 0 {
 			plan.Notes = append(plan.Notes, "configurator tags added: "+strings.Join(manifest.Tags, ", "))
 		}

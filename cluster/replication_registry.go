@@ -8,51 +8,62 @@ import (
 	"fmt"
 )
 
-// The built-in replication plugins: the native ones (nativePlugins, replication_native.go:
-// binlog under four manifests, PostgreSQL), and every CDC binary as one generic adapter until
-// step 4 gives each binary its manifest (repl-mariadb-duckdb-cdc, ...).
+// The replication plugins: the native ones, built in (nativePlugins, replication_native.go:
+// binlog under four manifests, PostgreSQL), and every CDC plugin binary through the one adapter
+// (replicationPluginAdapter, replication_cdc.go), known by name (repl-mariadb-duckdb-cdc, ...),
+// or the generic repl-cdc for a binary of another name.
 const ReplicationPluginCDC = "repl-cdc"
 
-// builtinReplicationPlugins are the names of the built-in plugins, the native ones first.
+// builtinReplicationPlugins are the names of the plugins the registry holds, the native ones
+// first, then the CDC plugins repman knows.
 func builtinReplicationPlugins() []string {
-	return []string{
+	names := []string{
 		ReplicationPluginMariaDBNative, ReplicationPluginMySQLNative, ReplicationPluginMySQLMariaDBNative,
-		ReplicationPluginPostgreSQLNative, ReplicationPluginColumnStoreNative, ReplicationPluginCDC,
+		ReplicationPluginPostgreSQLNative, ReplicationPluginColumnStoreNative,
 	}
+	for _, d := range cdcPlugins {
+		names = append(names, d.name)
+	}
+	return append(names, ReplicationPluginCDC)
 }
 
 // newReplicationPluginList builds the cluster's replication plugins by name, as
-// newOrchestratorList builds its orchestrators: today the built-in ones.
+// newOrchestratorList builds its orchestrators.
 func (cluster *Cluster) newReplicationPluginList() error {
 	cluster.replicationPluginsMutex.Lock()
 	defer cluster.replicationPluginsMutex.Unlock()
 	cluster.ReplicationPlugins = make(map[string]ReplicationPlugin)
 	for _, name := range builtinReplicationPlugins() {
-		if p, ok := newReplicationPlugin(name); ok {
+		if p, ok := cluster.newReplicationPlugin(name); ok {
 			cluster.ReplicationPlugins[name] = p
 		}
 	}
 	return nil
 }
 
-// newReplicationPlugin builds the plugin of that name; false for an unknown one.
-func newReplicationPlugin(name string) (ReplicationPlugin, bool) {
+// newReplicationPlugin builds the plugin of that name (a CDC plugin by any of its names, under
+// its canonical one); false for an unknown one. A nil cluster: a CDC plugin's manifest is
+// repman's only (no binary to read it from).
+func (cluster *Cluster) newReplicationPlugin(name string) (ReplicationPlugin, bool) {
 	if p, ok := nativePlugins[name]; ok {
 		return p, true
 	}
-	switch name {
-	case ReplicationPluginCDC:
-		return &cdcReplicationPlugin{}, true
+	if isCDCPluginName(name) {
+		return &replicationPluginAdapter{cluster: cluster, name: CanonicalReplicationPluginName(name)}, true
 	}
 	return nil, false
 }
 
-// ReplicationPlugin is the registered plugin of that name, built on the spot when the registry
-// does not hold it yet (a cluster before newReplicationPluginList, a test), a
-// nullReplicationPlugin (every action ErrReplicationNotSupported) for an unknown name: never nil.
+// ReplicationPlugin is the registered plugin of that name (a CDC plugin also by its aliases),
+// built on the spot when the registry does not hold it yet (a cluster before
+// newReplicationPluginList, a test), a nullReplicationPlugin (every action
+// ErrReplicationNotSupported) for an unknown name: never nil.
 func (cluster *Cluster) ReplicationPlugin(name string) ReplicationPlugin {
+	if isCDCPluginName(name) {
+		name = CanonicalReplicationPluginName(name)
+	}
 	if cluster == nil {
-		if p, ok := newReplicationPlugin(name); ok {
+		if p, ok := cluster.newReplicationPlugin(name); ok {
 			return p
 		}
 		return &nullReplicationPlugin{name: name}
@@ -63,7 +74,7 @@ func (cluster *Cluster) ReplicationPlugin(name string) ReplicationPlugin {
 	if ok {
 		return p
 	}
-	p, ok = newReplicationPlugin(name)
+	p, ok = cluster.newReplicationPlugin(name)
 	if !ok {
 		return &nullReplicationPlugin{name: name}
 	}
@@ -102,6 +113,7 @@ func (n *nullReplicationPlugin) Manifest() ReplicationManifest {
 var (
 	_ nativePlugin      = (*binlogReplicationPlugin)(nil)
 	_ nativePlugin      = (*postgresReplicationPlugin)(nil)
-	_ ReplicationPlugin = (*cdcReplicationPlugin)(nil)
+	_ ReplicationPlugin = (*replicationPluginAdapter)(nil)
+	_ CDCReplication    = (*cdcReplication)(nil)
 	_ ReplicationPlugin = (*nullReplicationPlugin)(nil)
 )

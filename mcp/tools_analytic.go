@@ -27,14 +27,8 @@ func (s *MCPServer) registerAnalyticChildReadTools() {
 			if errResult != nil {
 				return errResult, nil
 			}
-			out := map[string]any{"indexes": cl.Conf.ReplicationPluginIndexList(), "ready": []string{}, "pinned": cl.ReplicationPluginIndexesPinned()}
-			var ready []string
-			for _, st := range cl.ReplicationPluginStatuses() {
-				ready = append(ready, st.IndexesReady...)
-			}
-			if ready != nil {
-				out["ready"] = ready
-			}
+			// ready: read through the feeds' Replication objects (the replication interface)
+			out := map[string]any{"indexes": cl.Conf.ReplicationPluginIndexList(), "ready": cl.ReplicationPluginIndexesReady(), "pinned": cl.ReplicationPluginIndexesPinned()}
 			return mcp.NewToolResultText(toJSON(out)), nil
 		},
 	)

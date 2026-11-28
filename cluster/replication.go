@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/signal18/replication-manager/config"
@@ -310,8 +311,9 @@ func (l *ReplicationList) UnmarshalJSON(b []byte) error {
 		case isNativePlugin(j.Plugin):
 			base.manifest = nativePlugins[j.Plugin].Manifest()
 			out = append(out, newNativeObject(base))
-		case j.Plugin == ReplicationPluginCDC:
-			base.manifest = cdcManifest
+		case isCDCPluginName(j.Plugin) || (j.Kind == string(ReplicationKindCDC) && strings.HasPrefix(j.Plugin, "repl-")):
+			// a CDC plugin by its name (repman's manifest: no binary to read here)
+			base.manifest = defaultCDCManifest(j.Plugin)
 			out = append(out, &cdcReplication{replicationBase: base})
 		default:
 			base.manifest = ReplicationManifest{Name: j.Plugin, Type: j.Kind}

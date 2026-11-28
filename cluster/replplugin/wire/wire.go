@@ -27,8 +27,10 @@ import (
 // status says what it applied and merged; a plugin of wire 1 only captured.
 const WireVersion = 2
 
-// BinaryPrefix names a replication plugin binary: replplugin-<plugin>. Not "plugin-": the
-// log plugin loader takes every plugin-* it finds.
+// BinaryPrefix names a replication plugin binary of the first releases: replplugin-<plugin>.
+// Not "plugin-": the log plugin loader takes every plugin-* it finds. A binary named after its
+// plugin, repl-<source>-<target>-cdc (REPLICATION_INTERFACE.md), runs as well: replication-manager
+// looks for that name first, then this one.
 const BinaryPrefix = "replplugin-"
 
 // The environment of a plugin process: the passwords are never in its TOML.
@@ -36,6 +38,19 @@ const (
 	EnvSourcePassword = "REPMAN_REPLPLUGIN_SOURCE_PASSWORD"
 	EnvTargetPassword = "REPMAN_REPLPLUGIN_TARGET_PASSWORD"
 	EnvWireVersion    = "REPMAN_REPLPLUGIN_WIRE_VERSION"
+)
+
+// The environment of a plugin for the replication interface (REPLICATION_INTERFACE.md
+// "External"): its settings declared by its manifest, each as REPMAN_REPL_SETTING_<NAME>, each
+// secret decrypted as REPMAN_REPL_SECRET_<NAME> (<NAME>: the setting's name in upper case, "-"
+// as "_"), every run; and for an action it is called with (`<binary> <action> -config <TOML>`,
+// the actions its manifest lists), the action, the link and the reason.
+const (
+	EnvReplSettingPrefix = "REPMAN_REPL_SETTING_"
+	EnvReplSecretPrefix  = "REPMAN_REPL_SECRET_"
+	EnvReplAction        = "REPMAN_REPL_ACTION"
+	EnvReplName          = "REPMAN_REPL_NAME"
+	EnvReplReason        = "REPMAN_REPL_REASON"
 )
 
 // Endpoint is a database server the plugin connects to.
@@ -259,6 +274,13 @@ type PluginManifest struct {
 	// SingleServer: the destination is written out of the binlog, a child of it has one
 	// database (its replicas would not receive the destination's tables)
 	SingleServer bool `json:"singleServer,omitempty"`
+	// The replication manifest (REPLICATION_INTERFACE.md "The manifest"), in the same file and
+	// read by replication-manager into its own type: "type" ("cdc"), "source" and "target"
+	// (the engines), "topologies" ([{name, transport, consistency}]), "actions" (beyond status,
+	// start, stop and rejoin, the supervisor's: start-copy, stop-copy, start-apply, stop-apply)
+	// and "settings" ([{name, type, values, group, default}]). Name is then the plugin's
+	// name, repl-<source>-<target>-cdc. All optional: a manifest without them is one of a
+	// plugin replication-manager knows by name, or a generic CDC plugin.
 }
 
 // EnvEnterprisePlan is "1" in the environment of a plugin when the seat's plan grants the

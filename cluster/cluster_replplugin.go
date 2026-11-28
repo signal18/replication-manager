@@ -287,10 +287,11 @@ func (cluster *Cluster) superviseReplPlugin(ctx context.Context, r *replPluginRu
 	}
 }
 
-// replPluginBinary finds replplugin-<plugin>: the delivered plugins (<WorkingDir>/plugins),
-// else the ones built next to this binary (a source build: build/binaries/.. -> build/plugins).
+// replPluginBinary finds the plugin's binary under one of its names (replPluginBinaryNames:
+// repl-<source>-<target>-cdc, then replplugin-<short>): the delivered plugins
+// (<WorkingDir>/plugins), else the ones built next to this binary (a source build:
+// build/binaries/.. -> build/plugins).
 func (cluster *Cluster) replPluginBinary(plugin string) (string, error) {
-	name := wire.BinaryPrefix + plugin
 	if strings.ContainsAny(plugin, `/\`) || plugin == "" {
 		return "", fmt.Errorf("invalid plugin name %q", plugin)
 	}
@@ -301,13 +302,16 @@ func (cluster *Cluster) replPluginBinary(plugin string) (string, error) {
 		}
 		dirs = append(dirs, filepath.Join(filepath.Dir(exe), "..", "plugins"))
 	}
-	for _, d := range dirs {
-		p := filepath.Join(d, name)
-		if info, err := os.Stat(p); err == nil && !info.IsDir() && info.Mode()&0o111 != 0 {
-			return p, nil
+	names := replPluginBinaryNames(plugin)
+	for _, name := range names {
+		for _, d := range dirs {
+			p := filepath.Join(d, name)
+			if info, err := os.Stat(p); err == nil && !info.IsDir() && info.Mode()&0o111 != 0 {
+				return p, nil
+			}
 		}
 	}
-	return "", fmt.Errorf("binary %s not found in %s", name, strings.Join(dirs, ", "))
+	return "", fmt.Errorf("binary %s not found in %s", strings.Join(names, " or "), strings.Join(dirs, ", "))
 }
 
 // replPluginSourcePass is the password of the cluster that monitors the plugin's source
@@ -343,7 +347,9 @@ func (cluster *Cluster) verifiedReplPlugin(plugin string) (string, error) {
 }
 
 // replPluginEnv is a plugin's minimal environment: the passwords, the wire version, the plan,
-// nothing of this process's.
+// the settings its manifest declares (REPMAN_REPL_SETTING_*, REPMAN_REPL_SECRET_*: the
+// cluster's [[repl-plugin]] entry under any of the plugin's names, else the manifest's
+// default), nothing of this process's.
 func (cluster *Cluster) replPluginEnv(c wire.Config) []string {
 	env := []string{
 		"PATH=/usr/local/bin:/usr/bin:/bin",
@@ -354,44 +360,60 @@ func (cluster *Cluster) replPluginEnv(c wire.Config) []string {
 	if cluster.Conf.EnterprisePluginsPlan() {
 		env = append(env, wire.EnvEnterprisePlan+"=1")
 	}
+	if m := cluster.cdcManifestOf(c.Plugin); len(m.Settings) > 0 {
+		env = append(env, cluster.Conf.ReplPluginEnv(m.Settings, replPluginNames(c.Plugin)...)...)
+	}
 	return env
 }
 
 // replPluginManifest is the manifest shipped next to the plugin's binary
 // (<binary>.manifest.json); a plugin without one is of every plan, with no tag or image.
 func (cluster *Cluster) replPluginManifest(plugin string) (wire.PluginManifest, error) {
+	m, _, err := cluster.replPluginManifests(plugin)
+	return m, err
+}
+
+// replPluginManifests is the manifest file next to the plugin's binary read twice: what the
+// supervisor and the child's creation read (wire.PluginManifest), and its replication fields
+// (ReplicationManifest, cdcManifestOf). Read again only when the file changed: the supervisor
+// and every Refresh ask.
+func (cluster *Cluster) replPluginManifests(plugin string) (wire.PluginManifest, ReplicationManifest, error) {
 	m := wire.PluginManifest{Name: plugin}
 	bin, err := cluster.replPluginBinary(plugin)
 	if err != nil {
-		return m, err
+		return m, ReplicationManifest{}, err
 	}
 	mpath := bin + ".manifest.json"
 	info, err := os.Stat(mpath)
 	if os.IsNotExist(err) {
-		return m, nil
+		return m, ReplicationManifest{}, nil
 	}
 	if err != nil {
-		return m, err
+		return m, ReplicationManifest{}, err
 	}
-	// read again only when it changed: the supervisor asks every tick
 	if c, ok := cluster.replManifests.Load(mpath); ok {
 		if cm := c.(replManifestCache); cm.mod.Equal(info.ModTime()) {
-			return cm.m, nil
+			return cm.m, cm.r, nil
 		}
 	}
 	b, err := os.ReadFile(mpath)
 	if err != nil {
-		return m, err
+		return m, ReplicationManifest{}, err
 	}
 	if err := json.Unmarshal(b, &m); err != nil {
-		return m, fmt.Errorf("%s.manifest.json: %w", filepath.Base(bin), err)
+		return m, ReplicationManifest{}, fmt.Errorf("%s.manifest.json: %w", filepath.Base(bin), err)
 	}
-	cluster.replManifests.Store(mpath, replManifestCache{m: m, mod: info.ModTime()})
-	return m, nil
+	var r ReplicationManifest
+	if err := json.Unmarshal(b, &r); err != nil {
+		return m, ReplicationManifest{}, fmt.Errorf("%s.manifest.json: %w", filepath.Base(bin), err)
+	}
+	cluster.replManifests.Store(mpath, replManifestCache{m: m, r: r, mod: info.ModTime()})
+	return m, r, nil
 }
 
 type replManifestCache struct {
 	m   wire.PluginManifest
+	r   ReplicationManifest
 	mod time.Time
 }
 
