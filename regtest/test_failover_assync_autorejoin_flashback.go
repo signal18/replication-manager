@@ -81,6 +81,13 @@ func (regtest *RegTest) TestFailoverAssyncAutoRejoinFlashback(cluster *cluster.C
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Sysbench still running %ds after its start: no consistency check under load", cluster.Conf.SysbenchTime)
 		return false
 	}
+	// The old master is compared too, once it replicates: the checksum lists the replicas it
+	// finds, and an old master left SlaveErr by a failed rejoin was not in it (a refused
+	// position, error 1947, passed the test with the old master out of the cluster).
+	if err := cluster.WaitDatabaseReplica(SaveMaster); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Old master %s does not replicate after its rejoin: %s", SaveMasterURL, err)
+		return false
+	}
 	if cluster.CheckTableConsistency(cluster.BenchTable()) != true {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Inconsitant slave")
 		return false
