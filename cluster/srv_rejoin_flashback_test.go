@@ -134,6 +134,41 @@ func TestPositionAfterFlashbackOrder(t *testing.T) {
 			t.Fatal(err)
 		}
 	})
+
+	t.Run("state refused after the reset: the drop is tracked, never positioned", func(t *testing.T) {
+		server, mock := newMyLoaderPositionServer(t, mariadb, true)
+		mock.ExpectQuery("global_variables").WithArgs("GTID_BINLOG_POS").
+			WillReturnRows(sqlmock.NewRows([]string{"Value"}).AddRow("1-11626367-1204112"))
+		mock.ExpectExec("RESET MASTER").WillReturnResult(sqlmock.NewResult(0, 0))
+		mock.ExpectExec("SET GLOBAL gtid_binlog_state").WillReturnError(errors.New("denied"))
+		server.BinaryLogFileOldest, server.BinaryLogFile = "mariadb-bin.000010", "mariadb-bin.000014"
+		server.flashbackDropRefused.Store(&flashbackDropRefusal{Guard: flashbackGuardReaders, At: time.Now()})
+		if err := server.positionAfterFlashback(target, &flashbackDropFacts{Saved: make([]gtid.Gtid, 133), Copy: "/backup/copy"}); err == nil {
+			t.Fatal("a refused gtid_binlog_state must fail the positioning")
+		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Fatal(err)
+		}
+		r := server.flashbackBinlogReset.Load()
+		if r == nil || r.From != "mariadb-bin.000010" || r.To != "mariadb-bin.000014" || r.Transactions != 133 || !strings.Contains(r.GTID, "failed") {
+			t.Fatalf("the reset must be recorded even when the state is refused: %+v", r)
+		}
+		if server.flashbackDropRefused.Load() != nil {
+			t.Fatal("the binary log was dropped: the old refusal no longer applies")
+		}
+		c := server.ClusterGroup
+		c.StateMachine = new(state.StateMachine)
+		c.StateMachine.Init()
+		c.BackupMetaMap = backupmgr.NewBackupMetaMap()
+		server.checkFlashbackBinlogResetState()
+		open := false
+		for _, st := range c.StateMachine.GetOpenStates() {
+			open = open || (st.ErrKey == "WARN0364" && st.ServerUrl == server.URL && strings.Contains(st.ErrDesc, "failed"))
+		}
+		if !open {
+			t.Fatal("WARN0364 must be open after a reset whose state was refused")
+		}
+	})
 }
 
 // Every guard, observed values in, refuses alone; all of them pass on the dev case.
@@ -271,4 +306,131 @@ func TestFailoverSourcePosition(t *testing.T) {
 	if f, p := failoverSourcePosition(ms); f != "binlog.000004" || p != "1026991999" {
 		t.Fatalf("no executed position: the received one, got %s:%s", f, p)
 	}
+}
+
+// flashbackStateOpen reports whether the state key is open for the server after a tick.
+func flashbackStateOpen(server *ServerMonitor, key, contains string) bool {
+	c := server.ClusterGroup
+	c.StateMachine = new(state.StateMachine)
+	c.StateMachine.Init()
+	c.BackupMetaMap = backupmgr.NewBackupMetaMap()
+	server.checkFlashbackBinlogResetState()
+	for _, st := range c.StateMachine.GetOpenStates() {
+		if st.ErrKey == key && st.ServerUrl == server.URL && strings.Contains(st.ErrDesc, contains) {
+			return true
+		}
+	}
+	return false
+}
+
+// The lost transactions are saved before any RESET MASTER: a missing or incomplete save stops the
+// rejoin there (errLostEventsNotSaved, ERR00141), never a binlog drop and never "go on as before".
+func TestFlashbackDropPlanStopsWhenNotSaved(t *testing.T) {
+	mariadb := &version.Version{Flavor: "MariaDB", Major: 11, Minor: 8, Release: 9}
+	const target = "1-11626367-1203979"
+	plan := func(t *testing.T, copy string, crash *Crash, replayed int) (*ServerMonitor, *flashbackDropFacts, error) {
+		server, mock := newMyLoaderPositionServer(t, mariadb, true)
+		server.ServerID = 11626367
+		server.ClusterGroup.Conf.AutorejoinAsyncFlashbackDropBinlog = true
+		mock.ExpectQuery("global_variables").WithArgs("GTID_BINLOG_STATE").
+			WillReturnRows(sqlmock.NewRows([]string{"Value"}).AddRow("1-11626367-1203982"))
+		mock.ExpectQuery("binlog dump").WillReturnRows(sqlmock.NewRows([]string{"n"}).AddRow(0))
+		f, err := server.flashbackDropPlan(crash, copy, target, replayed)
+		// no RESET MASTER, no SET: any statement past the reads fails the mock
+		if errM := mock.ExpectationsWereMet(); errM != nil && err == nil {
+			t.Fatal(errM)
+		}
+		return server, f, err
+	}
+	three := []gtid.Gtid{{DomainID: 1, ServerID: 11626367, SeqNo: 1203980}, {DomainID: 1, ServerID: 11626367, SeqNo: 1203981}, {DomainID: 1, ServerID: 11626367, SeqNo: 1203982}}
+	copy := filepath.Join(t.TempDir(), "copy")
+	if err := os.WriteFile(copy, []byte("lost events"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("no copy", func(t *testing.T) {
+		server, f, err := plan(t, filepath.Join(t.TempDir(), "missing"), &Crash{DeltaAnalyzed: true, DeltaTransactions: 3, DeltaGTIDs: three}, 3)
+		if f != nil || !errors.Is(err, errLostEventsNotSaved) {
+			t.Fatalf("no copy: the rejoin stops, got plan=%v err=%v", f, err)
+		}
+		if !flashbackStateOpen(server, "ERR00141", flashbackGuardCopy) {
+			t.Fatal("ERR00141 must name the server and what failed")
+		}
+		if server.flashbackDropRefused.Load() != nil {
+			t.Fatal("a missing save is not a kept-binlog refusal")
+		}
+	})
+	t.Run("one transaction missing from the save", func(t *testing.T) {
+		_, f, err := plan(t, copy, &Crash{DeltaAnalyzed: true, DeltaTransactions: 2, DeltaGTIDs: three[1:]}, 2)
+		if f != nil || !errors.Is(err, errLostEventsNotSaved) || !strings.Contains(err.Error(), flashbackGuardLost) {
+			t.Fatalf("an incomplete save stops the rejoin, got plan=%v err=%v", f, err)
+		}
+	})
+	t.Run("whole save: the plan", func(t *testing.T) {
+		_, f, err := plan(t, copy, &Crash{DeltaAnalyzed: true, DeltaTransactions: 3, DeltaGTIDs: three}, 3)
+		if err != nil || f == nil {
+			t.Fatalf("every guard holds: a plan, got %v %v", f, err)
+		}
+	})
+	t.Run("another guard keeps the binlog and the rejoin goes on", func(t *testing.T) {
+		server, f, err := plan(t, copy, &Crash{DeltaAnalyzed: true, DeltaTransactions: 3, DeltaGTIDs: three, FailoverSemiSyncMasterStatus: true}, 3)
+		if f != nil || err != nil || server.flashbackDropRefused.Load() == nil {
+			t.Fatalf("semi-sync: binlog kept, no stop, got plan=%v err=%v", f, err)
+		}
+	})
+}
+
+// The copy is archived whole into the crash's own archive before the drop; an archive that fails
+// or is short stops the rejoin before RESET MASTER.
+func TestSaveLostEventsBeforeDrop(t *testing.T) {
+	mariadb := &version.Version{Flavor: "MariaDB", Major: 11, Minor: 8, Release: 9}
+	setup := func(t *testing.T) (*ServerMonitor, *Crash, *flashbackDropFacts) {
+		server, _ := newMyLoaderPositionServer(t, mariadb, true)
+		c := server.ClusterGroup
+		c.Conf.WorkingDir = t.TempDir()
+		c.WorkingDir = c.Conf.WorkingDir
+		server.ServerID = 11626367
+		crash := &Crash{FailoverMasterLogFile: "mariadb-bin.000014", ArchiveDir: filepath.Join(c.Conf.WorkingDir, c.Name, "crash-bin-20261128000000")}
+		staging := c.Conf.WorkingDir + "/" + c.Name + "-server11626367-" + crash.FailoverMasterLogFile
+		if err := os.WriteFile(staging, []byte("lost events"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		return server, crash, &flashbackDropFacts{Copy: staging, CopySize: int64(len("lost events")), Target: "1-11626367-1203979"}
+	}
+
+	t.Run("archived whole", func(t *testing.T) {
+		server, crash, f := setup(t)
+		if err := server.saveLostEventsBeforeDrop(crash, f); err != nil {
+			t.Fatal(err)
+		}
+		if f.Copy != crash.DeltaArchive || !strings.HasPrefix(crash.DeltaArchive, crash.ArchiveDir) {
+			t.Fatalf("the drop must name the archive: copy %s archive %s", f.Copy, crash.DeltaArchive)
+		}
+		// the later archive of the same rejoin is a no-op, not a failure
+		if err := server.saveBinlog(crash); err != nil {
+			t.Fatalf("already archived: %v", err)
+		}
+	})
+	t.Run("short archive", func(t *testing.T) {
+		server, crash, f := setup(t)
+		f.CopySize = 1 << 20
+		if err := server.saveLostEventsBeforeDrop(crash, f); !errors.Is(err, errLostEventsNotSaved) {
+			t.Fatalf("a short archive stops the rejoin: %v", err)
+		}
+		if !flashbackStateOpen(server, "ERR00141", "bytes") {
+			t.Fatal("ERR00141 must say the archive is short")
+		}
+	})
+	t.Run("archive refused", func(t *testing.T) {
+		server, crash, f := setup(t)
+		blocker := filepath.Join(server.ClusterGroup.Conf.WorkingDir, "file")
+		os.WriteFile(blocker, nil, 0600)
+		crash.ArchiveDir = filepath.Join(blocker, "crash-bin") // under a file: MkdirAll fails
+		if err := server.saveLostEventsBeforeDrop(crash, f); !errors.Is(err, errLostEventsNotSaved) {
+			t.Fatalf("a failed archive stops the rejoin: %v", err)
+		}
+		if _, err := os.Stat(f.Copy); err != nil {
+			t.Fatal("the staging copy must stay where it is when the archive fails")
+		}
+	})
 }

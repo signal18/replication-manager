@@ -52,6 +52,8 @@ type ServerMonitor struct {
 	flashbackBinlogReset atomic.Pointer[flashbackBinlogReset]
 	// the last binlog drop the flashback rejoin refused, with the guard that failed: WARN0365 for a day
 	flashbackDropRefused atomic.Pointer[flashbackDropRefusal]
+	// the last flashback rejoin stopped before RESET MASTER, its lost transactions not saved: ERR00141 for a day
+	flashbackUnsaved atomic.Pointer[flashbackDropRefusal]
 
 	legacyJobLoginAt int64        // unix time of the last legacy job body (OpenJobBody), read atomically; 0 never
 	jobBodyAt        int64        // unix time of the last job body accepted from this server's jobs (OpenJobBody), read atomically; 0 never (WARN0324)

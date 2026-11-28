@@ -61,7 +61,20 @@ Two facts, both checked on the saved crash binlog and on a throwaway MariaDB 11.
 
    A guard that fails keeps the binary log, logs it and opens **WARN0365** (server, guard,
    values) for a day; the rejoin goes on as before (with `gtid_strict_mode` the position is refused
-   and the rejoin falls back to a reseed). When all hold: `RESET MASTER` (`server.ResetMaster`)
+   and the rejoin falls back to a reseed).
+
+   **The save is a hard gate.** The lost transactions must be saved, whole, before any
+   `RESET MASTER`: the binary log is the last place they are. When `copy` or `lost-transactions`
+   fails (no copy, a copy that cannot be read, or saved transactions that are not exactly those the
+   binary log holds past the target), the rejoin **stops** there instead of going on: no
+   `RESET MASTER`, no position, no reseed (it would overwrite what is not saved), no attach; the
+   binary log, the link and the server are left as they are, the capture is archived, and
+   **ERR00141** (server, guard, what failed) is open for a day (`errLostEventsNotSaved`,
+   `stopFlashbackUnsaved`). When every guard holds, the copy is first archived into the crash's own
+   `crash-bin-<ts>/` (`saveLostEventsBeforeDrop` → `saveBinlog`; the staging copy in the working
+   directory is wiped by the next capture) and the archive must be that whole copy (same size); a
+   failed or short archive stops the rejoin the same way (ERR00141). WARN0364 then names the
+   archive. When all hold and the archive is in place: `RESET MASTER` (`server.ResetMaster`)
    and `SET GLOBAL gtid_binlog_state = '<target>'` (`dbhelper.SetGTIDBinlogState`), and only then
    `SET GLOBAL gtid_slave_pos = '<target>'` (`ReplicationLink().SetPosition`). The server's next
    binlogged event follows the target in strict mode.
@@ -93,7 +106,9 @@ there), checked every tick by
 physical) started after the drop. When a backup archive is attached, the drop is also a
 **binlog gap** (`noteBinlogGap`, WARN0259, persisted in `binlog-gaps.json`), cleared by the next
 backup in the archive like any other gap. WARN0364 is in memory: a repman restart forgets it, the
-archive gap stays.
+archive gap stays. The drop is recorded right after `RESET MASTER` succeeds, before
+`gtid_binlog_state` is set: a refused `SET GLOBAL gtid_binlog_state` still leaves WARN0364 (its
+GTID reads "nothing (... failed: ...)") and the binlog gaps, and the server is not positioned.
 
 The lost transactions stay saved with the crash (`crash-bin-<ts>/`: the binlog copy, its `.sql`
 and `.flashback.sql`). Older binlogs of the old master are kept only if the binlog backup copied
@@ -117,5 +132,8 @@ repointed by the same code as before, after the positioning.
 redacted; each guard passing and refusing alone; the saved GTIDs read from a decoded copy; the
 replay's transaction count; the cap's default; the order binlog position read, drop,
 `gtid_binlog_state`, `gtid_slave_pos`; no drop keeps the binlog; a refused `RESET MASTER` never
-positions; WARN0364 opens and the next backup closes it. Regtests:
+positions; a refused `gtid_binlog_state` after the reset still records WARN0364 and never
+positions; a missing or incomplete save stops the rejoin with ERR00141 and no statement past the
+reads, another guard keeps the binlog and goes on; the archive before the drop, short or refused,
+stops the rejoin (`TestFlashbackDropPlanStopsWhenNotSaved`, `TestSaveLostEventsBeforeDrop`). Regtests:
 `testFailoverAssyncAutoRejoinFlashback`, `testFailoverSemisyncAutoRejoinFlashback`.

@@ -245,6 +245,14 @@ func (server *ServerMonitor) rejoinMaster() error {
 				}
 
 				err := server.rejoinMasterIncremental(crash)
+				if errors.Is(err, errLostEventsNotSaved) {
+					// stopped before RESET MASTER (ERR00141): no reseed, which would overwrite
+					// what is not saved, and no attach; what was captured is archived
+					server.saveBinlog(crash)
+					cluster.finishRejoin(server.URL, RejoinResultFailed)
+					cluster.backendStateChangeProxies()
+					return nil
+				}
 				if err != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Failed to autojoin incremental to master %s", server.URL)
 					sstErr := server.RejoinMasterSST()
@@ -536,7 +544,16 @@ func (server *ServerMonitor) rejoinMasterFlashBack(crash *Crash) error {
 		return err
 	}
 	target := crash.FailoverIOGtid.Sprint()
-	plan := server.flashbackDropPlan(crash, binlogArgs[len(binlogArgs)-1], target, replayed.Transactions())
+	plan, err := server.flashbackDropPlan(crash, binlogArgs[len(binlogArgs)-1], target, replayed.Transactions())
+	if err != nil {
+		return err // the lost transactions are not saved: no RESET MASTER, nothing else (ERR00141)
+	}
+	if plan != nil {
+		// a hard gate: the lost transactions are archived, whole, before their binary log is dropped
+		if err := server.saveLostEventsBeforeDrop(crash, plan); err != nil {
+			return err
+		}
+	}
 	if err := server.positionAfterFlashback(target, plan); err != nil {
 		return err
 	}
@@ -621,16 +638,26 @@ func (server *ServerMonitor) positionAfterFlashback(target string, plan *flashba
 		if err != nil {
 			return err
 		}
+		// the binlogs are gone from here on: the reset is recorded (WARN0364, binlog gaps) before
+		// the state is set, so a refused SET leaves the drop tracked, never silent
+		reset := &flashbackBinlogReset{GTID: target, At: time.Now(), From: oldest, To: newest, Transactions: len(plan.Saved), Copy: plan.Copy}
+		server.flashbackBinlogReset.Store(reset)
+		server.flashbackDropRefused.Store(nil)
+		server.flashbackUnsaved.Store(nil)
 		logs, err = dbhelper.SetGTIDBinlogState(server.Conn, target)
 		cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed SET GLOBAL gtid_binlog_state = '%s' on %s: %s", target, server.URL, err)
+		reason := "binary log dropped by the flashback rejoin, gtid_binlog_state set to " + target
+		if err != nil {
+			failed := *reset
+			failed.GTID = fmt.Sprintf("nothing (SET GLOBAL gtid_binlog_state = '%s' failed: %s)", target, err)
+			server.flashbackBinlogReset.Store(&failed)
+			reason = "binary log dropped by the flashback rejoin, gtid_binlog_state not set: " + err.Error()
+		}
+		cluster.noteBinlogGap(server, oldest, reason)
+		cluster.noteBinlogGap(server, newest, reason)
 		if err != nil {
 			return err
 		}
-		server.flashbackBinlogReset.Store(&flashbackBinlogReset{GTID: target, At: time.Now(), From: oldest, To: newest, Transactions: len(plan.Saved), Copy: plan.Copy})
-		server.flashbackDropRefused.Store(nil)
-		reason := "binary log dropped by the flashback rejoin, gtid_binlog_state set to " + target
-		cluster.noteBinlogGap(server, oldest, reason)
-		cluster.noteBinlogGap(server, newest, reason)
 	}
 	logs, err = server.ReplicationLink().SetPosition(Position{GTID: target}, LinkByRejoin)
 	cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed SET GLOBAL gtid_slave_pos = \"%s\" on %s: %s", target, server.URL, err)
@@ -760,7 +787,7 @@ func (server *ServerMonitor) rejoinMasterIncremental(crash *Crash) error {
 			return nil
 		}
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Flashback rejoin failed: %s", err)
-		return errors.New("Flashback failed")
+		return fmt.Errorf("Flashback failed: %w", err)
 	} else {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "No flashback rejoin can flashback %t, autorejoin-flashback %t autorejoin-backup-binlog %t", cluster.canFlashBack, cluster.Conf.AutorejoinFlashback, cluster.Conf.AutorejoinBackupBinlog)
 		return errors.New("Flashback disabled")
@@ -868,6 +895,12 @@ func (server *ServerMonitor) rejoinWithMethod(crash *Crash) {
 	}
 	if cluster.Conf.AutorejoinBackupBinlog {
 		server.saveBinlog(crash)
+	}
+	if errors.Is(err, errLostEventsNotSaved) {
+		// stopped before RESET MASTER (ERR00141): the server is left as it is, no attach
+		cluster.finishRejoin(server.URL, RejoinResultFailed)
+		cluster.backendStateChangeProxies()
+		return
 	}
 	// Mirror the auto-rejoin path exactly: on SUCCESS the method has already re-slaved
 	// this server itself (its own full-config CHANGE MASTER + START SLAVE), so add NO
@@ -1168,6 +1201,11 @@ func (server *ServerMonitor) saveBinlog(crash *Crash) error {
 		crash.ArchiveDir = backupdir
 	}
 	staging := cluster.Conf.WorkingDir + "/" + cluster.Name + "-server" + strconv.FormatUint(uint64(server.ServerID), 10) + "-" + crash.FailoverMasterLogFile
+	if _, err := os.Stat(staging); os.IsNotExist(err) && crash.DeltaArchive != "" {
+		if _, errArchive := os.Stat(crash.DeltaArchive); errArchive == nil {
+			return nil // already archived by this rejoin, before its binlog drop (saveLostEventsBeforeDrop)
+		}
+	}
 	if _, err := os.Stat(staging); err != nil {
 		// Nothing was captured (backupBinlog failed or produced no file):
 		// do not create an empty archive directory that looks like a backup.

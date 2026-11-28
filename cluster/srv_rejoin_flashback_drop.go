@@ -7,6 +7,7 @@ package cluster
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"regexp"
@@ -38,6 +39,18 @@ const (
 	flashbackGuardLost            = "lost-transactions" // past the target: anything but the saved transactions
 	flashbackGuardReaders         = "readers"           // someone reads that binary log
 )
+
+// errLostEventsNotSaved stops a flashback rejoin before RESET MASTER: the lost transactions are
+// not saved, or not all of them (the copy is missing, unreadable, not the transactions the binary
+// log holds past the target, or its archive failed). The binary log is the last place they are,
+// so it is never dropped, the rejoin goes no further (no reseed, no attach), and ERR00141 says why.
+var errLostEventsNotSaved = errors.New("lost transactions not saved")
+
+// flashbackSaveGuard is a guard that fails because the save of the lost transactions is missing
+// or incomplete: the rejoin stops (errLostEventsNotSaved) instead of going on without a drop.
+func flashbackSaveGuard(guard string) bool {
+	return guard == flashbackGuardCopy || guard == flashbackGuardLost
+}
 
 // flashbackDropMaxTransactionsDefault: the lost transactions of a failover under load are
 // counted in hundreds (132 and 135 on a 16-thread sysbench test); beyond ten thousand, the
@@ -131,12 +144,13 @@ func (f *flashbackDropFacts) check() (string, string) {
 
 // flashbackDropPlan observes the facts after a complete replay (replayed transactions) and returns
 // them when the binary log may be dropped, nil when it is kept: switched off (logged), nothing
-// past the target, or a guard that failed (WARN0365).
-func (server *ServerMonitor) flashbackDropPlan(crash *Crash, copy, target string, replayed int) *flashbackDropFacts {
+// past the target, or a guard that failed (WARN0365). A failed save guard (the lost transactions
+// not saved, or not all of them) is an error instead: errLostEventsNotSaved, ERR00141.
+func (server *ServerMonitor) flashbackDropPlan(crash *Crash, copy, target string, replayed int) (*flashbackDropFacts, error) {
 	cluster := server.ClusterGroup
 	if !cluster.Conf.AutorejoinAsyncFlashbackDropBinlog {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rejoin flashback %s: binary log kept, autorejoin-async-flashback-drop-binlog is off", server.URL)
-		return nil
+		return nil, nil
 	}
 	f := &flashbackDropFacts{SemiSyncMaster: crash.FailoverSemiSyncMasterStatus, Copy: copy, Target: target,
 		OwnServerID: uint64(server.ServerID), Replayed: replayed, MaxTransactions: cluster.flashbackDropMaxTransactions()}
@@ -149,10 +163,10 @@ func (server *ServerMonitor) flashbackDropPlan(crash *Crash, copy, target string
 	cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Could not read gtid_binlog_state on %s: %s", server.URL, err)
 	if err != nil {
 		server.refuseFlashbackDrop(target, flashbackGuardLost, "gtid_binlog_state not read: "+err.Error())
-		return nil
+		return nil, nil
 	}
 	if parentBackupBehind(target, f.BinlogState) == "" {
-		return nil // nothing past the target: nothing to drop
+		return nil, nil // nothing past the target: nothing to drop
 	}
 	if crash.DeltaAnalyzed && len(crash.DeltaGTIDs) == crash.DeltaTransactions {
 		f.Saved = crash.DeltaGTIDs // the analysis of the copy, just before the replay
@@ -166,12 +180,44 @@ func (server *ServerMonitor) flashbackDropPlan(crash *Crash, copy, target string
 	}
 	f.Readers = server.replicationsFromMe()
 	if guard, values := f.check(); guard != "" {
+		if flashbackSaveGuard(guard) {
+			return nil, server.stopFlashbackUnsaved(target, guard, values)
+		}
 		server.refuseFlashbackDrop(target, guard, values)
-		return nil
+		return nil, nil
 	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
 		"Rejoin flashback %s: every guard passed (asynchronous, copy %s, %d transactions saved and replayed, past %s only them, one domain, no reader)", server.URL, copy, len(f.Saved), target)
-	return f
+	return f, nil
+}
+
+// saveLostEventsBeforeDrop archives the copy of the lost transactions into the crash's own
+// archive (saveBinlog: crash-bin, crash.json) before the binary log is dropped, and checks the
+// archive is that whole copy: the staging copy in the working directory is wiped by the next
+// capture. A failed or short archive stops the rejoin before RESET MASTER (ERR00141).
+func (server *ServerMonitor) saveLostEventsBeforeDrop(crash *Crash, plan *flashbackDropFacts) error {
+	if err := server.saveBinlog(crash); err != nil {
+		return server.stopFlashbackUnsaved(plan.Target, flashbackGuardCopy, fmt.Sprintf("the archive of %s failed: %s", plan.Copy, err))
+	}
+	st, err := os.Stat(crash.DeltaArchive)
+	if err != nil {
+		return server.stopFlashbackUnsaved(plan.Target, flashbackGuardCopy, fmt.Sprintf("the archive %q is not readable: %s", crash.DeltaArchive, err))
+	}
+	if st.Size() != plan.CopySize {
+		return server.stopFlashbackUnsaved(plan.Target, flashbackGuardCopy, fmt.Sprintf("the archive %s holds %d bytes, the copy %d", crash.DeltaArchive, st.Size(), plan.CopySize))
+	}
+	plan.Copy = crash.DeltaArchive // WARN0364 names where the lost transactions are kept
+	return nil
+}
+
+// stopFlashbackUnsaved stops the flashback rejoin before RESET MASTER: logged, ERR00141 for a day
+// (or until a later rejoin of the server drops its binary log), errLostEventsNotSaved returned.
+func (server *ServerMonitor) stopFlashbackUnsaved(target, guard, values string) error {
+	cluster := server.ClusterGroup
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
+		"Rejoin flashback %s stopped before RESET MASTER, the lost transactions are not saved (guard %s): %s; binary log, link and server left as they are", server.URL, guard, values)
+	server.flashbackUnsaved.Store(&flashbackDropRefusal{Target: target, Guard: guard, Values: values, At: time.Now()})
+	return fmt.Errorf("%w on %s (guard %s): %s", errLostEventsNotSaved, server.URL, guard, values)
 }
 
 // refuseFlashbackDrop keeps the binary log: logged and WARN0365 for a day.
@@ -315,9 +361,17 @@ const flashbackDropRefusalShown = 24 * time.Hour
 
 // checkFlashbackBinlogResetState, every tick: WARN0364 while the binary log the flashback rejoin
 // dropped has no backup of the server after it (a completed one, logical or physical, started
-// after the drop); WARN0365 for a day after a guard refused a drop.
+// after the drop); WARN0365 for a day after a guard refused a drop; ERR00141 for a day after a
+// rejoin stopped because the lost transactions were not saved.
 func (server *ServerMonitor) checkFlashbackBinlogResetState() {
 	cluster := server.ClusterGroup
+	if r := server.flashbackUnsaved.Load(); r != nil {
+		if time.Since(r.At) > flashbackDropRefusalShown {
+			server.flashbackUnsaved.CompareAndSwap(r, nil)
+		} else {
+			cluster.SetState("ERR00141", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00141"], server.URL, r.At.Format(time.RFC3339), r.Guard, r.Values), ErrFrom: "REJOIN", ServerUrl: server.URL})
+		}
+	}
 	if r := server.flashbackDropRefused.Load(); r != nil {
 		if time.Since(r.At) > flashbackDropRefusalShown {
 			server.flashbackDropRefused.CompareAndSwap(r, nil)

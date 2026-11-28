@@ -392,6 +392,7 @@ var ClusterError = map[string]string{
 	"CINF0031":  "Analytic child %s: the destination plugin %s is making the chosen tables, for %s (the seed waits for it)",
 	"ERR00140":  "Replication plugin %s of %s is stopped until a new initial load: %s -- rejoin the feed (a new initial load from the source)",
 	"WARN0364":  "Binary log of %s dropped by the flashback rejoin at %s: %d lost transactions rewound, gtid_binlog_state set to %s, their copy in %s; its binlogs %s to %s are gone from the server, a point-in-time restore from a backup before the drop cannot replay them; its next backup closes this",
+	"ERR00141":  "Flashback rejoin of %s stopped at %s before RESET MASTER, its lost transactions are not saved (%s): %s -- the binary log, the link and the server are left as they are; save them (autorejoin-backup-binlog), then rejoin it again",
 	"WARN0365":  "Flashback rejoin of %s kept its binary log at %s, guard %s failed: %s -- with gtid_strict_mode the rejoin position is refused and the rejoin falls back to a reseed",
 	"WARN0360":  "Replication plugin %s of %s: its source %s: %s",
 	"CINF0040":  "Replication plugin %s of %s: its source %s keeps %d MB of log for the feed (bound %d MB)%s",
