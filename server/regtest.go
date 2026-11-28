@@ -252,6 +252,21 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 		if test.Name == "testFailoverNoRplChecksNoSemiSync" {
 			res = regtest.TestFailoverNoRplChecksNoSemiSync(cl, test.ConfigFile, &test)
 		}
+		if test.Name == "testFailoverSemisyncReplicasOutOfSyncBlocked" {
+			res = regtest.TestFailoverSemisyncReplicasOutOfSyncBlocked(cl, test.ConfigFile, &test)
+		}
+		if test.Name == "testFailoverSemisyncOutOfSyncAtSyncOff" {
+			res = regtest.TestFailoverSemisyncOutOfSyncAtSyncOff(cl, test.ConfigFile, &test)
+		}
+		if test.Name == "testFailoverSemisyncOutOfSyncNoRplChecks" {
+			res = regtest.TestFailoverSemisyncOutOfSyncNoRplChecks(cl, test.ConfigFile, &test)
+		}
+		if test.Name == "testFailoverSemisyncInSyncAllowed" {
+			res = regtest.TestFailoverSemisyncInSyncAllowed(cl, test.ConfigFile, &test)
+		}
+		if test.Name == "testFailoverSemisyncDisabledAllowed" {
+			res = regtest.TestFailoverSemisyncDisabledAllowed(cl, test.ConfigFile, &test)
+		}
 		if test.Name == "testFailoverAllSlavesDelayNoRplChecksNoSemiSync" {
 			res = regtest.TestFailoverAllSlavesDelayNoRplChecksNoSemiSync(cl, test.ConfigFile, &test)
 		}

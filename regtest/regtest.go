@@ -49,6 +49,10 @@ var tests = []string{
 	"testFailoverAllSlavesDelayRplChecksNoSemiSync",
 	"testFailoverNoRplChecksNoSemiSync",
 	"testFailoverNoRplChecksNoSemiSyncMasterHeartbeat",
+	"testFailoverSemisyncOutOfSyncAtSyncOff",
+	"testFailoverSemisyncOutOfSyncNoRplChecks",
+	"testFailoverSemisyncInSyncAllowed",
+	"testFailoverSemisyncDisabledAllowed",
 	"testFailoverNumberFailureLimitReach",
 	"testFailoverTimeNotReach",
 	"testCancelFailoverReplicationHeartbeatDetection",
@@ -128,6 +132,12 @@ var tests = []string{
 	// test only). Same eligibility as above, plus the annotation of the claim; otherwise SKIP, before
 	// anything is changed. Run it by name:
 	// /api/clusters/<cluster>/tests/actions/run/testK8SDatabaseConfigParity
+	// testFailoverSemisyncReplicasOutOfSyncBlocked is not in this list either: it commits rows no
+	// replica has and stops the master, and on a build that promotes a replica (the bug it shows, #2438)
+	// it leaves a former master holding rows the promoted master lacks, a cluster the test does not
+	// repair. For a dedicated test cluster only. It checks its own targets (master-slave from 2 nodes):
+	// SKIP, before anything is changed. Run it by name:
+	// /api/clusters/<cluster>/tests/actions/run/testFailoverSemisyncReplicasOutOfSyncBlocked
 	"testRunSysbenchTPCPerMinuteIncreaseThreads",
 	"testConfigPersistBackupOption",
 	"testCredentialPersistTagReload",
@@ -278,6 +288,11 @@ var testTargets = map[string][]TestTarget{
 	"testFailoverAllSlavesDelayRplChecksNoSemiSync":                anyCluster,
 	"testFailoverNoRplChecksNoSemiSync":                            anyCluster,
 	"testFailoverNoRplChecksNoSemiSyncMasterHeartbeat":             anyCluster,
+	// #2438: master-slave from 2 nodes; each test sets its own semi-sync state and restores it (the fifth, ReplicasOutOfSyncBlocked, is named-only)
+	"testFailoverSemisyncOutOfSyncAtSyncOff":                       {{TopologyTarget: []string{config.TopoMasterSlave}, NumberNodesTarget: 2}},
+	"testFailoverSemisyncOutOfSyncNoRplChecks":                     {{TopologyTarget: []string{config.TopoMasterSlave}, NumberNodesTarget: 2}},
+	"testFailoverSemisyncInSyncAllowed":                            {{TopologyTarget: []string{config.TopoMasterSlave}, NumberNodesTarget: 2}},
+	"testFailoverSemisyncDisabledAllowed":                          {{TopologyTarget: []string{config.TopoMasterSlave}, NumberNodesTarget: 2}},
 	"testFailoverNumberFailureLimitReach":                          anyCluster,
 	"testFailoverTimeNotReach":                                     anyCluster,
 	// a direct replica receives from the master: the check reads it on master-slave only
