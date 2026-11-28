@@ -25,7 +25,13 @@ type InnoDB struct{}
 
 func (InnoDB) Name() string            { return "innodb" }
 func (InnoDB) Refuse(TableDesc) string { return "" }
-func (InnoDB) Session() []string       { return nil }
+
+// Session: the rows the source accepted are written as they are under a strict sql_mode of the
+// target (a zero date, a value LOAD DATA took with a warning); NO_AUTO_VALUE_ON_ZERO keeps an id 0
+// as 0 in a table that has an AUTO_INCREMENT.
+func (InnoDB) Session() []string {
+	return []string{"SET SESSION sql_mode = 'NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION'"}
+}
 
 // RefuseEngine: the tables are InnoDB (target_engine InnoDB, or unset). Aria is not taken yet:
 // its tables are not transactional, the position would no longer commit with the rows.

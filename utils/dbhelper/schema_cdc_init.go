@@ -55,9 +55,25 @@ func SelectTableRange(ctx context.Context, conn *sqlx.Conn, schema, table string
 	return rows, query, err
 }
 
-// SelectMinOf is the smallest value of column among the rows of from (a table, or a query
-// as a derived table: "(SELECT ...) AS d"), as text; "" when there is none.
-func SelectMinOf(ctx context.Context, conn *sqlx.Conn, from, column string) (string, string, error) {
+// SelectMinOfTable is the smallest value of column in schema.table, as text; "" when there is
+// none. Every identifier is quoted here.
+func SelectMinOfTable(ctx context.Context, conn *sqlx.Conn, schema, table, column string) (string, string, error) {
+	quoted, err := QuoteMySQLTableIdentifier(schema + "." + table)
+	if err != nil {
+		return "", "", err
+	}
+	return selectMin(ctx, conn, quoted, column)
+}
+
+// SelectMinOfQuery is the smallest value of column among the rows of the SELECT query, as text;
+// "" when there is none. query is an index's denormalizing query, the operator's own SELECT
+// (validated as one when stored, run as is by the index's init and unpack): it is never built
+// from any other text.
+func SelectMinOfQuery(ctx context.Context, conn *sqlx.Conn, query, column string) (string, string, error) {
+	return selectMin(ctx, conn, "("+query+") AS d", column)
+}
+
+func selectMin(ctx context.Context, conn *sqlx.Conn, from, column string) (string, string, error) {
 	query := "SELECT MIN(" + QuoteMySQLIdentifier(column) + ") FROM " + from
 	var v sql.NullString
 	err := conn.QueryRowContext(ctx, query).Scan(&v)

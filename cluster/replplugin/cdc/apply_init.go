@@ -132,6 +132,20 @@ func (a *applier) applySchema(ctx context.Context, db *sqlx.DB, e wire.SchemaEle
 	if err != nil {
 		return fmt.Errorf("index %s: the destination %s.%s: %w (%s)", idx.Name, e.Schema, e.Table, err, q)
 	}
+	if p != nil {
+		// an existing table of the same columns kept (emptied) without its partitioning: a
+		// stop between its CREATE and its partitioning, or made by hand; empty, it is
+		// partitioned now
+		names, q, err := dbhelper.GetPartitionNames(ctx, conn, e.Schema, e.Table)
+		if err != nil {
+			return fmt.Errorf("index %s: the partitions of %s.%s: %w (%s)", idx.Name, e.Schema, e.Table, err, q)
+		}
+		if len(names) == 0 {
+			if q, err := partitionTable(ctx, conn, p, e.Schema, e.Table, e.PartitionFrom); err != nil {
+				return fmt.Errorf("index %s: partitioning %s.%s: %w (%s)", idx.Name, e.Schema, e.Table, err, q)
+			}
+		}
+	}
 	delete(a.parts, strings.ToLower(e.Schema+"."+e.Table))
 	key := wire.InitKey(e.Index, e.Schema, e.Table)
 	delete(done.Inits, key)

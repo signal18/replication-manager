@@ -8,8 +8,10 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 
+	"github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
 	"github.com/signal18/replication-manager/cluster/replplugin/wire"
 	"github.com/signal18/replication-manager/utils/dbhelper"
@@ -103,16 +105,21 @@ func ApplyDeleteThenLoad(ctx context.Context, conn *sqlx.Conn, schema, table str
 	return "", nil
 }
 
-// insertRowsBatch, insertArgsMax: the rows of one INSERT of ApplyDeleteThenInsert, and its
-// placeholders at most (under MariaDB's 65535)
-const (
+// insertRowsBatch, insertArgsMax, insertBytesMax: the rows of one INSERT of
+// ApplyDeleteThenInsert, its placeholders (under MariaDB's 65535) and its values' bytes (well
+// under max_allowed_packet, 16 MB by default) at most; a row larger than insertBytesMax goes alone
+var (
 	insertRowsBatch = 500
 	insertArgsMax   = 60000
+	insertBytesMax  = 4 << 20
 )
 
 // ApplyDeleteThenInsert is ApplyDeleteThenLoad with the rows written by multi-row INSERTs: a
 // destination that never needs local_infile on its target (replication-manager's hardening
-// turns it off).
+// turns it off). A batch the server refuses as larger than its max_allowed_packet (error 1153)
+// is split in halves and tried again, down to one row; when the server closed the connection
+// with that error, the checkpoint fails and is applied again (each batch under 4 MB, only a row
+// larger than max_allowed_packet can then fail, with its error).
 func ApplyDeleteThenInsert(ctx context.Context, conn *sqlx.Conn, schema, table string, t wire.TableFiles, files map[string][]byte, keys func([][]interface{}) error) (string, error) {
 	if q, err := applyDeletes(ctx, conn, schema, table, t, files, keys); err != nil {
 		return q, err
@@ -121,10 +128,10 @@ func ApplyDeleteThenInsert(ctx context.Context, conn *sqlx.Conn, schema, table s
 		return "", nil
 	}
 	var batch [][]interface{}
-	args := 0
+	args, size := 0, 0
 	flush := func() (string, error) {
-		q, err := dbhelper.InsertRows(ctx, conn, schema, table, batch)
-		batch, args = batch[:0], 0
+		q, err := insertHalving(ctx, conn, schema, table, batch)
+		batch, args, size = nil, 0, 0
 		if err != nil {
 			return q, fmt.Errorf("insert into %s.%s: %w", schema, table, err)
 		}
@@ -135,18 +142,21 @@ func ApplyDeleteThenInsert(ctx context.Context, conn *sqlx.Conn, schema, table s
 	for sc.Scan() {
 		fields := wire.DecodeTSV(sc.Bytes())
 		r := make([]interface{}, len(fields))
+		n := 0
 		for i, f := range fields {
 			if f != nil {
 				r[i] = f
+				n += len(f)
 			}
 		}
-		if len(batch) > 0 && (len(batch) >= insertRowsBatch || args+len(r) > insertArgsMax) {
+		if len(batch) > 0 && (len(batch) >= insertRowsBatch || args+len(r) > insertArgsMax || size+n > insertBytesMax) {
 			if q, err := flush(); err != nil {
 				return q, err
 			}
 		}
 		batch = append(batch, r)
 		args += len(r)
+		size += n
 	}
 	if err := sc.Err(); err != nil {
 		return "", fmt.Errorf("rows of %s.%s in the checkpoint: %w", schema, table, err)
@@ -155,6 +165,21 @@ func ApplyDeleteThenInsert(ctx context.Context, conn *sqlx.Conn, schema, table s
 		return flush()
 	}
 	return "", nil
+}
+
+// insertHalving inserts rows, split in halves and tried again on error 1153 (a packet larger
+// than the server's max_allowed_packet), down to one row.
+func insertHalving(ctx context.Context, conn *sqlx.Conn, schema, table string, rows [][]interface{}) (string, error) {
+	q, err := dbhelper.InsertRows(ctx, conn, schema, table, rows)
+	var me *mysql.MySQLError
+	if err == nil || len(rows) < 2 || !errors.As(err, &me) || me.Number != 1153 {
+		return q, err
+	}
+	half := len(rows) / 2
+	if q, err := insertHalving(ctx, conn, schema, table, rows[:half]); err != nil {
+		return q, err
+	}
+	return insertHalving(ctx, conn, schema, table, rows[half:])
 }
 
 // applyDeletes deletes a checkpoint table's keys in batches; keys, when not nil, is told each

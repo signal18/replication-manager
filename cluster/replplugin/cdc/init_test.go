@@ -21,6 +21,7 @@ import (
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/go-mysql-org/go-mysql/schema"
+	"github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
 	"github.com/signal18/replication-manager/cluster/replplugin/wire"
 	"github.com/signal18/replication-manager/utils/dbhelper"
@@ -754,5 +755,64 @@ func TestPartitionPurge(t *testing.T) {
 	}
 	if _, err := newPartitioning(wire.Index{Name: "i", PartitionColumn: "ts", PartitionPeriod: "year", PartitionPurgeAfterDays: -1}); err == nil {
 		t.Fatal("a negative purge must be refused")
+	}
+}
+
+// The INSERT batches are capped in bytes (under max_allowed_packet), and a batch refused as too
+// large (error 1153) is split in halves and tried again.
+func TestInsertBatchBytesAndHalving(t *testing.T) {
+	saved := insertBytesMax
+	defer func() { insertBytesMax = saved }()
+	insertBytesMax = 10
+	_, conn, mock := mockConn(t)
+	var rows []byte
+	for _, v := range []string{"aaaaaa", "bbbbbb", "cccccc"} {
+		rows = wire.EncodeTSV(rows, []interface{}{v})
+	}
+	// 6 bytes each, a cap of 10: one row per INSERT
+	for range 3 {
+		mock.ExpectExec(regexp.QuoteMeta("INSERT INTO `d`.`t` VALUES (?)")).WillReturnResult(sqlmock.NewResult(0, 1))
+	}
+	tf := wire.TableFiles{Schema: "d", Table: "t", Inserts: "i"}
+	if q, err := ApplyDeleteThenInsert(context.Background(), conn, "d", "t", tf, map[string][]byte{"i": rows}, nil); err != nil {
+		t.Fatal(q, err)
+	}
+	// a batch of 3 refused with 1153: halves of 1 and 2, the 2 refused again, then 1 and 1
+	insertBytesMax = 1 << 20
+	tooLarge := &mysql.MySQLError{Number: 1153, Message: "Got a packet bigger than 'max_allowed_packet' bytes"}
+	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO `d`.`t` VALUES (?),(?),(?)")).WillReturnError(tooLarge)
+	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO `d`.`t` VALUES (?)")).WithArgs([]byte("aaaaaa")).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO `d`.`t` VALUES (?),(?)")).WillReturnError(tooLarge)
+	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO `d`.`t` VALUES (?)")).WithArgs([]byte("bbbbbb")).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO `d`.`t` VALUES (?)")).WithArgs([]byte("cccccc")).WillReturnResult(sqlmock.NewResult(0, 1))
+	if q, err := ApplyDeleteThenInsert(context.Background(), conn, "d", "t", tf, map[string][]byte{"i": rows}, nil); err != nil {
+		t.Fatal(q, err)
+	}
+	// one row alone still too large: its error
+	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO `d`.`t` VALUES (?)")).WillReturnError(tooLarge)
+	if _, err := ApplyDeleteThenInsert(context.Background(), conn, "d", "t", tf, map[string][]byte{"i": wire.EncodeTSV(nil, []interface{}{"x"})}, nil); err == nil {
+		t.Fatal("a row larger than max_allowed_packet must fail")
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A partition of the plan that exists already (made by hand, a stale cache): the partitions are
+// read again once, and only the missing ones added.
+func TestEnsureReadsPartitionsAgain(t *testing.T) {
+	_, conn, mock := mockConn(t)
+	p := &partitioning{column: "ts", period: "day", ahead: 2}
+	pt := &partitionedTable{p: p, schema: "s", table: "t", pos: 1, first: d("2026-11-20"), last: d("2026-11-28")}
+	now := day("2026-11-28")
+	mock.ExpectExec(regexp.QuoteMeta("ADD PARTITION (PARTITION `p20261129`")).WillReturnError(&mysql.MySQLError{Number: 1517, Message: "Duplicate partition name p20261129"})
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT DATA_TYPE FROM information_schema.COLUMNS")).WillReturnRows(sqlmock.NewRows([]string{"t"}).AddRow("datetime"))
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT PARTITION_NAME FROM information_schema.PARTITIONS")).WillReturnRows(sqlmock.NewRows([]string{"n"}).AddRow("p20261120").AddRow("p20261129"))
+	mock.ExpectExec(regexp.QuoteMeta("ALTER TABLE `s`.`t` ADD PARTITION (PARTITION `p20261130` VALUES LESS THAN ('2026-12-01'))")).WillReturnResult(sqlmock.NewResult(0, 0))
+	if q, err := pt.ensure(context.Background(), conn, now, 0, false); err != nil || pt.last != d("2026-11-30") {
+		t.Fatal(q, err, p.literal(pt.last))
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
 	}
 }

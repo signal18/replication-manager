@@ -233,6 +233,14 @@ Any other period, or a period that does not go with the column's type, is refuse
 The InnoDB destination writes its rows with multi-row `INSERT`s after the keys' `DELETE`
 (`cdc.ApplyDeleteThenInsert`), never `LOAD DATA LOCAL`: replication-manager's hardening turns
 `local_infile` off on the target (seen on dev3, error 4166), and an InnoDB table takes inserts well.
+A batch is at most 500 rows, 60000 placeholders and 4 MB of values (under `max_allowed_packet`); a
+batch refused with error 1153 is split in halves and tried again, down to one row. Its sessions run
+with `sql_mode = 'NO_AUTO_VALUE_ON_ZERO,NO_ENGINE_SUBSTITUTION'`: a row the source accepted (a zero
+date, a value LOAD DATA took with a warning) is written as it is under a strict target, and an id
+0 stays 0. A value that needs more partitions than one apply adds (400) stops the apply on that
+checkpoint with the value in its error (WARN0243): it is never written elsewhere. A destination
+found unpartitioned when its `-schema` element is applied again (a stop between its `CREATE` and its
+partitioning) is partitioned then, empty.
 It takes `target_engine` InnoDB (or unset); another engine is refused with the
 reason (Aria later: its tables are not transactional, the position would not commit with the rows).
 

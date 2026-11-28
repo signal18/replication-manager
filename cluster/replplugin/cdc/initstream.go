@@ -73,13 +73,12 @@ func (s *selectSource) open(ctx context.Context) (string, string, error) {
 	}
 	from := ""
 	if s.partColumn != "" {
-		src := ""
 		if s.query != "" {
-			src = "(" + s.query + ") AS d"
-		} else if src, err = dbhelper.QuoteMySQLTableIdentifier(s.schema + "." + s.table); err != nil {
-			return "", "", err
+			from, q, err = dbhelper.SelectMinOfQuery(ctx, s.conn, s.query, s.partColumn)
+		} else {
+			from, q, err = dbhelper.SelectMinOfTable(ctx, s.conn, s.schema, s.table, s.partColumn)
 		}
-		if from, q, err = dbhelper.SelectMinOf(ctx, s.conn, src, s.partColumn); err != nil {
+		if err != nil {
 			return "", "", fmt.Errorf("%w (%s)", err, q)
 		}
 	}

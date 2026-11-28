@@ -7,11 +7,13 @@ package cdc
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
 	"github.com/signal18/replication-manager/cluster/replplugin/wire"
 	"github.com/signal18/replication-manager/utils/dbhelper"
@@ -310,6 +312,7 @@ type partitionedTable struct {
 	pos           int  // the partition column in the rows
 	unixTimestamp bool // a TIMESTAMP column: RANGE (UNIX_TIMESTAMP(col))
 	first, last   int64
+	reloaded      bool // ensure read the partitions again once in this call
 }
 
 // partitionTable partitions the new, empty destination table from the period of from (the
@@ -389,7 +392,10 @@ func openPartitioned(ctx context.Context, conn *sqlx.Conn, p *partitioning, sche
 }
 
 // ensure adds the partitions up to the horizon and up to the period of upTo (the highest value
-// about to be written; ok false: none), at most maxPartitionsAdded at once.
+// about to be written; ok false: none), at most maxPartitionsAdded at once, after the last one
+// read on the target (openPartitioned). A value needing more is refused: the apply stops on that
+// checkpoint with the value in its error (WARN0243), never writes it elsewhere; the operator
+// fixes the row or raises the period.
 func (pt *partitionedTable) ensure(ctx context.Context, conn *sqlx.Conn, now time.Time, upTo int64, ok bool) (string, error) {
 	top := pt.last
 	if ok && upTo > top {
@@ -415,11 +421,32 @@ func (pt *partitionedTable) ensure(ctx context.Context, conn *sqlx.Conn, now tim
 		parts = append(parts, dbhelper.RangePartition{Name: pt.p.name(s), LessThan: pt.p.literal(pt.p.next(s))})
 	}
 	q, err := dbhelper.AddRangePartitions(ctx, conn, pt.schema, pt.table, pt.unixTimestamp, parts)
+	var me *mysql.MySQLError
+	if err != nil && errors.As(err, &me) && (me.Number == 1517 || me.Number == 1493) && !pt.reloaded {
+		// a partition of the plan exists already (made by hand, or the cache is stale: 1517
+		// same name, 1493 not increasing): the partitions read again, once
+		pt.reloaded = true
+		defer func() { pt.reloaded = false }()
+		if rerr := pt.reload(ctx, conn); rerr != nil {
+			return q, fmt.Errorf("%w; reading its partitions again: %v", err, rerr)
+		}
+		return pt.ensure(ctx, conn, now, upTo, ok)
+	}
 	if err != nil {
 		return q, err
 	}
 	pt.last = target
 	return q, nil
+}
+
+// reload reads the destination's partitions again: its first and last.
+func (pt *partitionedTable) reload(ctx context.Context, conn *sqlx.Conn) error {
+	fresh, err := openPartitioned(ctx, conn, pt.p, pt.schema, pt.table, pt.pos)
+	if err != nil {
+		return err
+	}
+	pt.first, pt.last = fresh.first, fresh.last
+	return nil
 }
 
 // purge drops the partitions whose whole range ended more than purge days ago: never the last
