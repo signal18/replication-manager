@@ -223,8 +223,8 @@ func semisyncPrepare(cl *cluster.Cluster, withSemisync bool, failSync bool, rplC
 			return saved, false
 		}
 		// the replica registers as a semi-sync client only when its IO thread connects
-		s.StopSlave()
-		s.StartSlave()
+		s.ReplicationLink().Stop(cluster.LinkByTest)
+		s.ReplicationLink().Start(cluster.LinkByTest)
 	}
 	var err error
 	if withSemisync {
@@ -301,8 +301,8 @@ func semisyncRestore(cl *cluster.Cluster, saved *semisyncSaved) bool {
 		if s.IsMaster() || s.Conn == nil {
 			continue
 		}
-		s.StopSlave()
-		s.StartSlave()
+		s.ReplicationLink().Stop(cluster.LinkByTest)
+		s.ReplicationLink().Start(cluster.LinkByTest)
 	}
 	waitSemisync(semisyncWaitState, func() bool {
 		for _, s := range cl.GetSlaves() {
@@ -381,7 +381,7 @@ func semisyncRestore(cl *cluster.Cluster, saved *semisyncSaved) bool {
 			if !s.IsMaster() && s.IsReplicationBroken() {
 				clean = false
 				if time.Since(lastStart) > 10*time.Second {
-					s.StartSlave()
+					s.ReplicationLink().Start(cluster.LinkByTest)
 				}
 			}
 		}
@@ -443,7 +443,7 @@ func semisyncOutOfSyncFailover(cl *cluster.Cluster, failSync bool, rplChecks boo
 			return false
 		}
 		for _, s := range slaves {
-			if _, err := s.StopSlaveIOThread(); err != nil {
+			if _, err := s.ReplicationLink().StopCopyEvents(cluster.LinkByTest); err != nil {
 				semisyncErr(cl, "Stop the IO thread on %s: %s", s.URL, err)
 				return false
 			}
