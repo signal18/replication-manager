@@ -140,6 +140,33 @@ func testReplicationPluginChild(cl *cluster.Cluster, name string, extra map[stri
 		}
 	}
 
+	// the feed is a replication of its plugin (repl-<source>-<target>-cdc) in the child
+	// master's server.Replications, beside its channel from the parent, and the analytic
+	// child's status reads it through that object (REPLICATION_INTERFACE.md, step 4)
+	want := cluster.CanonicalReplicationPluginName(plugin)
+	if err := tlsWait(time.Minute, func() error {
+		cm := child.GetMaster()
+		if cm == nil {
+			return fmt.Errorf("no child master")
+		}
+		var seen []string
+		for _, r := range cm.Replications {
+			seen = append(seen, r.Name()+"="+r.Plugin().Name+"/"+string(cluster.KindOf(r))+"/"+r.Row().SlaveIORunning.String)
+			if cluster.KindOf(r) == cluster.ReplicationKindCDC && r.Plugin().Name == want && r.Row().SlaveIORunning.String == "Yes" && !cluster.CanFailover(r) && r.TargetServer() == cm {
+				return nil
+			}
+		}
+		return fmt.Errorf("no running replication of %s in %s's replications: %v", want, cm.URL, seen)
+	}); err != nil {
+		return fail("%s", err)
+	}
+	if refusals {
+		if f, ok := child.AnalyticFeedStatus(); !ok || !f.Running || f.Replication != want || f.Status == nil {
+			return fail("the analytic feed through its replication: %+v", f)
+		}
+		tlsLogf(cl, "%s: the feed is a replication of %s in %s's replications", name, want, child.GetMaster().URL)
+	}
+
 	// REPMAN_REGTEST_MERGE_INTERVAL (seconds): the copies fed through the InnoDB staging,
 	// merged at that period; the rows are then compared once a merge holds the parent's GTID
 	if mi, _ := strconv.Atoi(os.Getenv("REPMAN_REGTEST_MERGE_INTERVAL")); mi > 0 {
