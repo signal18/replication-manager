@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/signal18/replication-manager/cluster"
+	clusterpkg "github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
 )
 
@@ -37,6 +38,19 @@ func (regtest *RegTest) TestFailoverAssyncAutoRejoinFlashback(cluster *cluster.C
 	load := make(chan error, 1)
 	go func() { load <- cluster.RunBench() }()
 	time.Sleep(4 * time.Second)
+	// A light load is shipped whole before a clean stop of the master: nothing is lost and the
+	// flashback never runs (seen with two sysbench threads, 0 lost transactions). The replicas
+	// stop receiving (IO thread) for a few seconds of load first, so the master commits
+	// transactions no replica has: the lost transactions the flashback must rewind. The
+	// failover repoints every replica and starts its link.
+	for _, s := range cluster.GetSlaves() {
+		if _, err := s.ReplicationLink().StopCopyEvents(clusterpkg.LinkByTest); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Stop the IO thread on %s: %s", s.URL, err)
+			return false
+		}
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "TEST", "IO threads of the replicas stopped, the load goes on on %s only", SaveMasterURL)
+	time.Sleep(3 * time.Second)
 	wg := new(sync.WaitGroup)
 	wg.Add(1)
 	go cluster.WaitFailover(wg)
