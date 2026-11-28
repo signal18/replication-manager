@@ -55,6 +55,9 @@ type PluginSetting struct {
 	Type   string   `json:"type"`             // ConstArchiveSettingType*
 	Values []string `json:"values,omitempty"` // the allowed values of an enum
 	Group  string   `json:"group,omitempty"`  // ConstArchiveSettingGroup*, "" for the main settings
+	// Default: the value a plugin's process gets when the cluster holds none (a replication
+	// plugin's manifest, the first of its three levels); never for a secret
+	Default string `json:"default,omitempty"`
 }
 
 // ArchivePluginSetting is one setting of an archive plugin's config.

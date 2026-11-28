@@ -2377,6 +2377,11 @@ definitions:
     type: object
   config.PluginSetting:
     properties:
+      default:
+        description: |-
+          Default: the value a plugin's process gets when the cluster holds none (a replication
+          plugin's manifest, the first of its three levels); never for a secret
+        type: string
       group:
         description: ConstArchiveSettingGroup*, "" for the main settings
         type: string
@@ -2390,6 +2395,14 @@ definitions:
         items:
           type: string
         type: array
+    type: object
+  config.ReplPluginEntry:
+    properties:
+      plugin:
+        type: string
+      settings:
+        additionalProperties: true
+        type: object
     type: object
   config.ReplicationPluginIndex:
     properties:
@@ -2894,6 +2907,9 @@ definitions:
       autorejoinAsyncFlashbackDropBinlog:
         type: boolean
       autorejoinAsyncFlashbackDropBinlogMaxTransactions:
+        description: |-
+          AutorejoinAsyncFlashbackDropBinlogMaxTransactions: the cap of the binlog drop of the flashback
+          rejoin (cluster/srv_rejoin_flashback_drop.go), 0 = 10000
         type: integer
       autorejoinBackupBinlog:
         type: boolean
@@ -4708,6 +4724,13 @@ definitions:
         type: string
       registryServers:
         type: string
+      replPlugins:
+        description: |-
+          ReplPluginEntries: the settings of the external replication plugins, declared by their
+          manifests (REPLICATION_INTERFACE.md "Settings: per plugin")
+        items:
+          $ref: '#/definitions/config.ReplPluginEntry'
+        type: array
       replicationActivePassive:
         type: boolean
       replicationCredential:
@@ -4764,6 +4787,8 @@ definitions:
         type: boolean
       replicationPluginFeedDatabase:
         type: string
+      replicationPluginFeedEnabled:
+        type: boolean
       replicationPluginFeedRetainedMax:
         type: integer
       replicationPluginFeedSourceCluster:

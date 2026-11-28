@@ -31503,6 +31503,10 @@ const docTemplate = `{
         "config.PluginSetting": {
             "type": "object",
             "properties": {
+                "default": {
+                    "description": "Default: the value a plugin's process gets when the cluster holds none (a replication\nplugin's manifest, the first of its three levels); never for a secret",
+                    "type": "string"
+                },
                 "group": {
                     "description": "ConstArchiveSettingGroup*, \"\" for the main settings",
                     "type": "string"
@@ -31520,6 +31524,18 @@ const docTemplate = `{
                     "items": {
                         "type": "string"
                     }
+                }
+            }
+        },
+        "config.ReplPluginEntry": {
+            "type": "object",
+            "properties": {
+                "plugin": {
+                    "type": "string"
+                },
+                "settings": {
+                    "type": "object",
+                    "additionalProperties": true
                 }
             }
         },
@@ -32253,6 +32269,7 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "autorejoinAsyncFlashbackDropBinlogMaxTransactions": {
+                    "description": "AutorejoinAsyncFlashbackDropBinlogMaxTransactions: the cap of the binlog drop of the flashback\nrejoin (cluster/srv_rejoin_flashback_drop.go), 0 = 10000",
                     "type": "integer"
                 },
                 "autorejoinBackupBinlog": {
@@ -34910,6 +34927,13 @@ const docTemplate = `{
                 "registryServers": {
                     "type": "string"
                 },
+                "replPlugins": {
+                    "description": "ReplPluginEntries: the settings of the external replication plugins, declared by their\nmanifests (REPLICATION_INTERFACE.md \"Settings: per plugin\")",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/config.ReplPluginEntry"
+                    }
+                },
                 "replicationActivePassive": {
                     "type": "boolean"
                 },
@@ -34993,6 +35017,9 @@ const docTemplate = `{
                 },
                 "replicationPluginFeedDatabase": {
                     "type": "string"
+                },
+                "replicationPluginFeedEnabled": {
+                    "type": "boolean"
                 },
                 "replicationPluginFeedRetainedMax": {
                     "type": "integer"

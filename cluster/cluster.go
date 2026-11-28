@@ -2535,6 +2535,16 @@ func (cluster *Cluster) SaveConfigFile() (bool, error) {
 		buf.WriteString(entries)
 	}
 
+	// the settings of the external replication plugins, unless a config file pins them
+	if _, pinned := cluster.Conf.GetImmuableFlag("repl-plugin"); !pinned {
+		entries, err := cluster.Conf.ReplPluginEntriesToml("saved-" + cluster.Name)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Error rendering the replication plugin settings: %s", err)
+			return false, err
+		}
+		buf.WriteString(entries)
+	}
+
 	// the S3 provider list, unless the config does not keep it (#2155)
 	providersInConfig := cluster.s3ProvidersInConfig()
 	if providersInConfig {

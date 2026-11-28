@@ -1244,6 +1244,9 @@ type Config struct {
 
 	// SnapshotPluginEntries: the settings of the external snapshot plugins (#2456)
 	SnapshotPluginEntries []SnapshotPluginEntry `mapstructure:"snapshot-plugin" toml:"snapshot-plugin" json:"snapshotPlugins"`
+	// ReplPluginEntries: the settings of the external replication plugins, declared by their
+	// manifests (REPLICATION_INTERFACE.md "Settings: per plugin")
+	ReplPluginEntries []ReplPluginEntry `mapstructure:"repl-plugin" toml:"repl-plugin" json:"replPlugins"`
 
 	// AutorejoinAsyncFlashbackDropBinlogMaxTransactions: the cap of the binlog drop of the flashback
 	// rejoin (cluster/srv_rejoin_flashback_drop.go), 0 = 10000

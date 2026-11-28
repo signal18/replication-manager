@@ -142,19 +142,29 @@ func (conf *Config) PutSnapshotPluginSettings(plugin string, settings map[string
 
 // SnapshotPluginEnv is the environment an external plugin gets for its settings: each declared
 // setting held as REPMAN_SNAPSHOT_SETTING_<NAME>, each secret decrypted as
-// REPMAN_SNAPSHOT_SECRET_<NAME>. Only for the plugin's process, never for a log.
+// REPMAN_SNAPSHOT_SECRET_<NAME> (pluginSettingsEnv).
 func (conf *Config) SnapshotPluginEnv(m SnapshotPluginManifest) []string {
-	e := conf.SnapshotPluginEntryOf(m.Name)
+	return conf.pluginSettingsEnv(m.Settings, conf.SnapshotPluginEntryOf(m.Name).Settings, EnvSnapshotSettingPrefix, EnvSnapshotSecretPrefix)
+}
+
+// pluginSettingsEnv is a plugin's environment for its settings, shared by the snapshot and the
+// replication plugins: each declared setting held (else its manifest's default) as
+// <settingPrefix><NAME>, each secret held decrypted as <secretPrefix><NAME>. Only for the
+// plugin's process, never for a log.
+func (conf *Config) pluginSettingsEnv(ss PluginSettings, values map[string]interface{}, settingPrefix, secretPrefix string) []string {
 	var env []string
-	for _, st := range m.Settings {
-		v, ok := e.Settings[st.Name]
+	for _, st := range ss {
+		v, ok := values[st.Name]
 		if !ok || v == nil {
-			continue
+			if st.Default == "" || st.Type == ConstArchiveSettingTypeSecret {
+				continue
+			}
+			v = st.Default
 		}
 		raw := fmt.Sprintf("%v", v)
-		prefix := EnvSnapshotSettingPrefix
+		prefix := settingPrefix
 		if st.Type == ConstArchiveSettingTypeSecret {
-			prefix, raw = EnvSnapshotSecretPrefix, conf.GetDecryptedPassword(st.Name, raw)
+			prefix, raw = secretPrefix, conf.GetDecryptedPassword(st.Name, raw)
 		}
 		if strings.ContainsAny(raw, "\x00\n\r") {
 			// the API refuses such a value; one written by hand in the TOML never reaches the
