@@ -76,11 +76,20 @@ func testReplicationPluginChild(cl *cluster.Cluster, name string, extra map[stri
 		"CREATE TABLE " + cdcRegtestSchema + ".orders (id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY, customer INT NOT NULL, status VARCHAR(16) NOT NULL, amount DECIMAL(12,2), note VARCHAR(120), created DATETIME NOT NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
 		"CREATE TABLE " + cdcRegtestSchema + ".lines (id BIGINT NOT NULL PRIMARY KEY, order_id BIGINT NOT NULL, qty INT NOT NULL, label VARCHAR(60)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
 	}
+	// the tables the destination must refuse: a latin1 one, and one without primary key unless
+	// the parent forces primary keys (innodb_force_primary_key, set by the configurator: such a
+	// table cannot exist there)
+	refused := []string{}
 	if refusals {
+		if !strings.EqualFold(tlsLiveVariable(master, "INNODB_FORCE_PRIMARY_KEY"), "ON") {
+			refused = append(refused, "nopk")
+			stmts = append(stmts,
+				"CREATE TABLE "+cdcRegtestSchema+".nopk (a INT, b VARCHAR(10)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+				"INSERT INTO "+cdcRegtestSchema+".nopk VALUES (1,'a'),(2,'b')")
+		}
+		refused = append(refused, "latin")
 		stmts = append(stmts,
-			"CREATE TABLE "+cdcRegtestSchema+".nopk (a INT, b VARCHAR(10)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
 			"CREATE TABLE "+cdcRegtestSchema+".latin (id INT PRIMARY KEY, name VARCHAR(40)) ENGINE=InnoDB DEFAULT CHARSET=latin1",
-			"INSERT INTO "+cdcRegtestSchema+".nopk VALUES (1,'a'),(2,'b')",
 			"INSERT INTO "+cdcRegtestSchema+".latin VALUES (1,'a'),(2,'b')")
 	}
 	stmts = append(stmts,
@@ -127,7 +136,7 @@ func testReplicationPluginChild(cl *cluster.Cluster, name string, extra map[stri
 	}
 	if refusals {
 		// the two tables the destination cannot hold, each with its schema state
-		for _, tbl := range []string{"nopk", "latin"} {
+		for _, tbl := range refused {
 			found := false
 			for _, s := range child.SchemaStateMachine.GetOpenStates() {
 				if strings.Contains(s.ErrDesc, cdcRegtestSchema+"."+tbl) && strings.HasPrefix(s.ErrKey, "WARN0340") {
@@ -285,7 +294,7 @@ func testReplicationPluginChild(cl *cluster.Cluster, name string, extra map[stri
 	if moved {
 		return fail("the plugin moved away from its lost replica source %s", replica.URL)
 	}
-	tlsLogf(cl, "PASS %s: %s fed by %s through a switchover and a restart of the child, then from the replica %s, rows identical to %s; the replica lost: paused with ERR00131%s", name, run.name, plugin, replica.URL, cl.Name, map[bool]string{true: "; nopk and latin left InnoDB with WARN0340", false: ""}[refusals])
+	tlsLogf(cl, "PASS %s: %s fed by %s through a switchover and a restart of the child, then from the replica %s, rows identical to %s; the replica lost: paused with ERR00131%s", name, run.name, plugin, replica.URL, cl.Name, map[bool]string{true: "; " + strings.Join(refused, " and ") + " left InnoDB with WARN0340", false: ""}[refusals])
 	return true
 }
 
