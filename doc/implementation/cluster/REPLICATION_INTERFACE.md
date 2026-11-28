@@ -155,7 +155,7 @@ type ReplicationTopology struct {
 | `repl-mariadb-mariadb-cdc` | cdc | copy, denormalize; engine a parameter (InnoDB, Aria) | external | free |
 | `repl-mariadb-columnstore-cdc` | cdc | copy, denormalize | external | free (community-maintained) |
 | `repl-mariadb-duckdb-cdc` | cdc | copy, denormalize | external | enterprise |
-| `repl-mariadb-s3-cdc` | cdc | S3 by partition or by whole table | external | enterprise |
+| `repl-mariadb-s3-cdc` | cdc | S3 by partition: the delta kept by partition, each changed partition rebuilt and exchanged | external | enterprise |
 | `repl-mariadb-s3files-cdc` | cdc | Parquet files in a bucket (also the migration path) | external | enterprise |
 | `repl-mariadb-kafka-cdc` | cdc | a topic per index | external | enterprise |
 | `repl-mariadb-redis-cdc`, `-memcached-cdc`, `-rabbitmq-cdc` | cdc | keys, messages | external | free |
@@ -165,8 +165,8 @@ type ReplicationTopology struct {
 
 The CDC destinations, their apply and their position are the private CDC design
 (`doc/enterprise-denormalize-plugin.md` in the plugin-signer repository): one plugin per
-destination, each in copy and denormalize mode, S3 by periodic partition injection or by whole-table
-rebuild and swap. Tiers: the maintainer's decision of 2026-11-26.
+destination, each in copy and denormalize mode, S3 by partition (the index's partitioning, the delta of each changed partition applied to a work
+table then exchanged). Tiers: the maintainer's decision of 2026-11-26.
 
 ## Two ways to implement the same contract
 
