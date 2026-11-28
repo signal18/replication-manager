@@ -559,3 +559,31 @@ func TestApplyDeleteThenInsert(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// One source table copied by two indexes (two destinations, one by SELECT, one from a
+// backup): its delta goes to each destination once that one's init is done; the capture keys
+// its rows by the primary key and the partition column of every copy.
+func TestTwoCopiesOfOneTable(t *testing.T) {
+	cfg := wire.Config{Indexes: []wire.Index{
+		{Name: "sel", Mode: "table", Tables: []string{"logs.access"}, Schema: "logs_sel", PartitionColumn: "ts", PartitionPeriod: "week"},
+		{Name: "bak", Mode: "table", Tables: []string{"logs.access"}, Schema: "logs_bak", Init: "backup", PartitionColumn: "day", PartitionPeriod: "month"},
+	}}
+	copies, err := copyDests(cfg)
+	if err != nil || len(copies) != 2 {
+		t.Fatal(copies, err)
+	}
+	a := &applier{cfg: cfg, copies: copies}
+	m := wire.Manifest{GTID: "0-1-9", Tables: []wire.TableFiles{{Schema: "logs", Table: "access"}}}
+	done := &wire.Applied{Inits: map[string]string{copies[1].initKey(): "0-1-5"}}
+	if got := a.routeDelta(m, done); len(got) != 1 || got[0].Schema != "logs_bak" {
+		t.Fatal(got)
+	}
+	done.Inits[copies[0].initKey()] = "0-1-5"
+	if got := a.routeDelta(m, done); len(got) != 2 || got[0].Schema != "logs_sel" || got[1].Schema != "logs_bak" {
+		t.Fatal(got)
+	}
+	c := &capture{copies: map[string][]*tableCopy{"logs.access": {{key: []string{"id", "ts"}}, {key: []string{"id", "day"}}}}}
+	if k := c.copyKeyNames("logs", "access"); strings.Join(k, ",") != "id,ts,day" {
+		t.Fatal(k)
+	}
+}

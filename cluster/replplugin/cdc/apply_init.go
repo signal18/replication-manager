@@ -45,14 +45,15 @@ func (a *applier) indexByID(id string) (wire.Index, bool) {
 	return wire.Index{}, false
 }
 
-// copyOf is the table-mode destination of a source table.
-func (a *applier) copyOf(schema, table string) (copyDest, bool) {
+// copiesOf are the table-mode destinations of a source table (several indexes may copy it).
+func (a *applier) copiesOf(schema, table string) []copyDest {
+	var out []copyDest
 	for _, d := range a.copies {
 		if strings.EqualFold(d.srcSchema, schema) && strings.EqualFold(d.srcTable, table) {
-			return d, true
+			out = append(out, d)
 		}
 	}
-	return copyDest{}, false
+	return out
 }
 
 // partitioned is the partitioned destination table schema.table of idx, nil when idx is not
@@ -317,22 +318,25 @@ func (a *applier) applyDDL(ctx context.Context, db *sqlx.DB, e wire.DDLElement, 
 func (a *applier) routeDelta(m wire.Manifest, done *wire.Applied) []wire.TableFiles {
 	var out []wire.TableFiles
 	for _, t := range m.Tables {
-		d, isCopy := a.copyOf(t.Schema, t.Table)
-		if !isCopy || a.cfg.Matches(t.Schema, t.Table) {
+		copies := a.copiesOf(t.Schema, t.Table)
+		if len(copies) == 0 || a.cfg.Matches(t.Schema, t.Table) {
 			out = append(out, t)
 		}
-		if !isCopy || done.Paused[d.id] != "" {
-			continue
+		for _, d := range copies {
+			if done.Paused[d.id] != "" {
+				continue
+			}
+			g, inited := done.Inits[d.initKey()]
+			if !inited {
+				continue // the init to come holds these rows
+			}
+			if within, err := coversKnownDomains(g, m.GTID); err == nil && within && m.GTID != "" {
+				continue
+			}
+			c := t
+			c.Schema, c.Table = d.destSchema, d.destTable
+			out = append(out, c)
 		}
-		g, inited := done.Inits[d.initKey()]
-		if !inited {
-			continue // the init to come holds these rows
-		}
-		if within, err := coversKnownDomains(g, m.GTID); err == nil && within && m.GTID != "" {
-			continue
-		}
-		t.Schema, t.Table = d.destSchema, d.destTable
-		out = append(out, t)
 	}
 	return out
 }

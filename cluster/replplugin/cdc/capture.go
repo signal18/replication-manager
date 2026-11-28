@@ -34,6 +34,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -84,7 +85,8 @@ type capture struct {
 	packs      map[string]*packBuf
 	// the table mode: the source tables copied (lower schema.table), their key the source's
 	// primary key and the partition column
-	copies map[string]*tableCopy
+	copies    map[string][]*tableCopy
+	copyOrder []*tableCopy
 	// the DDL being read: its transaction's GTID, the tables it changes (OnTableChanged)
 	txGTID    string
 	ddlTables []string
@@ -93,19 +95,30 @@ type capture struct {
 }
 
 // copyList is the table-mode copies, in the config's order.
-func (c *capture) copyList() []*tableCopy {
-	var out []*tableCopy
-	for _, d := range c.ap.copies {
-		if tc := c.copyOf(d.srcSchema, d.srcTable); tc != nil {
-			out = append(out, tc)
+func (c *capture) copyList() []*tableCopy { return c.copyOrder }
+
+// copyOf is the first table-mode copy of a source table, nil when none (one source table may
+// be copied by several indexes).
+func (c *capture) copyOf(schema, table string) *tableCopy {
+	if l := c.copies[strings.ToLower(schema+"."+table)]; len(l) > 0 {
+		return l[0]
+	}
+	return nil
+}
+
+// copyKeyNames is the key a source table's rows are found by when table-mode indexes copy it:
+// its primary key, then the partition column of each copy that is not in it (the deletes then
+// reach one partition of every partitioned copy; every copy holds every column).
+func (c *capture) copyKeyNames(schema, table string) []string {
+	var out []string
+	for _, tc := range c.copies[strings.ToLower(schema+"."+table)] {
+		for _, k := range tc.key {
+			if !slices.ContainsFunc(out, func(o string) bool { return strings.EqualFold(o, k) }) {
+				out = append(out, k)
+			}
 		}
 	}
 	return out
-}
-
-// copyOf is the table-mode copy of a source table, nil when none.
-func (c *capture) copyOf(schema, table string) *tableCopy {
-	return c.copies[strings.ToLower(schema+"."+table)]
 }
 
 func (c *capture) buf(t *schema.Table) *tableBuf {
@@ -118,10 +131,10 @@ func (c *capture) buf(t *schema.Table) *tableBuf {
 			return b
 		}
 		b = newTableBuf(t)
-		if tc := c.copyOf(t.Schema, t.Name); tc != nil && b.keyed() {
+		if names := c.copyKeyNames(t.Schema, t.Name); len(names) > 0 && b.keyed() {
 			// a partitioned copy: its rows are found by the destination's key, the
 			// partition column with the primary key (the delete reaches one partition)
-			b.key = copyKey(t, tc.key, b.key)
+			b.key = copyKey(t, names, b.key)
 		}
 		c.bufs[k] = b
 	}
@@ -612,13 +625,15 @@ func MainSource(dest Destination, src Source) {
 		if ap.copies, err = copyDests(cfg); err != nil {
 			fail(c, err)
 		}
-		c.copies = map[string]*tableCopy{}
+		c.copies = map[string][]*tableCopy{}
 		for _, d := range ap.copies {
 			tc, err := resolveCopy(context.Background(), src, d)
 			if err != nil {
 				fail(c, err)
 			}
-			c.copies[strings.ToLower(d.srcSchema+"."+d.srcTable)] = tc
+			k := strings.ToLower(d.srcSchema + "." + d.srcTable)
+			c.copies[k] = append(c.copies[k], tc)
+			c.copyOrder = append(c.copyOrder, tc)
 		}
 		c.initSrc = src
 	}
