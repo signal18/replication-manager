@@ -41,6 +41,10 @@ type applier struct {
 	// the denormalize mode: the source the unpack queries, the indexes
 	src     *sqlx.DB
 	indexes []*indexMeta
+	// the table mode: where each source table goes (the config's, no source read)
+	copies []copyDest
+	// the partitioned destination tables, read on the target once
+	parts map[string]*partitionedTable
 
 	mu   sync.Mutex
 	done wire.Applied
@@ -56,6 +60,18 @@ func (a *applier) fill(st *wire.Status) {
 	st.IndexesReady = nil
 	for _, id := range a.done.Indexes {
 		st.IndexesReady = append(st.IndexesReady, strings.SplitN(id, "@", 2)[0])
+	}
+	// a table-mode index is ready once each of its tables' init is applied
+	pending := map[string]bool{}
+	for _, d := range a.copies {
+		if _, ok := a.done.Inits[d.initKey()]; !ok {
+			pending[d.idx.Name] = true
+		}
+	}
+	for _, d := range a.copies {
+		if !pending[d.idx.Name] && !slices.Contains(st.IndexesReady, d.idx.Name) {
+			st.IndexesReady = append(st.IndexesReady, d.idx.Name)
+		}
 	}
 	st.PendingMB = a.tr.PendingBytes() >> 20
 	if a.last != nil && a.cfg.MergeIntervalMs > 0 {
@@ -191,7 +207,7 @@ func (a *applier) runOnce(ctx context.Context) {
 			}
 		}
 		var failed error
-		if err := a.initIndexes(ctx, db, &done, appliedPath); err != nil {
+		if err := a.maintainPartitions(ctx, db, &done); err != nil {
 			a.setErr(err)
 			continue
 		}
@@ -222,6 +238,9 @@ func (a *applier) runOnce(ctx context.Context) {
 				failed = fmt.Errorf("merge of the staging: %w", err)
 			}
 		}
+		if failed == nil {
+			failed = pausedError(done)
+		}
 		a.setErr(failed)
 	}
 }
@@ -233,6 +252,15 @@ func (a *applier) applyOne(ctx context.Context, db *sqlx.DB, seq int64, done *wi
 	if err != nil {
 		return "", err
 	}
+	switch {
+	case m.Schema != nil:
+		return m.GTID, a.applySchema(ctx, db, *m.Schema, done)
+	case m.Init != nil:
+		return m.GTID, a.applyInitPart(ctx, db, m, files, done)
+	case m.DDL != nil:
+		return m.GTID, a.applyDDL(ctx, db, *m.DDL, done)
+	}
+	m.Tables = a.routeDelta(m, done)
 	if len(m.Tables) == 0 && len(m.Packs) == 0 {
 		return m.GTID, nil
 	}
@@ -242,8 +270,13 @@ func (a *applier) applyOne(ctx context.Context, db *sqlx.DB, seq int64, done *wi
 	}
 	defer conn.Close()
 	if len(m.Packs) > 0 {
-		// the unpack: each index's micro checkpoints join the checkpoint's tables
+		// the unpack: the micro checkpoints of each index whose init is done join the
+		// checkpoint's tables (an index not initialized yet: its init holds these keys)
 		for _, meta := range a.indexes {
+			id := indexID(meta.idx)
+			if !slices.Contains(done.Indexes, id) || done.Paused[id] != "" {
+				continue
+			}
 			tables, f, err := unpack(ctx, a.src, conn, meta, m, files, a.cfg.MergeIntervalMs > 0)
 			if err != nil {
 				return "", err
@@ -256,6 +289,9 @@ func (a *applier) applyOne(ctx context.Context, db *sqlx.DB, seq int64, done *wi
 		if len(m.Tables) == 0 {
 			return m.GTID, nil
 		}
+	}
+	if err := a.ensureDeltaPartitions(ctx, conn, m.Tables, files); err != nil {
+		return "", err
 	}
 	name := func(t wire.TableFiles) string {
 		return fmt.Sprintf("replplugin-%d-%d-%s.%s", os.Getpid(), m.Seq, t.Schema, t.Table)
@@ -320,53 +356,6 @@ func (a *applier) position(ctx context.Context, db *sqlx.DB, p Positioner) (wire
 		return pos, fmt.Errorf("the position in the destination: %w", err)
 	}
 	return pos, nil
-}
-
-// initIndexes runs the init of each index not done yet (applied.json's Indexes, by indexID):
-// its denormalized table filled from the query on a consistent snapshot of the source, directly
-// in the destination (the accumulation is for the changes). An index left out of the config is
-// forgotten, so put back it starts again from its init; a changed query or table is a new
-// index, its init runs again.
-func (a *applier) initIndexes(ctx context.Context, db *sqlx.DB, done *wire.Applied, appliedPath string) error {
-	var kept []string
-	for _, id := range done.Indexes {
-		for _, m := range a.indexes {
-			if indexID(m.idx) == id {
-				kept = append(kept, id)
-			}
-		}
-	}
-	for _, meta := range a.indexes {
-		if slices.Contains(kept, indexID(meta.idx)) {
-			continue
-		}
-		conn, err := a.session(ctx, db)
-		if err != nil {
-			return err
-		}
-		err = initIndex(ctx, a.src, db, conn, a.dest, meta, func(t wire.TableFiles, files map[string][]byte) error {
-			q, err := a.dest.Apply(ctx, conn, t.Schema, t.Table, t, files, fmt.Sprintf("replplugin-%d-%s", os.Getpid(), t.Inserts), nil)
-			if err != nil {
-				return fmt.Errorf("%w (%s)", err, q)
-			}
-			return nil
-		})
-		conn.Close()
-		if err != nil {
-			return fmt.Errorf("init of index %s: %w", meta.idx.Name, err)
-		}
-		kept = append(kept, indexID(meta.idx))
-	}
-	if !slices.Equal(kept, done.Indexes) {
-		done.Indexes = kept
-		if err := writeApplied(appliedPath, *done); err != nil {
-			return err
-		}
-		a.mu.Lock()
-		a.done = *done
-		a.mu.Unlock()
-	}
-	return nil
 }
 
 // mergeWhenDue merges the staging once the merge interval passed since the last merge (the

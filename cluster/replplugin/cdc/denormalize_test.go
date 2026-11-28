@@ -50,9 +50,9 @@ func TestPackKeys(t *testing.T) {
 
 func tpccFields() []field {
 	return []field{
-		{"ol_w_id", "tpcc", "order_line", "ol_w_id"}, {"ol_o_id", "tpcc", "order_line", "ol_o_id"}, {"ol_number", "tpcc", "order_line", "ol_number"},
-		{"amount", "", "", ""},
-		{"i_id", "tpcc", "item", "i_id"}, {"i_name", "tpcc", "item", "i_name"},
+		{name: "ol_w_id", schema: "tpcc", orgTable: "order_line", orgName: "ol_w_id"}, {name: "ol_o_id", schema: "tpcc", orgTable: "order_line", orgName: "ol_o_id"}, {name: "ol_number", schema: "tpcc", orgTable: "order_line", orgName: "ol_number"},
+		{name: "amount", schema: "", orgTable: "", orgName: ""},
+		{name: "i_id", schema: "tpcc", orgTable: "item", orgName: "i_id"}, {name: "i_name", schema: "tpcc", orgTable: "item", orgName: "i_name"},
 	}
 }
 
@@ -78,12 +78,12 @@ func TestIndexFromFields(t *testing.T) {
 		t.Fatalf("missing pk column: %v", err)
 	}
 	// a table joined twice
-	twice := append(tpccFields(), field{"i2_id", "tpcc", "item", "i_id"})
+	twice := append(tpccFields(), field{name: "i2_id", schema: "tpcc", orgTable: "item", orgName: "i_id"})
 	if _, err := indexFromFields(context.Background(), nil, idx, twice); err == nil || !strings.Contains(err.Error(), "twice") {
 		t.Fatalf("table twice: %v", err)
 	}
 	// two columns of one name
-	dup := append(tpccFields(), field{"amount", "", "", ""})
+	dup := append(tpccFields(), field{name: "amount", schema: "", orgTable: "", orgName: ""})
 	if _, err := indexFromFields(context.Background(), nil, idx, dup); err == nil {
 		t.Fatal("two columns of one name must be refused")
 	}

@@ -46,6 +46,7 @@ import (
 	"github.com/go-mysql-org/go-mysql/mysql"
 	"github.com/go-mysql-org/go-mysql/replication"
 	"github.com/go-mysql-org/go-mysql/schema"
+	"github.com/jmoiron/sqlx"
 	"github.com/signal18/replication-manager/cluster/replplugin/wire"
 )
 
@@ -81,6 +82,30 @@ type capture struct {
 	// micro_checkpoint_pack, per source table
 	packTables map[string]bool
 	packs      map[string]*packBuf
+	// the table mode: the source tables copied (lower schema.table), their key the source's
+	// primary key and the partition column
+	copies map[string]*tableCopy
+	// the DDL being read: its transaction's GTID, the tables it changes (OnTableChanged)
+	txGTID    string
+	ddlTables []string
+	// initSrc: the source the inits read, nil when there is no index
+	initSrc *sqlx.DB
+}
+
+// copyList is the table-mode copies, in the config's order.
+func (c *capture) copyList() []*tableCopy {
+	var out []*tableCopy
+	for _, d := range c.ap.copies {
+		if tc := c.copyOf(d.srcSchema, d.srcTable); tc != nil {
+			out = append(out, tc)
+		}
+	}
+	return out
+}
+
+// copyOf is the table-mode copy of a source table, nil when none.
+func (c *capture) copyOf(schema, table string) *tableCopy {
+	return c.copies[strings.ToLower(schema+"."+table)]
 }
 
 func (c *capture) buf(t *schema.Table) *tableBuf {
@@ -93,6 +118,11 @@ func (c *capture) buf(t *schema.Table) *tableBuf {
 			return b
 		}
 		b = newTableBuf(t)
+		if tc := c.copyOf(t.Schema, t.Name); tc != nil && b.keyed() {
+			// a partitioned copy: its rows are found by the destination's key, the
+			// partition column with the primary key (the delete reaches one partition)
+			b.key = copyKey(t, tc.key, b.key)
+		}
 		c.bufs[k] = b
 	}
 	return b
@@ -113,7 +143,7 @@ func (c *capture) OnRow(e *canal.RowsEvent) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	packed := c.pack(e)
-	if !c.cfg.Matches(e.Table.Schema, e.Table.Name) {
+	if !c.cfg.Matches(e.Table.Schema, e.Table.Name) && c.copyOf(e.Table.Schema, e.Table.Name) == nil {
 		if !packed {
 			c.st.Skipped += int64(len(e.Rows))
 			return nil
@@ -202,10 +232,16 @@ func (c *capture) OnXID(_ *replication.EventHeader, _ mysql.Position) error {
 
 // OnGTID: a transaction starts, so the previous one ended, also one without an XID (a
 // COMMIT of a non-transactional table): a period due closes there.
-func (c *capture) OnGTID(_ *replication.EventHeader, _ mysql.BinlogGTIDEvent) error {
+func (c *capture) OnGTID(_ *replication.EventHeader, e mysql.BinlogGTIDEvent) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.inTx, c.txSize = false, 0
+	c.txGTID, c.ddlTables = "", nil
+	if e != nil {
+		if g, err := e.GTIDNext(); err == nil && g != nil {
+			c.txGTID = g.String()
+		}
+	}
 	if c.flushDue {
 		return c.flushLocked()
 	}
@@ -229,12 +265,67 @@ func (c *capture) OnPosSynced(_ *replication.EventHeader, _ mysql.Position, set 
 	return nil
 }
 
+// OnTableChanged collects the tables the DDL being read changes (canal tells each one before
+// OnDDL).
+func (c *capture) OnTableChanged(_ *replication.EventHeader, schema, table string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.ddlTables = append(c.ddlTables, schema+"."+table)
+	return nil
+}
+
+// OnDDL: a DDL on the source. On a table of an index it closes the open micro checkpoint
+// and is published as its own element (none mixes rows from before and after it); the
+// apply hands it to the destination. On another carried table, replication-manager raises
+// a state: the copy keeps the old structure.
 func (c *capture) OnDDL(_ *replication.EventHeader, _ mysql.Position, q *replication.QueryEvent) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	// replication-manager raises it as a state: the copy keeps the old structure
 	c.st.LastDDL = truncate(string(q.Query), 200)
 	c.st.Description = "a DDL on the source is not applied to the destination: " + c.st.LastDDL
+	tables := c.ddlTables
+	c.ddlTables = nil
+	var ours []string
+	for _, t := range tables {
+		s, n, _ := strings.Cut(t, ".")
+		if c.packTables[t] || c.copyOf(s, n) != nil {
+			ours = append(ours, t)
+		}
+	}
+	if len(ours) == 0 {
+		return nil
+	}
+	if err := c.flushLocked(); err != nil {
+		return err
+	}
+	after := c.gtid
+	if c.txGTID != "" {
+		if set, err := mysql.ParseMariadbGTIDSet(c.gtid); err == nil {
+			if err := set.(*mysql.MariadbGTIDSet).Update(c.txGTID); err == nil {
+				after = set.String()
+			}
+		}
+	}
+	e := wire.DDLElement{Statement: string(q.Query), Schema: string(q.Schema), Tables: ours, GTID: after}
+	if err := c.publishLocked(wire.Manifest{GTID: after, DDL: &e}, nil); err != nil {
+		return fmt.Errorf("the DDL element: %w", err)
+	}
+	c.gtid, c.state.GTID = after, after
+	return wire.WriteState(c.statePath, c.state)
+}
+
+// publishLocked publishes an element that is not the delta (a -schema element, an init part,
+// a DDL) with the next sequence; its GTID, when unset, the capture's position.
+func (c *capture) publishLocked(m wire.Manifest, files map[string][]byte) error {
+	seq := c.state.Seq + 1
+	m.Seq = seq
+	if m.GTID == "" {
+		m.GTID = c.state.GTID
+	}
+	if err := publish(c.w, m, files); err != nil {
+		return fmt.Errorf("checkpoint %d: %w", seq, err)
+	}
+	c.state.Seq = seq
 	return nil
 }
 
@@ -507,7 +598,8 @@ func MainSource(dest Destination, src Source) {
 	c := &capture{cfg: cfg, statePath: statePath, state: state, bufs: map[string]*tableBuf{}, keyErrs: map[string]bool{}, gtid: state.GTID, opened: time.Now(), ap: ap,
 		maxSize: sizeBytes(cfg.BatchMB), maxAge: time.Duration(cfg.BatchTimeoutMs) * time.Millisecond, packs: map[string]*packBuf{}}
 	if len(cfg.Indexes) > 0 {
-		// the denormalize mode: the indexes resolved on the source, their source tables packed
+		// the indexes resolved on the source: the denormalize mode's source tables packed,
+		// the table mode's copied
 		src, err := SourceDB(cfg)
 		if err != nil {
 			fail(c, err)
@@ -517,6 +609,18 @@ func MainSource(dest Destination, src Source) {
 		if ap.indexes, c.packTables, err = resolveIndexes(context.Background(), cfg, src); err != nil {
 			fail(c, err)
 		}
+		if ap.copies, err = copyDests(cfg); err != nil {
+			fail(c, err)
+		}
+		c.copies = map[string]*tableCopy{}
+		for _, d := range ap.copies {
+			tc, err := resolveCopy(context.Background(), src, d)
+			if err != nil {
+				fail(c, err)
+			}
+			c.copies[strings.ToLower(d.srcSchema+"."+d.srcTable)] = tc
+		}
+		c.initSrc = src
 	}
 	c.txCap = mbBytes(cfg.MaxPendingMB)
 	tr.paused = func(p int64) {
@@ -614,6 +718,12 @@ func runBinlog(c *capture, ap *applier, cfg wire.Config, state wire.State, sig <
 		c.mu.Unlock()
 	}
 	<-started
+	if c.initSrc != nil {
+		// the inits not published yet, before the binlog: the delta follows them in the stream
+		if err := c.runInits(applyCtx, c.initSrc, ap.indexes, c.copyList()); err != nil {
+			fail(c, err)
+		}
+	}
 	gset, err := mysql.ParseGTIDSet(mysql.MariaDBFlavor, c.state.GTID)
 	if err != nil {
 		fail(c, fmt.Errorf("GTID %q: %w", c.state.GTID, err))

@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"compress/gzip"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -354,4 +355,17 @@ func orderSchemaPhaseByForeignKeys(schemaFiles []string, logf func(level, format
 	result = append(result, routines...)
 	result = append(result, views...)
 	return result
+}
+
+// OpenDecompressed opens a splitdump file for reading, gunzipped when it is gzip-compressed;
+// the closer closes both.
+func OpenDecompressed(path string) (io.Reader, func(), error) {
+	if _, err := os.Stat(path); err != nil {
+		return nil, nil, err
+	}
+	r, closeAll := openAndDecompress(path)
+	if r == nil {
+		return nil, nil, fmt.Errorf("%s: cannot be opened or decompressed", path)
+	}
+	return r, closeAll, nil
 }

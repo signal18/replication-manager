@@ -46,8 +46,7 @@ import (
 const (
 	defaultMaxKeysPerBatch = 10000
 	// maxArgsPerQuery: the placeholders of one restricted query, under MariaDB's 65535
-	maxArgsPerQuery       = 60000
-	initRowsPerCheckpoint = 10000
+	maxArgsPerQuery = 60000
 )
 
 // sourceTable is a source table of an index: its primary key, and the result columns that hold it.
@@ -64,6 +63,8 @@ type indexMeta struct {
 	key     []string // the denormalized table's primary key: every source table's cols
 	columns []string // the result's columns, in order
 	keyPos  []int    // the positions of key in columns
+	fields  []field  // the result's columns as the source describes them
+	part    *partitioning
 }
 
 func (m *indexMeta) maxKeys() int {
@@ -95,12 +96,18 @@ func resolveIndexes(ctx context.Context, cfg wire.Config, src *sqlx.DB) ([]*inde
 	tables := map[string]bool{}
 	names := map[string]bool{}
 	for _, idx := range cfg.Indexes {
+		if idx.TableMode() {
+			continue // copyDests
+		}
 		if names[idx.Name] {
 			return nil, nil, fmt.Errorf("index %s: two indexes of the same name", idx.Name)
 		}
 		names[idx.Name] = true
 		m, err := resolveIndex(ctx, cfg, src, idx)
 		if err != nil {
+			return nil, nil, err
+		}
+		if m.part, err = newPartitioning(idx); err != nil {
 			return nil, nil, err
 		}
 		for _, t := range m.tables {
@@ -132,12 +139,20 @@ func resolveIndex(ctx context.Context, cfg wire.Config, src *sqlx.DB, idx wire.I
 }
 
 // field is what an index reads of a result column: its name, and its original table and column.
-type field struct{ name, schema, orgTable, orgName string }
+// Its type (the protocol's) describes an expression column in the -schema element.
+type field struct {
+	name, schema, orgTable, orgName string
+	typ                             byte
+	flag                            uint16
+	decimals                        uint8
+	length                          uint32
+}
 
 func fieldsOf(fs []*gmysql.Field) []field {
 	out := make([]field, len(fs))
 	for i, f := range fs {
-		out[i] = field{name: string(f.Name), schema: string(f.Schema), orgTable: string(f.OrgTable), orgName: string(f.OrgName)}
+		out[i] = field{name: string(f.Name), schema: string(f.Schema), orgTable: string(f.OrgTable), orgName: string(f.OrgName),
+			typ: f.Type, flag: f.Flag, decimals: f.Decimal, length: f.ColumnLength}
 	}
 	return out
 }
@@ -155,7 +170,7 @@ var primaryKeyOf = func(ctx context.Context, src *sqlx.DB, schema, table string)
 // table's primary key is not in the result, two columns share a name, or a table is read twice
 // (joined twice: its keys could not be told apart).
 func indexFromFields(ctx context.Context, src *sqlx.DB, idx wire.Index, fields []field) (*indexMeta, error) {
-	m := &indexMeta{idx: idx}
+	m := &indexMeta{idx: idx, fields: fields}
 	type origin struct{ schema, table string }
 	byTable := map[origin]map[string]string{} // original column -> result column
 	var order []origin
@@ -492,48 +507,6 @@ func scanRows(rows *sql.Rows, meta *indexMeta, fn func(r, k []interface{}, out [
 		}
 	}
 	return out, n, rows.Err()
-}
-
-// initIndex fills an index's denormalized table from the query on a consistent snapshot of the
-// source, applied by apply in parts of initRowsPerCheckpoint rows. The table is made first from
-// the description of the empty query result, the destination then makes it its own; an
-// existing table of the same columns is emptied instead (Truncater, or a DELETE).
-func initIndex(ctx context.Context, src, tdb *sqlx.DB, tconn *sqlx.Conn, dest Destination, meta *indexMeta, apply func(wire.TableFiles, map[string][]byte) error) error {
-	if _, err := emptyOrMake(ctx, tdb, tconn, dest, meta.idx.Schema, meta.idx.Table, meta.columns, func([]string) (string, error) {
-		return dbhelper.CreateDenormalizedTable(ctx, tconn, meta.idx.Schema, meta.idx.Table, meta.idx.SQL, meta.key, meta.lookups())
-	}); err != nil {
-		return fmt.Errorf("index %s: the denormalized table %s.%s: %w", meta.idx.Name, meta.idx.Schema, meta.idx.Table, err)
-	}
-	sconn, err := src.Connx(ctx)
-	if err != nil {
-		return err
-	}
-	defer sconn.Close()
-	if _, err := sconn.ExecContext(ctx, "START TRANSACTION WITH CONSISTENT SNAPSHOT"); err != nil {
-		return err
-	}
-	defer sconn.ExecContext(context.Background(), "ROLLBACK")
-	rows, err := sconn.QueryContext(ctx, "SELECT * FROM ("+meta.idx.SQL+") AS d")
-	if err != nil {
-		return fmt.Errorf("index %s: the denormalizing query: %w", meta.idx.Name, err)
-	}
-	defer rows.Close()
-	part := 0
-	write := func(b []byte, n int64) error {
-		part++
-		t := wire.TableFiles{Schema: meta.idx.Schema, Table: meta.idx.Table, KeyColumns: meta.key, Inserts: fmt.Sprintf("init-%s-%d.inserts.tsv", meta.idx.Name, part), InsertRows: n}
-		return apply(t, map[string][]byte{t.Inserts: b})
-	}
-	rest, n, err := scanRows(rows, meta, func(r, _ []interface{}, out []byte) []byte {
-		return wire.EncodeTSV(out, r)
-	}, initRowsPerCheckpoint, write)
-	if err != nil {
-		return fmt.Errorf("index %s: the denormalizing query: %w", meta.idx.Name, err)
-	}
-	if len(rest) > 0 {
-		return write(rest, n%initRowsPerCheckpoint)
-	}
-	return nil
 }
 
 // isMadeByRestore: a destination whose tables the seed's restore makes (ColumnStore) refuses

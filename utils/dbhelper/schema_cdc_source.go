@@ -25,6 +25,8 @@ type ColumnDef struct {
 	Name     string
 	Type     string
 	Nullable bool
+	// Charset, Collation: a text column's, "" the table's (utf8mb4, binary no-pad)
+	Charset, Collation string
 }
 
 // CreateTableFromColumns creates schema.table on conn, InnoDB, utf8mb4 with the binary
@@ -33,17 +35,7 @@ type ColumnDef struct {
 // key; the schema created when missing. It never drops a table: an existing table of the same
 // name is the caller's to check (CDC feeds empty a table of the same columns, refuse another).
 func CreateTableFromColumns(ctx context.Context, conn *sqlx.Conn, schema, table string, cols []ColumnDef, key []string) (string, error) {
-	q, err := CreateTableFromColumnsSQL(schema, table, cols, key)
-	if err != nil {
-		return q, err
-	}
-	queries := []string{"CREATE DATABASE IF NOT EXISTS " + QuoteMySQLIdentifier(schema), q}
-	for _, s := range queries {
-		if _, err := conn.ExecContext(ctx, s); err != nil {
-			return s, err
-		}
-	}
-	return strings.Join(queries, "; "), nil
+	return CreateTableFromColumnsIndexed(ctx, conn, schema, table, cols, key, nil)
 }
 
 // CreateTableFromColumnsSQL is the CREATE TABLE statement of CreateTableFromColumns.
@@ -51,7 +43,10 @@ func CreateTableFromColumns(ctx context.Context, conn *sqlx.Conn, schema, table 
 // BIGINT, DECIMAL(65,30), VARCHAR(49), TINYINT(1), DOUBLE PRECISION, INT UNSIGNED.
 var columnTypeWord = regexp.MustCompile(`^[A-Za-z]+( [A-Za-z]+)*(\([0-9]+( *, *[0-9]+)?\))?( [A-Za-z]+)*$`)
 
-// columnTypeList is ENUM or SET with its labels, each quoted with '' and \ escaped.
+// charsetName is a character set or collation name.
+var charsetName = regexp.MustCompile(`^[A-Za-z0-9_]{1,64}$`)
+
+// columnTypeList is ENUM or SET with its labels, each quoted with ” and \ escaped.
 var columnTypeList = regexp.MustCompile(`^(?i:ENUM|SET)\('(?:[^'\\]|''|\\.)*'(?:,'(?:[^'\\]|''|\\.)*')*\)$`)
 
 // validColumnType is the allowlist of the column types a CREATE takes from a source's
@@ -61,6 +56,12 @@ func validColumnType(t string) bool {
 }
 
 func CreateTableFromColumnsSQL(schema, table string, cols []ColumnDef, key []string) (string, error) {
+	return CreateTableFromColumnsIndexedSQL(schema, table, cols, key, nil)
+}
+
+// CreateTableFromColumnsIndexedSQL is CreateTableFromColumnsSQL with a secondary index on each
+// of indexes (one served by the primary key skipped).
+func CreateTableFromColumnsIndexedSQL(schema, table string, cols []ColumnDef, key []string, indexes [][]string) (string, error) {
 	quoted, err := QuoteMySQLTableIdentifier(schema + "." + table)
 	if err != nil {
 		return "", err
@@ -80,8 +81,24 @@ func CreateTableFromColumnsSQL(schema, table string, cols []ColumnDef, key []str
 		if c.Nullable {
 			null = " NULL"
 		}
-		parts = append(parts, QuoteMySQLIdentifier(c.Name)+" "+c.Type+null)
+		cs := ""
+		for _, n := range []struct{ kw, v string }{{" CHARACTER SET ", c.Charset}, {" COLLATE ", c.Collation}} {
+			if n.v == "" {
+				continue
+			}
+			if !charsetName.MatchString(n.v) {
+				return "", fmt.Errorf("column %s: invalid charset or collation %q", c.Name, n.v)
+			}
+			cs += n.kw + n.v
+		}
+		parts = append(parts, QuoteMySQLIdentifier(c.Name)+" "+c.Type+cs+null)
 	}
 	parts = append(parts, "PRIMARY KEY ("+quoteColumns(key)+")")
+	for i, ix := range indexes {
+		if len(ix) == 0 || isPrefix(ix, key) {
+			continue
+		}
+		parts = append(parts, fmt.Sprintf("INDEX `k%d` (%s)", i, quoteColumns(ix)))
+	}
 	return "CREATE TABLE " + quoted + " (" + strings.Join(parts, ", ") + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_nopad_bin", nil
 }

@@ -119,6 +119,8 @@ type Config struct {
 	SourceKind string `toml:"source_kind" json:"sourceKind,omitempty"`
 	// SourceOptions: the settings of a capture source, by name, read by that source only
 	SourceOptions map[string]string `toml:"source_options" json:"sourceOptions,omitempty"`
+	// Threads: the workers that apply an init's rows, one partition each at a time; 0: 2
+	Threads int `toml:"threads" json:"threads,omitempty"`
 }
 
 // Index is one denormalization: the denormalizing query, run on the source, and the
@@ -134,7 +136,49 @@ type Index struct {
 	// MaxKeysPerBatch: the keys one unpack restricts the query to; more are split across
 	// unpacks, never dropped; 0: 10000
 	MaxKeysPerBatch int `toml:"max_keys_per_batch" json:"maxKeysPerBatch"`
+	// Mode: "index" (also when empty), the denormalizing query SQL; "table", the source tables
+	// of Tables copied as they are, keyed on their primary key, each into
+	// <slave_schema>.<its name> (Table, when one table only, renames it)
+	Mode   string   `toml:"mode" json:"mode,omitempty"`
+	Tables []string `toml:"tables" json:"tables,omitempty"`
+	// Init: where the first fill comes from. "select" (also when empty): SELECT on a consistent
+	// snapshot of the source, range by range, the delta from the snapshot's @@gtid_current_pos;
+	// "backup" (table mode only): the split dump of BackupDir, chunk by chunk, the delta from
+	// its metadata's GTID
+	Init      string `toml:"init" json:"init,omitempty"`
+	BackupDir string `toml:"backup_dir" json:"backupDir,omitempty"`
+	// RangeStep: the rows of one range of a select init (table mode: by primary key); 0: 10000
+	RangeStep int `toml:"range_step" json:"rangeStep,omitempty"`
+	// The partitioning of the destination, when the destination needs it: PartitionColumn a
+	// DATE, DATETIME or TIMESTAMP column of the result, PartitionPeriod day, week (ISO, from
+	// Monday) or month; PartitionsAhead the partitions kept after the current one (0: 3)
+	PartitionColumn string `toml:"partition_column" json:"partitionColumn,omitempty"`
+	PartitionPeriod string `toml:"partition_period" json:"partitionPeriod,omitempty"`
+	PartitionsAhead int    `toml:"partitions_ahead" json:"partitionsAhead,omitempty"`
+	// TargetEngine: the destination table's engine on its target (InnoDB, Aria, S3, DuckDB,
+	// as the destination takes them), "" the destination's default; Engine is its alias
+	TargetEngine string `toml:"target_engine" json:"targetEngine,omitempty"`
+	Engine       string `toml:"engine" json:"-"`
 }
+
+// TargetEngineName is the index's target_engine, or its alias engine.
+func (i Index) TargetEngineName() string {
+	if i.TargetEngine != "" {
+		return i.TargetEngine
+	}
+	return i.Engine
+}
+
+// Index modes and init sources.
+const (
+	IndexModeIndex = "index"
+	IndexModeTable = "table"
+	InitSelect     = "select"
+	InitBackup     = "backup"
+)
+
+// TableMode: the index copies tables as they are.
+func (i Index) TableMode() bool { return strings.EqualFold(i.Mode, IndexModeTable) }
 
 // MergedPath is the file the plugin records the last merge of its staging in.
 func MergedPath(configPath string) string {
@@ -304,6 +348,9 @@ type State struct {
 	NeedsInit bool     `json:"needsInit,omitempty"`
 	Reason    string   `json:"reason,omitempty"`
 	Owned     []string `json:"owned,omitempty"`
+	// Inits: the inits published to the transport, whole (InitKey -> their GTID): a restart
+	// publishes again only the others
+	Inits map[string]string `json:"inits,omitempty"`
 }
 
 // What replication-manager writes on a plugin's stdin (#2015): the restore sends the rows of
@@ -394,7 +441,16 @@ type Applied struct {
 	// Indexes: the indexes whose init is done (their denormalized table filled once), as
 	// <name>@<checksum of the query and the table>: a changed index runs its init again
 	Indexes []string `json:"indexes,omitempty"`
+	// Inits: per destination table of an index (InitKey), the GTID its init holds: the delta
+	// of a checkpoint whose GTID is within it is already in the table
+	Inits map[string]string `json:"inits,omitempty"`
+	// Paused: the indexes paused (their id), with the reason (a DDL the destination does not
+	// map): their parts are not applied until a rebuild
+	Paused map[string]string `json:"paused,omitempty"`
 }
+
+// InitKey names one destination table of an index in State.Inits and Applied.Inits.
+func InitKey(indexID, schema, table string) string { return indexID + "|" + schema + "." + table }
 
 // ReadState reads a State file; an empty State when there is none yet.
 func ReadState(path string) (State, error) {
@@ -474,6 +530,73 @@ type Manifest struct {
 	// Packs: a micro_checkpoint_pack (denormalize mode): per source table, the primary keys to
 	// replace and to delete; its unpack gives the micro checkpoint of each index
 	Packs []PackTable `json:"packs,omitempty"`
+	// Schema: the schema element of an index's destination table, published first: the
+	// apply makes or empties the destination from it (never from the source)
+	Schema *SchemaElement `json:"schema,omitempty"`
+	// Init: a part of an index's init, the rows of one destination table (Tables[0], rows to
+	// load, their keys deleted first: a part applied twice gives the same table); nil for
+	// the delta
+	Init *InitPart `json:"init,omitempty"`
+	// DDL: a DDL read on a source table of an index, its own element between two micro
+	// checkpoints (none mixes rows from before and after it)
+	DDL *DDLElement `json:"ddl,omitempty"`
+}
+
+// DDLElement is a DDL of the source on tables of an index: its statement, the schema it ran
+// in, the tables it touched (schema.table) and its GTID. The apply hands it to the destination,
+// which maps it to its own DDL or pauses the index with a state.
+type DDLElement struct {
+	Statement string   `json:"statement"`
+	Schema    string   `json:"schema,omitempty"`
+	Tables    []string `json:"tables"`
+	GTID      string   `json:"gtid"`
+}
+
+// SchemaElement (<index>-schema) is what a consumer of the stream needs to make the
+// destination table of an index before its init and its delta: the columns (MariaDB types,
+// mapped by the destination plugin), the key, the indexes an unpack looks rows up by, the
+// partitioning, and the source GTID of the init that follows.
+type SchemaElement struct {
+	Name    string   `json:"name"`  // <index name>-schema
+	Index   string   `json:"index"` // the index's id (name@checksum)
+	Mode    string   `json:"mode"`  // index, table
+	Schema  string   `json:"schema"`
+	Table   string   `json:"table"`
+	Columns []Column `json:"columns"`
+	// Key: the destination's primary key (the partition column added when partitioned);
+	// DeleteKey: the columns the delta deletes by
+	Key       []string   `json:"key"`
+	DeleteKey []string   `json:"deleteKey"`
+	Indexes   [][]string `json:"indexes,omitempty"`
+	// the partitioning, "" none; PartitionFrom the earliest value of the column the init
+	// holds, "" none: the first partition starts at the current period
+	PartitionColumn string `json:"partitionColumn,omitempty"`
+	PartitionPeriod string `json:"partitionPeriod,omitempty"`
+	PartitionFrom   string `json:"partitionFrom,omitempty"`
+	GTID            string `json:"gtid"`
+	Source          string `json:"source"` // select, backup
+}
+
+// InitPart is one checkpoint of an init's row stream, after its schema element; the last
+// one records the init's GTID: the init travels through the transport as the delta does,
+// the apply never reads the source for it.
+type InitPart struct {
+	Index  string `json:"index"`
+	Schema string `json:"schema"`
+	Table  string `json:"table"`
+	Part   int    `json:"part"`
+	Last   bool   `json:"last,omitempty"`
+	GTID   string `json:"gtid"` // the source position the init's rows hold (the snapshot's, the backup's)
+}
+
+// Column is a destination column: its name, its MariaDB type, its charset and collation
+// ("" the table's), NULL allowed.
+type Column struct {
+	Name      string `json:"name"`
+	Type      string `json:"type"`
+	Charset   string `json:"charset,omitempty"`
+	Collation string `json:"collation,omitempty"`
+	Nullable  bool   `json:"nullable,omitempty"`
 }
 
 // PackTable is one source table of a micro_checkpoint_pack: its primary key columns and

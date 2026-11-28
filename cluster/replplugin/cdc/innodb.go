@@ -7,14 +7,17 @@ package cdc
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/signal18/replication-manager/cluster/replplugin/wire"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 )
 
-// InnoDB is the InnoDB destination (replplugin-innodb, and the destination of the capture
-// sources that write a MariaDB InnoDB target): the tables stay InnoDB; each checkpoint is
+// InnoDB is the destination of repl-mariadb-mariadb-cdc (its binary also replplugin-innodb)
+// whose target_engine is InnoDB, and of the capture sources that write a MariaDB target: the
+// tables stay InnoDB, partitioned when the index says so (each row goes to its partition by
+// MariaDB's own routing, the partitions made ahead by the core); each checkpoint is
 // applied in one transaction that also records its position on the target (Positioner), so a
 // crash never applies a checkpoint twice nor loses one. The apply runs with the binlog on: the
 // target's own replicas follow the tables.
@@ -23,6 +26,15 @@ type InnoDB struct{}
 func (InnoDB) Name() string            { return "innodb" }
 func (InnoDB) Refuse(TableDesc) string { return "" }
 func (InnoDB) Session() []string       { return nil }
+
+// RefuseEngine: the tables are InnoDB (target_engine InnoDB, or unset). Aria is not taken yet:
+// its tables are not transactional, the position would no longer commit with the rows.
+func (InnoDB) RefuseEngine(engine string) string {
+	if engine == "" || strings.EqualFold(engine, "InnoDB") {
+		return ""
+	}
+	return fmt.Sprintf("target_engine %s: this destination writes InnoDB tables", engine)
+}
 
 // Create: the table the target holds is already InnoDB.
 func (InnoDB) Create(context.Context, *sqlx.Conn, TableDesc) error { return nil }
