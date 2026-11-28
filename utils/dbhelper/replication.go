@@ -1154,6 +1154,23 @@ func SetSemiSyncMasterEnabled(db *sqlx.DB, myver *version.Version, on bool) (str
 	return query, err
 }
 
+// SetSemiSyncSlaveEnabled switches only the replica side of semi-sync on or off, the source side
+// untouched (the regression tests restore each side to the value they found). MariaDB and
+// MySQL / Percona before 8.0.26: rpl_semi_sync_slave_enabled; MySQL / Percona 8.0.26+ (8.4, 9.x):
+// rpl_semi_sync_replica_enabled. The setting is read when the IO thread connects: restart it to apply.
+// PostgreSQL has no semi-sync plugin: nothing is sent and no error is returned.
+func SetSemiSyncSlaveEnabled(db *sqlx.DB, myver *version.Version, on bool) (string, error) {
+	if myver.IsPostgreSQL() {
+		return "", nil
+	}
+	query := "SET GLOBAL rpl_semi_sync_slave_enabled=?"
+	if myver.IsMySQLOrPercona() && myver.GreaterEqual("8.0.26") {
+		query = "SET GLOBAL rpl_semi_sync_replica_enabled=?"
+	}
+	_, err := db.Exec(query, on)
+	return query, err
+}
+
 func SetSemiSyncMaster(db *sqlx.DB, myver *version.Version) (string, error) {
 
 	query := "SET GLOBAL rpl-semi-sync-master-enabled=1"

@@ -1253,7 +1253,7 @@ func (cluster *Cluster) isSlaveElectable(sl *ServerMonitor, forcingLog bool) boo
 		}
 	}
 
-	if sl.HaveSemiSync && !sl.SemiSyncSlaveStatus && cluster.Conf.FailSync && cluster.Conf.RplChecks {
+	if cluster.isSlaveBlockedBySemiSync(sl) {
 		cluster.SetState("ERR00043", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00043"], sl.URL), ErrFrom: "CHECK", ServerUrl: sl.URL})
 		// if cluster.Conf.LogLevel > 1 || forcingLog {
 		cluster.LogModulePrintf(forcingLog, config.ConstLogModWriterElection, config.LvlWarn, "Semi-sync slave %s is out of sync. Skipping", sl.URL)
@@ -1275,6 +1275,13 @@ func (cluster *Cluster) isSlaveElectable(sl *ServerMonitor, forcingLog bool) boo
 		return false
 	}
 	return true
+}
+
+// isSlaveBlockedBySemiSync is the election test of failover-at-sync, kept behind check-replication-state like
+// the other election checks. electSwitchoverCandidate runs isSlaveElectable too: a switchover meets it with
+// failover-at-sync, next to the switchover-at-sync test of isSlaveElectableForSwitchover.
+func (cluster *Cluster) isSlaveBlockedBySemiSync(sl *ServerMonitor) bool {
+	return cluster.Conf.FailSync && cluster.Conf.RplChecks && sl.IsSemiSyncReplicaOutOfSync()
 }
 
 func (cluster *Cluster) isSlaveValidReader(sl *ServerMonitor, forcingLog bool) bool {

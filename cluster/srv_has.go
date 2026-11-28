@@ -92,6 +92,33 @@ func (server *ServerMonitor) HasSemiSync() bool {
 	return server.IsSemiSyncReplica() || server.IsSemiSyncMaster()
 }
 
+// IsSemiSyncReplicaEnabled reports whether semi-sync is enabled on the replica side of this server as
+// configured (SHOW VARIABLES: rpl_semi_sync_slave_enabled on MariaDB and MySQL / Percona before 8.0.26,
+// rpl_semi_sync_replica_enabled from 8.0.26), not as operating: it stays true while the replica status
+// (IsSemiSyncReplica) turns OFF, which is the difference the election check relies on.
+// Either name set to ON counts (a contradiction reads as enabled); a variable that is absent (plugin not
+// loaded, variables not read yet, PostgreSQL) reads as not enabled.
+func (server *ServerMonitor) IsSemiSyncReplicaEnabled() bool {
+	if server.Variables == nil || server.Variables.Map == nil {
+		return false
+	}
+	for _, name := range []string{"RPL_SEMI_SYNC_SLAVE_ENABLED", "RPL_SEMI_SYNC_REPLICA_ENABLED"} {
+		if v := server.Variables.Get(name); strings.EqualFold(v, "ON") || v == "1" {
+			return true
+		}
+	}
+	return false
+}
+
+// IsSemiSyncReplicaOutOfSync is the election test of failover-at-sync (ERR00043): semi-sync is expected on
+// this replica and its operating replica status is not ON. Expected means the replica side is enabled, or
+// HaveSemiSync (replica or master status ON) as before: the enabled variable is added to the condition, none
+// of the candidates the former test refused is accepted. HaveSemiSync itself is unchanged (enforcement,
+// WARN0048 / WARN0060, API); it is a live status, so it is false on a replica whose IO thread stopped.
+func (server *ServerMonitor) IsSemiSyncReplicaOutOfSync() bool {
+	return (server.HaveSemiSync || server.IsSemiSyncReplicaEnabled()) && !server.SemiSyncSlaveStatus
+}
+
 func (server *ServerMonitor) HasWsrepSync() bool {
 	if server.Status.Get("WSREP_LOCAL_STATE") == "4" {
 		return true
