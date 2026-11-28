@@ -264,6 +264,31 @@ func gtidContains(a, b string) (bool, error) {
 	return sa.Contain(sb), nil
 }
 
+// coversKnownDomains: the GTID b (a backup's, an init's: the source's) is not older than the
+// position p on any domain b knows. A domain of p that b has not (a child's own domain carried in
+// its gtid_slave_pos, never the source's) is not compared: the source had no transaction of it.
+func coversKnownDomains(b, p string) (bool, error) {
+	sb, err := gmysql.ParseMariadbGTIDSet(b)
+	if err != nil {
+		return false, err
+	}
+	sp, err := gmysql.ParseMariadbGTIDSet(p)
+	if err != nil {
+		return false, err
+	}
+	common := 0
+	for domain, g := range sp.(*gmysql.MariadbGTIDSet).Sets {
+		if ours, ok := sb.(*gmysql.MariadbGTIDSet).Sets[domain]; ok {
+			if !ours.Contain(g) {
+				return false, nil
+			}
+			common++
+		}
+	}
+	// no domain in common (an empty GTID): nothing says b is not older
+	return common > 0 || len(sp.(*gmysql.MariadbGTIDSet).Sets) == 0, nil
+}
+
 // initJob is one destination table to init: its -schema element (columns, key) without the
 // GTID yet, the positions of its delete key in the rows, and its source.
 type initJob struct {
@@ -625,7 +650,7 @@ func (c *capture) runInits(ctx context.Context, src *sqlx.DB, metas []*indexMeta
 			if !j.backup {
 				return nil
 			}
-			ok, err := gtidContains(gtid, position)
+			ok, err := coversKnownDomains(gtid, position)
 			if err != nil {
 				return err
 			}

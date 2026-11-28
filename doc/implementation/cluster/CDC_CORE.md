@@ -162,12 +162,15 @@ delta follows them in the stream. Where the delta starts:
 
 - a feed with a position (State): its GTID. A **backup older than it is refused** (the transactions
   between the two would be lost): the plugin stops with the reason (WARN0242); take a new backup or
-  init by select;
+  init by select. The comparison is per domain, on the domains the backup knows: an analytic child's
+  position (its `gtid_slave_pos`) also carries the child's own domain, which the source never had;
+  no domain in common is refused;
 - a feed without one: `start_gtid`, else the oldest backup an init reads, else the source's
   `@@gtid_current_pos` (read before any init's snapshot).
 
 On the apply, the delta of a table-mode table is not applied before its init is (the init holds it),
-nor when the checkpoint's GTID is within the init's (`gtidContains`, per MariaDB domain); after that
+nor when the checkpoint's GTID is within the init's (per domain, on the init's domains:
+`coversKnownDomains`); after that
 it goes to the destination. An index's packs are unpacked only once its init is applied. A restart
 during an init publishes it again from its `-schema` element (the State's `inits` lists those
 published whole); nothing is resumed halfway.

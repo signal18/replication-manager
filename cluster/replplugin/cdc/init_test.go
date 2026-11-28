@@ -383,6 +383,14 @@ func TestStartGTID(t *testing.T) {
 		t.Fatal(g, err)
 	}
 	for _, c := range []struct {
+		b, p string
+		want bool
+	}{{"1-11-1708965", "1-11-1708965,3058267966-15-52", true}, {"1-11-100", "1-11-101", false}, {"1-11-100,2-11-5", "2-11-6", false}, {"1-11-100", "1-11-99", true}, {"", "1-11-5", false}, {"2-11-5", "1-11-5", false}} {
+		if got, err := coversKnownDomains(c.b, c.p); err != nil || got != c.want {
+			t.Fatalf("backup %s covers %s: %v %v", c.b, c.p, got, err)
+		}
+	}
+	for _, c := range []struct {
 		a, b string
 		want bool
 	}{{"0-1-10", "0-1-9", true}, {"0-1-10", "0-1-10", true}, {"0-1-10", "0-1-11", false}, {"0-1-10,1-1-5", "1-1-6", false}, {"0-1-10", "", true}} {

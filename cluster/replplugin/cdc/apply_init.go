@@ -328,7 +328,7 @@ func (a *applier) routeDelta(m wire.Manifest, done *wire.Applied) []wire.TableFi
 		if !inited {
 			continue // the init to come holds these rows
 		}
-		if within, err := gtidContains(g, m.GTID); err == nil && within && m.GTID != "" {
+		if within, err := coversKnownDomains(g, m.GTID); err == nil && within && m.GTID != "" {
 			continue
 		}
 		t.Schema, t.Table = d.destSchema, d.destTable
