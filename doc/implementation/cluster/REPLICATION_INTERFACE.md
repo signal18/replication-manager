@@ -1,6 +1,6 @@
 # Replication plugins: one interface for every link
 
-Issue #2453. Status: **design validated by the maintainer (2026-11-27)**. Steps 1, 2, 2b and 3 (below,
+Issue #2453. Status: **design validated by the maintainer (2026-11-27)**. Steps 1, 2, 2b, 3 and 4 (below,
 "Where the code is today") are coded and tested; the rest of this document is the target.
 
 ## The rule
@@ -260,7 +260,7 @@ interface. A function is a verb of every plugin, or the bootstrap of one plugin.
   `replication-plugin-feed-create-source-objects` for the PostgreSQL slot), and a `remove` that takes
   every trigger and table it created away.
 
-## Where the code is today (steps 1, 2, 2b and 3, coded and tested)
+## Where the code is today (steps 1, 2, 2b, 3 and 4, coded and tested)
 
 - `cluster/replication.go`: the `Replication` interface of the design, plus **`Row()`**: the row of
   the monitor's last read, no statement, what the code that only reads a field uses (`Status()`
@@ -324,8 +324,8 @@ interface. A function is a verb of every plugin, or the bootstrap of one plugin.
   their statement succeeded, as `Stop` and `ResetPositions`; a CDC `Stop` once the TOML says so.
 - The failover's extra multi-source loop (`FailoverExtraMultiSource`) takes only the replications
   whose manifest lists `promote` and `change-source` (`CanFailover`): never a CDC feed.
-- `cluster/replication_cdc.go`: the CDC object (`cdcReplication`, its feed and its row), status,
-  start, stop, rejoin, as before.
+- `cluster/replication_cdc.go`: the CDC object (`cdcReplication`, its feed and its row) and the
+  adapter of every CDC plugin (step 4, below).
 - The lock test `TestNoReplicationLinkSQLOutsideBackend` now covers the moved helpers too
   (`PostgresPromote`, `SetGTIDSlavePos`, `SetGtidPurged`, the four waits, the five setters,
   `ChangeReplicationPassword`): `cluster/replication_native.go` only.
@@ -383,6 +383,71 @@ interface. A function is a verb of every plugin, or the bootstrap of one plugin.
   every replica on the new master (`WaitSlavesRunning`, shared with its semi-sync twin); the
   flashback rejoin test waits for the load to end before its checksum.
 
+### Step 4: the CDC plugins through one adapter
+
+- **One adapter** (`replicationPluginAdapter`, `cluster/replication_cdc.go`) is every CDC plugin
+  binary as a `ReplicationPlugin`; no destination has code of its own in repman. Its feeds are
+  `cdcReplication` objects in their target's `server.Replications`, built where `Refresh` builds
+  them (`cdcFeedsOf`), the native channels first.
+- **The names** (`cdcPlugins`): `repl-mariadb-duckdb-cdc`, `repl-mariadb-columnstore-cdc`,
+  `repl-mariadb-mariadb-cdc`, `repl-postgresql-mariadb-cdc`, each with repman's manifest (its
+  engines, its topologies: copy and denormalize, migration for PostgreSQL). **Aliases**: the short
+  names the settings and TOMLs hold (`duckdb`, `columnstore`, `innodb`, `postgresql`) and the
+  binaries of before (`replplugin-duckdb`, ...) name the same plugin: the registry, the JSON,
+  the feed's `plugin` and `CanonicalReplicationPluginName` give the new name. A CDC name repman
+  does not know keeps the generic `repl-cdc` manifest (or its own `repl-*` name from its binary's
+  manifest, or from a peer's JSON).
+- **The binary**: looked for under the plugin's name first, then under the name of before
+  (`replPluginBinaryNames`): a delivery of either runs, signed and gated by its tier as before
+  (ERR00132). The TOMLs are not renamed: an analytic child seeded as `duckdb.toml` keeps it when
+  `replication-plugin-destination` is set to `repl-mariadb-duckdb-cdc` (`analyticPluginPath`).
+- **The manifest** (`cdcManifestOf`): repman's, completed by the replication fields of the
+  binary's `<binary>.manifest.json` (the file it already ships, read once per change): `source`,
+  `target`, `topologies`, `settings` (a name the environment carries only), `actions`; the tier is
+  the one the supervisor enforces. A known plugin keeps its name whatever its binary says.
+- **The verbs**: `Status`, `Start`, `Stop`, `Rejoin` are the supervisor's, as before (the status
+  line, the TOML's enabled flag, resume or rebuild). `StartCopyEvents`, `StopCopyEvents`,
+  `StartApplyEvents`, `StopApplyEvents` only when the binary's manifest lists them:
+  `<binary> <action> -config <TOML>`, a deadline of 2 minutes, `REPMAN_REPL_ACTION`,
+  `REPMAN_REPL_NAME`, `REPMAN_REPL_REASON` and the settings in its environment, its stdout (at most
+  64 KiB) returned as the statement (F11), the last line of stderr as the error; a stop recorded
+  (WARN0352). Every other verb, and a verb the manifest does not list, answers
+  `ErrReplicationNotSupported`, nothing run. `promote` and `change-source` are never taken from a
+  binary's manifest: a feed is never moved by a failover.
+- **Settings, per plugin**: the manifest declares them (`config.PluginSetting`, now with a
+  `default`); the cluster's values are a `[[repl-plugin]]` entry (`config.ReplPluginEntry`, found
+  under any name of the plugin), saved by the save callback (T25), a secret encrypted (F9) and
+  never in the JSON (F10). Each run, `-create` and action gets them as `REPMAN_REPL_SETTING_<NAME>`
+  and `REPMAN_REPL_SECRET_<NAME>`: the cluster's value, else the manifest's default; a secret held
+  in clear never reaches the plugin. The existing keys (`replication-plugin-*`) are not entries:
+  they stay keys, read and written into the feed's TOML as before, the cluster level of their
+  plugin. The snapshot plugins' environment is built by the same function (`pluginSettingsEnv`).
+- **Read through the object**: `AnalyticFeedStatus` (the DuckDB child's feed: the plugin and the
+  link's name added), the indexes ready of the API and MCP (`ReplicationPluginIndexesReady`, over
+  `Cluster.CDCReplications`), MCP `get-database-replication` (every replication with its plugin and
+  its ends).
+- Tests: `TestCDCPluginNamesAndAliases`, `TestCDCBinaryOfEitherName`,
+  `TestDuckDBChildFeedIsAReplication` (the three names of the destination, the JSON and its
+  decode, the status through the object), `TestAnalyticPluginPathAcrossNames`,
+  `TestCDCAdapterRunsTheBinaryActions` (a binary with actions and settings),
+  `TestCDCAdapterBinaryWithoutActions` (a binary of before: nothing run), and
+  `TestReplPluginSettingsLevels` (the levels, the save, the read back beside the existing keys).
+
+**Still missing after step 4:**
+
+- The binaries of the plugin-signer repository keep their names and manifests of before: they run
+  through the aliases. Renaming them (with their signatures) and adding the replication fields to
+  their manifests is a delivery of that repository, not a change of repman.
+- No binary implements an action yet (`<binary> <action>`): the copy and apply verbs of every
+  CDC feed answer `ErrReplicationNotSupported` until one declares them. `remove`, `create` and
+  `bootstrap` are not run through the binary: `Create` and `Bootstrap` are step 5 (the seed of
+  the child), and what a CDC `Remove` leaves (the TOML, the State, the objects on the source,
+  `DropReplicationFeedSourceObjects` today) is not decided.
+- The `[[repl-plugin]]` entries have no API or GUI yet (step 6, with the GUI of the links): a
+  value is set in the cluster's TOML. The `[[repl-link]]` level is not coded.
+- The supervisor and the seed still call the binary directly (`-config`, `-create`, `-drop`): the
+  `run` of the design, unchanged.
+
 ## From step 2 to the target
 
 | Step | What changes |
@@ -390,7 +455,7 @@ interface. A function is a verb of every plugin, or the bootstrap of one plugin.
 | 2 | (done) `ReplicationLink` becomes `ReplicationPlugin` + `Link`; the verbs renamed (`StopCopyEvents`, `StopApplyEvents`) and `StartCopyEvents`, `StartApplyEvents` added; the manifest; the registry of plugins (as `newOrchestratorList`) |
 | 2b | (done) The `Link` of step 2 replaced by the `Replication` object: each entry of `server.Replications` (and `LastSeenReplications`) a `Replication` of its plugin, filled where `Refresh` stores the rows today, `ReplicationFeeds` merged into the list, the JSON kept; its four ends (`SourceCluster`, `SourceServer`, `TargetCluster`, `TargetServer`); `Promote`, `SetPosition`, `WaitCaughtUp`, `Configure`, `RotateCredential` added; the failover, switchover, reseed and rejoin calls moved onto them; `StopCopyEvents`, `StopApplyEvents` and `ChangeSource` record the link change once their statement succeeded, as `Stop` |
 | 3 | (done) The native code split into the built-in plugins: binlog (four manifests: MariaDB, MySQL, MySQL into MariaDB, ColumnStore; Galera and Group Replication topologies), group replication, postgresql; each replication gets its plugin from its engine, the topology and its source |
-| 4 | `replication_cdc.go` becomes the external adapter; the CDC plugins declare their settings in their manifests (the `replication-plugin-*` keys stay valid as their cluster level); the CDC binaries renamed (`replplugin-innodb` → `repl-mariadb-mariadb-cdc`, `replplugin-columnstore` → `repl-mariadb-columnstore-cdc`, `replplugin-duckdb` → `repl-mariadb-duckdb-cdc`, `replplugin-postgresql` → `repl-postgresql-mariadb-cdc`) with their manifests |
+| 4 | (done) `replication_cdc.go` becomes the external adapter; the CDC plugins declare their settings in their manifests (the `replication-plugin-*` keys stay valid as their cluster level); the CDC binaries renamed (repman finds either name; the rename of the binaries is the plugin-signer delivery) (`replplugin-innodb` → `repl-mariadb-mariadb-cdc`, `replplugin-columnstore` → `repl-mariadb-columnstore-cdc`, `replplugin-duckdb` → `repl-mariadb-duckdb-cdc`, `replplugin-postgresql` → `repl-postgresql-mariadb-cdc`) with their manifests |
 | 5 | `Bootstrap` and `Create` moved from `prov.go` into the plugins, topology by topology |
 | 6 | GUI: the links of a server grouped by plugin, the actions from the manifest; API and MCP the same |
 

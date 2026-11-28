@@ -3,7 +3,13 @@
 The ColumnStore child (#2002, #2015) carries a parent's tables into an engine that native
 replication cannot feed, with a plugin that reads the parent's binlog. That plugin's code is now
 the **CDC core**, a library shared by every **destination plugin**: one plugin per destination,
-`replplugin-<name>`, each built from the core and its own destination code.
+each built from the core and its own destination code. Each is a replication plugin of the
+replication interface (`REPLICATION_INTERFACE.md`, step 4), named `repl-<source>-<target>-cdc`:
+`repl-mariadb-duckdb-cdc`, `repl-mariadb-columnstore-cdc`, `repl-mariadb-mariadb-cdc` (InnoDB),
+`repl-postgresql-mariadb-cdc`. Its binary is named after it, or as before `replplugin-<name>`
+(`replplugin-duckdb`, ...): replication-manager looks for the new name first, then the old one,
+and the short names the settings and TOMLs hold (`duckdb`, `columnstore`, `innodb`,
+`postgresql`) stay valid as aliases.
 
 - The core is the Go module `github.com/signal18/replication-manager/cluster/replplugin/cdc`
   (its own `go.mod`), so a plugin kept in another repository imports it at a tag
@@ -154,9 +160,11 @@ Setting `replication-plugin-source` (`cluster/cluster_repl_source.go`):
 ## The analytic child
 
 A child cluster with `replication-plugin-destination` (a plugin name; empty means none, the off
-switch) and `replication-plugin-tables` (`schema.table` or `schema.*`, comma separated, the
-operator's choice). It is created by `create-child` with `destination` and `tables`. The plugin's
-manifest (`replplugin-<name>.manifest.json`, `wire.PluginManifest`) gives:
+switch; `duckdb` and `repl-mariadb-duckdb-cdc` name the same plugin) and
+`replication-plugin-tables` (`schema.table` or `schema.*`, comma separated, the operator's
+choice). It is created by `create-child` with `destination` and `tables`. The plugin's manifest
+(`<binary>.manifest.json`, `wire.PluginManifest`, and in the same file its replication fields,
+`REPLICATION_INTERFACE.md` "The manifest") gives:
 
 - its tier and licence;
 - the configurator tags its servers need (added to the child);
@@ -200,7 +208,8 @@ the destination must never receive native row events.
 
 An analytic child of destination `duckdb`: its chosen tables become MariaDB DuckDB-engine
 tables (`ha_duckdb`, MariaDB's own plugin), columnar copies the client queries with plain
-MariaDB SQL. The destination is an enterprise plugin, `replplugin-duckdb`, delivered with the
+MariaDB SQL. The destination is an enterprise plugin, `repl-mariadb-duckdb-cdc` (its binary
+`repl-mariadb-duckdb-cdc`, or `replplugin-duckdb` as delivered before), delivered with the
 enterprise plugins and gated by its manifest's tier like any other (`EnterprisePluginsPlan`,
 ERR00132 otherwise). This repository holds no DuckDB code: everything below is the analytic
 child's, the plugin brings its two things (refuse or convert a table, apply a checkpoint).
@@ -237,13 +246,28 @@ child's, the plugin brings its two things (refuse or convert a table, apply a ch
 
 ### The feed as a replication link
 
-`Cluster.AnalyticFeedStatus()` (`cluster/cluster_analytic_feed.go`) is the feed of an analytic
-child, for the CDC backend of the replication interface, which shows it beside the native
-channels: the destination, tables, source as set and as read, intervals, whether the plugin
-runs or why it is stopped and when it restarts, the `-create` running since, the plugin's last
-status line (GTID captured and applied, lag, counts, apply error, last merge) and the tables
-left InnoDB. Read only and cheap (the supervisor's lock briefly, the runner's atomics, one small
-file), never a database: callable from any goroutine. Test `TestAnalyticFeedStatus`.
+The feed is a `Replication` of the plugin `repl-mariadb-duckdb-cdc` in the child master's
+`server.Replications`, beside its native channel from the parent, as every CDC feed
+(`cluster/replication_cdc.go`, the one adapter of every CDC binary): its row (capture and apply
+running, GTID captured and applied, lag, errors), its four ends (source the parent's server,
+target the child master), `kind` `cdc` and `plugin` `repl-mariadb-duckdb-cdc` in the JSON. Its
+verbs are the supervisor's: `Status` (the last status line), `Start` and `Stop` (the TOML's
+enabled flag, WARN0352 on a stop), `Rejoin` (resume, or a new initial load); the copy and apply
+verbs only when the binary's manifest lists them, every other verb `ErrReplicationNotSupported`.
+A feed is never promoted nor repointed by a failover (`CanFailover` false).
+
+`Cluster.AnalyticFeedStatus()` (`cluster/cluster_analytic_feed.go`) reads it through that object
+(`CDCReplication.Feed`): the plugin and the link's name, the destination, tables, source as set
+and as read, intervals, whether the plugin runs or why it is stopped and when it restarts, the
+`-create` running since, the plugin's last status line (GTID captured and applied, lag, counts,
+apply error, last merge) and the tables left InnoDB. Read only and cheap (the TOML, the
+supervisor's lock briefly, the runner's atomics, one small file), never a database: callable from
+any goroutine. The indexes ready (the API's index list, MCP `list-cluster-analytic-indexes`) are
+read through the feeds' objects too (`ReplicationPluginIndexesReady`), and MCP
+`get-database-replication` returns every replication of a server with its plugin. A child seeded
+under one name of the plugin keeps its TOML (`duckdb.toml`) when the destination is set to another
+of its names. Tests `TestAnalyticFeedStatus`, `TestDuckDBChildFeedIsAReplication`,
+`TestAnalyticPluginPathAcrossNames`.
 
 ## Denormalize
 
@@ -359,7 +383,9 @@ The ColumnStore destination stays open source, maintained as a community destina
 - `cluster/cluster_replplugin.go`: the supervisor, the states, the manifest and the plan gate.
 - `cluster/cluster_repl_source.go`: the source and its checks.
 - `cluster/cluster_analytic_child.go`: the analytic child's seed, tags, states, settings.
-- `cluster/cluster_analytic_feed.go`: `AnalyticFeedStatus`, the feed for the replication interface.
+- `cluster/replication_cdc.go`: the replication interface's adapter of every CDC plugin (names
+  and aliases, manifests, the feed's `Replication`, `CDCReplication.Feed`).
+- `cluster/cluster_analytic_feed.go`: `AnalyticFeedStatus`, the feed read through its `Replication`.
 - `mcp/tools_analytic.go`: the MCP tools of the indexes (the DuckDB child itself: `cluster-create-child`).
 - `utils/dbhelper/schema_repl_staging.go`: the SQL (MariaDB; PostgreSQL has no storage engine
   to choose, `ErrNoStorageEngine`).
