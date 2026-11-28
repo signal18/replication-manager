@@ -92,6 +92,10 @@ func SelectGTIDCurrentPos(ctx context.Context, conn *sqlx.Conn) (string, string,
 // (nil a NULL), in one statement: a CDC destination that does not take LOAD DATA LOCAL (the
 // target's local_infile off, as replication-manager's hardening sets it).
 func InsertRows(ctx context.Context, conn *sqlx.Conn, schema, table string, rows [][]interface{}) (string, error) {
+	return insertRows(ctx, conn, "INSERT", schema, table, rows)
+}
+
+func insertRows(ctx context.Context, conn *sqlx.Conn, verb, schema, table string, rows [][]interface{}) (string, error) {
 	if len(rows) == 0 {
 		return "", nil
 	}
@@ -113,7 +117,7 @@ func InsertRows(ctx context.Context, conn *sqlx.Conn, schema, table string, rows
 		tuples[i] = tuple
 		args = append(args, r...)
 	}
-	query := "INSERT INTO " + quoted + " VALUES " + strings.Join(tuples, ",")
+	query := verb + " INTO " + quoted + " VALUES " + strings.Join(tuples, ",")
 	_, err = conn.ExecContext(ctx, query, args...)
 	return query, err
 }

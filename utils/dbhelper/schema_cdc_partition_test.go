@@ -58,3 +58,31 @@ func TestPickRowKey(t *testing.T) {
 		}
 	}
 }
+
+// The rebuild of one partition from its delta: work table, copy, delta applied, converted,
+// exchanged, dropped, delta emptied last.
+func TestRebuildPartitionStatements(t *testing.T) {
+	q, err := RebuildPartitionStatements("a", "ev", "p20261101", "ev_replace", "ev_delete", "ev_w_p20261101", "S3", []string{"id", "ts"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		"DROP TABLE IF EXISTS `a`.`ev_w_p20261101`",
+		"CREATE TABLE `a`.`ev_w_p20261101` LIKE `a`.`ev_replace`",
+		"ALTER TABLE `a`.`ev_w_p20261101` REMOVE PARTITIONING",
+		"INSERT INTO `a`.`ev_w_p20261101` SELECT * FROM `a`.`ev` PARTITION (`p20261101`)",
+		"REPLACE INTO `a`.`ev_w_p20261101` SELECT * FROM `a`.`ev_replace` PARTITION (`p20261101`)",
+		"DELETE w FROM `a`.`ev_w_p20261101` AS w JOIN `a`.`ev_delete` PARTITION (`p20261101`) AS k USING (`id`, `ts`)",
+		"ALTER TABLE `a`.`ev_w_p20261101` ENGINE=S3",
+		"ALTER TABLE `a`.`ev` EXCHANGE PARTITION `p20261101` WITH TABLE `a`.`ev_w_p20261101`",
+		"DROP TABLE `a`.`ev_w_p20261101`",
+		"ALTER TABLE `a`.`ev_replace` TRUNCATE PARTITION `p20261101`",
+		"ALTER TABLE `a`.`ev_delete` TRUNCATE PARTITION `p20261101`",
+	}
+	if strings.Join(q, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("%s", strings.Join(q, "\n"))
+	}
+	if _, err := RebuildPartitionStatements("a", "ev", "p1`", "r", "d", "w", "S3", []string{"id"}); err == nil {
+		t.Fatal("an invalid partition must be refused")
+	}
+}
