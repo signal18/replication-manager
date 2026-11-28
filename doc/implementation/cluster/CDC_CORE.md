@@ -15,8 +15,10 @@ and the short names the settings and TOMLs hold (`duckdb`, `columnstore`, `innod
   (its own `go.mod`), so a plugin kept in another repository imports it at a tag
   (`cluster/replplugin/cdc/vX.Y.Z`, with the root module at the matching tag).
 - `cluster/replplugin/plugins/columnstore` is the ColumnStore destination on it, public.
-- `cluster/replplugin/plugins/innodb` is the InnoDB destination on it, public: the copies and the
-  denormalized tables stay InnoDB, applied in transactions that keep their position.
+- `cluster/replplugin/plugins/innodb` is `repl-mariadb-mariadb-cdc` (binary also
+  `replplugin-innodb`), the MariaDB destination on it, public: `target_engine` InnoDB, the copies
+  and the denormalized tables plain InnoDB tables, partitioned when the index says so, applied
+  directly in transactions that keep their position.
 - Other destinations are external plugins installed next to replication-manager's plugins, with
   a manifest (below). A destination of the enterprise tier is refused unless the seat's plan
   grants the enterprise plugins (`EnterprisePluginsPlan`, the archive plugins' gate).
@@ -86,6 +88,121 @@ The two things:
    or delete takes an UPDATE or DELETE statement whole only when the session's binlog format is
    not ROW: `dbhelper.SessionNoBinlogMixed`, `sql_log_bin=0` and `binlog_format=MIXED`. Such a
    copy is not binlogged, so its child has one database (manifest `singleServer`).
+
+## The stream and its transport (the seam)
+
+The core has three parts and one seam: **capture** (the init's row stream, the binlog delta) →
+**micro checkpoint** (the tar.gz: its manifest, sequence and GTID, the keys to delete, the rows to
+load) → **transport** → **apply** (the destination). The apply reads nothing of the capture but what
+the transport gives, in sequence order (`cdc.Transport`, `transport.go`):
+
+- `Create(seq)` opens a checkpoint as a **stream** (`io.Writer`), never a file path: `Close` makes it
+  visible whole, `Abort` drops it, and it waits while the transport is over its bound
+  (`max_pending_mb`: the capture pauses, it never drops a change). An init streams each part into it
+  while it reads the dump's chunks or the SELECT's ranges, a part held in memory up to its bound
+  (10000 rows or 16 MB), so a transport to an object store needs no local spool;
+- `Pending(after)`, `Open(seq)`, `Ack(seq)` (applied: the transport may free it), `PendingBytes()`,
+  `Clear()`.
+
+The local-disk queue (`<name>.checkpoints`, a temporary file renamed whole) is the only transport.
+**The S3 stream plugs in here** (a later step, not coded): the capturing replication-manager
+publishes each element to a bucket, any other replication-manager reads the stream in order and
+applies it with its own destination plugin and its own position, so a CDC travels across
+replication-manager clusters. The apply's own configuration (which index, where its tables go,
+how its destination is partitioned) is the consumer's.
+
+The transport carries **one ordered sequence of elements**, all with the same sequence numbers:
+
+1. **`<index>-schema`** (`wire.SchemaElement`, `Manifest.Schema`), first for each destination table:
+   its columns (MariaDB types: a source column's own type from `information_schema`, an expression's
+   from its result type), its key, the indexes an unpack looks rows up by, the partitioning, the
+   earliest value of the partition column, the source GTID of the init that follows. The apply makes
+   or empties the destination from it (never from the source): a table of the same columns is
+   emptied; a denormalized table of other columns (its query changed) is dropped and made again; a
+   table-mode destination of other columns is refused, never dropped.
+2. **The init's parts** (`wire.InitPart`, `Manifest.Init`): the rows to load and their keys to
+   delete first, so a part applied twice gives the same table. The last part records the init's GTID
+   (`applied.json` `inits`); an index-mode init then marks its index ready.
+3. **The delta**: the micro checkpoints of the binlog.
+4. **A DDL element** (`wire.DDLElement`, `Manifest.DDL`): a DDL on a source table of an index closes
+   the open micro checkpoint and is published as its own element (statement, schema, the tables it
+   touched, its GTID); none mixes rows from before and after it. The apply hands it to the
+   destination (`cdc.DDLMapper`), which maps it to its own DDL; a destination that does not, as
+   `repl-mariadb-mariadb-cdc` today, **pauses the index** (`applied.json` `paused`, its parts no longer
+   applied, the reason in the apply error: WARN0243) until a rebuild. The `-schema` element is the first
+   DDL of the stream. A DDL on a table of the rules only keeps the old behaviour (WARN0341).
+
+## Modes, init and the GTID start
+
+An index (`[[index]]` in the plugin TOML, `[[<cluster>.replication-plugin-index]]` in the cluster
+configuration) has two modes, and every destination takes both:
+
+- **index** (`mode` empty or `index`): the denormalizing query `sql` (below, "Denormalize").
+- **table** (`mode = "table"`): the tables of `tables` (`["logs.access", "logs.audit"]`) copied as they
+  are, each into `<slave_schema>.<its name>` (`slave_table` renames a single table), keyed on its
+  primary key. Large log tables are the first case. Refused when the destination is its own source,
+  the table has no primary key, a generated or BIT column. Its delta is the binlog's row images (copy
+  mode: `binlog_row_image=FULL`).
+
+The init is **one streamed SQL**: rows flowing into the loader, which does not know their source.
+
+- `init = "select"` (the default, the only one of the index mode): `@@gtid_current_pos` read, then
+  `START TRANSACTION WITH CONSISTENT SNAPSHOT`; in table mode the table read by ranges of its primary
+  key (`range_step` rows, keyset `a > ? OR (a = ? AND b > ?)`), in index mode the query streamed. The
+  GTID is read **before** the snapshot opens: the transactions between the two are in the rows and in
+  the delta, which applies them again (whole row images); none is missed.
+- `init = "backup"` (table mode): the latest split dump of the parent (replication-manager writes its
+  folder in `backup_dir`: the latest logical backup of the parent's backup server or master that is a
+  split dump, not encrypted), the table's data files chunk by chunk, gzip or not; the GTID is the
+  backup's metadata's. No load on the source. The earliest partition value costs a first pass over the
+  table's files.
+
+The inits run in the capture, **before the binlog is read**, and publish into the transport; the
+delta follows them in the stream. Where the delta starts:
+
+- a feed with a position (State): its GTID. A **backup older than it is refused** (the transactions
+  between the two would be lost): the plugin stops with the reason (WARN0242); take a new backup or
+  init by select;
+- a feed without one: `start_gtid`, else the oldest backup an init reads, else the source's
+  `@@gtid_current_pos` (read before any init's snapshot).
+
+On the apply, the delta of a table-mode table is not applied before its init is (the init holds it),
+nor when the checkpoint's GTID is within the init's (`gtidContains`, per MariaDB domain); after that
+it goes to the destination. An index's packs are unpacked only once its init is applied. A restart
+during an init publishes it again from its `-schema` element (the State's `inits` lists those
+published whole); nothing is resumed halfway.
+
+Nothing is written on the source (F1): the reads are `SELECT`s and a consistent snapshot; the
+source's links are never touched (T27). The source is `replication-plugin-source` (a replica of the
+parent, or its master).
+
+## Partitioning
+
+Partitioning is a property of the index, required by the destination: `partition_column` (a DATE,
+DATETIME or TIMESTAMP column of the result) and `partition_period` (`day`, `week` from Monday, or
+`month`), `partitions_ahead` (0: 3). A destination that needs it (InnoDB here, S3 next) takes it; an
+analytic one does not.
+
+- The destination is `PARTITION BY RANGE COLUMNS(col)` on a DATE or DATETIME, `RANGE
+  (UNIX_TIMESTAMP(col))` on a TIMESTAMP (RANGE COLUMNS does not take one), one partition per period
+  named `p<YYYYMMDD of its start>`, from the period of the earliest value of the init to the
+  horizon. The first partition takes every older value and NULL.
+- The partition column joins the primary key (MariaDB requires it, error 1503): a column outside the
+  source's primary key must be NOT NULL. In table mode the capture keys the copy's rows by that key,
+  so a delete reaches one partition.
+- **Ahead of time**: every apply round keeps `partitions_ahead` periods after the current one; before
+  a checkpoint's transaction (a DDL commits) the partitions its latest row needs are added. At most
+  400 at once and 8000 in all: a value far in the future is refused with the reason, never thousands
+  of empty partitions (F3).
+- **Routing**: every row goes to its partition by the column's value, at the init (the part split by
+  partition) as for the delta (MariaDB's own routing, the partitions ensured first).
+- **The pool** (`pool.go`, `replication-plugin-threads`, `threads` in the TOML, default 2, at most 64):
+  the jobs of one round, one per partition, on that many workers, never two on one partition, each
+  under its deadline (10 minutes for an init part); a failed partition is reported by name and the
+  others go on. The init's apply uses it; the S3 destination's partition exchange is its next user.
+
+The InnoDB destination takes `target_engine` InnoDB (or unset); another engine is refused with the
+reason (Aria later: its tables are not transactional, the position would not commit with the rows).
 
 ## The accumulation (InnoDB staging)
 
@@ -295,16 +412,17 @@ GUI: the Analytic Child settings. The cluster writes the list into the plugin TO
 - inner joins: a primary key column is never NULL.
 
 **Init.** Once per index (`applied.json` lists the indexes done by name and a checksum of their
-query and table, so a changed query runs its init again; the status's `indexesReady` names them):
+query and table, so a changed query runs its init again; the status's `indexesReady` names them),
+through the stream ("The stream and its transport"):
 
-1. the denormalized table is made from the description of the empty query result
-   with its primary key and indexes in the same statement
-   (`CREATE TABLE ... (PRIMARY KEY (...), INDEX ...) ENGINE=InnoDB AS SELECT * FROM (<sql>) AS d
-   WHERE 1=0`: a server with `innodb_force_primary_key=ON`, which replication-manager's
-   configurator sets, refuses a table created without a key, error 1173), and the destination makes it its own (`Create`); an existing table of the same columns is
-   emptied instead (`Truncater`);
+1. the `-schema` element describes the denormalized table: each column of a source table with that
+   column's type, an expression with its result's, the primary key and the indexes in the same
+   `CREATE` (a server with `innodb_force_primary_key=ON`, which replication-manager's configurator
+   sets, refuses a table created without a key, error 1173); the destination makes it its own
+   (`Create`), an existing table of the same columns is emptied instead (`Truncater`). The target no
+   longer needs the source's tables to make it;
 2. the query runs on the source in one `START TRANSACTION WITH CONSISTENT SNAPSHOT`, its rows
-   applied by parts of 10000.
+   published in parts of 10000.
 
 **Capture: the micro_checkpoint_pack.** For the source tables of the indexes, the capture keeps
 the primary keys touched, nothing else, per source table: the keys to replace and the keys to
@@ -329,8 +447,10 @@ moved to another item is rewritten with it. The keys are split across batches, n
 (`max-keys-per-batch`, and 60000 placeholders at most per query).
 
 The unpack reads the source as it is when it runs, past the pack: a change after the pack is read
-then, and again at its own pack, which gives the same rows. So the init needs no GTID, and packs
-captured before it unpack after it on the current source.
+then, and again at its own pack, which gives the same rows. The packs published before the
+index's init are skipped (the init's snapshot holds them), those after it unpack on the current
+source. The unpack still reads the source and the target at the apply: it does not travel across
+replication-manager clusters yet (an open point of the S3 stream).
 
 **Where the design moved, and why.**
 
@@ -339,8 +459,9 @@ captured before it unpack after it on the current source.
   restricted query.
 - The restricted query is a `UNION` of one branch per source table, not an `OR`, for the index use
   above.
-- The init streams the query on one consistent snapshot instead of key ranges: one consistent read,
-  no range scan per step, the same snapshot cost on the source.
+- The index mode's init streams the query on one consistent snapshot instead of key ranges: one
+  consistent read, no range scan per step, the same snapshot cost on the source. The table mode reads
+  its table by ranges of its primary key in the snapshot.
 - The key of the denormalized table is derived (every source table's primary key), not a `key`
   setting.
 - The InnoDB destination comes first (public); a columnar destination takes the same micro
@@ -370,7 +491,13 @@ The ColumnStore destination stays open source, maintained as a community destina
 
 - `cluster/replplugin/cdc/`: the core (capture `capture.go`, checkpoints `checkpoint.go`, apply
   `apply.go`, staging `staging.go`, destination interface `destination.go`, create `create.go`).
-- `cluster/replplugin/cdc/denormalize.go`: the denormalize mode (indexes, pack, unpack, init).
+- `cluster/replplugin/cdc/transport.go`: the transport and the local-disk queue.
+- `cluster/replplugin/cdc/initstream.go`, `copy.go`, `apply_init.go`: the init stream and its
+  sources, the table mode, the apply of the `-schema`, init and DDL elements.
+- `cluster/replplugin/cdc/partition.go`, `pool.go`: the partitioning and the pool.
+- `utils/dbhelper/schema_cdc_partition.go`, `schema_cdc_init.go`: their SQL (MariaDB and MySQL; a
+  PostgreSQL server never reaches it, T23).
+- `cluster/replplugin/cdc/denormalize.go`: the denormalize mode (indexes, pack, unpack).
 - `cluster/replplugin/cdc/source.go`, `innodb.go`: the capture sources of other engines and the
   InnoDB destination they reuse (`CDC_SOURCES.md`).
 - `cluster/replplugin/plugins/columnstore/main.go`: the ColumnStore destination.

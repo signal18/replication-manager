@@ -5337,6 +5337,14 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 			v = "master"
 		}
 		mycluster.Conf.ReplicationPluginSource = v
+	case "replication-plugin-threads":
+		val, err := strconv.Atoi(value)
+		if err != nil || val < 1 || val > 64 {
+			return fmt.Errorf("invalid value for %s: %q, expected 1 to 64 workers", name, value)
+		}
+		if err := mycluster.SetReplicationPluginThreads(val); err != nil {
+			return err
+		}
 	case "replication-plugin-checkpoint-interval", "replication-plugin-merge-interval":
 		val, err := strconv.Atoi(value)
 		if err != nil || val < 0 {

@@ -55,3 +55,49 @@ func TestReplicationPluginIndexes(t *testing.T) {
 		t.Fatal("delete")
 	}
 }
+
+// The table mode: tables copied into another schema, partitioned, from a SELECT or a backup;
+// rendered for the saved config and read back whole.
+func TestReplicationPluginIndexTableMode(t *testing.T) {
+	conf := &Config{}
+	logs := ReplicationPluginIndex{Name: "logs", Mode: "table", Tables: []string{"logs.access", "logs.audit"}, SlaveSchema: "logs_p", Init: "backup",
+		PartitionColumn: "created_at", PartitionPeriod: "day", PartitionsAhead: 5, RangeStep: 20000, TargetEngine: "InnoDB"}
+	if err := conf.PutReplicationPluginIndex(logs); err != nil {
+		t.Fatal(err)
+	}
+	for _, bad := range []ReplicationPluginIndex{
+		{Name: "x", Mode: "table", SlaveSchema: "p"},
+		{Name: "x", Mode: "table", Tables: []string{"logs.access"}, SlaveSchema: "logs"},
+		{Name: "x", Mode: "table", Tables: []string{"access"}, SlaveSchema: "p"},
+		{Name: "x", Mode: "table", Tables: []string{"a.t"}, SlaveSchema: "p", SQL: "SELECT 1"},
+		{Name: "x", Mode: "table", Tables: []string{"a.t"}, SlaveSchema: "p", Init: "dump"},
+		{Name: "x", Mode: "table", Tables: []string{"a.t"}, SlaveSchema: "p", PartitionColumn: "ts"},
+		{Name: "x", Mode: "table", Tables: []string{"a.t"}, SlaveSchema: "p", PartitionColumn: "ts", PartitionPeriod: "year"},
+		{Name: "x", SQL: "SELECT 1", SlaveSchema: "p", SlaveTable: "t", Init: "backup"},
+		{Name: "x", Mode: "copy", Tables: []string{"a.t"}, SlaveSchema: "p"},
+	} {
+		if err := conf.PutReplicationPluginIndex(bad); err == nil {
+			t.Fatalf("%+v must be refused", bad)
+		}
+	}
+	out, err := conf.ReplicationPluginIndexesToml("saved-c1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tree, err := toml.Load(out)
+	if err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	var back struct {
+		C struct {
+			Indexes []ReplicationPluginIndex `toml:"replication-plugin-index"`
+		} `toml:"saved-c1"`
+	}
+	if err := tree.Unmarshal(&back); err != nil || len(back.C.Indexes) != 1 {
+		t.Fatalf("%v %+v", err, back)
+	}
+	b := back.C.Indexes[0]
+	if !b.TableMode() || strings.Join(b.Tables, ",") != "logs.access,logs.audit" || b.Init != "backup" || b.PartitionColumn != "created_at" || b.PartitionPeriod != "day" || b.PartitionsAhead != 5 || b.RangeStep != 20000 || b.TargetEngine != "InnoDB" {
+		t.Fatalf("%+v\n%s", b, out)
+	}
+}

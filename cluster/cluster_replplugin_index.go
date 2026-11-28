@@ -7,10 +7,12 @@ package cluster
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/BurntSushi/toml"
 	"github.com/signal18/replication-manager/cluster/replplugin/wire"
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/splitdump"
 )
 
 // The indexes of an analytic child's denormalize mode (CDC_CORE.md "Denormalize"): the cluster
@@ -51,13 +53,44 @@ func (cluster *Cluster) DeleteReplicationPluginIndex(name string) error {
 	return cluster.writeReplPluginIndexes()
 }
 
-// replPluginIndexes are the cluster's indexes as the plugin TOML holds them.
-func (cluster *Cluster) replPluginIndexes() []wire.Index {
+// replPluginIndexes are the cluster's indexes as the plugin TOML holds them; an init from a
+// backup reads the latest split dump of parent (the cluster the feed reads).
+func (cluster *Cluster) replPluginIndexes(parent string) []wire.Index {
 	var out []wire.Index
 	for _, e := range cluster.Conf.ReplicationPluginIndexList() {
-		out = append(out, wire.Index{Name: e.Name, SQL: e.SQL, Schema: e.SlaveSchema, Table: e.SlaveTable, MaxKeysPerBatch: e.MaxKeysPerBatch})
+		idx := wire.Index{Name: e.Name, SQL: e.SQL, Schema: e.SlaveSchema, Table: e.SlaveTable, MaxKeysPerBatch: e.MaxKeysPerBatch,
+			Mode: e.Mode, Tables: e.Tables, Init: e.Init, RangeStep: e.RangeStep, PartitionColumn: e.PartitionColumn,
+			PartitionPeriod: e.PartitionPeriod, PartitionsAhead: e.PartitionsAhead, TargetEngine: e.TargetEngine}
+		if strings.EqualFold(e.Init, wire.InitBackup) {
+			idx.BackupDir = cluster.replPluginBackupDir(parent)
+		}
+		out = append(out, idx)
 	}
 	return out
+}
+
+// replPluginBackupDir is the folder of the latest logical backup of the cluster parent that
+// is a split dump, "" when there is none (the plugin then refuses the init with its reason).
+func (cluster *Cluster) replPluginBackupDir(parent string) string {
+	p, err := cluster.GetClusterFromName(parent)
+	if err != nil || p == nil {
+		return ""
+	}
+	var best int64
+	dir := ""
+	for _, srv := range []*ServerMonitor{p.GetBackupServer(), p.GetMaster()} {
+		if srv == nil {
+			continue
+		}
+		id, meta := srv.GetLatestMeta("logical")
+		if meta == nil || meta.Dest == "" || meta.Encrypted || id <= best {
+			continue
+		}
+		if ok, err := splitdump.Detect(meta.Dest); err == nil && ok {
+			best, dir = id, meta.Dest
+		}
+	}
+	return dir
 }
 
 // writeReplPluginIndexes writes the indexes into the analytic child's plugin TOML, when the
@@ -66,8 +99,7 @@ func (cluster *Cluster) writeReplPluginIndexes() error {
 	if !cluster.HasAnalyticChild() {
 		return nil
 	}
-	indexes := cluster.replPluginIndexes()
-	return rewriteReplPluginConfigs([]string{cluster.analyticPluginPath()}, func(cfg *wire.Config) { cfg.Indexes = indexes })
+	return rewriteReplPluginConfigs([]string{cluster.analyticPluginPath()}, func(cfg *wire.Config) { cfg.Indexes = cluster.replPluginIndexes(cfg.SourceCluster) })
 }
 
 // rewriteReplPluginConfigs applies change to each plugin TOML of paths that exists and writes it

@@ -156,7 +156,8 @@ func (cluster *Cluster) prepareAnalyticChild(parent *Cluster, target *ServerMoni
 		Destination:     plugin,
 		SourceCluster:   parent.Name,
 		MergeIntervalMs: cluster.Conf.ReplicationPluginMergeInterval * 1000,
-		Indexes:         cluster.replPluginIndexes(),
+		Indexes:         cluster.replPluginIndexes(parent.Name),
+		Threads:         cluster.Conf.ReplicationPluginThreads,
 	}
 	if err := writeReplPluginConfig(path, cfg); err != nil {
 		return err
@@ -315,6 +316,16 @@ func (server *ServerMonitor) replPluginReplicateIgnore() string {
 		return replPluginReplicateIgnoreLine(cl.analyticPluginPath())
 	}
 	return ""
+}
+
+// SetReplicationPluginThreads sets replication-plugin-threads and writes it into the analytic
+// child's plugin TOML: the plugin restarts with it.
+func (cluster *Cluster) SetReplicationPluginThreads(n int) error {
+	cluster.Conf.ReplicationPluginThreads = n
+	if !cluster.HasAnalyticChild() {
+		return nil
+	}
+	return rewriteReplPluginConfigs([]string{cluster.analyticPluginPath()}, func(cfg *wire.Config) { cfg.Threads = n })
 }
 
 // replPluginMergeIntervalMax: a merge interval of one day at most (the staging grows on the

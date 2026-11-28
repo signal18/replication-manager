@@ -569,6 +569,7 @@ type Config struct {
 	ReplicationPluginSource                  string                       `mapstructure:"replication-plugin-source" toml:"replication-plugin-source" json:"replicationPluginSource"`
 	ReplicationPluginCheckpointInterval      int                          `mapstructure:"replication-plugin-checkpoint-interval" toml:"replication-plugin-checkpoint-interval" json:"replicationPluginCheckpointInterval"`
 	ReplicationPluginMergeInterval           int                          `mapstructure:"replication-plugin-merge-interval" toml:"replication-plugin-merge-interval" json:"replicationPluginMergeInterval"`
+	ReplicationPluginThreads                 int                          `mapstructure:"replication-plugin-threads" toml:"replication-plugin-threads" json:"replicationPluginThreads"`
 	ReplicationPluginIndexes                 []ReplicationPluginIndex     `mapstructure:"replication-plugin-index" toml:"replication-plugin-index" json:"replicationPluginIndexes"`
 	ReplicationPluginFeedEnabled             bool                         `mapstructure:"replication-plugin-feed-enabled" toml:"replication-plugin-feed-enabled" json:"replicationPluginFeedEnabled"`
 	ReplicationPluginFeedSourceCluster       string                       `mapstructure:"replication-plugin-feed-source-cluster" toml:"replication-plugin-feed-source-cluster" json:"replicationPluginFeedSourceCluster"`

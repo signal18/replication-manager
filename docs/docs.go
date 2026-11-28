@@ -31542,12 +31542,33 @@ const docTemplate = `{
         "config.ReplicationPluginIndex": {
             "type": "object",
             "properties": {
+                "init": {
+                    "description": "Init: \"select\" (or empty), a SELECT on a consistent snapshot of the source, range by\nrange; \"backup\" (table mode), the parent's latest split dump",
+                    "type": "string"
+                },
                 "maxKeysPerBatch": {
                     "description": "MaxKeysPerBatch: the packed keys one unpack restricts the query to; 0: the plugin's default",
                     "type": "integer"
                 },
+                "mode": {
+                    "description": "Mode: \"index\" (or empty), the query SQL; \"table\", the tables of Tables copied as they are\ninto SlaveSchema (SlaveTable renames a single table)",
+                    "type": "string"
+                },
                 "name": {
                     "type": "string"
+                },
+                "partitionColumn": {
+                    "description": "the destination's partitioning, when it needs one: a DATE, DATETIME or TIMESTAMP column of\nthe result, day, week or month, the partitions kept ahead (0: 3)",
+                    "type": "string"
+                },
+                "partitionPeriod": {
+                    "type": "string"
+                },
+                "partitionsAhead": {
+                    "type": "integer"
+                },
+                "rangeStep": {
+                    "type": "integer"
                 },
                 "slaveSchema": {
                     "type": "string"
@@ -31556,6 +31577,16 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "sql": {
+                    "type": "string"
+                },
+                "tables": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "targetEngine": {
+                    "description": "TargetEngine: the destination table's engine, as the destination plugin takes them\n(InnoDB for repl-mariadb-mariadb-cdc); empty, the plugin's default",
                     "type": "string"
                 }
             }
@@ -35044,6 +35075,9 @@ const docTemplate = `{
                 },
                 "replicationPluginTables": {
                     "type": "string"
+                },
+                "replicationPluginThreads": {
+                    "type": "integer"
                 },
                 "replicationSourceName": {
                     "type": "string"
