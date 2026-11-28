@@ -205,6 +205,7 @@ func (regtest *RegTest) TestAnalyticChildTableMode(cl *cluster.Cluster, conf str
 	}
 
 	writes := []string{
+		"USE " + logsSchema, // the seq_1_to_N tables of the sequence engine need a schema
 		"SET SESSION sql_mode = 'NO_ENGINE_SUBSTITUTION'",
 		"START TRANSACTION",
 		fmt.Sprintf("INSERT INTO %s.access (id, created_at, seen_at, level, flags, raw, payload, legacy, msg) SELECT %d + seq, NOW(), NOW(), 'warn', 'b', UNHEX('00FF'), REPEAT('x', 200000), '0000-00-00 00:00:00', CONCAT('new ', seq) FROM seq_1_to_40", logsSchema, logsRows*1000),
