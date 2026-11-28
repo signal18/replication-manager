@@ -409,22 +409,8 @@ func indexSchemaElement(ctx context.Context, src *sqlx.DB, meta *indexMeta) (wir
 		e.Columns = append(e.Columns, c)
 	}
 	if meta.part != nil {
+		// the partition column is in meta.key already (addPartitionKey): in the PRIMARY KEY
 		e.PartitionColumn, e.PartitionPeriod = meta.part.column, meta.part.period
-		if !inKey[meta.part.column] {
-			found := false
-			for _, c := range meta.columns {
-				found = found || c == meta.part.column
-			}
-			if !found {
-				return e, fmt.Errorf("index %s: partition_column %s is not a column of the query's result", idx.Name, meta.part.column)
-			}
-			e.Key = append(e.Key, meta.part.column)
-			for i := range e.Columns {
-				if e.Columns[i].Name == meta.part.column {
-					e.Columns[i].Nullable = false
-				}
-			}
-		}
 	}
 	return e, nil
 }

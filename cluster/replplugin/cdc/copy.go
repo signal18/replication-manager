@@ -116,7 +116,7 @@ func resolveCopy(ctx context.Context, src *sqlx.DB, d copyDest) (*tableCopy, err
 func (tc *tableCopy) check() error {
 	name := tc.srcSchema + "." + tc.srcTable
 	if len(tc.pk) == 0 {
-		return fmt.Errorf("index %s: %s has no primary key", tc.idx.Name, name)
+		return fmt.Errorf("index %s: %s has no primary key and no unique key of NOT NULL columns", tc.idx.Name, name)
 	}
 	var partCol *dbhelper.TableColumn
 	for i, c := range tc.columns {

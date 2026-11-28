@@ -140,8 +140,9 @@ configuration) has two modes, and every destination takes both:
 - **index** (`mode` empty or `index`): the denormalizing query `sql` (below, "Denormalize").
 - **table** (`mode = "table"`): the tables of `tables` (`["logs.access", "logs.audit"]`) copied as they
   are, each into `<slave_schema>.<its name>` (`slave_table` renames a single table), keyed on its
-  primary key. Large log tables are the first case. Refused when the destination is its own source,
-  the table has no primary key, a generated or BIT column. Its delta is the binlog's row images (copy
+  row key (its primary key, else a unique key of NOT NULL columns: "Partitioning"). Large log tables
+  are the first case. Refused when the destination is its own source, the table has no row key, a
+  generated or BIT column. Its delta is the binlog's row images (copy
   mode: `binlog_row_image=FULL`).
 
 The init is **one streamed SQL**: rows flowing into the loader, which does not know their source.
@@ -190,9 +191,15 @@ analytic one does not.
   (UNIX_TIMESTAMP(col))` on a TIMESTAMP (RANGE COLUMNS does not take one), one partition per period
   named `p<YYYYMMDD of its start>`, from the period of the earliest value of the init to the
   horizon. The first partition takes every older value and NULL.
-- The partition column joins the primary key (MariaDB requires it, error 1503): a column outside the
-  source's primary key must be NOT NULL. In table mode the capture keys the copy's rows by that key,
-  so a delete reaches one partition.
+- **The destination's primary key** is the concatenation of the row key of every source table of the
+  index, then the partition column when the index is partitioned (MariaDB requires it in the primary
+  key, error 1503). A source table's **row key** is its primary key, or when it has none its first
+  unique key **by name** whose columns are all NOT NULL and whole (no prefix)
+  (`dbhelper.GetRowKeyColumns`); a table with neither is refused. canal knows a PRIMARY only: the
+  capture gives such a table the resolved key, so its rows are found by it in the packs and the
+  copies. The partition column must be NOT NULL (in index mode: a column of a source table,
+  NOT NULL there; an expression is refused). It is in the delete key too, so a delete reaches one
+  partition, in both modes.
 - **Ahead of time**: every apply round keeps `partitions_ahead` periods after the current one; before
   a checkpoint's transaction (a DDL commits) the partitions its latest row needs are added. At most
   400 at once and 8000 in all: a value far in the future is refused with the reason, never thousands

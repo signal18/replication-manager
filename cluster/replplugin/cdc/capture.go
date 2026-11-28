@@ -92,6 +92,8 @@ type capture struct {
 	ddlTables []string
 	// initSrc: the source the inits read, nil when there is no index
 	initSrc *sqlx.DB
+	// rowKeys: the row key of the indexes' and copies' source tables (lower schema.table)
+	rowKeys map[string][]string
 }
 
 // copyList is the table-mode copies, in the config's order.
@@ -151,10 +153,31 @@ func (c *capture) tsv(t *schema.Table, r []interface{}) row {
 	return out
 }
 
+// rowKey gives an index's or a copy's source table that has no primary key the unique key of
+// NOT NULL columns the feed resolved for it (canal knows a PRIMARY only): its rows are then found
+// by it, in the pack as in the copy. The table is canal's cached one, kept until its next DDL.
+func (c *capture) rowKey(t *schema.Table) {
+	if len(t.PKColumns) > 0 {
+		return
+	}
+	names := c.rowKeys[strings.ToLower(t.Schema+"."+t.Name)]
+	if len(names) == 0 {
+		return
+	}
+	pos := make([]int, len(names))
+	for i, n := range names {
+		if pos[i] = t.FindColumn(n); pos[i] < 0 {
+			return
+		}
+	}
+	t.PKColumns = pos
+}
+
 // OnRow buffers the rows of an event in the period.
 func (c *capture) OnRow(e *canal.RowsEvent) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	c.rowKey(e.Table)
 	packed := c.pack(e)
 	if !c.cfg.Matches(e.Table.Schema, e.Table.Name) && c.copyOf(e.Table.Schema, e.Table.Name) == nil {
 		if !packed {
@@ -636,6 +659,15 @@ func MainSource(dest Destination, src Source) {
 			c.copyOrder = append(c.copyOrder, tc)
 		}
 		c.initSrc = src
+		c.rowKeys = map[string][]string{}
+		for _, m := range ap.indexes {
+			for _, t := range m.tables {
+				c.rowKeys[strings.ToLower(t.schema+"."+t.table)] = t.pk
+			}
+		}
+		for _, tc := range c.copyOrder {
+			c.rowKeys[strings.ToLower(tc.srcSchema+"."+tc.srcTable)] = tc.pk
+		}
 	}
 	c.txCap = mbBytes(cfg.MaxPendingMB)
 	tr.paused = func(p int64) {

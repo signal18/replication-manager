@@ -36,3 +36,22 @@ func TestCreateTableFromColumnsCharsetAndIndexes(t *testing.T) {
 		t.Fatal("an invalid charset must be refused")
 	}
 }
+
+// The row key: PRIMARY, else the first unique key by name whose columns are all NOT NULL and
+// whole; none otherwise.
+func TestPickRowKey(t *testing.T) {
+	for _, c := range []struct {
+		keys []RowKeyCandidate
+		want string
+	}{
+		{[]RowKeyCandidate{{Name: "a_uk", Cols: []string{"x"}, Usable: true}, {Name: "PRIMARY", Cols: []string{"id"}}}, "PRIMARY:id"},
+		{[]RowKeyCandidate{{Name: "z_uk", Cols: []string{"z"}, Usable: true}, {Name: "b_uk", Cols: []string{"b1", "b2"}, Usable: true}, {Name: "a_uk", Cols: []string{"a"}, Usable: false}}, "b_uk:b1,b2"},
+		{[]RowKeyCandidate{{Name: "a_uk", Cols: []string{"a"}, Usable: false}}, ":"},
+		{nil, ":"},
+	} {
+		cols, name := PickRowKey(c.keys)
+		if got := name + ":" + strings.Join(cols, ","); got != c.want {
+			t.Fatalf("%+v: %s, want %s", c.keys, got, c.want)
+		}
+	}
+}

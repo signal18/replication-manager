@@ -110,6 +110,9 @@ func resolveIndexes(ctx context.Context, cfg wire.Config, src *sqlx.DB) ([]*inde
 		if m.part, err = newPartitioning(idx); err != nil {
 			return nil, nil, err
 		}
+		if err := m.addPartitionKey(ctx, src); err != nil {
+			return nil, nil, err
+		}
 		for _, t := range m.tables {
 			tables[t.schema+"."+t.table] = true
 		}
@@ -157,9 +160,11 @@ func fieldsOf(fs []*gmysql.Field) []field {
 	return out
 }
 
-// primaryKeyOf reads a source table's primary key; a variable for the tests.
+// primaryKeyOf reads a source table's row key: its primary key, or when it has none its first
+// unique key by name whose columns are all NOT NULL (dbhelper.GetRowKeyColumns); none when it
+// has neither. A variable for the tests.
 var primaryKeyOf = func(ctx context.Context, src *sqlx.DB, schema, table string) ([]string, error) {
-	pk, q, err := dbhelper.GetPrimaryKeyColumns(ctx, src, schema, table)
+	pk, _, q, err := dbhelper.GetRowKeyColumns(ctx, src, schema, table)
 	if err != nil {
 		return nil, fmt.Errorf("%w (%s)", err, q)
 	}
@@ -206,7 +211,7 @@ func indexFromFields(ctx context.Context, src *sqlx.DB, idx wire.Index, fields [
 			return nil, fmt.Errorf("index %s: %w", idx.Name, err)
 		}
 		if len(pk) == 0 {
-			return nil, fmt.Errorf("index %s: %s.%s has no primary key", idx.Name, o.schema, o.table)
+			return nil, fmt.Errorf("index %s: %s.%s has no primary key and no unique key of NOT NULL columns", idx.Name, o.schema, o.table)
 		}
 		t := sourceTable{schema: o.schema, table: o.table, pk: pk}
 		for _, c := range pk {
@@ -227,6 +232,53 @@ func indexFromFields(ctx context.Context, src *sqlx.DB, idx wire.Index, fields [
 		}
 	}
 	return m, nil
+}
+
+// addPartitionKey: the destination's key is every source table's row key, then the partition
+// column when the index is partitioned (MariaDB requires it in the primary key). It must be a
+// column of the result, of a source table and NOT NULL there (an expression or a NULL-able
+// column is refused: a primary key column is never NULL).
+func (m *indexMeta) addPartitionKey(ctx context.Context, src *sqlx.DB) error {
+	if m.part == nil {
+		return nil
+	}
+	col := m.part.column
+	for _, k := range m.key {
+		if k == col {
+			return nil
+		}
+	}
+	var f *field
+	for i := range m.fields {
+		if m.fields[i].name == col {
+			f = &m.fields[i]
+		}
+	}
+	if f == nil {
+		return fmt.Errorf("index %s: partition_column %s is not a column of the query's result", m.idx.Name, col)
+	}
+	if f.orgTable == "" {
+		return fmt.Errorf("index %s: partition_column %s is an expression: it joins the primary key, it must be a NOT NULL column of a source table", m.idx.Name, col)
+	}
+	cols, err := columnsOfTable(ctx, src, f.schema, f.orgTable)
+	if err != nil {
+		return fmt.Errorf("index %s: %w", m.idx.Name, err)
+	}
+	for _, c := range cols {
+		if strings.EqualFold(c.Name, f.orgName) {
+			if c.Nullable {
+				return fmt.Errorf("index %s: partition_column %s (%s.%s.%s) may be NULL: it joins the destination's primary key, it must be NOT NULL", m.idx.Name, col, f.schema, f.orgTable, f.orgName)
+			}
+			m.key = append(m.key, col)
+			for i, rc := range m.columns {
+				if rc == col {
+					m.keyPos = append(m.keyPos, i)
+				}
+			}
+			return nil
+		}
+	}
+	return fmt.Errorf("index %s: partition_column %s: %s.%s.%s not found on the source", m.idx.Name, col, f.schema, f.orgTable, f.orgName)
 }
 
 // packBuf is one source table's part of the open micro_checkpoint_pack.

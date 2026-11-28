@@ -587,3 +587,51 @@ func TestTwoCopiesOfOneTable(t *testing.T) {
 		t.Fatal(k)
 	}
 }
+
+// An index partitioned: the partition column joins the destination's key (the -schema
+// element's PRIMARY KEY, the delete key); a NULL-able column or an expression is refused.
+func TestIndexPartitionKey(t *testing.T) {
+	saved := columnsOfTable
+	defer func() { columnsOfTable = saved }()
+	columnsOfTable = func(_ context.Context, _ *sqlx.DB, schema, table string) ([]dbhelper.TableColumn, error) {
+		return []dbhelper.TableColumn{{Name: "o_id", ColumnType: "int(11)"}, {Name: "o_entry_d", ColumnType: "datetime"}, {Name: "o_note", ColumnType: "datetime", Nullable: true}}, nil
+	}
+	meta := func() *indexMeta {
+		return &indexMeta{idx: wire.Index{Name: "o", Schema: "dn", Table: "o"}, key: []string{"o_id"}, keyPos: []int{0}, columns: []string{"o_id", "o_entry_d", "o_note", "x"},
+			fields: []field{{name: "o_id", schema: "s", orgTable: "orders", orgName: "o_id"}, {name: "o_entry_d", schema: "s", orgTable: "orders", orgName: "o_entry_d"},
+				{name: "o_note", schema: "s", orgTable: "orders", orgName: "o_note"}, {name: "x", typ: 8}},
+			tables: []sourceTable{{schema: "s", table: "orders", pk: []string{"o_id"}, cols: []string{"o_id"}}}}
+	}
+	m := meta()
+	m.part = &partitioning{column: "o_entry_d", period: "month", ahead: 3}
+	if err := m.addPartitionKey(context.Background(), nil); err != nil || strings.Join(m.key, ",") != "o_id,o_entry_d" || len(m.keyPos) != 2 || m.keyPos[1] != 1 {
+		t.Fatal(m.key, m.keyPos, err)
+	}
+	e, err := indexSchemaElement(context.Background(), nil, m)
+	if err != nil || strings.Join(e.Key, ",") != "o_id,o_entry_d" || strings.Join(e.DeleteKey, ",") != "o_id,o_entry_d" || e.Columns[1].Nullable || !e.Columns[2].Nullable {
+		t.Fatalf("%+v %v", e, err)
+	}
+	for _, col := range []string{"o_note", "x", "nope"} {
+		m := meta()
+		m.part = &partitioning{column: col, period: "month"}
+		if err := m.addPartitionKey(context.Background(), nil); err == nil {
+			t.Fatalf("partition column %s must be refused", col)
+		}
+	}
+}
+
+// A source table without a primary key, keyed by a unique key of NOT NULL columns: canal knows
+// only a PRIMARY, the capture finds its rows by the resolved key.
+func TestRowKeyWithoutPrimaryKey(t *testing.T) {
+	tb := &schema.Table{Schema: "logs", Name: "audit", Columns: []schema.TableColumn{{Name: "a"}, {Name: "uid"}, {Name: "seq"}}}
+	c := &capture{rowKeys: map[string][]string{"logs.audit": {"uid", "seq"}}}
+	c.rowKey(tb)
+	if len(tb.PKColumns) != 2 || tb.PKColumns[0] != 1 || tb.PKColumns[1] != 2 {
+		t.Fatal(tb.PKColumns)
+	}
+	other := &schema.Table{Schema: "logs", Name: "other", Columns: []schema.TableColumn{{Name: "a"}}}
+	c.rowKey(other)
+	if len(other.PKColumns) != 0 {
+		t.Fatal(other.PKColumns)
+	}
+}

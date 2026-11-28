@@ -201,3 +201,69 @@ func SaveReplPluginPosition(ctx context.Context, conn *sqlx.Conn, schema, plugin
 	_, err := conn.ExecContext(ctx, query, plugin, seq, gtid)
 	return query, err
 }
+
+// GetRowKeyColumns is the key a CDC feed finds a row of schema.table by: its primary key, or
+// when it has none, its first unique key by name whose columns are all NOT NULL and whole (no
+// prefix); none when it has neither (the feed refuses the table). The key's name (PRIMARY, or the
+// unique key's) is returned with it. MariaDB and MySQL (information_schema); a PostgreSQL server
+// never reaches it: the CDC core reads a MariaDB source, a PostgreSQL source has its own capture
+// with its replica identity.
+func GetRowKeyColumns(ctx context.Context, db *sqlx.DB, schema, table string) ([]string, string, string, error) {
+	query := "SELECT s.INDEX_NAME, s.COLUMN_NAME, c.IS_NULLABLE = 'YES', s.SUB_PART IS NOT NULL FROM information_schema.STATISTICS s " +
+		"JOIN information_schema.COLUMNS c ON c.TABLE_SCHEMA = s.TABLE_SCHEMA AND c.TABLE_NAME = s.TABLE_NAME AND c.COLUMN_NAME = s.COLUMN_NAME " +
+		"WHERE s.TABLE_SCHEMA = ? AND s.TABLE_NAME = ? AND s.NON_UNIQUE = 0 ORDER BY s.INDEX_NAME, s.SEQ_IN_INDEX"
+	rows, err := db.QueryContext(ctx, query, schema, table)
+	if err != nil {
+		return nil, "", query, err
+	}
+	defer rows.Close()
+	var keys []RowKeyCandidate
+	for rows.Next() {
+		var name, col string
+		var nullable, prefix bool
+		if err := rows.Scan(&name, &col, &nullable, &prefix); err != nil {
+			return nil, "", query, err
+		}
+		if len(keys) == 0 || keys[len(keys)-1].Name != name {
+			keys = append(keys, RowKeyCandidate{Name: name, Usable: true})
+		}
+		k := &keys[len(keys)-1]
+		k.Cols = append(k.Cols, col)
+		if nullable || prefix {
+			k.Usable = false
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, "", query, err
+	}
+	cols, name := PickRowKey(keys)
+	return cols, name, query, nil
+}
+
+// RowKeyCandidate is a unique key of a table: its name, its columns, whether every column is
+// NOT NULL and whole (a primary key always is).
+type RowKeyCandidate struct {
+	Name   string
+	Cols   []string
+	Usable bool
+}
+
+// PickRowKey picks the row key among a table's unique keys: PRIMARY, else the first usable one
+// by name; none when there is none.
+func PickRowKey(keys []RowKeyCandidate) ([]string, string) {
+	for _, k := range keys {
+		if k.Name == "PRIMARY" {
+			return k.Cols, k.Name
+		}
+	}
+	best := -1
+	for i, k := range keys {
+		if k.Usable && (best < 0 || k.Name < keys[best].Name) {
+			best = i
+		}
+	}
+	if best < 0 {
+		return nil, ""
+	}
+	return keys[best].Cols, keys[best].Name
+}
