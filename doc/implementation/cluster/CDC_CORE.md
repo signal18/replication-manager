@@ -204,7 +204,10 @@ analytic one does not.
   under its deadline (10 minutes for an init part); a failed partition is reported by name and the
   others go on. The init's apply uses it; the S3 destination's partition exchange is its next user.
 
-The InnoDB destination takes `target_engine` InnoDB (or unset); another engine is refused with the
+The InnoDB destination writes its rows with multi-row `INSERT`s after the keys' `DELETE`
+(`cdc.ApplyDeleteThenInsert`), never `LOAD DATA LOCAL`: replication-manager's hardening turns
+`local_infile` off on the target (seen on dev3, error 4166), and an InnoDB table takes inserts well.
+It takes `target_engine` InnoDB (or unset); another engine is refused with the
 reason (Aria later: its tables are not transactional, the position would not commit with the rows).
 
 ## The accumulation (InnoDB staging)

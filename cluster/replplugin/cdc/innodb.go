@@ -40,7 +40,8 @@ func (InnoDB) RefuseEngine(engine string) string {
 func (InnoDB) Create(context.Context, *sqlx.Conn, TableDesc) error { return nil }
 
 func (InnoDB) Apply(ctx context.Context, conn *sqlx.Conn, schema, table string, t wire.TableFiles, files map[string][]byte, name string, keys func([][]interface{}) error) (string, error) {
-	return ApplyDeleteThenLoad(ctx, conn, schema, table, t, files, name, keys)
+	// INSERTs, not LOAD DATA LOCAL: the target's local_infile may be off (hardening)
+	return ApplyDeleteThenInsert(ctx, conn, schema, table, t, files, keys)
 }
 
 func (InnoDB) Truncate(ctx context.Context, conn *sqlx.Conn, schema, table string) error {

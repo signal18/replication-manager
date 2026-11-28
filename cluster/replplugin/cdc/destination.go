@@ -91,46 +91,110 @@ const applyKeysBatch = 200
 // ApplyDeleteThenLoad is the apply of a MariaDB destination: the keys deleted in batches, then
 // the rows loaded with LOAD DATA LOCAL INFILE from memory.
 func ApplyDeleteThenLoad(ctx context.Context, conn *sqlx.Conn, schema, table string, t wire.TableFiles, files map[string][]byte, name string, keys func([][]interface{}) error) (string, error) {
-	if t.Deletes != "" {
-		var batch [][]interface{}
-		flush := func() (string, error) {
-			q, err := dbhelper.DeleteRowsByKey(ctx, conn, schema, table, t.KeyColumns, batch)
-			if err == nil && keys != nil {
-				err = keys(batch)
-			}
-			batch = batch[:0]
-			return q, err
-		}
-		sc := bufio.NewScanner(bytes.NewReader(files[t.Deletes]))
-		sc.Buffer(make([]byte, 64*1024), 64*1024*1024)
-		for sc.Scan() {
-			fields := wire.DecodeTSV(sc.Bytes())
-			key := make([]interface{}, len(fields))
-			for i, f := range fields {
-				if f != nil {
-					key[i] = f
-				}
-			}
-			batch = append(batch, key)
-			if len(batch) >= applyKeysBatch {
-				if q, err := flush(); err != nil {
-					return q, fmt.Errorf("delete in %s.%s: %w", schema, table, err)
-				}
-			}
-		}
-		if err := sc.Err(); err != nil {
-			return "", fmt.Errorf("keys of %s.%s in the checkpoint: %w", schema, table, err)
-		}
-		if len(batch) > 0 {
-			if q, err := flush(); err != nil {
-				return q, fmt.Errorf("delete in %s.%s: %w", schema, table, err)
-			}
-		}
+	if q, err := applyDeletes(ctx, conn, schema, table, t, files, keys); err != nil {
+		return q, err
 	}
 	if t.Inserts != "" {
 		q, err := dbhelper.LoadDataLocal(ctx, conn, schema, table, name, files[t.Inserts])
 		if err != nil {
 			return q, fmt.Errorf("load into %s.%s: %w", schema, table, err)
+		}
+	}
+	return "", nil
+}
+
+// insertRowsBatch, insertArgsMax: the rows of one INSERT of ApplyDeleteThenInsert, and its
+// placeholders at most (under MariaDB's 65535)
+const (
+	insertRowsBatch = 500
+	insertArgsMax   = 60000
+)
+
+// ApplyDeleteThenInsert is ApplyDeleteThenLoad with the rows written by multi-row INSERTs: a
+// destination that never needs local_infile on its target (replication-manager's hardening
+// turns it off).
+func ApplyDeleteThenInsert(ctx context.Context, conn *sqlx.Conn, schema, table string, t wire.TableFiles, files map[string][]byte, keys func([][]interface{}) error) (string, error) {
+	if q, err := applyDeletes(ctx, conn, schema, table, t, files, keys); err != nil {
+		return q, err
+	}
+	if t.Inserts == "" {
+		return "", nil
+	}
+	var batch [][]interface{}
+	args := 0
+	flush := func() (string, error) {
+		q, err := dbhelper.InsertRows(ctx, conn, schema, table, batch)
+		batch, args = batch[:0], 0
+		if err != nil {
+			return q, fmt.Errorf("insert into %s.%s: %w", schema, table, err)
+		}
+		return "", nil
+	}
+	sc := bufio.NewScanner(bytes.NewReader(files[t.Inserts]))
+	sc.Buffer(make([]byte, 64*1024), 64*1024*1024)
+	for sc.Scan() {
+		fields := wire.DecodeTSV(sc.Bytes())
+		r := make([]interface{}, len(fields))
+		for i, f := range fields {
+			if f != nil {
+				r[i] = f
+			}
+		}
+		if len(batch) > 0 && (len(batch) >= insertRowsBatch || args+len(r) > insertArgsMax) {
+			if q, err := flush(); err != nil {
+				return q, err
+			}
+		}
+		batch = append(batch, r)
+		args += len(r)
+	}
+	if err := sc.Err(); err != nil {
+		return "", fmt.Errorf("rows of %s.%s in the checkpoint: %w", schema, table, err)
+	}
+	if len(batch) > 0 {
+		return flush()
+	}
+	return "", nil
+}
+
+// applyDeletes deletes a checkpoint table's keys in batches; keys, when not nil, is told each
+// batch.
+func applyDeletes(ctx context.Context, conn *sqlx.Conn, schema, table string, t wire.TableFiles, files map[string][]byte, keys func([][]interface{}) error) (string, error) {
+	if t.Deletes == "" {
+		return "", nil
+	}
+	var batch [][]interface{}
+	flush := func() (string, error) {
+		q, err := dbhelper.DeleteRowsByKey(ctx, conn, schema, table, t.KeyColumns, batch)
+		if err == nil && keys != nil {
+			err = keys(batch)
+		}
+		batch = batch[:0]
+		return q, err
+	}
+	sc := bufio.NewScanner(bytes.NewReader(files[t.Deletes]))
+	sc.Buffer(make([]byte, 64*1024), 64*1024*1024)
+	for sc.Scan() {
+		fields := wire.DecodeTSV(sc.Bytes())
+		key := make([]interface{}, len(fields))
+		for i, f := range fields {
+			if f != nil {
+				key[i] = f
+			}
+		}
+		batch = append(batch, key)
+		if len(batch) >= applyKeysBatch {
+			if q, err := flush(); err != nil {
+				return q, fmt.Errorf("delete in %s.%s: %w", schema, table, err)
+			}
+		}
+	}
+	if err := sc.Err(); err != nil {
+		return "", fmt.Errorf("keys of %s.%s in the checkpoint: %w", schema, table, err)
+	}
+	if len(batch) > 0 {
+		if q, err := flush(); err != nil {
+			return q, fmt.Errorf("delete in %s.%s: %w", schema, table, err)
 		}
 	}
 	return "", nil

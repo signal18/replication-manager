@@ -71,3 +71,33 @@ func SelectGTIDCurrentPos(ctx context.Context, conn *sqlx.Conn) (string, string,
 	err := conn.QueryRowContext(ctx, query).Scan(&v)
 	return v.String, query, err
 }
+
+// InsertRows inserts rows into schema.table, each a value per column in the table's order
+// (nil a NULL), in one statement: a CDC destination that does not take LOAD DATA LOCAL (the
+// target's local_infile off, as replication-manager's hardening sets it).
+func InsertRows(ctx context.Context, conn *sqlx.Conn, schema, table string, rows [][]interface{}) (string, error) {
+	if len(rows) == 0 {
+		return "", nil
+	}
+	quoted, err := QuoteMySQLTableIdentifier(schema + "." + table)
+	if err != nil {
+		return "", err
+	}
+	n := len(rows[0])
+	if n == 0 {
+		return "", fmt.Errorf("a row of no value for %s.%s", schema, table)
+	}
+	tuple := "(" + strings.TrimSuffix(strings.Repeat("?,", n), ",") + ")"
+	tuples := make([]string, len(rows))
+	args := make([]interface{}, 0, len(rows)*n)
+	for i, r := range rows {
+		if len(r) != n {
+			return "", fmt.Errorf("rows of %d and %d values for %s.%s", n, len(r), schema, table)
+		}
+		tuples[i] = tuple
+		args = append(args, r...)
+	}
+	query := "INSERT INTO " + quoted + " VALUES " + strings.Join(tuples, ",")
+	_, err = conn.ExecContext(ctx, query, args...)
+	return query, err
+}

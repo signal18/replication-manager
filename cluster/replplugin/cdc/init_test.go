@@ -539,3 +539,23 @@ func TestDiskQueueTransport(t *testing.T) {
 		t.Fatal("cleared")
 	}
 }
+
+// The rows of a checkpoint written by INSERTs (no LOAD DATA LOCAL): an empty text stays an
+// empty text, \N a NULL, a tab and a newline kept; batches bounded.
+func TestApplyDeleteThenInsert(t *testing.T) {
+	_, conn, mock := mockConn(t)
+	rows := wire.EncodeTSV(nil, []interface{}{"1", "", nil})
+	rows = wire.EncodeTSV(rows, []interface{}{"2", "a\tb\nc", "x"})
+	keys := wire.EncodeTSV(nil, []interface{}{"1"})
+	keys = wire.EncodeTSV(keys, []interface{}{"2"})
+	mock.ExpectExec(regexp.QuoteMeta("DELETE FROM `d`.`t` WHERE")).WillReturnResult(sqlmock.NewResult(0, 2))
+	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO `d`.`t` VALUES (?,?,?),(?,?,?)")).
+		WithArgs([]byte("1"), []byte(""), nil, []byte("2"), []byte("a\tb\nc"), []byte("x")).WillReturnResult(sqlmock.NewResult(0, 2))
+	tf := wire.TableFiles{Schema: "d", Table: "t", KeyColumns: []string{"id"}, Deletes: "d", Inserts: "i"}
+	if q, err := ApplyDeleteThenInsert(context.Background(), conn, "d", "t", tf, map[string][]byte{"d": keys, "i": rows}, nil); err != nil {
+		t.Fatal(q, err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
